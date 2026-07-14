@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  stagger-cascade: HyperFrames video primitive (effects / burst / exhibit)
+
+  Concept: a responsive grid of plain tile cards enters in DOM order with one
+  visible, evenly spaced GSAP stagger. Each tile fades from opacity 0 to 1 and
+  travels along the selected axis from a container-relative offset to rest.
+  One mechanic, one job: exhibit a group through a readable cascade.
+
+  Compiled-from evidence: production census (launches-motion-vocabulary.md),
+  where stagger cascades appear in 13 of 18 launches and observed steps center
+  around 0.04 to 0.08 seconds, with 0.14 to 0.18 seconds used for deliberate
+  item-by-item reveals.
+
+  Use when: a set of cards, features, rows, or related objects needs to arrive
+  as an ordered group without adding a competing hero motion.
+
+  Variables (declared in data-composition-variables below):
+    - itemCount (number, default 6, range 3 to 12): tiles in the grid.
+    - stagger (number, default 60, range 20 to 150 ms): delay per tile.
+    - direction (up | down | left | right, default up): travel direction into
+      the resting grid. Up starts below, left starts to the right, and so on.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 2.40s  cascade budget, including the slowest valid stagger.
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); deliberately still
+               so the ordered entrance remains the only mechanic.
+    OUT_BASE = 0.40s  clean group fade using --ease-exit (power2.in).
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so IN + OUT == D
+    and HOLD == 0. The stagger step scales only in that compressed envelope.
+
+  Sync point: none. The mechanic distributes arrivals across the IN phase, so
+  there is no single fixed cue that represents the cascade honestly.
+
+  Sound cue: none. A distributed cascade has no meaningful single-frame sound
+  event, so this primitive does not dispatch hf:sfx.
+
+  Mount contract: this file is a MOUNTABLE SUB-COMPOSITION. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. Styles,
+  markup, GSAP, and timeline registration therefore live inside <template>.
+  #root has position:absolute; inset:0; container-type:size and no data-width or
+  data-height, so the host owns the box. The composition id is hardcoded as
+  "stagger-cascade" because mount flattening strips it from the live root.
+  Variables come from window.__hyperframes.getVariables(), which supplies the
+  declared defaults merged with host data-variable-values overrides.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "itemCount", "type": "number", "role": "layout", "label": "Item count", "description": "Number of tiles in the responsive grid.", "default": 6, "min": 3, "max": 12, "step": 1 },
+    { "id": "stagger", "type": "number", "role": "motion", "label": "Stagger", "description": "Delay between consecutive tile entrances.", "default": 60, "min": 20, "max": 150, "step": 1, "unit": "ms" },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Direction each tile travels into its resting position.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }, { "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stagger Cascade</title>
+    <!-- Metadata only. The mount loader reads variable declarations from
+         <html>, then discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="stagger-cascade"
+        data-start="0"
+        data-duration="4"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host box. Every internal measurement uses cqw/cqh,
+             and every painted color comes from the host theme contract. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg);
+            font-family: var(--font-body);
+          }
+
+          .sc-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg);
+          }
+
+          .sc-grid {
+            width: 82cqw;
+            height: 70cqh;
+            display: grid;
+            grid-template-columns: repeat(var(--sc-columns), minmax(0, 1fr));
+            grid-auto-rows: minmax(0, 1fr);
+            gap: min(2.2cqw, 3.8cqh);
+          }
+
+          .sc-tile {
+            position: relative;
+            min-width: 0;
+            min-height: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            border: 0.16cqw solid var(--border);
+            border-radius: min(2.4cqw, 4cqh);
+            background: color-mix(in srgb, var(--surface) 92%, var(--brand));
+            color: var(--fg);
+          }
+
+          .sc-tile::after {
+            content: "";
+            position: absolute;
+            left: 14%;
+            right: 14%;
+            bottom: 12%;
+            height: min(0.55cqw, 0.95cqh);
+            border-radius: 50cqw;
+            background: var(--brand);
+            opacity: 0.72;
+          }
+
+          .sc-tile-index {
+            display: block;
+            font-family: var(--font-display);
+            font-size: min(5cqw, 8cqh);
+            font-weight: 700;
+            line-height: 1;
+            color: var(--fg);
+          }
+        </style>
+
+        <div
+          id="stagger-cascade-clip"
+          class="sc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="sc-grid" aria-label="Cascading tile grid"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var compositionId = "stagger-cascade";
+            var grid = root.querySelector(".sc-grid");
+
+            // EDIT ZONE: declarations above and clamped reads below are the
+            // single source of truth for the primitive's three public knobs.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var rawItemCount = Number(vars.itemCount);
+            var itemCount = Number.isFinite(rawItemCount) ? Math.round(rawItemCount) : 6;
+            itemCount = Math.max(3, Math.min(12, itemCount));
+
+            var rawStagger = Number(vars.stagger);
+            var staggerMs = Number.isFinite(rawStagger) ? rawStagger : 60;
+            staggerMs = Math.max(20, Math.min(150, staggerMs));
+
+            // INVARIANT: only these four mappings can reach GSAP. Each option
+            // has a distinct axis or sign at preview size.
+            var offsets = {
+              up: { x: "0cqw", y: "12cqh" },
+              down: { x: "0cqw", y: "-12cqh" },
+              left: { x: "8cqw", y: "0cqh" },
+              right: { x: "-8cqw", y: "0cqh" },
+            };
+            var offset = Object.prototype.hasOwnProperty.call(offsets, vars.direction)
+              ? offsets[vars.direction]
+              : offsets.up;
+
+            // itemCount owns both DOM count and the responsive grid shape.
+            var fragment = document.createDocumentFragment();
+            for (var index = 0; index < itemCount; index += 1) {
+              var tile = document.createElement("div");
+              var number = document.createElement("span");
+              tile.className = "sc-tile";
+              tile.setAttribute("aria-hidden", "true");
+              number.className = "sc-tile-index";
+              number.textContent = String(index + 1).padStart(2, "0");
+              tile.appendChild(number);
+              fragment.appendChild(tile);
+            }
+            grid.replaceChildren(fragment);
+            grid.style.setProperty(
+              "--sc-columns",
+              String(Math.min(4, Math.ceil(Math.sqrt(itemCount)))),
+            );
+
+            var tiles = root.querySelectorAll(".sc-tile");
+
+            // RETIME RANGE: change these four base values together. IN_BASE is
+            // sized so 12 items at 150ms plus the entrance tween finish exactly
+            // at its boundary. HOLD alone absorbs longer host durations.
+            var IN_BASE = 2.4;
+            var OUT_BASE = 0.4;
+            var CASCADE_START_BASE = 0.1;
+            var ENTRY_DURATION_BASE = 0.65;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+            var CASCADE_START = CASCADE_START_BASE * scale;
+            var ENTRY_DURATION = ENTRY_DURATION_BASE * scale;
+            var STAGGER_SECONDS = (staggerMs / 1000) * scale;
+
+            var timeline = gsap.timeline({ paused: true });
+
+            // IN: the sole mechanic. Explicit endpoints keep mounted re-seeks
+            // deterministic. power2.out is --ease-standard.
+            timeline.fromTo(
+              tiles,
+              { opacity: 0, x: offset.x, y: offset.y },
+              {
+                opacity: 1,
+                x: "0cqw",
+                y: "0cqh",
+                duration: ENTRY_DURATION,
+                ease: "power2.out",
+                stagger: { each: STAGGER_SECONDS, from: "start" },
+              },
+              CASCADE_START,
+            );
+
+            // HOLD: deliberately unanimated. OUT: one clean group fade with
+            // power2.in, the GSAP form of --ease-exit.
+            timeline.to(grid, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            timeline.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = timeline;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

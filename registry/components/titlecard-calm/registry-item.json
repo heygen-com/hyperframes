@@ -1,0 +1,37 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "titlecard-calm",
+  "type": "hyperframes:component",
+  "title": "Titlecard Calm",
+  "description": "A restrained title card where a mono kicker and generous grotesque headline fade upward, drift almost imperceptibly, and exit cleanly.",
+  "tags": ["motion-primitive", "typography", "title-card", "calm", "orient"],
+  "jobs": ["orient"],
+  "family": "typography",
+  "profile": "calm",
+  "evidence": "Wave F U4 titlecard-calm build contract",
+  "files": [
+    {
+      "path": "titlecard-calm.html",
+      "target": "compositions/components/titlecard-calm.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "headline",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Primary title displayed in the card.",
+      "default": "Less, but better"
+    },
+    {
+      "id": "kicker",
+      "type": "string",
+      "role": "content",
+      "label": "Kicker",
+      "description": "Small uppercase label displayed above the headline.",
+      "default": "DESIGN PRINCIPLE"
+    }
+  ]
+}

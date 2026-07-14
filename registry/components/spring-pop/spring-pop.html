@@ -1,0 +1,195 @@
+<!doctype html>
+<!--
+  spring-pop: HyperFrames video primitive (effects / burst / reveal)
+
+  Concept: one badge arrives from scale 0.9 and opacity 0, passes slightly
+  beyond full size, then settles exactly at scale 1. One mechanic, one job:
+  revealing an element with a restrained, physical overshoot.
+
+  Compiled-from evidence: Video Primitives v1 build contract, Easing
+  vocabulary (--ease-overshoot = GSAP back.out(1.7), taste rules 4 and 5),
+  plus hyperframes-animation rules/spring-pop-entrance.md's playful
+  overshoot variation. This fills the gap left by spring-scale-in, whose
+  power3.out curve never overshoots.
+
+  Use when: a new badge, compact card, icon, or product detail deserves one
+  lively entrance. Keep it to the single element that earns emphasis.
+
+  Variables:
+    - overshoot (number, 1.1 to 2.0, default 1.7): the strength passed to
+      GSAP back.out(overshoot).
+    - fromScale (number, 0.8 to 0.97, default 0.9): the visible start scale.
+    - text (string, default "New"): the badge label.
+
+  Envelope: fixed 0.60s IN carries the complete pop, followed by a
+  deliberately still elastic HOLD. There is no OUT because this reveal
+  establishes the element's resting state. If duration is shorter than
+  0.60s, IN compresses to fit and HOLD becomes zero.
+
+  Sync point: pop-settle occurs at 0.60s into IN, scaled only when the full
+  duration is shorter than the fixed entrance. It never enters HOLD.
+
+  Sound: none. A parent scene may place a static cue at pop-settle.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  spring-pop id.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "overshoot", "type": "number", "role": "timing", "label": "Overshoot", "description": "Strength passed to the back.out entrance curve.", "default": 1.7, "min": 1.1, "max": 2, "step": 0.1 },
+    { "id": "fromScale", "type": "number", "role": "timing", "label": "Starting scale", "description": "Scale at the start of the entrance.", "default": 0.9, "min": 0.8, "max": 0.97, "step": 0.01 },
+    { "id": "text", "type": "string", "role": "content", "label": "Label", "description": "Text displayed inside the badge.", "default": "New" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Spring Pop</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="spring-pop" data-duration="2" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sp-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          /* EDIT ZONE: badge proportions only. The centered 82cqw ceiling
+             reserves clearance for the overshoot at every allowed value. */
+          .sp-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2, 2.4cqw);
+            min-width: 48cqw;
+            max-width: 82cqw;
+            min-height: 32cqh;
+            padding: var(--space-2, 2.4cqh) var(--space-3, 4cqw);
+            border: 0.18cqmin solid var(--border, #334155);
+            border-radius: var(--radius, 3cqmin);
+            background: var(--surface, #1e293b);
+            box-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--bg, #0b1120) 42%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .sp-dot {
+            flex: 0 0 auto;
+            width: 3.2cqmin;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--brand, #22c55e);
+            box-shadow: 0 0 2.4cqmin color-mix(in srgb, var(--brand, #22c55e) 58%, transparent);
+          }
+
+          .sp-label {
+            min-width: 0;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: clamp(14px, 9cqmin, 54px);
+            font-weight: 720;
+            line-height: 1.2;
+            letter-spacing: -0.02em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="spring-pop-clip"
+          class="sp-clip clip"
+          data-start="0"
+          data-duration="2"
+          data-track-index="0"
+        >
+          <div class="sp-badge">
+            <span class="sp-dot" aria-hidden="true"></span>
+            <span class="sp-label"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var badge = root.querySelector(".sp-badge");
+            var label = root.querySelector(".sp-label");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: invalid numeric overrides return to declared
+            // defaults. Explicit finite checks preserve every valid value.
+            var overshootValue = vars.overshoot;
+            var fromScaleValue = vars.fromScale;
+            var overshoot = Number.isFinite(overshootValue)
+              ? Math.max(1.1, Math.min(2, overshootValue))
+              : 1.7;
+            var fromScale = Number.isFinite(fromScaleValue)
+              ? Math.max(0.8, Math.min(0.97, fromScaleValue))
+              : 0.9;
+            var text = vars.text == null ? "New" : String(vars.text);
+
+            label.textContent = text;
+
+            // RETIME RANGE: tune only the fixed entrance length. HOLD is
+            // deliberately still, and this reveal has no exit phase.
+            var IN_BASE = 0.6;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2"));
+            var IN = Math.min(IN_BASE, duration);
+            var OPACITY_IN = Math.min(0.3, IN);
+
+            var tl = gsap.timeline({ paused: true });
+
+            // --ease-overshoot: the back curve owns the only scale arc. The
+            // start is 0.9 by default, never 0, so the badge does not appear
+            // from nothing. Opacity uses its own non-overshooting ease.
+            tl.fromTo(
+              badge,
+              { scale: fromScale },
+              { scale: 1, duration: IN, ease: "back.out(" + overshoot + ")" },
+              0,
+            );
+            tl.fromTo(
+              badge,
+              { opacity: 0 },
+              { opacity: 1, duration: OPACITY_IN, ease: "power2.out" },
+              0,
+            );
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["spring-pop"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

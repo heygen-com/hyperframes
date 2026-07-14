@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "beat-accent",
+  "type": "hyperframes:component",
+  "title": "Beat Accent",
+  "description": "A single music-hit sting: impact flash, micro scale-pulse on the subject, immediate decay.",
+  "tags": ["motion-primitive", "effects", "burst", "sting", "emphasize", "impact"],
+  "jobs": ["emphasize"],
+  "family": "effects",
+  "profile": "burst",
+  "evidence": "Video Primitives v1 GAP C1 (sting: impact flash/scale on a music hit) plus easing vocabulary --ease-slam (expo.out, taste rule 3)",
+  "syncPoints": [{ "id": "impact-hard", "phase": "in", "offset": 0.25 }],
+  "files": [
+    {
+      "path": "beat-accent.html",
+      "target": "compositions/components/beat-accent.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Accent text",
+      "description": "Word or short label emphasized by the beat hit.",
+      "default": "BOOM"
+    },
+    {
+      "id": "flashColor",
+      "type": "enum",
+      "role": "style",
+      "label": "Flash color",
+      "description": "Token-backed accent tone used by the radial flash.",
+      "default": "accent",
+      "options": [
+        { "value": "accent", "label": "Accent" },
+        { "value": "soft", "label": "Soft accent" },
+        { "value": "bright", "label": "Bright accent" }
+      ]
+    },
+    {
+      "id": "intensity",
+      "type": "number",
+      "role": "timing",
+      "label": "Intensity",
+      "description": "Strength of the scale pulse, flash, and shake.",
+      "default": 1,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.1
+    }
+  ]
+}

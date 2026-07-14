@@ -1,0 +1,58 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "stagger-cascade",
+  "type": "hyperframes:component",
+  "title": "Stagger Cascade",
+  "description": "A responsive grid of tile cards that fades and travels into place with an evenly spaced per-item GSAP stagger. The ordered cascade is the only visual mechanic.",
+  "tags": ["effects", "grid", "stagger", "entrance", "exhibit"],
+  "jobs": ["exhibit"],
+  "family": "effects",
+  "profile": "burst",
+  "evidence": "production census (launches-motion-vocabulary.md)",
+  "files": [
+    {
+      "path": "stagger-cascade.html",
+      "target": "compositions/components/stagger-cascade.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "itemCount",
+      "type": "number",
+      "role": "layout",
+      "label": "Item count",
+      "description": "Number of tiles in the responsive grid.",
+      "default": 6,
+      "min": 3,
+      "max": 12,
+      "step": 1
+    },
+    {
+      "id": "stagger",
+      "type": "number",
+      "role": "motion",
+      "label": "Stagger",
+      "description": "Delay between consecutive tile entrances.",
+      "default": 60,
+      "min": 20,
+      "max": 150,
+      "step": 1,
+      "unit": "ms"
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Direction each tile travels into its resting position.",
+      "default": "up",
+      "options": [
+        { "value": "up", "label": "Up" },
+        { "value": "down", "label": "Down" },
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    }
+  ]
+}

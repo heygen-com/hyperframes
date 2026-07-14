@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "conic-progress-ring",
+  "type": "hyperframes:component",
+  "title": "Conic Progress Ring",
+  "description": "A token-driven conic progress ring whose angular fill and center count settle together from one registered percentage.",
+  "tags": ["data", "progress", "ring", "conic-gradient", "prove", "demonstrate"],
+  "jobs": ["prove", "demonstrate"],
+  "family": "data",
+  "profile": "holdable",
+  "evidence": "hyperframes-research-css-gems.md section 10, Registered conic progress ring: a typed percentage moves a hard conic-gradient frontier, and a radial mask removes the center to form the ring.",
+  "files": [
+    {
+      "path": "conic-progress-ring.html",
+      "target": "compositions/components/conic-progress-ring.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "progress",
+      "type": "number",
+      "role": "content",
+      "label": "Progress",
+      "description": "Target angular fill from 0 to 100.",
+      "default": 100,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "thickness",
+      "type": "number",
+      "role": "layout",
+      "label": "Thickness",
+      "description": "Ring stroke thickness as a percent of the ring radius.",
+      "default": 12,
+      "min": 4,
+      "max": 30,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Center label",
+      "description": "Numeric target shown in the center and counted in sync with the fill.",
+      "default": "100"
+    }
+  ]
+}

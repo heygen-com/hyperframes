@@ -1,0 +1,299 @@
+<!doctype html>
+<!--
+  scroll-feed: HyperFrames video primitive (effects / agitation / loop)
+
+  Concept: a self-scrolling column of skeleton post cards recycles without
+  a visible seam. Two low-opacity copies trail the main column to suggest
+  motion blur while deterministic index math varies every card.
+
+  Variables:
+    - speed (doom | frantic, default doom): changes the card pitch, so the
+      column covers more distance during the same duration in frantic mode.
+    - card_count (number, 4 to 10, default 6): cards in one repeated cycle.
+
+  Envelope: IN = 0s, HOLD = D, OUT = 0s. HOLD owns the complete scroll and
+  is the only elastic phase. A longer mount stretches HOLD directly, never
+  through timeScale. Zero-length IN and OUT keep the first and final frames
+  loop-compatible. Each column moves exactly one complete card cycle.
+
+  Determinism: cards are created synchronously. Their dimensions vary only
+  through index arithmetic. No clocks, random values, timers, or CSS
+  animations participate in rendering.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  scroll-feed id.
+-->
+<html
+  lang="en"
+  data-composition-id="scroll-feed"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "speed", "type": "enum", "role": "timing", "label": "Scroll speed", "description": "Pace of the upward feed movement.", "default": "doom", "options": [{ "value": "doom", "label": "Doom" }, { "value": "frantic", "label": "Frantic" }] },
+    { "id": "card_count", "type": "number", "role": "content", "label": "Card count", "description": "Number of skeleton posts in one repeated feed cycle.", "default": 6, "min": 4, "max": 10, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Scroll Feed</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="scroll-feed" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: linear-gradient(180deg, #171b23 0%, #0f1218 100%);
+            color: #d8dee9;
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sf-viewport {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .sf-column {
+            position: absolute;
+            top: -20cqh;
+            left: 12cqw;
+            width: 76cqw;
+            will-change: transform;
+          }
+
+          .sf-cycle {
+            display: flex;
+            flex-direction: column;
+          }
+
+          .sf-card {
+            flex: 0 0 var(--sf-card-h);
+            width: 76cqw;
+            height: var(--sf-card-h);
+            margin-bottom: var(--sf-gap);
+            padding: 2.3cqh 2.4cqw;
+            overflow: hidden;
+            border: 0.12cqw solid rgba(160, 174, 192, 0.2);
+            border-radius: 2.2cqw;
+            background: linear-gradient(145deg, #29303b 0%, #202630 100%);
+            box-shadow: 0 1.8cqh 4cqh rgba(0, 0, 0, 0.28);
+          }
+
+          .sf-card-header {
+            display: flex;
+            align-items: center;
+            gap: 1.4cqw;
+            height: 4.4cqh;
+            margin-bottom: 1.5cqh;
+          }
+
+          .sf-avatar {
+            flex: 0 0 auto;
+            width: var(--sf-avatar);
+            height: var(--sf-avatar);
+            border-radius: 50%;
+            background: #758094;
+          }
+
+          .sf-identity {
+            display: flex;
+            flex: 1 1 auto;
+            min-width: 0;
+            flex-direction: column;
+            gap: 0.65cqh;
+          }
+
+          .sf-line,
+          .sf-meta,
+          .sf-action {
+            display: block;
+            border-radius: 99cqw;
+          }
+
+          .sf-line {
+            height: 0.85cqh;
+            background: #7d8798;
+          }
+
+          .sf-line-primary {
+            width: var(--sf-primary-w);
+          }
+
+          .sf-line-secondary {
+            width: var(--sf-secondary-w);
+            opacity: 0.62;
+          }
+
+          .sf-meta {
+            flex: 0 0 auto;
+            width: var(--sf-meta-w);
+            height: 0.75cqh;
+            background: #667184;
+            opacity: 0.72;
+          }
+
+          .sf-media {
+            position: relative;
+            height: calc(var(--sf-card-h) - 12.2cqh);
+            min-height: 6cqh;
+            overflow: hidden;
+            border-radius: 1.4cqw;
+            background: linear-gradient(135deg, #374151 0%, #252c37 100%);
+          }
+
+          .sf-media::before {
+            position: absolute;
+            top: var(--sf-media-y);
+            left: var(--sf-media-x);
+            width: 18cqw;
+            height: 18cqw;
+            border-radius: 50%;
+            background: rgba(130, 143, 160, 0.16);
+            content: "";
+          }
+
+          .sf-card-footer {
+            display: flex;
+            align-items: center;
+            gap: 2.4cqw;
+            height: 2cqh;
+            margin-top: 1.35cqh;
+          }
+
+          .sf-action {
+            width: var(--sf-action-w);
+            height: 0.8cqh;
+            background: #717c8e;
+            opacity: 0.72;
+          }
+
+          .sf-blur {
+            z-index: 0;
+            opacity: 0.1;
+            filter: blur(0.28cqh);
+          }
+
+          .sf-blur-a {
+            top: -19.2cqh;
+            left: 11.55cqw;
+          }
+
+          .sf-blur-b {
+            top: -20.8cqh;
+            left: 12.45cqw;
+          }
+
+          .sf-main {
+            z-index: 1;
+          }
+        </style>
+
+        <div
+          id="scroll-feed-clip"
+          class="sf-viewport clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="sf-column sf-blur sf-blur-a" aria-hidden="true"></div>
+          <div class="sf-column sf-blur sf-blur-b" aria-hidden="true"></div>
+          <div class="sf-column sf-main" aria-hidden="true"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var mainColumn = root.querySelector(".sf-main");
+            var blurA = root.querySelector(".sf-blur-a");
+            var blurB = root.querySelector(".sf-blur-b");
+            var columns = root.querySelectorAll(".sf-column");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var speed = vars.speed === "frantic" ? "frantic" : "doom";
+            var countValue = Number(vars.card_count);
+            var cardCount = Number.isFinite(countValue)
+              ? Math.max(4, Math.min(10, Math.round(countValue)))
+              : 6;
+
+            // Frantic mode travels farther in the same HOLD while still
+            // completing exactly one full cycle at the final frame.
+            var cardHeight = speed === "frantic" ? 32 : 24;
+            var gap = speed === "frantic" ? 4 : 3;
+            var cycleDistance = cardCount * (cardHeight + gap);
+            root.style.setProperty("--sf-card-h", cardHeight + "cqh");
+            root.style.setProperty("--sf-gap", gap + "cqh");
+
+            var cycle = document.createElement("div");
+            cycle.className = "sf-cycle";
+
+            for (var index = 0; index < cardCount; index += 1) {
+              var card = document.createElement("article");
+              card.className = "sf-card";
+              card.style.setProperty("--sf-avatar", 3.2 + (index % 3) * 0.45 + "cqh");
+              card.style.setProperty("--sf-primary-w", 18 + ((index * 11) % 24) + "cqw");
+              card.style.setProperty("--sf-secondary-w", 12 + ((index * 7) % 19) + "cqw");
+              card.style.setProperty("--sf-meta-w", 7 + ((index * 5) % 9) + "cqw");
+              card.style.setProperty("--sf-media-x", 5 + ((index * 17) % 48) + "cqw");
+              card.style.setProperty("--sf-media-y", -8 + ((index * 13) % 10) + "cqh");
+              card.style.setProperty("--sf-action-w", 7 + ((index * 3) % 8) + "cqw");
+              card.innerHTML =
+                '<header class="sf-card-header"><span class="sf-avatar"></span><span class="sf-identity"><span class="sf-line sf-line-primary"></span><span class="sf-line sf-line-secondary"></span></span><span class="sf-meta"></span></header><div class="sf-media"></div><footer class="sf-card-footer"><span class="sf-action"></span><span class="sf-action"></span><span class="sf-action"></span></footer>';
+              cycle.appendChild(card);
+            }
+
+            // Three identical cycles keep the viewport covered before, during,
+            // and after the exact one-cycle translation. The blur trails clone
+            // this single deterministic source instead of recomputing cards.
+            mainColumn.appendChild(cycle);
+            mainColumn.appendChild(cycle.cloneNode(true));
+            mainColumn.appendChild(cycle.cloneNode(true));
+            blurA.innerHTML = mainColumn.innerHTML;
+            blurB.innerHTML = mainColumn.innerHTML;
+
+            // IN and OUT remain zero for a clean loop. Only HOLD stretches.
+            var IN = 0;
+            var OUT = 0;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var HOLD = Math.max(0.001, duration - IN - OUT);
+            var HOLD_START = IN;
+
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              columns,
+              { y: "0cqh" },
+              {
+                y: -cycleDistance + "cqh",
+                duration: HOLD,
+                ease: "sine.inOut",
+              },
+              HOLD_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["scroll-feed"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

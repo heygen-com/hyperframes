@@ -1,0 +1,34 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "multi-device-splay",
+  "type": "hyperframes:component",
+  "title": "Multi Device Splay",
+  "description": "Phone, tablet, and desktop product mockups fan from a centered stack into a proud splayed arrangement with a subtle idle float.",
+  "tags": ["motion-primitive", "device", "phone", "tablet", "desktop", "splay"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "Wave F U11 multi-device-splay specification and device-frame-stage geometry conventions",
+  "files": [
+    {
+      "path": "multi-device-splay.html",
+      "target": "compositions/components/multi-device-splay.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Shared accent color used by all three product screens.",
+      "default": "blue",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

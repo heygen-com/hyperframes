@@ -1,0 +1,726 @@
+<!doctype html>
+<!--
+  multi-device-splay: HyperFrames video primitive (ui-props / devices / reveal)
+
+  Concept: phone, tablet, and desktop product mockups begin as one centered
+  stack, then fan into a proud three-device arrangement. Each screen uses the
+  same accent while keeping a layout skeleton suited to its form factor.
+
+  Variables:
+    - accent (green | blue | violet, default "blue"): shared product color.
+
+  Envelope: fixed IN and OUT with elastic HOLD only, never timeScale.
+    IN   1.35s fixed  devices fan out in phone, tablet, desktop order with a
+                      0.12s cascade and overshoot settle.
+    HOLD elastic      the settled devices float subtly around their final
+                      -12, 0, and +12 degree rotations.
+    OUT  0.55s fixed  the arrangement recedes and fades as one lockup.
+    If duration is shorter than IN + OUT, both fixed phases shrink by the
+    same ratio and HOLD becomes zero.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the cqw/cqh basis, has no data-width or data-height, and
+  registers one paused timeline under the hardcoded multi-device-splay id.
+-->
+<html
+  lang="en"
+  data-composition-id="multi-device-splay"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Shared accent color used by all three product screens.", "default": "blue", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multi Device Splay</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="multi-device-splay" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            pointer-events: none;
+          }
+
+          .mds-clip,
+          .mds-stage {
+            position: absolute;
+            inset: 0;
+          }
+
+          .mds-stage {
+            perspective: 120cqw;
+            perspective-origin: 50% 48%;
+          }
+
+          .mds-positioner {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform-style: preserve-3d;
+            will-change: transform, opacity;
+          }
+
+          .mds-positioner-desktop {
+            z-index: 1;
+          }
+
+          .mds-positioner-tablet {
+            z-index: 2;
+          }
+
+          .mds-positioner-phone {
+            z-index: 3;
+          }
+
+          .mds-device {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: translate(-50%, -50%);
+            transform-origin: 50% 50%;
+          }
+
+          .mds-shell,
+          .mds-monitor {
+            background: linear-gradient(145deg, #3a3d45, #1b1d22 43%, #0f1115);
+            border: 0.12cqh solid rgba(255, 255, 255, 0.24);
+            box-shadow:
+              0 4.8cqh 9cqh rgba(0, 0, 0, 0.4),
+              0 1.3cqh 2.5cqh rgba(0, 0, 0, 0.28),
+              inset 0 0.12cqh 0 rgba(255, 255, 255, 0.22),
+              inset 0 0 0 0.1cqh rgba(0, 0, 0, 0.52);
+          }
+
+          .mds-phone {
+            width: auto;
+            height: 59cqh;
+            aspect-ratio: 9 / 19.5;
+            padding: 0.65cqh;
+            border-radius: 4.1cqh;
+          }
+
+          .mds-tablet {
+            width: auto;
+            height: 64cqh;
+            aspect-ratio: 3 / 4;
+            padding: 0.82cqh;
+            border-radius: 3.5cqh;
+          }
+
+          .mds-desktop {
+            width: 44cqw;
+          }
+
+          .mds-monitor {
+            width: 100%;
+            aspect-ratio: 16 / 10;
+            padding: 0.7cqh;
+            border-radius: 2.1cqh;
+          }
+
+          .mds-stand-neck {
+            width: 4.8cqw;
+            height: 6.2cqh;
+            margin: -0.1cqh auto 0;
+            background: linear-gradient(90deg, #17191e, #3c3f47 48%, #121419);
+            clip-path: polygon(24% 0, 76% 0, 92% 100%, 8% 100%);
+          }
+
+          .mds-stand-foot {
+            width: 15cqw;
+            height: 1.5cqh;
+            margin: -0.05cqh auto 0;
+            border-radius: 1cqh 1cqh 0.45cqh 0.45cqh;
+            background: linear-gradient(180deg, #464952, #17191e);
+            box-shadow: 0 1.2cqh 2.3cqh rgba(0, 0, 0, 0.34);
+          }
+
+          .mds-screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            isolation: isolate;
+            background: #f4f7fb;
+            box-shadow: inset 0 0 0 0.1cqh rgba(15, 23, 42, 0.22);
+          }
+
+          .mds-phone .mds-screen {
+            border-radius: 3.45cqh;
+          }
+
+          .mds-tablet .mds-screen {
+            border-radius: 2.7cqh;
+          }
+
+          .mds-monitor .mds-screen {
+            border-radius: 1.42cqh;
+          }
+
+          .mds-island {
+            position: absolute;
+            z-index: 5;
+            left: 50%;
+            top: 1.1cqh;
+            width: 5.2cqw;
+            height: 1.7cqh;
+            border-radius: 2cqh;
+            background: #07080a;
+            transform: translateX(-50%);
+          }
+
+          .mds-camera {
+            position: absolute;
+            z-index: 5;
+            left: 50%;
+            top: 0.65cqh;
+            width: 0.55cqh;
+            height: 0.55cqh;
+            border-radius: 50%;
+            background: #0a0b0e;
+            transform: translateX(-50%);
+          }
+
+          .mds-mobile-ui,
+          .mds-tablet-ui,
+          .mds-desktop-ui {
+            position: absolute;
+            inset: 0;
+            color: #172033;
+          }
+
+          .mds-mobile-ui {
+            padding: 5.4cqh 1.4cqw 1.8cqh;
+            background: linear-gradient(180deg, #edf4ff, #f8fafc 40%);
+          }
+
+          .mds-mobile-header,
+          .mds-tablet-header,
+          .mds-desktop-toolbar {
+            display: flex;
+            align-items: center;
+          }
+
+          .mds-mobile-header {
+            justify-content: space-between;
+            margin-bottom: 2.1cqh;
+          }
+
+          .mds-logo {
+            width: 2.1cqh;
+            height: 2.1cqh;
+            border-radius: 0.65cqh;
+            background: var(--mds-accent);
+            box-shadow: 0 0.7cqh 1.4cqh color-mix(in srgb, var(--mds-accent) 30%, transparent);
+          }
+
+          .mds-line {
+            height: 0.7cqh;
+            border-radius: 1cqh;
+            background: #c4ccda;
+          }
+
+          .mds-mobile-header .mds-line {
+            width: 5.4cqw;
+          }
+
+          .mds-mobile-hero {
+            height: 12cqh;
+            margin-bottom: 1.6cqh;
+            border-radius: 1.4cqh;
+            background: linear-gradient(
+              145deg,
+              color-mix(in srgb, var(--mds-accent) 82%, white),
+              var(--mds-accent)
+            );
+            box-shadow: 0 1.3cqh 2.7cqh color-mix(in srgb, var(--mds-accent) 25%, transparent);
+          }
+
+          .mds-mobile-row {
+            display: grid;
+            grid-template-columns: 2.6cqh 1fr;
+            gap: 0.75cqw;
+            align-items: center;
+            height: 5.8cqh;
+            margin-top: 1cqh;
+            padding: 0.8cqh 0.75cqw;
+            border-radius: 1.1cqh;
+            background: white;
+            box-shadow: 0 0.55cqh 1.3cqh rgba(30, 41, 59, 0.08);
+          }
+
+          .mds-mobile-icon {
+            width: 2.6cqh;
+            height: 2.6cqh;
+            border-radius: 0.8cqh;
+            background: color-mix(in srgb, var(--mds-accent) 20%, white);
+          }
+
+          .mds-mobile-row .mds-line:first-child {
+            width: 70%;
+            margin-bottom: 0.7cqh;
+            background: #8e99ab;
+          }
+
+          .mds-mobile-row .mds-line:last-child {
+            width: 46%;
+            height: 0.5cqh;
+          }
+
+          .mds-tablet-ui {
+            display: grid;
+            grid-template-columns: 4.8cqw 1fr;
+            background: #f6f8fc;
+          }
+
+          .mds-tablet-nav,
+          .mds-desktop-nav {
+            background: #182033;
+          }
+
+          .mds-tablet-nav {
+            padding: 4.4cqh 1.25cqw;
+          }
+
+          .mds-nav-mark {
+            width: 2.3cqh;
+            height: 2.3cqh;
+            margin-bottom: 3cqh;
+            border-radius: 0.7cqh;
+            background: var(--mds-accent);
+          }
+
+          .mds-nav-line {
+            width: 100%;
+            height: 0.62cqh;
+            margin-bottom: 1.5cqh;
+            border-radius: 1cqh;
+            background: rgba(255, 255, 255, 0.18);
+          }
+
+          .mds-nav-line-active {
+            background: color-mix(in srgb, var(--mds-accent) 78%, white);
+          }
+
+          .mds-tablet-main {
+            padding: 4.4cqh 1.5cqw 2.2cqh;
+          }
+
+          .mds-tablet-header {
+            justify-content: space-between;
+            margin-bottom: 2.5cqh;
+          }
+
+          .mds-tablet-header .mds-line:first-child {
+            width: 8cqw;
+            height: 1cqh;
+            background: #657086;
+          }
+
+          .mds-tablet-header .mds-line:last-child {
+            width: 4cqw;
+          }
+
+          .mds-tablet-hero {
+            height: 12cqh;
+            margin-bottom: 1.5cqh;
+            border-radius: 1.25cqh;
+            background: linear-gradient(
+              120deg,
+              color-mix(in srgb, var(--mds-accent) 26%, white),
+              white
+            );
+            box-shadow: inset 0 0 0 0.1cqh color-mix(in srgb, var(--mds-accent) 24%, transparent);
+          }
+
+          .mds-tablet-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.1cqh;
+          }
+
+          .mds-tablet-card {
+            height: 10.5cqh;
+            padding: 1.2cqh 0.9cqw;
+            border-radius: 1.1cqh;
+            background: white;
+            box-shadow: 0 0.65cqh 1.5cqh rgba(30, 41, 59, 0.08);
+          }
+
+          .mds-tablet-card::before {
+            content: "";
+            display: block;
+            width: 2.2cqh;
+            height: 2.2cqh;
+            margin-bottom: 1.4cqh;
+            border-radius: 0.65cqh;
+            background: color-mix(in srgb, var(--mds-accent) 24%, white);
+          }
+
+          .mds-tablet-card::after {
+            content: "";
+            display: block;
+            width: 62%;
+            height: 0.65cqh;
+            border-radius: 1cqh;
+            background: #aeb7c6;
+          }
+
+          .mds-desktop-ui {
+            display: grid;
+            grid-template-columns: 7.2cqw 1fr;
+            grid-template-rows: 4.6cqh 1fr;
+            background: #f6f8fc;
+          }
+
+          .mds-desktop-toolbar {
+            grid-column: 1 / -1;
+            gap: 0.55cqw;
+            padding: 0 1.1cqw;
+            border-bottom: 0.1cqh solid #dce2eb;
+            background: white;
+          }
+
+          .mds-window-dot {
+            width: 0.72cqh;
+            height: 0.72cqh;
+            border-radius: 50%;
+            background: #c8ced8;
+          }
+
+          .mds-window-dot-accent {
+            background: var(--mds-accent);
+          }
+
+          .mds-address {
+            width: 13cqw;
+            height: 1.35cqh;
+            margin-left: 1.2cqw;
+            border-radius: 1cqh;
+            background: #edf0f5;
+          }
+
+          .mds-desktop-nav {
+            padding: 2.1cqh 1.1cqw;
+          }
+
+          .mds-desktop-nav .mds-nav-mark {
+            margin-bottom: 2.1cqh;
+          }
+
+          .mds-desktop-main {
+            padding: 2cqh 1.4cqw;
+          }
+
+          .mds-desktop-heading {
+            width: 10cqw;
+            height: 1.2cqh;
+            margin-bottom: 2cqh;
+            border-radius: 1cqh;
+            background: #647086;
+          }
+
+          .mds-desktop-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.85cqw;
+            margin-bottom: 1.4cqh;
+          }
+
+          .mds-desktop-stat {
+            height: 7.5cqh;
+            border-radius: 0.9cqh;
+            background: white;
+            box-shadow: 0 0.55cqh 1.25cqh rgba(30, 41, 59, 0.07);
+          }
+
+          .mds-desktop-stat:first-child {
+            background: color-mix(in srgb, var(--mds-accent) 18%, white);
+          }
+
+          .mds-desktop-chart {
+            position: relative;
+            height: 13cqh;
+            overflow: hidden;
+            border-radius: 1cqh;
+            background:
+              linear-gradient(to top, rgba(203, 213, 225, 0.38) 0.1cqh, transparent 0.1cqh) 0 0 /
+                100% 3.2cqh,
+              white;
+            box-shadow: 0 0.55cqh 1.25cqh rgba(30, 41, 59, 0.07);
+          }
+
+          .mds-desktop-chart::after {
+            content: "";
+            position: absolute;
+            left: 7%;
+            right: 7%;
+            bottom: 18%;
+            height: 0.42cqh;
+            border-radius: 1cqh;
+            background: var(--mds-accent);
+            box-shadow:
+              3.5cqw -2.3cqh 0 var(--mds-accent),
+              7cqw -1.1cqh 0 var(--mds-accent),
+              10.5cqw -4.6cqh 0 var(--mds-accent),
+              14cqw -3.6cqh 0 var(--mds-accent),
+              17.5cqw -6.7cqh 0 var(--mds-accent);
+          }
+        </style>
+
+        <div
+          id="multi-device-splay-clip"
+          class="mds-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="mds-stage">
+            <div class="mds-positioner mds-positioner-desktop" data-device="desktop">
+              <div class="mds-device mds-desktop">
+                <div class="mds-monitor">
+                  <div class="mds-screen">
+                    <div class="mds-desktop-ui">
+                      <div class="mds-desktop-toolbar">
+                        <span class="mds-window-dot mds-window-dot-accent"></span>
+                        <span class="mds-window-dot"></span>
+                        <span class="mds-window-dot"></span>
+                        <span class="mds-address"></span>
+                      </div>
+                      <div class="mds-desktop-nav">
+                        <div class="mds-nav-mark"></div>
+                        <div class="mds-nav-line mds-nav-line-active"></div>
+                        <div class="mds-nav-line"></div>
+                        <div class="mds-nav-line"></div>
+                        <div class="mds-nav-line"></div>
+                      </div>
+                      <div class="mds-desktop-main">
+                        <div class="mds-desktop-heading"></div>
+                        <div class="mds-desktop-stats">
+                          <div class="mds-desktop-stat"></div>
+                          <div class="mds-desktop-stat"></div>
+                          <div class="mds-desktop-stat"></div>
+                        </div>
+                        <div class="mds-desktop-chart"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mds-stand-neck"></div>
+                <div class="mds-stand-foot"></div>
+              </div>
+            </div>
+
+            <div class="mds-positioner mds-positioner-tablet" data-device="tablet">
+              <div class="mds-device mds-shell mds-tablet">
+                <div class="mds-screen">
+                  <span class="mds-camera"></span>
+                  <div class="mds-tablet-ui">
+                    <div class="mds-tablet-nav">
+                      <div class="mds-nav-mark"></div>
+                      <div class="mds-nav-line mds-nav-line-active"></div>
+                      <div class="mds-nav-line"></div>
+                      <div class="mds-nav-line"></div>
+                    </div>
+                    <div class="mds-tablet-main">
+                      <div class="mds-tablet-header">
+                        <div class="mds-line"></div>
+                        <div class="mds-line"></div>
+                      </div>
+                      <div class="mds-tablet-hero"></div>
+                      <div class="mds-tablet-grid">
+                        <div class="mds-tablet-card"></div>
+                        <div class="mds-tablet-card"></div>
+                        <div class="mds-tablet-card"></div>
+                        <div class="mds-tablet-card"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mds-positioner mds-positioner-phone" data-device="phone">
+              <div class="mds-device mds-shell mds-phone">
+                <div class="mds-screen">
+                  <span class="mds-island"></span>
+                  <div class="mds-mobile-ui">
+                    <div class="mds-mobile-header">
+                      <span class="mds-logo"></span>
+                      <span class="mds-line"></span>
+                    </div>
+                    <div class="mds-mobile-hero"></div>
+                    <div class="mds-mobile-row">
+                      <span class="mds-mobile-icon"></span>
+                      <span>
+                        <span class="mds-line"></span>
+                        <span class="mds-line"></span>
+                      </span>
+                    </div>
+                    <div class="mds-mobile-row">
+                      <span class="mds-mobile-icon"></span>
+                      <span>
+                        <span class="mds-line"></span>
+                        <span class="mds-line"></span>
+                      </span>
+                    </div>
+                    <div class="mds-mobile-row">
+                      <span class="mds-mobile-icon"></span>
+                      <span>
+                        <span class="mds-line"></span>
+                        <span class="mds-line"></span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#3b82f6",
+              violet: "#8b5cf6",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "blue";
+            root.style.setProperty("--mds-accent", accentColors[accent]);
+
+            var IN_BASE = 1.35;
+            var OUT_BASE = 0.55;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var devices = [
+              {
+                element: root.querySelector('[data-device="phone"]'),
+                x: -30,
+                y: 3.5,
+                rotation: -12,
+                floatY: -0.65,
+                floatRotation: -0.55,
+              },
+              {
+                element: root.querySelector('[data-device="tablet"]'),
+                x: -5,
+                y: -1,
+                rotation: 0,
+                floatY: 0.7,
+                floatRotation: 0.35,
+              },
+              {
+                element: root.querySelector('[data-device="desktop"]'),
+                x: 24,
+                y: 2,
+                rotation: 12,
+                floatY: -0.5,
+                floatRotation: 0.5,
+              },
+            ];
+
+            var CASCADE = 0.12 * envelopeScale;
+            var FAN_DURATION = 0.9 * envelopeScale;
+            var tl = gsap.timeline({ paused: true });
+
+            devices.forEach(function (device, index) {
+              gsap.set(device.element, {
+                x: "0cqw",
+                y: "9cqh",
+                rotation: 0,
+                scale: 0.9,
+                opacity: 0,
+              });
+              tl.to(
+                device.element,
+                {
+                  x: device.x + "cqw",
+                  y: device.y + "cqh",
+                  rotation: device.rotation,
+                  scale: 1,
+                  opacity: 1,
+                  duration: FAN_DURATION,
+                  ease: "back.out(1.7)",
+                },
+                index * CASCADE,
+              );
+            });
+
+            if (HOLD > 0) {
+              devices.forEach(function (device) {
+                tl.to(
+                  device.element,
+                  {
+                    y: device.y + device.floatY + "cqh",
+                    rotation: device.rotation + device.floatRotation,
+                    duration: HOLD / 2,
+                    ease: "sine.inOut",
+                  },
+                  HOLD_START,
+                );
+                tl.to(
+                  device.element,
+                  {
+                    y: device.y + "cqh",
+                    rotation: device.rotation,
+                    duration: HOLD / 2,
+                    ease: "sine.inOut",
+                  },
+                  HOLD_START + HOLD / 2,
+                );
+              });
+            }
+
+            devices.forEach(function (device) {
+              tl.to(
+                device.element,
+                {
+                  y: device.y + 5 + "cqh",
+                  scale: 0.96,
+                  opacity: 0,
+                  duration: OUT,
+                  ease: "power2.in",
+                },
+                OUT_START,
+              );
+            });
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["multi-device-splay"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

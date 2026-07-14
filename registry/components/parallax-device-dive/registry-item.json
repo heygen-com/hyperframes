@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "parallax-device-dive",
+  "type": "hyperframes:component",
+  "title": "Parallax Device Dive",
+  "description": "A canonical phone rises into view before the camera pushes through its screen and layered app UI expands to fill the frame.",
+  "tags": ["motion-primitive", "camera", "device", "phone", "parallax", "transition"],
+  "jobs": ["transition"],
+  "family": "camera",
+  "profile": "dive",
+  "evidence": "Video Primitives Wave F unit U8",
+  "files": [
+    {
+      "path": "parallax-device-dive.html",
+      "target": "compositions/components/parallax-device-dive.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight color used throughout the app UI.",
+      "default": "blue",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "app_title",
+      "type": "string",
+      "role": "content",
+      "label": "App title",
+      "description": "Title displayed in the app header.",
+      "default": "Dashboard"
+    }
+  ]
+}

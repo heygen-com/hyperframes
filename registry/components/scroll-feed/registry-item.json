@@ -1,0 +1,44 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "scroll-feed",
+  "type": "hyperframes:component",
+  "title": "Scroll Feed",
+  "description": "A loop-friendly column of varied skeleton post cards scrolls upward with subtle motion trails and an agitated pace.",
+  "tags": ["motion-primitive", "effects", "scroll", "feed", "loop", "agitation"],
+  "jobs": ["demonstrate"],
+  "family": "effects",
+  "profile": "continuous",
+  "evidence": "Wave F U9 scroll-feed specification",
+  "files": [
+    {
+      "path": "scroll-feed.html",
+      "target": "compositions/components/scroll-feed.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "speed",
+      "type": "enum",
+      "role": "timing",
+      "label": "Scroll speed",
+      "description": "Pace of the upward feed movement.",
+      "default": "doom",
+      "options": [
+        { "value": "doom", "label": "Doom" },
+        { "value": "frantic", "label": "Frantic" }
+      ]
+    },
+    {
+      "id": "card_count",
+      "type": "number",
+      "role": "content",
+      "label": "Card count",
+      "description": "Number of skeleton posts in one repeated feed cycle.",
+      "default": 6,
+      "min": 4,
+      "max": 10,
+      "step": 1
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cut-the-curve",
+  "type": "hyperframes:component",
+  "title": "Cut the Curve",
+  "description": "A velocity-matched directional hard cut: the outgoing subject accelerates with power4.in, swaps at peak velocity, and the incoming subject continues in the same direction with power4.out.",
+  "tags": ["transition", "directional-cut", "velocity-match", "whip", "bridge", "demonstrate"],
+  "jobs": ["bridge", "demonstrate"],
+  "family": "transitions",
+  "profile": "transition",
+  "evidence": "launches-cut-the-curve.md; production motion census establishes the power4.in to power4.out whip, matched direction, seam blur, and canonical 1:2 split",
+  "syncPoints": [{ "id": "cut", "phase": "out", "offset": 0.33 }],
+  "files": [
+    {
+      "path": "cut-the-curve.html",
+      "target": "compositions/components/cut-the-curve.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "subject",
+      "type": "enum",
+      "role": "content",
+      "label": "Subject",
+      "description": "Visual payload used on both sides of the cut.",
+      "default": "cursor",
+      "options": [
+        { "value": "cursor", "label": "Cursor" },
+        { "value": "card", "label": "Card" },
+        { "value": "scene", "label": "Scene" }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Shared screen direction for outgoing and incoming travel.",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" },
+        { "value": "up", "label": "Up" },
+        { "value": "down", "label": "Down" }
+      ]
+    },
+    {
+      "id": "cutFraction",
+      "type": "number",
+      "role": "timing",
+      "label": "Cut fraction",
+      "description": "Normalized point where the hard cut swaps subjects.",
+      "default": 0.33,
+      "min": 0,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "id": "blurPx",
+      "type": "number",
+      "role": "style",
+      "label": "Cut blur",
+      "description": "Blur in pixels shared by both subjects at the cut seam.",
+      "default": 12,
+      "min": 0,
+      "max": 40,
+      "step": 1,
+      "unit": "px"
+    }
+  ]
+}

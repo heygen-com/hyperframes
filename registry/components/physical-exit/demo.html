@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  physical-exit demo. This standalone composition mounts physical-exit.html
+  through data-composition-src. Non-default values select slide mode, replace
+  the card word, and switch the accent to prove all variables flow through the
+  mount while the primitive remains sized by its host box.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Physical Exit Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --surface: #17191f;
+        --border: #343842;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #1a1d24 0%, #0b0c0e 72%);
+      }
+
+      .mount-card {
+        width: 58%;
+        height: 58%;
+        left: 21%;
+        top: 21%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 32px;
+        background: #111318;
+        box-shadow: 0 44px 110px rgba(0, 0, 0, 0.48);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="physical-exit-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+    >
+      <div
+        id="physical-exit-mount"
+        class="mount-card clip"
+        data-composition-id="physical-exit"
+        data-composition-src="./physical-exit.html"
+        data-variable-values='{"mode":"slide","text":"See you","accent":"violet"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        data-width="1114"
+        data-height="626"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["physical-exit-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

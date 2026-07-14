@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "logo-wall",
+  "type": "hyperframes:component",
+  "title": "Logo Wall",
+  "description": "A trusted-by wall of placeholder lettermark logos that fades and scales into place with a deterministic per-cell stagger.",
+  "tags": ["data", "logos", "social-proof", "stagger", "prove"],
+  "jobs": ["prove"],
+  "family": "data",
+  "profile": "holdable",
+  "evidence": "consumer-sim fixture + blueprint grid-card-assemble variant",
+  "files": [
+    {
+      "path": "logo-wall.html",
+      "target": "compositions/components/logo-wall.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "rows",
+      "type": "number",
+      "role": "layout",
+      "label": "Rows",
+      "description": "Number of logo rows in the wall.",
+      "default": 3,
+      "min": 2,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "cols",
+      "type": "number",
+      "role": "layout",
+      "label": "Columns",
+      "description": "Number of logo columns in the wall.",
+      "default": 5,
+      "min": 3,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "stagger",
+      "type": "number",
+      "role": "motion",
+      "label": "Stagger",
+      "description": "Delay between consecutive logo cell entrances.",
+      "default": 45,
+      "min": 20,
+      "max": 75,
+      "step": 1,
+      "unit": "ms"
+    }
+  ]
+}

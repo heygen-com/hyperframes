@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  vector-editor-rig -- demo. Standalone 1920x1080 composition that mounts the
+  primitive from ./vector-editor-rig.html via data-composition-src. The wide
+  mount card gives the toolbar, canvas, and inspector enough room to read at
+  preview size. Non-default tool and pathLabel overrides prove that declared
+  variables flow through the host into the mounted primitive. The primitive
+  carries no data-width/data-height and sizes itself from this host box.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Vector Editor Rig - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--demo-bg, #05070d);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            ellipse at 50% 42%,
+            color-mix(in srgb, var(--brand, #59a8ff) 14%, transparent),
+            transparent 55%
+          ),
+          var(--demo-bg, #05070d);
+      }
+
+      .mount-card {
+        --bg: #0a1020;
+        --fg: #f5f8ff;
+        --brand: #59a8ff;
+        --surface: #151f32;
+        --border: #2d3a50;
+        --muted: #8391a8;
+        width: 75%;
+        height: 70%;
+        left: 12.5%;
+        top: 15%;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border, #2d3a50) 84%, transparent);
+        border-radius: 30px;
+        box-shadow: 0 44px 110px color-mix(in srgb, var(--demo-bg, #05070d) 72%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="vector-editor-rig-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+      data-fps="30"
+    >
+      <div
+        id="vector-editor-rig-mount"
+        class="mount-card clip"
+        data-composition-id="vector-editor-rig"
+        data-composition-src="./vector-editor-rig.html"
+        data-variable-values='{"tool":"shape","pathLabel":"Orbit Mark"}'
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+        data-width="1440"
+        data-height="756"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // This demo has no motion of its own. The mounted primitive registers
+      // its own timeline. An empty paused host timeline satisfies the
+      // runtime's timeline-registry check without duplicating motion.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["vector-editor-rig-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

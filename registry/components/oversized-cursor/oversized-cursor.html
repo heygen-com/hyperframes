@@ -260,8 +260,10 @@
             return Math.max(0, Math.min(100, n));
           }
 
-          var compositionId =
-            html.getAttribute("data-composition-id") || root.getAttribute("data-composition-id");
+          // Hardcoded per the mount contract: deriving the id from the document
+          // returns null once the compositor rewrites the wrapper's attributes,
+          // which registers the timeline under "null" and breaks seek binding.
+          var compositionId = "oversized-cursor";
           var duration = Math.max(
             0.001,
             parseFloat(
@@ -378,13 +380,23 @@
             var asideY = clampPercent(targetY + 10, targetY);
             tl.to(
               cursor,
-              { x: xAt(asideX), y: yAt(asideY), duration: driftDur, ease: "power2.out", overwrite: "auto" },
+              {
+                x: xAt(asideX),
+                y: yAt(asideY),
+                duration: driftDur,
+                ease: "power2.out",
+                overwrite: "auto",
+              },
               IN + driftDelay,
             );
           }
 
           // ---- OUT: leave the frame, physically, never a fade-in-place ----
-          tl.to(cursor, { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" }, OUT_AT);
+          tl.to(
+            cursor,
+            { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" },
+            OUT_AT,
+          );
 
           tl.seek(0);
           window.__timelines = window.__timelines || {};

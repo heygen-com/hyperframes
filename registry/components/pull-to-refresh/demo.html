@@ -1,0 +1,91 @@
+<!doctype html>
+<!--
+  pull-to-refresh: demo. Standalone 1920x1080 composition that mounts the
+  primitive through data-composition-src inside a tall mobile-list card.
+  The host page is static and owns the box. Non-default pullDistance and
+  spinnerStyle overrides prove both variables cross the mount boundary.
+  The primitive has no data-width or data-height and must derive its layout
+  from this card. Kept in sync with pull-to-refresh.html by hand.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Pull to Refresh: Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #16223a 0%, #05070d 72%);
+      }
+
+      /* The host box is intentionally taller than it is wide, like a mobile
+         list viewport, but it is not a device silhouette. Explicit CSS size
+         keeps cqw/cqh stable for the mounted primitive. */
+      .mount-card {
+        --bg: #0b1120;
+        --surface: #172235;
+        --fg: #f4f7fb;
+        --muted: #93a4bb;
+        --border: #2f4058;
+        --brand: #4de1aa;
+        width: 34%;
+        height: 78%;
+        left: 33%;
+        top: 11%;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 36px;
+        box-shadow: 0 44px 110px rgba(0, 0, 0, 0.52);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="pull-to-refresh-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="pull-to-refresh-mount"
+        class="mount-card clip"
+        data-composition-id="pull-to-refresh"
+        data-composition-src="./pull-to-refresh.html"
+        data-variable-values='{"pullDistance":190,"spinnerStyle":"dots"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="653"
+        data-height="842"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // The mounted primitive owns motion. This host registers one empty,
+      // paused timeline under its own composition id for runtime discovery.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["pull-to-refresh-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

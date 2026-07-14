@@ -1,0 +1,795 @@
+<!doctype html>
+<!--
+  vector-editor-rig -- HyperFrames video primitive (ui-props / holdable / demonstrate)
+
+  Concept: a compact vector editor app chrome frames the demonstration. A
+  left tool rail, central canvas, and right layers and properties inspector
+  stay readable while a blue bezier path draws on live. Anchor dots, diamond
+  control handles, connector arms, and a selection frame arrive in sequence
+  so the scene reads as active vector design rather than a static diagram.
+
+  Compiled-from evidence: power-reel source 11-vector-editor (design-tool
+  twin of terminal-run). The source contributes its blue-on-dark selection
+  rig vocabulary, while this primitive adds the required application chrome
+  and live pen drawing mechanic.
+
+  Use when: demonstrating vector creation, brand design, drawing tools, or a
+  design workflow inside a larger product scene. The primitive is holdable,
+  so the completed editor state remains legible for variable scene lengths.
+
+  Variables (declared in data-composition-variables below):
+    - tool ("pen" | "shape" | "type", default "pen"): selects the visibly
+      active swatch in the left toolbar.
+    - pathLabel (string, default "Logo"): names the document chip and the
+      selected layer. Blank or whitespace-only values normalize to "Logo".
+    - accent is theme-owned, not a getVariables() knob. The path, active tool,
+      handles, and selection frame all paint through var(--brand, #0d99ff).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 1.20s  chrome settles, path draws, rig nodes pop, frame lands
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); selected-state dot
+               breathes gently with a finite sine cycle
+    OUT_BASE = 0.50s  editor releases upward and fades
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so IN + OUT == D
+    and HOLD == 0.
+
+  Sync point (fixed offset into IN, never inside elastic HOLD): the stroke
+  finishes and the final anchor lands at PATH_FINISH_AT = 1.05s into an
+  unscaled IN. It scales proportionally when the envelope is compressed.
+
+  Sound cue: a subtle vector-close cue fires at PATH_FINISH_AT. This primitive
+  never plays audio. It dispatches an `hf:sfx` CustomEvent
+  ({ id: "vector-close", t: PATH_FINISH_AT }) for a scene mix stage to route.
+
+  Mount contract: this file is a MOUNTABLE SUB-COMPOSITION, not a standalone
+  composition. A host loads it via data-composition-src; the runtime only
+  clones <template> contents, so all live CSS, markup, and scripts sit inside
+  <template>. The root has no data-width/data-height. It fills the host slot
+  with position:absolute; inset:0; container-type:size and sizes every visual
+  from cqw/cqh or SVG viewBox proportions. The root is styled by #root because
+  mounted CSS scoping can stop a class selector from matching the flattened
+  root. Variables come from window.__hyperframes.getVariables(), which merges
+  declared defaults with per-instance host overrides before mount.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "tool", "type": "enum", "role": "content", "label": "Active tool", "description": "Tool highlighted in the editor toolbar.", "default": "pen", "options": [{ "value": "pen", "label": "Pen" }, { "value": "shape", "label": "Shape" }, { "value": "type", "label": "Type" }] },
+    { "id": "pathLabel", "type": "string", "role": "content", "label": "Path label", "description": "Name shown for the active vector path.", "default": "Logo" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Vector Editor Rig</title>
+    <!-- Metadata only for direct file inspection. The runtime discards the
+         head when mounting, while it reads variable declarations from the
+         fetched document's html element before cloning the template. -->
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="vector-editor-rig" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b1120);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .ve-clip,
+          .ve-stage {
+            width: 100%;
+            height: 100%;
+          }
+
+          .ve-stage {
+            display: grid;
+            grid-template-rows: 9cqh 1fr;
+            background: var(--bg, #0b1120);
+            opacity: 0;
+          }
+
+          .ve-topbar {
+            display: grid;
+            grid-template-columns: 18cqw 1fr 18cqw;
+            align-items: center;
+            padding: 0 2cqw;
+            border-bottom: 0.08cqw solid var(--border, #2c3b52);
+            background: color-mix(in srgb, var(--surface, #162033) 84%, var(--bg, #0b1120));
+          }
+
+          .ve-window-controls,
+          .ve-top-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.7cqw;
+          }
+
+          .ve-top-actions {
+            justify-content: flex-end;
+          }
+
+          .ve-window-dot {
+            width: 0.75cqw;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--muted, #8190a8);
+          }
+
+          .ve-window-dot:first-child,
+          .ve-live-dot {
+            background: var(--brand, #0d99ff);
+          }
+
+          .ve-document {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8cqw;
+            min-width: 0;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 1.25cqw;
+            font-weight: 650;
+            letter-spacing: 0.01em;
+          }
+
+          .ve-document-name {
+            max-width: 20cqw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .ve-document-chip,
+          .ve-zoom-chip {
+            padding: 0.55cqh 0.75cqw;
+            border: 0.08cqw solid color-mix(in srgb, var(--brand, #0d99ff) 46%, transparent);
+            border-radius: 0.45cqw;
+            background: color-mix(in srgb, var(--brand, #0d99ff) 13%, transparent);
+            color: var(--brand, #0d99ff);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            font-size: 0.82cqw;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+          }
+
+          .ve-zoom-chip {
+            border-color: var(--border, #2c3b52);
+            background: var(--surface, #162033);
+            color: var(--muted, #8190a8);
+            letter-spacing: 0;
+            text-transform: none;
+          }
+
+          .ve-live-dot {
+            width: 0.55cqw;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            box-shadow: 0 0 1.2cqw color-mix(in srgb, var(--brand, #0d99ff) 68%, transparent);
+          }
+
+          .ve-workbench {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 7cqw minmax(0, 1fr) 25cqw;
+          }
+
+          .ve-toolbar {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.4cqh;
+            padding-top: 2.4cqh;
+            border-right: 0.08cqw solid var(--border, #2c3b52);
+            background: color-mix(in srgb, var(--surface, #162033) 72%, var(--bg, #0b1120));
+          }
+
+          .ve-tool {
+            width: 3.7cqw;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            border: 0.08cqw solid transparent;
+            border-radius: 0.75cqw;
+            background: transparent;
+            color: var(--muted, #8190a8);
+          }
+
+          .ve-tool svg {
+            width: 1.75cqw;
+            height: 1.75cqw;
+            overflow: visible;
+          }
+
+          #root[data-tool="pen"] .ve-tool[data-tool-id="pen"],
+          #root[data-tool="shape"] .ve-tool[data-tool-id="shape"],
+          #root[data-tool="type"] .ve-tool[data-tool-id="type"] {
+            border-color: color-mix(in srgb, var(--brand, #0d99ff) 46%, transparent);
+            background: color-mix(in srgb, var(--brand, #0d99ff) 15%, transparent);
+            color: var(--brand, #0d99ff);
+            box-shadow: 0 0 1.4cqw color-mix(in srgb, var(--brand, #0d99ff) 14%, transparent);
+          }
+
+          .ve-tool-divider {
+            width: 3cqw;
+            height: 0.08cqw;
+            margin: 0.35cqh 0;
+            background: var(--border, #2c3b52);
+          }
+
+          .ve-canvas {
+            position: relative;
+            min-width: 0;
+            overflow: hidden;
+            background:
+              linear-gradient(
+                color-mix(in srgb, var(--border, #2c3b52) 25%, transparent) 0.08cqw,
+                transparent 0.08cqw
+              ),
+              linear-gradient(
+                90deg,
+                color-mix(in srgb, var(--border, #2c3b52) 25%, transparent) 0.08cqw,
+                transparent 0.08cqw
+              ),
+              color-mix(in srgb, var(--bg, #0b1120) 84%, var(--surface, #162033));
+            background-size: 4.3cqw 4.3cqw;
+          }
+
+          .ve-canvas-label {
+            position: absolute;
+            top: 2.2cqh;
+            left: 2cqw;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 0.65cqw;
+            color: var(--muted, #8190a8);
+            font-size: 0.92cqw;
+            letter-spacing: 0.03em;
+          }
+
+          .ve-canvas-label::before {
+            content: "";
+            width: 0.55cqw;
+            aspect-ratio: 1;
+            border: 0.08cqw solid var(--brand, #0d99ff);
+            transform: rotate(45deg);
+          }
+
+          .ve-artboard {
+            position: absolute;
+            left: 50%;
+            top: 52%;
+            width: 50cqw;
+            height: 64cqh;
+            transform: translate(-50%, -50%);
+            overflow: hidden;
+            border: 0.08cqw solid color-mix(in srgb, var(--border, #2c3b52) 78%, transparent);
+            border-radius: 1.1cqw;
+            background:
+              radial-gradient(
+                circle at 50% 48%,
+                color-mix(in srgb, var(--brand, #0d99ff) 10%, transparent),
+                transparent 48%
+              ),
+              var(--surface, #162033);
+            box-shadow: 0 2.8cqh 5.5cqw color-mix(in srgb, var(--bg, #0b1120) 70%, transparent);
+          }
+
+          .ve-artboard svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            overflow: visible;
+          }
+
+          .ve-vector-path {
+            fill: color-mix(in srgb, var(--brand, #0d99ff) 8%, transparent);
+            stroke: var(--brand, #0d99ff);
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(
+              0 0 0.7cqw color-mix(in srgb, var(--brand, #0d99ff) 42%, transparent)
+            );
+          }
+
+          .ve-selection {
+            color: var(--brand, #0d99ff);
+          }
+
+          .ve-selection-frame {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.5;
+          }
+
+          .ve-selection-corner,
+          .ve-control-diamond {
+            fill: var(--surface, #162033);
+            stroke: currentColor;
+            stroke-width: 2;
+          }
+
+          .ve-control-arm {
+            stroke: var(--muted, #8190a8);
+            stroke-width: 1.5;
+          }
+
+          .ve-anchor-dot {
+            fill: var(--fg, #f8fafc);
+            stroke: var(--brand, #0d99ff);
+            stroke-width: 3;
+          }
+
+          .ve-anchor-ring {
+            fill: color-mix(in srgb, var(--brand, #0d99ff) 12%, transparent);
+            stroke: color-mix(in srgb, var(--brand, #0d99ff) 55%, transparent);
+            stroke-width: 1.5;
+          }
+
+          .ve-inspector {
+            min-width: 0;
+            border-left: 0.08cqw solid var(--border, #2c3b52);
+            background: color-mix(in srgb, var(--surface, #162033) 76%, var(--bg, #0b1120));
+          }
+
+          .ve-panel-section {
+            padding: 2.1cqh 1.6cqw;
+            border-bottom: 0.08cqw solid var(--border, #2c3b52);
+          }
+
+          .ve-panel-title {
+            margin-bottom: 1.4cqh;
+            color: var(--muted, #8190a8);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 0.82cqw;
+            font-weight: 750;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .ve-layer-row,
+          .ve-property-row {
+            display: grid;
+            align-items: center;
+            min-width: 0;
+            border-radius: 0.6cqw;
+            color: var(--fg, #f8fafc);
+            font-size: 0.94cqw;
+          }
+
+          .ve-layer-row {
+            grid-template-columns: 1.3cqw minmax(0, 1fr) auto;
+            gap: 0.75cqw;
+            padding: 1.15cqh 0.85cqw;
+          }
+
+          .ve-layer-row.is-selected {
+            background: color-mix(in srgb, var(--brand, #0d99ff) 14%, transparent);
+            color: var(--brand, #0d99ff);
+          }
+
+          .ve-layer-icon {
+            width: 0.85cqw;
+            aspect-ratio: 1;
+            border: 0.1cqw solid currentColor;
+            transform: rotate(45deg);
+          }
+
+          .ve-layer-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .ve-layer-kind {
+            color: var(--muted, #8190a8);
+            font-size: 0.72cqw;
+            letter-spacing: 0.04em;
+          }
+
+          .ve-property-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 1cqw;
+            min-height: 4.1cqh;
+            color: var(--muted, #8190a8);
+          }
+
+          .ve-property-value {
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 0.86cqw;
+          }
+
+          .ve-color-swatch {
+            width: 1.2cqw;
+            aspect-ratio: 1;
+            border: 0.08cqw solid color-mix(in srgb, var(--fg, #f8fafc) 25%, transparent);
+            border-radius: 0.28cqw;
+            background: var(--brand, #0d99ff);
+          }
+        </style>
+
+        <div
+          id="vector-editor-rig-clip"
+          class="ve-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="ve-stage">
+            <header class="ve-topbar">
+              <div class="ve-window-controls" aria-hidden="true">
+                <span class="ve-window-dot"></span>
+                <span class="ve-window-dot"></span>
+                <span class="ve-window-dot"></span>
+              </div>
+              <div class="ve-document">
+                <span class="ve-document-chip">Vector</span>
+                <span class="ve-document-name"></span>
+              </div>
+              <div class="ve-top-actions">
+                <span class="ve-live-dot"></span>
+                <span class="ve-zoom-chip">100%</span>
+              </div>
+            </header>
+
+            <div class="ve-workbench">
+              <nav class="ve-toolbar" aria-label="Vector tools">
+                <div class="ve-tool" data-tool-id="pen" aria-label="Pen tool" role="img">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M4 20l4.3-1.1L19 8.2 15.8 5 5.1 15.7 4 20Z" />
+                    <path d="m13.8 7 3.2 3.2M5.1 15.7l3.2 3.2" />
+                  </svg>
+                </div>
+                <div class="ve-tool" data-tool-id="shape" aria-label="Shape tool" role="img">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="4.5" y="4.5" width="15" height="15" rx="2" />
+                    <circle cx="12" cy="12" r="3.5" />
+                  </svg>
+                </div>
+                <div class="ve-tool" data-tool-id="type" aria-label="Type tool" role="img">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M5 6h14M12 6v13M8.5 19h7" />
+                  </svg>
+                </div>
+                <span class="ve-tool-divider"></span>
+                <div class="ve-tool" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="m5 5 6 14 2-6 6-2L5 5Z" />
+                  </svg>
+                </div>
+              </nav>
+
+              <main class="ve-canvas">
+                <div class="ve-canvas-label"><span></span></div>
+                <div class="ve-artboard">
+                  <svg viewBox="0 0 720 500" aria-label="Vector path being drawn">
+                    <path
+                      class="ve-vector-path"
+                      d="M 140 350 C 165 235 235 150 320 145 C 415 140 520 195 565 285 C 600 360 535 415 445 425 C 350 440 260 430 210 405 C 175 390 150 370 140 350 Z"
+                    />
+
+                    <g class="ve-selection">
+                      <rect
+                        class="ve-selection-frame"
+                        x="105"
+                        y="100"
+                        width="500"
+                        height="370"
+                        rx="4"
+                      />
+                      <rect
+                        class="ve-selection-corner"
+                        x="99"
+                        y="94"
+                        width="12"
+                        height="12"
+                        rx="1"
+                      />
+                      <rect
+                        class="ve-selection-corner"
+                        x="599"
+                        y="94"
+                        width="12"
+                        height="12"
+                        rx="1"
+                      />
+                      <rect
+                        class="ve-selection-corner"
+                        x="599"
+                        y="464"
+                        width="12"
+                        height="12"
+                        rx="1"
+                      />
+                      <rect
+                        class="ve-selection-corner"
+                        x="99"
+                        y="464"
+                        width="12"
+                        height="12"
+                        rx="1"
+                      />
+                    </g>
+
+                    <g class="ve-node">
+                      <circle class="ve-anchor-ring" cx="140" cy="350" r="12" />
+                      <circle class="ve-anchor-dot" cx="140" cy="350" r="6" />
+                    </g>
+                    <g class="ve-node">
+                      <line class="ve-control-arm" x1="235" y1="150" x2="405" y2="138" />
+                      <rect
+                        class="ve-control-diamond"
+                        x="229"
+                        y="144"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 235 150)"
+                      />
+                      <rect
+                        class="ve-control-diamond"
+                        x="399"
+                        y="132"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 405 138)"
+                      />
+                      <circle class="ve-anchor-ring" cx="320" cy="145" r="12" />
+                      <circle class="ve-anchor-dot" cx="320" cy="145" r="6" />
+                    </g>
+                    <g class="ve-node">
+                      <line class="ve-control-arm" x1="520" y1="195" x2="600" y2="360" />
+                      <rect
+                        class="ve-control-diamond"
+                        x="514"
+                        y="189"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 520 195)"
+                      />
+                      <rect
+                        class="ve-control-diamond"
+                        x="594"
+                        y="354"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 600 360)"
+                      />
+                      <circle class="ve-anchor-ring" cx="565" cy="285" r="12" />
+                      <circle class="ve-anchor-dot" cx="565" cy="285" r="6" />
+                    </g>
+                    <g class="ve-node">
+                      <line class="ve-control-arm" x1="535" y1="415" x2="350" y2="440" />
+                      <rect
+                        class="ve-control-diamond"
+                        x="529"
+                        y="409"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 535 415)"
+                      />
+                      <rect
+                        class="ve-control-diamond"
+                        x="344"
+                        y="434"
+                        width="12"
+                        height="12"
+                        transform="rotate(45 350 440)"
+                      />
+                      <circle class="ve-anchor-ring" cx="445" cy="425" r="12" />
+                      <circle class="ve-anchor-dot" cx="445" cy="425" r="6" />
+                    </g>
+                    <g class="ve-node">
+                      <circle class="ve-anchor-ring" cx="210" cy="405" r="12" />
+                      <circle class="ve-anchor-dot" cx="210" cy="405" r="6" />
+                    </g>
+                  </svg>
+                </div>
+              </main>
+
+              <aside class="ve-inspector">
+                <section class="ve-panel-section">
+                  <div class="ve-panel-title">Layers</div>
+                  <div class="ve-layer-row is-selected">
+                    <span class="ve-layer-icon"></span>
+                    <span class="ve-layer-name"></span>
+                    <span class="ve-layer-kind">Path</span>
+                  </div>
+                  <div class="ve-layer-row">
+                    <span class="ve-layer-icon"></span>
+                    <span>Frame</span>
+                    <span class="ve-layer-kind">Group</span>
+                  </div>
+                </section>
+                <section class="ve-panel-section">
+                  <div class="ve-panel-title">Properties</div>
+                  <div class="ve-property-row">
+                    <span>Fill</span>
+                    <span class="ve-property-value">8%</span>
+                  </div>
+                  <div class="ve-property-row">
+                    <span>Stroke</span>
+                    <span class="ve-color-swatch"></span>
+                  </div>
+                  <div class="ve-property-row">
+                    <span>Width</span>
+                    <span class="ve-property-value">4</span>
+                  </div>
+                  <div class="ve-property-row">
+                    <span>Nodes</span>
+                    <span class="ve-property-value">5</span>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal, not read from the mounted DOM. The runtime strips
+            // data-composition-id from the flattened inner root, so reading
+            // that attribute after mount would register the timeline under
+            // "null" and leave the host waiting for this composition.
+            var compositionId = "vector-editor-rig";
+            var stage = root.querySelector(".ve-stage");
+            var path = root.querySelector(".ve-vector-path");
+            var nodes = root.querySelectorAll(".ve-node");
+            var selection = root.querySelector(".ve-selection");
+            var liveDot = root.querySelector(".ve-live-dot");
+            var documentName = root.querySelector(".ve-document-name");
+            var canvasLabel = root.querySelector(".ve-canvas-label span");
+            var layerName = root.querySelector(".ve-layer-name");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: exactly one known tool owns the active toolbar state.
+            var allowedTools = ["pen", "shape", "type"];
+            var tool = allowedTools.indexOf(vars.tool) >= 0 ? vars.tool : "pen";
+            // INVARIANT: all label surfaces receive the same bounded string.
+            var rawLabel = vars.pathLabel == null ? "Logo" : String(vars.pathLabel);
+            var trimmedLabel = rawLabel.trim().slice(0, 28);
+            var pathLabel = trimmedLabel.length > 0 ? trimmedLabel : "Logo";
+
+            root.setAttribute("data-tool", tool);
+            documentName.textContent = pathLabel;
+            canvasLabel.textContent = pathLabel + " path";
+            layerName.textContent = pathLabel;
+
+            var IN_BASE = 1.2;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.28;
+            var PATH_START_BASE = 0.1;
+            var PATH_FINISH_AT_BASE = 1.05; // sync point: fixed inside IN
+            var NODE_DURATION_BASE = 0.16;
+            var SELECTION_START_BASE = 0.82;
+            var HOLD_PULSE_HALF = 0.65;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = STAGE_IN_BASE * scale;
+            var PATH_START = PATH_START_BASE * scale;
+            var PATH_FINISH_AT = PATH_FINISH_AT_BASE * scale;
+            var PATH_DRAW_DURATION = PATH_FINISH_AT - PATH_START;
+            var NODE_DURATION = NODE_DURATION_BASE * scale;
+            var SELECTION_START = SELECTION_START_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var nodeLandings = [0.25, 0.48, 0.7, 0.9, PATH_FINISH_AT_BASE];
+            var pathLength = path.getTotalLength();
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit t=0 state for every animated endpoint, never gsap.from().
+            gsap.set(stage, { opacity: 0, y: "1.8cqh" });
+            gsap.set(path, {
+              fillOpacity: 0,
+              strokeDasharray: pathLength,
+              strokeDashoffset: pathLength,
+            });
+            gsap.set(nodes, { opacity: 0, scale: 0, transformOrigin: "center center" });
+            gsap.set(selection, { opacity: 0 });
+            gsap.set(liveDot, { opacity: 0.68, scale: 1 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: chrome settles, then the pen stroke and anchors reveal.
+            tl.to(stage, { opacity: 1, y: 0, duration: STAGE_IN, ease: "power2.out" }, 0);
+            tl.to(
+              path,
+              { strokeDashoffset: 0, duration: PATH_DRAW_DURATION, ease: "none" },
+              PATH_START,
+            );
+
+            for (var i = 0; i < nodes.length; i += 1) {
+              var nodeLanding = nodeLandings[i] * scale;
+              tl.to(
+                nodes[i],
+                { opacity: 1, scale: 1, duration: NODE_DURATION, ease: "power2.out" },
+                Math.max(0, nodeLanding - NODE_DURATION),
+              );
+            }
+
+            tl.to(
+              selection,
+              {
+                opacity: 1,
+                duration: Math.max(0.001, PATH_FINISH_AT - SELECTION_START),
+                ease: "power2.out",
+              },
+              SELECTION_START,
+            );
+            tl.to(
+              path,
+              {
+                fillOpacity: 1,
+                duration: Math.max(0.001, PATH_FINISH_AT - SELECTION_START),
+                ease: "power2.out",
+              },
+              SELECTION_START,
+            );
+            tl.call(
+              function () {
+                fireSfx("vector-close", PATH_FINISH_AT);
+              },
+              [],
+              PATH_FINISH_AT,
+            );
+
+            // HOLD: finite selected-state pulse, absent when no hold exists.
+            if (HOLD > HOLD_PULSE_HALF) {
+              var pulseRepeat = Math.max(0, Math.floor(HOLD / HOLD_PULSE_HALF) - 1);
+              tl.to(
+                liveDot,
+                {
+                  opacity: 1,
+                  scale: 1.22,
+                  duration: HOLD_PULSE_HALF,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: pulseRepeat,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: editor releases cleanly without altering the completed rig.
+            tl.to(stage, { opacity: 0, y: "-1.2cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

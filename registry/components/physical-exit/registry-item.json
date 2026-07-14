@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "physical-exit",
+  "type": "hyperframes:component",
+  "title": "Physical Exit",
+  "description": "A card exits with physical momentum in toss, drop, or slide mode, carrying acceleration and rotation through the final offscreen pose without fading.",
+  "tags": ["motion-primitive", "exit", "momentum", "toss", "drop", "slide"],
+  "jobs": ["exit"],
+  "family": "motion",
+  "profile": "physical",
+  "evidence": "Video Primitives Wave F U13 physical-exit specification",
+  "files": [
+    {
+      "path": "physical-exit.html",
+      "target": "compositions/components/physical-exit.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "mode",
+      "type": "enum",
+      "role": "motion",
+      "label": "Exit mode",
+      "description": "Physical behavior used to carry the card offscreen.",
+      "default": "toss",
+      "options": [
+        { "value": "toss", "label": "Toss" },
+        { "value": "drop", "label": "Drop" },
+        { "value": "slide", "label": "Slide" }
+      ]
+    },
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Card text",
+      "description": "Word displayed on the exiting card.",
+      "default": "Later"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color applied to the card edge.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

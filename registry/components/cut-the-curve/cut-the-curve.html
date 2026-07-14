@@ -1,0 +1,477 @@
+<!doctype html>
+<!--
+  cut-the-curve -- HyperFrames video primitive (transitions / bridge)
+
+  Concept: a velocity-matched directional hard cut. The outgoing subject
+  accelerates along one straight screen vector with power4.in. At peak
+  velocity, the timeline swaps identities. The incoming subject starts on
+  the far side of the same vector and decelerates to rest with power4.out.
+  Matched blur and opacity at the cut conceal the seam.
+
+  Compiled-from evidence: /Users/miguel07code/dev/launches-cut-the-curve.md.
+  The source identifies the production signature as a single power4 whip,
+  with an approximately 1:2 outgoing-to-incoming distance and duration split.
+
+  Use when: bridging attention and momentum between shots, UI states, cards,
+  cursor beats, or scene blocks without requiring object identity to persist.
+
+  Variables (declared in data-composition-variables below):
+    - subject ("cursor" | "card" | "scene", default "cursor") selects the
+      simple visual payload used for both sides of the cut.
+    - direction ("left" | "right" | "up" | "down", default "left") owns
+      both the motion axis and the shared screen direction.
+    - cutFraction (number, 0-1, default 0.33) sets the hard-cut point. The
+      incoming distance is derived from this fraction so seam velocity stays
+      matched. At 0 or 1, the corresponding zero-duration half collapses.
+    - blurPx (number, default 12) sets blur at the cut seam.
+
+  Envelope (transition profile, no elastic HOLD):
+    OUT = D * cutFraction, power4.in
+    IN  = D * (1 - cutFraction), power4.out
+    The default 0.33 split is approximately 1:2 in time. Incoming distance is
+    derived from OUT distance and the duration ratio, preserving the same
+    approximately 1:2 spatial split and matching velocity at the cut.
+
+  Sync point: CUT_AT = D * cutFraction, the fixed boundary between OUT and
+  IN. It never lands in a HOLD because this profile has no HOLD phase.
+
+  Sound cue: a short whip cut fires at CUT_AT. The primitive never plays
+  audio. It dispatches an `hf:sfx` CustomEvent with
+  { id: "whip-cut", t: CUT_AT } for the scene mix stage to route.
+
+  EDIT ZONE: change only the subject geometry custom properties in the style
+  block when adapting the payload drawings. The vector ratios and the paired
+  power4 eases are the mechanic and must remain together.
+
+  INVARIANTS: outgoing and incoming always share one vector; the identity swap
+  happens only at CUT_AT; their blur and opacity values match at that seam;
+  exactly one paused timeline registers under the literal id "cut-the-curve".
+
+  RETIME RANGE: 0.3s to 3s. Retiming changes D only. Never timeScale the GSAP
+  timeline and never split the two halves into independently tuned velocities.
+
+  Mount contract: this is a template-wrapped sub-composition. Everything the
+  mount needs, including styles, markup, GSAP, and timeline registration,
+  lives inside <template>. #root fills the host box with position:absolute,
+  inset:0, and container-type:size. It has no data-width or data-height.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "subject", "type": "enum", "role": "content", "label": "Subject", "description": "Visual payload used on both sides of the cut.", "default": "cursor", "options": [{ "value": "cursor", "label": "Cursor" }, { "value": "card", "label": "Card" }, { "value": "scene", "label": "Scene" }] },
+    { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Shared screen direction for outgoing and incoming travel.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
+    { "id": "cutFraction", "type": "number", "role": "timing", "label": "Cut fraction", "description": "Normalized point where the hard cut swaps subjects.", "default": 0.33, "min": 0, "max": 1, "step": 0.01 },
+    { "id": "blurPx", "type": "number", "role": "style", "label": "Cut blur", "description": "Blur in pixels shared by both subjects at the cut seam.", "default": 12, "min": 0, "max": 40, "step": 1, "unit": "px" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Cut the Curve</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="cut-the-curve" data-duration="1" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .ctc-clip,
+          .ctc-backdrop,
+          .ctc-subject {
+            position: absolute;
+            inset: 0;
+          }
+
+          .ctc-clip {
+            overflow: hidden;
+          }
+
+          .ctc-backdrop {
+            background:
+              radial-gradient(
+                circle at var(--ctc-glow-x, 24%) var(--ctc-glow-y, 28%),
+                color-mix(
+                  in srgb,
+                  var(--accent, #38bdf8) var(--ctc-glow-strength, 18%),
+                  var(--transparent, transparent)
+                ),
+                var(--transparent, transparent) var(--ctc-glow-radius, 42%)
+              ),
+              var(--bg, #0b1120);
+          }
+
+          .ctc-subject {
+            display: grid;
+            place-items: center;
+            opacity: 0;
+            will-change: transform, filter, opacity;
+          }
+
+          .ctc-subject.is-outgoing {
+            opacity: 1;
+            --ctc-primary: var(--brand, #8b5cf6);
+            --ctc-secondary: var(--accent, #38bdf8);
+          }
+
+          .ctc-subject.is-incoming {
+            --ctc-primary: var(--accent, #38bdf8);
+            --ctc-secondary: var(--brand, #8b5cf6);
+          }
+
+          .ctc-art {
+            display: none;
+          }
+
+          #root[data-subject="cursor"] .ctc-cursor,
+          #root[data-subject="card"] .ctc-card,
+          #root[data-subject="scene"] .ctc-scene {
+            display: block;
+          }
+
+          .ctc-cursor {
+            position: relative;
+            width: var(--ctc-cursor-width, 15cqw);
+            height: var(--ctc-cursor-height, 24cqh);
+          }
+
+          .ctc-cursor svg {
+            width: var(--ctc-cursor-svg-width, 100%);
+            height: var(--ctc-cursor-svg-height, 100%);
+            overflow: visible;
+            filter: drop-shadow(
+              var(--ctc-shadow-x, 0cqw) var(--ctc-shadow-y, 1cqh) var(--ctc-shadow-blur, 1.6cqw)
+                color-mix(
+                  in srgb,
+                  var(--bg, #0b1120) var(--ctc-shadow-strength, 65%),
+                  var(--transparent, transparent)
+                )
+            );
+          }
+
+          .ctc-cursor-shape {
+            fill: var(--ctc-primary, var(--brand, #8b5cf6));
+            stroke: var(--fg, #f8fafc);
+            stroke-width: var(--ctc-cursor-stroke, 1.8);
+            stroke-linejoin: round;
+          }
+
+          .ctc-cursor-pulse {
+            position: absolute;
+            left: var(--ctc-pulse-left, -5cqw);
+            top: var(--ctc-pulse-top, -5cqh);
+            width: var(--ctc-pulse-size, 11cqw);
+            aspect-ratio: var(--ctc-pulse-ratio, 1);
+            border: var(--ctc-pulse-border, 0.25cqw) solid
+              color-mix(
+                in srgb,
+                var(--ctc-secondary, #38bdf8) var(--ctc-pulse-strength, 58%),
+                var(--transparent, transparent)
+              );
+            border-radius: var(--ctc-round, 50%);
+          }
+
+          .ctc-card {
+            width: var(--ctc-card-width, 42cqw);
+            min-height: var(--ctc-card-height, 34cqh);
+            padding: var(--ctc-card-padding-y, 4.5cqh) var(--ctc-card-padding-x, 4cqw);
+            border: var(--ctc-border-width, 0.22cqw) solid var(--border, #334155);
+            border-radius: var(--radius, 2cqw);
+            background: var(--surface, #1e293b);
+            box-shadow: var(--ctc-shadow-x, 0cqw) var(--ctc-card-shadow-y, 2.4cqh)
+              var(--ctc-card-shadow-blur, 5cqw)
+              color-mix(
+                in srgb,
+                var(--bg, #0b1120) var(--ctc-card-shadow-strength, 55%),
+                var(--transparent, transparent)
+              );
+          }
+
+          .ctc-card-chip {
+            width: var(--ctc-chip-width, 9cqw);
+            height: var(--ctc-chip-height, 2.2cqh);
+            border-radius: var(--ctc-pill-radius, 99cqw);
+            background: var(--ctc-primary, var(--brand, #8b5cf6));
+            margin-bottom: var(--ctc-card-gap, 3.2cqh);
+          }
+
+          .ctc-card-line,
+          .ctc-scene-line {
+            height: var(--ctc-line-height, 1.8cqh);
+            border-radius: var(--ctc-pill-radius, 99cqw);
+            background: var(--fg, #f8fafc);
+          }
+
+          .ctc-card-line + .ctc-card-line {
+            margin-top: var(--ctc-line-gap, 2.2cqh);
+          }
+
+          .ctc-card-line:first-of-type {
+            width: var(--ctc-line-long, 88%);
+          }
+
+          .ctc-card-line:last-of-type {
+            width: var(--ctc-line-short, 58%);
+            opacity: var(--ctc-muted-opacity, 0.42);
+          }
+
+          .ctc-scene {
+            width: var(--ctc-scene-width, 68cqw);
+            height: var(--ctc-scene-height, 58cqh);
+            overflow: hidden;
+            border: var(--ctc-border-width, 0.22cqw) solid var(--border, #334155);
+            border-radius: var(--radius, 2cqw);
+            background: var(--surface, #1e293b);
+            box-shadow: var(--ctc-shadow-x, 0cqw) var(--ctc-card-shadow-y, 2.4cqh)
+              var(--ctc-card-shadow-blur, 5cqw)
+              color-mix(
+                in srgb,
+                var(--bg, #0b1120) var(--ctc-card-shadow-strength, 55%),
+                var(--transparent, transparent)
+              );
+          }
+
+          .ctc-scene-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--ctc-dot-gap, 1cqw);
+            height: var(--ctc-scene-bar-height, 8cqh);
+            padding-inline: var(--ctc-scene-pad, 2cqw);
+            border-bottom: var(--ctc-border-width, 0.22cqw) solid var(--border, #334155);
+          }
+
+          .ctc-scene-dot {
+            width: var(--ctc-dot-size, 1.4cqw);
+            aspect-ratio: var(--ctc-pulse-ratio, 1);
+            border-radius: var(--ctc-round, 50%);
+            background: var(--ctc-primary, var(--brand, #8b5cf6));
+          }
+
+          .ctc-scene-body {
+            display: grid;
+            grid-template-columns: var(--ctc-scene-columns, 1fr 2fr);
+            gap: var(--ctc-scene-gap, 3cqw);
+            padding: var(--ctc-scene-body-pad, 5cqh) var(--ctc-scene-pad, 3cqw);
+          }
+
+          .ctc-scene-panel {
+            min-height: var(--ctc-panel-height, 34cqh);
+            border-radius: var(--ctc-panel-radius, 1.2cqw);
+            background: color-mix(
+              in srgb,
+              var(--ctc-primary, #8b5cf6) var(--ctc-panel-strength, 24%),
+              var(--surface, #1e293b)
+            );
+          }
+
+          .ctc-scene-copy {
+            padding-top: var(--ctc-copy-top, 2cqh);
+          }
+
+          .ctc-scene-line + .ctc-scene-line {
+            margin-top: var(--ctc-scene-line-gap, 3cqh);
+          }
+
+          .ctc-scene-line:nth-child(1) {
+            width: var(--ctc-scene-line-one, 92%);
+          }
+
+          .ctc-scene-line:nth-child(2) {
+            width: var(--ctc-scene-line-two, 68%);
+            opacity: var(--ctc-muted-opacity, 0.42);
+          }
+
+          .ctc-scene-line:nth-child(3) {
+            width: var(--ctc-scene-line-three, 78%);
+            background: var(--ctc-secondary, var(--accent, #38bdf8));
+          }
+        </style>
+
+        <div
+          id="cut-the-curve-clip"
+          class="ctc-clip clip"
+          data-start="0"
+          data-duration="1"
+          data-track-index="0"
+        >
+          <div class="ctc-backdrop"></div>
+
+          <div class="ctc-subject is-outgoing" aria-hidden="true">
+            <div class="ctc-art ctc-cursor">
+              <span class="ctc-cursor-pulse"></span>
+              <svg viewBox="0 0 64 88" aria-hidden="true">
+                <path
+                  class="ctc-cursor-shape"
+                  d="M8 5 L54 43 L34 47 L45 75 L30 82 L19 53 L8 68 Z"
+                />
+              </svg>
+            </div>
+            <div class="ctc-art ctc-card">
+              <div class="ctc-card-chip"></div>
+              <div class="ctc-card-line"></div>
+              <div class="ctc-card-line"></div>
+            </div>
+            <div class="ctc-art ctc-scene">
+              <div class="ctc-scene-bar">
+                <span class="ctc-scene-dot"></span><span class="ctc-scene-dot"></span
+                ><span class="ctc-scene-dot"></span>
+              </div>
+              <div class="ctc-scene-body">
+                <div class="ctc-scene-panel"></div>
+                <div class="ctc-scene-copy">
+                  <div class="ctc-scene-line"></div>
+                  <div class="ctc-scene-line"></div>
+                  <div class="ctc-scene-line"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctc-subject is-incoming" aria-hidden="true">
+            <div class="ctc-art ctc-cursor">
+              <span class="ctc-cursor-pulse"></span>
+              <svg viewBox="0 0 64 88" aria-hidden="true">
+                <path
+                  class="ctc-cursor-shape"
+                  d="M8 5 L54 43 L34 47 L45 75 L30 82 L19 53 L8 68 Z"
+                />
+              </svg>
+            </div>
+            <div class="ctc-art ctc-card">
+              <div class="ctc-card-chip"></div>
+              <div class="ctc-card-line"></div>
+              <div class="ctc-card-line"></div>
+            </div>
+            <div class="ctc-art ctc-scene">
+              <div class="ctc-scene-bar">
+                <span class="ctc-scene-dot"></span><span class="ctc-scene-dot"></span
+                ><span class="ctc-scene-dot"></span>
+              </div>
+              <div class="ctc-scene-body">
+                <div class="ctc-scene-panel"></div>
+                <div class="ctc-scene-copy">
+                  <div class="ctc-scene-line"></div>
+                  <div class="ctc-scene-line"></div>
+                  <div class="ctc-scene-line"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var outgoing = root.querySelector(".is-outgoing");
+            var incoming = root.querySelector(".is-incoming");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var subject =
+              vars.subject === "card" || vars.subject === "scene" ? vars.subject : "cursor";
+            var direction =
+              vars.direction === "right" || vars.direction === "up" || vars.direction === "down"
+                ? vars.direction
+                : "left";
+            var rawCut = Number(vars.cutFraction);
+            var cutFraction = Number.isFinite(rawCut) ? Math.max(0, Math.min(1, rawCut)) : 0.33;
+            var rawBlur = Number(vars.blurPx);
+            var blurPx = Number.isFinite(rawBlur) ? Math.max(0, rawBlur) : 12;
+
+            root.dataset.subject = subject;
+
+            // Direction is the single owner of axis, sign, unit, and base travel.
+            var vectors = {
+              left: { axis: "x", sign: -1, unit: "cqw", distance: 34 },
+              right: { axis: "x", sign: 1, unit: "cqw", distance: 34 },
+              up: { axis: "y", sign: -1, unit: "cqh", distance: 26 },
+              down: { axis: "y", sign: 1, unit: "cqh", distance: 26 },
+            };
+            var vector = vectors[direction];
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "1"));
+            var CUT_AT = duration * cutFraction;
+            var ENTRY_DURATION = duration - CUT_AT;
+            var entryDistance =
+              CUT_AT > 0 ? vector.distance * (ENTRY_DURATION / CUT_AT) : vector.distance * 2;
+            var seamBlur = "blur(" + blurPx + "px)";
+            var clearBlur = "blur(0px)";
+            var seamOpacity = 0.72;
+
+            var outgoingEnd = { opacity: seamOpacity, filter: seamBlur };
+            outgoingEnd[vector.axis] = vector.sign * vector.distance + vector.unit;
+
+            var incomingStart = { x: 0, y: 0, opacity: 0, filter: seamBlur };
+            incomingStart[vector.axis] = -vector.sign * entryDistance + vector.unit;
+
+            var incomingEnd = { opacity: 1, filter: clearBlur };
+            incomingEnd[vector.axis] = 0;
+
+            gsap.set(outgoing, { x: 0, y: 0, opacity: 1, filter: clearBlur });
+            gsap.set(incoming, incomingStart);
+
+            var tl = gsap.timeline({ paused: true });
+
+            if (CUT_AT > 0) {
+              tl.to(
+                outgoing,
+                Object.assign({}, outgoingEnd, { duration: CUT_AT, ease: "power4.in" }),
+                0,
+              );
+            }
+
+            // CUT: one visibility owner, matched blur and opacity on both sides.
+            tl.set(outgoing, { opacity: 0 }, CUT_AT);
+            tl.set(incoming, { opacity: seamOpacity }, CUT_AT);
+            tl.call(
+              function () {
+                root.dispatchEvent(
+                  new CustomEvent("hf:sfx", {
+                    detail: { id: "whip-cut", t: CUT_AT },
+                    bubbles: true,
+                  }),
+                );
+              },
+              [],
+              CUT_AT,
+            );
+
+            if (ENTRY_DURATION > 0) {
+              tl.to(
+                incoming,
+                Object.assign({}, incomingEnd, {
+                  duration: ENTRY_DURATION,
+                  ease: "power4.out",
+                }),
+                CUT_AT,
+              );
+            } else {
+              tl.set(incoming, incomingEnd, CUT_AT);
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["cut-the-curve"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

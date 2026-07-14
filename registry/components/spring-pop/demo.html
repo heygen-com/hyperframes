@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  spring-pop demo. This standalone composition mounts spring-pop.html through
+  data-composition-src. Non-default values prove that all three variables
+  flow through the mount while the primitive remains sized by its host box.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Spring Pop Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #05070d);
+      }
+
+      #root {
+        --bg: #05070d;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #131b2e;
+        --border: #334155;
+        --brand: #22c55e;
+        --accent: #38bdf8;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 3cqmin;
+        --space-1: 1.2cqmin;
+        --space-2: 2.4cqmin;
+        --space-3: 4cqmin;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          color-mix(in srgb, var(--surface) 92%, var(--accent)) 0%,
+          var(--bg) 70%
+        );
+      }
+
+      .mount-card {
+        width: 46%;
+        height: 36%;
+        left: 27%;
+        top: 32%;
+        container-type: size;
+        overflow: hidden;
+        border: 0.12cqmin solid color-mix(in srgb, var(--border) 72%, transparent);
+        border-radius: calc(var(--radius) * 1.35);
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        box-shadow: 0 4cqh 10cqh color-mix(in srgb, var(--bg) 64%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="spring-pop-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2"
+      data-fps="30"
+    >
+      <div
+        id="spring-pop-mount"
+        class="mount-card clip"
+        data-composition-id="spring-pop"
+        data-composition-src="./spring-pop.html"
+        data-variable-values='{"overshoot":1.9,"fromScale":0.86,"text":"Just shipped"}'
+        data-start="0"
+        data-duration="2"
+        data-track-index="0"
+        data-width="883"
+        data-height="389"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["spring-pop-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html>
+<!--
+  ticker-takeover: a compact ticker rolls through four to six words, locks
+  on the selected word with an accent flash, then promotes that word into
+  a full-frame headline.
+
+  Variables:
+    - options: comma-separated words shown by the ticker.
+    - final_word: the word placed last and promoted.
+    - accent: green, blue, or violet lock color.
+
+  Envelope (fixed IN and OUT, elastic HOLD only):
+    IN_BASE  = 3.15s. Ticker entrance, accelerating roll, decelerating lock,
+               accent flash, and headline promotion.
+    HOLD     = max(0, D - IN - OUT). The promoted word drifts subtly.
+    OUT_BASE = 0.45s. The promoted word fades and rises.
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Mount contract: all rendered content lives inside the template. The root
+  fills its host without fixed dimensions, and one paused timeline registers
+  under the hardcoded ticker-takeover key.
+-->
+<html
+  lang="en"
+  data-composition-id="ticker-takeover"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "options", "type": "string", "role": "content", "label": "Options", "description": "Comma-separated words shown by the ticker.", "default": "faster,smarter,together,everywhere" },
+    { "id": "final_word", "type": "string", "role": "content", "label": "Final word", "description": "Word the ticker locks on and promotes.", "default": "together" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used for the lock flash and promoted word.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ticker Takeover</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="ticker-takeover" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .tt-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .tt-ticker {
+            position: absolute;
+            top: 55cqh;
+            left: 12cqw;
+            width: 76cqw;
+            height: 18cqh;
+            display: grid;
+            grid-template-columns: 18cqw 1fr;
+            align-items: center;
+            overflow: hidden;
+            border: 0.12cqw solid color-mix(in srgb, var(--muted, #94a3b8) 38%, transparent);
+            border-radius: 3cqh;
+            background: color-mix(in srgb, var(--surface, #172033) 92%, transparent);
+            box-shadow: 0 3cqh 9cqh color-mix(in srgb, var(--bg, #0b0c0e) 52%, transparent);
+            will-change: transform, opacity;
+          }
+
+          .tt-label {
+            display: grid;
+            place-items: center;
+            height: 12cqh;
+            border-right: 0.12cqw solid color-mix(in srgb, var(--muted, #94a3b8) 30%, transparent);
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: 2.4cqh;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+          }
+
+          .tt-window {
+            position: relative;
+            height: 12cqh;
+            overflow: hidden;
+          }
+
+          .tt-reel {
+            width: 100%;
+            will-change: transform;
+          }
+
+          .tt-item {
+            display: flex;
+            align-items: center;
+            height: 12cqh;
+            padding: 0 4cqw;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: 4.2cqh;
+            font-weight: 650;
+            letter-spacing: -0.025em;
+            white-space: nowrap;
+            will-change: transform, color;
+          }
+
+          .tt-flash {
+            position: absolute;
+            inset: 0;
+            background: var(--tt-accent, #22c55e);
+            opacity: 0;
+          }
+
+          .tt-headline {
+            position: absolute;
+            top: 30cqh;
+            left: 7cqw;
+            width: 86cqw;
+            height: 30cqh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: var(--tt-accent, #22c55e);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 15cqh;
+            font-weight: 820;
+            line-height: 0.9;
+            letter-spacing: -0.065em;
+            text-align: center;
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="ticker-takeover-clip"
+          class="tt-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="tt-ticker">
+            <div class="tt-label">signal</div>
+            <div class="tt-window">
+              <div class="tt-reel"></div>
+            </div>
+            <div class="tt-flash" aria-hidden="true"></div>
+          </div>
+          <div class="tt-headline"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var ticker = root.querySelector(".tt-ticker");
+            var reel = root.querySelector(".tt-reel");
+            var flash = root.querySelector(".tt-flash");
+            var headline = root.querySelector(".tt-headline");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var defaultOptions = ["faster", "smarter", "together", "everywhere"];
+            var finalWord = vars.final_word == null ? "together" : String(vars.final_word).trim();
+            if (!finalWord) finalWord = "together";
+
+            var rawOptions = vars.options == null ? defaultOptions.join(",") : String(vars.options);
+            var candidates = rawOptions
+              .split(",")
+              .map(function (word) {
+                return word.trim();
+              })
+              .filter(Boolean);
+            var options = [];
+            var finalKey = finalWord.toLowerCase();
+
+            function addOption(word) {
+              var normalized = word.toLowerCase();
+              var isFinal = normalized === finalKey;
+              var isDuplicate = options.some(function (option) {
+                return option.toLowerCase() === normalized;
+              });
+              if (!isFinal && !isDuplicate && options.length < 5) options.push(word);
+            }
+
+            candidates.forEach(addOption);
+            defaultOptions.forEach(function (word) {
+              if (options.length < 3) addOption(word);
+            });
+            options.push(finalWord);
+
+            options.forEach(function (word) {
+              var item = document.createElement("span");
+              item.className = "tt-item";
+              item.textContent = word;
+              reel.appendChild(item);
+            });
+
+            var finalItem = reel.lastElementChild;
+            var accentColors = {
+              green: "#22c55e",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            var accentName = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var accentColor = accentColors[accentName];
+
+            root.style.setProperty("--tt-accent", accentColor);
+            headline.textContent = finalWord;
+
+            var IN_BASE = 3.15;
+            var OUT_BASE = 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var envelopeScale = duration < IN_BASE + OUT_BASE ? duration / (IN_BASE + OUT_BASE) : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+
+            var TICKER_IN = 0.35 * envelopeScale;
+            var ROLL_START = 0.32 * envelopeScale;
+            var ACCEL_DURATION = 0.82 * envelopeScale;
+            var DECEL_DURATION = 0.93 * envelopeScale;
+            var LOCK_AT = ROLL_START + ACCEL_DURATION + DECEL_DURATION;
+            var PROMOTE_AT = LOCK_AT + 0.18 * envelopeScale;
+            var PROMOTE_DURATION = Math.max(0.001, IN - PROMOTE_AT);
+            var finalOffset = -(options.length - 1) * 12;
+            var accelOffset = finalOffset * 0.72;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              ticker,
+              { opacity: 0, scale: 0.97 },
+              { opacity: 1, scale: 1, duration: TICKER_IN, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              reel,
+              { y: "0cqh" },
+              { y: accelOffset + "cqh", duration: ACCEL_DURATION, ease: "power4.in" },
+              ROLL_START,
+            );
+            tl.to(
+              reel,
+              { y: finalOffset + "cqh", duration: DECEL_DURATION, ease: "power4.out" },
+              ROLL_START + ACCEL_DURATION,
+            );
+            tl.fromTo(
+              finalItem,
+              { scale: 1.14, color: accentColor },
+              { scale: 1, color: accentColor, duration: 0.3 * envelopeScale, ease: "expo.out" },
+              LOCK_AT,
+            );
+            tl.fromTo(
+              flash,
+              { opacity: 0.82 },
+              { opacity: 0, duration: 0.34 * envelopeScale, ease: "power2.out" },
+              LOCK_AT,
+            );
+            tl.fromTo(
+              headline,
+              { opacity: 0, scale: 0.22, y: "20cqh" },
+              {
+                opacity: 1,
+                scale: 1,
+                y: "0cqh",
+                duration: PROMOTE_DURATION,
+                ease: "power3.out",
+              },
+              PROMOTE_AT,
+            );
+            tl.to(
+              ticker,
+              { opacity: 0, scale: 0.96, duration: PROMOTE_DURATION * 0.68, ease: "power2.in" },
+              PROMOTE_AT,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                headline,
+                { y: "-0.7cqh", duration: HOLD / 2, ease: "sine.inOut", yoyo: true, repeat: 1 },
+                IN,
+              );
+            }
+
+            tl.to(
+              headline,
+              { opacity: 0, y: "-3cqh", duration: OUT, ease: "power2.in" },
+              OUT_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["ticker-takeover"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "wordmark-tiles",
+  "type": "hyperframes:component",
+  "title": "Wordmark Tiles",
+  "description": "A wordmark resolves from deterministic color noise into correctly cropped glyph tiles through a spatially modulated GSAP wave.",
+  "tags": ["typography", "wordmark", "tiles", "raster", "reveal"],
+  "jobs": ["reveal"],
+  "family": "typography",
+  "profile": "holdable",
+  "evidence": "power-reel production source /Users/miguel07code/dev/hyperframes-power-reel-sources/12-tile-field.html, tile grid with a traveling, spatially modulated wave",
+  "syncPoints": [{ "id": "wave-start", "phase": "in", "offset": 0.2 }],
+  "files": [
+    {
+      "path": "wordmark-tiles.html",
+      "target": "compositions/components/wordmark-tiles.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Wordmark",
+      "description": "Text resolved by the tile wave.",
+      "default": "LAUNCH",
+      "maxLength": 12
+    },
+    {
+      "id": "columns",
+      "type": "number",
+      "role": "layout",
+      "label": "Columns",
+      "description": "Number of columns in the wordmark tile grid.",
+      "default": 12,
+      "min": 8,
+      "max": 14,
+      "step": 1
+    },
+    {
+      "id": "waveStagger",
+      "type": "number",
+      "role": "motion",
+      "label": "Wave stagger",
+      "description": "Delay between tile reveals in spatial wave order.",
+      "default": 40,
+      "min": 15,
+      "max": 50,
+      "step": 1,
+      "unit": "ms"
+    }
+  ]
+}

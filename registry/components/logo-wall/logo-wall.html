@@ -1,0 +1,299 @@
+<!doctype html>
+<!--
+  logo-wall: HyperFrames video primitive (data / holdable / prove)
+
+  Concept: a trusted-by wall of placeholder lettermark logos assembles in DOM
+  order. Each cell fades and scales directly into its final grid slot with a
+  fixed per-cell delay. One mechanic, one job: prove trust through a collected
+  wall of customer marks.
+
+  Compiled-from evidence: consumer-sim fixture plus the grid-card-assemble
+  blueprint's Social_Proof logo-wall variant. The blueprint requires a dense
+  array to use short, slot-local entrances instead of a shared-center burst.
+
+  Use when: a scene needs a compact trusted-by beat without using real brand
+  assets or turning the wall into a feature-card showcase.
+
+  Variables (declared in data-composition-variables below):
+    - rows (number, default 3, range 2 to 4): visible logo rows.
+    - cols (number, default 5, range 3 to 6): visible logo columns.
+    - stagger (number, default 45, range 20 to 75 ms): fixed delay between
+      consecutive cell entrances.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 2.50s  ordered fade and scale assembly.
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); deliberately still
+               so the completed evidence wall remains readable.
+    OUT_BASE = 0.50s  clean group fade.
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT scale down together so
+    IN + OUT equals D and HOLD equals 0. The index-based stagger scales only in
+    that compressed envelope.
+
+  Sync point: none. The proof is distributed across per-cell arrivals, so no
+  single fixed cue represents the assembly honestly.
+
+  Sound cue: none. A distributed wall assembly has no truthful single-frame
+  sound event, so this primitive does not dispatch hf:sfx.
+
+  Mount contract: this file is a mountable sub-composition. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. Styles,
+  markup, GSAP, and registration therefore live inside <template>. #root fills
+  the host with inset:0 and container-type:size and has no data-width or
+  data-height. The hardcoded id "logo-wall" matches the host id and timeline
+  key after mount flattening. Variables come from
+  window.__hyperframes.getVariables(), which merges declarations with host
+  data-variable-values overrides.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "rows", "type": "number", "role": "layout", "label": "Rows", "description": "Number of logo rows in the wall.", "default": 3, "min": 2, "max": 4, "step": 1 },
+    { "id": "cols", "type": "number", "role": "layout", "label": "Columns", "description": "Number of logo columns in the wall.", "default": 5, "min": 3, "max": 6, "step": 1 },
+    { "id": "stagger", "type": "number", "role": "motion", "label": "Stagger", "description": "Delay between consecutive logo cell entrances.", "default": 45, "min": 20, "max": 75, "step": 1, "unit": "ms" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Logo Wall</title>
+    <!-- Metadata only. The loader reads declarations from <html>, then
+         discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="logo-wall" data-start="0" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host box and consumes only the shared theme tokens.
+             Every internal dimension is relative to this size container. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f5f6f8);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .lw-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, #0b0c10);
+          }
+
+          .lw-stage {
+            width: 86cqw;
+            height: 82cqh;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: var(--space-3, 3cqh);
+            padding: var(--space-3, 3cqh);
+          }
+
+          .lw-heading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2, 1.6cqh);
+            color: var(--muted, #8b8f9a);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(2.6cqw, 4.4cqh);
+            font-weight: 650;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            text-transform: uppercase;
+          }
+
+          .lw-heading::before,
+          .lw-heading::after {
+            content: "";
+            width: 8cqw;
+            height: 0.14cqw;
+            background: var(--border, #262931);
+          }
+
+          /* EDIT ZONE: grid geometry. rows and cols are the sole owners of
+             track count. Spacing and surfaces remain theme-token driven. */
+          .lw-grid {
+            min-width: 0;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: repeat(var(--lw-cols), minmax(0, 1fr));
+            grid-template-rows: repeat(var(--lw-rows), minmax(0, 1fr));
+            gap: var(--space-2, 1.6cqh);
+          }
+
+          .lw-cell {
+            min-width: 0;
+            min-height: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            border: 0.14cqw solid var(--border, #262931);
+            border-radius: var(--radius, 2cqw);
+            background: color-mix(in srgb, var(--surface, #16181d) 92%, var(--brand, #6366f1));
+            box-shadow: 0 1.2cqh 3cqh color-mix(in srgb, var(--bg, #0b0c10) 58%, transparent);
+          }
+
+          .lw-mark {
+            display: grid;
+            place-items: center;
+            width: min(5.5cqw, 9.5cqh);
+            aspect-ratio: 1;
+            border-radius: calc(var(--radius, 2cqw) * 0.72);
+            background: color-mix(in srgb, var(--brand, #6366f1) 72%, var(--accent, #ff5470));
+            color: var(--bg, #0b0c10);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(2.2cqw, 4cqh);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1;
+          }
+        </style>
+
+        <div
+          id="logo-wall-clip"
+          class="lw-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <section class="lw-stage" aria-label="Trusted by logo wall">
+            <div class="lw-heading">Trusted by teams</div>
+            <div class="lw-grid"></div>
+          </section>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var compositionId = "logo-wall";
+            var stage = root.querySelector(".lw-stage");
+            var grid = root.querySelector(".lw-grid");
+
+            // EDIT ZONE: the runtime variable table is read once. These
+            // clamped values own DOM count, grid tracks, and stagger timing.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var rawRows = Number(vars.rows);
+            var rows = Number.isFinite(rawRows) ? Math.round(rawRows) : 3;
+            rows = Math.max(2, Math.min(4, rows));
+
+            var rawCols = Number(vars.cols);
+            var cols = Number.isFinite(rawCols) ? Math.round(rawCols) : 5;
+            cols = Math.max(3, Math.min(6, cols));
+
+            var rawStagger = Number(vars.stagger);
+            var staggerMs = Number.isFinite(rawStagger) ? rawStagger : 45;
+            staggerMs = Math.max(20, Math.min(75, staggerMs));
+
+            var lettermarks = [
+              "AX",
+              "BL",
+              "CY",
+              "DQ",
+              "EV",
+              "FK",
+              "GN",
+              "HT",
+              "IP",
+              "JR",
+              "KS",
+              "LU",
+              "MW",
+              "NX",
+              "OZ",
+              "PA",
+              "QC",
+              "RF",
+              "SG",
+              "TJ",
+              "VK",
+              "WL",
+              "XM",
+              "YN",
+            ];
+            var cellCount = rows * cols;
+            var fragment = document.createDocumentFragment();
+
+            for (var index = 0; index < cellCount; index += 1) {
+              var cell = document.createElement("div");
+              var mark = document.createElement("span");
+              cell.className = "lw-cell";
+              cell.setAttribute("aria-hidden", "true");
+              mark.className = "lw-mark";
+              mark.textContent = lettermarks[index];
+              cell.appendChild(mark);
+              fragment.appendChild(cell);
+            }
+
+            grid.replaceChildren(fragment);
+            grid.style.setProperty("--lw-rows", String(rows));
+            grid.style.setProperty("--lw-cols", String(cols));
+
+            var cells = root.querySelectorAll(".lw-cell");
+
+            // RETIME RANGE: the 2.50s IN fits the largest public wall of 24
+            // cells at the maximum 75ms stagger plus the 0.55s cell settle.
+            // HOLD alone absorbs longer host durations.
+            var IN_BASE = 2.5;
+            var OUT_BASE = 0.5;
+            var ASSEMBLE_START_BASE = 0.15;
+            var CELL_DURATION_BASE = 0.55;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+            var ASSEMBLE_START = ASSEMBLE_START_BASE * scale;
+            var CELL_DURATION = CELL_DURATION_BASE * scale;
+            var STAGGER_SECONDS = (staggerMs / 1000) * scale;
+
+            var timeline = gsap.timeline({ paused: true });
+
+            // IN: deterministic DOM-order assembly. power2.out is the GSAP
+            // owner of the shared --ease-standard entrance token.
+            timeline.fromTo(
+              cells,
+              { opacity: 0, scale: 0.94 },
+              {
+                opacity: 1,
+                scale: 1,
+                duration: CELL_DURATION,
+                ease: "power2.out",
+                stagger: { each: STAGGER_SECONDS, from: "start" },
+              },
+              ASSEMBLE_START,
+            );
+
+            // HOLD: deliberately still. OUT: the whole proof wall leaves once
+            // with the production exit curve, never during the elastic hold.
+            timeline.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            timeline.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = timeline;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

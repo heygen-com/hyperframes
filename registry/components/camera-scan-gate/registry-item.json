@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "camera-scan-gate",
+  "type": "hyperframes:component",
+  "title": "Camera Scan Gate",
+  "description": "A camera and QR recognition moment with a viewfinder sweep, bracket lock, confirmation pulse, and verified next beat.",
+  "tags": ["prop", "ui-props", "camera", "qr", "scan", "recognition", "interaction", "demonstrate"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "interaction",
+  "evidence": "SIM fixture; MOBILE mobile-inventory",
+  "syncPoints": [
+    { "id": "scan-landed", "phase": "in", "offset": 0.5 },
+    { "id": "recognition-lock", "phase": "in", "offset": 0.68 }
+  ],
+  "files": [
+    {
+      "path": "camera-scan-gate.html",
+      "target": "compositions/components/camera-scan-gate.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "scanColor",
+      "type": "string",
+      "role": "style",
+      "label": "Scan color",
+      "description": "Any CSS color value used by the scan line and recognition glow.",
+      "default": "var(--brand)"
+    },
+    {
+      "id": "targetLabel",
+      "type": "string",
+      "role": "content",
+      "label": "Target label",
+      "description": "Confirmation label revealed at recognition lock. Blank hides the line.",
+      "default": "Verified"
+    },
+    {
+      "id": "sweepSpeed",
+      "type": "number",
+      "role": "timing",
+      "label": "Sweep speed",
+      "description": "Speed multiplier for the scan sweep phase only.",
+      "default": 1,
+      "min": 0.8,
+      "max": 1.6,
+      "step": 0.1,
+      "unit": "x"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<!--
+  overwhelm-surround: demo. Standalone 1920x1080 composition that MOUNTS the
+  primitive at registry/components/overwhelm-surround/overwhelm-surround.html
+  via data-composition-src instead of inlining it. The dark token-themed stage
+  hosts the effect in a 60%-of-frame card centered in the composition.
+  data-variable-values carries deliberately non-default overrides for count,
+  centerLabel, and intensity so preview tooling proves every variable flows
+  through the mount. This file passing lint, validate, and snapshot proves the
+  mount contract holds. Kept in sync with overwhelm-surround.html by hand and
+  not installed by `hyperframes add`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Overwhelm Surround - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 40%, #0d1526 0%, #05070d 70%);
+      }
+
+      /* The 60%-of-frame card gives the mounted primitive a definite CSS box.
+         The mounted internals size from cqw/cqh, and a shrink-to-fit host can
+         otherwise collapse under size containment. data-width/data-height
+         stay in sync below for tooling that reads per-instance dimensions. */
+      .mount-card {
+        --bg: #101827;
+        --fg: #f8fafc;
+        --surface: #1e293b;
+        --brand: #f97316;
+        --accent: #38bdf8;
+        --border: #475569;
+        --muted: #94a3b8;
+        width: 60%;
+        height: 60%;
+        left: 20%;
+        top: 20%;
+        border-radius: 32px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        box-shadow: 0 44px 110px rgba(0, 0, 0, 0.48);
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="overwhelm-surround-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+      data-fps="30"
+    >
+      <div
+        id="overwhelm-surround-mount"
+        class="mount-card clip"
+        data-composition-id="overwhelm-surround"
+        data-composition-src="./overwhelm-surround.html"
+        data-variable-values='{"count":22,"centerLabel":"Focus","intensity":1.7}'
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+        data-width="1152"
+        data-height="648"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // No motion of its own: this demo is a static host for the mounted
+      // primitive, which owns and registers its own timeline. Register an
+      // empty paused timeline under this file's own composition id so the
+      // runtime timeline-registry check is satisfied without inventing motion.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["overwhelm-surround-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

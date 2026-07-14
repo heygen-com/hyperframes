@@ -1,0 +1,276 @@
+<!doctype html>
+<!--
+  decline-chart: HyperFrames video primitive
+
+  One metric line draws downward while its numeric value counts down and the
+  ambient background dims and desaturates from the same progress value.
+
+  Envelope:
+    IN_BASE  = 0.55s  chart frame settles into view
+    HOLD     = elastic decline draw, countdown, and ambient darkening
+    OUT_BASE = 0.45s  bottomed-out endpoint locks in with no recovery
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together
+    and HOLD collapses to zero. Longer mounts stretch HOLD only.
+
+  Variables:
+    label       (string, default "Retention")
+    start_value (number, default 82)
+    end_value   (number, default 34)
+-->
+<html
+  lang="en"
+  data-composition-id="decline-chart"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "label", "type": "string", "role": "content", "label": "Metric label", "description": "Label shown above the declining value.", "default": "Retention" },
+    { "id": "start_value", "type": "number", "role": "content", "label": "Start value", "description": "Metric value at the start of the decline.", "default": 82, "min": 0, "max": 100, "step": 1 },
+    { "id": "end_value", "type": "number", "role": "content", "label": "End value", "description": "Metric value at the bottom of the decline.", "default": 34, "min": 0, "max": 100, "step": 1 }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Decline Chart</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="decline-chart" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .dc-clip,
+          .dc-ambient,
+          .dc-gloom {
+            position: absolute;
+            inset: 0;
+          }
+
+          .dc-clip {
+            overflow: hidden;
+          }
+
+          .dc-ambient {
+            background:
+              radial-gradient(circle at 24% 16%, rgba(47, 129, 150, 0.55), transparent 46%),
+              linear-gradient(145deg, #152f3c 0%, #101a25 48%, #0c1118 100%);
+            transform: scale(1.02);
+            transform-origin: center;
+            will-change: filter;
+          }
+
+          .dc-gloom {
+            background: #030507;
+            opacity: 0;
+          }
+
+          .dc-layout {
+            position: absolute;
+            inset: 9cqh 9cqw 8cqh;
+            display: grid;
+            /* minmax(0, 1fr): a bare 1fr row inflates to the svg's intrinsic
+               aspect height (min-height auto), overflowing the card. */
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: 5cqh;
+            opacity: 0;
+          }
+
+          .dc-header {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 5cqw;
+          }
+
+          .dc-label {
+            max-width: 58cqw;
+            overflow: hidden;
+            color: rgba(226, 232, 240, 0.72);
+            font-size: clamp(12px, 3.6cqh, 38px);
+            font-weight: 620;
+            letter-spacing: 0.05em;
+            line-height: 1.1;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .dc-value {
+            flex: 0 0 auto;
+            color: #f8fafc;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: clamp(30px, 12cqh, 118px);
+            font-variant-numeric: tabular-nums;
+            font-weight: 760;
+            letter-spacing: -0.07em;
+            line-height: 0.8;
+          }
+
+          .dc-chart {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+
+          .dc-grid {
+            stroke: rgba(148, 163, 184, 0.18);
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+          }
+
+          .dc-line {
+            fill: none;
+            stroke: #fb7185;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            /* No non-scaling-stroke here: with preserveAspectRatio=none Chromium
+               applies the dash pattern in screen space, so the user-space
+               dasharray from getTotalLength() splits the draw into two visible
+               segments. Scaled stroke keeps dashes in user space. */
+            stroke-width: 4;
+          }
+
+          .dc-endpoint {
+            fill: #fecdd3;
+            opacity: 0;
+            transform-box: fill-box;
+            transform-origin: center;
+          }
+        </style>
+
+        <div
+          id="decline-chart-clip"
+          class="dc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="dc-ambient"></div>
+          <div class="dc-gloom"></div>
+          <div class="dc-layout">
+            <div class="dc-header">
+              <div class="dc-label"></div>
+              <div class="dc-value"></div>
+            </div>
+            <svg
+              class="dc-chart"
+              viewBox="0 0 260 240"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <line class="dc-grid" x1="8" y1="55" x2="252" y2="55"></line>
+              <line class="dc-grid" x1="8" y1="120" x2="252" y2="120"></line>
+              <line class="dc-grid" x1="8" y1="185" x2="252" y2="185"></line>
+              <path
+                class="dc-line"
+                d="M 8 24 C 28 28, 44 43, 61 56 S 93 76, 112 92 S 144 111, 163 134 S 193 159, 213 186 S 239 211, 252 222"
+              ></path>
+              <circle class="dc-endpoint" cx="252" cy="222" r="6"></circle>
+            </svg>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var layout = root.querySelector(".dc-layout");
+            var ambient = root.querySelector(".dc-ambient");
+            var gloom = root.querySelector(".dc-gloom");
+            var label = root.querySelector(".dc-label");
+            var value = root.querySelector(".dc-value");
+            var line = root.querySelector(".dc-line");
+            var endpoint = root.querySelector(".dc-endpoint");
+            var lineLength = line.getTotalLength();
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            line.style.strokeDasharray = lineLength + " " + lineLength;
+
+            var startValue = Number.isFinite(vars.start_value) ? vars.start_value : 82;
+            var endValue = Number.isFinite(vars.end_value) ? vars.end_value : 34;
+            var labelText = vars.label == null ? "Retention" : String(vars.label);
+
+            label.textContent = labelText;
+
+            var IN_BASE = 0.55;
+            var OUT_BASE = 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var fixedTotal = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+            var progress = { value: 0 };
+
+            function renderProgress() {
+              var p = progress.value;
+              line.style.strokeDashoffset = String(lineLength * (1 - p));
+              ambient.style.filter =
+                "saturate(" + (1 - p * 0.72) + ") brightness(" + (1 - p * 0.52) + ")";
+              gloom.style.opacity = String(p * 0.46);
+              endpoint.style.opacity = String(Math.max(0, (p - 0.94) / 0.06));
+              value.textContent = String(Math.round(startValue + (endValue - startValue) * p));
+            }
+
+            renderProgress();
+
+            var tl = gsap.timeline({ paused: true });
+            tl.fromTo(
+              layout,
+              { opacity: 0, y: "2.5cqh" },
+              { opacity: 1, y: 0, duration: IN, ease: "power2.out" },
+              0,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                progress,
+                { value: 1, duration: HOLD, ease: "power2.out", onUpdate: renderProgress },
+                IN,
+              );
+            } else {
+              tl.call(
+                function () {
+                  progress.value = 1;
+                  renderProgress();
+                },
+                [],
+                IN,
+              );
+            }
+
+            tl.fromTo(
+              endpoint,
+              { scale: 0.72 },
+              { scale: 1, duration: OUT, ease: "power2.out" },
+              OUT_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["decline-chart"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

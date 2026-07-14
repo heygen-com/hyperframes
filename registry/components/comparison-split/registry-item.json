@@ -1,0 +1,62 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "comparison-split",
+  "type": "hyperframes:component",
+  "title": "Comparison Split",
+  "description": "Two full-bleed panels compare before and after states as a persistent divider wipes the vivid after layer over the muted before layer and rests at a configurable split.",
+  "tags": ["prop", "ui-props", "compare", "holdable", "before-after", "wipe"],
+  "jobs": ["compare"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "fixture + blueprint (re-filed from prove)",
+  "syncPoints": [{ "id": "wipe-land", "phase": "in", "offset": 1.3 }],
+  "files": [
+    {
+      "path": "comparison-split.html",
+      "target": "compositions/components/comparison-split.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "split",
+      "type": "number",
+      "role": "layout",
+      "label": "Split position",
+      "description": "Target resting position of the comparison divider.",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "orientation",
+      "type": "enum",
+      "role": "layout",
+      "label": "Orientation",
+      "description": "Axis and direction used by the comparison wipe.",
+      "default": "horizontal",
+      "options": [
+        { "value": "horizontal", "label": "Horizontal" },
+        { "value": "vertical", "label": "Vertical" }
+      ]
+    },
+    {
+      "id": "labelA",
+      "type": "string",
+      "role": "content",
+      "label": "Before label",
+      "description": "Caption shown on the base before panel.",
+      "default": "Before"
+    },
+    {
+      "id": "labelB",
+      "type": "string",
+      "role": "content",
+      "label": "After label",
+      "description": "Caption shown on the revealed after panel.",
+      "default": "After"
+    }
+  ]
+}

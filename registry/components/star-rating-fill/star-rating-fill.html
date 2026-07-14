@@ -1,0 +1,298 @@
+<!doctype html>
+<!--
+  star-rating-fill: HyperFrames video primitive (data / holdable / prove)
+
+  Concept: one token-colored star layer is clipped over a muted copy. A
+  single left-to-right clip-path sweep resolves at the target rating, so a
+  fractional value leaves the final filled star visibly partial. Small
+  per-star pops follow the same sweep and support the one fill mechanic.
+
+  Compiled-from evidence: GAP A2+B1 convergent miss, rules
+  stat-bars-and-fills. That evidence specifies a gray star layer, a colored
+  overlay, and a fractional clip wipe as the deterministic seek handle.
+
+  Use when: proving app-store credibility, customer satisfaction, review
+  quality, or any scored result that needs to read in one glance.
+
+  Variables:
+    rating    number  0 to 5  default 4.8  target rating in star units
+    starCount number          default 5    visible stars, clamped 1 to 10
+    showValue yes | no        default yes  show the synchronized count-up
+
+  Envelope:
+    IN   1.50s fixed sweep, count, and per-star pop, power2.out
+    HOLD elastic and deliberately still so the proof remains readable
+    OUT  0.40s fixed opacity release, power2.in
+    For durations shorter than 1.90s, IN and OUT scale together. HOLD is the
+    only elastic phase, and the timeline is never time-scaled.
+
+  Sync point: fill-settled at 1.30s into IN. It is fixed outside HOLD.
+
+  Sound cues: none. The result should not imply an audio event for its host.
+
+  Mount contract: this file is a template-wrapped sub-composition. The host
+  owns dimensions. #root fills that box with inset:0, uses container queries,
+  and has no data-width or data-height. The hardcoded composition id matches
+  the root and timeline key. Variables come from getVariables().
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "rating", "type": "number", "role": "content", "label": "Rating", "description": "Target rating in star units from 0 to 5.", "default": 4.8, "min": 0, "max": 5, "step": 0.1 },
+    { "id": "starCount", "type": "number", "role": "layout", "label": "Star count", "description": "Number of stars shown in the row.", "default": 5, "min": 1, "max": 10, "step": 1 },
+    { "id": "showValue", "type": "enum", "role": "content", "label": "Show value", "description": "Show or hide the synchronized numeric rating.", "default": "yes", "options": [{ "value": "yes", "label": "Yes" }, { "value": "no", "label": "No" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Star Rating Fill</title>
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="star-rating-fill"
+        data-start="0"
+        data-duration="4"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* INVARIANT: #root owns only the mount boundary. The host owns the
+             box, while all internal geometry stays container-relative. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, CanvasText);
+            font-family: var(--font-display, system-ui);
+          }
+
+          .srf-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .srf-stage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2, 3cqw);
+          }
+
+          /* EDIT ZONE: the row owns only its responsive presentation size.
+             --srf-count is supplied by the clamped public starCount value. */
+          .srf-stars {
+            --srf-count: 5;
+            position: relative;
+            width: min(68cqw, calc(72cqh * var(--srf-count)));
+          }
+
+          .srf-layer {
+            width: 100%;
+            display: flex;
+            align-items: center;
+          }
+
+          .srf-base {
+            color: color-mix(in srgb, var(--muted, currentColor) 68%, var(--surface, transparent));
+          }
+
+          .srf-fill {
+            position: absolute;
+            inset: 0;
+            color: var(--brand, currentColor);
+            clip-path: inset(0 100% 0 0);
+          }
+
+          .srf-star-cell {
+            display: block;
+            flex: 1 1 0;
+            min-width: 0;
+            aspect-ratio: 1;
+            transform-origin: center;
+          }
+
+          .srf-star-cell svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            fill: currentColor;
+          }
+
+          .srf-value {
+            min-width: 2.2em;
+            color: var(--fg, currentColor);
+            font-size: min(9cqw, 16cqh);
+            font-weight: 720;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            text-align: right;
+          }
+        </style>
+
+        <div
+          id="star-rating-fill-clip"
+          class="srf-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="srf-stage">
+            <div class="srf-stars" role="img" aria-label="0 out of 5 stars">
+              <div class="srf-layer srf-base" aria-hidden="true"></div>
+              <div class="srf-layer srf-fill" aria-hidden="true"></div>
+            </div>
+            <div class="srf-value" aria-hidden="true">0.0</div>
+          </div>
+        </div>
+
+        <template id="star-rating-fill-star-template">
+          <span class="srf-star-cell">
+            <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+              <path
+                d="M50 0 61.8 36.2 100 36.2 69.1 58.6 80.9 95 50 72.4 19.1 95 30.9 58.6 0 36.2 38.2 36.2Z"
+              />
+            </svg>
+          </span>
+        </template>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".srf-stage");
+            var stars = root.querySelector(".srf-stars");
+            var baseLayer = root.querySelector(".srf-base");
+            var fillLayer = root.querySelector(".srf-fill");
+            var valueElement = root.querySelector(".srf-value");
+            var starTemplate = root.querySelector("#star-rating-fill-star-template");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            /* INVARIANT: zero is a valid rating. Missing values and zero are
+               handled separately, then every public number is clamped once. */
+            var ratingValue = vars.rating == null || vars.rating === "" ? NaN : Number(vars.rating);
+            var requestedRating = Number.isFinite(ratingValue)
+              ? Math.max(0, Math.min(5, ratingValue))
+              : 4.8;
+            var starCountValue =
+              vars.starCount == null || vars.starCount === "" ? NaN : Number(vars.starCount);
+            var starCount = Number.isFinite(starCountValue) ? Math.round(starCountValue) : 5;
+            starCount = Math.max(1, Math.min(10, starCount));
+            var rating = Math.min(requestedRating, starCount);
+            var showValue = vars.showValue === "no" ? "no" : "yes";
+            var fillPercent = (rating / starCount) * 100;
+
+            stars.style.setProperty("--srf-count", String(starCount));
+            stars.setAttribute("aria-label", rating.toFixed(1) + " out of " + starCount + " stars");
+            valueElement.hidden = showValue === "no";
+
+            /* The template is the single owner of star geometry. Both paint
+               layers clone it so their silhouettes cannot drift. */
+            var baseFragment = document.createDocumentFragment();
+            var fillFragment = document.createDocumentFragment();
+            for (var index = 0; index < starCount; index += 1) {
+              baseFragment.appendChild(starTemplate.content.firstElementChild.cloneNode(true));
+              fillFragment.appendChild(starTemplate.content.firstElementChild.cloneNode(true));
+            }
+            baseLayer.replaceChildren(baseFragment);
+            fillLayer.replaceChildren(fillFragment);
+
+            var baseCells = baseLayer.querySelectorAll(".srf-star-cell");
+            var fillCells = fillLayer.querySelectorAll(".srf-star-cell");
+            var valueState = { current: 0 };
+
+            /* RETIME RANGE: these values own the full lifecycle. The sweep
+               uses --ease-standard's GSAP owner, power2.out. */
+            var IN_BASE = 1.5;
+            var OUT_BASE = 0.4;
+            var FILL_START_BASE = 0.2;
+            var FILL_DURATION_BASE = 1.1;
+            var POP_DURATION_BASE = 0.2;
+            var durationValue = Number(root.dataset.duration);
+            var duration = Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 4;
+            var scale = duration < IN_BASE + OUT_BASE ? duration / (IN_BASE + OUT_BASE) : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+            var FILL_START = FILL_START_BASE * scale;
+            var FILL_DURATION = FILL_DURATION_BASE * scale;
+            var POP_DURATION = POP_DURATION_BASE * scale;
+
+            var timeline = gsap.timeline({ paused: true });
+
+            timeline.fromTo(
+              fillLayer,
+              { clipPath: "inset(0 100% 0 0)" },
+              {
+                clipPath: "inset(0 " + (100 - fillPercent) + "% 0 0)",
+                duration: FILL_DURATION,
+                ease: "power2.out",
+              },
+              FILL_START,
+            );
+
+            if (showValue === "yes") {
+              timeline.to(
+                valueState,
+                {
+                  current: rating,
+                  duration: FILL_DURATION,
+                  ease: "power2.out",
+                  onUpdate: function () {
+                    valueElement.textContent = valueState.current.toFixed(1);
+                  },
+                },
+                FILL_START,
+              );
+            }
+
+            /* Per-star pops are subordinate to the sweep and occur in the
+               same left-to-right order. They never change the fill endpoint. */
+            var popCount = Math.ceil(rating);
+            for (var popIndex = 0; popIndex < popCount; popIndex += 1) {
+              var popAt = FILL_START + FILL_DURATION * (popIndex / Math.max(1, rating)) * 0.82;
+              var popTargets = [baseCells[popIndex], fillCells[popIndex]];
+              timeline.to(
+                popTargets,
+                { scale: 1.06, duration: POP_DURATION * 0.45, ease: "power2.out" },
+                popAt,
+              );
+              timeline.to(
+                popTargets,
+                { scale: 1, duration: POP_DURATION * 0.55, ease: "power2.out" },
+                popAt + POP_DURATION * 0.45,
+              );
+            }
+
+            timeline.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            timeline.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["star-rating-fill"] = timeline;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

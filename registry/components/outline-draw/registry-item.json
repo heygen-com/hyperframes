@@ -1,0 +1,58 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "outline-draw",
+  "type": "hyperframes:component",
+  "title": "Outline Draw",
+  "description": "A rounded outline that proves a callout by drawing clockwise as a hollow conic-gradient border with a clean closure.",
+  "tags": ["motion-primitive", "effects", "outline", "border", "mask", "proof"],
+  "jobs": ["prove"],
+  "family": "effects",
+  "profile": "burst",
+  "evidence": "OutlineDraw entry, Border that draws with a composite donut, in /Users/miguel07code/dev/hyperframes-research-css-masks.md",
+  "syncPoints": [{ "id": "draw-complete", "phase": "in", "offset": 0.8 }],
+  "files": [
+    {
+      "path": "outline-draw.html",
+      "target": "compositions/components/outline-draw.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "progress",
+      "type": "number",
+      "role": "timing",
+      "label": "Draw progress",
+      "description": "Final percentage of the outline that is drawn.",
+      "default": 100,
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "thickness",
+      "type": "number",
+      "role": "layout",
+      "label": "Stroke thickness",
+      "description": "Outline stroke in tenths of the host width.",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "unit": "0.1cqw"
+    },
+    {
+      "id": "radius",
+      "type": "number",
+      "role": "layout",
+      "label": "Corner radius",
+      "description": "Corner radius in tenths of the host smaller dimension.",
+      "default": 24,
+      "min": 0,
+      "max": 80,
+      "step": 1,
+      "unit": "0.1cqmin"
+    }
+  ]
+}

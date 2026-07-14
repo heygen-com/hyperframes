@@ -1,0 +1,360 @@
+<!doctype html>
+<!--
+  wordmark-tiles: HyperFrames video primitive (typography / holdable / reveal)
+
+  Concept: a wordmark begins as a field of unresolved color tiles. A spatially
+  modulated wave crosses the grid, and each tile swaps its noise face for the
+  correct clipped fragment of the final wordmark. One mechanic, one job:
+  reveal a legible mark through a raster tile wave.
+
+  Compiled-from evidence: power-reel production source 12-tile-field.html
+  (2026-07). Its tile field combines a traveling brush with sinusoidal spatial
+  modulation so neighboring rows resolve in waves instead of a strict scan.
+
+  Use when: a product name, campaign word, or short logo type needs a premium
+  reveal that can read as technical, broadcast, or digital signage.
+
+  Variables (declared in data-composition-variables below):
+    - text (string, default "LAUNCH"): wordmark copy, limited to 12 characters.
+    - columns (number, default 12, range 8 to 14): tile columns. Rows derive
+      proportionally from this one density owner.
+    - waveStagger (number, default 40, range 15 to 50 ms): delay between tiles
+      after they are sorted into the spatial wave order.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 4.80s  stage entrance and complete tile wave at max settings
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); deliberately still
+               so the resolved wordmark remains readable
+    OUT_BASE = 0.50s  clean group fade with power2.in
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together. The per-tile
+    stagger scales with that compressed envelope and is capped inside IN.
+
+  Sync point (fixed offset into IN, never inside elastic HOLD): wave-start at
+  0.20s into an unscaled IN. The offset scales only when the full envelope is
+  compressed.
+
+  Sound cue: none. The distributed wave has no single impact frame, so the
+  primitive does not dispatch hf:sfx.
+
+  Mount contract: this file is a MOUNTABLE SUB-COMPOSITION. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. Styles,
+  markup, GSAP, and timeline registration therefore live inside <template>.
+  #root has position:absolute; inset:0; container-type:size and no data-width or
+  data-height, so the host owns the box. The composition id is hardcoded as
+  "wordmark-tiles" because mount flattening strips it from the live root.
+  Variables come from window.__hyperframes.getVariables(), which supplies the
+  declared defaults merged with host data-variable-values overrides.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Wordmark", "description": "Text resolved by the tile wave.", "default": "LAUNCH", "maxLength": 12 },
+    { "id": "columns", "type": "number", "role": "layout", "label": "Columns", "description": "Number of columns in the wordmark tile grid.", "default": 12, "min": 8, "max": 14, "step": 1 },
+    { "id": "waveStagger", "type": "number", "role": "motion", "label": "Wave stagger", "description": "Delay between tile reveals in spatial wave order.", "default": 40, "min": 15, "max": 50, "step": 1, "unit": "ms" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Wordmark Tiles</title>
+    <!-- Metadata only. The mount loader reads variable declarations from
+         <html>, then discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="wordmark-tiles"
+        data-start="0"
+        data-duration="6.5"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host box. Internal layout uses only cqw/cqh, and
+             every painted color is owned by the host theme tokens. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg);
+            font-family: var(--font-body);
+          }
+
+          .wt-clip {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg);
+          }
+
+          .wt-stage {
+            width: 86cqw;
+            height: 48cqh;
+            position: relative;
+            opacity: 0;
+          }
+
+          /* EDIT ZONE: stage proportions above and tile line weight below are
+             the visual density controls. The public columns knob owns the grid
+             count, and no second density decision exists in CSS. */
+          .wt-grid {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(var(--wt-columns), minmax(0, 1fr));
+            grid-template-rows: repeat(var(--wt-rows), minmax(0, 1fr));
+            overflow: hidden;
+            border: min(0.12cqw, 0.22cqh) solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+          }
+
+          .wt-tile {
+            position: relative;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            box-shadow: inset 0 0 0 min(0.08cqw, 0.14cqh) var(--border);
+            background: var(--surface);
+          }
+
+          .wt-noise,
+          .wt-resolved {
+            position: absolute;
+            inset: 0;
+            display: block;
+            transform-origin: center;
+          }
+
+          .wt-noise-a {
+            background: color-mix(in srgb, var(--surface) 64%, var(--muted));
+          }
+
+          .wt-noise-b {
+            background: color-mix(in srgb, var(--surface) 58%, var(--brand));
+          }
+
+          .wt-noise-c {
+            background: color-mix(in srgb, var(--surface) 56%, var(--accent));
+          }
+
+          .wt-resolved {
+            overflow: hidden;
+            background: color-mix(in srgb, var(--surface) 92%, var(--brand));
+          }
+
+          /* Every tile contains one crop of the same stable wordmark surface.
+             JS computes only the crop offsets from the canonical grid shape. */
+          .wt-fragment {
+            position: absolute;
+            left: var(--wt-fragment-x);
+            top: var(--wt-fragment-y);
+            width: 86cqw;
+            height: 48cqh;
+            display: grid;
+            place-items: center;
+            color: var(--fg);
+            font-family: var(--font-display);
+            font-size: var(--wt-font-size);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.035em;
+            text-align: center;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="wordmark-tiles-clip"
+          class="wt-clip clip"
+          data-start="0"
+          data-duration="6.5"
+          data-track-index="0"
+        >
+          <div class="wt-stage">
+            <div class="wt-grid" role="img" aria-label="LAUNCH"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var compositionId = "wordmark-tiles";
+            var stage = root.querySelector(".wt-stage");
+            var grid = root.querySelector(".wt-grid");
+
+            // EDIT ZONE: declarations above and clamped reads below are the
+            // single source of truth for the three public variables.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "LAUNCH" : String(vars.text).trim().slice(0, 12);
+            if (text.length === 0) text = "LAUNCH";
+
+            var rawColumns = Number(vars.columns);
+            var columns = Number.isFinite(rawColumns) ? Math.round(rawColumns) : 12;
+            columns = Math.max(8, Math.min(14, columns));
+
+            var rawWaveStagger = Number(vars.waveStagger);
+            var waveStaggerMs = Number.isFinite(rawWaveStagger) ? rawWaveStagger : 40;
+            waveStaggerMs = Math.max(15, Math.min(50, waveStaggerMs));
+
+            // INVARIANT: rows derive only from columns. This keeps one density
+            // owner and gives the 86:48 stage near-square tiles at every value.
+            var rows = Math.max(4, Math.round((columns * 5) / 12));
+            var tileCount = columns * rows;
+            var fontSize = Math.max(7, Math.min(19, 86 / Math.max(4, text.length * 0.62)));
+
+            grid.style.setProperty("--wt-columns", String(columns));
+            grid.style.setProperty("--wt-rows", String(rows));
+            grid.style.setProperty("--wt-font-size", String(fontSize) + "cqw");
+            grid.setAttribute("aria-label", text);
+
+            // Fixed-seed LCG. Noise faces vary, while every rebuild with the
+            // same variables produces the same tile field and wave order.
+            var seed = 0x57a7c1e;
+            function seededUnit() {
+              seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+              return seed / 4294967296;
+            }
+
+            var fragment = document.createDocumentFragment();
+            var tiles = [];
+            for (var index = 0; index < tileCount; index += 1) {
+              var row = Math.floor(index / columns);
+              var column = index % columns;
+              var tile = document.createElement("span");
+              var noise = document.createElement("span");
+              var resolved = document.createElement("span");
+              var wordmark = document.createElement("span");
+              var noiseVariant = 1 + Math.floor(seededUnit() * 3);
+
+              tile.className = "wt-tile";
+              tile.setAttribute("aria-hidden", "true");
+              tile.dataset.waveRank = String(
+                column + row * 0.68 + Math.sin(row * 1.7 + column * 0.42) * 2.15,
+              );
+
+              noise.className = "wt-noise wt-noise-" + ["a", "b", "c"][noiseVariant - 1];
+              noise.dataset.startOpacity = String(0.72 + seededUnit() * 0.28);
+
+              resolved.className = "wt-resolved";
+              wordmark.className = "wt-fragment";
+              wordmark.textContent = text;
+              wordmark.style.setProperty(
+                "--wt-fragment-x",
+                String((-86 * column) / columns) + "cqw",
+              );
+              wordmark.style.setProperty("--wt-fragment-y", String((-48 * row) / rows) + "cqh");
+
+              resolved.appendChild(wordmark);
+              tile.appendChild(resolved);
+              tile.appendChild(noise);
+              fragment.appendChild(tile);
+              tiles.push(tile);
+            }
+            grid.replaceChildren(fragment);
+
+            // The source mechanic combines travel with spatial sine waves.
+            // Sorting by the stored rank creates the same rolling behavior,
+            // including row reversals and pockets that lead adjacent columns.
+            var waveTiles = tiles.slice().sort(function (a, b) {
+              return Number(a.dataset.waveRank) - Number(b.dataset.waveRank);
+            });
+            var resolvedByWave = waveTiles.map(function (tile) {
+              return tile.querySelector(".wt-resolved");
+            });
+            var noiseByWave = waveTiles.map(function (tile) {
+              return tile.querySelector(".wt-noise");
+            });
+
+            // RETIME RANGE: these five base values own global pacing. HOLD is
+            // the only elastic phase, and the reveal never exceeds IN.
+            var IN_BASE = 4.8;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.38;
+            var WAVE_START_BASE = 0.2;
+            var TILE_DURATION_BASE = 0.5;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "6.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+            var STAGE_IN = STAGE_IN_BASE * scale;
+            var WAVE_START = WAVE_START_BASE * scale;
+            var TILE_DURATION = TILE_DURATION_BASE * scale;
+            var maxStep = Math.max(
+              0,
+              (IN - WAVE_START - TILE_DURATION) / Math.max(1, tileCount - 1),
+            );
+            var STAGGER_SECONDS = Math.min((waveStaggerMs / 1000) * scale, maxStep);
+
+            gsap.set(stage, { opacity: 0 });
+            gsap.set(resolvedByWave, { opacity: 0, scale: 0.82 });
+            gsap.set(noiseByWave, {
+              opacity: function (_index, element) {
+                return Number(element.dataset.startOpacity);
+              },
+              scale: 1,
+            });
+
+            var timeline = gsap.timeline({ paused: true });
+
+            timeline.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+
+            // IN: each tile resolves with --ease-standard's GSAP owner,
+            // power2.out. The spatial rank supplies wave order to the stagger.
+            timeline.to(
+              resolvedByWave,
+              {
+                opacity: 1,
+                scale: 1,
+                duration: TILE_DURATION,
+                ease: "power2.out",
+                stagger: { each: STAGGER_SECONDS, from: "start" },
+              },
+              WAVE_START,
+            );
+            timeline.to(
+              noiseByWave,
+              {
+                opacity: 0,
+                scale: 1.18,
+                duration: TILE_DURATION,
+                ease: "power2.out",
+                stagger: { each: STAGGER_SECONDS, from: "start" },
+              },
+              WAVE_START,
+            );
+
+            // HOLD is deliberately still. OUT uses the catalog exit ease.
+            timeline.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            timeline.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = timeline;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

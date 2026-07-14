@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "beat-timeline",
+  "type": "hyperframes:component",
+  "title": "Beat Timeline",
+  "description": "A paused master-timeline orchestration spine that pins titled beat rows to evenly spaced named labels. Each row enters on its label, holds with the sequence, then exits with the group.",
+  "tags": ["orchestration", "transitions", "sequencing", "bridge", "timeline"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "holdable",
+  "evidence": "launches-motion-vocabulary.md: Paused, seeked timeline orchestration census, 15/18 projects and 134/159 files",
+  "files": [
+    {
+      "path": "beat-timeline.html",
+      "target": "compositions/components/beat-timeline.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "beatCount",
+      "type": "number",
+      "role": "content",
+      "label": "Beat count",
+      "description": "Number of beat rows in the sequence.",
+      "default": 4,
+      "min": 2,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "id": "interval",
+      "type": "number",
+      "role": "layout",
+      "label": "Interval",
+      "description": "Base time between consecutive beat markers.",
+      "default": 0.6,
+      "min": 0.2,
+      "max": 2,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Labels",
+      "description": "Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N.",
+      "default": "One,Two,Three,Four"
+    }
+  ]
+}

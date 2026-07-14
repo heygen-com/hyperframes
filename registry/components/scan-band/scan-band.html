@@ -1,0 +1,216 @@
+<!doctype html>
+<!--
+  scan-band: HyperFrames video primitive
+
+  A single diagonal distortion band crosses a clean wordmark. Inside the
+  band, three clipped clones create red and cyan separation plus a small
+  horizontal displacement. Everywhere outside the band remains clean.
+
+  Variables:
+    - wordmark (string, default "HYPERFRAMES"): displayed text.
+    - band_angle (number, default 12): diagonal band angle in degrees.
+
+  Envelope:
+    IN_BASE  = 0.45s, the clean wordmark fades into place.
+    HOLD     = elastic, the band sweeps once, then leaves a clean wordmark.
+    OUT_BASE = 0.45s, the clean wordmark fades away.
+    If the duration is shorter than IN_BASE + OUT_BASE, IN and OUT compress
+    together and HOLD becomes zero. Only HOLD grows for longer mounts.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, and registers one paused
+  timeline under the hardcoded scan-band id.
+-->
+<html
+  lang="en"
+  data-composition-id="scan-band"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "wordmark", "type": "string", "role": "content", "label": "Wordmark", "description": "Text displayed by the scan effect.", "default": "HYPERFRAMES" },
+    { "id": "band_angle", "type": "number", "role": "layout", "label": "Band angle", "description": "Diagonal angle of the distortion band in degrees.", "default": 12, "min": -30, "max": 30, "step": 1, "unit": "deg" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Scan Band</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="scan-band" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f7f8fa);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sb-clip,
+          .sb-stage,
+          .sb-band,
+          .sb-clone {
+            position: absolute;
+            inset: 0;
+          }
+
+          .sb-clip,
+          .sb-stage,
+          .sb-clone {
+            display: grid;
+            place-items: center;
+          }
+
+          .sb-stage {
+            opacity: 0;
+          }
+
+          .sb-wordmark,
+          .sb-clone {
+            font-size: clamp(28px, 13cqw, 150px);
+            font-weight: 850;
+            line-height: 0.86;
+            letter-spacing: -0.065em;
+            white-space: nowrap;
+          }
+
+          .sb-wordmark {
+            color: var(--fg, #f7f8fa);
+            text-shadow: 0 1.2cqh 4cqh color-mix(in srgb, #000 45%, transparent);
+          }
+
+          .sb-band {
+            --sb-band-position: -60%;
+            --sb-half: 6%;
+            --sb-lean: 10.6%;
+            overflow: hidden;
+            clip-path: polygon(
+              calc(var(--sb-band-position) - var(--sb-half) - var(--sb-lean)) 0%,
+              calc(var(--sb-band-position) + var(--sb-half) - var(--sb-lean)) 0%,
+              calc(var(--sb-band-position) + var(--sb-half) + var(--sb-lean)) 100%,
+              calc(var(--sb-band-position) - var(--sb-half) + var(--sb-lean)) 100%
+            );
+            will-change: clip-path;
+          }
+
+          .sb-clone {
+            text-shadow: none;
+          }
+
+          .sb-clone-red {
+            color: #ff3158;
+            opacity: 0.9;
+            transform: translateX(-0.8cqw);
+          }
+
+          .sb-clone-cyan {
+            color: #36efff;
+            opacity: 0.9;
+            transform: translateX(1.7cqw);
+          }
+
+          .sb-clone-core {
+            color: var(--fg, #f7f8fa);
+            transform: translateX(0.65cqw);
+          }
+        </style>
+
+        <div
+          id="scan-band-clip"
+          class="sb-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="sb-stage" role="img">
+            <span class="sb-wordmark"></span>
+            <div class="sb-band" aria-hidden="true">
+              <span class="sb-clone sb-clone-red"></span>
+              <span class="sb-clone sb-clone-cyan"></span>
+              <span class="sb-clone sb-clone-core"></span>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".sb-stage");
+            var wordmark = root.querySelector(".sb-wordmark");
+            var band = root.querySelector(".sb-band");
+            var clones = root.querySelectorAll(".sb-clone");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.wordmark == null ? "HYPERFRAMES" : String(vars.wordmark);
+            var angleValue = vars.band_angle;
+            var bandAngle = Number.isFinite(angleValue)
+              ? Math.max(-30, Math.min(30, angleValue))
+              : 12;
+
+            wordmark.textContent = text;
+            stage.setAttribute("aria-label", text);
+            clones.forEach(function (clone) {
+              clone.textContent = text;
+            });
+
+            var lean = Math.tan((bandAngle * Math.PI) / 180) * 50;
+            band.style.setProperty("--sb-lean", lean.toFixed(3) + "%");
+
+            var IN_BASE = 0.45;
+            var OUT_BASE = 0.45;
+            var SWEEP_BASE = 1.65;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var fixedTotal = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+            var SWEEP = Math.min(SWEEP_BASE, HOLD);
+
+            gsap.set(stage, { opacity: 0 });
+            gsap.set(band, { "--sb-band-position": "-60%" });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.to(stage, { opacity: 1, duration: IN, ease: "power2.out" }, 0);
+
+            if (SWEEP > 0) {
+              tl.fromTo(
+                band,
+                { "--sb-band-position": "-60%" },
+                {
+                  "--sb-band-position": "160%",
+                  duration: SWEEP,
+                  ease: "power2.out",
+                },
+                IN,
+              );
+            }
+
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["scan-band"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

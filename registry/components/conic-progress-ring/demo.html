@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  conic-progress-ring demo. This standalone composition mounts the primitive
+  through data-composition-src and supplies non-default values so the mount
+  path and every exposed variable are exercised together.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Conic Progress Ring Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        --bg: #071018;
+        --fg: #f4f7fb;
+        --muted: #91a0b3;
+        --surface: #1b2938;
+        --border: rgba(244, 247, 251, 0.14);
+        --brand: #35d6a0;
+        --accent: #74b9ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, monospace;
+        --radius: 4cqh;
+        --space-1: 1cqh;
+        --space-2: 2cqh;
+        --space-3: 3cqh;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .mount-card {
+        position: absolute;
+        left: 29%;
+        top: 19%;
+        width: 42%;
+        height: 62%;
+        overflow: hidden;
+        border: 0.15cqh solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="conic-progress-ring-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="conic-progress-ring-mount"
+        class="mount-card clip"
+        data-composition-id="conic-progress-ring"
+        data-composition-src="./conic-progress-ring.html"
+        data-variable-values='{"progress":92,"thickness":16,"label":"92"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="806"
+        data-height="670"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["conic-progress-ring-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

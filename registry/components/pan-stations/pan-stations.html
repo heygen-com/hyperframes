@@ -1,0 +1,364 @@
+<!doctype html>
+<!--
+  pan-stations -- HyperFrames video primitive (camera / holdable / exhibit)
+
+  Concept: the camera pans laterally across a wide row of labeled feature
+  stations, settling on each card before moving to the next. The exhibit
+  reading is primary here. The agitate reading is cross-shelved because the
+  same camera move can scan broken tools instead of polished features.
+
+  Compiled-from evidence: candidates card "pan-stations" plus the ship doc:
+  "one mechanic, two readings: panning across broken tools agitates, panning
+  across features exhibits. Re-filed by the adversary pass precisely because
+  it serves both shelves; the pause cadence is the frozen law." Evidence tags:
+  SIM fixture, CORPUS blueprint (re-filed per adversary; cross-shelved).
+
+  Use when: a sequence of tools, steps, screens, or features should read as
+  one continuous environment that the camera inspects in order.
+
+  Variables (declared in data-composition-variables below):
+    - stationCount (number, default 4, range 3-6): number of cards in the row.
+    - labels (CSV string, default "Capture,Edit,Render,Share"): visible station
+      labels, padded with "Station N" when entries are missing.
+    - dwell (seconds, default 0.6, range 0.2-2): steady hold at each station.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 0.45s  the first station settles into view
+    HOLD     = max(0, D - (IN + OUT)); complete dwell and pan segments are
+               scheduled while they fit, then the last reached station holds
+    OUT_BASE = 0.40s  the current station fades out
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so HOLD is zero.
+
+  Sync points: none. Station arrivals live in elastic HOLD and are deliberately
+  not declared as sync points. Dwell gaps contain no eased tween.
+
+  Sound cue: none. A host can layer its own station arrival foley if needed.
+
+  Mount contract: this is a mountable sub-composition. The runtime clones only
+  <template> contents, so every real style, node, and script lives inside the
+  template. #root has no data-width or data-height and fills the host box. It
+  is styled by ID because composited CSS scoping can stop a root class selector
+  from matching. Variables come only from getVariables() after mount, because
+  document.documentElement belongs to the host document at that point.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "stationCount", "type": "number", "role": "layout", "label": "Station count", "description": "Number of feature stations in the row.", "default": 4, "min": 3, "max": 6, "step": 1 },
+    { "id": "labels", "type": "string", "role": "content", "label": "Station labels", "description": "Comma-separated labels shown on the station cards.", "default": "Capture,Edit,Render,Share" },
+    { "id": "dwell", "type": "number", "role": "timing", "label": "Dwell", "description": "Seconds the camera holds at each station before panning.", "default": 0.6, "min": 0.2, "max": 2, "step": 0.1, "unit": "s" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pan Stations</title>
+    <!-- Metadata only. Everything outside <template> is discarded on mount. -->
+  </head>
+  <body>
+    <template>
+      <div
+        id="root"
+        data-composition-id="pan-stations"
+        data-start="0"
+        data-duration="4"
+        data-fps="30"
+      >
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+            --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+            --ease-drift: cubic-bezier(0.445, 0.05, 0.55, 0.95);
+            --ps-station-width: 78cqw;
+            --ps-station-gap: var(--space-4, 6cqw);
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b1120);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .ps-clip {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            opacity: 0;
+          }
+
+          .ps-rail {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 0.18cqh;
+            background: var(--border, #334155);
+            opacity: 0.7;
+          }
+
+          .ps-strip {
+            --ps-pan-index: 0;
+            position: absolute;
+            top: 18cqh;
+            left: 0;
+            display: flex;
+            align-items: stretch;
+            gap: var(--ps-station-gap);
+            width: max-content;
+            padding: 0 11cqw;
+            transform: translateX(
+              calc(var(--ps-pan-index) * -1 * (var(--ps-station-width) + var(--ps-station-gap)))
+            );
+            will-change: transform;
+          }
+
+          .ps-station {
+            position: relative;
+            flex: 0 0 var(--ps-station-width);
+            height: 64cqh;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: var(--space-3, 3cqh);
+            padding: var(--space-5, 5cqw);
+            overflow: hidden;
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: 3.2cqw;
+            background: var(--surface, #1e293b);
+            box-shadow: 0 2.2cqh 6cqw color-mix(in srgb, var(--bg, #0b1120) 72%, transparent);
+          }
+
+          .ps-station::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(
+              circle at 82% 18%,
+              color-mix(in srgb, var(--brand, #22c55e) 24%, transparent),
+              transparent 42%
+            );
+          }
+
+          .ps-kicker,
+          .ps-label,
+          .ps-screen {
+            position: relative;
+            z-index: 1;
+          }
+
+          .ps-kicker {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--muted, #94a3b8);
+            font-size: 1.8cqw;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+          }
+
+          .ps-index {
+            color: var(--accent, #38bdf8);
+            font-variant-numeric: tabular-nums;
+          }
+
+          .ps-screen {
+            display: grid;
+            grid-template-columns: 0.56fr 1fr;
+            gap: var(--space-3, 3cqw);
+            min-height: 0;
+          }
+
+          .ps-tool,
+          .ps-stack {
+            border: 0.13cqw solid var(--border, #334155);
+            border-radius: 2cqw;
+            background: color-mix(in srgb, var(--bg, #0b1120) 56%, var(--surface, #1e293b));
+          }
+
+          .ps-tool {
+            display: grid;
+            place-items: center;
+          }
+
+          .ps-glyph {
+            width: 8.5cqw;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            border-radius: 2.2cqw;
+            background: var(--brand, #22c55e);
+            color: var(--bg, #0b1120);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 3.2cqw;
+            font-weight: 850;
+          }
+
+          .ps-stack {
+            display: grid;
+            align-content: center;
+            gap: var(--space-2, 1.8cqh);
+            padding: var(--space-3, 3cqw);
+          }
+
+          .ps-line {
+            height: 1.15cqh;
+            border-radius: 50%;
+            background: var(--border, #334155);
+          }
+
+          .ps-line:nth-child(1) {
+            width: 82%;
+            background: var(--accent, #38bdf8);
+          }
+
+          .ps-line:nth-child(2) {
+            width: 100%;
+          }
+
+          .ps-line:nth-child(3) {
+            width: 64%;
+          }
+
+          .ps-label {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 5.8cqw;
+            font-weight: 760;
+            letter-spacing: -0.045em;
+            line-height: 0.98;
+          }
+        </style>
+
+        <div
+          id="pan-stations-clip"
+          class="ps-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="ps-rail"></div>
+          <div class="ps-strip" aria-label="Feature stations"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal by contract: the mounted root loses data-composition-id.
+            var compositionId = "pan-stations";
+            var clip = root.querySelector(".ps-clip");
+            var strip = root.querySelector(".ps-strip");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: stationCount is always an integer in the declared 3-6 range.
+            var rawCount = Number(vars.stationCount);
+            var stationCount = Number.isFinite(rawCount) ? Math.round(rawCount) : 4;
+            stationCount = Math.max(3, Math.min(6, stationCount));
+
+            // INVARIANT: dwell is finite and positive, then clamps to 0.2-2 seconds.
+            var rawDwell = Number(vars.dwell);
+            var dwell = Number.isFinite(rawDwell) ? rawDwell : 0.6;
+            dwell = Math.max(0.2, Math.min(2, dwell));
+
+            var labelsSource =
+              vars.labels == null ? "Capture,Edit,Render,Share" : String(vars.labels);
+            var parsedLabels = labelsSource.split(",").map(function (label) {
+              return label.trim();
+            });
+
+            // Station creation is the only owner of row content and fallback labels.
+            for (var i = 0; i < stationCount; i += 1) {
+              var label = parsedLabels[i] || "Station " + (i + 1);
+
+              var station = document.createElement("article");
+              station.className = "ps-station";
+              station.setAttribute("aria-label", label);
+
+              var kicker = document.createElement("div");
+              kicker.className = "ps-kicker";
+              kicker.innerHTML = '<span>Feature station</span><span class="ps-index"></span>';
+              kicker.querySelector(".ps-index").textContent = String(i + 1).padStart(2, "0");
+
+              var screen = document.createElement("div");
+              screen.className = "ps-screen";
+              screen.innerHTML =
+                '<div class="ps-tool"><span class="ps-glyph"></span></div>' +
+                '<div class="ps-stack"><span class="ps-line"></span><span class="ps-line"></span><span class="ps-line"></span></div>';
+              screen.querySelector(".ps-glyph").textContent = label.charAt(0).toUpperCase();
+
+              var title = document.createElement("div");
+              title.className = "ps-label";
+              title.textContent = label;
+
+              station.appendChild(kicker);
+              station.appendChild(screen);
+              station.appendChild(title);
+              strip.appendChild(station);
+            }
+
+            var stations = Array.from(strip.querySelectorAll(".ps-station"));
+
+            // RETIME RANGE: fixed IN/OUT, elastic HOLD, no global time scaling.
+            var IN_BASE = 0.45;
+            var OUT_BASE = 0.4;
+            var PAN_DURATION = 0.25;
+            var durationValue = parseFloat(root.dataset.duration || "4");
+            var duration = Number.isFinite(durationValue) ? Math.max(0.001, durationValue) : 4;
+            var totalBase = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            // Explicit t=0 state for every animated endpoint.
+            gsap.set(clip, { opacity: 0 });
+            gsap.set(strip, { "--ps-pan-index": 0 });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.to(clip, { opacity: 1, duration: IN, ease: "power2.out" }, 0);
+
+            // HOLD: empty time is the steady dwell. Only complete pans are added.
+            var cursor = HOLD_START;
+            for (var stationIndex = 0; stationIndex < stations.length - 1; stationIndex += 1) {
+              cursor += dwell;
+              if (cursor + PAN_DURATION > OUT_START) break;
+              tl.to(
+                strip,
+                {
+                  "--ps-pan-index": stationIndex + 1,
+                  duration: PAN_DURATION,
+                  ease: "sine.inOut",
+                },
+                cursor,
+              );
+              cursor += PAN_DURATION;
+            }
+
+            tl.to(clip, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

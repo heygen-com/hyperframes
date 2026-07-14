@@ -1,0 +1,188 @@
+<!doctype html>
+<!--
+  titlecard-calm: HyperFrames video primitive (typography / calm / orient)
+
+  Concept: a restrained title card led by a small mono kicker and a large
+  grotesque headline. The kicker fades and rises first, then the headline
+  follows. Typography and negative space carry the frame.
+
+  Variables:
+    - headline (string, default "Less, but better"): the primary title.
+    - kicker (string, default "DESIGN PRINCIPLE"): the small uppercase label.
+
+  Envelope: fixed IN and OUT with an elastic HOLD only.
+    IN_BASE  = 1.20s. Kicker arrives first, headline follows.
+    HOLD     = max(0, D - IN - OUT). The lockup drifts barely upward.
+    OUT_BASE = 0.55s. The full lockup fades with a small rise.
+  If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+  Longer mounts stretch HOLD only. The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  titlecard-calm id.
+-->
+<html
+  lang="en"
+  data-composition-id="titlecard-calm"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "headline", "type": "string", "role": "content", "label": "Headline", "description": "Primary title displayed in the card.", "default": "Less, but better" },
+    { "id": "kicker", "type": "string", "role": "content", "label": "Kicker", "description": "Small uppercase label displayed above the headline.", "default": "DESIGN PRINCIPLE" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Titlecard Calm</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="titlecard-calm" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f7f7f2);
+            font-family: var(--font-display, "Helvetica Neue", Helvetica, Arial, sans-serif);
+            pointer-events: none;
+          }
+
+          .tc-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .tc-lockup {
+            display: flex;
+            width: 78cqw;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6cqh;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .tc-kicker {
+            display: block;
+            width: 100%;
+            color: var(--muted, #b8c0cc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: 3.2cqmin;
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            will-change: transform, opacity;
+          }
+
+          .tc-headline {
+            display: block;
+            width: 100%;
+            color: var(--fg, #f7f7f2);
+            font-family: var(--font-display, "Helvetica Neue", Helvetica, Arial, sans-serif);
+            font-size: 17cqmin;
+            font-weight: 600;
+            line-height: 0.94;
+            letter-spacing: -0.055em;
+            overflow-wrap: anywhere;
+            text-wrap: balance;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="titlecard-calm-clip"
+          class="tc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="tc-lockup">
+            <span class="tc-kicker"></span>
+            <span class="tc-headline"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var lockup = root.querySelector(".tc-lockup");
+            var kicker = root.querySelector(".tc-kicker");
+            var headline = root.querySelector(".tc-headline");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var headlineText = vars.headline == null ? "Less, but better" : String(vars.headline);
+            var kickerText = vars.kicker == null ? "DESIGN PRINCIPLE" : String(vars.kicker);
+
+            headline.textContent = headlineText;
+            kicker.textContent = kickerText;
+
+            var IN_BASE = 1.2;
+            var OUT_BASE = 0.55;
+            var parsedDuration = Number.parseFloat(root.dataset.duration);
+            var duration = Number.isFinite(parsedDuration) ? Math.max(0.001, parsedDuration) : 4;
+            var totalBase = IN_BASE + OUT_BASE;
+            var phaseScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var KICKER_IN = 0.5 * phaseScale;
+            var HEADLINE_AT = 0.28 * phaseScale;
+            var HEADLINE_IN = 0.72 * phaseScale;
+
+            gsap.set(lockup, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              kicker,
+              { opacity: 0, y: "2.2cqh" },
+              { opacity: 1, y: "0cqh", duration: KICKER_IN, ease: "power2.out" },
+              0,
+            );
+            tl.fromTo(
+              headline,
+              { opacity: 0, y: "3.2cqh" },
+              { opacity: 1, y: "0cqh", duration: HEADLINE_IN, ease: "power3.out" },
+              HEADLINE_AT,
+            );
+
+            if (HOLD > 0) {
+              tl.to(lockup, { y: "-0.65cqh", duration: HOLD, ease: "sine.inOut" }, HOLD_START);
+            }
+
+            tl.to(
+              lockup,
+              { opacity: 0, y: "-2.1cqh", duration: OUT, ease: "power2.in" },
+              OUT_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["titlecard-calm"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

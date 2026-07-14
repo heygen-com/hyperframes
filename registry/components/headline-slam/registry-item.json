@@ -1,0 +1,52 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "headline-slam",
+  "type": "hyperframes:component",
+  "title": "Headline Slam",
+  "description": "A heavyweight headline scales down into frame, lands with a deterministic three-frame shake, holds with subtle drift, and whips upward on exit.",
+  "tags": ["motion-primitive", "typography", "headline", "slam", "impact", "exit"],
+  "jobs": ["emphasize"],
+  "family": "typography",
+  "profile": "impact",
+  "evidence": "Wave F U3 headline-slam specification",
+  "syncPoints": [{ "id": "impact", "phase": "in", "offset": 0.58 }],
+  "files": [
+    {
+      "path": "headline-slam.html",
+      "target": "compositions/components/headline-slam.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Text displayed as the headline.",
+      "default": "Ship it today"
+    },
+    {
+      "id": "accent_word_index",
+      "type": "number",
+      "role": "content",
+      "label": "Accent word index",
+      "description": "Zero-based word index to color. Out of range leaves the headline unaccented.",
+      "default": 1,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color applied to the selected word.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

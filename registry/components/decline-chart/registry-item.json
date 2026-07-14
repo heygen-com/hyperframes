@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "decline-chart",
+  "type": "hyperframes:component",
+  "title": "Decline Chart",
+  "description": "A metric line draws downward as its value counts down and the ambient background darkens in lockstep.",
+  "tags": ["motion-primitive", "data", "chart", "decline", "metric", "problem"],
+  "jobs": ["agitate"],
+  "family": "data",
+  "profile": "holdable",
+  "evidence": "Wave F U10 decline-chart",
+  "files": [
+    {
+      "path": "decline-chart.html",
+      "target": "compositions/components/decline-chart.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Metric label",
+      "description": "Label shown above the declining value.",
+      "default": "Retention"
+    },
+    {
+      "id": "start_value",
+      "type": "number",
+      "role": "content",
+      "label": "Start value",
+      "description": "Metric value at the start of the decline.",
+      "default": 82,
+      "min": 0,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "id": "end_value",
+      "type": "number",
+      "role": "content",
+      "label": "End value",
+      "description": "Metric value at the bottom of the decline.",
+      "default": 34,
+      "min": 0,
+      "max": 100,
+      "step": 1
+    }
+  ]
+}

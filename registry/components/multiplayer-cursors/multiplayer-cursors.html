@@ -1,0 +1,429 @@
+<!doctype html>
+<!--
+  multiplayer-cursors, HyperFrames video primitive (pointers / loop / prove)
+
+  Concept: labeled collaborator cursors, each with an SVG pointer, matching
+  name chip, and soft color glow, reveal from spread positions and glide into
+  a shared center zone. Their gentle authored drift makes live multiplayer
+  presence visible without requiring a product-specific subject.
+
+  Compiled-from evidence: power-reel source 15-frosted-cursors.html
+  (production 60s reel, 2026-07). This extracts the deterministic labeled
+  cursor mechanic and patches the multiplayer-arrows hole predicted by the
+  pointers family definition. It does not carry over that reel's subject,
+  background workspace, frosted chip, real pointer, or You cursor.
+
+  Use when: proving that a canvas, document, board, or workspace supports live
+  collaboration, shared presence, or multiple people editing together.
+
+  Variables (declared in data-composition-variables below):
+    - cursorCount (number, default 4, range 2 to 6): visible collaborators.
+    - labels (string, default "Ana,Ken,Wen,Mia"): comma-separated names in
+      cursor order. Missing or blank entries become deterministic Guest names.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 0.70s  layer settles in and cursors reveal with a fixed stagger
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); cursors converge,
+               then drift between authored center-zone points for a finite
+               number of sine.inOut legs that exactly fill the available time
+    OUT_BASE = 0.50s  layer accelerates into a clean fade
+    If D < IN_BASE + OUT_BASE, IN and OUT scale down together so IN + OUT == D
+    and HOLD == 0.
+
+  Sync point: none. This ambient collaboration loop has no causal action or
+  fixed event that another primitive needs to synchronize with.
+
+  Sound cue: none. The cursor motion is ambient and dispatches no hf:sfx event.
+
+  Mount contract: this file is a mountable sub-composition. A host loads it via
+  data-composition-src, and the runtime clones only <template> contents. The
+  root carries no data-width/data-height. It fills the host slot with
+  position:absolute, inset:0, and container-type:size, so every measurement can
+  stay container-relative. The root is styled by #root, never by a class. The
+  hardcoded timeline key remains "multiplayer-cursors" after mount flattening
+  strips data-composition-id from the mounted root. Variables come only from
+  window.__hyperframes.getVariables(), which owns merged defaults and host
+  overrides inside a mounted composition.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "cursorCount", "type": "number", "role": "content", "label": "Cursor count", "description": "Number of labeled collaborator cursors.", "default": 4, "min": 2, "max": 6, "step": 1 },
+    { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "Comma-separated cursor names, in order.", "default": "Ana,Ken,Wen,Mia" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multiplayer Cursors</title>
+    <!-- Metadata only. Mounting discards everything outside <template>. -->
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="multiplayer-cursors" data-duration="6" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root: elastic and position-blind. The host owns its box. Styled by
+             #root so composition scoping continues to match after mounting. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .mc-clip,
+          .mc-stage,
+          .mc-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .mc-stage {
+            transform-origin: center;
+          }
+
+          /* EDIT ZONE: the focus ring is only a neutral convergence landmark.
+             Keep it secondary to the cursors and derived from theme tokens. */
+          .mc-focus {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 15cqw;
+            aspect-ratio: 1;
+            border: 0.18cqw solid color-mix(in srgb, var(--border, #334155) 72%, transparent);
+            border-radius: var(--radius, 999cqw);
+            background: radial-gradient(
+              circle,
+              color-mix(in srgb, var(--surface, #1e293b) 78%, transparent) 0 28%,
+              color-mix(in srgb, var(--brand, #22c55e) 18%, transparent) 30% 48%,
+              transparent 70%
+            );
+            box-shadow:
+              0 0 8cqw color-mix(in srgb, var(--accent, #38bdf8) 16%, transparent),
+              inset 0 0 2.4cqw color-mix(in srgb, var(--brand, #22c55e) 16%, transparent);
+            transform: translate(-50%, -50%);
+            opacity: 0.78;
+          }
+
+          .mc-focus::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 1.35cqw;
+            aspect-ratio: 1;
+            border-radius: var(--radius, 999cqw);
+            background: var(--brand, #22c55e);
+            box-shadow: 0 0 2.4cqw color-mix(in srgb, var(--brand, #22c55e) 55%, transparent);
+            transform: translate(-50%, -50%);
+          }
+
+          .mc-layer {
+            z-index: 2;
+          }
+
+          /* INVARIANT: each cursor is a sized block. GSAP owns only x, y,
+             rotation, scale, and opacity, so seeked spatial state is stable. */
+          .mc-cursor {
+            position: absolute;
+            left: 0;
+            top: 0;
+            display: block;
+            width: 20cqw;
+            height: 10cqh;
+            color: var(--mc-color, var(--brand, #22c55e));
+            transform-origin: 0 0;
+            will-change: transform, opacity;
+          }
+
+          .mc-cursor[data-tone="0"] {
+            --mc-color: var(--brand, #22c55e);
+          }
+
+          .mc-cursor[data-tone="1"] {
+            --mc-color: var(--accent, #38bdf8);
+          }
+
+          .mc-cursor[data-tone="2"] {
+            --mc-color: color-mix(
+              in oklch longer hue,
+              var(--brand, #22c55e) 72%,
+              var(--accent, #38bdf8)
+            );
+          }
+
+          .mc-cursor[data-tone="3"] {
+            --mc-color: color-mix(
+              in oklch longer hue,
+              var(--brand, #22c55e) 44%,
+              var(--accent, #38bdf8)
+            );
+          }
+
+          .mc-cursor[data-tone="4"] {
+            --mc-color: color-mix(in oklch, var(--brand, #22c55e) 38%, var(--accent, #38bdf8));
+          }
+
+          .mc-cursor[data-tone="5"] {
+            --mc-color: color-mix(in srgb, var(--accent, #38bdf8) 68%, var(--fg, #f8fafc));
+          }
+
+          .mc-glow {
+            position: absolute;
+            left: -6.5cqw;
+            top: -6.5cqw;
+            z-index: -1;
+            width: 16cqw;
+            aspect-ratio: 1;
+            border-radius: var(--radius, 999cqw);
+            background: radial-gradient(
+              circle,
+              color-mix(in srgb, var(--mc-color, var(--brand, #22c55e)) 44%, transparent),
+              transparent 72%
+            );
+            filter: blur(1.4cqw);
+            opacity: 0.58;
+          }
+
+          .mc-pointer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            display: block;
+            width: 4.8cqw;
+            height: 4.8cqw;
+            filter: drop-shadow(
+              0 0.45cqw 0.7cqw color-mix(in srgb, var(--bg, #0b1120) 58%, transparent)
+            );
+          }
+
+          .mc-pointer path {
+            fill: currentColor;
+            stroke: var(--surface, #f8fafc);
+            stroke-width: 1.35;
+            stroke-linejoin: round;
+          }
+
+          .mc-label {
+            position: absolute;
+            left: 3.45cqw;
+            top: 3.55cqw;
+            display: block;
+            max-width: 15cqw;
+            overflow: hidden;
+            padding: var(--space-1, 0.7cqw) var(--space-2, 1.25cqw);
+            border: 0.12cqw solid color-mix(in srgb, var(--surface, #f8fafc) 30%, transparent);
+            border-radius: var(--radius, 1.2cqw);
+            border-top-left-radius: 0.32cqw;
+            background: color-mix(
+              in srgb,
+              var(--mc-color, var(--brand, #22c55e)) 84%,
+              var(--surface, #1e293b)
+            );
+            color: var(--bg, #0b1120);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 2.15cqw;
+            font-weight: 720;
+            line-height: 1;
+            letter-spacing: 0.01em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            box-shadow:
+              0 0.65cqw 1.5cqw color-mix(in srgb, var(--bg, #0b1120) 32%, transparent),
+              inset 0 0.12cqw 0 color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
+          }
+        </style>
+
+        <div
+          id="multiplayer-cursors-clip"
+          class="mc-clip clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="0"
+        >
+          <div class="mc-stage">
+            <div class="mc-focus" aria-hidden="true"></div>
+            <div class="mc-layer" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.currentScript.closest("#root") || document.getElementById("root");
+            // Literal by contract: mount flattening strips data-composition-id
+            // from the mounted inner root before this registration is consumed.
+            var compositionId = "multiplayer-cursors";
+            var stage = root.querySelector(".mc-stage");
+            var layer = root.querySelector(".mc-layer");
+
+            // EDIT ZONE: variable defaults mirror the outer declaration.
+            // getVariables owns the declared-defaults-plus-host-overrides merge.
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // INVARIANT: count is always an integer in the declared 2 to 6 range.
+            var rawCount = Number(vars.cursorCount);
+            var cursorCount = Math.max(
+              2,
+              Math.min(6, Number.isFinite(rawCount) ? Math.round(rawCount) : 4),
+            );
+            var rawLabels = vars.labels == null ? "Ana,Ken,Wen,Mia" : String(vars.labels);
+            var parsedLabels = rawLabels.split(",").map(function (label) {
+              return label.trim();
+            });
+
+            // Authored percentages are the single source for every path. Each
+            // row is start, gather, drift, then the matching rotations.
+            var WAYPOINTS = [
+              { start: [10, 16], gather: [42, 40], drift: [46, 36], rotation: [-10, 2, 6] },
+              { start: [66, 12], gather: [52, 38], drift: [58, 42], rotation: [8, -3, 4] },
+              { start: [76, 38], gather: [57, 49], drift: [54, 55], rotation: [12, 3, -4] },
+              { start: [64, 76], gather: [53, 59], drift: [48, 57], rotation: [-8, 4, -3] },
+              { start: [20, 76], gather: [43, 60], drift: [38, 55], rotation: [9, -4, 5] },
+              { start: [7, 46], gather: [38, 50], drift: [42, 45], rotation: [-12, 3, -5] },
+            ];
+            var POINTER_SVG =
+              '<svg class="mc-pointer" viewBox="0 0 24 24" fill="none"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.48 0 .72-.58.38-.92L5.94 2.47a.5.5 0 0 0-.44.74Z" /></svg>';
+            var cursors = [];
+
+            for (var index = 0; index < cursorCount; index += 1) {
+              var cursor = document.createElement("div");
+              cursor.className = "mc-cursor";
+              cursor.dataset.tone = String(index);
+              cursor.innerHTML = '<span class="mc-glow"></span>' + POINTER_SVG;
+
+              var label = document.createElement("span");
+              label.className = "mc-label";
+              label.textContent = parsedLabels[index] || "Guest " + (index + 1);
+              cursor.appendChild(label);
+              layer.appendChild(cursor);
+              cursors.push({ element: cursor, path: WAYPOINTS[index] });
+            }
+
+            // RETIME RANGE: fixed envelope values and authored motion cadence.
+            // HOLD alone expands. Finite drift legs are floored, then stretched
+            // evenly to fill their remaining window without overshooting OUT.
+            var IN_BASE = 0.7;
+            var OUT_BASE = 0.5;
+            var STAGE_IN_BASE = 0.42;
+            var REVEAL_BASE = 0.26;
+            var REVEAL_STAGGER_BASE = 0.055;
+            var MOVE_STAGGER_BASE = 0.035;
+            var CONVERGE_BASE = 1.35;
+            var beat = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat")) || 0.55;
+            var DRIFT_LEG_BASE = Math.max(0.55, beat * 1.45);
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "6"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var STAGE_IN = STAGE_IN_BASE * envelopeScale;
+            var REVEAL = REVEAL_BASE * envelopeScale;
+            var REVEAL_STAGGER = REVEAL_STAGGER_BASE * envelopeScale;
+            var MOVE_STAGGER = MOVE_STAGGER_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var CONVERGE = Math.min(CONVERGE_BASE * envelopeScale, HOLD);
+            var DRIFT_START = HOLD_START + CONVERGE;
+            var DRIFT_WINDOW = Math.max(0, HOLD - CONVERGE);
+
+            gsap.set(stage, { opacity: 0, scale: 0.97 });
+            cursors.forEach(function (cursor) {
+              gsap.set(cursor.element, {
+                x: cursor.path.start[0] + "cqw",
+                y: cursor.path.start[1] + "cqh",
+                rotation: cursor.path.rotation[0],
+                opacity: 0,
+                scale: 0.92,
+              });
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: emphatic layer settle and deterministic per-cursor reveal.
+            tl.to(stage, { opacity: 1, scale: 1, duration: STAGE_IN, ease: "power3.out" }, 0);
+            cursors.forEach(function (cursor, index) {
+              tl.to(
+                cursor.element,
+                { opacity: 1, scale: 1, duration: REVEAL, ease: "power2.out" },
+                index * REVEAL_STAGGER,
+              );
+            });
+
+            // HOLD: authored sine convergence, then a finite center-zone loop.
+            if (CONVERGE > 0) {
+              cursors.forEach(function (cursor, index) {
+                var moveDelay = Math.min(index * MOVE_STAGGER, CONVERGE * 0.35);
+                tl.to(
+                  cursor.element,
+                  {
+                    x: cursor.path.gather[0] + "cqw",
+                    y: cursor.path.gather[1] + "cqh",
+                    rotation: cursor.path.rotation[1],
+                    duration: Math.max(0.001, CONVERGE - moveDelay),
+                    ease: "sine.inOut",
+                  },
+                  HOLD_START + moveDelay,
+                );
+              });
+            }
+
+            if (DRIFT_WINDOW >= DRIFT_LEG_BASE) {
+              cursors.forEach(function (cursor, index) {
+                var driftDelay = Math.min(index * MOVE_STAGGER, DRIFT_WINDOW * 0.12);
+                var cursorWindow = Math.max(0, DRIFT_WINDOW - driftDelay);
+                var driftLegCount = Math.max(1, Math.floor(cursorWindow / DRIFT_LEG_BASE));
+                var driftLeg = cursorWindow / driftLegCount;
+                var driftRepeat = Math.max(0, driftLegCount - 1);
+                tl.fromTo(
+                  cursor.element,
+                  {
+                    x: cursor.path.gather[0] + "cqw",
+                    y: cursor.path.gather[1] + "cqh",
+                    rotation: cursor.path.rotation[1],
+                  },
+                  {
+                    x: cursor.path.drift[0] + "cqw",
+                    y: cursor.path.drift[1] + "cqh",
+                    rotation: cursor.path.rotation[2],
+                    duration: driftLeg,
+                    ease: "sine.inOut",
+                    immediateRender: false,
+                    yoyo: true,
+                    repeat: driftRepeat,
+                  },
+                  DRIFT_START + driftDelay,
+                );
+              });
+            }
+
+            // OUT: asymmetric accelerated fade, while HOLD motion resolves.
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<!--
+  multiplayer-cursors demo. Standalone 1920x1080 host that mounts the
+  primitive through data-composition-src. The mount receives non-default
+  cursorCount and labels values, so both variables are proven through the
+  same per-instance path used by installed compositions. The primitive stays
+  responsible for all cursor markup and motion.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Multiplayer Cursors, Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.12), transparent 34%),
+          linear-gradient(145deg, #0b1220, #05070d 68%);
+      }
+
+      .mount-card {
+        --bg: #0b1120;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #e2e8f0;
+        --border: #475569;
+        --brand: #a3e635;
+        --accent: #38bdf8;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, monospace;
+        --radius: 999px;
+        --space-1: 0.7cqw;
+        --space-2: 1.25cqw;
+        --space-3: 2.4cqw;
+        --dur-beat: 0.55s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: absolute;
+        width: 54%;
+        height: 56%;
+        left: 23%;
+        top: 22%;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 36px;
+        background:
+          linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+          radial-gradient(circle at 50% 50%, #162238, var(--bg, #0b1120) 64%);
+        background-size:
+          52px 52px,
+          52px 52px,
+          100% 100%;
+        box-shadow:
+          0 40px 100px rgba(0, 0, 0, 0.46),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="multiplayer-cursors-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+      data-fps="30"
+    >
+      <div
+        id="multiplayer-cursors-mount"
+        class="mount-card clip"
+        data-composition-id="multiplayer-cursors"
+        data-composition-src="./multiplayer-cursors.html"
+        data-variable-values='{"cursorCount":6,"labels":"Iris,Noah,Sam,Jo,Lee,Zed"}'
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        data-width="1037"
+        data-height="605"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      // Static host only. The mounted primitive owns all visible motion.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["multiplayer-cursors-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

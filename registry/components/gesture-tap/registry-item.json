@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gesture-tap",
+  "type": "hyperframes:component",
+  "title": "Gesture Tap",
+  "description": "A contact circle taps a mobile pill button, releases it into a new labeled accent state, and lifts away.",
+  "tags": ["motion-primitive", "gesture", "tap", "interaction", "ui-props"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "interaction",
+  "evidence": "Video Primitives v1 Wave F U1 gesture-tap contract",
+  "syncPoints": [{ "id": "tap-response", "phase": "in", "offset": 0.72 }],
+  "files": [
+    {
+      "path": "gesture-tap.html",
+      "target": "compositions/components/gesture-tap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tap_label",
+      "type": "string",
+      "role": "content",
+      "label": "Tap label",
+      "description": "Button label shown before the tap response.",
+      "default": "Follow"
+    },
+    {
+      "id": "response_label",
+      "type": "string",
+      "role": "content",
+      "label": "Response label",
+      "description": "Button label shown when the tap releases.",
+      "default": "Following"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used for the completed button state and response pulse.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

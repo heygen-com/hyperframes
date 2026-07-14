@@ -1,0 +1,247 @@
+<!doctype html>
+<!--
+  physical-exit: HyperFrames video primitive (motion / exit / physical)
+
+  Concept: one card leaves the frame with visible momentum. The mode variable
+  owns the exit behavior: toss follows an arc, drop accelerates under gravity,
+  and slide stretches at peak lateral speed. Every mode carries rotation into
+  its final offscreen pose. The card never fades during its exit.
+
+  Variables:
+    - mode (toss | drop | slide, default toss): the physical exit behavior.
+    - text (string, default "Later"): the word displayed on the card.
+    - accent (green | blue | violet, default green): the card edge color.
+
+  Envelope (fixed IN and OUT, elastic HOLD only, never timeScale):
+    IN_BASE  = 0.45s  the card settles into its resting pose
+    HOLD     = elastic = max(0, D - (IN_BASE + OUT_BASE)); subtle drift
+    OUT_BASE = 0.85s  the selected physical exit carries the card offscreen
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together and
+    HOLD becomes zero.
+
+  Mount contract: this file is a template-wrapped sub-composition. The runtime
+  clones only the template contents. #root fills the host box, establishes the
+  container query basis, has no data-width or data-height, and registers one
+  paused timeline under the hardcoded physical-exit id.
+-->
+<html
+  lang="en"
+  data-composition-id="physical-exit"
+  data-composition-duration="3"
+  data-composition-variables='[
+    { "id": "mode", "type": "enum", "role": "motion", "label": "Exit mode", "description": "Physical behavior used to carry the card offscreen.", "default": "toss", "options": [{ "value": "toss", "label": "Toss" }, { "value": "drop", "label": "Drop" }, { "value": "slide", "label": "Slide" }] },
+    { "id": "text", "type": "string", "role": "content", "label": "Card text", "description": "Word displayed on the exiting card.", "default": "Later" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the card edge.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Physical Exit</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="physical-exit" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .pe-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .pe-card {
+            position: relative;
+            display: grid;
+            place-items: center;
+            width: 58cqw;
+            min-height: 32cqh;
+            padding: 5cqh 6cqw;
+            overflow: hidden;
+            border: 0.22cqmin solid color-mix(in srgb, var(--pe-accent) 62%, #ffffff);
+            border-radius: 4cqmin;
+            background: #f8fafc;
+            box-shadow:
+              0 2.4cqh 7cqh color-mix(in srgb, #020617 48%, transparent),
+              inset 1.2cqw 0 0 var(--pe-accent);
+            color: #0b0c0e;
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+
+          .pe-label {
+            display: block;
+            max-width: 48cqw;
+            overflow: hidden;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 11cqmin;
+            font-weight: 760;
+            line-height: 1;
+            letter-spacing: -0.045em;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="physical-exit-clip"
+          class="pe-clip clip"
+          data-start="0"
+          data-duration="3"
+          data-track-index="0"
+        >
+          <div class="pe-card">
+            <span class="pe-label"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var card = root.querySelector(".pe-card");
+            var label = root.querySelector(".pe-label");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var mode = vars.mode === "drop" || vars.mode === "slide" ? vars.mode : "toss";
+            var text = vars.text == null ? "Later" : String(vars.text);
+            var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
+            var accentColors = {
+              green: "#34d399",
+              blue: "#60a5fa",
+              violet: "#a78bfa",
+            };
+
+            label.textContent = text;
+            card.style.setProperty("--pe-accent", accentColors[accent]);
+
+            var IN_BASE = 0.45;
+            var OUT_BASE = 0.85;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
+            var baseDuration = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < baseDuration ? duration / baseDuration : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              card,
+              { y: "4cqh", scale: 0.98, rotation: -1 },
+              { y: 0, scale: 1, rotation: 0, duration: IN, ease: "power2.out" },
+              0,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                card,
+                {
+                  y: "-0.7cqh",
+                  rotation: 0.5,
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            if (mode === "drop") {
+              tl.to(
+                card,
+                {
+                  y: "108cqh",
+                  rotation: 9,
+                  duration: OUT,
+                  ease: "power2.in",
+                },
+                OUT_START,
+              );
+            } else if (mode === "slide") {
+              var slidePeak = OUT * 0.72;
+              tl.to(
+                card,
+                {
+                  x: "90cqw",
+                  skewX: -12,
+                  scaleX: 1.08,
+                  rotation: -2,
+                  duration: slidePeak,
+                  ease: "power4.in",
+                },
+                OUT_START,
+              );
+              tl.to(
+                card,
+                {
+                  x: "125cqw",
+                  skewX: -3,
+                  scaleX: 1,
+                  rotation: -5,
+                  duration: OUT - slidePeak,
+                  ease: "power4.out",
+                },
+                OUT_START + slidePeak,
+              );
+            } else {
+              var tossApex = OUT * 0.42;
+              tl.to(
+                card,
+                {
+                  x: "34cqw",
+                  y: "-36cqh",
+                  rotation: 8,
+                  duration: tossApex,
+                  ease: "power3.out",
+                },
+                OUT_START,
+              );
+              tl.to(
+                card,
+                {
+                  x: "118cqw",
+                  y: "86cqh",
+                  rotation: 18,
+                  duration: OUT - tossApex,
+                  ease: "power2.in",
+                },
+                OUT_START + tossApex,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["physical-exit"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
