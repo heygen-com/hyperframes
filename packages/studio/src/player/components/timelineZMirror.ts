@@ -21,10 +21,21 @@ import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
  * ── Locked rules (agreed design — do not re-litigate here) ───────────────────
  * - The mirror computes a lane move to ACCOMPANY a z action on a timeline clip;
  *   it never replaces the z patch.
- * - Move the clip to the closest track in the action's direction that is FREE
- *   over the clip's whole [start, start + duration) span; if no free track
- *   exists in that direction, CREATE one adjacent to the reference neighbor
- *   (commitTrackInsert semantics).
+ * - ONE-ELEMENT STEP (bring-forward / send-backward): the z action stepped past
+ *   exactly ONE element — the reference neighbor — so the lane move must too.
+ *   Target = the free lane (whole-span, file-agnostic occupancy, same zone)
+ *   closest to the reference, searched STRICTLY BETWEEN the reference's lane
+ *   and the next temporally-overlapping same-file visual element's lane in the
+ *   direction (exclusive bound). No free lane in that open interval (the common
+ *   back-to-back case) → CREATE one at the boundary immediately beyond the
+ *   reference neighbor (commitTrackInsert semantics) — never scan past the
+ *   second element to a farther free lane, which would overshoot the paint
+ *   order and trip our own zOverride badge. With no second overlapping element
+ *   beyond the reference, the bound is the zone edge: closest free lane beyond
+ *   the neighbor, else insert immediately beyond it.
+ * - bring-to-front / send-to-back move past the WHOLE overlap set: closest free
+ *   lane beyond the extreme overlap in the direction, else insert adjacent to
+ *   the extreme.
  * - Direction: bring-forward/front = toward LOWER display lanes (up = above);
  *   send-backward/back = toward HIGHER lanes, but only within the visual zone —
  *   the audio zone is untouched and never crossed (a bottom-of-zone insert lands
@@ -118,29 +129,82 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
 
   const order = displayTrackOrder(elements);
   const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
-
-  // Closest free lane strictly beyond the reference, lane-by-lane in direction,
-  // whole-span freeness, same zone (visual lanes only — never into audio).
   const refIdx = visualLanes.indexOf(referenceLane);
   if (refIdx === -1) return null; // reference is not a visual lane — no mirror
+
+  const boundLane = stepBoundLane(action, overlapSet, referenceLane, up);
+  const lane = closestFreeLane({
+    elements,
+    visualLanes,
+    refIdx,
+    up,
+    boundLane,
+    start,
+    end,
+    selfKey,
+  });
+  if (lane != null) {
+    // The closest free lane is the clip's OWN lane (possible only when z and
+    // track had diverged): the clip already sits where the action puts it.
+    if (lane === element.track) return null;
+    return {
+      kind: "move",
+      displayTrack: lane,
+      persistTrack: authoredTrackForLane(lane, elements, element),
+    };
+  }
+
+  // No free lane before the bound (or the zone edge) → create one adjacent to
+  // the reference: the boundary between its lane and the next in direction.
+  return { kind: "insert", insertRow: order.indexOf(referenceLane) + (up ? 0 : 1) };
+}
+
+/**
+ * ONE-ELEMENT-STEP bound (bring-forward / send-backward only): the lane of the
+ * NEXT temporally-overlapping same-file visual element strictly beyond the
+ * reference in the direction — the free-lane search may not reach it
+ * (exclusive). Front/back have no bound (they step past the whole overlap
+ * set), and neither does a step with no second overlapping element beyond the
+ * reference (the zone edge bounds instead).
+ */
+function stepBoundLane(
+  action: ZMirrorAction,
+  overlapSet: TimelineElement[],
+  referenceLane: number,
+  up: boolean,
+): number | null {
+  if (action !== "bring-forward" && action !== "send-backward") return null;
+  const beyond = overlapSet
+    .map((el) => el.track)
+    .filter((lane) => (up ? lane < referenceLane : lane > referenceLane));
+  if (beyond.length === 0) return null;
+  return (up ? Math.max : Math.min)(...beyond);
+}
+
+/**
+ * Closest free lane strictly beyond the reference, lane-by-lane in direction,
+ * whole-span freeness, same zone (visual lanes only — never into audio),
+ * stopping at the exclusive bound when one applies. Null → no free lane in
+ * the open interval.
+ */
+function closestFreeLane(args: {
+  elements: TimelineElement[];
+  visualLanes: number[];
+  refIdx: number;
+  up: boolean;
+  boundLane: number | null;
+  start: number;
+  end: number;
+  selfKey: string;
+}): number | null {
+  const { elements, visualLanes, refIdx, up, boundLane, start, end, selfKey } = args;
   const step = up ? -1 : 1;
   for (let i = refIdx + step; i >= 0 && i < visualLanes.length; i += step) {
     const lane = visualLanes[i];
-    if (isLaneFree(elements, lane, start, end, selfKey)) {
-      // The closest free lane is the clip's OWN lane (possible only when z and
-      // track had diverged): the clip already sits where the action puts it.
-      if (lane === element.track) return null;
-      return {
-        kind: "move",
-        displayTrack: lane,
-        persistTrack: authoredTrackForLane(lane, elements, element),
-      };
-    }
+    if (boundLane != null && (up ? lane <= boundLane : lane >= boundLane)) break;
+    if (isLaneFree(elements, lane, start, end, selfKey)) return lane;
   }
-
-  // No free lane before the zone edge → create one adjacent to the reference:
-  // the boundary between the reference lane and the next lane in direction.
-  return { kind: "insert", insertRow: order.indexOf(referenceLane) + (up ? 0 : 1) };
+  return null;
 }
 
 /**

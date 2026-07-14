@@ -205,12 +205,7 @@ describe("useCanvasZOrderTimelineMirror", () => {
     // Two consecutive gestures on the same element: each mints its own coalesce
     // key (gesture sequence), so even an unbounded per-gesture window must never
     // merge distinct user actions into one undo step.
-    setStoreElements([
-      storeEl("t", 0, 0, 10),
-      storeEl("b", 1, 0, 10),
-      storeEl("c", 2, 0, 10),
-      storeEl("a", 3, 20, 5), // free lane 3 over t's span
-    ]);
+    setStoreElements([storeEl("t", 0, 0, 10), storeEl("b", 1, 0, 10)]);
     const history = makeHistory();
     const api = mountMirrorHarness(history);
 
@@ -225,12 +220,14 @@ describe("useCanvasZOrderTimelineMirror", () => {
     );
 
     const keys: string[] = [];
-    // Gesture 1: t (lane 0) sent backward past b → lands on the free lane 3.
-    // Gesture 2: t brought forward past c → back onto the now-free lane 0.
-    // Both gestures mirror (lane move persists), so each records a z+move pair.
+    // Gesture 1: t (top) sent backward past b → back-to-back, no free lane in
+    // the bounded interval → insert immediately below b (t and b swap lanes).
+    // Gesture 2: t brought forward past b → insert immediately above b (swap
+    // back). Both gestures mirror (lane move persists), so each records a
+    // z+move pair.
     const gestures = [
       { action: "send-backward" as const, crossedId: "b" },
-      { action: "bring-forward" as const, crossedId: "c" },
+      { action: "bring-forward" as const, crossedId: "b" },
     ];
     for (const { action, crossedId } of gestures) {
       const coalesceKey = zReorderCoalesceKey(entries, action);

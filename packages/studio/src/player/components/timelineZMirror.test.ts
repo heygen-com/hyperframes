@@ -114,10 +114,27 @@ describe("resolveZMirrorLaneMove — bring-forward / send-backward", () => {
     expect(resolve("send-backward", t, [t, b])).toBeNull();
   });
 
-  it("skips an occupied lane and takes the next free one in direction", () => {
-    // Above neighbor b (lane 2): lane 1 occupied over the span, lane 0 free.
-    const a = el("a", 0, 30, 5);
-    const x = el("x", 1, 5, 10);
+  it("BOUNDED: never steps past the next overlapping element to a farther free lane", () => {
+    // Above neighbor b (lane 2): lane 1 holds x — the NEXT temporally-overlapping
+    // same-file element in the direction — and lane 0 is free. A single forward
+    // step crosses ONE element, so the free lane 0 beyond x is out of reach:
+    // insert immediately above b instead (row of lane 2 in the ascending order).
+    const a = el("a", 0, 30, 5); // lane 0 free over t's span — but beyond the bound
+    const x = el("x", 1, 5, 10); // overlaps t → the exclusive bound
+    const b = el("b", 2, 0, 10);
+    const t = el("t", 3, 0, 10);
+    expect(resolve("bring-forward", t, [a, x, b, t], "b")).toEqual({
+      kind: "insert",
+      insertRow: 2,
+    });
+  });
+
+  it("OPEN SPACE: with no second overlapping element, skips an occupied lane to the next free one", () => {
+    // Lane 1's occupant is a FOREIGN-file clip: it occupies the lane (freeness is
+    // file-agnostic) but is not in the same stacking context, so it does not
+    // bound the step — the search continues to free lane 0, as before.
+    const a = el("a", 0, 30, 5); // lane 0 free over t's span
+    const x = el("x", 1, 5, 10, { sourceFile: "sub.html" });
     const b = el("b", 2, 0, 10);
     const t = el("t", 3, 0, 10);
     expect(resolve("bring-forward", t, [a, x, b, t], "b")).toEqual({
@@ -133,6 +150,93 @@ describe("resolveZMirrorLaneMove — bring-forward / send-backward", () => {
     const t = el("t", 1, 0, 10);
     const b = el("b", 2, 0, 10);
     expect(resolve("bring-forward", t, [t, b], "b")).toBeNull();
+  });
+});
+
+describe("resolveZMirrorLaneMove — one-element step bound (forward/backward)", () => {
+  // Three stacked back-to-back clips (lanes 0/1/2, all overlapping) plus a free
+  // lane BEYOND the far element — the lane the old resolver would overshoot to.
+  const threeStackedWithFarFree = () => {
+    const a = el("a", 0, 0, 10);
+    const b = el("b", 1, 0, 10);
+    const c = el("c", 2, 0, 10);
+    const d = el("d", 3, 20, 5); // lane 3 free over the span — beyond c
+    return { a, b, c, d, elements: [a, b, c, d] };
+  };
+
+  it("send-backward from the top inserts between elements 1 and 2 — not past element 2", () => {
+    const { a, elements } = threeStackedWithFarFree();
+    // Reference = b (lane 1); next overlap below = c (lane 2) bounds the search;
+    // no free lane strictly between → insert at the b/c boundary (row 2), NOT
+    // the farther free lane 3.
+    expect(resolve("send-backward", a, elements, "b")).toEqual({ kind: "insert", insertRow: 2 });
+  });
+
+  it("bring-forward from the bottom inserts between elements 1 and 2 (symmetric)", () => {
+    const d = el("d", 0, 20, 5); // lane 0 free over the span — beyond a
+    const a = el("a", 1, 0, 10);
+    const b = el("b", 2, 0, 10);
+    const t = el("t", 3, 0, 10);
+    // Reference = b (lane 2); next overlap above = a (lane 1) bounds the search;
+    // no free lane strictly between → insert at the a/b boundary (row 2), NOT
+    // the farther free lane 0.
+    expect(resolve("bring-forward", t, [d, a, b, t], "b")).toEqual({
+      kind: "insert",
+      insertRow: 2,
+    });
+  });
+
+  it("takes a free lane strictly between the reference and the next overlap", () => {
+    const a = el("a", 0, 0, 10); // second element — the exclusive bound
+    const gap = el("gap", 1, 20, 5); // lane 1 free over the span, inside the interval
+    const b = el("b", 2, 0, 10); // crossed reference
+    const t = el("t", 3, 0, 10);
+    expect(resolve("bring-forward", t, [a, gap, b, t], "b")).toEqual({
+      kind: "move",
+      displayTrack: 1,
+      persistTrack: 1,
+    });
+  });
+
+  it("of several free lanes in the interval, takes the one closest to the reference", () => {
+    const a = el("a", 0, 0, 10); // bound
+    const g1 = el("g1", 1, 20, 5); // free, farther from reference
+    const g2 = el("g2", 2, 20, 5); // free, closest to reference
+    const b = el("b", 3, 0, 10); // crossed reference
+    const t = el("t", 4, 0, 10);
+    expect(resolve("bring-forward", t, [a, g1, g2, b, t], "b")).toEqual({
+      kind: "move",
+      displayTrack: 2,
+      persistTrack: 2,
+    });
+  });
+
+  it("no second overlapping element beyond the reference → the zone edge bounds (as today)", () => {
+    const { t, elements } = stackBelow();
+    // Only c overlaps below the reference b... remove c's overlap: reference is
+    // then the ONLY overlap below; the search runs to the zone edge and takes
+    // the free lane beyond the neighbor.
+    const spread = elements.map((e) => (e.id === "c" ? { ...e, start: 20 } : e));
+    expect(resolve("send-backward", t, spread, "b")).toEqual({
+      kind: "move",
+      displayTrack: 2,
+      persistTrack: 2,
+    });
+  });
+
+  it("bring-to-front is NOT bounded: still moves past the whole overlap set", () => {
+    const { t, elements } = (() => {
+      const free = el("free", 0, 20, 5); // free lane beyond the topmost overlap
+      const a = el("a", 1, 0, 10);
+      const b = el("b", 2, 0, 10);
+      const t = el("t", 3, 0, 10);
+      return { t, elements: [free, a, b, t] };
+    })();
+    expect(resolve("bring-to-front", t, elements)).toEqual({
+      kind: "move",
+      displayTrack: 0,
+      persistTrack: 0,
+    });
   });
 });
 

@@ -13,6 +13,7 @@ import {
   pushEditHistoryEntry,
 } from "../../utils/editHistory";
 import { normalizeToZones } from "./timelineZones";
+import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
 
 function el(
@@ -1123,6 +1124,39 @@ describe("commitZMirrorLaneMove", () => {
       track: 1,
       authoredTrack: undefined,
     });
+  });
+
+  it("END-TO-END one-element step: resolver insertRow renumbers the clip strictly between the two neighbors", async () => {
+    // 3 stacked back-to-back clips + a free lane beyond the far one. Send t
+    // (top) backward past b: the resolver must bound at c and produce the
+    // insert row IMMEDIATELY below b, and commitZMirrorLaneMove's renumber must
+    // land t strictly between b and c — never on the farther free lane 3.
+    const t = el("t", 0, 0, 10);
+    const b = el("b", 1, 0, 10);
+    const c = el("c", 2, 0, 10);
+    const far = el("far", 3, 20, 5); // free over t's span, beyond c
+    const elements = [t, b, c, far];
+    const move = resolveZMirrorLaneMove({
+      action: "send-backward",
+      element: t,
+      elements,
+      crossedKey: "b",
+    });
+    expect(move).toEqual({ kind: "insert", insertRow: 2 });
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2, 3]);
+    const moved = await commitZMirrorLaneMove(t, move!, deps, "z-reorder:send-backward:t");
+    expect(moved).toBe(true);
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    // The renumber compacts t's vacated top lane, so the whole set shifts up by
+    // one while t lands on the b/c boundary — strictly between the two.
+    expect(map).toEqual({
+      b: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      c: { start: 0, track: 2 },
+      far: { start: 20, track: 3 },
+    });
+    expect(map.b.track).toBeLessThan(map.t.track);
+    expect(map.t.track).toBeLessThan(map.c.track);
   });
 
   it("resolves false for a refused insert (locked clip would need renumbering)", async () => {
