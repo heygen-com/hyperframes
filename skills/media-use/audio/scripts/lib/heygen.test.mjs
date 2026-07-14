@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { heygenAuthHeaders, heygenAuthHeadersWithRefresh, heygenAuthMethod } from "./heygen.mjs";
@@ -109,6 +109,27 @@ test("heygenAuthMethod returns oauth for a live OAuth credential", () => {
   });
 });
 
+test("heygenAuthMethod returns oauth for a refreshable expired credential", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    try {
+      process.env.HEYGEN_CONFIG_DIR = dir;
+      writeFileSync(
+        join(dir, "credentials"),
+        JSON.stringify({
+          oauth: {
+            refresh_token: "current-refresh",
+            expires_at: "2000-01-01T00:00:00Z",
+          },
+        }),
+      );
+      assert.equal(heygenAuthMethod(), "oauth");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 test("heygenAuthMethod returns null with no credential at all", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
@@ -172,6 +193,75 @@ test("heygenAuthHeadersWithRefresh silently renews an expired OAuth credential",
       assert.equal(saved.oauth.refresh_token, "rotated-refresh");
       assert.equal(saved.oauth.scope, "openid profile");
       assert.ok(new Date(saved.oauth.expires_at).getTime() > Date.now());
+      assert.equal(statSync(credentialsPath).mode & 0o777, 0o600);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("heygenAuthHeadersWithRefresh renews a credential with only a refresh token", async () => {
+  await withCleanHeygenEnvAsync(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    try {
+      process.env.HEYGEN_CONFIG_DIR = dir;
+      writeFileSync(
+        join(dir, "credentials"),
+        JSON.stringify({ oauth: { refresh_token: "current-refresh" } }),
+      );
+
+      const headers = await heygenAuthHeadersWithRefresh(
+        async () =>
+          new Response(JSON.stringify({ access_token: "renewed-access", expires_in: 3600 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+
+      assert.equal(headers.Authorization, "Bearer renewed-access");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("concurrent OAuth refreshes share the credential rotation", async () => {
+  await withCleanHeygenEnvAsync(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    try {
+      process.env.HEYGEN_CONFIG_DIR = dir;
+      writeFileSync(
+        join(dir, "credentials"),
+        JSON.stringify({
+          oauth: {
+            access_token: "expired-access",
+            refresh_token: "current-refresh",
+            expires_at: "2000-01-01T00:00:00Z",
+          },
+        }),
+      );
+
+      let requests = 0;
+      const fetchImpl = async () => {
+        requests += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return new Response(
+          JSON.stringify({
+            access_token: "renewed-access",
+            refresh_token: "rotated-refresh",
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      };
+
+      const [first, second] = await Promise.all([
+        heygenAuthHeadersWithRefresh(fetchImpl),
+        heygenAuthHeadersWithRefresh(fetchImpl),
+      ]);
+
+      assert.equal(requests, 1);
+      assert.deepEqual(second, first);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
