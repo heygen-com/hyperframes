@@ -128,13 +128,19 @@ vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
 }));
 
+vi.mock("../browser/manager.js", () => ({
+  ensureBrowser: vi.fn(async () => ({ executablePath: "/mock/chrome", source: "cache" })),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
+  let tempDirs: string[] = [];
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
   // cold-loads a heavy module graph (core + engine + producer, incl. linkedom),
   // slow under the parallel monorepo run — the generous hook timeout that
   // absorbs that contention now lives in vitest.config.ts (shared by all CLI
   // suites). Importing once in `beforeAll` keeps every test fast and isolated.
+  let renderCommand: (typeof import("./render.js"))["default"];
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
   let renderLintContinuationHint: typeof import("./render.js").renderLintContinuationHint;
@@ -142,12 +148,24 @@ describe("renderLocal browser GPU config", () => {
 
   beforeAll(async () => {
     ({
+      default: renderCommand,
       renderLocal,
       resolveBrowserGpuForCli,
       renderLintContinuationHint,
       __resetDeParallelRouterTrialStateForTests: resetTrialState,
     } = await import("./render.js"));
   });
+
+  function createRenderProject(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-render-command-"));
+    tempDirs.push(dir);
+    writeFileSync(
+      join(dir, "index.html"),
+      '<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-no-timeline></div></body></html>',
+      "utf8",
+    );
+    return dir;
+  }
 
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
@@ -196,6 +214,10 @@ describe("renderLocal browser GPU config", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs = [];
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
@@ -396,6 +418,33 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
+  });
+
+  it("forwards gif loop and video frame format to batch row renders", async () => {
+    const projectDir = createRenderProject();
+    const rowsPath = join(projectDir, "rows.json");
+    writeFileSync(rowsPath, "[{}]", "utf8");
+
+    if (!renderCommand.run) throw new Error("render command missing run handler");
+    await renderCommand.run({
+      args: {
+        dir: projectDir,
+        batch: rowsPath,
+        output: join(projectDir, "renders", "{index}.gif"),
+        fps: "15",
+        quality: "standard",
+        format: "gif",
+        "gif-loop": "3",
+        "video-frame-format": "png",
+        quiet: true,
+      },
+    } as never);
+
+    expect(producerState.createdJobs[0]).toMatchObject({
+      format: "gif",
+      gifLoop: 3,
+      videoFrameFormat: "png",
+    });
   });
 
   it("forwards debug mode to createRenderJob", async () => {
