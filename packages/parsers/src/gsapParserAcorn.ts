@@ -54,6 +54,7 @@ type TargetBindings = Map<any, Map<string, string>>;
 type IdentifierDeclaration = {
   node: any;
   scopeNode: any;
+  expandedScopeNode?: any;
   name: string;
   kind: "const" | "let" | "var" | "param";
 };
@@ -263,6 +264,14 @@ function scopeChainFromAncestors(ancestors: any[]): any[] {
   return chain;
 }
 
+function nearestExpandedScopeFromAncestors(ancestors: any[]): any | undefined {
+  for (let index = ancestors.length - 2; index >= 0; index--) {
+    const candidate = ancestors[index];
+    if (candidate?.type === "BlockStatement" && readProvenance(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function findVisibleIdentifierDeclaration(
   name: string,
   ancestors: any[],
@@ -270,11 +279,13 @@ function findVisibleIdentifierDeclaration(
   usageStart = Number.POSITIVE_INFINITY,
 ): IdentifierDeclaration | undefined {
   const declarations = index.declarationsByName.get(name) ?? [];
+  const expandedScopeNode = nearestExpandedScopeFromAncestors(ancestors);
   for (const scopeNode of scopeChainFromAncestors(ancestors)) {
     const candidates = declarations
       .filter(
         (declaration) =>
           declaration.scopeNode === scopeNode &&
+          (!declaration.expandedScopeNode || declaration.expandedScopeNode === expandedScopeNode) &&
           (declaration.kind === "var" ||
             declaration.kind === "param" ||
             declaration.node.start < usageStart),
@@ -298,8 +309,9 @@ function collectIdentifierBindingIndex(ast: any): IdentifierBindingIndex {
       if (!kind) return;
       const includeBlocks = declaration?.type !== "VariableDeclaration" || kind !== "var";
       const scopeNode = enclosingScopeNodeFromAncestors(ancestors, includeBlocks);
+      const expandedScopeNode = nearestExpandedScopeFromAncestors(ancestors);
       const entries = declarationsByName.get(name) ?? [];
-      entries.push({ node, scopeNode, name, kind });
+      entries.push({ node, scopeNode, expandedScopeNode, name, kind });
       declarationsByName.set(name, entries);
     },
     FunctionDeclaration: indexFunctionParameters,
@@ -523,14 +535,6 @@ function collectTargetBindings(
   } as any);
 
   return bindings;
-
-  function nearestExpandedScopeFromAncestors(ancestors: any[]): any | undefined {
-    for (let index = ancestors.length - 2; index >= 0; index--) {
-      const candidate = ancestors[index];
-      if (candidate?.type === "BlockStatement" && readProvenance(candidate)) return candidate;
-    }
-    return undefined;
-  }
 }
 
 // fallow-ignore-next-line complexity
@@ -1337,7 +1341,8 @@ function tweenCallToAnimation(
           declaration?.node.init?.type === "ObjectExpression" &&
           !identifierBindings.reassignedDeclarations.has(declaration.node)
         ) {
-          const declarationProvenance = readProvenance(declaration.scopeNode);
+          const declarationProvenance =
+            readProvenance(declaration.scopeNode) ?? readProvenance(declaration.expandedScopeNode);
           const instanceIdentity =
             declarationProvenance &&
             (declarationProvenance.kind === "helper" || declarationProvenance.kind === "loop")

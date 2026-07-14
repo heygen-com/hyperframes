@@ -150,6 +150,32 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     `);
   });
 
+  it("keeps helper-created object proxy instances distinct across nested blocks", () => {
+    expectDistinctProxyIdentities(`
+      const tl = gsap.timeline();
+      function addDriver(at) {
+        if (at >= 0) {
+          const driver = { value: 0 };
+          tl.to(driver, { value: 1, duration: 1 }, at);
+        }
+      }
+      addDriver(0);
+      addDriver(0.5);
+    `);
+  });
+
+  it("keeps helper-created var proxy instances distinct", () => {
+    expectDistinctProxyIdentities(`
+      const tl = gsap.timeline();
+      function addDriver(at) {
+        var driver = { value: 0 };
+        tl.to(driver, { value: 1, duration: 1 }, at);
+      }
+      addDriver(0);
+      addDriver(0.5);
+    `);
+  });
+
   it("keeps one outer object proxy stable across helper calls", () => {
     const { animations } = parseGsapScriptAcorn(`
       const tl = gsap.timeline();
