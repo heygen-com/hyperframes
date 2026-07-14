@@ -39,6 +39,44 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].id).toBe("hf-headline");
   });
 
+  // Regression: the authored data-track-index must round-trip verbatim, even
+  // when clips of DIFFERENT kinds (video vs element) share a track. The old
+  // mixed-kind renumber split them onto separate tracks, which made the
+  // written track drift from the displayed one on every editor move.
+  it("honors authored track indices verbatim for mixed-kind tracks", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.id = "clip-video";
+    video.setAttribute("data-start", "1");
+    video.setAttribute("data-duration", "3");
+    video.setAttribute("data-track-index", "1");
+    root.appendChild(video);
+
+    const caption = document.createElement("div");
+    caption.id = "clip-caption";
+    caption.setAttribute("data-start", "8");
+    caption.setAttribute("data-duration", "3");
+    caption.setAttribute("data-track-index", "1");
+    root.appendChild(caption);
+
+    const other = document.createElement("div");
+    other.id = "clip-other";
+    other.setAttribute("data-start", "0");
+    other.setAttribute("data-duration", "3");
+    other.setAttribute("data-track-index", "2");
+    root.appendChild(other);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const trackOf = (id: string) => result.clips.find((c) => c.id === id)?.track;
+    expect(trackOf("clip-video")).toBe(1);
+    expect(trackOf("clip-caption")).toBe(1);
+    expect(trackOf("clip-other")).toBe(2);
+  });
+
   it("collects clips from elements with data-start and data-duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

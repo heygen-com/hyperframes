@@ -13,6 +13,13 @@ type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
   element: TimelineElement;
   updates: StartTrack;
+  /**
+   * File-space track override for the persist. The store's `updates.track` is a
+   * DISPLAY lane; when the source file's numbering is sparse (authored tracks
+   * 1,2,... or gaps), the file write must target the lane's AUTHORED track or it
+   * silently re-targets the wrong row. Omitted → persist `updates.track` as-is.
+   */
+  persistTrack?: number;
 }
 
 export interface DragCommitDeps {
@@ -114,21 +121,41 @@ function persistMoveEdits(
     key: keyOf(e.element),
     start: e.element.start,
     track: e.element.track,
+    authoredTrack: e.element.authoredTrack,
   }));
   const revision = beginTimelineOptimisticGesture(
     updateElement,
     edits.map((edit) => keyOf(edit.element)),
   );
-  for (const e of edits) updateElement(keyOf(e.element), e.updates);
+  // The file write below targets `persistTrack` (authored space) when supplied,
+  // or `updates.track` on a genuine lane write (track insert renumber). Mirror
+  // that written value into the store's `authoredTrack` so a SECOND drag before
+  // any reload resolves authored tracks from what the file now says, not stale
+  // pre-edit data. Pure time-moves leave authoredTrack untouched.
+  for (const e of edits) {
+    const writtenTrack =
+      e.persistTrack ?? (e.updates.track !== e.element.track ? e.updates.track : undefined);
+    updateElement(
+      keyOf(e.element),
+      writtenTrack == null ? e.updates : { ...e.updates, authoredTrack: writtenTrack },
+    );
+  }
+  // The store above gets DISPLAY lanes; the file below gets the authored-space
+  // track when one was resolved (see TimelineMoveEdit.persistTrack).
+  const persistEdits = edits.map((e) =>
+    e.persistTrack == null || e.persistTrack === e.updates.track
+      ? e
+      : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
+  );
   const persisted = onMoveElements
-    ? onMoveElements(edits, coalesceKey, operation)
-    : Promise.all(edits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
+    ? onMoveElements(persistEdits, coalesceKey, operation)
+    : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
   return Promise.resolve(persisted).then(
     () => true,
     (error) => {
       for (const p of prev) {
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          updateElement(p.key, { start: p.start, track: p.track });
+          updateElement(p.key, { start: p.start, track: p.track, authoredTrack: p.authoredTrack });
         }
       }
       console.error("[Timeline] Failed to persist clip edits", error);
@@ -143,6 +170,56 @@ function persistMoveEdits(
  * then compacts it to a distinct integer lane between its neighbours, and the
  * clips at/below the insert shift down by one — the sanctioned index-renumber.
  */
+/** Same-source-file predicate: authored track numbers only compare within ONE
+ *  file's coordinate space (an expanded sub-comp child's authoredTrack is in ITS
+ *  file, not the host timeline's). `undefined` means the active composition. */
+const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean =>
+  (a.sourceFile ?? null) === (b.sourceFile ?? null);
+
+/**
+ * Translate a DISPLAY lane into the AUTHORED (source-file) track to persist for
+ * `dragged`. Occupants are consulted ONLY from the dragged clip's own source
+ * file — an occupant from a different file (e.g. an expanded sub-comp child, or
+ * a host clip next to expanded rows) carries authored values in a different
+ * coordinate space, and borrowing them would write a foreign file's numbering.
+ *
+ * Lane semantics after normalizeToZones: each distinct authored track owns one
+ * base lane, and time-overlapping same-track clips spill onto adjacent display
+ * sub-lanes (packTrackLanes). A spill sub-lane IS a legal drop target (Timeline's
+ * trackOrder lists it): its occupants share the base lane's authored track by
+ * construction, so the same-file occupant lookup returns that authored track and
+ * the drop persists as a same-track join. The clip may then DISPLAY on a
+ * different sub-lane than it was dropped on — the spill re-packs
+ * deterministically by stable id, first-fit — but the persisted track is
+ * correct.
+ *
+ * Fallbacks when the lane has no same-file occupant (e.g. an expanded child
+ * dropped on a lane holding only other files' clips — the display-lane integer
+ * must NOT be persisted into a sparse file):
+ * 1. Offset from the NEAREST same-file lane: authored(nearest) + lane distance,
+ *    preserving "one lane up = one authored track up" in the clip's own file.
+ * 2. No same-file peers at all → the lane value itself (single-clip files:
+ *    display and authored spaces coincide for want of any other anchor).
+ * Edge-created lanes (min-1 / max+1 inserts) route through the insert path,
+ * never here.
+ */
+function authoredTrackForLane(
+  lane: number,
+  elements: TimelineElement[],
+  dragged: TimelineElement,
+): number {
+  const dragKey = keyOf(dragged);
+  const peers = elements.filter((e) => keyOf(e) !== dragKey && sameSourceFile(e, dragged));
+  const occupant = peers.find((e) => e.track === lane);
+  if (occupant) return occupant.authoredTrack ?? occupant.track;
+  let nearest: TimelineElement | null = null;
+  for (const p of peers) {
+    if (!nearest || Math.abs(p.track - lane) < Math.abs(nearest.track - lane)) nearest = p;
+  }
+  if (!nearest) return lane;
+  return (nearest.authoredTrack ?? nearest.track) + (lane - nearest.track);
+}
+
 function insertTrackValue(trackOrder: number[], insertRow: number): number {
   if (trackOrder.length === 0) return 0;
   if (insertRow <= 0) return trackOrder[0] - 0.5;
@@ -251,6 +328,7 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   const dragEdit: TimelineMoveEdit = {
     element: drag.element,
     updates: { start: drag.previewStart, track: drag.previewTrack },
+    persistTrack: authoredTrackForLane(drag.previewTrack, elements, drag.element),
   };
   const coalesceKey = isVertical ? `clip-lane-move:${laneChangeGestureSeq++}` : undefined;
 
@@ -265,9 +343,13 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   // The drop-intent set for the z-sync: the dragged clip at its new lane, others
   // as-is. Reasoning on this (not a re-normalize) keeps the sync seeing the user's
   // move; computeStackingPatches only compares lanes relatively.
-  const candidate = elements.map((e) =>
-    keyOf(e) === dragKey ? { ...e, start: drag.previewStart, track: drag.previewTrack } : e,
-  );
+  const candidate = elements.map((e) => {
+    if (keyOf(e) === dragKey) return { ...e, start: drag.previewStart, track: drag.previewTrack };
+    // Selection members shift in time with the drag — the z-sync must reason on
+    // their POST-move overlap sets, same as the insert branch's candidate.
+    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
+    return e;
+  });
   const multiKeys = multi ? multi.keys : null;
   void persistMoveEdits(edits, deps, coalesceKey, "lane-reorder").then((moved) => {
     if (moved && isVertical) {
@@ -292,6 +374,7 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
  * The whole affected set is persisted atomically (single undo), and the deliberate
  * vertical move syncs the dragged clip's stacking afterwards.
  */
+// fallow-ignore-next-line complexity
 function commitTrackInsert(
   drag: DraggedClipState,
   deps: DragCommitDeps,
@@ -314,12 +397,25 @@ function commitTrackInsert(
   // shifts the at/below clips down by one — the sanctioned +1 index renumber.
   const normalized = normalizeToZones(candidate);
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
+  // The renumber is only correct as a WHOLE-SET write: skipping an unwritable
+  // clip whose lane shifts leaves its track colliding with a renumbered
+  // neighbour, and the next normalize merges the two lanes. If any shifted clip
+  // can't be written, refuse the insert instead of persisting a broken layout.
+  for (const norm of normalized) {
+    const src = bySrc.get(keyOf(norm));
+    if (src && !canMoveElement(src) && norm.track !== src.track) {
+      console.warn(
+        `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
+      );
+      return;
+    }
+  }
   const edits: TimelineMoveEdit[] = [];
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src) continue;
-    // Capabilities gate: never write a locked/implicit clip, even one only swept
-    // along by the renumber (not just a marquee member).
+    // Capabilities gate (unchanged-lane clips only reach here now): never write
+    // a locked/implicit clip.
     if (!canMoveElement(src)) continue;
     const start =
       keyOf(norm) === dragKey || multi?.keys.has(keyOf(norm))
@@ -391,6 +487,7 @@ function syncStackingForEdit(
     zIndex: readZIndex(el),
     isAudio: classifyZone(el) === "audio",
     domIndex,
+    stackingContextId: el.stackingContextId ?? null,
   }));
 
   const editedKeys = [dragKey];

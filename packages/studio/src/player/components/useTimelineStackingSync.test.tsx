@@ -57,7 +57,17 @@ describe("useTimelineStackingSync", () => {
     });
 
     expect(commit).toHaveBeenCalledWith(
-      [expect.objectContaining({ element: node, zIndex: 8, sourceFile: "nested.html" })],
+      [
+        expect.objectContaining({
+          element: node,
+          zIndex: 8,
+          sourceFile: "nested.html",
+          // The patch's store key rides along so the commit updates the store
+          // zIndex synchronously on the lane-sync path (and rolls it back on
+          // failure) instead of waiting for a preview reload.
+          key: "a",
+        }),
+      ],
       "clip-lane-move:7",
     );
     act(() => root.unmount());

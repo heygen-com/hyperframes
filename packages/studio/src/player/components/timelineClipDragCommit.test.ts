@@ -219,6 +219,88 @@ describe("commitDraggedClipMove", () => {
     expect(map.b).toBeUndefined(); // the other clip is NOT rewritten
   });
 
+  it("persists a lane change in AUTHORED track space when the file is sparse", () => {
+    // Discovery normalized authored tracks {1, 2} to display lanes {0, 1}
+    // (authoredTrack records the file value). Moving 'a' onto b's lane must
+    // write b's AUTHORED track (2) — writing the display lane (1) would target
+    // a's own authored row and silently no-op in the file.
+    const elements = [
+      { ...el("a", 0, 0, 3), authoredTrack: 1 },
+      { ...el("b", 1, 10, 3), authoredTrack: 2 },
+    ];
+    const { updateElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 20, previewTrack: 1, desiredTrack: 1 }),
+      { elements, trackOrder: [0, 1] },
+    );
+    // Store stays in display-lane space, but authoredTrack is refreshed to the
+    // value just written to the file so a SECOND drag before any reload resolves
+    // authored tracks from current data, not the stale pre-edit value.
+    expect(updateElement).toHaveBeenCalledWith("a", { start: 20, track: 1, authoredTrack: 2 });
+    // ...while the persist is translated to the target lane's authored track.
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a).toEqual({ start: 20, track: 2 });
+  });
+
+  it("resolves the authored track from occupants of the dragged clip's OWN source file", () => {
+    // Expanded sub-comp children live on synthetic display lanes next to host
+    // clips. Their authoredTrack is in THEIR file's coordinate space, so a lane
+    // occupied by a clip from a DIFFERENT file must never lend its authored
+    // value. Here lane 1 holds both a host-file clip (authored 12) and a
+    // same-file sibling (authored 7): the sibling answers.
+    const child3 = { ...el("c3", 0, 0, 3), authoredTrack: 3, sourceFile: "scene.html" };
+    const child7 = { ...el("c7", 1, 10, 3), authoredTrack: 7, sourceFile: "scene.html" };
+    const hostClip = { ...el("h", 1, 20, 3), authoredTrack: 12, sourceFile: "index.html" };
+    const elements = [child3, child7, hostClip];
+    const { onMoveElements } = runClipMove(
+      drag(child3, { previewStart: 0, previewTrack: 1, desiredTrack: 1 }),
+      { elements, trackOrder: [0, 1] },
+    );
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.c3).toEqual({ start: 0, track: 7 });
+  });
+
+  it("never persists the display-lane integer when the target lane has no same-file occupant", () => {
+    // Reviewer scenario: an expanded child of a SPARSE file (authored tracks 3
+    // and 7 → display lanes 4 and 5) dragged onto display lane 6, which holds
+    // only another file's clip. Persisting 6 (the display integer) or 12 (the
+    // foreign authored value) would corrupt the sparse file; the fallback
+    // offsets from the NEAREST same-file lane instead: authored 7 at lane 5,
+    // one lane further down → 8.
+    const child3 = { ...el("c3", 4, 0, 3), authoredTrack: 3, sourceFile: "scene.html" };
+    const child7 = { ...el("c7", 5, 10, 3), authoredTrack: 7, sourceFile: "scene.html" };
+    const foreign = { ...el("f", 6, 20, 3), authoredTrack: 12, sourceFile: "index.html" };
+    const elements = [child3, child7, foreign];
+    const { onMoveElements } = runClipMove(
+      drag(child3, { previewStart: 0, previewTrack: 6, desiredTrack: 6 }),
+      { elements, trackOrder: [4, 5, 6] },
+    );
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.c3.track).not.toBe(6); // not the display-lane integer
+    expect(map.c3.track).not.toBe(12); // not the foreign file's authored value
+    expect(map.c3).toEqual({ start: 0, track: 8 });
+  });
+
+  it("dropping onto an overlap spill sub-lane persists the base lane's shared authored track", () => {
+    // Authored track 2 holds two time-overlapping clips, which packTrackLanes
+    // spills onto display sub-lanes 1 and 2 (both authoredTrack 2). Dropping
+    // 'a' onto the spill sub-lane (2) is a legitimate same-track join: the
+    // persisted value is the shared authored track (2), even though the clip
+    // may re-pack onto a different sub-lane on the next normalize.
+    const elements = normalizeToZones([
+      { ...el("a", 0, 30, 3), authoredTrack: 1 },
+      { ...el("b1", 2, 0, 5), authoredTrack: 2 },
+      { ...el("b2", 2, 3, 5), authoredTrack: 2 }, // overlaps b1 → spills
+    ]);
+    expect(elements.map((e) => e.track)).toEqual([0, 1, 2]); // spill happened
+    const spillLane = elements.find((e) => e.id === "b2")!.track;
+    const { onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 30, previewTrack: spillLane, desiredTrack: spillLane }),
+      { elements, trackOrder: [0, 1, 2] },
+    );
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a).toEqual({ start: 30, track: 2 });
+  });
+
   it("multi-selection time-move shifts EVERY selected clip by the drag delta (atomic)", () => {
     const elements = [el("a", 0, 2, 3), el("b", 1, 10, 3), el("c", 2, 20, 3)];
     // Drag 'a' +5s on its own lane while {a, b} are marquee-selected.
@@ -283,8 +365,9 @@ describe("commitDraggedClipMove", () => {
     const map = editMap(onMoveElements.mock.calls[0][0]);
     // Lanes are contiguous and distinct (no two overlapping clips share a lane).
     expect(new Set([map.a.track, map.b.track, map.c.track])).toEqual(new Set([0, 1, 2]));
-    // The z-aware normalization may reverse the authored lane numbers, but the
-    // insert must still leave three distinct, contiguous visual lanes.
+    expect(map.a.track).toBe(0); // above the insert → unchanged
+    expect(map.c.track).toBe(1); // dragged clip lands on the new lane
+    expect(map.b.track).toBe(2); // at/below the insert → +1 shift
   });
 
   describe("lane ↔ stacking sync", () => {
@@ -440,9 +523,9 @@ describe("commitDraggedClipMove", () => {
         drag(elements[2], { previewStart: 30, previewTrack: 1, insertRow: 0 }),
         [0, 1],
       );
-      // Non-overlapping clips retain their authored/z-derived ordering; a lane
-      // gesture cannot invent a DOM stacking relationship where none overlaps.
-      expect(lane.dragged).toBe(2);
+      expect(lane.dragged).toBe(0); // aimed at the very top
+      expect(lane.top).toBe(1);
+      expect(lane.mid).toBe(2);
     });
 
     it("BETWEEN-insert of a non-overlapping clip lands it between its neighbours", async () => {
@@ -453,8 +536,8 @@ describe("commitDraggedClipMove", () => {
         [0, 1, 2],
       );
       expect(lane.a).toBe(0);
-      expect(lane.b).toBe(1);
-      expect(lane.x).toBe(2);
+      expect(lane.x).toBe(1); // between a and b, as aimed
+      expect(lane.b).toBe(2);
     });
 
     it("TOP-insert clears a NON-overlapping clip that currently tops the timeline", async () => {
@@ -466,7 +549,7 @@ describe("commitDraggedClipMove", () => {
         drag(elements[2], { previewStart: 10, previewTrack: 2, insertRow: 0 }),
         [0, 1, 2],
       );
-      expect(lane.X).toBe(1); // X reorders against overlapping M, not disjoint T
+      expect(lane.X).toBe(0); // aimed top, cleared the non-overlapping T
     });
 
     it("dragging X among overlapping neighbours preserves the RELATIVE order of the others (symptom 2)", async () => {

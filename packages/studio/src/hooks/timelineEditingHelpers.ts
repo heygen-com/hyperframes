@@ -1,17 +1,20 @@
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
-import { applyPatchByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
+import { applyPatchByTarget, findTagByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
 import {
   formatTimelineAttributeNumber,
   type TimelineStackingReorderIntent,
 } from "../player/components/timelineEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
-import { getTimelineElementIdentity } from "../player/lib/timelineElementHelpers";
+import {
+  furthestClipEndFromSource,
+  getTimelineElementIdentity,
+} from "../player/lib/timelineElementHelpers";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
-import { extendRootDurationInSource } from "../utils/rootDuration";
-import { postRuntimeControlMessage } from "../player/lib/runtimeProtocol";
-
+import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
+import { readFileContent } from "./timelineTimingSync";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
+export { readFileContent };
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
   // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
@@ -149,16 +152,6 @@ export function patchIframeDomTiming(
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
 }
-function postRootDurationToPreview(
-  iframe: HTMLIFrameElement | null,
-  durationSeconds: number,
-): void {
-  const duration = Number(durationSeconds);
-  if (!Number.isFinite(duration) || duration <= 0) return;
-  postRuntimeControlMessage(iframe?.contentWindow, "set-root-duration", {
-    durationSeconds: duration,
-  });
-}
 // fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,
@@ -211,7 +204,12 @@ export function buildTimelineMoveTimingPatch(
       value: formatTimelineAttributeNumber(track),
     });
   }
-  return extendRootDurationInSource(patched, start + duration);
+  // Content-driven duration: sync data-duration to the furthest clip end read
+  // from the PATCHED SOURCE (raw data-duration), so it grows if a clip moved
+  // past the end and shrinks if the furthest clip moved left. Measured from the
+  // source, NOT the store — store durations are runtime-truncated to the current
+  // comp length, which would ratchet the duration down every move.
+  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
 }
 
 export function buildTimelineResizeTimingPatch(
@@ -238,7 +236,10 @@ export function buildTimelineResizeTimingPatch(
       value: formatTimelineAttributeNumber(pbs.value),
     });
   }
-  return extendRootDurationInSource(patched, updates.start + updates.duration);
+  // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
+  // grows/shrinks to the furthest clip end. Not from the store, whose
+  // durations are runtime-truncated.
+  return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
 }
 
 export interface PersistTimelineEditInput {
@@ -318,12 +319,23 @@ export async function persistTimelineBatchEdit(
     }
 
     const current = patchedByPath.get(targetPath) ?? original;
-    const patched = change.buildPatches(current, patchTarget);
-    if (patched === current) {
+    // Resolve the target FIRST: byte-identical output below is only a legit
+    // no-op when the member actually resolved in the source. A mistargeted
+    // member (stale id/selector) must fail loudly like the single-edit path,
+    // not be silently dropped as "already at target".
+    if (!findTagByTarget(current, patchTarget)) {
       throw new Error(`Unable to patch timeline element ${change.element.id} in ${targetPath}`);
     }
+    const patched = change.buildPatches(current, patchTarget);
+    // The target resolved, so a member whose attributes already hold the target
+    // values patches to the identical string — e.g. a track-insert renumber
+    // where one clip's lane is already correct. That is a legitimate no-op:
+    // skip it instead of aborting (and rolling back) the whole batch.
+    if (patched === current) continue;
     patchedByPath.set(targetPath, patched);
   }
+
+  if (patchedByPath.size === 0) return;
 
   const files = Object.fromEntries(patchedByPath);
   for (const targetPath of Object.keys(files)) {
@@ -341,227 +353,6 @@ export async function persistTimelineBatchEdit(
     recordEdit: input.recordEdit,
   });
   input.domEditSaveTimestampRef.current = Date.now();
-}
-
-export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
-  if (targetPath.includes("\0") || targetPath.includes("..")) {
-    throw new Error(`Unsafe path: ${targetPath}`);
-  }
-  const response = await fetch(
-    `/api/projects/${projectId}/files/${encodeURIComponent(targetPath)}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to read ${targetPath}`);
-  }
-  const data = (await response.json()) as { content?: string };
-  if (typeof data.content !== "string") {
-    throw new Error(`Missing file contents for ${targetPath}`);
-  }
-  return data.content;
-}
-
-export type GsapMutationStatus = { mutated: boolean };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readMutationStatus(value: unknown): GsapMutationStatus {
-  if (!isRecord(value)) return { mutated: false };
-  return { mutated: value.mutated === true || value.changed === true };
-}
-
-function readMutationError(value: unknown, fallback: string): string {
-  if (isRecord(value) && typeof value.error === "string") return value.error;
-  return fallback;
-}
-
-export async function finishTimelineTimingFallback(input: {
-  iframe: HTMLIFrameElement | null;
-  needsExtension: boolean;
-  rootDurationSeconds: number;
-  reloadPreview: () => void;
-  gsapMutation?: () => Promise<GsapMutationStatus>;
-  onGsapError: (error: unknown) => void;
-}): Promise<void> {
-  let gsapMutated = false;
-  if (input.gsapMutation) {
-    try {
-      gsapMutated = (await input.gsapMutation()).mutated;
-    } catch (error) {
-      input.onGsapError(error);
-      return;
-    }
-  }
-  if (input.needsExtension) {
-    postRootDurationToPreview(input.iframe, input.rootDurationSeconds);
-    if (gsapMutated) input.reloadPreview();
-    return;
-  }
-  input.reloadPreview();
-}
-
-// Coalesce window for folding a GSAP mutation into the preceding timing edit; only has to
-// outlast one GSAP server round-trip, never a real second edit.
-const GSAP_HISTORY_COALESCE_MS = 10_000;
-
-/**
- * A server GSAP rewrite mutates the same file the timing patch just wrote, but AFTER the
- * timing edit was recorded, leaving the recorded `after` stale so an undo hits a hash
- * conflict. This snapshots every touched file, runs the mutation, then records a follow-up
- * edit under the same coalesceKey with a window wide enough to survive the GSAP round-trip,
- * folding both writes into one undo step. Returns the mutation status for caller reloads.
- */
-export async function foldGsapMutationIntoHistory(input: {
-  projectId: string;
-  paths: string[];
-  label: string;
-  coalesceKey?: string;
-  recordEdit: (edit: RecordEditInput) => Promise<void>;
-  gsapMutation: () => Promise<GsapMutationStatus>;
-}): Promise<GsapMutationStatus> {
-  const uniquePaths = [...new Set(input.paths)];
-  const before = new Map<string, string>();
-  for (const path of uniquePaths) {
-    before.set(path, await readFileContent(input.projectId, path));
-  }
-  const status = await input.gsapMutation();
-  if (status.mutated) {
-    const files: Record<string, { before: string; after: string }> = {};
-    for (const path of uniquePaths) {
-      const priorContent = before.get(path);
-      const finalContent = await readFileContent(input.projectId, path);
-      if (priorContent !== undefined && finalContent !== priorContent) {
-        files[path] = { before: priorContent, after: finalContent };
-      }
-    }
-    if (Object.keys(files).length > 0) {
-      await input.recordEdit({
-        label: input.label,
-        kind: "timeline",
-        coalesceKey: input.coalesceKey,
-        coalesceMs: GSAP_HISTORY_COALESCE_MS,
-        files,
-      });
-    }
-  }
-  return status;
-}
-
-/**
- * Shift all GSAP animation positions targeting a given element by a time delta.
- * Calls the server-side GSAP mutation endpoint which uses the AST-based parser.
- */
-export async function shiftGsapPositions(
-  projectId: string,
-  filePath: string,
-  elementId: string,
-  delta: number,
-): Promise<GsapMutationStatus> {
-  if (delta === 0 || !elementId) return { mutated: false };
-  const res = await fetch(
-    `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(filePath)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "shift-positions",
-        targetSelector: `#${elementId}`,
-        delta,
-      }),
-    },
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error(readMutationError(err, "shift-positions failed"));
-  }
-  return readMutationStatus(await res.json().catch(() => null));
-}
-
-export async function scaleGsapPositions(
-  projectId: string,
-  filePath: string,
-  elementId: string,
-  oldStart: number,
-  oldDuration: number,
-  newStart: number,
-  newDuration: number,
-): Promise<GsapMutationStatus> {
-  if (!elementId || oldDuration <= 0 || newDuration <= 0) return { mutated: false };
-  if (oldStart === newStart && oldDuration === newDuration) return { mutated: false };
-  const res = await fetch(
-    `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(filePath)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "scale-positions",
-        targetSelector: `#${elementId}`,
-        oldStart,
-        oldDuration,
-        newStart,
-        newDuration,
-      }),
-    },
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error(readMutationError(err, "scale-positions failed"));
-  }
-  return readMutationStatus(await res.json().catch(() => null));
-}
-
-/** Single-clip move GSAP shift, folded into the timing edit's history entry (see above). */
-export function foldedShiftGsapMutation(input: {
-  projectId: string;
-  targetPath: string;
-  domId: string;
-  delta: number;
-  label: string;
-  coalesceKey?: string;
-  recordEdit: (edit: RecordEditInput) => Promise<void>;
-}): () => Promise<GsapMutationStatus> {
-  return () =>
-    foldGsapMutationIntoHistory({
-      projectId: input.projectId,
-      paths: [input.targetPath],
-      label: input.label,
-      coalesceKey: input.coalesceKey,
-      recordEdit: input.recordEdit,
-      gsapMutation: () =>
-        shiftGsapPositions(input.projectId, input.targetPath, input.domId, input.delta),
-    });
-}
-
-/** Single-clip resize GSAP scale, folded into the timing edit's history entry (see above). */
-export function foldedScaleGsapMutation(input: {
-  projectId: string;
-  targetPath: string;
-  domId: string;
-  from: { start: number; duration: number };
-  to: { start: number; duration: number };
-  label: string;
-  coalesceKey?: string;
-  recordEdit: (edit: RecordEditInput) => Promise<void>;
-}): () => Promise<GsapMutationStatus> {
-  return () =>
-    foldGsapMutationIntoHistory({
-      projectId: input.projectId,
-      paths: [input.targetPath],
-      label: input.label,
-      coalesceKey: input.coalesceKey,
-      recordEdit: input.recordEdit,
-      gsapMutation: () =>
-        scaleGsapPositions(
-          input.projectId,
-          input.targetPath,
-          input.domId,
-          input.from.start,
-          input.from.duration,
-          input.to.start,
-          input.to.duration,
-        ),
-    });
 }
 
 export { applyPatchByTarget, formatTimelineAttributeNumber };

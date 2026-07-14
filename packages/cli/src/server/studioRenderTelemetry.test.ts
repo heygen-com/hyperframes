@@ -280,6 +280,7 @@ describe("studioRenderTelemetry", () => {
         progress: 25,
         currentStage: "Starting frame capture",
         createdAt: new Date(),
+        warnings: [],
         errorDetails: {
           message: "Navigation timeout of 60000 ms exceeded",
           elapsedMs: 60_001,

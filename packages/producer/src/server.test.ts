@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -38,7 +38,29 @@ describe("parseRenderOptions — outputResolution", () => {
   });
 });
 
+describe("parseRenderOptions — render strictness", () => {
+  it("preserves best-effort compatibility and requires an explicit strict opt-in", () => {
+    expect(parseRenderOptions({}).strictness).toBe("best-effort");
+    expect(parseRenderOptions({ bestEffort: true }).strictness).toBe("best-effort");
+    expect(parseRenderOptions({ bestEffort: false }).strictness).toBe("strict");
+  });
+});
+
 describe("prepareRenderBody — validation", () => {
+  it.each(["", "   "])(
+    "treats an empty projectDir as absent and uses inline HTML",
+    async (projectDir) => {
+      const result = await prepareRenderBody({
+        projectDir,
+        html: "<html><body>inline</body></html>",
+      });
+      expect(result).toHaveProperty("prepared");
+      if (!("prepared" in result)) return;
+      expect(result.prepared.input.projectDir).not.toBe(process.cwd());
+      rmSync(result.prepared.cleanupProjectDir!, { recursive: true, force: true });
+    },
+  );
+
   it("rejects an explicitly-supplied non-object variables", async () => {
     const result = await prepareRenderBody({ variables: [1, 2], html: "<html></html>" });
     expect(result).toHaveProperty("error");

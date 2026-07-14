@@ -77,6 +77,21 @@ function timelineElement(input: {
   };
 }
 
+/** Mount a harness component under act() and return its unmount hook. */
+function mountHarness(node: React.ReactElement): { unmount: () => void } {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(node);
+  });
+  return {
+    unmount: () => {
+      act(() => root.unmount());
+    },
+  };
+}
+
 function renderTimelineEditingHook(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
@@ -92,17 +107,20 @@ function renderTimelineEditingHook(input: {
   reloadPreview?: () => void;
   sdkSession?: Awaited<ReturnType<typeof openComposition>> | null;
   forceReloadSdkSession?: () => void;
+  showToast?: (message: string, kind?: string) => void;
 }): {
   move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
   resize: ReturnType<typeof useTimelineEditing>["handleTimelineElementResize"];
   groupMove: ReturnType<typeof useTimelineEditing>["handleTimelineGroupMove"];
   groupResize: ReturnType<typeof useTimelineEditing>["handleTimelineGroupResize"];
+  del: ReturnType<typeof useTimelineEditing>["handleTimelineElementDelete"];
   unmount: () => void;
 } {
   let move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"] | null = null;
   let resize: ReturnType<typeof useTimelineEditing>["handleTimelineElementResize"] | null = null;
   let groupMove: ReturnType<typeof useTimelineEditing>["handleTimelineGroupMove"] | null = null;
   let groupResize: ReturnType<typeof useTimelineEditing>["handleTimelineGroupResize"] | null = null;
+  let del: ReturnType<typeof useTimelineEditing>["handleTimelineElementDelete"] | null = null;
 
   function Harness() {
     const commitRef = useRef(input.onZIndexCommit);
@@ -111,7 +129,7 @@ function renderTimelineEditingHook(input: {
       projectId: input.projectId ?? null,
       activeCompPath: "index.html",
       timelineElements: input.timelineElements,
-      showToast: vi.fn(),
+      showToast: input.showToast ?? vi.fn(),
       writeProjectFile: input.writeProjectFile ?? vi.fn(),
       recordEdit: input.recordEdit ?? vi.fn(),
       domEditSaveTimestampRef: { current: 0 },
@@ -127,29 +145,17 @@ function renderTimelineEditingHook(input: {
     resize = hook.handleTimelineElementResize;
     groupMove = hook.handleTimelineGroupMove;
     groupResize = hook.handleTimelineGroupResize;
+    del = hook.handleTimelineElementDelete;
     return null;
   }
 
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(<Harness />);
-  });
-
+  const { unmount } = mountHarness(<Harness />);
   if (!move) throw new Error("Expected hook to expose move handler");
   if (!resize) throw new Error("Expected hook to expose resize handler");
   if (!groupMove) throw new Error("Expected hook to expose group move handler");
   if (!groupResize) throw new Error("Expected hook to expose group resize handler");
-  return {
-    move,
-    resize,
-    groupMove,
-    groupResize,
-    unmount: () => {
-      act(() => root.unmount());
-    },
-  };
+  if (!del) throw new Error("Expected hook to expose delete handler");
+  return { move, resize, groupMove, groupResize, del, unmount };
 }
 
 type TimelineRecordEdit = NonNullable<
@@ -198,20 +204,9 @@ function renderTimelineEditingHookWithLifecycle(input: {
     return null;
   }
 
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(<Harness />);
-  });
-
+  const { unmount } = mountHarness(<Harness />);
   if (!move) throw new Error("Expected hook to expose move handler");
-  return {
-    move,
-    unmount: () => {
-      act(() => root.unmount());
-    },
-  };
+  return { move, unmount };
 }
 
 function jsonResponse(body: unknown): Response {
@@ -233,139 +228,118 @@ async function flushAsyncWork(): Promise<void> {
   }
 }
 
+/**
+ * Stub global fetch for project "p1": serves file contents (a single source
+ * string, or a path → content map) and answers the GSAP-mutation endpoint
+ * with `gsapBody`. Returns the mock for call inspection.
+ */
+function stubProjectFetch(
+  files: string | Record<string, string>,
+  gsapBody: unknown = { ok: true },
+) {
+  const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+    const url = requestUrl(input);
+    if (url.includes("/api/projects/p1/files/")) {
+      if (typeof files === "string") return jsonResponse({ content: files });
+      const path = decodeURIComponent(url.split("/files/")[1] ?? "index.html");
+      return jsonResponse({ content: files[path] });
+    }
+    if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse(gsapBody);
+    throw new Error(`Unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+const ROOT_DURATION_FALLBACK_SOURCE = [
+  `<div data-composition-id="main" data-duration="4">`,
+  `  <div id="clip" data-hf-id="hf-clip" data-start="0" data-duration="2"></div>`,
+  `</div>`,
+].join("\n");
+
+/** Shared setup for the SDK-fallback root-duration tests: one 2s clip in a 4s comp. */
+async function setupRootDurationFallback() {
+  const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
+  const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+  const sdkSession = await openComposition(ROOT_DURATION_FALLBACK_SOURCE);
+  const setTimingSpy = vi.spyOn(sdkSession, "setTiming");
+  const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+  const recordEdit = vi.fn<TimelineRecordEdit>(async () => {});
+  const forceReloadSdkSession = vi.fn();
+  const reloadPreview = vi.fn();
+  const iframeWindow = iframe.contentWindow;
+  if (!iframeWindow) throw new Error("Expected iframe window");
+  const postMessageSpy = vi.spyOn(iframeWindow, "postMessage");
+  stubProjectFetch(ROOT_DURATION_FALLBACK_SOURCE, { ok: true, mutated: false });
+  usePlayerStore.getState().setDuration(4);
+  const hook = renderTimelineEditingHook({
+    timelineElements: [clip],
+    iframe,
+    onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+    projectId: "p1",
+    writeProjectFile,
+    recordEdit,
+    sdkSession,
+    forceReloadSdkSession,
+    reloadPreview,
+  });
+  return {
+    hook,
+    clip,
+    setTimingSpy,
+    writeProjectFile,
+    forceReloadSdkSession,
+    reloadPreview,
+    postMessageSpy,
+  };
+}
+
+/** Shared assertions: the fallback path grew the root to 5s and did ONE full reload. */
+function expectRootDurationExtendedViaFallback(
+  ctx: Awaited<ReturnType<typeof setupRootDurationFallback>>,
+): void {
+  expect(ctx.setTimingSpy).not.toHaveBeenCalled();
+  expect(ctx.writeProjectFile.mock.calls[0]![1]).toContain(
+    'data-composition-id="main" data-duration="5"',
+  );
+  expect(usePlayerStore.getState().duration).toBe(5);
+  expect(ctx.forceReloadSdkSession).toHaveBeenCalledTimes(1);
+  // The GSAP endpoint returned no rewritten scriptText, so the timing sync
+  // escalates from the flash-free soft reload to ONE full reload. The root
+  // duration travels via the persisted content-driven `data-duration` (above),
+  // not a `set-root-duration` postMessage.
+  expect(ctx.reloadPreview).toHaveBeenCalledTimes(1);
+  expect(ctx.postMessageSpy).not.toHaveBeenCalledWith(
+    expect.objectContaining({ action: "set-root-duration" }),
+    "*",
+  );
+}
+
 describe("useTimelineEditing timeline z-index reorder", () => {
   it("extends root duration through the fallback path when an SDK-backed move passes the end", async () => {
-    const source = [
-      `<div data-composition-id="main" data-duration="4">`,
-      `  <div id="clip" data-hf-id="hf-clip" data-start="0" data-duration="2"></div>`,
-      `</div>`,
-    ].join("\n");
-    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
-    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
-    const sdkSession = await openComposition(source);
-    const setTimingSpy = vi.spyOn(sdkSession, "setTiming");
-    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    const recordEdit = vi.fn<TimelineRecordEdit>(async () => {});
-    const forceReloadSdkSession = vi.fn();
-    const reloadPreview = vi.fn();
-    const iframeWindow = iframe.contentWindow;
-    if (!iframeWindow) throw new Error("Expected iframe window");
-    const postMessageSpy = vi.spyOn(iframeWindow, "postMessage");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: source });
-        if (url.includes("/api/projects/p1/gsap-mutations/")) {
-          return jsonResponse({ ok: true, mutated: false });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
-    usePlayerStore.getState().setDuration(4);
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [clip],
-      iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
-      projectId: "p1",
-      writeProjectFile,
-      recordEdit,
-      sdkSession,
-      forceReloadSdkSession,
-      reloadPreview,
-    });
+    const ctx = await setupRootDurationFallback();
 
     await act(async () => {
-      await move(clip, { start: 3, track: clip.track });
+      await ctx.hook.move(ctx.clip, { start: 3, track: ctx.clip.track });
     });
 
-    expect(setTimingSpy).not.toHaveBeenCalled();
-    expect(writeProjectFile.mock.calls[0]![1]).toContain(
-      'data-composition-id="main" data-duration="5"',
-    );
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="3"');
-    expect(usePlayerStore.getState().duration).toBe(5);
-    expect(forceReloadSdkSession).toHaveBeenCalledTimes(1);
-    expect(reloadPreview).not.toHaveBeenCalled();
-    expect(postMessageSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "hf-parent",
-        type: "control",
-        action: "set-root-duration",
-        durationSeconds: 5,
-        protocolVersion: 1,
-      }),
-      "*",
-    );
+    expect(ctx.writeProjectFile.mock.calls[0]![1]).toContain('data-start="3"');
+    expectRootDurationExtendedViaFallback(ctx);
 
-    unmount();
+    ctx.hook.unmount();
   });
 
   it("extends root duration through the fallback path when an SDK-backed resize passes the end", async () => {
-    const source = [
-      `<div data-composition-id="main" data-duration="4">`,
-      `  <div id="clip" data-hf-id="hf-clip" data-start="0" data-duration="2"></div>`,
-      `</div>`,
-    ].join("\n");
-    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
-    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
-    const sdkSession = await openComposition(source);
-    const setTimingSpy = vi.spyOn(sdkSession, "setTiming");
-    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    const recordEdit = vi.fn<TimelineRecordEdit>(async () => {});
-    const forceReloadSdkSession = vi.fn();
-    const reloadPreview = vi.fn();
-    const iframeWindow = iframe.contentWindow;
-    if (!iframeWindow) throw new Error("Expected iframe window");
-    const postMessageSpy = vi.spyOn(iframeWindow, "postMessage");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: source });
-        if (url.includes("/api/projects/p1/gsap-mutations/")) {
-          return jsonResponse({ ok: true, mutated: false });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
-    usePlayerStore.getState().setDuration(4);
-    const { resize, unmount } = renderTimelineEditingHook({
-      timelineElements: [clip],
-      iframe,
-      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
-      projectId: "p1",
-      writeProjectFile,
-      recordEdit,
-      sdkSession,
-      forceReloadSdkSession,
-      reloadPreview,
-    });
+    const ctx = await setupRootDurationFallback();
 
     await act(async () => {
-      await resize(clip, { start: 0, duration: 5, playbackStart: undefined });
+      await ctx.hook.resize(ctx.clip, { start: 0, duration: 5, playbackStart: undefined });
     });
 
-    expect(setTimingSpy).not.toHaveBeenCalled();
-    expect(writeProjectFile.mock.calls[0]![1]).toContain(
-      'data-composition-id="main" data-duration="5"',
-    );
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-duration="5"></div>');
-    expect(usePlayerStore.getState().duration).toBe(5);
-    expect(forceReloadSdkSession).toHaveBeenCalledTimes(1);
-    expect(reloadPreview).not.toHaveBeenCalled();
-    expect(postMessageSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "hf-parent",
-        type: "control",
-        action: "set-root-duration",
-        durationSeconds: 5,
-        protocolVersion: 1,
-      }),
-      "*",
-    );
+    expect(ctx.writeProjectFile.mock.calls[0]![1]).toContain('data-duration="5"></div>');
+    expectRootDurationExtendedViaFallback(ctx);
 
-    unmount();
+    ctx.hook.unmount();
   });
 
   it("routes a vertical drag through the shared z-index commit without writing track-index", async () => {
@@ -640,24 +614,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const recordEdit = vi.fn<TimelineRecordEdit>(async (_entry) => {});
     const reloadPreview = vi.fn();
-    const fetchMock = vi.fn(
-      async (
-        input: Parameters<typeof fetch>[0],
-        _init?: Parameters<typeof fetch>[1],
-      ): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) {
-          return jsonResponse({
-            content: '<div id="clip" data-start="0" data-track-index="0"></div>',
-          });
-        }
-        if (url.includes("/api/projects/p1/gsap-mutations/")) {
-          return jsonResponse({ ok: true });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
     const { move, unmount } = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
@@ -687,6 +644,41 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     unmount();
   });
 
+  it("persists a vertical-only lane move (start unchanged) through the single-element fallback", async () => {
+    // Regression: `if (!startChanged) return` ran BEFORE the file persist, so a
+    // pure lane change routed through onMoveElement (no onMoveElements wired)
+    // wrote NOTHING — the lane snapped back on the next reload.
+    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
+    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
+    const { move, unmount } = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe,
+      onZIndexCommit: commit,
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+    });
+
+    await act(async () => {
+      // Vertical-only: same start, new track (already authored-space on this path).
+      await move(clip, { start: clip.start, track: 2 });
+    });
+
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    // Live DOM patched so a pre-reload re-discovery doesn't snap the lane back...
+    expect(doc.getElementById("clip")?.getAttribute("data-track-index")).toBe("2");
+    // ...and the file write carries the new data-track-index with start intact.
+    expect(writeProjectFile).toHaveBeenCalled();
+    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-track-index="2"');
+    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="0"');
+
+    unmount();
+  });
+
   it("orders the timing write after the z-index commit so a diagonal drag can't clobber the restack", async () => {
     const iframe = createPreviewIframe([
       { id: "clip", track: 0, style: "position: relative; z-index: 0" },
@@ -699,17 +691,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     });
     const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockReturnValue(commitGate);
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const url = requestUrl(input);
-      if (url.includes("/api/projects/p1/files/")) {
-        return jsonResponse({
-          content: '<div id="clip" data-start="0" data-track-index="0"></div>',
-        });
-      }
-      if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse({ ok: true });
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
     const { move, unmount } = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
@@ -768,15 +750,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ];
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const recordEdit = vi.fn<TimelineRecordEdit>(async (_entry) => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: source });
-        if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse({ ok: true });
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
+    stubProjectFetch(source);
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: clips,
       iframe,
@@ -825,18 +799,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     });
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const recordEdit = vi.fn<TimelineRecordEdit>(async (_entry) => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) {
-          const path = decodeURIComponent(url.split("/files/")[1] ?? "index.html");
-          return jsonResponse({ content: files[path] });
-        }
-        if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse({ ok: true });
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
+    stubProjectFetch(files);
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [a, b],
       iframe,
@@ -877,15 +840,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       releaseCommit = resolve;
     });
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: source });
-        if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse({ ok: true });
-        throw new Error(`Unexpected fetch: ${url}`);
-      }),
-    );
+    stubProjectFetch(source);
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
@@ -915,13 +870,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
   it("matches the single-clip move output when a group move contains one clip", async () => {
     const source = '<div id="clip" data-start="0" data-duration="1"></div>';
     const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: 0, duration: 1 });
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const url = requestUrl(input);
-      if (url.includes("/api/projects/p1/files/")) return jsonResponse({ content: source });
-      if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse({ ok: true });
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    stubProjectFetch(source);
 
     const singleWrite = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const single = renderTimelineEditingHook({
@@ -952,5 +901,220 @@ describe("useTimelineEditing timeline z-index reorder", () => {
 
     expect(groupWrite.mock.calls[0]![1]).toBe(singleWrite.mock.calls[0]![1]);
     group.unmount();
+  });
+});
+
+describe("useTimelineEditing duration rollback on failed persist", () => {
+  const ROLLBACK_SOURCE = [
+    `<div data-composition-id="main" data-duration="4">`,
+    `  <div id="clip" data-start="0" data-duration="2" data-track-index="0"></div>`,
+    `</div>`,
+  ].join("\n");
+
+  /** Iframe with a comp root so the optimistic sync (and its rollback) can patch data-duration. */
+  function createRootedIframe(source: string = ROLLBACK_SOURCE): HTMLIFrameElement {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    doc.body.innerHTML = source;
+    return iframe;
+  }
+
+  function rootDurationAttr(iframe: HTMLIFrameElement): string | null | undefined {
+    return iframe.contentDocument
+      ?.querySelector("[data-composition-id]")
+      ?.getAttribute("data-duration");
+  }
+
+  function setupFailedPersist() {
+    const iframe = createRootedIframe();
+    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+    const writeError = new Error("write failed");
+    const writeProjectFile = vi
+      .fn<(...args: unknown[]) => Promise<void>>()
+      .mockRejectedValue(writeError);
+    stubProjectFetch(ROLLBACK_SOURCE);
+    usePlayerStore.getState().setDuration(4);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const hook = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview: vi.fn(),
+    });
+    return { iframe, clip, hook, writeError };
+  }
+
+  it("rolls back the store duration and live root when a move persist fails", async () => {
+    const { iframe, clip, hook, writeError } = setupFailedPersist();
+
+    let rejection: unknown;
+    await act(async () => {
+      // Move past the end: the optimistic sync grows the readout to 5s.
+      await hook.move(clip, { start: 3, track: clip.track }).catch((error) => {
+        rejection = error;
+      });
+      await flushAsyncWork();
+    });
+
+    expect(rejection).toBe(writeError);
+    expect(usePlayerStore.getState().duration).toBe(4);
+    expect(rootDurationAttr(iframe)).toBe("4");
+
+    hook.unmount();
+  });
+
+  it("rolls back the store duration and live root when a resize persist fails", async () => {
+    const { iframe, clip, hook, writeError } = setupFailedPersist();
+
+    let rejection: unknown;
+    await act(async () => {
+      await hook
+        .resize(clip, { start: 0, duration: 6, playbackStart: undefined })
+        .catch((error) => {
+          rejection = error;
+        });
+      await flushAsyncWork();
+    });
+
+    expect(rejection).toBe(writeError);
+    expect(usePlayerStore.getState().duration).toBe(4);
+    expect(rootDurationAttr(iframe)).toBe("4");
+
+    hook.unmount();
+  });
+
+  it("rolls back the store duration and live root when a group move persist fails", async () => {
+    const { iframe, clip, hook, writeError } = setupFailedPersist();
+
+    let rejection: unknown;
+    await act(async () => {
+      await hook.groupMove([{ element: clip, start: 3.5 }]).catch((error) => {
+        rejection = error;
+      });
+      await flushAsyncWork();
+    });
+
+    expect(rejection).toBe(writeError);
+    expect(usePlayerStore.getState().duration).toBe(4);
+    expect(rootDurationAttr(iframe)).toBe("4");
+
+    hook.unmount();
+  });
+
+  it("rolls back the store duration and live root when a group resize persist fails", async () => {
+    const { iframe, clip, hook, writeError } = setupFailedPersist();
+
+    let rejection: unknown;
+    await act(async () => {
+      await hook.groupResize([{ element: clip, start: 0, duration: 7 }]).catch((error) => {
+        rejection = error;
+      });
+      await flushAsyncWork();
+    });
+
+    expect(rejection).toBe(writeError);
+    expect(usePlayerStore.getState().duration).toBe(4);
+    expect(rootDurationAttr(iframe)).toBe("4");
+
+    hook.unmount();
+  });
+
+  it("rolls back the store duration and live root when a delete persist fails", async () => {
+    // Two clips; deleting the furthest one shrinks the content-driven duration
+    // optimistically (4s -> 2s), so a failed write must roll that shrink back.
+    const DELETE_SOURCE = [
+      `<div data-composition-id="main" data-duration="4">`,
+      `  <div id="clip" data-start="0" data-duration="2" data-track-index="0"></div>`,
+      `  <div id="tail" data-start="2" data-duration="2" data-track-index="0"></div>`,
+      `</div>`,
+    ].join("\n");
+    const DELETE_REMOVED_SOURCE = [
+      `<div data-composition-id="main" data-duration="4">`,
+      `  <div id="clip" data-start="0" data-duration="2" data-track-index="0"></div>`,
+      `</div>`,
+    ].join("\n");
+
+    const iframe = createRootedIframe(DELETE_SOURCE);
+    const tail = timelineElement({ id: "tail", track: 0, zIndex: 0, start: 2, duration: 2 });
+    const writeError = new Error("write failed");
+    const writeProjectFile = vi
+      .fn<(...args: unknown[]) => Promise<void>>()
+      .mockRejectedValue(writeError);
+    // The delete path reads the file, then asks the server-side remove-element
+    // mutation for the post-removal source before persisting it.
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/")) {
+        return jsonResponse({ content: DELETE_SOURCE });
+      }
+      if (url.includes("/api/projects/p1/file-mutations/remove-element/")) {
+        return jsonResponse({ changed: true, content: DELETE_REMOVED_SOURCE });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    usePlayerStore.getState().setDuration(4);
+    const showToast = vi.fn();
+    const hook = renderTimelineEditingHook({
+      timelineElements: [tail],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview: vi.fn(),
+      showToast,
+    });
+
+    await act(async () => {
+      // Unlike move/resize, the delete handler swallows the persist failure
+      // into a toast, so the promise resolves.
+      await hook.del(tail);
+      await flushAsyncWork();
+    });
+
+    // The optimistic shrink reached the persist attempt (root patched to the
+    // furthest remaining clip end, 2s)...
+    expect(writeProjectFile).toHaveBeenCalledTimes(1);
+    expect(String(writeProjectFile.mock.calls[0]![1])).toContain(
+      'data-composition-id="main" data-duration="2"',
+    );
+    expect(showToast).toHaveBeenCalledWith("write failed");
+    // ...and the failed write rolled the readout AND the live root back.
+    expect(usePlayerStore.getState().duration).toBe(4);
+    expect(rootDurationAttr(iframe)).toBe("4");
+
+    hook.unmount();
+  });
+
+  it("keeps the grown duration when the persist succeeds", async () => {
+    const { iframe, clip, hook } = setupFailedPersist();
+    // Same harness, but with a write that succeeds this time.
+    hook.unmount();
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const succeeding = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview: vi.fn(),
+    });
+
+    await act(async () => {
+      await succeeding.move(clip, { start: 3, track: clip.track });
+      await flushAsyncWork();
+    });
+
+    expect(usePlayerStore.getState().duration).toBe(5);
+    expect(rootDurationAttr(iframe)).toBe("5");
+
+    succeeding.unmount();
   });
 });

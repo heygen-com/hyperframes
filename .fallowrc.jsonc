@@ -181,6 +181,13 @@
       "file": "packages/producer/src/services/fileServer.ts",
       "exports": ["isPathInside"],
     },
+    // `sampledAlphaIsFullyOpaque` is exported for direct unit testing of the
+    // 1/2/3-frame byte-count gate and per-frame stride logic; the pixel-level
+    // contract is too load-bearing to only exercise through `webmAlphaAdvisory`.
+    {
+      "file": "packages/cli/src/utils/webmAlphaCheck.ts",
+      "exports": ["sampledAlphaIsFullyOpaque"],
+    },
     // Studio telemetry: consumed by useRenderQueue.ts / StudioFeedbackBar.tsx
     // (deep relative imports) but fallow's static analyzer doesn't trace
     // them. Same path-resolution quirk — trackStudioSessionStart from the
@@ -211,7 +218,12 @@
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
-      "exports": ["resolveBrowserGpuForCli", "renderLocal", "checkRenderResolutionPreflight"],
+      "exports": [
+        "resolveBrowserGpuForCli",
+        "renderLocal",
+        "checkRenderResolutionPreflight",
+        "renderLintContinuationHint",
+      ],
     },
     // initThreeDProjectionInPage: passed to page.evaluate() for browser-side execution —
     // Puppeteer serializes it at runtime, not an import-graph consumer.

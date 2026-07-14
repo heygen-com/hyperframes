@@ -3,7 +3,11 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
+import { resolveZIndexEntries } from "../nle/PreviewOverlays";
+import { useElementLifecycleOps } from "../../hooks/useElementLifecycleOps";
+import type { DomEditPatchBatch } from "../../hooks/domEditCommitTypes";
 import { CanvasContextMenu } from "./CanvasContextMenu";
+import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import type { DomEditSelection } from "./domEditing";
 
 installReactActEnvironment();
@@ -24,7 +28,8 @@ afterEach(() => {
 
 function renderMenu(props: {
   selection: DomEditSelection;
-  onApplyZIndex?: () => void;
+  onApplyZIndex?: (patches: ZOrderPatch[], action: ZOrderAction) => void;
+  onZOrderCrossed?: (crossed: HTMLElement, action: ZOrderAction) => void;
   onDelete?: (selection: DomEditSelection) => void;
 }) {
   root = createRoot(host);
@@ -36,6 +41,7 @@ function renderMenu(props: {
         selection: props.selection,
         onClose: () => {},
         onApplyZIndex: props.onApplyZIndex,
+        onZOrderCrossed: props.onZOrderCrossed,
         onDelete: props.onDelete,
       }),
     );
@@ -111,5 +117,150 @@ describe("CanvasContextMenu — handler gating", () => {
     expect(zOrderButtons()).toHaveLength(0);
     expect(hasDeleteItem()).toBe(true);
     expect(document.body.querySelector(".border-t")).toBeNull();
+  });
+});
+
+// ── Menu z-action → commit path (wired the way PreviewOverlays wires the app) ──
+
+function pressMenuItem(label: string) {
+  const button = zOrderButtons().find((b) => b.textContent === label);
+  expect(button).toBeDefined();
+  act(() => {
+    button!.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+  });
+}
+
+/** Target (static, earlier in DOM) below an equal-z sibling — z action must renumber. */
+function makeStaticFamily() {
+  const parent = document.createElement("div");
+  const target = document.createElement("div");
+  target.id = "target";
+  // In happy-dom an unset computed position is "" (not "static"), which would
+  // skip the commit hook's static-position injection; declare it explicitly so
+  // the test exercises the browser default.
+  target.style.position = "static";
+  const other = document.createElement("div");
+  other.id = "other";
+  parent.append(target, other);
+  document.body.append(parent);
+  return { parent, target, other };
+}
+
+interface CapturedBatchCall {
+  batches: DomEditPatchBatch[];
+  options: { label: string; coalesceKey: string };
+}
+
+/** Mount the REAL commit hook (persist layer mocked at commitDomEditPatchBatches). */
+function renderCommitHook(captured: CapturedBatchCall[]) {
+  type Commit = ReturnType<typeof useElementLifecycleOps>["handleDomZIndexReorderCommit"];
+  let commit: Commit | undefined;
+  function Harness() {
+    ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps({
+      activeCompPath: "index.html",
+      showToast: vi.fn(),
+      writeProjectFile: vi.fn(async () => {}),
+      domEditSaveTimestampRef: { current: 0 },
+      editHistory: { recordEdit: vi.fn(async () => {}) },
+      projectIdRef: { current: null },
+      reloadPreview: vi.fn(),
+      clearDomSelection: vi.fn(),
+      commitDomEditPatchBatches: async (batches, options) => {
+        captured.push({ batches, options });
+      },
+    }));
+    return null;
+  }
+  const hookHost = document.createElement("div");
+  document.body.append(hookHost);
+  const hookRoot = createRoot(hookHost);
+  act(() => hookRoot.render(<Harness />));
+  return { commit: commit!, cleanup: () => act(() => hookRoot.unmount()) };
+}
+
+describe("CanvasContextMenu — z-action commit path", () => {
+  it("never mutates live styles itself and persists the position patch for a static element", async () => {
+    const { target } = makeStaticFamily();
+    const selection = makeSelection("Target", target);
+    const captured: CapturedBatchCall[] = [];
+    const { commit, cleanup } = renderCommitHook(captured);
+
+    // Wire onApplyZIndex the way the app does (PreviewOverlays → the commit
+    // hook), asserting the menu has NOT touched the DOM when it fires — the
+    // hook must capture true pre-change styles for its rollback.
+    const stylesAtApply: Array<{ zIndex: string; position: string }> = [];
+    renderMenu({
+      selection,
+      onApplyZIndex: (patches, action) => {
+        stylesAtApply.push({ zIndex: target.style.zIndex, position: target.style.position });
+        const { entries } = resolveZIndexEntries(selection, patches);
+        void commit(entries, undefined, action);
+      },
+    });
+
+    await act(async () => pressMenuItem("Bring forward"));
+
+    // The menu left the element pristine; only the commit hook wrote styles.
+    expect(stylesAtApply).toEqual([{ zIndex: "", position: "static" }]);
+    expect(target.style.zIndex).toBe("1");
+    expect(target.style.position).toBe("relative");
+
+    // The persisted payload carries BOTH the z-index and the injected position,
+    // so the reorder survives the post-commit reloadPreview().
+    expect(captured).toHaveLength(1);
+    const targetPatch = captured[0]?.batches
+      .flatMap((batch) => batch.patches)
+      .find((patch) => patch.target.id === "target");
+    expect(targetPatch?.operations).toEqual(
+      expect.arrayContaining([
+        { type: "inline-style", property: "z-index", value: "1" },
+        { type: "inline-style", property: "position", value: "relative" },
+      ]),
+    );
+    // F7: the action kind is part of the default undo coalesce key, so two
+    // different menu actions never merge into one undo step.
+    expect(captured[0]?.options.coalesceKey).toContain("bring-forward");
+
+    cleanup();
+  });
+
+  it("reports the crossed sibling to onZOrderCrossed for a forward step (resolved pre-mutation)", async () => {
+    // target (earlier in DOM) and other are tied — bring-forward steps over
+    // `other`, and the flash callback must receive exactly that element, after
+    // onApplyZIndex ran (call order lets the host measure post-commit rects).
+    const { target, other } = makeStaticFamily();
+    const selection = makeSelection("Target", target);
+    const calls: Array<{ kind: string; crossed?: HTMLElement }> = [];
+
+    renderMenu({
+      selection,
+      onApplyZIndex: () => calls.push({ kind: "apply" }),
+      onZOrderCrossed: (crossed, action) => {
+        expect(action).toBe("bring-forward");
+        calls.push({ kind: "crossed", crossed });
+      },
+    });
+
+    await act(async () => pressMenuItem("Bring forward"));
+
+    expect(calls.map((c) => c.kind)).toEqual(["apply", "crossed"]);
+    expect(calls[1]?.crossed).toBe(other);
+  });
+
+  it("does not call onZOrderCrossed for bring-to-front", async () => {
+    const { target } = makeStaticFamily();
+    const onZOrderCrossed = vi.fn();
+
+    renderMenu({
+      selection: makeSelection("Target", target),
+      onApplyZIndex: vi.fn(),
+      onZOrderCrossed,
+    });
+
+    await act(async () => pressMenuItem("Bring to front"));
+
+    expect(onZOrderCrossed).not.toHaveBeenCalled();
   });
 });

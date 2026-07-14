@@ -8,7 +8,18 @@ export interface DomEditPatchBatch {
 
 export type CommitDomEditPatchBatches = (
   batches: DomEditPatchBatch[],
-  options: { label: string; coalesceKey: string },
+  options: {
+    label: string;
+    coalesceKey: string;
+    /**
+     * Request skipping the preview iframe reload after a successful persist.
+     * Only honored when the persist is provably in sync with the live DOM:
+     * every patch operation is inline-style-only AND the server matched every
+     * patch target. Any unmatched target (or a non-style op) falls back to the
+     * reload so the preview reconverges with disk. Default: always reload.
+     */
+    skipReload?: boolean;
+  },
 ) => Promise<void>;
 
 export type PersistDomEditOperations = (

@@ -298,6 +298,25 @@ export function getTimelineElementIdentity(element: { key?: string | null; id: s
   return element.key ?? element.id;
 }
 
+/**
+ * Timeline store key for a z-reorder entry built OUTSIDE the timeline
+ * expansion (canvas context menu / LayersPanel), so the reorder commit can
+ * update the store's zIndex synchronously. Matches buildTimelineElementKey's
+ * stable branches (`sourceFile#domId`, else the selector-based key). Undefined
+ * when the element has neither a DOM id nor a selector — the timeline's
+ * fallback branch needs its own fallbackIndex, which these callers don't have,
+ * so such an entry simply skips the synchronous store update.
+ */
+export function deriveTimelineStoreKey(params: {
+  domId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
+}): string | undefined {
+  if (!params.domId && !params.selector) return undefined;
+  return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params });
+}
+
 // ---------------------------------------------------------------------------
 // DOM node querying
 // ---------------------------------------------------------------------------

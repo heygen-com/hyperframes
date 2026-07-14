@@ -582,7 +582,7 @@ window.__utilsMarker = gsap.utils.marker;
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it("reads remapped timeline registry accessors with the original target receiver", () => {
+  it("reads and dual-publishes remapped timelines without replacing the registry", () => {
     let timeline = "initial";
     const timelineRegistry = {
       get host() {
@@ -633,6 +633,8 @@ window.__afterTimeline = window.__timelines.scene;
 
     expect(fakeWindow.__beforeTimeline).toBe("initial");
     expect(fakeWindow.__afterTimeline).toBe("updated");
+    expect(Reflect.get(timelineRegistry, "scene")).toBe("updated");
+    expect(fakeWindow.__timelines).toBe(timelineRegistry);
     expect(errorSpy).not.toHaveBeenCalled();
   });
 

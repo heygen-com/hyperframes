@@ -227,6 +227,70 @@ describe("persistence-tiered severity (#U10)", () => {
     expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
   });
 
+  it("promotes a held, canvas-scale canvas_overflow breach from info to warning", () => {
+    const breach = {
+      ...issue("canvas_overflow", "info"),
+      overflow: { top: 140 },
+      containerRect: { left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 },
+    };
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...breach, time: 1 },
+        { ...breach, time: 3 },
+      ],
+      9,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "warning", occurrences: 2 });
+  });
+
+  it("keeps a held, large but fully off-canvas canvas_overflow at info — a parked entrance, not drift", () => {
+    const breach = {
+      ...issue("canvas_overflow", "info"),
+      rect: { left: 2200, top: 300, right: 2800, bottom: 700, width: 600, height: 400 },
+      overflow: { right: 880 },
+      containerRect: { left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 },
+    };
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...breach, time: 1 },
+        { ...breach, time: 3 },
+      ],
+      9,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 2 });
+  });
+
+  it("demotes single-sample coordinate-frame findings to info", () => {
+    for (const code of [
+      "escaped_container",
+      "panel_out_of_canvas",
+      "connector_detached",
+    ] as const) {
+      const collapsed = collapseStaticLayoutIssues([{ ...issue(code, "warning"), time: 3 }], 9);
+      expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 1 });
+    }
+  });
+
+  it("keeps a held but small canvas_overflow at info", () => {
+    const breach = {
+      ...issue("canvas_overflow", "info"),
+      overflow: { top: 30 },
+      containerRect: { left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080 },
+    };
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...breach, time: 1 },
+        { ...breach, time: 3 },
+      ],
+      9,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 2 });
+  });
+
   it("does not demote a finding held at every sample — persistence, not a single hit", () => {
     const collapsed = collapseStaticLayoutIssues(
       [
@@ -241,7 +305,7 @@ describe("persistence-tiered severity (#U10)", () => {
     expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 3 });
   });
 
-  it("only re-promotes content_overlap — other held codes keep their original severity", () => {
+  it("does not promote held codes without a promotion rule — container_overflow keeps its severity", () => {
     const collapsed = collapseStaticLayoutIssues(
       [
         { ...issue("container_overflow", "warning"), time: 3 },

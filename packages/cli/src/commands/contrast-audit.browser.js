@@ -131,6 +131,12 @@ window.__contrastAuditPrepare = function () {
     return !paintsAnyProbePoint(el, rect);
   }
 
+  function isIntentionallyOccluded(el, rect) {
+    if (typeof document.elementFromPoint !== "function") return false;
+    if (!el.closest || !el.closest("[data-layout-allow-occlusion]")) return false;
+    return !paintsAnyProbePoint(el, rect);
+  }
+
   var out = [];
   var restores = [];
   // Registered BEFORE the walk starts (not after it finishes) and pushed to
@@ -200,6 +206,10 @@ window.__contrastAuditPrepare = function () {
     if (rect.width < 8 || rect.height < 8) continue;
     if (rect.right <= 0 || rect.bottom <= 0) continue;
     if (isClippedAway(el, rect)) continue;
+    // The layout audit's explicit occlusion opt-out means this text is allowed
+    // to sit behind another scene. Skip contrast only while every probe point
+    // is actually covered; the same copy is audited normally when visible.
+    if (isIntentionallyOccluded(el, rect)) continue;
 
     // For SVG text, `fill` is the paint that's actually rendered; `color` is
     // frequently just the inherited/initial value and unrelated to what's on

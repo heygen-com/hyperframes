@@ -19,10 +19,10 @@ describe("isHdrColorSpace", () => {
     ).toBe(false);
   });
 
-  it("detects bt2020 primaries", () => {
+  it("does not treat SDR transfer in a BT.2020 gamut as HDR", () => {
     expect(
       isHdrColorSpace({ colorTransfer: "bt709", colorPrimaries: "bt2020", colorSpace: "bt709" }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("detects smpte2084 (PQ)", () => {
