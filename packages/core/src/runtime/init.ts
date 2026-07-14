@@ -2713,10 +2713,13 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
-  const seekTimelineAndAdapters = (
+  // Hoisted (function decl, not const arrow) so the control bridge + transport —
+  // wired earlier in this init — can call it during the load-time seek without a
+  // temporal-dead-zone error (Cannot access 'seekTimelineAndAdapters' before init).
+  function seekTimelineAndAdapters(
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
-  ) => {
+  ) {
     const tl = state.capturedTimeline;
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
@@ -2784,7 +2787,7 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
-  };
+  }
 
   // True while the Studio is mid-drag on an element (the gesture marker is
   // stamped on the gestured element for the duration of the drag). During a
@@ -3020,7 +3023,9 @@ export function initSandboxRuntimeModular(): void {
   // rescaled in place; but a bounded source's window was baked into start()'s
   // duration at its prior rate and can't be rescaled, so when one is active we
   // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
-  const applyWebAudioRate = () => {
+  // Hoisted so onSetPlaybackRate (bridge, wired earlier) can call it during a
+  // load-time playback-rate set without a temporal-dead-zone error.
+  function applyWebAudioRate() {
     const changed = webAudio.setRate(state.playbackRate);
     if (
       changed &&
@@ -3033,7 +3038,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
-  };
+  }
 
   // Sync clock duration from any captured timeline
   if (state.capturedTimeline) {
