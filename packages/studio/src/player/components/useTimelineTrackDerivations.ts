@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { getTrackStyle, type TrackVisualStyle } from "./timelineIcons";
-import { computeZOverrideKeys } from "./timelineZOverride";
 
 /**
  * Per-render track derivations Timeline.tsx feeds the canvas/lanes: the lane →
@@ -14,7 +13,6 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
   trackOrder: number[];
-  zOverrideKeys: ReadonlySet<string>;
 } {
   const tracks = useMemo(() => {
     const map = new Map<number, TimelineElement[]>();
@@ -36,10 +34,5 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
 
   const trackOrder = useMemo(() => tracks.map(([trackNum]) => trackNum), [tracks]);
 
-  // Clips whose authored z contradicts lane order get a "z" badge (see
-  // timelineZOverride.ts). Memoized on the expanded set: store zIndex is synced
-  // synchronously on z commits, so this re-derives right after a menu action.
-  const zOverrideKeys = useMemo(() => computeZOverrideKeys(expandedElements), [expandedElements]);
-
-  return { tracks, trackStyles, trackOrder, zOverrideKeys };
+  return { tracks, trackStyles, trackOrder };
 }

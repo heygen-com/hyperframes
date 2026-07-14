@@ -147,8 +147,7 @@ export const Timeline = memo(function Timeline({
     return Number.isFinite(result) ? result : safeDur;
   }, [rawElements, duration]);
 
-  const { tracks, trackStyles, trackOrder, zOverrideKeys } =
-    useTimelineTrackDerivations(expandedElements);
+  const { tracks, trackStyles, trackOrder } = useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
   const expandedElementsRef = useRef(expandedElements);
@@ -453,7 +452,6 @@ export const Timeline = memo(function Timeline({
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
-          zOverrideKeys={zOverrideKeys}
           tracks={tracks}
           trackStyles={trackStyles}
           selectedElementId={selectedElementId}
