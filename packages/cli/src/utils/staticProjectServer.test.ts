@@ -43,6 +43,14 @@ describe("serveStaticProjectHtml range support", () => {
     expect(await res.text()).toBe("abcdef");
   });
 
+  it("serves an asset when its URL has a query string", async () => {
+    const { url } = await serveWith(Buffer.from("versioned", "utf-8"));
+
+    const res = await fetch(`${url}tone.wav?v=123&cache=1`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("versioned");
+  });
+
   it("streams a small slice out of a large file without buffering the whole thing", async () => {
     // 8MB file, ask for 4 bytes deep inside it. The handler must createReadStream
     // the [start,end] window only, not readFileSync the whole 8MB and slice.
