@@ -107,8 +107,12 @@ function canMoveElement(element: TimelineElement): boolean {
  * `false` so the caller also skips the z-sync (no orphaned z patch).
  *
  * The DOM is updated synchronously up front; the returned promise never rejects.
+ *
+ * Exported for reuse by non-drag batch time-moves (track gap closing — see
+ * timelineGapCommit.ts) so they share the same optimistic-apply, rollback, and
+ * atomic single-undo persist semantics as a drag commit.
  */
-function persistMoveEdits(
+export function persistMoveEdits(
   edits: TimelineMoveEdit[],
   deps: DragCommitDeps,
   coalesceKey?: string,

@@ -79,6 +79,57 @@ interface CanvasContextMenuProps {
 
 type ZAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
 
+// Stacked-layer + arrow glyphs, one per z action (16px, stroke, currentColor —
+// matches the studio's inline-SVG conventions: fill="none", 1.2 stroke, round
+// caps/joins). Single actions show ONE layer diamond with the arrow stepping
+// one way; front/back show a TWO-diamond stack with the arrow piercing through
+// and beyond it. `paths` are the d attributes, drawn in order.
+const Z_ACTION_ICONS: Record<ZAction, string[]> = {
+  "bring-forward": [
+    "M3 11 L8 8.5 L13 11 L8 13.5 Z", // layer diamond (bottom)
+    "M8 8.5 L8 2", // arrow shaft up
+    "M5.5 4.5 L8 2 L10.5 4.5", // arrow head
+  ],
+  "send-backward": [
+    "M3 5 L8 2.5 L13 5 L8 7.5 Z", // layer diamond (top)
+    "M8 7.5 L8 14", // arrow shaft down
+    "M5.5 11.5 L8 14 L10.5 11.5", // arrow head
+  ],
+  "bring-to-front": [
+    "M3 9.5 L8 7 L13 9.5 L8 12 Z", // upper layer of the stack
+    "M3 12.5 L8 10 L13 12.5 L8 15 Z", // lower layer of the stack
+    "M8 12.5 L8 2", // arrow piercing up through/above the stack
+    "M5.5 4.5 L8 2 L10.5 4.5", // arrow head
+  ],
+  "send-to-back": [
+    "M3 4 L8 1.5 L13 4 L8 6.5 Z", // upper layer of the stack
+    "M3 7 L8 4.5 L13 7 L8 9.5 Z", // lower layer of the stack
+    "M8 3.5 L8 14", // arrow piercing down through/below the stack
+    "M5.5 11.5 L8 14 L10.5 11.5", // arrow head
+  ],
+};
+
+function ZActionIcon({ action }: { action: ZAction }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="mr-2 shrink-0"
+      aria-hidden="true"
+    >
+      {Z_ACTION_ICONS[action].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
 const Z_ACTIONS: Array<{ action: ZAction; label: string }> = [
   { action: "bring-forward", label: "Bring forward" },
   { action: "send-backward", label: "Send backward" },
@@ -196,7 +247,10 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
                 if (enabled) handleZAction(action);
               }}
             >
-              {label}
+              {/* Icon inherits the item's text color via currentColor, so the
+                  disabled muted tone applies to both icon and label. */}
+              <ZActionIcon action={action} />
+              <span>{label}</span>
             </button>
           );
         })}

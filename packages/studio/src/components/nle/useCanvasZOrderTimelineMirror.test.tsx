@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../../player";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import type { TimelineEditCallbacks } from "../../player/components/timelineCallbacks";
@@ -10,6 +10,7 @@ import {
   useCanvasZOrderTimelineMirror,
   type MirrorZOrderInput,
 } from "./useCanvasZOrderTimelineMirror";
+import { makeLifecycleOpsParams } from "../../hooks/elementLifecycleOpsTestUtils";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import {
   buildEditHistoryEntry,
@@ -113,19 +114,13 @@ function mountMirrorHarness(history: {
 
   const api: Partial<HarnessApi> = {};
   function Harness() {
-    const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-      activeCompPath: "index.html",
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(async () => {}),
-      domEditSaveTimestampRef: { current: 0 },
-      editHistory: { recordEdit: vi.fn(async () => {}) },
-      projectIdRef: { current: null },
-      reloadPreview: vi.fn(),
-      clearDomSelection: vi.fn(),
-      commitDomEditPatchBatches: async (_batches, options) => {
-        record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
-      },
-    });
+    const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+      makeLifecycleOpsParams({
+        commitDomEditPatchBatches: async (_batches, options) => {
+          record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
+        },
+      }),
+    );
     api.commitZ = handleDomZIndexReorderCommit;
     api.mirror = useCanvasZOrderTimelineMirror();
     return null;

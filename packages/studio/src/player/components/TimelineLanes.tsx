@@ -82,6 +82,12 @@ export interface TimelineLaneBaseProps {
     toClipPercentage: number,
   ) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
+  /**
+   * Right-click on EMPTY lane space (not on a clip — those preventDefault
+   * before this fires — not the gutter/ruler, not below the lanes). `time` is
+   * the timeline time (seconds) under the pointer on that lane.
+   */
+  onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
 }
 
@@ -136,6 +142,7 @@ export function TimelineLanes({
   onContextMenuKeyframe,
   onMoveKeyframe,
   onContextMenuClip,
+  onContextMenuLane,
   beatAnalysis,
   onToggleTrackHidden,
   onResizeElement,
@@ -221,6 +228,17 @@ export function TimelineLanes({
                   transition: "opacity 120ms ease",
                 }}
                 className="relative"
+                onContextMenu={(e: React.MouseEvent) => {
+                  // Clip / keyframe-diamond context menus preventDefault at the
+                  // target before this bubble handler runs — respect them so a
+                  // right-click on a clip never also opens the gap menu.
+                  if (e.defaultPrevented || !onContextMenuLane) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const time = (e.clientX - rect.left) / pps;
+                  if (time < 0) return;
+                  e.preventDefault();
+                  onContextMenuLane(e, trackNum, time);
+                }}
               >
                 {/* Faint beat lines in every track's background (behind the clips);
                     the active move-snap target is highlighted. */}

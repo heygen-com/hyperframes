@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player";
 import type { DomEditPatchBatch } from "./domEditCommitTypes";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
+import { makeLifecycleOpsParams } from "./elementLifecycleOpsTestUtils";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -46,19 +47,13 @@ function renderReorderHook(
   onReady: (commit: ReorderCommit) => void,
 ) {
   function Harness() {
-    const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-      activeCompPath: "index.html",
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(async () => {}),
-      domEditSaveTimestampRef: { current: 0 },
-      editHistory: { recordEdit: vi.fn(async () => {}) },
-      projectIdRef: { current: null },
-      reloadPreview: vi.fn(),
-      clearDomSelection: vi.fn(),
-      commitDomEditPatchBatches: async (batches, options) => {
-        capturedCalls.push({ batches, options });
-      },
-    });
+    const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+      makeLifecycleOpsParams({
+        commitDomEditPatchBatches: async (batches, options) => {
+          capturedCalls.push({ batches, options });
+        },
+      }),
+    );
     onReady(handleDomZIndexReorderCommit);
     return null;
   }
@@ -252,19 +247,13 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     let commit: ReorderCommit | undefined;
     let resolveBatch: (() => void) | undefined;
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile: vi.fn(async () => {}),
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit: vi.fn(async () => {}) },
-        projectIdRef: { current: null },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        // Persist stays pending so the assertion below can only be satisfied
-        // by the SYNCHRONOUS store update (the lane-sync path's requirement).
-        commitDomEditPatchBatches: () => new Promise((resolve) => (resolveBatch = resolve)),
-      });
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          // Persist stays pending so the assertion below can only be satisfied
+          // by the SYNCHRONOUS store update (the lane-sync path's requirement).
+          commitDomEditPatchBatches: () => new Promise((resolve) => (resolveBatch = resolve)),
+        }),
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }
@@ -307,22 +296,16 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile: vi.fn(async () => {}),
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit: vi.fn(async () => {}) },
-        projectIdRef: { current: null },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        commitDomEditPatchBatches: vi.fn(async () => {
-          // The live styles were applied by the hook before persist ran.
-          expect(el.style.zIndex).toBe("2");
-          expect(el.style.position).toBe("relative");
-          throw failure;
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          commitDomEditPatchBatches: vi.fn(async () => {
+            // The live styles were applied by the hook before persist ran.
+            expect(el.style.zIndex).toBe("2");
+            expect(el.style.position).toBe("relative");
+            throw failure;
+          }),
         }),
-      });
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }
@@ -373,20 +356,17 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile,
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit },
-        projectIdRef: { current: "demo" },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        forceReloadSdkSession,
-        commitDomEditPatchBatches: vi.fn(async () => {
-          throw originalError;
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          writeProjectFile,
+          editHistory: { recordEdit },
+          projectIdRef: { current: "demo" },
+          forceReloadSdkSession,
+          commitDomEditPatchBatches: vi.fn(async () => {
+            throw originalError;
+          }),
         }),
-      });
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }

@@ -25,6 +25,22 @@ function resolve(
   return resolveZMirrorLaneMove({ action, element, elements, crossedKey });
 }
 
+// Target on TOP lane 0; b/c fully occupy the two lanes below over t's span.
+const stackBelow = () => {
+  const t = el("t", 0, 0, 10);
+  const b = el("b", 1, 0, 10);
+  const c = el("c", 2, 0, 10);
+  return { t, elements: [t, b, c] };
+};
+
+// Sparse file: authored tracks 3/5/7 displayed as lanes 0/1/2 (a free over t's span).
+const sparseAuthored = () => {
+  const a = el("a", 0, 20, 5, { authoredTrack: 3 });
+  const b = el("b", 1, 0, 10, { authoredTrack: 5 });
+  const t = el("t", 2, 0, 10, { authoredTrack: 7 });
+  return { t, elements: [a, b, t] };
+};
+
 describe("resolveZMirrorLaneMove — bring-forward / send-backward", () => {
   // Stack: a on lane 0, b on lane 1, target on lane 2 — all overlapping in time.
   const stack = () => {
@@ -87,11 +103,9 @@ describe("resolveZMirrorLaneMove — bring-forward / send-backward", () => {
   });
 
   it("send-backward inserts below the neighbor when no lane below is free", () => {
-    const t = el("t", 0, 0, 10);
-    const b = el("b", 1, 0, 10);
-    const c = el("c", 2, 0, 10);
+    const { t, elements } = stackBelow();
     // Boundary below b's lane (row 1 + 1 = 2).
-    expect(resolve("send-backward", t, [t, b, c], "b")).toEqual({ kind: "insert", insertRow: 2 });
+    expect(resolve("send-backward", t, elements, "b")).toEqual({ kind: "insert", insertRow: 2 });
   });
 
   it("send-backward returns null when nothing overlaps below and no crossedKey", () => {
@@ -163,10 +177,8 @@ describe("resolveZMirrorLaneMove — bring-to-front / send-to-back", () => {
   });
 
   it("send-to-back inserts below the bottommost overlap when no lane is free", () => {
-    const t = el("t", 0, 0, 10);
-    const b = el("b", 1, 0, 10);
-    const c = el("c", 2, 0, 10);
-    expect(resolve("send-to-back", t, [t, b, c])).toEqual({ kind: "insert", insertRow: 3 });
+    const { t, elements } = stackBelow();
+    expect(resolve("send-to-back", t, elements)).toEqual({ kind: "insert", insertRow: 3 });
   });
 
   it("send-to-back is null when already bottommost among overlaps", () => {
@@ -263,12 +275,9 @@ describe("resolveZMirrorLaneMove — zone boundary (audio untouched)", () => {
 
 describe("resolveZMirrorLaneMove — authored (persist) space", () => {
   it("persistTrack takes the target lane occupant's authoredTrack, not the display lane", () => {
-    // Sparse file: authored tracks 3/5/7 displayed as lanes 0/1/2. Occupant of
-    // the free-over-span target lane 0 (authored 3) anchors the persist value.
-    const a = el("a", 0, 20, 5, { authoredTrack: 3 });
-    const b = el("b", 1, 0, 10, { authoredTrack: 5 });
-    const t = el("t", 2, 0, 10, { authoredTrack: 7 });
-    expect(resolve("bring-forward", t, [a, b, t], "b")).toEqual({
+    // Occupant of the free-over-span target lane 0 (authored 3) anchors the persist value.
+    const { t, elements } = sparseAuthored();
+    expect(resolve("bring-forward", t, elements, "b")).toEqual({
       kind: "move",
       displayTrack: 0,
       persistTrack: 3,
@@ -332,17 +341,11 @@ describe("resolveZMirrorLaneMove — degenerate inputs and determinism", () => {
   });
 
   it("identical inputs produce identical outputs (deterministic, input untouched)", () => {
-    const make = () => {
-      const a = el("a", 0, 20, 5, { authoredTrack: 3 });
-      const b = el("b", 1, 0, 10, { authoredTrack: 5 });
-      const t = el("t", 2, 0, 10, { authoredTrack: 7 });
-      return { t, elements: [a, b, t] };
-    };
-    const first = make();
+    const first = sparseAuthored();
     const snapshot = structuredClone(first.elements);
     const r1 = resolve("bring-forward", first.t, first.elements, "b");
     const r2 = resolve("bring-forward", first.t, first.elements, "b");
-    const fresh = make();
+    const fresh = sparseAuthored();
     const r3 = resolve("bring-forward", fresh.t, fresh.elements, "b");
     expect(r1).toEqual(r2);
     expect(r1).toEqual(r3);

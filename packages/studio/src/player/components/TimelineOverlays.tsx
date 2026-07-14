@@ -8,12 +8,23 @@ import {
   type KeyframeDiamondContextMenuState,
 } from "./KeyframeDiamondContextMenu";
 import { ClipContextMenu } from "./ClipContextMenu";
+import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
 
 interface ClipContextMenuState {
   x: number;
   y: number;
   element: TimelineElement;
+}
+
+/** Resolved model for the empty-lane-space (track gap) context menu. */
+interface TrackGapContextMenuState {
+  x: number;
+  y: number;
+  gapWidth: number | null;
+  canCloseGap: boolean;
+  canCloseAllGaps: boolean;
+  hasAnyGaps: boolean;
 }
 
 interface TimelineOverlaysProps {
@@ -36,6 +47,10 @@ interface TimelineOverlaysProps {
   onSplitElement: TimelineEditCallbacks["onSplitElement"];
   pinZoomBeforeEdit: () => void;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
+  gapContextMenu: TrackGapContextMenuState | null;
+  onDismissGapContextMenu: () => void;
+  onCloseTrackGap: () => void;
+  onCloseAllTrackGaps: () => void;
 }
 
 // The timeline's floating overlays, rendered as siblings above the scroll area:
@@ -61,6 +76,10 @@ export function TimelineOverlays({
   onSplitElement,
   pinZoomBeforeEdit,
   onDeleteElement,
+  gapContextMenu,
+  onDismissGapContextMenu,
+  onCloseTrackGap,
+  onCloseAllTrackGaps,
 }: TimelineOverlaysProps) {
   return (
     <>
@@ -115,6 +134,20 @@ export function TimelineOverlays({
             pinZoomBeforeEdit();
             onDeleteElement?.(el);
           }}
+        />
+      )}
+
+      {gapContextMenu && (
+        <TrackGapContextMenu
+          x={gapContextMenu.x}
+          y={gapContextMenu.y}
+          gapWidth={gapContextMenu.gapWidth}
+          canCloseGap={gapContextMenu.canCloseGap}
+          canCloseAllGaps={gapContextMenu.canCloseAllGaps}
+          hasAnyGaps={gapContextMenu.hasAnyGaps}
+          onClose={onDismissGapContextMenu}
+          onCloseGap={onCloseTrackGap}
+          onCloseAllGaps={onCloseAllTrackGaps}
         />
       )}
     </>

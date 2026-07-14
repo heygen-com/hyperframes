@@ -30,6 +30,7 @@ import {
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
+import { useTrackGapMenu } from "./useTrackGapMenu";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -115,15 +116,14 @@ export const Timeline = memo(function Timeline({
   const [razorGuideX, setRazorGuideX] = useState<number | null>(null);
 
   useMountEffect(() => {
-    const down = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(true);
-    const up = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(false);
+    const key = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(e.type === "keydown");
     const blur = () => setShiftHeld(false);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
+    window.addEventListener("keydown", key);
+    window.addEventListener("keyup", key);
     window.addEventListener("blur", blur);
     return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("keyup", key);
       window.removeEventListener("blur", blur);
     };
   });
@@ -159,8 +159,7 @@ export const Timeline = memo(function Timeline({
     containerRef.current = el;
   }, []);
 
-  // Last horizontal scroll offset, RESTORED across the post-edit iframe reload (which clamps into
-  // a scroll jump); with the pinned zoom this keeps the user parked at the same spot after edits.
+  // Last horizontal scroll offset, restored across the post-edit iframe reload (pinned zoom).
   const lastScrollLeftRef = useRef(0);
   const setScrollRef = useCallback(
     (el: HTMLDivElement | null) => {
@@ -191,8 +190,7 @@ export const Timeline = memo(function Timeline({
   const effectiveDuration = useMemo(() => {
     const safeDur = Number.isFinite(duration) ? duration : 0;
     if (rawElements.length === 0) return safeDur;
-    const maxEnd = Math.max(...rawElements.map((el) => el.start + el.duration));
-    const result = Math.max(safeDur, maxEnd);
+    const result = Math.max(safeDur, ...rawElements.map((el) => el.start + el.duration));
     return Number.isFinite(result) ? result : safeDur;
   }, [rawElements, duration]);
 
@@ -206,8 +204,7 @@ export const Timeline = memo(function Timeline({
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
-  // Declared here (used before the fitPps derivation below) so the edit-pin
-  // wrappers can close over it; `fitPpsRef.current` is refreshed each render.
+  // Declared before the fitPps derivation so the edit-pin wrappers can close over it.
   const fitPpsRef = useRef(100);
 
   const {
@@ -235,6 +232,15 @@ export const Timeline = memo(function Timeline({
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
     expandedElementsRef,
   });
+
+  const { gapMenuModel, openGapMenu, dismissGapMenu, closeTrackGap, closeAllTrackGaps } =
+    useTrackGapMenu({
+      tracks,
+      expandedElementsRef,
+      trackOrderRef,
+      onMoveElement: pinnedOnMoveElement,
+      onMoveElements: pinnedOnMoveElements,
+    });
 
   const {
     draggedClip,
@@ -363,8 +369,7 @@ export const Timeline = memo(function Timeline({
     trackOrderRef,
     onSelectElement,
   });
-  // Wire setRangeSelection into the stable ref consumed by useTimelineClipDrag
-  setRangeSelectionRef.current = setRangeSelection;
+  setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
 
   const prevSelectedRef = useRef(selectedElementRef.current);
   // eslint-disable-next-line no-restricted-syntax, react-hooks/exhaustive-deps
@@ -443,8 +448,7 @@ export const Timeline = memo(function Timeline({
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
-          // Remember the live offset so it can be restored across a post-edit reload.
-          lastScrollLeftRef.current = e.currentTarget.scrollLeft;
+          lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
         }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
@@ -545,7 +549,13 @@ export const Timeline = memo(function Timeline({
             e.preventDefault();
             setSelectedElementId(el.key ?? el.id);
             onSelectElement?.(el);
+            dismissGapMenu();
             setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
+          }}
+          onContextMenuLane={(e, track, time) => {
+            if (draggedClip?.started || resizingClip) return;
+            setClipContextMenu(null);
+            openGapMenu({ x: e.clientX, y: e.clientY, track, time });
           }}
         />
         {activeTool === "razor" && razorGuideX !== null && (
@@ -579,6 +589,10 @@ export const Timeline = memo(function Timeline({
         onSplitElement={onSplitElement}
         pinZoomBeforeEdit={pinZoomBeforeEdit}
         onDeleteElement={_onDeleteElement}
+        gapContextMenu={gapMenuModel}
+        onDismissGapContextMenu={dismissGapMenu}
+        onCloseTrackGap={closeTrackGap}
+        onCloseAllTrackGaps={closeAllTrackGaps}
       />
     </div>
   );
