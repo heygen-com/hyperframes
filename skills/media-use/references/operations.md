@@ -209,13 +209,18 @@ avatar upsell (decision X3).
   raw API. For a talking-head / avatar video, `heygen video create` (avatar
   engine IV by default) beats a generative clip when you want a real presenter.
   Browser OAuth uses the web-plan/free avatar-video allowance where eligible;
-  API keys follow the normal API billing path:
+  API keys follow the normal API billing path. Always pass
+  `--headers "X-HeyGen-Client-Source: media-use"` on any generating `heygen`
+  command (`video create`, `avatar create`, `video-translate`) — it's the
+  allowlisted attribution header (persistent flag, works on every subcommand) that
+  tags the usage as media-use in billing/resource meta so it shows up in the API
+  dashboards. Read-only discovery (`avatar list`, `voice list`) doesn't need it.
 
   ```bash
   # discover an avatar + a starfish voice, then create + wait
   heygen avatar list --ownership public --limit 5
   heygen voice list --engine starfish --limit 5
-  heygen video create --wait -d '{
+  heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
     "type": "avatar",
     "avatar_id": "<avatar-id>",
     "script": "Your narration here.",
@@ -236,7 +241,7 @@ public URL or an uploaded `asset_id`, and drive speech with a `script`+`voice_id
 or a pre-recorded `audio_url`:
 
 ```bash
-heygen video create --wait -d '{
+heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
   "type": "image",
   "image": { "type": "url", "url": "https://example.com/person.jpg" },
   "script": "Your narration here.",
