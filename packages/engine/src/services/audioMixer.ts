@@ -5,7 +5,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { isAbsolute, join, dirname } from "path";
+import { join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
@@ -530,7 +530,7 @@ export async function processCompositionAudio(
       }
       try {
         let srcPath = element.src;
-        if (!isAbsolute(srcPath) && !isHttpUrl(srcPath)) {
+        if (!isHttpUrl(srcPath)) {
           // Same browser-vs-filesystem path semantics as videos — see
           // resolveProjectRelativeSrc in videoFrameExtractor for the full why.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);

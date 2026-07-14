@@ -143,6 +143,13 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
     );
   });
 
+  it("resolves a browser root-absolute URL from the project root", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
   it("clamps a leading `../` so `../assets/foo.mp4` resolves to assets/foo.mp4", () => {
     const projectDir = join(tmp, "project");
     expect(resolveProjectRelativeSrc("../assets/foo.mp4", projectDir)).toBe(

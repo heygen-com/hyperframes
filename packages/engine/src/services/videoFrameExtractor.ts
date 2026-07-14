@@ -670,6 +670,12 @@ export function resolveProjectRelativeSrc(
 ): string {
   const qIdx = src.indexOf("?");
   const cleanSrc = qIdx >= 0 ? src.slice(0, qIdx) : src;
+
+  // Preserve explicit filesystem paths when they really exist. Otherwise a
+  // leading slash is a browser origin-root URL (`/assets/foo.mp4`), which the
+  // file server serves from the project root rather than the host filesystem.
+  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+
   const candidates: string[] = [];
 
   const addCandidate = (candidate: string): void => {
@@ -746,11 +752,7 @@ export async function extractAllVideoFrames(
     if (signal?.aborted) break;
     try {
       let videoPath = video.src;
-      // Use isAbsolute() rather than startsWith("/"). On Windows, absolute paths
-      // like "C:\…" are not detected by the latter, so we'd re-join them under
-      // baseDir and produce duplicated, nonexistent paths
-      // (e.g. C:\tmp\hf-vfr-test-X\C:\tmp\hf-vfr-test-X\vfr_screen.mp4).
-      if (!isAbsolute(videoPath) && !isHttpUrl(videoPath)) {
+      if (!isHttpUrl(videoPath)) {
         videoPath = resolveProjectRelativeSrc(video.src, baseDir, compiledDir);
       }
 

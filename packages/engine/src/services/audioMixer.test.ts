@@ -438,6 +438,38 @@ describe("processCompositionAudio", () => {
     const prepareArgs = runFfmpegMock.mock.calls[0]?.[0];
     expect(prepareArgs).toContain(join(baseDir, "assets", filename));
   });
+
+  it("prepares browser root-absolute audio srcs from the project root", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    mkdirSync(join(baseDir, ".media"), { recursive: true });
+    writeFileSync(join(baseDir, ".media", "tone.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "tone",
+          src: "/.media/tone.wav",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      1,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(baseDir, ".media", "tone.wav"));
+  });
 });
 
 describe("parseAudioElements — relative data-start resolution", () => {
