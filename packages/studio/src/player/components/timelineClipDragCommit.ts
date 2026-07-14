@@ -401,36 +401,28 @@ function buildTrackInsertEdits(
 ): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
   const { elements, trackOrder } = deps;
   const editKey = keyOf(element);
-  // An expanded sub-comp child's display lane is a synthetic row in the HOST's
-  // lane space; a track insert renumbers that space, which has no meaning in
-  // the child's own file. Refuse rather than persist host numbers there.
+  // Expanded-child rows are synthetic host lanes; inserting one has no meaning
+  // in the child's source file, so refuse instead of persisting host numbers.
   if (element.expandedParentStart != null) return null;
   const targetTrack = insertTrackValue(trackOrder, insertRow);
-  // Drop-intent set: edited clip at the fractional insert lane (so it sorts
-  // between its neighbours), selection members time-shifted, others as-is.
+  // Place the edit on a fractional lane and time-shift selected passengers.
   const candidate = elements.map((e) => {
     if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
     if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
     return e;
   });
-  // normalizeToZones compacts the fractional lane to a contiguous integer, which
-  // shifts the at/below clips down by one — the sanctioned +1 index renumber.
+  // Compaction turns the fractional lane into the sanctioned +1 renumber.
   const normalized = normalizeToZones(candidate);
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // The renumber WRITE set is the edited element's OWN source-file zone: the
-  // sanctioned multi-clip write converges that zone to lane space, and a display
-  // set can mix files and visual/audio zones. Writing another file's numbering
-  // corrupts its coordinate space; writing the other zone would make a visual
-  // insert renumber audio (or vice versa).
+  // Renumber only the edited source-file zone. Display sets can mix files and
+  // visual/audio zones whose coordinate spaces must remain independent.
   const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
     sameSourceFile(src, element) &&
     classifyZone(src) === writableZone &&
     src.expandedParentStart == null;
-  // The renumber is only correct as a whole-ZONE write: skipping an unwritable
-  // same-file, same-zone clip whose lane shifts leaves its track colliding with
-  // a renumbered neighbour, and the next normalize merges the two lanes. If any
-  // shifted clip in that zone can't be written, refuse the insert.
+  // A partial zone renumber creates lane collisions; refuse if any shifted row
+  // in the write set is locked.
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (src && writable(src) && !canMoveElement(src) && norm.track !== src.track) {
@@ -444,9 +436,20 @@ function buildTrackInsertEdits(
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src) continue;
-    // File/zone scope + capabilities gate: never write a foreign-file,
-    // other-zone, expanded, or locked/implicit clip.
-    if (!writable(src) || !canMoveElement(src)) continue;
+    if (!canMoveElement(src)) continue;
+    const selectedPassenger = keyOf(src) !== editKey && multi?.keys.has(keyOf(src));
+    if (!writable(src)) {
+      // Selection time intent crosses topology scopes, but keeps the passenger's
+      // authored track rather than persisting a display-only renumber.
+      if (selectedPassenger && multi) {
+        edits.push({
+          element: src,
+          updates: { start: multi.movedStart(src), track: src.track },
+          persistTrack: src.authoredTrack,
+        });
+      }
+      continue;
+    }
     const start =
       keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
         ? (multi?.movedStart(src) ?? previewStart)

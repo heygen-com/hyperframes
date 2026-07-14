@@ -370,29 +370,35 @@ describe("useCanvasZOrderTimelineMirror", () => {
     expect(edits[0].updates).toMatchObject({ start: 0, track: 0 });
   });
 
-  it("maps a duplicate class selector to the crossed occurrence instead of occurrence zero", async () => {
+  it("maps a cross-file duplicate selector to the source-scoped crossed occurrence", async () => {
     setStoreElements([
       {
-        id: "index.html:.sub:0",
-        key: "index.html:.sub:0",
+        id: "scene.html:.sub:0",
+        key: "scene.html:.sub:0",
         tag: "div",
         start: 20,
         duration: 5,
         track: 0,
         selector: ".sub",
         selectorIndex: 0,
+        sourceFile: "scene.html",
       },
       {
-        id: "index.html:.sub:1",
-        key: "index.html:.sub:1",
+        id: "scene.html:.sub:1",
+        key: "scene.html:.sub:1",
         tag: "div",
         start: 0,
         duration: 10,
         track: 1,
         selector: ".sub",
         selectorIndex: 1,
+        sourceFile: "scene.html",
       },
-      storeEl("t", 2, 0, 10),
+      {
+        ...storeEl("t", 2, 0, 10),
+        key: "scene.html#t",
+        sourceFile: "scene.html",
+      },
     ]);
     const edits: Array<{ element: TimelineElement; updates: { start: number; track: number } }> =
       [];
@@ -401,19 +407,28 @@ describe("useCanvasZOrderTimelineMirror", () => {
     };
     const { mirror } = mountMirrorOnlyHarness(onMoveElements);
 
+    // This root-file duplicate precedes the scene nodes in the flattened preview
+    // DOM. It must not offset scene.html's selector indices.
+    const rootDuplicate = document.createElement("div");
+    rootDuplicate.className = "sub";
+    document.body.appendChild(rootDuplicate);
+    const scene = document.createElement("div");
+    scene.setAttribute("data-composition-id", "scene");
+    scene.setAttribute("data-composition-file", "scene.html");
+    document.body.appendChild(scene);
     const first = document.createElement("div");
     first.className = "sub";
-    document.body.appendChild(first);
+    scene.appendChild(first);
     const crossed = document.createElement("div");
     crossed.className = "sub";
-    document.body.appendChild(crossed);
+    scene.appendChild(crossed);
 
     const mirrored = await act(async () =>
       mirror({
-        selectionKey: "index.html#t",
+        selectionKey: "scene.html#t",
         action: "bring-forward",
         crossed,
-        sourceFile: "index.html",
+        sourceFile: "scene.html",
         coalesceKey: "z-reorder:bring-forward:t",
       }),
     );

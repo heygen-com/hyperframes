@@ -372,6 +372,29 @@ describe("commitDraggedClipMove", () => {
     expect(map.b.track).toBe(2); // at/below the insert → +1 shift
   });
 
+  it("a selected audio passenger moves in time during a visual insert without being renumbered", () => {
+    const a = { ...el("a", 0, 0, 5), sourceFile: "scene.html" };
+    const b = { ...el("b", 1, 10, 5), sourceFile: "scene.html" };
+    const t = { ...el("t", 1, 0, 5), sourceFile: "scene.html" };
+    const audio = {
+      ...el("audio", 2, 4, 20, "audio"),
+      sourceFile: "scene.html",
+      authoredTrack: 7,
+    };
+
+    const { onMoveElements } = runClipMove(
+      drag(t, { previewStart: 5, previewTrack: 1, insertRow: 1 }),
+      {
+        elements: [a, b, t, audio],
+        trackOrder: [0, 1, 2],
+        selectedKeys: new Set(["t", "audio"]),
+      },
+    );
+
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.audio).toEqual({ start: 9, track: 7 });
+  });
+
   describe("lane ↔ stacking sync", () => {
     it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", async () => {
       // a & b overlap in time. Elements carry their authored z (as real discovery

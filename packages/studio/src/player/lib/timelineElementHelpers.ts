@@ -10,6 +10,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
+import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -264,17 +265,13 @@ export function getTimelineElementSelectorIndex(
   el: Element,
   selector: string | undefined,
 ): number | undefined {
-  if (!selector || selector.startsWith("#") || selector.startsWith("[data-composition-id=")) {
-    return undefined;
-  }
-
-  try {
-    const matches = Array.from(doc.querySelectorAll(selector));
-    const matchIndex = matches.indexOf(el);
-    return matchIndex >= 0 ? matchIndex : undefined;
-  } catch {
-    return undefined;
-  }
+  return getSourceScopedSelectorIndex(
+    doc,
+    el,
+    selector,
+    getTimelineElementSourceFile(el),
+    getTimelineElementSourceFile,
+  );
 }
 
 export function buildTimelineElementKey(params: {
