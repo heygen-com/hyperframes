@@ -1,3 +1,5 @@
+import { readLayerRevealPriorZ } from "./timelineElementHelpers";
+
 export interface StackingContextDescriptor {
   parentCompositionId: string | null;
   compositionAncestors: readonly string[];
@@ -11,6 +13,9 @@ export interface ContextOrderItem extends StackingContextDescriptor {
 // fallow-ignore-next-line complexity
 export function getElementZIndex(element: HTMLElement): number {
   try {
+    // An active Layers-panel reveal lift reports the element's TRUE z.
+    const prior = readLayerRevealPriorZ(element);
+    if (prior != null) return prior;
     const inline = element.style?.zIndex;
     if (inline && inline !== "auto") {
       const parsed = parseInt(inline, 10);

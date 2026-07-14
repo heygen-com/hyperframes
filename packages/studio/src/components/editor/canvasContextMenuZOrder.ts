@@ -42,6 +42,7 @@
  */
 
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { readLayerRevealPriorZ } from "../../player/lib/timelineElementHelpers";
 
 export type ZOrderAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
 
@@ -107,8 +108,11 @@ export function parseZIndex(value: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Read the effective z-index for an element (inline style preferred). */
+/** Read the effective z-index for an element (inline style preferred).
+ *  Reveal-lift transparent: an active Layers-panel lift reports the TRUE z. */
 export function readEffectiveZIndex(el: HTMLElement): number {
+  const prior = readLayerRevealPriorZ(el);
+  if (prior != null) return prior;
   const inline = el.style.zIndex;
   if (inline && inline !== "auto") return parseZIndex(inline);
   try {

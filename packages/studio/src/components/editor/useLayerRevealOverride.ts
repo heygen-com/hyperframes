@@ -1,19 +1,50 @@
 import { useCallback, useEffect, useRef } from "react";
+import {
+  LAYER_REVEAL_PRIOR_POSITION_ATTR,
+  LAYER_REVEAL_PRIOR_Z_ATTR,
+} from "../../player/lib/timelineElementHelpers";
+import { readEffectiveZIndex } from "./canvasContextMenuZOrder";
+
+/** The lifted paint order — far above any authored z. Only the RENDERER sees
+ *  it: every studio z reader is reveal-transparent (readLayerRevealPriorZ). */
+export const LAYER_REVEAL_LIFT_Z = "2147483000";
 
 interface RevealedNode {
   element: HTMLElement;
   priors: { display: string; visibility: string; opacity: string };
+  /** Values THIS override wrote — restore only while they are still in place. */
+  applied: { display?: string; visibility?: string; opacity?: string };
+}
+
+interface RevealLift {
+  priors: { zIndex: string; position: string };
+  positionLifted: boolean;
 }
 
 interface RevealState {
   /** The layer element the reveal was applied for (deselect detection). */
   base: HTMLElement;
   nodes: RevealedNode[];
+  lift: RevealLift | null;
 }
 
 function restoreInline(el: HTMLElement, property: string, prior: string): void {
   if (prior) el.style.setProperty(property, prior);
   else el.style.removeProperty(property);
+}
+
+/** Restore a property ONLY when its current inline value is still the one this
+ *  override wrote — a later real edit (commit, animation seek) is the new
+ *  truth and must not be clobbered. */
+function restoreIfOurs(
+  el: HTMLElement,
+  property: "display" | "visibility" | "opacity",
+  applied: string | undefined,
+  prior: string,
+): void {
+  if (applied == null) return;
+  if (el.style.getPropertyValue(property) !== applied) return;
+  restoreInline(el, property, prior);
 }
 
 /** What hides this node at the current frame, per computed style. */
@@ -27,7 +58,7 @@ function readHideSignals(el: HTMLElement, win: Window) {
   };
 }
 
-/** Force one hidden node visible with inline styles; returns its priors. */
+/** Force one hidden node visible with inline styles; returns priors + applied. */
 function revealNode(
   el: HTMLElement,
   win: Window,
@@ -38,15 +69,23 @@ function revealNode(
     visibility: el.style.visibility,
     opacity: el.style.opacity,
   };
+  const applied: RevealedNode["applied"] = {};
   if (needs.display) {
     // Prefer whatever the stylesheet says once the inline hide is lifted;
     // only force block when the sheet itself hides it.
     el.style.removeProperty("display");
     if (win.getComputedStyle(el).display === "none") el.style.display = "block";
+    applied.display = el.style.display;
   }
-  if (needs.visibility) el.style.visibility = "visible";
-  if (needs.opacity) el.style.opacity = "1";
-  return { element: el, priors };
+  if (needs.visibility) {
+    el.style.visibility = "visible";
+    applied.visibility = "visible";
+  }
+  if (needs.opacity) {
+    el.style.opacity = "1";
+    applied.opacity = "1";
+  }
+  return { element: el, priors, applied };
 }
 
 /** Walk `element` → body, force-revealing every hiding node; returns the touched nodes. */
@@ -70,16 +109,64 @@ function revealHiddenChain(element: HTMLElement): RevealedNode[] {
 }
 
 /**
+ * Lift the selected element to the TOP of the paint order while selected —
+ * regardless of its authored z or panel position. The true z is parked in
+ * LAYER_REVEAL_PRIOR_Z_ATTR so every studio z reader keeps reporting it (the
+ * lift is invisible to menus, badges, the lane mirror, and the panel sort);
+ * only the renderer sees the lifted inline value. A static element gets a
+ * temporary position:relative (layout-preserving) so the z applies, with the
+ * prior position parked in LAYER_REVEAL_PRIOR_POSITION_ATTR for the z-commit's
+ * static check. Exported for direct unit testing.
+ */
+export function liftElementToTop(element: HTMLElement): RevealLift | null {
+  const win = element.ownerDocument.defaultView;
+  if (!win) return null;
+  const priors = { zIndex: element.style.zIndex, position: element.style.position };
+  let positionLifted = false;
+  try {
+    element.setAttribute(LAYER_REVEAL_PRIOR_Z_ATTR, String(readEffectiveZIndex(element)));
+    if (win.getComputedStyle(element).position === "static") {
+      element.setAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR, "static");
+      element.style.position = "relative";
+      positionLifted = true;
+    }
+  } catch {
+    element.removeAttribute(LAYER_REVEAL_PRIOR_Z_ATTR);
+    return null; // detached / cross-realm — no lift
+  }
+  element.style.zIndex = LAYER_REVEAL_LIFT_Z;
+  return { priors, positionLifted };
+}
+
+/**
+ * Undo an active lift. Skipped entirely when the prior-z attribute is gone —
+ * a z-reorder commit consumed the lift (handleDomZIndexReorderCommit removes
+ * the attributes and writes the new real z), and that commit is the truth.
+ * Exported for direct unit testing.
+ */
+export function restoreLiftedElement(element: HTMLElement, lift: RevealLift): void {
+  if (!element.hasAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)) return;
+  element.removeAttribute(LAYER_REVEAL_PRIOR_Z_ATTR);
+  element.removeAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
+  if (element.style.zIndex === LAYER_REVEAL_LIFT_Z) {
+    restoreInline(element, "z-index", lift.priors.zIndex);
+  }
+  if (lift.positionLifted && element.style.position === "relative") {
+    restoreInline(element, "position", lift.priors.position);
+  }
+}
+
+/**
  * Temporary "show me this element" override for the Layers panel
- * (Webflow-navigator style): clicking a layer that is hidden at the current
- * frame — an animation parked it at opacity:0, the runtime display/visibility-
- * hid an inactive region, or a hidden ancestor covers it — forces it (and every
- * hiding ancestor up to the body) visible with LIVE inline styles only.
+ * (Webflow-navigator style): clicking a layer forces it (and every hiding
+ * ancestor up to the body) visible with LIVE inline styles, and paints it on
+ * TOP of the stack while selected (see liftElementToTop).
  *
  * Strictly ephemeral by construction:
  * - Exact prior inline values are recorded per touched node and restored on
  *   every exit path — reveal of a different layer, deselect, playback start,
- *   unmount. Nothing is ever sent to a persist path.
+ *   unmount. Nothing is ever sent to a persist path, and each property is
+ *   restored only while it still holds the value this override wrote.
  * - A post-edit iframe reload replaces the DOM; detached nodes are skipped on
  *   restore (the fresh document never had the override).
  * - Scrubbing/playing lets the runtime and GSAP rewrite these same inline
@@ -98,19 +185,21 @@ export function useLayerRevealOverride({ isPlaying }: { isPlaying: boolean }): {
     const state = stateRef.current;
     stateRef.current = null;
     if (!state) return;
-    for (const { element, priors } of state.nodes) {
+    for (const { element, priors, applied } of state.nodes) {
       if (!element.isConnected) continue;
-      restoreInline(element, "display", priors.display);
-      restoreInline(element, "visibility", priors.visibility);
-      restoreInline(element, "opacity", priors.opacity);
+      restoreIfOurs(element, "display", applied.display, priors.display);
+      restoreIfOurs(element, "visibility", applied.visibility, priors.visibility);
+      restoreIfOurs(element, "opacity", applied.opacity, priors.opacity);
     }
+    if (state.lift && state.base.isConnected) restoreLiftedElement(state.base, state.lift);
   }, []);
 
   const reveal = useCallback(
     (element: HTMLElement) => {
       restoreReveal();
       const nodes = revealHiddenChain(element);
-      if (nodes.length > 0) stateRef.current = { base: element, nodes };
+      const lift = liftElementToTop(element);
+      if (nodes.length > 0 || lift) stateRef.current = { base: element, nodes, lift };
     },
     [restoreReveal],
   );

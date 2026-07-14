@@ -11,6 +11,10 @@ import {
   readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";
+import {
+  LAYER_REVEAL_PRIOR_POSITION_ATTR,
+  LAYER_REVEAL_PRIOR_Z_ATTR,
+} from "../player/lib/timelineElementHelpers";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
@@ -198,13 +202,24 @@ export function useElementLifecycleOps({
           ? usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === entry.key)
           : undefined;
         let positionChanged = false;
+        // An active Layers-panel reveal lift on this element is consumed by
+        // this commit: the new z is the truth. Read the parked TRUE position
+        // for the static check below (the lift set a temporary
+        // position:relative that would otherwise mask the need to persist
+        // one), then drop the lift attributes so z readers stop reporting the
+        // stale prior (see useLayerRevealOverride / readLayerRevealPriorZ).
+        const liftPriorPosition = entry.element.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
+        entry.element.removeAttribute(LAYER_REVEAL_PRIOR_Z_ATTR);
+        entry.element.removeAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
         entry.element.style.zIndex = String(entry.zIndex);
         const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
           { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
         ];
         try {
           const win = entry.element.ownerDocument?.defaultView;
-          if (win && win.getComputedStyle(entry.element).position === "static") {
+          const effectivePosition =
+            liftPriorPosition ?? (win ? win.getComputedStyle(entry.element).position : undefined);
+          if (effectivePosition === "static") {
             entry.element.style.position = "relative";
             positionChanged = true;
             patches.push({ type: "inline-style", property: "position", value: "relative" });
