@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveTimelineIdForSelection,
   resolveTimelineSelectionSeekTime,
 } from "./studioHelpers";
 
@@ -70,5 +71,35 @@ describe("findTimelineIdByAncestor", () => {
     const child = document.createElement("span");
     wrap.appendChild(child);
     expect(findTimelineIdByAncestor(child, [], "index.html")).toBe(null);
+  });
+});
+
+describe("resolveTimelineIdForSelection", () => {
+  const el = (over: Record<string, unknown>) =>
+    ({ id: "x", start: 0, duration: 1, track: 0, tag: "div", ...over }) as never;
+
+  it("resolves an ancestor clip against activeCompPath when the selection has no sourceFile", () => {
+    // #card (a clip in a sub-composition) > .leaf (selected, not itself a clip)
+    const card = document.createElement("div");
+    card.id = "card";
+    const leaf = document.createElement("span");
+    leaf.className = "leaf";
+    card.appendChild(leaf);
+
+    const els = [
+      el({
+        id: "card",
+        domId: "card",
+        key: "comps/panel.html#card",
+        sourceFile: "comps/panel.html",
+      }),
+    ];
+    const selection = { element: leaf } as never;
+
+    // Falling back to the active comp matches; the old index.html-only fallback would miss.
+    expect(resolveTimelineIdForSelection(selection, els, "comps/panel.html")).toBe(
+      "comps/panel.html#card",
+    );
+    expect(resolveTimelineIdForSelection(selection, els, null)).toBe(null);
   });
 });

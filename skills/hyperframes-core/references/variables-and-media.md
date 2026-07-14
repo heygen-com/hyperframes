@@ -15,12 +15,29 @@ Declare variables on the `<html>` element with `data-composition-variables`. Eac
 ></html>
 ```
 
-Read resolved values once during initialization:
+**Prefer declarative bindings — no script needed** for direct substitution:
+
+```html
+<img class="clip" data-start="0" data-duration="5" data-var-src="heroImage" src="fallback.jpg" />
+<h1 class="clip" data-start="0" data-duration="5" data-var-text="title">Fallback</h1>
+<style>
+  .card {
+    color: var(--accent);
+  }
+</style>
+```
+
+- `data-var-src="id"` substitutes the element's `src` (URL string or image `{url}`); the authored `src` is the fallback.
+- `data-var-text="id"` substitutes the element's own text; element children (nested clips, animated spans) are preserved.
+- Every scalar variable is applied automatically as a `--{id}` CSS custom property on the composition root, so `var(--id)` CSS responds to overrides — no `setProperty` boilerplate.
+- Bindings resolve identically in preview and render, and per-instance for sub-compositions.
+- Caveat: media with audio should keep a real fallback `src` — render audio extraction reads the authored attribute (lint: `media_variable_src_no_fallback`).
+
+For logic beyond direct substitution (loops, conditionals, derived values), read values once during initialization:
 
 ```js
 const { title, accent } = window.__hyperframes.getVariables();
 document.getElementById("title").textContent = title;
-document.documentElement.style.setProperty("--accent", accent);
 ```
 
 ### Variable Rules

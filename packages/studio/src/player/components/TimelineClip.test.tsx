@@ -102,4 +102,15 @@ describe("TimelineClip", () => {
 
     act(() => root.unmount());
   });
+
+  it("applies selected styling when rendered as selected", () => {
+    const { host, root } = renderClip({
+      element: { id: "selected", label: "Selected", tag: "div", start: 0, duration: 1, track: 0 },
+      isSelected: true,
+    });
+
+    expect(host.querySelector(".timeline-clip")?.classList.contains("is-selected")).toBe(true);
+
+    act(() => root.unmount());
+  });
 });

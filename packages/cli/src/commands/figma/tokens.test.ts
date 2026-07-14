@@ -15,6 +15,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function client(overrides: Partial<FigmaClient>): FigmaClient {
   return {
     renderNode: () => Promise.reject(new Error("unused")),
+    renderNodes: () => Promise.reject(new Error("unused")),
     imageFills: () => Promise.resolve(new Map()),
     variables: () =>
       Promise.resolve({
@@ -56,10 +57,22 @@ describe("runTokensImport", () => {
     const out = await runTokensImport("FILE", { projectDir: dir, client: gated });
     expect(out.mode).toBe("styles");
     expect(out.entries).toEqual([]);
+    expect(out.styleCount).toBe(1);
     const sidecar = JSON.parse(readFileSync(join(dir, "figma-tokens.json"), "utf8")) as {
       tokens: Array<{ name: string; type: string }>;
     };
     expect(sidecar.tokens[0]).toMatchObject({ name: "Primary", type: "style:FILL" });
+  });
+
+  it("reports styleCount 0 when the file has no published styles — never a false success", async () => {
+    const gatedNoStyles = client({
+      variables: () =>
+        Promise.reject(new FigmaClientError("REQUIRES_ENTERPRISE", "enterprise only", 403)),
+      styles: () => Promise.resolve([]),
+    });
+    const out = await runTokensImport("FILE", { projectDir: dir, client: gatedNoStyles });
+    expect(out.mode).toBe("styles");
+    expect(out.styleCount).toBe(0);
   });
 
   it("propagates non-enterprise failures", async () => {

@@ -32,7 +32,7 @@ Atomic capabilities you load **on demand** — not full workflows; they never ow
 | **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics  | `/hyperframes-keyframes` |
 | **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                        | `/hyperframes-creative`  |
 | **Media** — resolve/generate BGM, SFX, image, icon, brand logo, voice, color grade, LUT; TTS voiceover, transcription, background removal, captions; cross-project reuse | `/media-use`             |
-| **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                       | `/hyperframes-cli`       |
+| **CLI dev loop** — init, lint, check, snapshot, preview, render, publish, doctor                                                                                         | `/hyperframes-cli`       |
 | **Install registry blocks / components** (`hyperframes add`)                                                                                                             | `/hyperframes-registry`  |
 | **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion (MCP), shaders (MCP source / native export)                   | `/figma`                 |
 
@@ -47,6 +47,7 @@ This section knows only the top-level workflows; it does not load their internal
 Routing needs to know **what the video is about** — its input and subject. If that's unspecified ("make a video about our thing" with no URL, product, topic, or asset), ask before entering any workflow — committing to a workflow IS the routing decision. At most two questions:
 
 - **Input** — a product (URL / brief), a general website, a GitHub PR, a topic to explain, or an existing talking-head video?
+- **Figma source** — if the input is a figma.com URL, `/figma` extracts assets/tokens/(components/storyboard) first, regardless of which workflow below is chosen for the video's shape; that workflow then builds from `/figma`'s output — never by driving Figma via raw MCP tools directly (skips SVG sanitization, provenance, and brand-token binding).
 
 **Mode** — if the request carries an ongoing autonomous signal ("surprise me", "decide for me", "just build it"), note it and pass it into the workflow: the whole run goes autonomous and no later step re-asks. With no signal, the workflow asks the mode as its first brief question. Default is collaborative. (`/motion-graphics` is autonomous by design.) Semantics: `hyperframes-core` → `references/brief-contract.md`.
 

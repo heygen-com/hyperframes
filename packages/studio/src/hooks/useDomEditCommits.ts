@@ -5,11 +5,19 @@ import { FONT_EXT } from "../utils/mediaTypes";
 
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
+import {
+  createStudioSaveHttpError,
+  StudioSaveHttpError,
+  trackStudioSaveFailure,
+} from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
-import type { PersistDomEditOperations } from "./domEditCommitTypes";
+import type {
+  CommitDomEditPatchBatches,
+  DomEditPatchBatch,
+  PersistDomEditOperations,
+} from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
   DomEditPersistUnsafeValueError,
@@ -21,6 +29,7 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
+import { readProjectFileContent } from "../utils/studioFileHistory";
 
 // ── Helpers ──
 
@@ -52,7 +61,85 @@ interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
+  coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
+}
+
+/** Human-readable identifier for a batch patch target (for the unmatched warning). */
+function describeBatchPatchTarget(patch: DomEditPatchBatch["patches"][number]): string {
+  return patch.target.id ?? patch.target.hfId ?? patch.target.selector ?? "(unaddressed)";
+}
+
+/**
+ * Surface server-reported unmatched patches. The matched subset already
+ * persisted, so this must NOT throw (a throw would roll back applied state) —
+ * warn and emit save-failure telemetry with a distinct reason instead.
+ */
+function reportUnmatchedBatchPatches(batch: DomEditPatchBatch, matched: boolean[]): void {
+  const unmatchedIds = batch.patches
+    .filter((_, index) => matched[index] === false)
+    .map(describeBatchPatchTarget);
+  if (unmatchedIds.length === 0) return;
+  console.warn(
+    `[studio] z-index reorder: server could not match ${unmatchedIds.length} patch target(s) in ` +
+      `${batch.sourceFile} (their z-order will revert on reload):`,
+    unmatchedIds.join(", "),
+  );
+  trackStudioSaveFailure({
+    source: "dom_edit",
+    error: new Error(`Batch patch target(s) unmatched: ${unmatchedIds.join(", ")}`),
+    filePath: batch.sourceFile,
+    mutationType: "z-reorder-unmatched",
+  });
+}
+
+async function patchElementBatch(projectId: string, batch: DomEditPatchBatch) {
+  const before = await readProjectFileContent(projectId, batch.sourceFile);
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-elements-batch/${encodeURIComponent(batch.sourceFile)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patches: batch.patches }),
+    },
+  );
+  if (!response.ok) {
+    const rejection = await readErrorResponseBody(response);
+    throw new StudioSaveHttpError(formatPatchRejectionMessage(rejection), response.status);
+  }
+  const result = (await response.json()) as {
+    changed?: boolean;
+    matched?: boolean[];
+    content?: string;
+  };
+  if (Array.isArray(result.matched)) reportUnmatchedBatchPatches(batch, result.matched);
+  return {
+    sourceFile: batch.sourceFile,
+    changed: result.changed === true,
+    // Skip-reload safety: the persist is only provably in sync with the live
+    // DOM when the server confirmed EVERY patch target matched. A missing /
+    // short matched[] is treated as unknown (false) so the caller falls back
+    // to reloading rather than silently diverging from disk.
+    allMatched:
+      Array.isArray(result.matched) &&
+      result.matched.length === batch.patches.length &&
+      result.matched.every(Boolean),
+    before,
+    after: typeof result.content === "string" ? result.content : before,
+  };
+}
+
+/**
+ * A batch is reload-skippable only when it is style-only: every operation is an
+ * `inline-style` write. The z-reorder commit applies those exact styles to the
+ * live iframe DOM synchronously, so persisting them adds nothing the preview
+ * doesn't already show. Any other op type (attribute / text-content / …) can
+ * have server-side semantics the live DOM hasn't mirrored — reload for those.
+ */
+function batchesAreInlineStyleOnly(batches: DomEditPatchBatch[]): boolean {
+  return batches.every((batch) =>
+    batch.patches.every((patch) => patch.operations.every((op) => op.type === "inline-style")),
+  );
 }
 
 export interface UseDomEditCommitsParams {
@@ -278,6 +365,7 @@ export function useDomEditCommits({
         label: options?.label ?? "Edit layer",
         kind: "manual",
         coalesceKey: options?.coalesceKey,
+        coalesceMs: options?.coalesceMs,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
       forceReloadSdkSession?.();
@@ -296,6 +384,77 @@ export function useDomEditCommits({
       showToast,
       forceReloadSdkSession,
       onTrySdkPersist,
+    ],
+  );
+
+  const commitDomEditPatchBatches: CommitDomEditPatchBatches = useCallback(
+    (batches, options) =>
+      queueDomEditSave(async () => {
+        const pid = projectIdRef.current;
+        if (!pid) throw new Error("No active project");
+        const unsafeFields = batches.flatMap((batch) =>
+          batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
+        );
+        if (unsafeFields.length > 0) {
+          showToast("Couldn't save edit because it contains invalid layout values", "error");
+          throw new DomEditPersistUnsafeValueError(
+            `DOM patch contains unsafe values: ${formatUnsafeFieldList(unsafeFields)}`,
+            { alreadyToasted: true },
+          );
+        }
+
+        domEditSaveTimestampRef.current = Date.now();
+        const results = await Promise.all(batches.map((batch) => patchElementBatch(pid, batch)));
+        const files = Object.fromEntries(
+          results
+            .filter((result) => result.changed)
+            .map((result) => [result.sourceFile, { before: result.before, after: result.after }]),
+        );
+        if (Object.keys(files).length === 0) return;
+        await editHistory.recordEdit({
+          label: options.label,
+          kind: "manual",
+          coalesceKey: options.coalesceKey,
+          files,
+        });
+        forceReloadSdkSession?.();
+        // A z-only reorder already applied its inline styles to the live iframe
+        // DOM (and the store) synchronously, so remounting the iframe here only
+        // produces a visible blink. Skip the reload when the caller asked for it
+        // AND the persist is provably in sync: style-only ops, every target
+        // matched. Any unmatched patch means the live DOM now shows state disk
+        // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
+        // reload is independently suppressed by domEditSaveTimestampRef above.)
+        const skipSafe =
+          options.skipReload === true &&
+          batchesAreInlineStyleOnly(batches) &&
+          results.every((result) => result.allMatched);
+        if (!skipSafe) reloadPreview();
+      }).catch((error) => {
+        const alreadyToasted =
+          (error instanceof StudioSaveHttpError ||
+            error instanceof DomEditPersistUnsafeValueError) &&
+          error.alreadyToasted;
+        if (!alreadyToasted) {
+          showToast(error instanceof Error ? error.message : "Failed to reorder layers", "error");
+        }
+        trackStudioSaveFailure({
+          source: "dom_edit",
+          error,
+          filePath: batches.map((batch) => batch.sourceFile).join(","),
+          mutationType: "z-reorder",
+          label: options.label,
+        });
+        throw error;
+      }),
+    [
+      domEditSaveTimestampRef,
+      editHistory,
+      forceReloadSdkSession,
+      projectIdRef,
+      queueDomEditSave,
+      reloadPreview,
+      showToast,
     ],
   );
 
@@ -359,7 +518,7 @@ export function useDomEditCommits({
     onTrySdkDelete,
     onReorderShadow,
     forceReloadSdkSession,
-    commitPositionPatchToHtml,
+    commitDomEditPatchBatches,
   });
 
   return {

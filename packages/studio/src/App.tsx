@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
-import { usePlayerStore } from "./player";
+import { usePlayerStore, type TimelineElement } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
 import { useCaptionStore } from "./captions/store";
@@ -10,16 +10,22 @@ import { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useFileManager } from "./hooks/useFileManager";
 import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
+import { usePreviewDocumentVersion } from "./hooks/usePreviewDocumentVersion";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
+import {
+  persistTimelineMoveEditsAtomically,
+  type TimelineMoveOperation,
+} from "./hooks/timelineMoveAdapter";
+import type { TimelineZIndexReorderCommit } from "./hooks/useTimelineEditingTypes";
+import type { TimelineStackingReorderIntent } from "./player/components/timelineStacking";
 import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
-import { useSdkSession } from "./hooks/useSdkSession";
 import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
+import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
-import { selectedKeyframePercentagesForElement } from "./utils/keyframeSelection";
+import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
 import { useConsoleErrorCapture } from "./hooks/useConsoleErrorCapture";
@@ -31,7 +37,7 @@ import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
   buildStudioContextValue,
-  useDragOverlay,
+  useGlobalFileDrop,
   useInspectorState,
 } from "./hooks/useStudioContextValue";
 import type { DomEditSelection } from "./components/editor/domEditing";
@@ -40,7 +46,7 @@ import { useGestureCommit } from "./hooks/useGestureCommit";
 import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
-import { StudioPreviewArea } from "./components/StudioPreviewArea";
+import { EditorShell } from "./components/EditorShell";
 import { StudioRightPanel } from "./components/StudioRightPanel";
 import { TimelineToolbar } from "./components/TimelineToolbar";
 import { StudioPlaybackProvider, StudioShellProvider } from "./contexts/StudioContext";
@@ -54,6 +60,7 @@ import { useServerConnection } from "./hooks/useServerConnection";
 import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
+  resolveMasterCompositionPath,
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
@@ -80,7 +87,7 @@ export function StudioApp() {
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
+  const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
@@ -105,34 +112,6 @@ export function StudioApp() {
         : 0;
     return Math.max(timelineDuration, maxEnd);
   }, [timelineDuration, timelineElements]);
-  const refreshTimersRef = useRef<number[]>([]);
-  const refreshPreviewDocumentVersion = useCallback(() => {
-    for (const id of refreshTimersRef.current) clearTimeout(id);
-    refreshTimersRef.current = [];
-    setPreviewDocumentVersion((v) => v + 1);
-    refreshTimersRef.current.push(
-      window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 80),
-      window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 300),
-    );
-  }, []);
-  useEffect(
-    () => () => {
-      for (const id of refreshTimersRef.current) clearTimeout(id);
-    },
-    [],
-  );
-  const [timelineVisible, setTimelineVisible] = useState(
-    () =>
-      initialUrlStateRef.current.timelineVisible ??
-      readStudioUiPreferences().timelineVisible ??
-      true,
-  );
-  const toggleTimelineVisibility = useCallback(() => {
-    setTimelineVisible((v) => {
-      writeStudioUiPreferences({ timelineVisible: !v });
-      return !v;
-    });
-  }, []);
   const { toasts, showToast, dismissToast } = useToast();
   const panelLayout = usePanelLayout({
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,
@@ -140,6 +119,7 @@ export function StudioApp() {
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
+  const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
   const reloadPreview = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -150,7 +130,16 @@ export function StudioApp() {
     domEditSaveTimestampRef,
     setRefreshKey,
   });
-  const sdkHandle = useSdkSession(projectId, activeCompPath, domEditSaveTimestampRef);
+  const masterCompPath = useMemo(
+    () => resolveMasterCompositionPath(fileManager.fileTree),
+    [fileManager.fileTree],
+  );
+  const { sdkHandle, editFlowSdkSession } = useStudioSdkSessions(
+    projectId,
+    activeCompPath,
+    domEditSaveTimestampRef,
+    masterCompPath,
+  );
   useEffect(() => {
     if (activeCompPathHydrated) return;
     if (!fileManager.fileTreeLoaded) return;
@@ -186,9 +175,35 @@ export function StudioApp() {
     pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
-    sdkSession: sdkHandle.session,
+    sdkSession: editFlowSdkSession,
     forceReloadSdkSession: sdkHandle.forceReload,
+    handleDomZIndexReorderCommitRef,
   });
+  const handleTimelineElementsMove = useCallback(
+    async (
+      edits: Array<{
+        element: TimelineElement;
+        updates: Pick<TimelineElement, "start" | "track"> & {
+          stackingReorder?: TimelineStackingReorderIntent | null;
+        };
+      }>,
+      coalesceKey?: string,
+      operation: TimelineMoveOperation = "timing",
+    ) => {
+      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, {
+        handleTimelineGroupMove: timelineEditing.handleTimelineGroupMove,
+      });
+    },
+    [timelineEditing.handleTimelineGroupMove],
+  );
+  const handleAddAssetAtPlayhead = useCallback(
+    (assetPath: string) =>
+      timelineEditing.handleTimelineAssetDrop(assetPath, {
+        start: usePlayerStore.getState().currentTime,
+        track: 0,
+      }),
+    [timelineEditing],
+  );
   const {
     activeBlockParams,
     setActiveBlockParams,
@@ -234,7 +249,6 @@ export function StudioApp() {
     previewIframeRef,
   });
   const appHotkeys = useAppHotkeys({
-    toggleTimelineVisibility,
     handleTimelineElementDelete: timelineEditing.handleTimelineElementDelete,
     handleTimelineElementSplit: timelineEditing.handleTimelineElementSplit,
     handleDomEditElementDelete: domEditDeleteBridge,
@@ -302,25 +316,18 @@ export function StudioApp() {
     openSourceForSelection: fileManager.openSourceForSelection,
     selectSidebarTab: sidebarTabRef.current.select,
     getSidebarTab: sidebarTabRef.current.get,
-    sdkSession: sdkHandle.session,
+    sdkSession: editFlowSdkSession,
     forceReloadSdkSession: sdkHandle.forceReload,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
+  handleDomZIndexReorderCommitRef.current = domEditSession.handleDomZIndexReorderCommit;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
   handleDomEditElementDeleteRef.current = domEditSession.handleDomEditElementDelete;
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
-  deleteSelectedKeyframesRef.current = () => {
-    const { selectedKeyframes, selectedElementId } = usePlayerStore.getState();
-    const a = domEditSession.selectedGsapAnimations.find((x) => x.keyframes);
-    if (!a) return;
-    // Only the active element's keyframes; a stale cross-element selection must not delete here.
-    for (const p of selectedKeyframePercentagesForElement(selectedKeyframes, selectedElementId)) {
-      domEditSession.handleGsapRemoveKeyframe(a.id, p);
-    }
-  };
+  deleteSelectedKeyframesRef.current = () => deleteSelectedKeyframes(domEditSession);
   useSdkSelectionSync(
-    sdkHandle.session,
+    editFlowSdkSession,
     domEditSession.domEditSelection,
     domEditSession.domEditGroupSelections,
   );
@@ -357,7 +364,7 @@ export function StudioApp() {
     setConsoleErrors,
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
-  const dragOverlay = useDragOverlay(fileManager.handleImportFiles);
+  const dragOverlay = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
   const handleToggleRecordingRef = useRef<() => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
@@ -378,7 +385,6 @@ export function StudioApp() {
     const r = previewIframe.getBoundingClientRect();
     canvasRectRef.current = { left: r.left, top: r.top, width: r.width, height: r.height };
   }, [gestureState, previewIframe]);
-
   const handlePreviewIframeRef = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       previewIframeRef.current = iframe;
@@ -419,7 +425,6 @@ export function StudioApp() {
     previewIframeRef,
     rightPanelTab: panelLayout.rightPanelTab,
     rightCollapsed: panelLayout.rightCollapsed,
-    timelineVisible,
     activeCompPathHydrated,
     domEditSelection: domEditSession.domEditSelection,
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
@@ -447,18 +452,15 @@ export function StudioApp() {
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     handlePreviewIframeRef,
     refreshPreviewDocumentVersion,
-    timelineVisible,
-    toggleTimelineVisibility,
   });
   const timelineToolbar = useMemo(
     () => (
       <TimelineToolbar
-        toggleTimelineVisibility={toggleTimelineVisibility}
         domEditSession={domEditSession}
         onSplitElement={timelineEditing.handleTimelineElementSplit}
       />
     ),
-    [toggleTimelineVisibility, domEditSession, timelineEditing.handleTimelineElementSplit],
+    [domEditSession, timelineEditing.handleTimelineElementSplit],
   );
   if (resolving || waitingForServer || !projectId)
     return <StudioSplash waiting={waitingForServer} />;
@@ -503,75 +505,77 @@ export function StudioApp() {
                       onSelectComposition={handleSelectComposition}
                     />
                   )}
-                  <div
-                    className={`flex flex-1 min-h-0${
-                      viewModeValue.viewMode === "storyboard" ? " hidden" : ""
-                    }`}
-                  >
-                    <StudioLeftSidebar
-                      leftSidebarRef={leftSidebarRef}
-                      onSelectComposition={handleSelectComposition}
-                      onAddBlock={handleAddBlock}
-                      onPreviewBlock={setBlockPreview}
-                      onLint={handleLint}
-                      linting={linting}
-                      lintFindingCount={lintModal?.length ?? findingsByFile.size}
-                      lintFindingsByFile={findingsByFile}
-                    />
-                    <StudioPreviewArea
-                      timelineToolbar={timelineToolbar}
-                      renderClipContent={renderClipContent}
-                      handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
-                      handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
-                      handleTimelineBlockDrop={handleTimelineBlockDrop}
-                      handlePreviewBlockDrop={handlePreviewBlockDrop}
-                      handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
-                      handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
-                      handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
-                      handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
-                      handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
-                      handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
-                      handleRazorSplit={timelineEditing.handleRazorSplit}
-                      handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
-                      setCompIdToSrc={setCompIdToSrc}
-                      setCompositionLoading={setCompositionLoading}
-                      shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                      isGestureRecording={gestureState === "recording"}
-                      recordingState={gestureState}
-                      onToggleRecording={recordingToggle}
-                      blockPreview={blockPreview}
-                      gestureOverlay={
-                        gestureState === "recording" && previewIframe ? (
-                          <GestureTrailOverlay
-                            samples={gestureRecording.samplesRef.current}
-                            sampleCount={gestureRecording.samplesRef.current.length}
-                            trail={gestureRecording.trailRef.current}
-                            canvasRect={canvasRectRef.current!}
-                            compositionSize={compositionDimensions ?? undefined}
-                            mode="recording"
-                          />
-                        ) : undefined
-                      }
-                    />
-                    {!panelLayout.rightCollapsed && (
-                      <StudioRightPanel
-                        designPanelActive={designPanelActive}
-                        activeBlockParams={activeBlockParams}
-                        onCloseBlockParams={() => {
-                          setActiveBlockParams(null);
-                          panelLayout.setRightPanelTab("design");
-                        }}
-                        recordingState={gestureState}
-                        recordingDuration={gestureRecording.recordingDuration}
-                        onToggleRecording={recordingToggle}
-                        sdkSession={sdkHandle.session}
-                        reloadPreview={reloadPreview}
-                        domEditSaveTimestampRef={domEditSaveTimestampRef}
-                        recordEdit={editHistory.recordEdit}
-                        onToggleElementHidden={timelineEditing.handleToggleElementHidden}
+                  <EditorShell
+                    hidden={viewModeValue.viewMode === "storyboard"}
+                    left={
+                      <StudioLeftSidebar
+                        leftSidebarRef={leftSidebarRef}
+                        onSelectComposition={handleSelectComposition}
+                        onAddBlock={handleAddBlock}
+                        onPreviewBlock={setBlockPreview}
+                        onLint={handleLint}
+                        linting={linting}
+                        lintFindingCount={lintModal?.length ?? findingsByFile.size}
+                        lintFindingsByFile={findingsByFile}
+                        onAddAssetToTimeline={handleAddAssetAtPlayhead}
                       />
-                    )}
-                  </div>
+                    }
+                    right={
+                      panelLayout.rightCollapsed ? null : (
+                        <StudioRightPanel
+                          designPanelActive={designPanelActive}
+                          activeBlockParams={activeBlockParams}
+                          onCloseBlockParams={() => {
+                            setActiveBlockParams(null);
+                            panelLayout.setRightPanelTab("design");
+                          }}
+                          recordingState={gestureState}
+                          recordingDuration={gestureRecording.recordingDuration}
+                          onToggleRecording={recordingToggle}
+                          sdkSession={sdkHandle.session}
+                          reloadPreview={reloadPreview}
+                          domEditSaveTimestampRef={domEditSaveTimestampRef}
+                          recordEdit={editHistory.recordEdit}
+                          onToggleElementHidden={timelineEditing.handleToggleElementHidden}
+                        />
+                      )
+                    }
+                    timelineToolbar={timelineToolbar}
+                    renderClipContent={renderClipContent}
+                    handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
+                    handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
+                    handleTimelineBlockDrop={handleTimelineBlockDrop}
+                    handlePreviewBlockDrop={handlePreviewBlockDrop}
+                    handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
+                    handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
+                    handleTimelineElementsMove={handleTimelineElementsMove}
+                    handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
+                    handleTimelineGroupResize={timelineEditing.handleTimelineGroupResize}
+                    handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
+                    handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
+                    handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
+                    handleRazorSplit={timelineEditing.handleRazorSplit}
+                    handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
+                    setCompIdToSrc={setCompIdToSrc}
+                    setCompositionLoading={setCompositionLoading}
+                    shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
+                    isGestureRecording={gestureState === "recording"}
+                    recordingState={gestureState}
+                    onToggleRecording={recordingToggle}
+                    blockPreview={blockPreview}
+                    gestureOverlay={
+                      gestureState === "recording" && previewIframe ? (
+                        <GestureTrailOverlay
+                          samples={gestureRecording.samplesRef.current}
+                          sampleCount={gestureRecording.samplesRef.current.length}
+                          trail={gestureRecording.trailRef.current}
+                          canvasRect={canvasRectRef.current!}
+                          compositionSize={compositionDimensions ?? undefined}
+                          mode="recording"
+                        />
+                      ) : undefined
+                    }
+                  />
                   <StudioOverlays
                     projectId={projectId}
                     projectDir={fileManager.projectDir}

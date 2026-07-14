@@ -8,13 +8,15 @@ import {
 } from "./domEditing";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
-import { usePlayerStore } from "../../player";
+import { usePlayerStore, liveTime } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
 } from "../../utils/studioHelpers";
 import { Layers } from "../../icons/SystemIcons";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
+import { computeReorderZValues, getElementZIndex } from "../../player/lib/layerOrdering";
+import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -47,6 +49,34 @@ function getTagBadge(tagName: string): string {
 
 function isCompositionHost(el: HTMLElement): boolean {
   return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
+}
+
+/**
+ * A trailing-rAF + cooldown throttle: `invoke` runs `run` at most once per
+ * animation frame and no more often than `throttleMs`. `cancel` clears any
+ * pending frame (call on cleanup). Extracted so the throttle can be exercised
+ * directly in tests instead of being reconstructed there.
+ */
+export function createRafThrottle(
+  run: () => void,
+  throttleMs = 100,
+): { invoke: () => void; cancel: () => void } {
+  let rafId: number | null = null;
+  let lastFired = 0;
+  return {
+    invoke: () => {
+      const now = performance.now();
+      if (rafId !== null || now - lastFired < throttleMs) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        lastFired = performance.now();
+        run();
+      });
+    },
+    cancel: () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    },
+  };
 }
 
 interface CollapsedState {
@@ -122,6 +152,20 @@ export const LayersPanel = memo(function LayersPanel() {
       return () => clearTimeout(timer);
     }
   }, [compositionLoading, collectLayers]);
+
+  // Subscribe to liveTime so the panel refreshes during scrubbing.
+  // liveTime bypasses React state (no re-renders per frame), so a plain
+  // usePlayerStore(s => s.currentTime) subscription never fires while the
+  // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
+  // avoid a collectLayers call on every animation frame.
+  useEffect(() => {
+    const throttle = createRafThrottle(collectLayers, 100);
+    const unsubscribe = liveTime.subscribe(throttle.invoke);
+    return () => {
+      unsubscribe();
+      throttle.cancel();
+    };
+  }, [collectLayers]);
 
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) => {
@@ -230,9 +274,7 @@ export const LayersPanel = memo(function LayersPanel() {
       reordered.splice(toIndex, 0, moved);
 
       const existingValues = siblingLayers.map((l) => getElementZIndex(l.element));
-      const sorted = [...existingValues].sort((a, b) => b - a);
-      const hasDupes = sorted.some((v, i) => i > 0 && v === sorted[i - 1]);
-      const zValues = hasDupes ? reordered.map((_, i) => reordered.length - i) : sorted;
+      const zValues = computeReorderZValues(existingValues, fromIndex, toIndex);
 
       const entries = reordered.map((layer, i) => ({
         element: layer.element,
@@ -241,9 +283,17 @@ export const LayersPanel = memo(function LayersPanel() {
         selector: layer.selector,
         selectorIndex: layer.selectorIndex,
         sourceFile: layer.sourceFile,
+        key: deriveTimelineStoreKey({
+          domId: layer.id,
+          selector: layer.selector,
+          selectorIndex: layer.selectorIndex,
+          sourceFile: layer.sourceFile,
+        }),
       }));
 
-      handleDomZIndexReorderCommit(entries);
+      // "layer-drag" keeps consecutive drops of the same sibling set coalescing
+      // into one undo step, without merging with a context-menu z action.
+      handleDomZIndexReorderCommit(entries, undefined, "layer-drag");
     },
     [handleDomZIndexReorderCommit],
   );
@@ -391,25 +441,6 @@ export const LayersPanel = memo(function LayersPanel() {
 });
 
 // ── Pure helpers ──────────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-function getElementZIndex(element: HTMLElement): number {
-  try {
-    const inline = element.style?.zIndex;
-    if (inline && inline !== "auto") {
-      const parsed = parseInt(inline, 10);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-    const win = element.ownerDocument?.defaultView;
-    if (!win) return 0;
-    const value = win.getComputedStyle(element).zIndex;
-    if (value === "auto" || value === "") return 0;
-    const parsed = parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
-}
 
 // fallow-ignore-next-line complexity
 export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem[] {

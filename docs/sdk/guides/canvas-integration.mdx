@@ -32,6 +32,23 @@ The callback references `comp` before it is declared — that is intentional and
 
 The `dispatch` callback is optional. Omitting it means `commitPreview()` is a no-op, which is useful if you want to handle op derivation yourself.
 
+## Keeping the preview in sync
+
+Everything above wires up hit-testing and drag — but the iframe still won't reflect edits made any other way (an inspector panel calling `comp.setStyle()` directly, an undo, a collaborator's change replayed via `applyPatches()`). `attachSync` closes that gap: call it once you have both `preview` and `comp`, and every future edit — including undo/redo — mirrors onto the live iframe automatically.
+
+```typescript
+const detach = preview.attachSync(comp);
+
+// later, when the editor unmounts or swaps compositions:
+detach();
+```
+
+`attachSync` does an immediate full sync of `comp`'s current state first (so re-opening a composition with existing overrides isn't a blank iframe), then subscribes to the same `patch` event your other listeners use. You don't need to write your own mirroring code, and you don't need a separate mechanism for undo/redo — both flow through the same subscription. Script-tag edits (GSAP script rewrites) are the one thing it never mirrors, since replaying a live `<script>` tag doesn't re-execute it.
+
+<Note>
+  Calling `attachSync` again with a different `comp` detaches the previous subscription first — useful if your editor swaps which composition an iframe is bound to without remounting it.
+</Note>
+
 ## Hit-testing: finding what the user clicked
 
 `preview.elementAtPoint(x, y)` performs a synchronous hit-test at coordinates in the iframe's own coordinate space and returns the nearest `[data-hf-id]` element, or `null` for a transparent hit.

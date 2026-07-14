@@ -263,7 +263,9 @@ comp.dispatch({
 
 | `type` | Key fields | What it does |
 |--------|-----------|--------------|
-| `setVariableValue` | `id`, `value` | Sets a composition variable by id. Value may be a string, number, boolean, `FontValue`, or `ImageValue`. |
+| `setVariableValue` | `id`, `value` | Sets a composition variable's current value by id. Value may be a string, number, boolean, `FontValue`, or `ImageValue`. Refuses to create an undeclared variable. |
+| `declareVariable` | `decl` | Creates a new variable declaration, or fully replaces an existing one (type, label, default, and all other schema fields — not just the value). The only op that creates the schema entry from scratch. |
+| `removeVariable` | `id` | Removes a variable's declaration entirely. Live `var.{id}` overrides and `data-var-*` DOM references are left untouched. |
 
 ```typescript
 // Scalar variable
@@ -293,6 +295,20 @@ comp.dispatch({
     fit: "cover",
   },
 });
+
+// Create a new variable declaration
+comp.dispatch({
+  type: "declareVariable",
+  decl: {
+    id: "brandColor",
+    type: "color",
+    label: "Brand color",
+    default: "#6C5CE7",
+  },
+});
+
+// Remove a variable's declaration
+comp.dispatch({ type: "removeVariable", id: "brandColor" });
 ```
 
 ---

@@ -10,6 +10,14 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapSoftReload";
+import { usePlayerStore } from "../player";
+
+/** The restore payload the undo/redo preview-sync consumes (from the history store). */
+interface HistoryPreviewRestore {
+  paths?: string[];
+  files?: Record<string, UndoRestoreFile>;
+}
 
 // ── Types ──
 
@@ -105,13 +113,12 @@ export function usePreviewPersistence({
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
   previewIframeRef,
-  activeCompPathRef: _activeCompPathRef,
+  activeCompPathRef,
   domEditSaveTimestampRef,
   reloadPreview,
   pendingTimelineEditPathRef,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
-  void _activeCompPathRef;
 
   const [domEditSaveQueuePaused, setDomEditSaveQueuePaused] = useState<string | null>(null);
 
@@ -190,12 +197,23 @@ export function usePreviewPersistence({
   // ── Sync preview after undo/redo ──
 
   const syncHistoryPreviewAfterApply = useCallback(
-    async (_paths: string[] | undefined) => {
-      // Motion data is now stored in HTML attributes — any undo/redo that touches HTML
-      // files triggers a full reload which picks up the changes automatically.
-      reloadPreview();
+    async (restore: HistoryPreviewRestore) => {
+      // Prefer an in-place soft reload for a soft-reloadable restore (the change
+      // is confined to the active comp's element attributes / inline-style and/or
+      // its GSAP script) — a full iframe remount blanks the frame black and
+      // re-flashes the WebGL context. applyUndoRestoreToPreview syncs the reverted
+      // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
+      // falling back to reloadPreview for anything structural (split/delete undo),
+      // multi-file, sub-comp, or a permanent soft-reload failure.
+      applyUndoRestoreToPreview(
+        previewIframeRef.current,
+        activeCompPathRef.current,
+        restore.files,
+        usePlayerStore.getState().currentTime,
+        reloadPreview,
+      );
     },
-    [reloadPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview],
   );
 
   // ── Migrate legacy studio-motion.json ──

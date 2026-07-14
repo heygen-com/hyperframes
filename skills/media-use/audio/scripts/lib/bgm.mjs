@@ -20,6 +20,13 @@ import { pythonInvocation } from "./python.mjs";
 const r3 = (x) => Number(x.toFixed(3));
 const lyriaKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
 
+// Default BGM level. Under narration music is a bed that must stay under the
+// voice — 0.12 linear ≈ -18 dB. A silent film (no voice) has no voice to duck
+// beneath, so BGM sits forward at 0.9. Callers may override per composition.
+export const BGM_BED_VOLUME = 0.12;
+export const BGM_SILENT_VOLUME = 0.9;
+export const bgmDefaultVolume = (hasVoice) => (hasVoice ? BGM_BED_VOLUME : BGM_SILENT_VOLUME);
+
 const BGM_PY_DEPS = ["transformers", "torch", "soundfile", "numpy"];
 const BGM_PY_PROBE =
   "import transformers, soundfile, torch, numpy; from transformers import MusicgenForConditionalGeneration";
@@ -51,7 +58,7 @@ export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice }) 
   await downloadTo(top.audio_url, join(hyperframesDir, rel));
   return {
     path: rel,
-    volume: hasVoice ? 0.8 : 0.9,
+    volume: bgmDefaultVolume(hasVoice),
     query: q,
     mode: "retrieve",
     duration_s: typeof top.duration === "number" ? r3(top.duration) : null,
@@ -116,7 +123,7 @@ export function generateBgmDetached({
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
   const targetS = Math.max(1, durationS);
-  const baseMeta = { path: rel, mode: null, volume: hasVoice ? 0.8 : 0.9, pending: true };
+  const baseMeta = { path: rel, mode: null, volume: bgmDefaultVolume(hasVoice), pending: true };
 
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
 

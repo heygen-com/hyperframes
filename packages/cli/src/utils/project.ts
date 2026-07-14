@@ -9,6 +9,10 @@ export interface ProjectDir {
   indexPath: string;
 }
 
+export interface ResolveProjectOptions {
+  requireIndex?: boolean;
+}
+
 export class InvalidProjectError extends Error {
   readonly title: string;
   readonly hint?: string;
@@ -23,7 +27,10 @@ export class InvalidProjectError extends Error {
   }
 }
 
-export function resolveProjectOrThrow(dirArg: string | undefined): ProjectDir {
+export function resolveProjectOrThrow(
+  dirArg: string | undefined,
+  options: ResolveProjectOptions = {},
+): ProjectDir {
   const trimmed = dirArg?.trim();
   if (trimmed === "#") {
     throw new InvalidProjectError(
@@ -40,7 +47,7 @@ export function resolveProjectOrThrow(dirArg: string | undefined): ProjectDir {
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     throw new InvalidProjectError("Not a directory: " + dir);
   }
-  if (!existsSync(indexPath)) {
+  if (options.requireIndex !== false && !existsSync(indexPath)) {
     throw new InvalidProjectError(
       "No composition found in " + dir,
       "No index.html file found.",
@@ -51,9 +58,12 @@ export function resolveProjectOrThrow(dirArg: string | undefined): ProjectDir {
   return { dir, name, indexPath };
 }
 
-export function resolveProject(dirArg: string | undefined): ProjectDir {
+export function resolveProject(
+  dirArg: string | undefined,
+  options: ResolveProjectOptions = {},
+): ProjectDir {
   try {
-    return resolveProjectOrThrow(dirArg);
+    return resolveProjectOrThrow(dirArg, options);
   } catch (err) {
     if (err instanceof InvalidProjectError) {
       // Self-exit (not a throw) so the cli.ts wrapper never sees it — report

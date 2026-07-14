@@ -3,8 +3,13 @@ import { describe, expect, it, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runAssetImport, type AssetImportDeps } from "./asset.js";
-import type { FigmaClient } from "@hyperframes/core/figma";
+import {
+  gatherAssetRefs,
+  runAssetImport,
+  runAssetImportMany,
+  type AssetImportDeps,
+} from "./asset.js";
+import { FigmaClientError, type FigmaClient } from "@hyperframes/core/figma";
 
 const dirs: string[] = [];
 function scratch(): string {
@@ -17,8 +22,9 @@ afterEach(() => {
 });
 
 function fakeClient(overrides: Partial<FigmaClient> = {}): FigmaClient {
-  return {
+  const client: FigmaClient = {
     renderNode: () => Promise.resolve({ url: "https://cdn.example/a", ext: "png" }),
+    renderNodes: () => Promise.resolve([]),
     imageFills: () => Promise.resolve(new Map()),
     variables: () => Promise.resolve({ variables: {}, variableCollections: {} }),
     styles: () => Promise.resolve([]),
@@ -26,6 +32,19 @@ function fakeClient(overrides: Partial<FigmaClient> = {}): FigmaClient {
     fileVersion: () => Promise.resolve({ version: "7", lastModified: "2026-07-01" }),
     ...overrides,
   };
+  // Default renderNodes delegates to renderNode (honoring any override) so
+  // existing single-node tests keep controlling behavior via renderNode.
+  if (!overrides.renderNodes) {
+    client.renderNodes = (fileKey, nodeIds, opts) =>
+      Promise.all(
+        nodeIds.map((nodeId) =>
+          client
+            .renderNode({ fileKey, nodeId }, opts)
+            .then((r) => ({ nodeId, url: r.url, ext: r.ext })),
+        ),
+      );
+  }
+  return client;
 }
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -132,6 +151,69 @@ describe("runAssetImport", () => {
     const index = readFileSync(join(dir, ".media", "index.md"), "utf8");
     expect(index).toContain("Acme logo");
     expect(index).not.toContain("image_002");
+  });
+
+  it("batches many nodes into ONE renderNodes call and freezes each", async () => {
+    const dir = scratch();
+    let renderNodesCalls = 0;
+    let batchSize = 0;
+    const batchClient = fakeClient({
+      renderNodes: (fileKey, nodeIds, opts) => {
+        renderNodesCalls += 1;
+        batchSize = nodeIds.length;
+        return Promise.resolve(
+          nodeIds.map((nodeId) => ({ nodeId, url: `https://cdn/${nodeId}`, ext: opts.format })),
+        );
+      },
+    });
+    const results = await runAssetImportMany(
+      ["KEY:1-2", "KEY:3-4", "KEY:5-6"],
+      { format: "png" },
+      deps(dir, { client: batchClient }),
+    );
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => !r.reused)).toBe(true);
+    expect(renderNodesCalls).toBe(1); // one REST call for all three
+    expect(batchSize).toBe(3);
+    // distinct frozen files, all recorded
+    expect(new Set(results.map((r) => r.record.id)).size).toBe(3);
+  });
+
+  it("labels a batch-miss RENDER_FAILED with the images endpoint (telemetry parity with client.ts)", async () => {
+    const dir = scratch();
+    const missClient = fakeClient({
+      renderNodes: (fileKey, nodeIds) =>
+        Promise.resolve(nodeIds.map((nodeId) => ({ nodeId, url: null, ext: "png" }))),
+    });
+    const err = await runAssetImportMany(
+      ["KEY:1-2"],
+      { format: "png" },
+      deps(dir, { client: missClient }),
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FigmaClientError);
+    if (err instanceof FigmaClientError) {
+      expect(err.code).toBe("RENDER_FAILED");
+      expect(err.endpoint).toBe("images");
+    }
+  });
+
+  it("gatherAssetRefs splits bare comma-joined ids but keeps URLs whole", () => {
+    // bare tokens comma-split
+    expect(gatherAssetRefs(["KEY:1-2,KEY:3-4"])).toEqual(["KEY:1-2", "KEY:3-4"]);
+    // space-separated positionals preserved
+    expect(gatherAssetRefs(["KEY:1-2", "KEY:3-4"])).toEqual(["KEY:1-2", "KEY:3-4"]);
+    // a URL with a comma in its query is NOT torn apart
+    const url = "https://www.figma.com/design/KEY/F?node-id=1:2,3:4";
+    expect(gatherAssetRefs([url])).toEqual([url]);
+    // mixed: URL stays whole, bare token splits
+    expect(gatherAssetRefs([url, "KEY:5-6,KEY:7-8"])).toEqual([url, "KEY:5-6", "KEY:7-8"]);
+  });
+
+  it("splits comma-joined refs and rejects a cross-file batch", async () => {
+    const dir = scratch();
+    await expect(
+      runAssetImportMany(["KEY:1-2", "OTHER:3-4"], { format: "png" }, deps(dir)),
+    ).rejects.toThrow(/share a fileKey/);
   });
 
   it("reuses against ANY matching tuple, not just the oldest row", async () => {

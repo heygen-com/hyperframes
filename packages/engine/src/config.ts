@@ -89,6 +89,19 @@ export interface EngineConfig {
    */
   pageSideCompositingAutoDisabled?: boolean;
   /**
+   * INTERNAL. Set to `true` by `resolveConfig` when the caller explicitly
+   * opted out of the software-GPU→screenshot clamp — either via env
+   * `PRODUCER_FORCE_SCREENSHOT=false` or programmatic
+   * `overrides.forceScreenshot === false`. The concrete-resolved-GPU helper
+   * (`shouldClampToScreenshotForConcreteGpu`) reads this so the
+   * `browserGpuMode:"auto"` → software probe path preserves the same
+   * escape hatch as literal `browserGpuMode:"software"` (the boolean
+   * `forceScreenshot === false` at that point is otherwise ambiguous —
+   * default vs explicit opt-out — because the config resolves before
+   * the runtime probe fires). Not intended to be set by callers.
+   */
+  forceScreenshotExplicitlyOptedOut?: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -554,6 +567,47 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     merged.useDrawElement = false;
   }
 
+  // Software GPU implies screenshot capture.
+  //
+  // Two existing platform gates already do most of the work: `browserManager`
+  // only launches BeginFrame on Linux + chrome-headless-shell + !forceScreenshot,
+  // and the DE clamp above turns off `useDrawElement` on non-(darwin +
+  // non-software) hosts. Setting `forceScreenshot` here layers defense-in-depth
+  // on top:
+  //
+  //   1. Linux + software (SwiftShader host): kicks the browser off BeginFrame,
+  //      which stalls the compositor on shader-heavy frames under CPU raster
+  //      (same motivation as the closed PR #822).
+  //   2. Observability truth: `renderOrchestrator`'s reported `captureMode`
+  //      field is derived from `cfg.forceScreenshot ? "screenshot" : "beginframe"`
+  //      — without this clamp it misreports `"beginframe"` for the actual
+  //      screenshot capture on darwin + software.
+  //   3. Future-proofing: any new BeginFrame or drawElement entry point that
+  //      forgets to gate on GPU mode still routes to screenshot here.
+  //
+  // Note this does NOT eliminate SwiftShader-on-darwin text-rasterization
+  // artifacts (an ANGLE-SwiftShader issue on macOS text — the fix there is to
+  // use `--browser-gpu`, which routes to `--use-angle=metal`). It only makes
+  // routing consistent + observability accurate.
+  //
+  // Explicit opt-out (env or programmatic override) is honored so BeginFrame-
+  // on-software debugging remains possible.
+  const explicitForceScreenshotOptOut =
+    env("PRODUCER_FORCE_SCREENSHOT") === "false" || overrides?.forceScreenshot === false;
+  // Persist provenance so the concrete-resolved-GPU helper can honor the
+  // programmatic opt-out too — at that point `forceScreenshot === false` is
+  // otherwise ambiguous between default and explicit opt-out.
+  if (explicitForceScreenshotOptOut) {
+    merged.forceScreenshotExplicitlyOptedOut = true;
+  }
+  if (
+    merged.browserGpuMode === "software" &&
+    !merged.forceScreenshot &&
+    !explicitForceScreenshotOptOut
+  ) {
+    merged.forceScreenshot = true;
+  }
+
   // drawElement capture and page-side shader compositing are mutually
   // incompatible capture strategies (drawElement reads paint records directly
   // and bypasses the page-side prepare→composite→resolve protocol). When
@@ -574,4 +628,64 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     ...merged,
     vp9CpuUsed: normalizeVp9CpuUsed(merged.vp9CpuUsed),
   };
+}
+
+/**
+ * Runtime-resolved companion to the software-GPU screenshot clamp in
+ * `resolveConfig`. Returns `true` iff callers should treat this render as
+ * `forceScreenshot=true` even though the config's stored `forceScreenshot`
+ * is `false`. Fires when the concrete resolved GPU is software AND neither
+ * the env opt-out (`PRODUCER_FORCE_SCREENSHOT=false`) nor the programmatic
+ * opt-out (`overrides.forceScreenshot === false`, carried via
+ * `cfg.forceScreenshotExplicitlyOptedOut`) is set.
+ *
+ * `resolveConfig`'s clamp only sees `browserGpuMode` as a string, so
+ * `"auto"` that runtime-probes to software slips through. This helper
+ * closes that gap at the concrete-resolution points (`frameCapture` and
+ * `renderOrchestrator`). Same invariant, same escape hatches, one predicate.
+ *
+ * Callers should skip when the invariant is already satisfied
+ * (`currentForceScreenshot === true`) to avoid redundant work. Pass
+ * `cfg.forceScreenshotExplicitlyOptedOut` via `opts.programmaticOptOut` so
+ * the `browserGpuMode:"auto"` → software probe path honors the same
+ * programmatic escape hatch as literal `browserGpuMode:"software"`.
+ */
+export function shouldClampToScreenshotForConcreteGpu(
+  resolvedGpuMode: "software" | "hardware",
+  currentForceScreenshot: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { programmaticOptOut?: boolean } = {},
+): boolean {
+  if (currentForceScreenshot) return false;
+  if (resolvedGpuMode !== "software") return false;
+  if (opts.programmaticOptOut) return false;
+  return env["PRODUCER_FORCE_SCREENSHOT"] !== "false";
+}
+
+/**
+ * Caller-facing pair to `shouldClampToScreenshotForConcreteGpu`: computes the
+ * value the *authoritative* `forceScreenshot` local should hold after the
+ * concrete-resolved-GPU decision fires. Returns the (possibly-promoted) new
+ * boolean, so the caller can assign it back to its local — driving both
+ * routing AND telemetry from one source of truth.
+ *
+ * Reads the programmatic opt-out from `cfg.forceScreenshotExplicitlyOptedOut`
+ * (set by `resolveConfig` when EITHER env `PRODUCER_FORCE_SCREENSHOT=false`
+ * OR programmatic `overrides.forceScreenshot === false` was present).
+ *
+ * Idempotent: `applyConcreteGpuScreenshotClamp(true, ...)` returns `true`
+ * without consulting anything else.
+ */
+export function applyConcreteGpuScreenshotClamp(
+  currentForceScreenshot: boolean,
+  resolvedGpuMode: "software" | "hardware",
+  cfg: Pick<EngineConfig, "forceScreenshotExplicitlyOptedOut"> | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    currentForceScreenshot ||
+    shouldClampToScreenshotForConcreteGpu(resolvedGpuMode, currentForceScreenshot, env, {
+      programmaticOptOut: cfg?.forceScreenshotExplicitlyOptedOut ?? false,
+    })
+  );
 }

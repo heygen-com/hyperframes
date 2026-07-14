@@ -28,15 +28,21 @@ export function cropRectFromInsets(
   };
 }
 
-/** Current inset crop of an element (inline first, computed fallback), or zeros. */
-export function readElementCropInsets(element: HTMLElement): ClipPathInsetSides & {
-  radius: number;
-} {
+/**
+ * Current inset crop of an element (inline first, computed fallback).
+ * Zeros = no clip (croppable, nothing cropped yet). `null` = the element
+ * carries a clip-path this tool cannot represent (circle/polygon/non-px
+ * inset) — croppers must not lift, edit, or restore it, or the clip gets
+ * silently replaced or destroyed on deselect.
+ */
+export function readElementCropInsets(
+  element: HTMLElement,
+): (ClipPathInsetSides & { radius: number }) | null {
   const inline = element.style.getPropertyValue("clip-path").trim();
   const value =
     inline || element.ownerDocument.defaultView?.getComputedStyle(element).clipPath.trim() || "";
-  const parsed = parseInsetClipPathSides(value === "none" ? "" : value);
-  return parsed ?? { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
+  if (!value || value === "none") return { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
+  return parseInsetClipPathSides(value);
 }
 
 export interface CropInsetDragInput {
@@ -111,6 +117,96 @@ export function hugRectForElement(
   element: HTMLElement,
 ): CropScreenRect {
   const insets = readElementCropInsets(element);
-  if (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0) return rect;
+  // Uneditable clip (null) can't be hugged — show the full element rect.
+  if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
+    return rect;
   return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
+}
+
+/**
+ * The element's own (unrotated) box in overlay space, plus the rotation to
+ * apply when drawing crop UI over it. `clip-path` applies in the element's
+ * LOCAL frame — before its transform — so the crop dim/outline/handles must be
+ * drawn rotated with the element, not on its axis-aligned bounding box: an
+ * AABB-drawn dim visually "straightens" a rotated element by masking its
+ * corners (the crop window looks axis-aligned while the pixels are not).
+ *
+ * scaleX/scaleY are overlay px per element CSS px (element's own scale × the
+ * editor zoom), so element-space insets map straight onto the frame. Assumes
+ * the default 50%/50% transform-origin (the GSAP/studio convention). 3D or
+ * unparseable transforms fall back to the axis-aligned frame (angle 0, AABB
+ * box) — the pre-existing presentation.
+ */
+export interface CropFrame {
+  angleDeg: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+export function readElementCropFrame(
+  element: HTMLElement,
+  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
+): CropFrame {
+  const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
+  const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
+  const aabb: CropFrame = {
+    angleDeg: 0,
+    left: overlayRect.left,
+    top: overlayRect.top,
+    width: overlayRect.width,
+    height: overlayRect.height,
+    scaleX: editX,
+    scaleY: editY,
+  };
+  let transform = "";
+  try {
+    transform = element.ownerDocument.defaultView?.getComputedStyle(element).transform ?? "";
+  } catch {
+    return aabb;
+  }
+  if (!transform || transform === "none") return aabb;
+  const m = /^matrix\(([^)]+)\)$/.exec(transform);
+  if (!m) return aabb; // matrix3d or unparseable → axis-aligned fallback
+  const [a, b, c, d] = m[1]!.split(",").map((v) => Number.parseFloat(v));
+  if (![a, b, c, d].every(Number.isFinite)) return aabb;
+  const elScaleX = Math.hypot(a!, b!);
+  const det = a! * d! - b! * c!;
+  const elScaleY = elScaleX !== 0 ? det / elScaleX : 1;
+  if (elScaleX <= 0 || elScaleY <= 0) return aabb;
+  const angleDeg = (Math.atan2(b!, a!) * 180) / Math.PI;
+  const scaleX = elScaleX * editX;
+  const scaleY = elScaleY * editY;
+  const width = element.offsetWidth * scaleX;
+  const height = element.offsetHeight * scaleY;
+  if (!(width > 0) || !(height > 0)) return aabb;
+  // Rotation about the default center keeps the center invariant, so the
+  // local box is centered on the AABB center.
+  const cx = overlayRect.left + overlayRect.width / 2;
+  const cy = overlayRect.top + overlayRect.height / 2;
+  return {
+    angleDeg,
+    left: cx - width / 2,
+    top: cy - height / 2,
+    width,
+    height,
+    scaleX,
+    scaleY,
+  };
+}
+
+/** Rotate a screen-space pointer delta into the element's local frame. */
+export function rotateDeltaIntoFrame(
+  deltaX: number,
+  deltaY: number,
+  angleDeg: number,
+): { deltaX: number; deltaY: number } {
+  if (angleDeg === 0) return { deltaX, deltaY };
+  const rad = (-angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { deltaX: deltaX * cos - deltaY * sin, deltaY: deltaX * sin + deltaY * cos };
 }

@@ -46,7 +46,16 @@ export function label(name: string, value: string): string {
 
 export function errorBox(title: string, hint?: string, suggestion?: string): void {
   console.error(`\n${c.error("\u2717")}  ${c.bold(title)}`);
-  if (hint) console.error(`\n   ${c.dim(hint)}`);
+  if (hint) {
+    // Indent EVERY hint line, not just the first \u2014 a multi-line hint (e.g. the
+    // NO_TOKEN numbered setup list) otherwise had line 1 indented and the rest
+    // flush-left, mangling the list. Single-line hints are unchanged.
+    const indented = hint
+      .split("\n")
+      .map((line) => `   ${line}`)
+      .join("\n");
+    console.error(`\n${c.dim(indented)}`);
+  }
   if (suggestion) console.error(`   ${c.accent(suggestion)}`);
   console.error();
 }

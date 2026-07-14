@@ -12,7 +12,8 @@ import type {
   ValidationResult,
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
-import { ensureHfIds } from "./hfIds.js";
+import { parseCompositionVariables } from "./compositionVariables.js";
+import { ensureHfIds, walkCompositionDescendants } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
@@ -387,7 +388,7 @@ export function parseHtml(html: string): ParsedHtml {
     }
   });
 
-  const scriptTags = doc.querySelectorAll("script");
+  const scriptTags = findScriptElementsDeep(doc);
   let gsapScript: string | null = null;
 
   for (const script of scriptTags) {
@@ -740,7 +741,7 @@ function stripGsapForId(script: string, elementId: string): string {
 }
 
 function cascadeRemoveGsapById(doc: Document, elementId: string): void {
-  for (const script of Array.from(doc.querySelectorAll("script"))) {
+  for (const script of findScriptElementsDeep(doc)) {
     const text = script.textContent ?? "";
     if (!text.includes("gsap") && !text.includes("ScrollTrigger")) continue;
     const updated = stripGsapForId(text, elementId);
@@ -781,6 +782,10 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   const durationStr = htmlEl.getAttribute("data-composition-duration");
   const compositionDuration = durationStr ? parseFloat(durationStr) : null;
 
+  // TODO(template-var-carriers): reads `<html>` only. A template/fragment comp
+  // that declares variables on its `[data-composition-id]` root div (the
+  // dual-carrier contract from #2081) reports no variables when its metadata is
+  // extracted standalone (e.g. CLI --variables validation of a sub-comp file).
   const variables = parseCompositionVariables(htmlEl);
 
   return {
@@ -791,49 +796,7 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   };
 }
 
-function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
-  const variablesAttr = htmlEl.getAttribute("data-composition-variables");
-  if (!variablesAttr) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(variablesAttr);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((v): v is CompositionVariable => {
-      if (typeof v !== "object" || v === null) return false;
-      if (typeof v.id !== "string" || typeof v.label !== "string") return false;
-      if (!["string", "number", "color", "boolean", "enum", "font", "image"].includes(v.type))
-        return false;
-
-      switch (v.type) {
-        case "string":
-          return typeof v.default === "string";
-        case "number":
-          return typeof v.default === "number";
-        case "color":
-          return typeof v.default === "string";
-        case "boolean":
-          return typeof v.default === "boolean";
-        case "enum":
-          return typeof v.default === "string" && Array.isArray(v.options);
-        case "font":
-          // default is the font-family name string; extra metadata fields are optional
-          return typeof v.default === "string";
-        case "image":
-          // default is the fallback image URL string; extra metadata fields are optional
-          return typeof v.default === "string";
-        default:
-          return false;
-      }
-    });
-  } catch {
-    return [];
-  }
-}
+export { parseCompositionVariables };
 
 export function validateCompositionHtml(html: string): ValidationResult {
   const errors: string[] = [];
@@ -879,13 +842,12 @@ export function validateCompositionHtml(html: string): ValidationResult {
     errors.push("javascript: URLs not allowed");
   }
 
-  const scripts = doc.querySelectorAll("script");
+  const scripts = findScriptElementsDeep(doc);
   if (scripts.length > 2) {
     warnings.push("Multiple script tags detected - only GSAP CDN and main script expected");
   }
 
-  const gsapScript = extractGsapScript(doc);
-  if (gsapScript) {
+  for (const gsapScript of extractGsapScripts(doc)) {
     const gsapValidation = validateCompositionGsap(gsapScript);
     errors.push(...gsapValidation.errors);
     warnings.push(...gsapValidation.warnings);
@@ -898,8 +860,17 @@ export function validateCompositionHtml(html: string): ValidationResult {
   };
 }
 
-function extractGsapScript(doc: Document): string | null {
-  const scripts = doc.querySelectorAll("script");
+function findScriptElementsDeep(doc: Document): Element[] {
+  const scripts: Element[] = [];
+  walkCompositionDescendants(doc, (el) => {
+    if (el.tagName.toLowerCase() === "script") scripts.push(el);
+  });
+  return scripts;
+}
+
+function extractGsapScripts(doc: Document): string[] {
+  const scripts = findScriptElementsDeep(doc);
+  const gsapScripts: string[] = [];
   for (const script of scripts) {
     const content = script.textContent || "";
     if (
@@ -907,8 +878,8 @@ function extractGsapScript(doc: Document): string | null {
       content.includes(".set(") ||
       content.includes(".to(")
     ) {
-      return content;
+      gsapScripts.push(content);
     }
   }
-  return null;
+  return gsapScripts;
 }

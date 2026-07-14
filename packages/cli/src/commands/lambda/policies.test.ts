@@ -32,6 +32,10 @@ describe("policies — required actions", () => {
       "lambda:CreateFunction",
       "states:StartExecution",
       "s3:PutObject",
+      // SAM's --resolve-s3 managed bucket is encrypted; the deploy user must
+      // be able to set/read that encryption or the first deploy rolls back.
+      "s3:PutEncryptionConfiguration",
+      "s3:GetEncryptionConfiguration",
       "iam:CreateRole",
       "logs:CreateLogGroup",
       "cloudwatch:PutMetricAlarm",

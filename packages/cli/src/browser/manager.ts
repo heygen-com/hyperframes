@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -42,8 +42,19 @@ const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headl
 // doubles as a zero-dependency cross-process mutex — no lockfile library needed.
 const INSTALL_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.lock");
 const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.reclaim.lock");
-const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
-const INSTALL_LOCK_POLL_MS = 200;
+const INSTALL_LOCK_TIMINGS = {
+  staleMs: 120_000,
+  pollMs: 200,
+  heartbeatMs: 15_000,
+  waitNoticeMs: 10_000,
+};
+
+interface InstallLockTimings {
+  staleMs: number;
+  pollMs: number;
+  heartbeatMs: number;
+  waitNoticeMs: number;
+}
 
 function isErrno(err: unknown, code: string): boolean {
   return (err as NodeJS.ErrnoException).code === code;
@@ -66,6 +77,15 @@ function tryAcquireDirLock(lockDir: string): boolean {
   }
 }
 
+function isDirLockStale(lockDir: string, timeoutMs: number): boolean {
+  try {
+    return Date.now() - statSync(lockDir).mtimeMs > timeoutMs;
+  } catch (err) {
+    if (isErrno(err, "ENOENT")) return false;
+    throw err;
+  }
+}
+
 function reclaimStaleInstallLock(timeoutMs: number): void {
   if (!tryAcquireDirLock(INSTALL_RECLAIM_LOCK_DIR)) return;
   try {
@@ -80,43 +100,75 @@ function reclaimStaleInstallLock(timeoutMs: number): void {
   }
 }
 
-// timeoutMs/pollMs are parameters (not just the module constants) so tests can
-// exercise the reclaim-on-timeout branch with real but tiny waits instead of
-// mocking Date.now()/setTimeout through the full ensureBrowser call graph.
+function reclaimAbandonedReclaimLock(timeoutMs: number): void {
+  try {
+    if (isDirLockStale(INSTALL_RECLAIM_LOCK_DIR, timeoutMs)) {
+      rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
+    }
+  } catch (err) {
+    if (!isErrno(err, "ENOENT")) throw err;
+  }
+}
+
+function touchInstallLock(): void {
+  try {
+    const now = new Date();
+    utimesSync(INSTALL_LOCK_DIR, now, now);
+  } catch {
+    // ponytail: heartbeat is best-effort; stale-lock reclaim remains the fallback.
+  }
+}
+
 export async function withInstallLock<T>(
   fn: () => Promise<T>,
-  timeoutMs = INSTALL_LOCK_TIMEOUT_MS,
-  pollMs = INSTALL_LOCK_POLL_MS,
+  timings: InstallLockTimings = INSTALL_LOCK_TIMINGS,
 ): Promise<T> {
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
   // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
   // delete another installer's in-flight lock.
   if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
-  let deadline = Date.now() + timeoutMs;
+  let deadline = Date.now() + timings.staleMs;
+  const waitStart = Date.now();
+  let lastNoticeMs = 0;
   for (;;) {
     if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
-      await sleep(pollMs);
+      // A process can die after acquiring the reclaim gate but before its
+      // synchronous cleanup runs. Without aging out that gate, every future
+      // installer sleeps here forever and never reaches the install-lock
+      // timeout/reclaim path below.
+      reclaimAbandonedReclaimLock(timings.staleMs);
+      await sleep(timings.pollMs);
       continue;
     }
     if (tryAcquireDirLock(INSTALL_LOCK_DIR)) {
       rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
       break;
     }
-    if (Date.now() > deadline) {
+    const waitedMs = Date.now() - waitStart;
+    if (waitedMs - lastNoticeMs >= timings.waitNoticeMs) {
+      lastNoticeMs = waitedMs;
+      console.warn(
+        `[browser] Waiting for another hyperframes process to finish installing chrome-headless-shell (${Math.round(waitedMs / 1000)}s elapsed)...`,
+      );
+    }
+    if (isDirLockStale(INSTALL_LOCK_DIR, timings.staleMs) || Date.now() > deadline) {
       // The reclaim gate matters when multiple waiters cross the timeout at
       // once: without it, waiter A can delete the stale lock and acquire a
       // fresh one, then waiter B (whose old deadline also expired) can delete
       // A's fresh lock. The gate serializes reclaimers, and the mtime re-check
       // after the gate prevents deleting a fresh lock another waiter just won.
-      reclaimStaleInstallLock(timeoutMs);
-      deadline = Date.now() + timeoutMs;
+      reclaimStaleInstallLock(timings.staleMs);
+      deadline = Date.now() + timings.staleMs;
       continue;
     }
-    await sleep(pollMs);
+    await sleep(timings.pollMs);
   }
+  const heartbeat = setInterval(touchInstallLock, timings.heartbeatMs);
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
   }
 }

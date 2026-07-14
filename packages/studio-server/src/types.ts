@@ -152,6 +152,12 @@ export interface StudioApiAdapter {
     /** Entry file relative to projectDir (e.g. "compositions/intro.html"). Defaults to index.html. */
     composition?: string;
     /**
+     * Composition-variable overrides ({variableId: value}), forwarded to the
+     * producer's RenderConfig.variables and injected as window.__hfVariables —
+     * the same channel `hyperframes render --variables` uses.
+     */
+    variables?: Record<string, unknown>;
+    /**
      * Telemetry id of the browser user who triggered the render. Lets the
      * adapter attribute the server-emitted render_complete/render_error to
      * that user so the studio render funnel is joinable. Undefined for older

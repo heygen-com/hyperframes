@@ -230,6 +230,72 @@ const images = all.filter((el) => el.tag === "img");
 
 ---
 
+## Id & Scope Utilities
+
+```typescript
+import { resolveScoped, findById, bareId, escapeHfId, isNewHostBoundary } from "@hyperframes/sdk";
+```
+
+Low-level id-resolution helpers used internally by dispatch, patch replay, and query — exposed for hosts building their own DOM-facing tooling against the same document model.
+
+### resolveScoped
+
+```typescript
+function resolveScoped(document: Document, id: string): Element | null;
+```
+
+Resolve an `HfId` — bare (`"hf-title"`) or scoped (`"hf-host/hf-leaf"`) — to its `Element`. For an ambiguous bare id (the same id appearing both top-level and inside a sub-composition), prefers the canonical top-level match, matching `getElement()`'s own preference. This is the single resolution rule every mutation and patch-replay path shares — using your own `querySelector` instead can silently target the wrong duplicate.
+
+### findById
+
+```typescript
+function findById(document: Document, id: string): Element | null;
+```
+
+Thin alias for `resolveScoped` kept for call-site clarity where "find" reads better than "resolve." Identical behavior.
+
+### bareId
+
+```typescript
+function bareId(scopedId: string): string;
+```
+
+Strip a scoped id down to its leaf segment: `bareId("hf-host/hf-leaf")` returns `"hf-leaf"`. A no-op on an already-bare id.
+
+### escapeHfId
+
+```typescript
+function escapeHfId(id: string): string;
+```
+
+Escape an id for safe interpolation into a `querySelectorAll` attribute-value selector (backslashes and double quotes). Use this if you're writing a raw `[data-hf-id="..."]` selector yourself instead of going through `resolveScoped`/`findById`.
+
+### isNewHostBoundary
+
+```typescript
+function isNewHostBoundary(el: Element): boolean;
+```
+
+Returns `true` when `el` is the root of an inlined sub-composition — that is, it carries a `data-composition-file` attribute whose value differs from its parent's (or the parent has none). Use this to detect "entering a new sub-composition" while walking the tree, without hardcoding the attribute name.
+
+---
+
+## Variable Utilities
+
+```typescript
+import { readVariableDefault } from "@hyperframes/sdk";
+```
+
+### readVariableDefault
+
+```typescript
+function readVariableDefault(document: Document, id: string): unknown;
+```
+
+Read a declared variable's current `default` value directly from the document's `data-composition-variables` schema attribute, bypassing the session layer. This is the same function `comp.getVariableValue()` calls internally; prefer the typed `Composition` method in session code — use this only when you're working against a raw `Document` outside of an open session (matching `buildDocument`/`buildRoots`'s "same functions the SDK uses internally" pattern above).
+
+---
+
 ## Constants
 
 ### ORIGIN\_APPLY\_PATCHES

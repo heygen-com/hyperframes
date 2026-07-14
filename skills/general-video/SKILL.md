@@ -12,6 +12,8 @@ metadata: { "tags": "orchestrator, general-video, fallback, freeform, compositio
 
 > **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
 
+> **figma source**: If any input is a figma.com URL, run `/figma` first — asset export, brand tokens, and components/storyboard reconstruction if needed — then build from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
+
 # general-video — general video workflow
 
 > **Confirm the route before you build.** This is the **fallback** for custom composition authoring. If the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/talking-head-recut`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
@@ -134,9 +136,9 @@ Then read `audio_meta.json`: mount each `voices[].path` + (`bgm.path`, `sfx[]`) 
 
 ## Output checklist → `hyperframes-cli`
 
-- [ ] `npx hyperframes lint` and `npx hyperframes validate` pass (block on results)
+- [ ] `npx hyperframes check` pass (block on results)
 - [ ] design adherence verified if a spec (`frame.md` / `design.md`) exists — checklist in `hyperframes-creative/references/design-adherence.md`
-- [ ] `npx hyperframes inspect` passes, or every overflow is intentionally marked
+- [ ] `npx hyperframes check` passes, or every overflow is intentionally marked
 - [ ] contrast warnings addressed; for multi-scene work, review the animation map (`hyperframes-animation/scripts/animation-map.mjs`)
 - [ ] deliver the preview; render to MP4 only on explicit request
 - [ ] surface the preview **only at handoff** (it is the stable, final preview); don't pop one mid-build — build-phase snapshots are headless

@@ -563,3 +563,59 @@ describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
     }
   });
 });
+
+describe("POST /projects/:id/render — variables forwarding", () => {
+  it("forwards a variables object to the adapter", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          format: "mp4",
+          variables: { title: "Custom", count: 5, dark: true },
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0].variables).toEqual({ title: "Custom", count: 5, dark: true });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("omits variables from adapter opts when not provided", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "mp4" }),
+      });
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls[0][0].variables).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("rejects non-object variables payloads with 400 (no silent drop)", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      for (const variables of [["a"], "str", 42, null]) {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ format: "mp4", variables }),
+        });
+        expect(res.status).toBe(400);
+      }
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+});

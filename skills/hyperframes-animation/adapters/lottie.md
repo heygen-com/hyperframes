@@ -105,7 +105,7 @@ After editing a Lottie composition:
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 ```
 
 ## Credits And References

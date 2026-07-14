@@ -13,6 +13,24 @@ import type { Fps } from "@hyperframes/core";
  */
 export type SubTimelineWaitOutcome = "ready" | "timeout" | "script_failure";
 
+export type CaptureWarningCode =
+  | "media_readiness_timeout"
+  | "media_load_failed"
+  | "audio_processing_failed"
+  | "sub_timeline_readiness_timeout"
+  | "sub_timeline_script_failure";
+
+/** Structured correctness warning produced while preparing a capture session. */
+export interface CaptureWarning {
+  code: CaptureWarningCode;
+  message: string;
+  details?: {
+    mediaType?: "image" | "video" | "audio";
+    sources?: string[];
+    timeoutMs?: number;
+  };
+}
+
 // ── Seek Protocol ──────────────────────────────────────────────────────────────
 
 /**
@@ -158,6 +176,16 @@ export interface CaptureOptions {
    * warmup loop).
    */
   lockWarmupTicks?: boolean;
+  /**
+   * drawElement self-verify ground-truth sample count for this session.
+   * Overrides the HF_DE_VERIFY default (4). The parallel coordinator raises
+   * it for multi-worker drawElement capture — N concurrent hardware-GPU
+   * browsers widen the damage surface (compositor tile eviction under
+   * GPU/memory pressure), and each worker only drains ~1/N of the shared
+   * sample grid, thinning effective coverage exactly when risk peaks.
+   * Clamped to 0..8 like the env knob; HF_DE_VERIFY, when set, still wins.
+   */
+  deVerifySamples?: number;
 }
 
 export interface CaptureVideoMetadataHint {
@@ -192,6 +220,8 @@ export interface CapturePerfSummary {
   p50TotalMs: number;
   /** Sub-composition timeline wait outcome (absent pre-init). */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /** Correctness warnings observed before or during capture. */
+  warnings?: CaptureWarning[];
   /**
    * Frames served from the static-dedup cache instead of a real seek+screenshot
    * (opt-out HF_STATIC_DEDUP=false). 0 when dedup was off or never armed. NOT counted
@@ -212,6 +242,16 @@ export interface CapturePerfSummary {
    * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
+  // ── BeginFrame no-damage reuse (Linux/Docker lastFrameCache visibility) ──
+  /**
+   * BeginFrame frames where Chrome reported `hasDamage=false` and the previous
+   * buffer was reused from the per-page lastFrameCache (screenshotService.ts) —
+   * the BF counterpart of `staticDedupReused` (predictive dedup never arms
+   * under beginframe). Undefined/0 outside beginframe capture mode.
+   */
+  beginFrameNoDamage?: number;
+  /** BeginFrame frames where Chrome reported damage (fresh screenshot encoded). */
+  beginFrameHasDamage?: number;
   // ── drawElement fast-capture outcome (default-on release visibility) ──
   /** Final capture mode this session used: "drawelement" | "screenshot" | "beginframe". */
   captureMode: string;

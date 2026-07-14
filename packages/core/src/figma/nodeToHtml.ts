@@ -7,8 +7,11 @@
  * - CSS where CSS is faithful: solid/linear-gradient fills, corner radius,
  *   opacity, drop shadow, blur, text styles.
  * - Everything CSS can't match faithfully (vectors, boolean ops, exotic
- *   paint) routes to the rasterize list — the caller exports those nodes as
- *   images (Phase 1) and fills in the placeholder src.
+ *   paint, IMAGE fills) routes to the rasterize list — the caller exports
+ *   those nodes as images (Phase 1) and fills in the placeholder src. A
+ *   rasterized node's own fill/corner-radius CSS is never emitted — the
+ *   exported image already contains it; adding both double-paints (a flat
+ *   color block behind/around the real art).
  * - Bindings (§7.1): resolved sites emit var(--slug, literal) so a brand
  *   refresh propagates; unresolved sites bake the literal and carry a
  *   data-figma-unresolved flag. Never a dangling var().
@@ -113,6 +116,13 @@ function fillCss(node: FigmaNodeDocument): string | null {
   return null;
 }
 
+/** IMAGE fills (photos, icons pasted as bitmaps) have no CSS equivalent —
+ * route to rasterize like vectors, regardless of node.type (a plain
+ * RECTANGLE/FRAME carries the fill just as often as a dedicated image node). */
+function hasImageFill(node: FigmaNodeDocument): boolean {
+  return firstVisibleFill(node)?.type === "IMAGE";
+}
+
 function dropShadowCss(effect: Record<string, unknown>): string | null {
   if (!isRecord(effect.offset)) return null;
   const color = figmaColorToCss(effect.color);
@@ -152,6 +162,23 @@ function textCss(node: FigmaNodeDocument, styles: string[]): void {
   if (typeof s.lineHeightPx === "number") styles.push(`line-height: ${round(s.lineHeightPx)}px`);
   if (typeof s.letterSpacing === "number" && s.letterSpacing !== 0)
     styles.push(`letter-spacing: ${round(s.letterSpacing)}px`);
+  if (isVerticallyTrimmed(node, s.lineHeightPx)) {
+    styles.push("text-box-trim: trim-both", "text-box-edge: cap alphabetic");
+  }
+}
+
+/**
+ * Vertical trim: a figma text box SHORTER than its line-height is
+ * cap-height-trimmed bounds. Browsers place glyphs with half-leading and
+ * overflow the short box downward (~6px low on a 70px font, measured
+ * against figma's own render). text-box-trim reproduces figma's trim in
+ * the render engine (Chrome). Single-line text only.
+ */
+function isVerticallyTrimmed(node: FigmaNodeDocument, lineHeightPx: unknown): boolean {
+  if (typeof lineHeightPx !== "number") return false;
+  const box = boxOf(node);
+  if (box === null || box.height >= lineHeightPx - 1) return false;
+  return typeof node.characters === "string" && !node.characters.includes("\n");
 }
 
 interface RenderContext {
@@ -217,33 +244,47 @@ function geometryCss(node: FigmaNodeDocument, parentBox: Box, isRoot: boolean): 
   return styles;
 }
 
-function shapeCss(node: FigmaNodeDocument, styles: string[]): void {
+/** Corner-radius + clip describe the node's OWN shape — meaningless once
+ * that shape has already been baked into a rasterized image (see
+ * decorationCss). Opacity stays separate: it's compositing, still correct
+ * to apply on top of a raster/vector export. */
+function cornerAndClipCss(node: FigmaNodeDocument, styles: string[]): void {
   if (node.type === "ELLIPSE") {
     styles.push("border-radius: 50%");
   } else if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
     styles.push(`border-radius: ${round(node.cornerRadius)}px`);
   }
   if (node.clipsContent === true) styles.push("overflow: hidden");
+}
+
+function opacityCss(node: FigmaNodeDocument, styles: string[]): void {
   if (typeof node.opacity === "number" && node.opacity < 1)
     styles.push(`opacity: ${round(node.opacity)}`);
 }
 
-function decorationCss(node: FigmaNodeDocument, ctx: RenderContext): string[] {
+function decorationCss(node: FigmaNodeDocument, ctx: RenderContext, rasterized: boolean): string[] {
   const styles: string[] = [];
-  // backgroundValue is the binding-aware path (var(--slug, literal)) — TEXT
-  // color goes through it too, so a token-bound text fill keeps its link.
-  const bg = backgroundValue(node, ctx);
-  if (node.type === "TEXT") {
-    if (bg !== null) styles.push(`color: ${bg}`);
-    textCss(node, styles);
-  } else if (bg !== null) {
-    // background-color (longhand) for solid fills, never the shorthand: GSAP
-    // backgroundColor tweens can't read a var() through the shorthand (its
-    // pending-substitution longhands serialize empty), so .from/.to on an
-    // imported node would settle on transparent instead of the token color.
-    styles.push(bg.includes("gradient(") ? `background: ${bg}` : `background-color: ${bg}`);
+  // A rasterized node's fill/shape is already baked into the exported image
+  // — background-color/border-radius on top of it would double-paint (a
+  // flat color block behind or around the real art). Opacity and effects
+  // (shadow/blur) aren't baked by the export, so those still apply.
+  if (!rasterized) {
+    // backgroundValue is the binding-aware path (var(--slug, literal)) — TEXT
+    // color goes through it too, so a token-bound text fill keeps its link.
+    const bg = backgroundValue(node, ctx);
+    if (node.type === "TEXT") {
+      if (bg !== null) styles.push(`color: ${bg}`);
+      textCss(node, styles);
+    } else if (bg !== null) {
+      // background-color (longhand) for solid fills, never the shorthand: GSAP
+      // backgroundColor tweens can't read a var() through the shorthand (its
+      // pending-substitution longhands serialize empty), so .from/.to on an
+      // imported node would settle on transparent instead of the token color.
+      styles.push(bg.includes("gradient(") ? `background: ${bg}` : `background-color: ${bg}`);
+    }
+    cornerAndClipCss(node, styles);
   }
-  shapeCss(node, styles);
+  opacityCss(node, styles);
   effectsCss(node, styles);
   return styles;
 }
@@ -275,15 +316,16 @@ function renderNodeHtml(
 ): string {
   if (node.visible === false || depth > MAX_DEPTH) return "";
   const slug = uniqueSlug(ctx, node.name);
+  const rasterized = RASTERIZE_TYPES.has(node.type) || hasImageFill(node);
   const style = escapeHtml(
-    [...geometryCss(node, parentBox, isRoot), ...decorationCss(node, ctx)].join("; "),
+    [...geometryCss(node, parentBox, isRoot), ...decorationCss(node, ctx, rasterized)].join("; "),
   );
   // data-hf-snippet marks the file as a mountable fragment, not a standalone
   // composition — the project linter skips composition-root rules for it.
   const snippetAttr = isRoot ? ' data-hf-snippet=""' : "";
   const idAttrs = `id="${slug}"${snippetAttr} data-figma-id="${escapeHtml(node.id)}"${unresolvedAttr(node, ctx)}`;
 
-  if (RASTERIZE_TYPES.has(node.type)) {
+  if (rasterized) {
     ctx.rasterize.push({ nodeId: node.id, name: node.name, slug });
     return `<img ${idAttrs} data-figma-rasterize="${escapeHtml(node.id)}" alt="${escapeHtml(node.name)}" style="${style}" />`;
   }

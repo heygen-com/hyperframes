@@ -1,6 +1,6 @@
 import type { HyperframeLintFinding, HyperframeLintResult, HyperframeLinterOptions } from "./types";
 import { buildLintContext } from "./context";
-import { readAttr, truncateSnippet } from "./utils";
+import { parseHtmlStructure, readAttr, truncateSnippet } from "./utils";
 import { coreRules } from "./rules/core";
 import { mediaRules } from "./rules/media";
 import { gsapRules } from "./rules/gsap";
@@ -73,11 +73,8 @@ function extractMediaUrls(html: string): Array<{
     elementId?: string;
     snippet: string;
   }> = [];
-  const tagRe = /<(video|audio|img|source)\b[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(html)) !== null) {
-    const tagName = (match[1] ?? "").toLowerCase();
-    const raw = match[0];
+  for (const { name: tagName, raw } of parseHtmlStructure(html).tags) {
+    if (!/^(?:video|audio|img|source)$/.test(tagName)) continue;
     const src = readAttr(raw, "src");
     if (!src) continue;
     if (/^https?:\/\//i.test(src)) {

@@ -9,6 +9,12 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
+export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
+// Tool-attribution sent on EVERY media-use HeyGen call regardless of auth type, so
+// the backend can isolate media-use consumption from other free TTS / avatar video.
+// Unconditional — a paying user's media-use call is still media-use — unlike the
+// OAuth-only cli-source header above, which also gates the free allowance.
+export const HEYGEN_CLIENT_SOURCE_HEADERS = { "X-HeyGen-Client-Source": "media-use" };
 
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
@@ -68,10 +74,29 @@ export function heygenCredential() {
   return null;
 }
 
+// → "oauth" | "api_key" | null. Same oauth-vs-api-key check heygenAuthHeaders()
+// makes internally, exposed on its own so callers that only need to *tag* the
+// auth path (telemetry) don't have to parse headers back apart. Never throws:
+// no credential (or an expired one) is just `null`, same as a fresh resolve
+// with nothing to tag.
+export function heygenAuthMethod() {
+  const cred = heygenCredential();
+  if (!cred?.headers) return null;
+  return "Authorization" in cred.headers ? "oauth" : "api_key";
+}
+
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
   const cred = heygenCredential();
-  if (cred?.headers) return cred.headers;
+  if (cred?.headers) {
+    // Only tag OAuth (Bearer) traffic as cli-source — the backend uses it to
+    // grant the free allowance for OAuth requests and ignores it for API-key
+    // (X-Api-Key) traffic, where it's dead metadata.
+    const isOauth = "Authorization" in cred.headers;
+    return isOauth
+      ? { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS, ...HEYGEN_CLIENT_SOURCE_HEADERS }
+      : { ...cred.headers, ...HEYGEN_CLIENT_SOURCE_HEADERS };
+  }
   if (cred?.expired)
     throw new Error(
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
@@ -83,7 +108,7 @@ export function heygenAuthHeaders() {
 
 // Authed JSON request against the v3 API; throws on a non-OK status.
 export async function heygenJSON(path, { method = "GET", headers = {}, body } = {}) {
-  const opts = { method, headers: { ...headers } };
+  const opts = { method, headers: { ...HEYGEN_CLIENT_SOURCE_HEADERS, ...headers } };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);

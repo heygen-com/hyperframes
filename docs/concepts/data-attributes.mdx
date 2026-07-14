@@ -32,6 +32,8 @@ Hyperframes uses HTML data attributes to control timing, media playback, and [co
 | `data-composition-src` | `"./intro.html"` | Path to external [composition](/concepts/compositions) HTML file |
 | `data-variable-values` | `'{"title":"Hello"}'` | JSON object of values passed to a nested composition. Inside the sub-composition, read them via `window.__hyperframes.getVariables()` — the runtime layers these over the sub-comp's own `data-composition-variables` defaults and exposes the merged result on a per-instance basis (the same source can be embedded multiple times with different values). |
 | `data-composition-variables` | `'[{"id":"title","type":"string","label":"Title","default":"Hello"}]'` | JSON array of declared variables (`id`, `type`, `label`, `default`). Drives Studio editing UI and provides defaults read by `window.__hyperframes.getVariables()`. The CLI flag `hyperframes render --variables '<json>'` overrides these defaults at top-level render time; host elements override them per-instance via `data-variable-values`. |
+| `data-var-src` | `"heroImage"` | Binds the element's `src` to a declared variable — the runtime substitutes the value (URL string or image `{url}`) in preview and render; the authored `src` stays as the fallback. |
+| `data-var-text` | `"title"` | Binds the element's own text to a scalar variable. Element children (nested clips, animated spans) are preserved. Scalar variables are also applied as `--{id}` CSS custom properties on the composition root, so `color: var(--accent)` responds to overrides. |
 
 ## Element Visibility
 

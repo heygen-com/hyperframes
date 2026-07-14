@@ -26,4 +26,25 @@ describe("CLI command registration", () => {
       '["keyframes", "Inspect keyframes and render onion-shot diagnostics"]',
     );
   });
+
+  it("shows the check command used by workflow capability preflight in root help", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toMatch(/\bcheck:\s*\(\)\s*=>\s*import\("\.\/commands\/check\.js"\)/);
+    expect(helpSource).toContain(
+      '["check", "Run lint, runtime validation, and layout inspection as one gate"]',
+    );
+  });
+
+  // A command actively reconciling skills (`skills check`/`skills update`)
+  // must not also nudge the user to go reconcile skills — that nudge is
+  // either redundant (it just ran) or misleading (a stale cached count from
+  // the 24h background check, contradicting whatever it just reported).
+  it("excludes 'skills' from the background skills-nudge gate, alongside 'upgrade' and 'events'", () => {
+    const match = cliSource.match(/if \(([\s\S]*?)\) \{\s*\/\/ Report any completed auto-install/);
+    expect(match, "expected to find the background nudge gate's if-condition").toBeTruthy();
+    const condition = match![1]!;
+    expect(condition).toContain('command !== "upgrade"');
+    expect(condition).toContain('command !== "events"');
+    expect(condition).toContain('command !== "skills"');
+  });
 });

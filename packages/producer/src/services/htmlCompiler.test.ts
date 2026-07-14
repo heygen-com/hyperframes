@@ -4,9 +4,12 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { defaultLogger } from "../logger.js";
 import {
   collectExternalAssets,
   compileForRender,
+  injectSdkPositionEditsRenderScript,
+  detectAncestorBackgroundImage,
   detectRenderModeHints,
   detectShaderTransitionUsage,
   detectThreeDTransformUsage,
@@ -18,6 +21,28 @@ import {
   recompileWithResolutions,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
+
+describe("injectSdkPositionEditsRenderScript", () => {
+  it("injects before </body> when SDK position-edit markers are present", () => {
+    const html =
+      '<html><body><h1 data-x="-231" data-y="-139" data-hf-edit-base-x="0" data-hf-edit-base-y="0">Hi</h1></body></html>';
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain("<script>");
+    expect(out.indexOf("<script>")).toBeLessThan(out.indexOf("</body>"));
+    expect(out).toContain("data-hf-edit-base-x");
+  });
+
+  it("appends the script when there is no </body> tag", () => {
+    const out = injectSdkPositionEditsRenderScript('<div data-hf-edit-base-y="0"></div>');
+    expect(out.startsWith('<div data-hf-edit-base-y="0"></div>')).toBe(true);
+    expect(out).toContain("<script>");
+  });
+
+  it("is a no-op for style/text-only HTML", () => {
+    const html = '<html><body><h1 style="color:#f00">Hi</h1></body></html>';
+    expect(injectSdkPositionEditsRenderScript(html)).toBe(html);
+  });
+});
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
 
@@ -695,6 +720,65 @@ describe("detectThreeDTransformUsage", () => {
   });
 });
 
+describe("detectAncestorBackgroundImage", () => {
+  const wrap = (headCss: string, bodyAttrs = "", inner = "") =>
+    `<!doctype html><html><head><style>${headCss}</style></head><body${bodyAttrs ? ` ${bodyAttrs}` : ""}>` +
+    `<div id="root" data-composition-id="main" data-duration="10">${inner}</div></body></html>`;
+
+  it("detects a linear-gradient body background from a style rule", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("body { background: linear-gradient(135deg, #1b2735, #090a0f); }"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a url() background-image on html", () => {
+    expect(detectAncestorBackgroundImage(wrap('html { background-image: url("bg.png"); }'))).toBe(
+      true,
+    );
+  });
+
+  it("detects an inline gradient style on body", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("", 'style="background: radial-gradient(circle, #111, #000)"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a class-selected wrapper between body and the root", () => {
+    const html =
+      "<!doctype html><html><head><style>.page-bg { background-image: linear-gradient(#111, #000); }</style></head>" +
+      '<body><div class="page-bg"><div data-composition-id="main" data-duration="10"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("ignores background-image on elements inside the composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap(
+          "#hero { background-image: linear-gradient(#111, #000); }",
+          "",
+          '<div id="hero"></div>',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores plain background-color ancestors", () => {
+    expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
+  });
+
+  it("returns false without a composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        "<html><head><style>body { background: linear-gradient(#111, #000); }</style></head><body></body></html>",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("detectShaderTransitionUsage", () => {
   it("detects authored HyperShader initialization", () => {
     const html = `<!doctype html>
@@ -772,6 +856,40 @@ describe("system-primary font normalization", () => {
     const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
     expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
     expect(rootStyle).toContain("font-family: Inter, sans-serif");
+  });
+});
+
+describe("local font embedding", () => {
+  it("embeds one font file once when sub-compositions use equivalent relative paths", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-local-font-dedupe-"));
+    const assetsDir = join(projectDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "shared.woff2"), "fake-woff2");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "A"; src: url("assets/shared.woff2"); }
+  @font-face { font-family: "B"; src: url("./assets/shared.woff2"); }
+  @font-face { font-family: "C"; src: url("assets/../assets/shared.woff2"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+
+    const originalInfo = defaultLogger.info;
+    const embeddedMessages: string[] = [];
+    defaultLogger.info = (message) => {
+      if (message.includes("Embedded local font file")) embeddedMessages.push(message);
+    };
+
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } finally {
+      defaultLogger.info = originalInfo;
+    }
+
+    expect(embeddedMessages).toHaveLength(1);
   });
 });
 

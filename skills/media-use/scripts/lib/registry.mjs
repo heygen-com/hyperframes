@@ -8,19 +8,21 @@
 // An entry exposes any of three capability methods — search / generate /
 // process — plus { name }. media-use holds no keys; each external tool owns its
 // own auth. Providers, by type:
-//   - heygen CLI: catalog + TTS, first for every type it serves (sub creds)
+//   - heygen CLI: catalog + TTS, first for every type it serves (OAuth free
+//     allowance first, then the user's HeyGen billing path)
 //   - mflux: local FLUX-class image gen, spec-selected to the machine's RAM
 //     (free, private, offline once cached)
 //   - codex CLI: image gen on the user's ChatGPT sub — the better-quality upsell
 //     and the fallback when no local model fits
-//   - Kokoro (via the hyperframes CLI): local voiceover, free/private default
-//     for the voice type, ahead of the paid HeyGen TTS upsell
+//   - Kokoro (via the hyperframes CLI): local voiceover, free/private fallback
+//     when HeyGen credentials are absent or --local-only is requested
 //
 // Generation is local-first, cloud-upsell. `ctx.provider` forces one provider
 // (e.g. "make an image with codex").
 
 import { bgmProvider } from "./bgm-provider.mjs";
 import { sfxProvider } from "./sfx-provider.mjs";
+import { bundledSfxProvider } from "./bundled-sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
 import {
@@ -35,17 +37,21 @@ import { codexImageGenerate } from "./codex-provider.mjs";
 import { mfluxImageGenerate } from "./mflux-provider.mjs";
 
 // Provider markers: `network` = hits a remote service (skipped by --local-only).
-// `paid` = costs wallet credits (documentation for the agent's cost judgment,
-// X4: agent-initiated paid should confirm). HeyGen catalog SEARCH is free;
-// HeyGen TTS now costs credits, so it is the paid upsell behind local Kokoro.
+// `paid` = may cost wallet credits after any OAuth/web-plan free allowance
+// (documentation for the agent's cost judgment, X4: agent-initiated paid should
+// confirm). HeyGen catalog SEARCH is free; HeyGen TTS is free for eligible
+// OAuth CLI users up to the monthly allowance, then follows the user's billing.
 const A = (name, caps) => ({ name, ...caps }); // local, free
 const N = (name, caps) => ({ name, network: true, ...caps }); // remote, free
 const P = (name, caps) => ({ name, network: true, paid: true, ...caps }); // remote, paid
 
-// heygen-CLI first (and currently only). All remote providers are skipped by --local-only.
+// heygen-CLI first. All remote providers are skipped by --local-only.
 const REGISTRY = {
   bgm: [N("heygen.audio.sounds", { search: bgmProvider.search })],
-  sfx: [N("heygen.audio.sounds", { search: sfxProvider.search })],
+  sfx: [
+    N("heygen.audio.sounds", { search: sfxProvider.search }),
+    A("bundled.sfx", { search: bundledSfxProvider.search }),
+  ],
   image: [
     N("heygen.asset.search", { search: imageProvider.search }),
     // Catalog miss -> generate. Local first (best FLUX-class model the machine's
@@ -67,11 +73,15 @@ const REGISTRY = {
     N("favicon.ddg", { search: faviconSearch }),
   ],
   voice: [
-    // Local Kokoro first (free, private, on-device via the hyperframes CLI, kept
-    // under --local-only), then HeyGen TTS as the higher-quality paid upsell and
-    // the fallback when Kokoro is not set up.
-    A("kokoro.local", { generate: localTtsGenerate }),
+    // HeyGen TTS first when credentialed so CLI/OAuth users consume the free
+    // web-plan allowance (10 min/month) before any paid path. --local-only skips
+    // it and keeps Kokoro as the private/offline fallback.
+    // Deliberately kept `paid` (X4 confirm-before-call) even though the first
+    // 10 min/month are free: the client can't know the remaining allowance, so
+    // confirming is safer than risking a silent charge once it's spent. (A
+    // tri-state "quota-first, paid after" would need backend quota state.)
     P("heygen.tts", { generate: heygenTtsGenerate }),
+    A("kokoro.local", { generate: localTtsGenerate }),
   ],
   brand: [
     // Local design spec, not heygen — reads frame.md / design.md tokens.

@@ -1,6 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { RuntimeTweenChange, SetPatchProps } from "./gsapRuntimePatch";
+import { isInstantHold } from "./gsapShared";
 
 /** The shape of an `update-property` mutation a static-set nudge POSTs. */
 interface UpdatePropertyMutation {
@@ -16,25 +16,15 @@ interface UpdatePropertyMutation {
  * value the source write didn't (one source of truth). Each mutation contributes
  * its `{property: value}` channel to the patch's props.
  */
-export function setPatchFromUpdateProperties(
-  selector: string,
-  mutations: UpdatePropertyMutation[],
-  global = false,
-): { selector: string; change: RuntimeTweenChange } {
-  const props: SetPatchProps = {};
-  for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
-  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
-  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
-  return { selector, change: { kind: global ? "global-set" : "set", props } };
-}
-
-/** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
 export function setPatchFromUpdateProperty(
   selector: string,
   mutation: UpdatePropertyMutation,
   global = false,
 ): { selector: string; change: RuntimeTweenChange } {
-  return setPatchFromUpdateProperties(selector, [mutation], global);
+  const props: SetPatchProps = { [mutation.property as keyof SetPatchProps]: mutation.value };
+  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
+  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
+  return { selector, change: { kind: global ? "global-set" : "set", props } };
 }
 
 /**
@@ -61,7 +51,8 @@ function findPositionSetAnimation(
  * remove-all-keyframes leaves behind) is a held position too, and the next drag
  * must UPDATE it in place rather than append a second `gsap.set` that fights it
  * (the duplicate-position-write bug). Only zero-duration holds qualify — a
- * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
+ * live-duration tween and a duration-zero `from` are NOT static holds (and in
+ * the static path they're a
  * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
  * A keyframed zero-duration `to` is ALSO a static hold (a drag-path corruption
  * artifact) and must be recognized so the static commit normalizes it.
@@ -75,10 +66,7 @@ export function findExistingPositionWrite(
   if (set) return set;
   return (
     animations.find(
-      (a) =>
-        a.targetSelector === selector &&
-        a.propertyGroup === "position" &&
-        resolveTweenDuration(a) === 0,
+      (a) => a.targetSelector === selector && a.propertyGroup === "position" && isInstantHold(a),
     ) ?? null
   );
 }
@@ -89,7 +77,7 @@ export function findRotationSetAnimation(
 ): GsapAnimation | null {
   return (
     animations.find(
-      (a) => a.method === "set" && a.targetSelector === selector && "rotation" in a.properties,
+      (a) => isInstantHold(a) && a.targetSelector === selector && "rotation" in a.properties,
     ) ?? null
   );
 }
@@ -101,7 +89,7 @@ export function findSizeSetAnimation(
   return (
     animations.find(
       (a) =>
-        a.method === "set" &&
+        isInstantHold(a) &&
         a.targetSelector === selector &&
         ("width" in a.properties || "height" in a.properties),
     ) ?? null

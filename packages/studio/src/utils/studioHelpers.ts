@@ -13,7 +13,13 @@ export interface AppToast {
   tone: "error" | "info";
 }
 
-export type RightPanelTab = "layers" | "design" | "renders" | "block-params" | "slideshow";
+export type RightPanelTab =
+  | "layers"
+  | "design"
+  | "renders"
+  | "block-params"
+  | "slideshow"
+  | "variables";
 export type RightInspectorPane = "layers" | "design";
 
 export interface RightInspectorPanes {
@@ -209,6 +215,28 @@ export function findTimelineIdByAncestor(
   return null;
 }
 
+/**
+ * Resolve the timeline element id for a DOM selection: direct match first, then
+ * nearest clip ancestor. The ancestor lookup resolves against the selection's own
+ * source file, falling back to the active composition path, then index.html — so a
+ * sub-composition selection with no explicit sourceFile resolves against the comp
+ * currently open, not always the root file.
+ */
+export function resolveTimelineIdForSelection(
+  selection: DomEditSelection,
+  elements: TimelineElement[],
+  activeCompPath: string | null,
+): string | null {
+  return (
+    findMatchingTimelineElementId(selection, elements) ??
+    findTimelineIdByAncestor(
+      selection.element,
+      elements,
+      selection.sourceFile || activeCompPath || "index.html",
+    )
+  );
+}
+
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
   element: Pick<TimelineElement, "start" | "duration"> | null | undefined,
@@ -279,4 +307,66 @@ export async function resolveDroppedAssetDuration(
   media.src = "";
   media.load();
   return duration;
+}
+
+export async function resolveDroppedAssetDimensions(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<{ width: number; height: number } | null> {
+  if (kind === "audio") return null;
+  const src = `/api/projects/${projectId}/preview/${assetPath}`;
+
+  if (kind === "image") {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const timeout = window.setTimeout(() => resolve(null), 3000);
+      img.addEventListener(
+        "load",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(
+            img.naturalWidth > 0 && img.naturalHeight > 0
+              ? { width: img.naturalWidth, height: img.naturalHeight }
+              : null,
+          );
+        },
+        { once: true },
+      );
+      img.addEventListener(
+        "error",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(null);
+        },
+        { once: true },
+      );
+      img.src = src;
+    });
+  }
+
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const timeout = window.setTimeout(() => resolve(null), 3000);
+    const finalize = (value: { width: number; height: number } | null) => {
+      window.clearTimeout(timeout);
+      video.src = "";
+      video.load();
+      resolve(value);
+    };
+    video.addEventListener(
+      "loadedmetadata",
+      () => {
+        finalize(
+          video.videoWidth > 0 && video.videoHeight > 0
+            ? { width: video.videoWidth, height: video.videoHeight }
+            : null,
+        );
+      },
+      { once: true },
+    );
+    video.addEventListener("error", () => finalize(null), { once: true });
+    video.src = src;
+  });
 }

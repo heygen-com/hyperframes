@@ -102,6 +102,45 @@ describe("nodeToHtml", () => {
     expect(out.html).not.toContain('id="3d-object-headphones"');
   });
 
+  it("emits text-box-trim for vertically trimmed text (box height < line-height)", () => {
+    const out = nodeToHtml(
+      frame([
+        {
+          id: "1:2",
+          name: "Headline",
+          type: "TEXT",
+          absoluteBoundingBox: BOX(140, 260, 304, 51),
+          fills: [SOLID_BLUE],
+          characters: "Unlocked",
+          style: { fontFamily: "Inter", fontWeight: 700, fontSize: 70, lineHeightPx: 66.5 },
+        },
+      ]),
+      { resolved: [], unresolved: [] },
+    );
+    // figma's trimmed bounds (51px box for a 66.5px line) place cap height at
+    // the box top; browsers overflow the glyphs below without text-box-trim
+    expect(out.html).toContain("text-box-trim: trim-both");
+    expect(out.html).toContain("text-box-edge: cap alphabetic");
+  });
+
+  it("does not trim text whose box matches its line-height", () => {
+    const out = nodeToHtml(
+      frame([
+        {
+          id: "1:2",
+          name: "Body",
+          type: "TEXT",
+          absoluteBoundingBox: BOX(140, 260, 304, 39),
+          fills: [SOLID_BLUE],
+          characters: "Subtitle",
+          style: { fontFamily: "Inter", fontWeight: 400, fontSize: 32, lineHeightPx: 38.4 },
+        },
+      ]),
+      { resolved: [], unresolved: [] },
+    );
+    expect(out.html).not.toContain("text-box-trim");
+  });
+
   it("emits var() with literal fallback for resolved bindings", () => {
     const out = nodeToHtml(
       frame([
@@ -193,6 +232,47 @@ describe("nodeToHtml", () => {
     expect(out.rasterize).toEqual([{ nodeId: "1:4", name: "Logo Mark", slug: "logo-mark" }]);
     expect(out.html).toContain('data-figma-rasterize="1:4"');
     expect(out.html).toContain("<img");
+  });
+
+  it("routes IMAGE fills to the rasterize list regardless of node.type", () => {
+    const out = nodeToHtml(
+      frame([
+        {
+          id: "1:8",
+          name: "Sneaker Photo",
+          type: "RECTANGLE",
+          absoluteBoundingBox: BOX(120, 220, 200, 200),
+          fills: [{ type: "IMAGE", imageRef: "abc123" }],
+        },
+      ]),
+      { resolved: [], unresolved: [] },
+    );
+    expect(out.rasterize).toEqual([
+      { nodeId: "1:8", name: "Sneaker Photo", slug: "sneaker-photo" },
+    ]);
+    expect(out.html).toContain('data-figma-rasterize="1:8"');
+    expect(out.html).toContain("<img");
+  });
+
+  it("does not double-paint a rasterized node's own fill/corner-radius onto its img", () => {
+    const out = nodeToHtml(
+      frame([
+        {
+          id: "1:9",
+          name: "Blob",
+          type: "VECTOR",
+          absoluteBoundingBox: BOX(120, 220, 64, 64),
+          fills: [SOLID_BLUE],
+          cornerRadius: 12,
+          opacity: 0.5,
+        },
+      ]),
+      { resolved: [], unresolved: [] },
+    );
+    expect(out.html).not.toContain("background-color: #0066FF");
+    expect(out.html).not.toContain("border-radius: 12px");
+    // opacity is compositing, not shape — still applies on top of the export
+    expect(out.html).toContain("opacity: 0.5");
   });
 
   it("skips invisible nodes and invisible fills (respects visible:false)", () => {

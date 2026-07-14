@@ -1,4 +1,5 @@
 import type { PreviewAdapter, ElementAtPointResult, DraftProps } from "./types.js";
+import type { Composition } from "../types.js";
 
 /** Null PreviewAdapter for headless use (agents, CI, server-side rendering). */
 class HeadlessPreviewAdapter implements PreviewAdapter {
@@ -15,6 +16,10 @@ class HeadlessPreviewAdapter implements PreviewAdapter {
   select(_ids: string[], _opts?: { additive?: boolean }): void {}
 
   on(_event: "selection", _handler: (ids: string[]) => void): () => void {
+    return () => {};
+  }
+
+  attachSync(_comp: Composition): () => void {
     return () => {};
   }
 }

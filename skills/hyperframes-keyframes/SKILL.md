@@ -183,7 +183,7 @@ Keyframe camera position, camera target, object transform, material opacity, sha
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 npx hyperframes keyframes .
 npx hyperframes keyframes . --json
 npx hyperframes keyframes . --runtime all

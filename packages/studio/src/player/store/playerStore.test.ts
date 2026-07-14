@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { usePlayerStore, liveTime, type TimelineElement } from "./playerStore";
 
+/** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
+function expectResettableDefaults(state: ReturnType<typeof usePlayerStore.getState>): void {
+  expect(state.isPlaying).toBe(false);
+  expect(state.currentTime).toBe(0);
+  expect(state.duration).toBe(0);
+  expect(state.timelineReady).toBe(false);
+  expect(state.elements).toEqual([]);
+  expect(state.selectedElementId).toBeNull();
+}
+
 describe("usePlayerStore", () => {
   beforeEach(() => {
     usePlayerStore.getState().reset();
@@ -9,12 +19,7 @@ describe("usePlayerStore", () => {
   describe("initial state", () => {
     it("has correct defaults", () => {
       const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(false);
-      expect(state.currentTime).toBe(0);
-      expect(state.duration).toBe(0);
-      expect(state.timelineReady).toBe(false);
-      expect(state.elements).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+      expectResettableDefaults(state);
       expect(state.playbackRate).toBe(1);
       expect(state.audioMuted).toBe(false);
       expect(state.loopEnabled).toBe(false);
@@ -222,6 +227,98 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("selectedElementIds", () => {
+    it("sets a multi-id selection with a coherent anchor", () => {
+      usePlayerStore.getState().setSelection(["el-1", "el-2", "el-3"], "el-2");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("falls back to the first selected id when the anchor is outside the set", () => {
+      usePlayerStore.getState().setSelection(["el-1", "el-2"], "missing");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
+      expect(state.selectedElementId).toBe("el-1");
+    });
+
+    it("single-click selection replaces the set with the selected id", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.setSelectedElementId("el-3");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-3"]);
+      expect(state.selectedElementId).toBe("el-3");
+    });
+
+    it("setSelectedElementId collapses to a single element even for a current member", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
+      // A genuine single selection (click) collapses the set, even if the id was a member.
+      store.setSelectedElementId("el-2");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-2"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("setSelectionAnchor moves the anchor within a group without collapsing it", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
+      // A DOM->store echo during a group gesture only moves the anchor.
+      store.setSelectionAnchor("el-2");
+
+      let state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
+      expect(state.selectedElementId).toBe("el-2");
+
+      // A non-member anchor is a genuine new single selection.
+      store.setSelectionAnchor("outside");
+      state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["outside"]);
+      expect(state.selectedElementId).toBe("outside");
+    });
+
+    it("clearing single selection empties the set", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.setSelectedElementId(null);
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual([]);
+      expect(state.selectedElementId).toBeNull();
+    });
+
+    it("toggle adds and removes members while keeping the anchor in the set", () => {
+      const store = usePlayerStore.getState();
+      store.setSelectedElementId("el-1");
+      store.toggleSelectedElementId("el-2");
+
+      let state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
+      expect(state.selectedElementId).toBe("el-1");
+
+      store.toggleSelectedElementId("el-1");
+
+      state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-2"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("clearSelection empties the set and the anchor", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.clearSelection();
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual([]);
+      expect(state.selectedElementId).toBeNull();
+    });
+  });
+
   describe("updateElement", () => {
     it("updates the start time of a specific element", () => {
       usePlayerStore.getState().setElements([
@@ -292,6 +389,32 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("clipRevealRequest", () => {
+    it("starts null and carries the requested element id", () => {
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+      usePlayerStore.getState().requestClipReveal("el-1");
+      expect(usePlayerStore.getState().clipRevealRequest?.elementId).toBe("el-1");
+    });
+
+    it("bumps the nonce on repeat requests for the same clip", () => {
+      usePlayerStore.getState().requestClipReveal("el-1");
+      const first = usePlayerStore.getState().clipRevealRequest;
+      usePlayerStore.getState().requestClipReveal("el-1");
+      const second = usePlayerStore.getState().clipRevealRequest;
+      expect(second?.nonce).not.toBe(first?.nonce);
+    });
+
+    it("clears via clearClipRevealRequest and on reset", () => {
+      usePlayerStore.getState().requestClipReveal("el-1");
+      usePlayerStore.getState().clearClipRevealRequest();
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+
+      usePlayerStore.getState().requestClipReveal("el-2");
+      usePlayerStore.getState().reset();
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+    });
+  });
+
   describe("reset", () => {
     it("resets all state to defaults", () => {
       // Mutate everything
@@ -306,13 +429,7 @@ describe("usePlayerStore", () => {
       // Reset
       usePlayerStore.getState().reset();
 
-      const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(false);
-      expect(state.currentTime).toBe(0);
-      expect(state.duration).toBe(0);
-      expect(state.timelineReady).toBe(false);
-      expect(state.elements).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+      expectResettableDefaults(usePlayerStore.getState());
     });
 
     it("does not reset playbackRate, audioMuted, loopEnabled, zoomMode, or manualZoomPercent", () => {

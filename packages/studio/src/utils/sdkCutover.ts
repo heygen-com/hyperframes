@@ -18,6 +18,7 @@ export interface CutoverDeps {
       label: string;
       kind: EditHistoryKind;
       coalesceKey?: string;
+      coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };
@@ -84,6 +85,8 @@ function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
 interface CutoverOptions {
   label?: string;
   coalesceKey?: string;
+  /** Coalesce window (ms); Infinity folds across a slow round-trip. */
+  coalesceMs?: number;
   /** Skip the preview reload (mirrors the server path's skipRefresh). */
   skipRefresh?: boolean;
 }
@@ -110,6 +113,7 @@ export async function persistSdkSerialize(
     label: options?.label ?? "Edit layer",
     kind: "manual",
     ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
+    ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
     files: { [targetPath]: { before: originalContent, after } },
   });
   if (deps.refresh) deps.refresh(after);
@@ -192,6 +196,51 @@ export async function sdkTimingPersist(
     return true;
   } catch (err) {
     trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
+    return false;
+  }
+}
+
+export async function sdkTimingBatchPersist(
+  changes: Array<{
+    hfId: string;
+    timingUpdate: { start?: number; duration?: number; trackIndex?: number };
+  }>,
+  targetPath: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  const timingSrc = deps.readProjectFile;
+  for (const change of changes) {
+    void recordResolverParity(
+      sdkSession,
+      change.hfId,
+      "setTiming",
+      timingSrc ? () => timingSrc(targetPath) : undefined,
+    );
+  }
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
+  if (!sdkSession || wrongCompositionFile(deps, targetPath)) return false;
+  if (changes.some((change) => !sdkSession.getElement(change.hfId))) return false;
+  try {
+    const serializedBefore = sdkSession.serialize();
+    sdkSession.batch(() => {
+      for (const change of changes) sdkSession.setTiming(change.hfId, change.timingUpdate);
+    });
+    const after = sdkSession.serialize();
+    if (after === serializedBefore) return false;
+    const undoBefore = await captureOnDiskBefore(deps, targetPath, serializedBefore);
+    await persistSdkSerialize(after, targetPath, undoBefore, deps, options);
+    trackStudioEvent("sdk_cutover_success", {
+      hfId: changes[0]?.hfId ?? null,
+      opCount: changes.length,
+    });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", {
+      hfId: changes[0]?.hfId ?? null,
+      error: String(err),
+    });
     return false;
   }
 }

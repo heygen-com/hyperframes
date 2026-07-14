@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication complexity
 /**
  * Cross-worker idempotency: rendering the same `(planDir, chunkIndex)` on two
  * different workers MUST produce byte-identical output. This is what makes a
@@ -41,7 +42,7 @@ const FIXTURE_HTML = `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>cross-worker idempotency fixture</title></head>
 <body style="margin:0;background:#000;color:#fff;font:32px sans-serif">
-  <div data-composition-id="root" data-width="160" data-height="120" data-duration="0.16667">
+  <div data-composition-id="root" data-no-timeline data-width="160" data-height="120" data-duration="0.16667">
     <p style="padding:1rem">chunk fixture</p>
   </div>
 </body>

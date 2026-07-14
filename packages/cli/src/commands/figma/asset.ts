@@ -9,6 +9,7 @@ import {
   appendRecord,
   buildAssetSnippet,
   createFigmaClient,
+  FigmaClientError,
   findAllByFigmaNode,
   freezeBytes,
   nextId,
@@ -49,56 +50,82 @@ export interface AssetImportResult {
   reused: boolean;
 }
 
-export async function runAssetImport(
-  refInput: string,
-  opts: AssetImportOptions,
-  deps: AssetImportDeps,
-): Promise<AssetImportResult> {
+/**
+ * Flatten CLI positionals into asset refs. Comma-splits bare
+ * `fileKey:nodeId` tokens (so `asset A,B` batches) but leaves URL tokens
+ * whole — a figma URL can carry commas in its query (multi-select
+ * `node-id=1:2,3:4`), and splitting those would tear the URL apart. To batch
+ * URLs, pass them as separate positional args.
+ */
+export function gatherAssetRefs(positionals: string[]): string[] {
+  return positionals
+    .flatMap((r) => (/^https?:/i.test(r.trim()) ? [r] : r.split(",")))
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0);
+}
+
+function requireNodeRef(refInput: string): { fileKey: string; nodeId: string } {
   const ref = parseFigmaRef(refInput);
   if (!ref.nodeId)
     throw new Error(
       `ref "${refInput}" has no node id — share a link with ?node-id=… or use fileKey:nodeId`,
     );
+  return { fileKey: ref.fileKey, nodeId: ref.nodeId };
+}
 
-  const { version } = await deps.client.fileVersion(ref.fileKey);
-  const description = normalizeMeta(opts.description);
-  const entity = normalizeMeta(opts.entity);
-
-  // Cache key per spec §5: fileKey:nodeId:format:scale:version → reuse.
-  // Check EVERY row for the node (a node can legitimately have several
-  // format/scale/version tuples — the oldest-row shortcut minted duplicates
-  // forever once a second tuple existed). Unspecified scale is canonically 1
-  // on both sides (figma's default). Reuse also requires the frozen file to
-  // still exist — a deleted file falls through to re-import.
-  const existing = findAllByFigmaNode(deps.projectDir, ref.fileKey, ref.nodeId).find(
+/** Cache hit per spec §5 (fileKey:nodeId:format:scale:version). Check EVERY
+ * row for the node — a node can carry several format/scale/version tuples,
+ * and the oldest-row shortcut minted duplicates forever. Reuse requires the
+ * frozen file to still exist; a deleted file falls through to re-import.
+ * Metadata supplied on a re-import upserts rather than being discarded. */
+function reuseExisting(
+  fileKey: string,
+  nodeId: string,
+  opts: AssetImportOptions,
+  version: string,
+  deps: AssetImportDeps,
+  description: string | undefined,
+  entity: string | undefined,
+): AssetImportResult | null {
+  const existing = findAllByFigmaNode(deps.projectDir, fileKey, nodeId).find(
     (r) =>
       r.provenance.format === opts.format &&
       (r.provenance.scale ?? 1) === (opts.scale ?? 1) &&
       r.provenance.version === version &&
       existsSync(join(deps.projectDir, r.path)),
   );
-  if (existing) {
-    // Metadata supplied on a re-import still lands: upsert the row instead
-    // of silently discarding the flags.
-    let record = existing;
-    if (
-      (description !== undefined && description !== existing.description) ||
-      (entity !== undefined && entity !== existing.entity)
-    ) {
-      record = {
-        ...existing,
-        ...(description !== undefined && { description }),
-        ...(entity !== undefined && { entity }),
-      };
-      updateRecord(deps.projectDir, record);
-    }
-    safeRegenerateIndex(deps.projectDir);
-    return { record, snippet: buildAssetSnippet(record), reused: true };
+  if (!existing) return null;
+  let record = existing;
+  if (
+    (description !== undefined && description !== existing.description) ||
+    (entity !== undefined && entity !== existing.entity)
+  ) {
+    record = {
+      ...existing,
+      ...(description !== undefined && { description }),
+      ...(entity !== undefined && { entity }),
+    };
+    updateRecord(deps.projectDir, record);
   }
+  return { record, snippet: buildAssetSnippet(record), reused: true };
+}
 
-  const rendered = await deps.client.renderNode(ref, opts);
-  let bytes = await deps.download(rendered.url);
-  if (rendered.ext === "svg") {
+/** Freeze a rendered node's bytes and record it. Does NOT regenerate index.md
+ * — the caller does that once (batch imports would otherwise rewrite it N
+ * times). */
+async function freezeAndRecord(
+  fileKey: string,
+  nodeId: string,
+  url: string,
+  ext: FigmaAssetFormat,
+  opts: AssetImportOptions,
+  version: string,
+  deps: AssetImportDeps,
+  description: string | undefined,
+  entity: string | undefined,
+): Promise<AssetImportResult> {
+  let bytes = await deps.download(url);
+  if (ext === "svg") {
     // Sniff before decoding: an SVG starts with '<' or an XML decl/BOM. A
     // non-text payload would decode to U+FFFD soup and still write to disk.
     const b0 = bytes[0];
@@ -106,30 +133,108 @@ export async function runAssetImport(
       throw new Error("figma render returned non-SVG bytes for an svg export — retry the import");
     bytes = new TextEncoder().encode(sanitizeSvg(new TextDecoder().decode(bytes)));
   }
-
   const id = nextId(deps.projectDir, "image");
-  const destAbs = join(typeDirPath(deps.projectDir, "image"), `${id}.${rendered.ext}`);
+  const destAbs = join(typeDirPath(deps.projectDir, "image"), `${id}.${ext}`);
   freezeBytes(bytes, destAbs);
-
   const record: FigmaManifestRecord = {
     id,
     type: "image",
     path: relative(deps.projectDir, destAbs),
-    source: `figma:${ref.fileKey}/${ref.nodeId}`,
+    source: `figma:${fileKey}/${nodeId}`,
     ...(description !== undefined && { description }),
     ...(entity !== undefined && { entity }),
     provenance: {
       source: "figma",
-      fileKey: ref.fileKey,
-      nodeId: ref.nodeId,
+      fileKey,
+      nodeId,
       version,
       format: opts.format,
       scale: opts.scale,
     },
   };
   appendRecord(deps.projectDir, record);
-  safeRegenerateIndex(deps.projectDir);
   return { record, snippet: buildAssetSnippet(record), reused: false };
+}
+
+export async function runAssetImport(
+  refInput: string,
+  opts: AssetImportOptions,
+  deps: AssetImportDeps,
+): Promise<AssetImportResult> {
+  const [result] = await runAssetImportMany([refInput], opts, deps);
+  if (!result) throw new Error(`figma asset import produced no result for "${refInput}"`);
+  return result;
+}
+
+/**
+ * Import many nodes of ONE figma file. Cache-checks each, renders the misses
+ * in a SINGLE /v1/images batch call (figma's documented rate-limit
+ * workaround — N nodes, one REST request), freezes each, and regenerates
+ * index.md once. Results come back in input order.
+ */
+export async function runAssetImportMany(
+  refInputs: string[],
+  opts: AssetImportOptions,
+  deps: AssetImportDeps,
+): Promise<AssetImportResult[]> {
+  if (refInputs.length === 0) return [];
+  const refs = refInputs.map(requireNodeRef);
+  const fileKey = refs[0]!.fileKey;
+  const mixed = refs.find((r) => r.fileKey !== fileKey);
+  if (mixed)
+    throw new Error(
+      `all refs in one import must share a fileKey (batch is per-file) — got ${fileKey} and ${mixed.fileKey}; run separate commands per file`,
+    );
+
+  const { version } = await deps.client.fileVersion(fileKey);
+  const description = normalizeMeta(opts.description);
+  const entity = normalizeMeta(opts.entity);
+
+  // Resolve cache hits first; batch-render only the misses.
+  const slots: (AssetImportResult | null)[] = refs.map((r) =>
+    reuseExisting(fileKey, r.nodeId, opts, version, deps, description, entity),
+  );
+  const missIndexes = slots.flatMap((s, i) => (s === null ? [i] : []));
+  try {
+    if (missIndexes.length > 0) {
+      const missNodeIds = missIndexes.map((i) => refs[i]!.nodeId);
+      const rendered = await deps.client.renderNodes(fileKey, missNodeIds, opts);
+      const byNode = new Map(rendered.map((r) => [r.nodeId, r] as const));
+      for (const i of missIndexes) {
+        const nodeId = refs[i]!.nodeId;
+        const r = byNode.get(nodeId);
+        // Keep the typed code: component import's rasterize fallback skips on
+        // RENDER_FAILED, so a plain Error here would abort the whole import.
+        if (!r || r.url === null)
+          throw new FigmaClientError(
+            "RENDER_FAILED",
+            `figma could not render node ${nodeId} as ${opts.format}`,
+            undefined,
+            "images",
+          );
+        slots[i] = await freezeAndRecord(
+          fileKey,
+          nodeId,
+          r.url,
+          r.ext,
+          opts,
+          version,
+          deps,
+          description,
+          entity,
+        );
+      }
+    }
+  } finally {
+    // Regenerate once — in `finally` so a mid-batch RENDER_FAILED still leaves
+    // index.md consistent with the nodes that DID freeze, not stale until the
+    // next import.
+    safeRegenerateIndex(deps.projectDir);
+  }
+  return slots.map((s, i) => {
+    if (!s) throw new Error(`figma asset import produced no result for "${refInputs[i]}"`);
+    return s;
+  });
 }
 
 /** index.md is a single table row per record — newlines/tabs in a
@@ -159,11 +264,12 @@ function parseFormat(raw: string): FigmaAssetFormat {
 }
 
 export default defineCommand({
-  meta: { name: "asset", description: "Import a figma node as a frozen local asset" },
+  meta: { name: "asset", description: "Import one or more figma nodes as frozen local assets" },
   args: {
     ref: {
       type: "positional",
-      description: "figma URL, fileKey:nodeId, or fileKey",
+      description:
+        "figma URL, fileKey:nodeId, or fileKey (pass several, or comma-separate ids, to batch)",
       required: true,
     },
     format: { type: "string", description: "png | svg | jpg | pdf", default: "svg" },
@@ -183,8 +289,16 @@ export default defineCommand({
       const t0 = Date.now();
       const token = process.env.FIGMA_TOKEN ?? "";
       const client = createFigmaClient({ token });
-      const result = await runAssetImport(
-        args.ref,
+      // citty puts ALL positionals in `args._` (including the one bound to the
+      // named `ref`), so use `_` as the source of truth — reading both would
+      // double-count the first. Split any comma-joined ids, so `asset A B`,
+      // `asset A,B`, and `asset URL1 URL2` all batch into ONE /v1/images call.
+      const positionals = (
+        Array.isArray(args._) && args._.length > 0 ? (args._ as string[]) : [args.ref]
+      ).map(String);
+      const refs = gatherAssetRefs(positionals);
+      const results = await runAssetImportMany(
+        refs,
         {
           format: parseFormat(args.format),
           scale: args.scale !== undefined ? Number(args.scale) : undefined,
@@ -193,11 +307,25 @@ export default defineCommand({
         },
         { projectDir: args.dir, client, download: downloadRender },
       );
-      const verb = result.reused ? "reused" : "imported";
-      console.log(`${verb} ${result.record.id} → ${result.record.path}`);
-      console.log(result.snippet.html);
+      for (const result of results) {
+        const verb = result.reused ? "reused" : "imported";
+        console.log(`${verb} ${result.record.id} → ${result.record.path}`);
+        console.log(result.snippet.html);
+      }
+      if (results.length > 1) {
+        const rendered = results.filter((r) => !r.reused).length;
+        console.log(
+          rendered > 0
+            ? `(${results.length} nodes, ${rendered} rendered in 1 figma request)`
+            : `(${results.length} nodes, all reused from cache — no figma request)`,
+        );
+      }
       const { trackFigmaImport } = await import("../../telemetry/index.js");
-      trackFigmaImport({ phase: "asset", reused: result.reused, durationMs: Date.now() - t0 });
+      trackFigmaImport({
+        phase: "asset",
+        reused: results.every((r) => r.reused),
+        durationMs: Date.now() - t0,
+      });
     });
   },
 });

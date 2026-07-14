@@ -460,14 +460,30 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         });
       }
       if (hasDataStart && hasId && !hasSrc) {
-        findings.push({
-          code: "media_missing_src",
-          severity: "error",
-          message: `<${tag.name} id="${hasId}"> has data-start but no src attribute. The renderer cannot load this media.`,
-          elementId: hasId,
-          fixHint: `Add a src attribute to the <${tag.name}> element directly. If using <source> children, the renderer still requires src on the parent element.`,
-          snippet: truncateSnippet(tag.raw),
-        });
+        const varSrc = readAttr(tag.raw, "data-var-src");
+        if (varSrc) {
+          // Variable-bound media without a fallback still renders when the
+          // variable resolves, but a render without a value can't load the
+          // media, and the audio pipeline discovers tracks from the AUTHORED
+          // src — warn instead of hard-failing the binding pattern.
+          findings.push({
+            code: "media_variable_src_no_fallback",
+            severity: "warning",
+            message: `<${tag.name} id="${hasId}"> relies on data-var-src="${varSrc}" with no fallback src. Renders without a "${varSrc}" value cannot load this media, and audio extraction reads the authored src.`,
+            elementId: hasId,
+            fixHint: `Add a fallback src the composition can render with when the variable is not provided.`,
+            snippet: truncateSnippet(tag.raw),
+          });
+        } else {
+          findings.push({
+            code: "media_missing_src",
+            severity: "error",
+            message: `<${tag.name} id="${hasId}"> has data-start but no src attribute. The renderer cannot load this media.`,
+            elementId: hasId,
+            fixHint: `Add a src attribute to the <${tag.name}> element directly. If using <source> children, the renderer still requires src on the parent element.`,
+            snippet: truncateSnippet(tag.raw),
+          });
+        }
       }
       if (readAttr(tag.raw, "preload") === "none") {
         findings.push({

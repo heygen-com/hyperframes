@@ -1,7 +1,8 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.45",
+  "version": "0.7.57",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -28,7 +29,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
-    "@puppeteer/browsers": "^2.13.0",
+    "@puppeteer/browsers": "^3.0.6",
     "adm-zip": "^0.5.16",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",

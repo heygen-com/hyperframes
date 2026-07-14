@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
@@ -13,6 +14,7 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
+import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -179,6 +181,74 @@ function injectGsapCdnFallback(html: string): string {
   return GSAP_CDN_FALLBACK_SCRIPT + html;
 }
 
+/**
+ * Inject preview variable overrides: `?variables=<json>` becomes
+ * `window.__hfVariables` set before any composition script runs — the exact
+ * global the engine sets via evaluateOnNewDocument at render time
+ * (engine/src/services/frameCapture.ts), so preview-with-values cannot
+ * diverge from render behavior. The runtime's getVariables() merges these
+ * overrides over the declared defaults.
+ */
+function injectPreviewVariables(html: string, values: Record<string, unknown>): string {
+  // <-escape prevents a string value containing "</script>" from
+  // breaking out of the injected tag.
+  const json = JSON.stringify(values).replace(/</g, "\\u003c");
+  const tag = `<script data-hf-preview-variables>window.__hfVariables=${json};</script>`;
+  // Insert as early as possible without ever landing before the doctype —
+  // content before <!doctype> flips the document into quirks mode, so the
+  // fallback chain is <head…> → <html…> → after the doctype → prepend.
+  for (const pattern of [/<head[^>]*>/i, /<html[^>]*>/i, /^\s*<!doctype[^>]*>/i]) {
+    const match = pattern.exec(html);
+    if (match) {
+      const at = match.index + match[0].length;
+      return html.slice(0, at) + tag + html.slice(at);
+    }
+  }
+  return tag + html;
+}
+
+/**
+ * Parse the `?variables=` query param. Absent/empty → null (no injection).
+ * Invalid JSON or a non-object payload is a caller error — surfaced as a 400
+ * by the routes rather than silently previewing with defaults.
+ */
+function parsePreviewVariablesParam(
+  raw: string | undefined,
+): { ok: true; values: Record<string, unknown> | null } | { ok: false; error: string } {
+  if (raw === undefined || raw === "") return { ok: true, values: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "variables must be valid JSON" };
+  }
+  if (!isVariablesPayload(parsed)) {
+    return { ok: false, error: VARIABLES_PAYLOAD_ERROR };
+  }
+  return { ok: true, values: parsed };
+}
+
+/** ETag salt so cached previews revalidate when the variable values change. */
+function variablesEtagSalt(raw: string | undefined): string {
+  if (!raw) return "";
+  return `:vars:${createHash("sha1").update(raw).digest("hex").slice(0, 12)}`;
+}
+
+/**
+ * Read + parse `?variables=` for a preview route. `error` present → the
+ * route should 400; otherwise `values` is the override object (or null when
+ * the param is absent) and `raw` feeds the ETag salt.
+ */
+function previewVariablesFromRequest(
+  rawVariables: string | undefined,
+):
+  | { error: string }
+  | { error?: undefined; raw: string | undefined; values: Record<string, unknown> | null } {
+  const parse = parsePreviewVariablesParam(rawVariables);
+  if (!parse.ok) return { error: parse.error };
+  return { raw: rawVariables, values: parse.values };
+}
+
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
@@ -242,8 +312,13 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
 
+    // fallow-ignore-next-line code-duplication
+    const vars = previewVariablesFromRequest(c.req.query("variables"));
+    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
+    const previewVariables = vars.values;
+
     const signature = resolveProjectSignature(adapter, project.dir);
-    const etag = `"preview:${signature}"`;
+    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
@@ -295,6 +370,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         project.dir,
         mainCompositionPath,
       );
+      if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
@@ -305,16 +381,16 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
           join(project.dir, fallback.compositionPath),
           fallback.html,
         );
-        return c.html(
-          injectStudioPreviewAugmentations(
-            await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
-            adapter,
-            project.dir,
-            fallback.compositionPath,
-          ),
-          200,
-          previewCacheHeaders(etag),
+        let fallbackAugmented = injectStudioPreviewAugmentations(
+          await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
+          adapter,
+          project.dir,
+          fallback.compositionPath,
         );
+        if (previewVariables) {
+          fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
+        }
+        return c.html(fallbackAugmented, 200, previewCacheHeaders(etag));
       }
       return c.text("not found", 404);
     }
@@ -344,9 +420,15 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   }
 
   // Sub-composition preview
+  // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/comp/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
+
+    // fallow-ignore-next-line code-duplication
+    const vars = previewVariablesFromRequest(c.req.query("variables"));
+    if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
+    const previewVariables = vars.values;
 
     const signature = resolveProjectSignature(adapter, project.dir);
     const compPath = decodeURIComponent(
@@ -360,7 +442,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must
     // not revalidate to a 304 that skips the pin.
-    const etag = `"comp:v2:${compPath}:${signature}"`;
+    const etag = `"comp:v2:${compPath}:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
@@ -379,11 +461,9 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     );
     if (!html) return c.text("not found", 404);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    return c.html(
-      injectStudioPreviewAugmentations(html, adapter, project.dir, compPath),
-      200,
-      previewCacheHeaders(etag),
-    );
+    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
+    if (previewVariables) html = injectPreviewVariables(html, previewVariables);
+    return c.html(html, 200, previewCacheHeaders(etag));
   });
 
   // Static asset serving (with range request support for audio/video seeking)

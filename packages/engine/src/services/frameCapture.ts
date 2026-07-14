@@ -43,13 +43,14 @@ import {
   produceDrawElementFrameBatch,
 } from "./drawElementService.js";
 import { initThreeDProjection, detectCssEffectRisk } from "./threeDProjection.js";
-import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { DEFAULT_CONFIG, applyConcreteGpuScreenshotClamp, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
   CaptureVideoMetadataHint,
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
+  CaptureWarning,
   SubTimelineWaitOutcome,
 } from "../types.js";
 
@@ -106,6 +107,8 @@ export interface CaptureSession {
   scriptLoadFailures: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /** Structured readiness warnings surfaced to the producer's render policy. */
+  warnings: CaptureWarning[];
   initTelemetry?: {
     initDurationMs: number;
     tweenCount: number;
@@ -812,15 +815,33 @@ export async function createCaptureSession(
   // need explicit clip+scale on `Page.captureScreenshot`, so fall back to
   // the screenshot path for any DPR > 1.
   const supersampling = (options.deviceScaleFactor ?? 1) > 1;
-  const preMode: CaptureMode =
-    headlessShell && isLinux && !forceScreenshot && !supersampling && !drawElementTransparent
-      ? "beginframe"
-      : "screenshot";
   const requestedGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
   const resolvedGpuMode = await resolveBrowserGpuMode(requestedGpuMode, {
     chromePath: headlessShell ?? undefined,
     browserTimeout: config?.browserTimeout,
   });
+  // Apply the software-GPU→screenshot invariant at the concrete-resolved
+  // point too — `resolveConfig` can only see the pre-resolve `browserGpuMode`
+  // string, so `"auto"` that probes to software would otherwise slip through
+  // and launch BeginFrame + SwiftShader (the exact combination the invariant
+  // is meant to prevent). Both env and programmatic opt-outs preserved via
+  // `applyConcreteGpuScreenshotClamp` (the programmatic one carried on the
+  // config as `forceScreenshotExplicitlyOptedOut`, since at this point the
+  // boolean `forceScreenshot === false` is otherwise ambiguous between
+  // default and explicit opt-out).
+  const effectiveForceScreenshot = applyConcreteGpuScreenshotClamp(
+    forceScreenshot,
+    resolvedGpuMode,
+    config,
+  );
+  const preMode: CaptureMode =
+    headlessShell &&
+    isLinux &&
+    !effectiveForceScreenshot &&
+    !supersampling &&
+    !drawElementTransparent
+      ? "beginframe"
+      : "screenshot";
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode },
     { ...config, browserGpuMode: resolvedGpuMode },
@@ -946,6 +967,7 @@ export async function createCaptureSession(
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
+    warnings: [],
     capturePerf: {
       frames: 0,
       seekMs: 0,
@@ -1325,6 +1347,105 @@ export async function pollImagesReady(
   return check();
 }
 
+type MediaReadinessSnapshot = {
+  pendingImages: string[];
+  failedImages: string[];
+  pendingVideos: string[];
+  failedVideos: string[];
+};
+
+/** @internal exported for contract testing. */
+export async function collectMediaReadinessWarnings(
+  page: Page,
+  skipIds: readonly string[],
+  timeoutMs: number,
+): Promise<CaptureWarning[]> {
+  const snapshot = await page.evaluate((skipIdList: readonly string[]): MediaReadinessSnapshot => {
+    const skipped = new Set(skipIdList);
+    const result: MediaReadinessSnapshot = {
+      pendingImages: [],
+      failedImages: [],
+      pendingVideos: [],
+      failedVideos: [],
+    };
+
+    for (const img of document.querySelectorAll("img")) {
+      const src = img.getAttribute("src") || "";
+      if (!src || src.startsWith("data:")) continue;
+      if (!img.complete) result.pendingImages.push(img.src || src);
+      else if (img.naturalWidth <= 0) result.failedImages.push(img.src || src);
+    }
+
+    // Browser media readiness is a frame-capture requirement only for video.
+    // Audio is extracted and mixed out of band by the producer, so an idle
+    // DOM <audio> element can legitimately remain at HAVE_NOTHING here. The
+    // producer reports actual extraction/mix failures as audio_processing_failed.
+    for (const media of document.querySelectorAll("video")) {
+      const mediaElement = media as HTMLMediaElement;
+      if (skipped.has(mediaElement.id)) continue;
+      const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
+      const failed =
+        Boolean(mediaElement.error) ||
+        mediaElement.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+      const pending = !failed && mediaElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA;
+      if (failed) result.failedVideos.push(src);
+      else if (pending) result.pendingVideos.push(src);
+    }
+    return result;
+  }, skipIds);
+
+  const warnings: CaptureWarning[] = [];
+  const append = (
+    code: CaptureWarning["code"],
+    mediaType: "image" | "video" | "audio",
+    sources: string[],
+  ) => {
+    if (sources.length === 0) return;
+    const timedOut = code === "media_readiness_timeout";
+    warnings.push({
+      code,
+      message: timedOut
+        ? `${mediaType} media did not become capture-ready within ${timeoutMs}ms`
+        : `${mediaType} media failed to load before capture`,
+      details: { mediaType, sources: [...new Set(sources)].sort(), timeoutMs },
+    });
+  };
+  append("media_readiness_timeout", "image", snapshot.pendingImages);
+  append("media_load_failed", "image", snapshot.failedImages);
+  append("media_readiness_timeout", "video", snapshot.pendingVideos);
+  append("media_load_failed", "video", snapshot.failedVideos);
+  return warnings;
+}
+
+function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
+  for (const warning of warnings) {
+    const key = `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
+    if (
+      session.warnings.some(
+        (existing) => `${existing.code}:${JSON.stringify(existing.details ?? {})}` === key,
+      )
+    ) {
+      continue;
+    }
+    session.warnings.push(warning);
+    console.warn(`[FrameCapture:${warning.code}] ${warning.message}`, warning.details ?? {});
+  }
+}
+
+function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
+  if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
+  const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
+  recordCaptureWarnings(session, [
+    {
+      code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
+      message: scriptFailure
+        ? "A sub-composition timeline script failed to load"
+        : `Sub-composition timelines did not become ready within ${timeoutMs}ms`,
+      details: { timeoutMs },
+    },
+  ]);
+}
+
 // Force every successfully-loaded `<img>` to be GPU-uploaded before the first
 // frame capture. `naturalWidth > 0` means the bitmap has been decoded into
 // CPU memory, but compositor-side GPU upload can still happen lazily on first
@@ -1553,6 +1674,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       () => session.scriptLoadFailures,
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+    recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
     logInitPhase("applyVideoMetadataHints complete");
@@ -1602,6 +1724,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           `Continuing render — affected videos will appear as blank/black frames.`,
       );
     }
+    recordCaptureWarnings(
+      session,
+      await collectMediaReadinessWarnings(page, skipVideoIds, pageReadyTimeout),
+    );
 
     await recordSessionInitTelemetry(session, initStart);
 
@@ -1693,6 +1819,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     () => session.scriptLoadFailures,
   );
   logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+  recordSubTimelineWarning(session, pageReadyTimeout);
 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
   logInitPhase("applyVideoMetadataHints complete");
@@ -1742,6 +1869,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         `Continuing render — affected videos will appear as blank/black frames.`,
     );
   }
+  recordCaptureWarnings(
+    session,
+    await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout),
+  );
 
   await recordSessionInitTelemetry(session, initStart);
 
@@ -1960,7 +2091,7 @@ async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<n
  * comp on any signal the tween-walker can't see: video / canvas / webgl (redraw without
  * a tween), zero tweens (non-GSAP animation), or a running CSS/WAAPI animation.
  */
-async function computeStaticFrameSet(
+export async function computeStaticFrameSet(
   page: Page,
   fps: number,
 ): Promise<{
@@ -1979,11 +2110,25 @@ async function computeStaticFrameSet(
       duration(): number;
       totalDuration?(): number;
       getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+      vars?: Record<string, unknown>;
     };
     const intervals: Array<{ start: number; end: number }> = [];
     let tweenCount = 0;
     // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
     // a repeating timeline is marked opaque over its whole span (conservative).
+    // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
+    // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
+    // no separate "undo" callback, so both directions invoke the SAME forward
+    // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
+    // textContent) is not seek-idempotent: crossing it during the static-dedup
+    // verifier's own arm-time seeking permanently mutates the page, and that
+    // corruption can leak into a LATER, unrelated static run's real capture
+    // (the verifier's mismatch check only catches drift within the run being
+    // checked, not contamination from a run checked afterward). No reliable
+    // way to tell a DOM-mutating call() from a harmless one (analytics ping,
+    // class toggle with no visual effect) without executing it, so disqualify
+    // the whole comp on ANY call() rather than risk shipping wrong pixels.
+    let hasTimelineCall = false;
     function walk(tl: AnyTween, offset: number): void {
       if (typeof tl.getChildren !== "function") return;
       for (const child of tl.getChildren(false, true, true)) {
@@ -1991,11 +2136,28 @@ async function computeStaticFrameSet(
         const single = typeof child.duration === "function" ? child.duration() : 0;
         const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
         if (typeof child.getChildren === "function") {
-          if (total > single + 1e-6) intervals.push({ start, end: start + total });
-          else walk(child, start);
+          if (total > single + 1e-6) {
+            intervals.push({ start, end: start + total });
+            // Still descend for hasTimelineCall even though the repeating
+            // span is already opaque (its frames are excluded from dedup
+            // regardless): a call() inside it is a review-flagged detection
+            // gap otherwise — the arm-time verifier can still forward-seek
+            // through this span while checking a LATER static run, firing
+            // the call() and corrupting the page (review).
+            walk(child, start);
+          } else {
+            walk(child, start);
+          }
         } else {
           tweenCount++;
           intervals.push({ start, end: start + total });
+          if (
+            total <= 1e-6 &&
+            (typeof child.vars?.onComplete === "function" ||
+              typeof child.vars?.onReverseComplete === "function")
+          ) {
+            hasTimelineCall = true;
+          }
         }
       }
     }
@@ -2039,6 +2201,7 @@ async function computeStaticFrameSet(
       hasCanvas,
       hasNonGsapAnim,
       hasUnresolvableClipStart,
+      hasTimelineCall,
     };
   });
 
@@ -2050,6 +2213,7 @@ async function computeStaticFrameSet(
     hasCanvas,
     hasNonGsapAnim,
     hasUnresolvableClipStart,
+    hasTimelineCall,
   } = result as {
     intervals: Array<{ start: number; end: number }>;
     tweenCount: number;
@@ -2058,6 +2222,7 @@ async function computeStaticFrameSet(
     hasCanvas: boolean;
     hasNonGsapAnim: boolean;
     hasUnresolvableClipStart: boolean;
+    hasTimelineCall: boolean;
   };
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
   const animated = new Set<number>();
@@ -2073,6 +2238,12 @@ async function computeStaticFrameSet(
   if (hasCanvas) reasons.push("canvas/webgl");
   if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
   if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
+  // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection
+  // above) — the arm-time verifier's own forward-seeking can permanently fire
+  // one, corrupting the page for a later, unrelated static run's real capture
+  // even though each run's own verification passes in isolation (HF static-
+  // dedup content-drift report, tools-onboarding FR render).
+  if (hasTimelineCall) reasons.push("tl.call() side effect (not seek-safe)");
   if (hasUnresolvableClipStart) reasons.push("unresolvable clip start (reference expression)");
   const eligible = reasons.length === 0;
   const staticFrameSet = new Set<number>();
@@ -3067,12 +3238,27 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
  * init-time screenshot → the render falls back to the screenshot path (slower,
  * never wrong). Cost when passing: ~K×(seek+screenshot) ≈ 150–300ms at init.
  */
+/**
+ * Timeline fractions the self-verify samples. First k-1 evenly spaced, last
+ * pinned at 95%: late-onset damage (an end-of-comp reveal exposing pixels DE
+ * paints wrong) was invisible to the old (i+1)/(k+1) grid, whose final sample
+ * sat at 80% — measured miss: a body-gradient drop starting at ~79% of the
+ * timeline passed verification while the drained output bottomed at 30.9 dB.
+ */
+export function computeDeVerifySampleFractions(k: number): number[] {
+  if (k <= 0) return [];
+  if (k === 1) return [0.95];
+  return [...Array.from({ length: k - 1 }, (_, i) => (i + 1) / k), 0.95];
+}
+
 async function captureDeVerificationFrames(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  const kRaw = Number(process.env.HF_DE_VERIFY ?? "4");
+  // Explicit HF_DE_VERIFY wins; otherwise the session's own sample count
+  // (raised by the parallel coordinator for multi-worker DE), then default 4.
+  const kRaw = Number(process.env.HF_DE_VERIFY ?? session.options.deVerifySamples ?? "4");
   const k = Number.isFinite(kRaw) ? Math.max(0, Math.min(8, Math.floor(kRaw))) : 4;
   if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
   if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
@@ -3113,7 +3299,7 @@ async function captureDeVerificationFrames(
   // render (the detectCssEffectRisk lesson), and because DE frames and truth
   // would share the corruption, PSNR would pass on the damaged output.
   // Seeking 0 → ascending reproduces the render's own seek order.
-  const fractions = Array.from({ length: k }, (_, i) => (i + 1) / (k + 1));
+  const fractions = computeDeVerifySampleFractions(k);
   const seekTo = async (t: number): Promise<void> => {
     await page.evaluate((tt: number) => {
       const hf = (
@@ -3177,12 +3363,23 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
     p50TotalMs: medianOf(session.capturePerf.frameMs),
     subTimelineWaitOutcome: session.subTimelineWaitOutcome,
+    warnings: session.warnings.map((warning) => ({
+      ...warning,
+      details: warning.details
+        ? {
+            ...warning.details,
+            sources: warning.details.sources ? [...warning.details.sources] : undefined,
+          }
+        : undefined,
+    })),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
     // armed ⟺ a non-empty static set survived verification; predicted === its size.
     staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
     staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
+    beginFrameNoDamage: session.beginFrameNoDamageCount,
+    beginFrameHasDamage: session.beginFrameHasDamageCount,
     captureMode: session.captureMode,
     deGateReason: session.deGateReason,
     deWorkerEncode: session.workerEncodeEnabled ?? false,
@@ -3251,7 +3448,39 @@ const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
   /JavaScript heap out of memory/i,
 ];
 
+// The producer's deployed runtime is Bun (JavaScriptCore), not Node (V8) —
+// see `packages/gcp-cloud-run/Dockerfile`'s `CMD ["bun", "dist/server.js"]`.
+// JSC's own allocation-failure message for the equivalent single-oversized-
+// allocation RangeErrors above is the bare string "Out of memory" (verified:
+// `new Uint8Array(Number.MAX_SAFE_INTEGER)`, an unbounded `Set`, and
+// `"x".repeat(2**53)` all throw exactly this under Bun) — none of the V8
+// patterns above match it. This is exactly the substring the comment above
+// says NOT to match anywhere in the message (benign browser-console noise
+// like a WebGL `CONTEXT_LOST … out of memory` carries that phrase too), so
+// this checks the ENTIRE (trimmed) message equals it, not merely contains
+// it — a compound message with other text around the phrase still misses.
+const BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE = /^out of memory\.?$/i;
+
+// The parallel-DE capture path — the exact cohort the OOM-aware retry in
+// renderOrchestrator.ts targets — never reaches isMemoryExhaustionError with
+// a bare message: `executeParallelCapture`/`formatWorkerFailure`
+// (parallelCoordinator.ts) always wrap a worker's error as
+// "Worker N: <message>", optionally suffixed "; diagnostics: ..." and joined
+// with other failed workers' segments via "; ", all prefixed
+// "[Parallel] Capture failed: ". The exact-match check above is defeated by
+// that wrapping entirely (verified) — this pattern recovers the Bun OOM
+// signal by requiring "out of memory" appear immediately after "Worker N: "
+// and immediately before end-of-string, ";", or ".", i.e. as the WHOLE
+// worker-segment content, not merely somewhere inside it. This preserves the
+// exact-match property (no bare "out of memory" substring inside otherwise-
+// unrelated worker text, e.g. "Worker 2: WebGL context lost, out of memory
+// reported by driver" does NOT match) while surviving this codebase's own
+// error-flattening.
+const BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE = /\bworker \d+: out of memory\.?(?:;|$)/i;
+
 export function isMemoryExhaustionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
+  if (BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim())) return true;
+  if (BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(message)) return true;
   return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

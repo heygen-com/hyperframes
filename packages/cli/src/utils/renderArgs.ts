@@ -117,6 +117,14 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   return result.value;
 }
 
+/** Navigation budget shared by snapshot/check/inspect browser diagnostics. */
+export function resolveDiagnosticNavigationTimeoutMs(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+}
+
 // ── --composition ──────────────────────────────────────────────────────
 
 export type CompositionEntryParseError =
@@ -127,6 +135,15 @@ export type CompositionEntryParseError =
 export type CompositionEntryParseResult =
   | { ok: true; value: string | undefined }
   | { ok: false; error: CompositionEntryParseError };
+
+function normalizeCompositionEntryArg(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
+  return !trimmed || trimmed === "." ? undefined : trimmed;
+}
+
+export function hasExplicitCompositionArg(raw: string | undefined): boolean {
+  return normalizeCompositionEntryArg(raw) !== undefined;
+}
 
 /**
  * Parse and validate `--composition <path>` into a project-relative
@@ -146,11 +163,11 @@ export function parseCompositionEntryArg(
   projectDir: string,
   stat: (path: string) => Stats,
 ): CompositionEntryParseResult {
-  const trimmed = raw?.trim().replace(/^\.\//, "") || undefined;
+  const trimmed = normalizeCompositionEntryArg(raw);
   // Normalize the project-root shorthands to "no entry override" so the
   // producer falls back to index.html instead of statSync-ing the dir
   // and later blowing up with EISDIR inside readFileSync().
-  if (!trimmed || trimmed === ".") return { ok: true, value: undefined };
+  if (!trimmed) return { ok: true, value: undefined };
 
   const absProjectDir = resolve(projectDir);
   const entryPath = resolve(absProjectDir, trimmed);

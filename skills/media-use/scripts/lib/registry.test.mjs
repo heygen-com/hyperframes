@@ -21,7 +21,7 @@ test("heygen provider is first for every type it serves", () => {
 
 test("sanctioned providers only: heygen, local mflux/kokoro, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
+    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -42,14 +42,23 @@ test("image cascade: heygen catalog, then local mflux, then the codex upsell", (
   assert.ok(codex.network, "codex is network (skipped under --local-only)");
 });
 
-test("voice cascade: local Kokoro first (free), HeyGen TTS as the paid upsell", () => {
+test("voice cascade: HeyGen TTS first, Kokoro remains the local fallback", () => {
   const ps = getProviders("voice");
-  assert.equal(ps[0].name, "kokoro.local", "local Kokoro comes first now (HeyGen TTS is paid)");
-  assert.ok(!ps[0].network, "local Kokoro kept under --local-only");
-  assert.ok(!ps[0].paid, "local Kokoro is free");
-  const heygen = ps.find((p) => p.name === "heygen.tts");
-  assert.ok(heygen && heygen.paid, "HeyGen TTS is the paid upsell");
-  assert.ok(heygen.network, "HeyGen TTS is network (skipped under --local-only)");
+  assert.equal(ps[0].name, "heygen.tts", "HeyGen TTS is first when credentials exist");
+  assert.ok(ps[0].network, "HeyGen TTS is network (skipped under --local-only)");
+  assert.ok(ps[0].paid, "HeyGen TTS may bill after the OAuth free allowance");
+  assert.equal(ps[1].name, "kokoro.local", "local Kokoro is the offline fallback");
+  assert.ok(!ps[1].network, "local Kokoro kept under --local-only");
+  assert.ok(!ps[1].paid, "local Kokoro is free");
+});
+
+test("sfx cascade: HeyGen catalog first, bundled library remains the local fallback", () => {
+  const ps = getProviders("sfx");
+  assert.equal(ps[0].name, "heygen.audio.sounds");
+  assert.ok(ps[0].network, "HeyGen SFX catalog is network-only");
+  assert.equal(ps[1].name, "bundled.sfx");
+  assert.equal(typeof ps[1].search, "function");
+  assert.ok(!ps[1].network, "bundled SFX remain available offline");
 });
 
 test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", async () => {

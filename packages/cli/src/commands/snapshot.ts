@@ -4,15 +4,20 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
 import {
+  DEFAULT_ZOOM_SCALE,
+  captureRegionCrop,
   openSettledCompositionPage,
+  parseZoomTarget,
+  resolveCropRegion,
   runFfmpegOnce,
   seekCompositionTimeline,
+  type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
-import { findFFmpeg } from "../browser/ffmpeg.js";
+import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
 
@@ -55,6 +60,13 @@ function orbitStageSource(): string {
  * `hyperframes snapshot` indefinitely. */
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
+export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
+  if (ffmpegPath) return ffmpegPath;
+  throw new Error(
+    `FFmpeg is required to extract video frames for snapshots. ${getFFmpegInstallHint()}`,
+  );
+}
+
 /**
  * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
  * Used to work around Chrome-headless's inability to reliably seek
@@ -68,8 +80,7 @@ async function extractVideoFrameToBuffer(
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
   try {
-    const ffmpegPath = findFFmpeg();
-    if (!ffmpegPath) return null;
+    const ffmpegPath = requireSnapshotFfmpeg(findFFmpeg());
     // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
     // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
     const args = ["-hide_banner", "-loglevel", "error"];
@@ -104,7 +115,19 @@ export const examples: Example[] = [
   ["Capture 5 key frames from a composition", "snapshot capture"],
   ["Capture 10 evenly-spaced frames", "snapshot capture --frames 10"],
   ["View the 3D stage from an isometric angle", "snapshot capture --angle iso"],
+  ["Zoom into an element for a high-density crop", "snapshot --zoom '#headline'"],
+  [
+    "Zoom into an exact pixel region at 2x density",
+    "snapshot --zoom 100,50,400,300 --zoom-scale 2",
+  ],
 ];
+
+/** `--zoom-scale`: the deviceScaleFactor used for zoomed crops. Defaults to 3;
+ * falls back to the default for anything that doesn't parse as a positive number. */
+export function parseZoomScale(value: unknown): number {
+  const parsed = parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ZOOM_SCALE;
+}
 
 /**
  * Seeking the timeline to EXACTLY `data-duration` renders blank — the runtime
@@ -142,7 +165,11 @@ export function computeSnapshotTimes(
   const round = (t: number) => Math.round(t * 1000) / 1000;
 
   if (opts.at?.length) {
-    const times = opts.at.map(round);
+    // `--at` is an evidence contract: callers may pass exact fractional-frame
+    // boundaries (for example 101 / 30). Do not normalize their requested
+    // positions; rounding to milliseconds can move a transition sample to the
+    // other side of the boundary.
+    const times = [...opts.at];
     // Only append if the user didn't already sample at/near the readable tail.
     const hasTail = times.some((t) => Math.abs(t - tail) < 0.05 || t >= duration);
     if (includeEnd && duration > 0 && !hasTail) {
@@ -172,13 +199,17 @@ async function captureSnapshots(
     outputDir?: string;
     angle?: Camera;
     includeEnd?: boolean;
+    zoom?: ZoomTarget;
+    zoomScale?: number;
   },
 ): Promise<string[]> {
-  const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+  const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
 
   const numFrames = opts.frames ?? 5;
 
-  const html = await bundleToSingleHtml(projectDir);
+  // Localize fonts (embed remote @font-face as data URIs, matching the render
+  // path) so snapshots render the real font instead of a fallback sans.
+  const html = await bundleWithLocalizedFonts(projectDir);
   const server = await serveStaticProjectHtml(projectDir, html);
 
   const savedPaths: string[] = [];
@@ -301,8 +332,13 @@ async function captureSnapshots(
         syncVideoFrameVisibility = engine.syncVideoFrameVisibility;
         extractMediaMetadata = engine.extractMediaMetadata;
       } catch {
-        // Engine unavailable in this install — snapshot will still run, and
-        // compositions without <video data-start> get exactly the old behaviour.
+        // Engine unavailable in this install — snapshot still runs, but any
+        // <video data-start> will screenshot black (chrome-headless ignores
+        // programmatic currentTime writes). Say so instead of silently
+        // shipping black frames (two wild Windows reports).
+        console.warn(
+          `   ${c.warn("⚠")} @hyperframes/engine unavailable — <video> elements will appear black in snapshots. Verify media via a draft render's extracted frames instead.`,
+        );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
@@ -407,6 +443,13 @@ async function captureSnapshots(
             });
           }
 
+          if (active.length > 0 && updates.length < active.length) {
+            const missed = active.length - updates.length;
+            console.warn(
+              `   ${c.warn("⚠")} ${missed}/${active.length} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
+            );
+          }
+
           // Sync visibility even when empty — clears stale overlays from prior seeks
           try {
             if (updates.length > 0) {
@@ -417,7 +460,9 @@ async function captureSnapshots(
               active.map((a) => a.id),
             );
           } catch {
-            /* fall through to plain screenshot */
+            console.warn(
+              `   ${c.warn("⚠")} video frame injection failed at ${time.toFixed(1)}s — <video> elements will appear black/stale in this snapshot`,
+            );
           }
         }
 
@@ -425,7 +470,29 @@ async function captureSnapshots(
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
-        await page.screenshot({ path: framePath, type: "png" });
+        if (opts.zoom) {
+          // Clip screenshot at a raised deviceScaleFactor — never CSS zoom or
+          // viewport resizing — so the composition's own layout is untouched.
+          const canvas = await page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+          }));
+          const region = await resolveCropRegion(page, opts.zoom, canvas);
+          if (!region) {
+            console.error(
+              `   ${c.warn("⚠")} --zoom target has no visible box at ${time.toFixed(1)}s — frame skipped`,
+            );
+            continue;
+          }
+          const buffer = await captureRegionCrop(
+            page,
+            region,
+            opts.zoomScale ?? DEFAULT_ZOOM_SCALE,
+          );
+          writeFileSync(framePath, buffer);
+        } else {
+          await page.screenshot({ path: framePath, type: "png", omitBackground: true });
+        }
         const rel = relative(projectDir, framePath);
         savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
       }
@@ -480,6 +547,16 @@ export default defineCommand({
         "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
       default: true,
     },
+    zoom: {
+      type: "string",
+      description:
+        "Zoom into a CSS selector or an exact pixel region 'x,y,w,h'. Crops a high-density screenshot instead of the full frame — a raised deviceScaleFactor, never CSS zoom or viewport resizing, so layout stays identical. A selector matching nothing is an error, not a silent full-frame shot.",
+    },
+    "zoom-scale": {
+      type: "string",
+      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      default: "3",
+    },
     describe: {
       type: "string",
       description:
@@ -508,6 +585,8 @@ export default defineCommand({
           : String(args.describe);
 
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
+    const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;
+    const zoomScale = parseZoomScale(args["zoom-scale"]);
 
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
@@ -529,6 +608,8 @@ export default defineCommand({
         outputDir: snapshotDir,
         angle: camera,
         includeEnd: args.end !== false,
+        zoom: zoomTarget,
+        zoomScale,
       });
 
       if (paths.length === 0) {

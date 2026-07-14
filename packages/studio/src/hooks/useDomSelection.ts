@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -47,7 +47,7 @@ export interface UseDomSelectionParams {
   captionEditMode: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -126,11 +126,16 @@ export function useDomSelection({
 
   // ── Refs ──
 
+  const rightPanelTabRef = useRef(rightPanelTab);
+  rightPanelTabRef.current = rightPanelTab;
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const activeGroupElementRef = useRef<HTMLElement | null>(activeGroupElement);
   const compositionIdentityRef = useRef({ activeCompPath, projectId });
+  // Monotonic token so a rapid A->B timeline-clip select can't let A's slower async
+  // resolution land after B and restore the wrong selection.
+  const timelineSelectSeqRef = useRef(0);
 
   // Keep refs in sync with state
   domEditSelectionRef.current = domEditSelection;
@@ -205,7 +210,11 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          setRightPanelTab("design");
+          // Keep the Variables tab in place — selecting elements is part of the bind
+          // flow there; yanking to Design would lose the context.
+          if (rightPanelTabRef.current !== "variables") {
+            setRightPanelTab("design");
+          }
         }
         const nextSelectedTimelineId =
           findMatchingTimelineElementId(nextSelection, timelineElements) ??
@@ -214,7 +223,8 @@ export function useDomSelection({
             timelineElements,
             nextSelection.sourceFile || "index.html",
           );
-        setSelectedTimelineElementId(nextSelectedTimelineId);
+        // Late marquee notify: a primary already in the live set must not collapse it.
+        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
         return;
       }
 
@@ -360,12 +370,15 @@ export function useDomSelection({
   const handleTimelineElementSelect = useCallback(
     async (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+      const seq = ++timelineSelectSeqRef.current;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
         return;
       }
 
       const selection = await buildDomSelectionForTimelineElement(element);
+      // A newer selection superseded this one while we were resolving — drop the stale result.
+      if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
@@ -496,8 +509,7 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
-      // Honor the inspector-panels kill switch like applyDomSelection does, so
-      // marquee can't land selections while the inspector UI is suppressed.
+      // Honor the inspector-panels kill switch like applyDomSelection does.
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
@@ -518,8 +530,7 @@ export function useDomSelection({
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup = [...nextGroup, s];
         }
       } else {
-        // Dedupe by target: under select-as-unit several marquee'd members collapse
-        // to the same group, which must count as one selection, not many duplicates.
+        // Dedupe by target: select-as-unit collapses marquee'd members to one group.
         nextGroup = [];
         for (const s of selections) {
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup.push(s);

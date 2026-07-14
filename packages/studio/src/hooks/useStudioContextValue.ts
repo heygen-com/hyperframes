@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
+import { usePlayerStore } from "../player";
 
 interface StudioContextInput {
   projectId: string;
@@ -34,8 +36,6 @@ interface StudioContextInput {
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
   refreshPreviewDocumentVersion: () => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -61,8 +61,6 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     waitForPendingDomEditSaves: input.waitForPendingDomEditSaves,
     handlePreviewIframeRef: input.handlePreviewIframeRef,
     refreshPreviewDocumentVersion: input.refreshPreviewDocumentVersion,
-    timelineVisible: input.timelineVisible,
-    toggleTimelineVisibility: input.toggleTimelineVisibility,
   };
 }
 
@@ -97,13 +95,18 @@ export function useInspectorState(
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
       // Keep the selection box + motion path drawn even when the Inspector is
       // collapsed — closing the panel shouldn't visually deselect the element.
-      shouldShowSelectedDomBounds: inspectorPanelActive && !isPlaying && !isGestureRecording,
+      // The Variables tab also works against the canvas selection (bind card),
+      // so the selection outline stays visible there too.
+      shouldShowSelectedDomBounds:
+        (inspectorPanelActive || rightPanelTab === "variables") &&
+        !isPlaying &&
+        !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
 }
 
 // fallow-ignore-next-line complexity
-export function useDragOverlay(onImportFiles: (files: FileList) => void) {
+function useDragOverlay(onImportFiles: (files: FileList) => void) {
   const [active, setActive] = useState(false);
   const counterRef = useRef(0);
   const onDragOver = useCallback((e: DragEvent) => {
@@ -131,4 +134,16 @@ export function useDragOverlay(onImportFiles: (files: FileList) => void) {
     [onImportFiles],
   );
   return { active, onDragOver, onDragEnter, onDragLeave, onDrop };
+}
+
+/** Global OS file drop: imports and places at the playhead position. */
+export function useGlobalFileDrop(handleTimelineFileDrop: TimelineFileDropHandler) {
+  const onDrop = useCallback(
+    (files: FileList) => {
+      const start = usePlayerStore.getState().currentTime;
+      void handleTimelineFileDrop(Array.from(files), { start, track: 0 });
+    },
+    [handleTimelineFileDrop],
+  );
+  return useDragOverlay(onDrop);
 }

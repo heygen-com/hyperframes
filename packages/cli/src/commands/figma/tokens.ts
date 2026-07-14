@@ -30,6 +30,10 @@ export interface TokensImportResult {
   mode: "variables" | "styles";
   entries: CompositionVariableEntry[];
   sidecarPath: string;
+  /** styles mode only: how many published styles were actually found —
+   * entries is always [] in this mode (style values resolve later, at
+   * component-import time), so this is what tells success from empty. */
+  styleCount?: number;
 }
 
 export async function runTokensImport(
@@ -68,7 +72,7 @@ export async function runTokensImport(
     })),
   };
   writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2) + "\n");
-  return { mode: "styles", entries: [], sidecarPath };
+  return { mode: "styles", entries: [], sidecarPath, styleCount: styles.length };
 }
 
 export default defineCommand({
@@ -84,7 +88,9 @@ export default defineCommand({
       const result = await runTokensImport(args.ref, { projectDir: args.dir, client });
       if (result.mode === "styles") {
         console.log(
-          "variables are Enterprise-gated on this plan — recorded published style metadata instead (style values resolve at component-import time)",
+          (result.styleCount ?? 0) > 0
+            ? `variables are Enterprise-gated on this plan — recorded ${result.styleCount} published style(s) instead (style values resolve at component-import time)`
+            : "variables are Enterprise-gated on this plan, and this file has no published library styles to fall back to — nothing recorded. Publish the file's styles to a team library, or read variables via the Figma MCP connector's get_variable_defs instead (works on any plan, rate-limited).",
         );
       }
       console.log(`wrote ${result.sidecarPath} (${result.mode})`);

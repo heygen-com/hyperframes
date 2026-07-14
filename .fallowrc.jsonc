@@ -22,6 +22,9 @@
     // Built as standalone IIFE for the browser-side sandbox runtime;
     // referenced by file path (not import) in build-hyperframes-runtime-artifact.ts.
     "packages/core/src/runtime/entry.ts",
+    // Bundled as a standalone IIFE by the position-edits render artifact
+    // generator; referenced by file path rather than imported by TypeScript.
+    "packages/core/stubs/position-edits-render-entry.ts",
     // In-page audit scripts read as raw strings and injected via
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.
@@ -41,7 +44,7 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
-    // NLE notice — rendered conditionally via NLELayout when timeline is first shown.
+    // NLE notice — rendered conditionally via NLEContext/EditorShell when timeline is first shown.
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
@@ -89,6 +92,59 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
+    // Public player-state types are consumed by package users outside this
+    // workspace. Keep the barrel stable even when no in-repo import needs it.
+    {
+      "file": "packages/studio/src/player/index.ts",
+      "exports": ["ZoomMode"],
+    },
+    // Part of useTimelineEditing's inferred public return type; consumers invoke
+    // handleTimelineGroupResize without importing the change type directly.
+    {
+      "file": "packages/studio/src/hooks/useTimelineGroupEditing.ts",
+      "exports": ["TimelineGroupResizeChange"],
+    },
+    {
+      "file": "packages/studio/src/player/components/timelineGroupEditing.ts",
+      "exports": [
+        "buildTimelineGroupResizeMembers",
+        "resolveTimelineGroupResizeChanges",
+        "applyTimelineGroupResizePreview",
+      ],
+    },
+    {
+      "file": "packages/studio/src/player/components/timelineEditing.ts",
+      "exports": [
+        "selectTimelineElementsInMarquee",
+        "TimelineGroupResizeEdge",
+        "TimelineGroupTimingMember",
+      ],
+    },
+    {
+      "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
+      "exports": ["furthestClipEndFromDocument", "furthestClipEndFromSource"],
+    },
+    {
+      "file": "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
+      "exports": ["DeleteConfirm"],
+    },
+    {
+      "file": "packages/studio/src/utils/timelineAssetDrop.ts",
+      "exports": [
+        "setCompositionDurationToContent",
+        "extendCompositionDurationIfNeeded",
+        "fitTimelineAssetGeometry",
+        "resolveTimelineAssetCompositionSize",
+      ],
+    },
+    {
+      "file": "packages/studio/src/components/sidebar/assetHelpers.ts",
+      "exports": ["truncateMiddle", "formatDuration"],
+    },
+    {
+      "file": "packages/studio/src/utils/studioHelpers.ts",
+      "exports": ["resolveDroppedAssetDimensions"],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -109,6 +165,12 @@
     // convention documented in CLAUDE.md. This is a namespace barrel, not a
     // collision.
     { "file": "packages/cli/src/commands/*.ts", "exports": ["examples"] },
+    // Options type for the render-queue hook's public startRender callback —
+    // consumed structurally by callers (StudioRightPanel), not by import.
+    {
+      "file": "packages/studio/src/components/renders/useRenderQueue.ts",
+      "exports": ["StartRenderOptions"],
+    },
     // Independent ML model managers each declare their own DEFAULT_MODEL /
     // MODELS_DIR / ensureModel for their model namespace.
     {
@@ -120,6 +182,13 @@
     {
       "file": "packages/producer/src/services/fileServer.ts",
       "exports": ["isPathInside"],
+    },
+    // `sampledAlphaIsFullyOpaque` is exported for direct unit testing of the
+    // 1/2/3-frame byte-count gate and per-frame stride logic; the pixel-level
+    // contract is too load-bearing to only exercise through `webmAlphaAdvisory`.
+    {
+      "file": "packages/cli/src/utils/webmAlphaCheck.ts",
+      "exports": ["sampledAlphaIsFullyOpaque"],
     },
     // Studio telemetry: consumed by useRenderQueue.ts / StudioFeedbackBar.tsx
     // (deep relative imports) but fallow's static analyzer doesn't trace
@@ -163,7 +232,12 @@
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
-      "exports": ["resolveBrowserGpuForCli", "renderLocal", "checkRenderResolutionPreflight"],
+      "exports": [
+        "resolveBrowserGpuForCli",
+        "renderLocal",
+        "checkRenderResolutionPreflight",
+        "renderLintContinuationHint",
+      ],
     },
     // initThreeDProjectionInPage: passed to page.evaluate() for browser-side execution —
     // Puppeteer serializes it at runtime, not an import-graph consumer.
@@ -317,6 +391,11 @@
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
       "packages/studio/src/utils/sourcePatcher.ts",
+      // useGsapSelectionHandlers.ts: pre-existing parallel structure with
+      // useDomEditWiring.ts (thin useCallback wrappers guarding on selection);
+      // only gained two optional pass-through parameters here, but the line
+      // shift makes fallow re-flag the pre-existing clone.
+      "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
       // gsapParser.ts: recast/babel GSAP writer — intentional duplication between
       // recast and acorn parallel implementations (pre-existing, moved from core).
       "packages/parsers/src/gsapParser.ts",
@@ -404,6 +483,10 @@
       // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
       // re-flags it. Collapsing the per-rule installers would obscure each case.
       "packages/cli/src/commands/layout-audit.browser.test.ts",
+      // portUtils.ts contains two pre-existing bounded HTTP probe implementations;
+      // this PR only teaches the server scan to prefer its reported PID, but that
+      // line shift makes fallow re-flag the inherited probe clones.
+      "packages/cli/src/server/portUtils.ts",
       // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
       // the staggered-collection honesty pass (.from reveal vs .to landing on the
       // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
@@ -519,6 +602,10 @@
     // is pre-existing; the line-shift fingerprint problem makes fallow treat
     // the violations as new even though no logic changed.
       "packages/cli/src/server/studioServer.ts",
+      // findPortAndServe's existing port-selection flow predates this PR. The
+      // preview-lifecycle change only adds PID metadata to the config response,
+      // which shifts the inherited complexity fingerprint in portUtils.ts.
+      "packages/cli/src/server/portUtils.ts",
       "packages/core/src/core.types.ts",
       "packages/core/src/generators/hyperframes.ts",
       "packages/producer/src/services/htmlCompiler.ts",
@@ -596,14 +683,12 @@
       "packages/studio/src/components/editor/Transform3DCube.tsx",
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
-      "packages/studio/src/components/nle/NLELayout.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
       "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
-      "packages/studio/src/components/StudioPreviewArea.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",

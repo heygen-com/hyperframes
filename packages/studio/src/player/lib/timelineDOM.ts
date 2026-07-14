@@ -23,6 +23,7 @@ import {
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
   isTimelineIgnoredElement,
+  readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -112,6 +113,15 @@ export function createTimelineElementFromManifestClip(params: {
     start: clip.start,
     duration: clip.duration,
     track: clip.track,
+    // clip.track IS the authored data-track-index verbatim (the runtime honors
+    // it; see parseAuthoredTrack in core/runtime/timeline.ts). Record it at this
+    // translation boundary so later display-lane remaps (normalizeToZones,
+    // expanded-child rows) can persist in AUTHORED space instead of
+    // reconstructing it from lane occupants.
+    authoredTrack: clip.track,
+    // Runtime-computed stacking context — authoritative; helpers read it, never
+    // re-derive it.
+    stackingContextId: clip.stackingContextId ?? null,
     domId,
     hfId,
     selector,
@@ -124,6 +134,7 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
   if (clip.kind === "composition" && clip.compositionId) {
@@ -209,6 +220,7 @@ export function createImplicitTimelineLayersFromDOM(
     layers.push({
       domId: child.id || undefined,
       hfId: child.getAttribute("data-hf-id") || undefined,
+      zIndex: readTimelineElementZIndex(child),
       duration: rootDuration,
       id: identity.id,
       key: identity.key,
@@ -292,6 +304,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
       timingSource: "authored",
+      zIndex: readTimelineElementZIndex(el),
     };
 
     const mediaEl = resolveMediaElement(el);
@@ -362,7 +375,14 @@ export function mergeTimelineElementsPreservingDowngrades(
 
   const nextIdentities = new Set(nextElements.map(getTimelineElementIdentity));
   const preserved = currentElements.filter(
-    (element) => !nextIdentities.has(getTimelineElementIdentity(element)),
+    (element) =>
+      !nextIdentities.has(getTimelineElementIdentity(element)) &&
+      // Only preserve enriched sub-composition children (compositionSrc set),
+      // which a bare DOM re-scan legitimately drops and enrichMissingCompositions
+      // re-adds. A TOP-LEVEL element missing from the fresh scan was genuinely
+      // removed (undo of a split, a delete), so let it go — otherwise undoing a
+      // split leaves a ghost clip in the timeline even though the file is reverted.
+      element.compositionSrc != null,
   );
   if (preserved.length === 0) return nextElements;
   return [...nextElements, ...preserved];

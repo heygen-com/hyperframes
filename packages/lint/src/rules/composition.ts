@@ -1,4 +1,4 @@
-import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
+import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import {
   findHtmlTag,
   readAttr,
@@ -105,6 +105,55 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
     }
   }
   return offenders;
+}
+
+/** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
+function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
+  const declared = new Set<string>();
+  const raw = readJsonAttr(htmlTagRaw, "data-composition-variables");
+  if (!raw) return declared;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return declared;
+  for (const entry of parsed) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    if (typeof id === "string") declared.add(id);
+  }
+  return declared;
+}
+
+/**
+ * Union declared variable ids from every element carrying
+ * `data-composition-variables`: full-document comps hold it on `<html>`;
+ * template/fragment sub-comps hold it on their composition root div. Returns
+ * null if any occurrence has unparseable JSON.
+ */
+function collectAllDeclaredVariableIds(tags: readonly OpenTag[]): Set<string> | null {
+  const all = new Set<string>();
+  for (const tag of tags) {
+    if (!readAttr(tag.raw, "data-composition-variables")) continue;
+    const ids = collectDeclaredVariableIds(tag.raw);
+    if (ids === null) return null;
+    for (const id of ids) all.add(id);
+  }
+  return all;
+}
+
+/**
+ * Declared ids to validate `data-var-*` bindings against, or null to skip the
+ * file: unparseable declarations (reported elsewhere), or a fragment with no
+ * `<html>` and no declarations of its own (its values come from a host's
+ * data-variable-values, which this file can't see).
+ */
+function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | null {
+  const declared = collectAllDeclaredVariableIds(tags);
+  if (declared === null) return null;
+  if (declared.size === 0 && !findHtmlTag(tags)) return null;
+  return declared;
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
@@ -597,14 +646,44 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // unknown_variable_binding
+  // data-var-src / data-var-text bind an element to a declared variable id;
+  // the runtime silently keeps the authored fallback when the id resolves to
+  // nothing, so a typo'd binding is invisible until a customer's override
+  // does nothing. Skipped for fragment files (no <html>): their values come
+  // from a host's data-variable-values, which this file can't see.
+  ({ tags }) => {
+    // Declarations live on <html> (full-document comps) OR the composition root
+    // div (template/fragment sub-comps); declaredIdsForBindingCheck unions both
+    // and returns null for files this rule should skip.
+    const declared = declaredIdsForBindingCheck(tags);
+    if (!declared) return [];
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      for (const attr of ["data-var-src", "data-var-text"]) {
+        const id = readAttr(tag.raw, attr)?.trim();
+        if (!id || declared.has(id)) continue;
+        findings.push({
+          code: "unknown_variable_binding",
+          severity: "warning",
+          message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables — the binding will silently keep the authored fallback.`,
+          fixHint: `Declare the variable on the composition root (<html>, or the [data-composition-id] root element for a template/fragment comp): data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
+          elementId: readAttr(tag.raw, "id") || undefined,
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // invalid_composition_variables_declaration
   // The runtime parses `data-composition-variables` and silently returns []
   // on any structural problem. Surface JSON / shape failures so authors
   // catch them at lint time rather than wondering why their `getVariables()`
   // defaults aren't applied.
   // fallow-ignore-next-line complexity
-  ({ source }) => {
-    const htmlTag = findHtmlTag(source);
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
     if (!htmlTag) return [];
     const raw = readJsonAttr(htmlTag.raw, "data-composition-variables");
     if (!raw) return [];
@@ -683,8 +762,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // fixed top-left-origin screenshot region, which RTL layout can shift the
   // actual content away from), only surfaces the already-confirmed footgun
   // before someone hits it blind.
-  ({ source }) => {
-    const htmlTag = findHtmlTag(source);
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
     if (!htmlTag) return [];
     const dir = readAttr(htmlTag.raw, "dir");
     if (!dir) return [];

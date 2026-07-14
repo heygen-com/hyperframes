@@ -366,14 +366,15 @@ async function mountCompositionContent(params: {
     details: Record<string, string | number | boolean | null | string[]>;
   }) => void;
 }): Promise<void> {
-  let innerRoot: Element | null = null;
+  let innerRoot: HTMLElement | null = null;
   if (params.authoredCompositionId) {
     const candidateRoots = Array.from(
-      params.sourceNode.querySelectorAll<Element>("[data-composition-id]"),
+      params.sourceNode.querySelectorAll<HTMLElement>("[data-composition-id]"),
     );
     innerRoot =
       candidateRoots.find(
         (candidate) =>
+          candidate instanceof HTMLElement &&
           candidate.getAttribute("data-composition-id") === params.authoredCompositionId,
       ) ?? null;
   }
@@ -698,6 +699,10 @@ export async function loadExternalCompositions(
           headStyles,
           headScripts,
           headLinks,
+          // TODO(template-var-carriers): reads `<html>` only. A template/fragment
+          // sub-comp that declares on its `[data-composition-id]` root div (the
+          // dual-carrier contract from #2081) loses its defaults on this lazy
+          // external-load path — see inlineSubCompositions for the fixed path.
           declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
           onDiagnostic: params.onDiagnostic,
         });

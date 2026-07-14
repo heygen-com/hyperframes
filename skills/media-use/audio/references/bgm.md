@@ -22,14 +22,14 @@ One music bed per composition, produced by the shared audio engine (`scripts/aud
 ```jsonc
 {
   "path": "assets/bgm/track.mp3",
-  "volume": 0.8,
+  "volume": 0.12,
   "mode": "retrieve",
   "query": "calm cinematic underscore",
   "duration_s": 42.0,
 }
 ```
 
-`volume` is 0.8 under narration, 0.9 for a silent film (no voice). `bgm_pending` is `false` — the file is on disk when the engine returns.
+`volume` comes from the engine's `bgmDefaultVolume()`: `BGM_BED_VOLUME` (currently `0.12` ≈ -18 dB — a bed under the voice) under narration, `BGM_SILENT_VOLUME` (currently `0.9`) for a silent film (no voice). Tune those constants in `scripts/lib/bgm.mjs`, not call sites. An explicit `volume` in `audio_meta.json` always overrides this default. `bgm_pending` is `false` — the file is on disk when the engine returns.
 
 ## Local generation (fallback) — Lyria → MusicGen
 

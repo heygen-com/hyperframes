@@ -23,7 +23,7 @@
 // video, frames only). Durations come from STORYBOARD (audio sync-durations
 // writes them), NOT from here; this file carries only media PATHS, keyed by
 // frame number:
-//   { "bgm":   { "path": "assets/bgm/x.mp3", "volume": 0.8 } | null,
+//   { "bgm":   { "path": "assets/bgm/x.mp3", "volume": 0.12 } | null,
 //     "voices":[ { "frame": 3, "path": "assets/voice/03.wav" } ],
 //     "sfx":   [ { "frame": 3, "file": "assets/sfx/x.mp3", "offset_s": 0,
 //                  "duration_s": 1.0, "volume": 0.35 } ] }
@@ -55,6 +55,8 @@ import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
+import { validateFrameHtml } from "./lib/frame-contract.mjs";
+import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
 
 // ---------- argv ----------
 const argv = process.argv.slice(2);
@@ -284,6 +286,11 @@ for (const f of manifest.frames) {
       `${label}: ${f.src} is empty or has no HTML — the worker wrote a blank/partial file. Re-dispatch that worker before assembling.`,
     );
   }
+  try {
+    validateFrameHtml(html, { expectedId: compId, expectedDuration: f.durationSeconds });
+  } catch (error) {
+    die(`${label}: ${error.message}`);
+  }
   // pre-assembly guards: ① repair missing root dims in place, ②/③ collect fatal violations.
   const guard = guardFrame(html, label);
   if (guard.repairedHtml) {
@@ -388,7 +395,9 @@ if (audio.bgm?.path) {
         `bgm is ${cov.dur?.toFixed?.(1) ?? "?"}s (< ${TOTAL}s) and could not be extended (${cov.reason}) — the tail will be silent; install ffmpeg`,
       );
     }
-    const vol = audio.bgm.volume != null ? audio.bgm.volume : voiceCount > 0 ? 0.8 : 0.9;
+    // An explicit volume from audio_meta always wins; otherwise the shared
+    // media-use default (bed ~ -18 dB under narration, forward for a silent film).
+    const vol = audio.bgm.volume != null ? audio.bgm.volume : bgmDefaultVolume(voiceCount > 0);
     body.push(
       `      <!-- BGM -->`,
       `      <audio`,

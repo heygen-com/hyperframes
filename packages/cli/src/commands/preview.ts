@@ -10,6 +10,9 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["Keep preview running after this command exits", "hyperframes preview --background"],
+  ["Show the background preview for this project", "hyperframes preview --status"],
+  ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
   [
@@ -44,12 +47,18 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  readBackgroundPreviewStatus,
+  startBackgroundPreview,
+  stopBackgroundPreview,
+} from "./previewLifecycle.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
   browserPath?: string;
   userDataDir?: string;
   remoteDebuggingPort?: number;
+  browserNoGpu?: boolean;
 }
 
 interface StudioLaunchOptions extends BrowserLaunchOptions {
@@ -87,6 +96,21 @@ export default defineCommand({
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
+    background: {
+      type: "boolean",
+      description: "Start an embedded preview that remains running after the command exits",
+      default: false,
+    },
+    status: {
+      type: "boolean",
+      description: "Show the background preview for this project and exit",
+      default: false,
+    },
+    stop: {
+      type: "boolean",
+      description: "Stop the background preview for this project and exit",
       default: false,
     },
     list: {
@@ -142,10 +166,40 @@ export default defineCommand({
       type: "string",
       description: "Chromium remote debugging port (requires --browser-path and --user-data-dir)",
     },
+    "browser-no-gpu": {
+      type: "boolean",
+      default: false,
+      description:
+        "Launch the opened browser with --disable-gpu (requires --browser-path). For hosts where hardware acceleration crashes the graphics driver (e.g. NVIDIA Xid resets); with the system default browser use --no-open instead.",
+    },
   },
   async run({ args }) {
     const startPort = parseInt(args.port ?? "3002", 10);
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
+
+    if (args.status || args.stop) {
+      const project = resolveProject(args.dir);
+      if (args.stop) {
+        const stopped = await stopBackgroundPreview(project.dir, startPort);
+        console.log(
+          stopped
+            ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+            : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+        );
+        return;
+      }
+      const status = await readBackgroundPreviewStatus(project.dir, startPort);
+      if (!status) {
+        console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+        return;
+      }
+      console.log(`\n  ${c.success("Background preview running")}`);
+      console.log(
+        `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
+      );
+      console.log(`  ${c.dim(status.logPath)}\n`);
+      return;
+    }
 
     // --list: scan and display active servers
     if (args.list) {
@@ -239,6 +293,14 @@ export default defineCommand({
 
     const noOpen = !args.open;
     const browserPath = args["browser-path"] as string | undefined;
+    const browserNoGpu = !!args["browser-no-gpu"];
+    if (browserNoGpu && !browserPath) {
+      clack.log.error(
+        "--browser-no-gpu requires --browser-path (the system default browser cannot receive Chromium flags — use --no-open on GPU-unstable hosts)",
+      );
+      process.exitCode = 1;
+      return;
+    }
     const userDataDir = args["user-data-dir"] as string | undefined;
     let remoteDebuggingPort: number | undefined;
     try {
@@ -252,24 +314,68 @@ export default defineCommand({
     }
 
     if (isDevMode()) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runDevMode(dir, {
         projectName,
         noOpen,
         browserPath,
         userDataDir,
         remoteDebuggingPort,
+        browserNoGpu,
       });
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runLocalStudioMode(dir, {
         projectName,
         noOpen,
         browserPath,
         userDataDir,
         remoteDebuggingPort,
+        browserNoGpu,
       });
+    }
+
+    if (args.background) {
+      let background;
+      try {
+        background = await startBackgroundPreview(dir, startPort, {
+          forceNew: Boolean(args["force-new"]),
+        });
+      } catch (error) {
+        clack.log.error(errorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      const url = `http://localhost:${background.port}`;
+      clack.intro(c.bold("hyperframes preview"));
+      printStudioSummary(projectName, url, {
+        details: [
+          background.type === "reused"
+            ? "Reusing the background server already running for this project."
+            : `Running in the background. Log: ${background.logPath}`,
+          "Changes reload automatically in the studio.",
+        ],
+        footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+      });
+      openStudioBrowser(url, projectName, {
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+      });
+      return;
     }
 
     const forceNew = !!args["force-new"];
@@ -280,6 +386,7 @@ export default defineCommand({
       browserPath,
       userDataDir,
       remoteDebuggingPort,
+      browserNoGpu,
     });
   },
 });
@@ -641,6 +748,7 @@ function openStudioBrowser(url: string, projectName: string, options?: BrowserLa
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
+    disableGpu: options?.browserNoGpu,
   });
 }
 
@@ -682,7 +790,9 @@ function linkProjectIntoStudioData(
       }
     }
     if (!existsSync(symlinkPath)) {
-      symlinkSync(dir, symlinkPath, "dir");
+      // Windows: "dir" symlinks need Developer Mode or elevation (EPERM otherwise);
+      // NTFS junctions are unprivileged and keep the live write-back the studio needs.
+      symlinkSync(dir, symlinkPath, process.platform === "win32" ? "junction" : "dir");
       createdSymlink = true;
     }
   }

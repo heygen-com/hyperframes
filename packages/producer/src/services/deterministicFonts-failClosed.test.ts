@@ -59,6 +59,7 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
   it("swallows a network failure and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,
+      allowSystemFontCapture: false,
       fetchImpl: makeFailingFetch(),
     });
     // No @font-face was injected because the fetch failed — but the call
@@ -69,6 +70,7 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
   it("swallows a 404 response and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,
+      allowSystemFontCapture: false,
       fetchImpl: makeHttp404Fetch(),
     });
     expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);
@@ -77,6 +79,7 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
   it("swallows a 5xx response and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,
+      allowSystemFontCapture: false,
       fetchImpl: makeHttp503Fetch(),
     });
     expect(result.includes("data-hyperframes-deterministic-fonts")).toBe(false);

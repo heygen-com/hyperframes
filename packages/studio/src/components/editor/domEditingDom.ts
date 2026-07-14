@@ -3,6 +3,7 @@
  * selector utilities, and composition source resolution.
  * No imports from other domEditing* modules — safe to import from anywhere.
  */
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
 
 // ─── Type guard ───────────────────────────────────────────────────────────────
@@ -27,8 +28,6 @@ export { parsePx } from "@hyperframes/core/editing";
 export function isTextBearingTag(tagName: string): boolean {
   return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
 }
-
-const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
 
 export function isElementVisibleThroughAncestors(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
@@ -105,7 +104,7 @@ export function findClosestByAttribute(
 // mounted root (it keeps `data-composition-id` but drops `data-composition-src`/
 // `-file`), so a subcomp element's DOM ancestors no longer say which file it came
 // from. This project-global map (composition-id → source file, built once from
-// index.html's clips — see NLELayout) recovers it. The studio loads one project at a
+// index.html's clips — see NLEContext/EditorShell) recovers it. The studio loads one project at a
 // time, so module scope is the right lifetime; it's empty until set, in which case
 // resolution falls back to the historical attribute-only behavior.
 let compositionSourceMap: Map<string, string> = new Map();

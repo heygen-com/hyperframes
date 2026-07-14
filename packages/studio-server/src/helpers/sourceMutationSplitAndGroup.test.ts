@@ -12,8 +12,11 @@ describe("splitElementInHtml — hfId clone isolation", () => {
     const { html, matched } = splitElementInHtml(source, { id: "clip1" }, 5, "clip2");
 
     expect(matched).toBe(true);
+    const { document } = parseHTML(html);
     const occurrences = (html.match(/data-hf-id="hf-abc123"/g) ?? []).length;
     expect(occurrences).toBe(1);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).toMatch(/^hf-/);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).not.toBe("hf-abc123");
   });
 });
 

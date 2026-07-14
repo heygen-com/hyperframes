@@ -161,6 +161,13 @@ The `credits` frame is an avatar row with names + roles + an "approved" check. O
 
 Every other frame has **no** `asset_candidates` (the visuals are invented downstream from `scene` + the diff).
 
+### Versions on the end card (cta / changelog)
+
+A `cta` ("upgrade to vN", "npm i pkg@N") or a changelog "what's new in vN" wants a real version — and **a version is the one fact you must never invent.** A PR carries no shipping version, so Step 1 resolves a best-effort one for MERGED PRs and writes it into `capture/extracted/visible-text.txt` as a `Shipped in: <version> (<source>)` meta line (mirrored in `capture/pr.json` as `shipped_version` / `version_source`). Use it:
+
+- **`Shipped in:` present** → use that exact version on the end card. A `version_source` of `unreleased` means the change is on the default branch but not yet in a tagged release — say "shipping in the next release" rather than pinning a tag.
+- **No `Shipped in:` line** (open PR, or no version resolvable) → **state the repo / PR URL only** ("read the PR at github.com/…", "pull it") and do **not** name or guess a version number.
+
 ## Per-frame length budget — ≤ 9 s, word count is the real measurement
 
 The largest quality bug in PR videos is **scripts that talk too long**. TTS runs at **~2.2 words/second**, so a 45-word "7-second" script is really 20 seconds, and the visual phase has to pad the tail with idle drift (the video reads as "shimmering"). Budget by word count:

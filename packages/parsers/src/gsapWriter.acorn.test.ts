@@ -224,6 +224,63 @@ describe("T6c — addAnimationToScript", () => {
     // Inserted after timeline declaration
     expect(result.indexOf('tl.to("#hero"')).toBeGreaterThan(result.indexOf("gsap.timeline"));
   });
+
+  it("inserts a global gsap.set BEFORE the timeline declaration", () => {
+    // A base set emitted after the tween calls is wiped by GSAP's from()-init
+    // revert on the first backwards render (studio soft-reload rebind) — it
+    // must precede the timeline so the from() records it as pre-tween state.
+    const script = `\
+var tl = gsap.timeline({ paused: true });
+tl.from("#hero", { scale: 0.9, duration: 0.5 }, 0.2);
+window.__timelines["t"] = tl;`;
+    const { script: result, id } = addAnimationToScript(script, {
+      targetSelector: "#hero",
+      method: "set",
+      position: 0,
+      properties: { x: 267, y: 20 },
+      global: true,
+    });
+    expect(result).toContain('gsap.set("#hero", { x: 267, y: 20 });');
+    expect(result.indexOf('gsap.set("#hero"')).toBeLessThan(result.indexOf("gsap.timeline"));
+    expect(id).toBeTruthy();
+    // Round-trip: the id resolves back to the inserted set
+    const updated = updateAnimationInScript(result, id, { properties: { x: 300, y: 20 } });
+    expect(updated).toContain("x: 300");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Legacy global-set relocation
+// ---------------------------------------------------------------------------
+
+describe("T6c — updateAnimationInScript relocates legacy trailing global set", () => {
+  const LEGACY = `\
+var tl = gsap.timeline({ paused: true });
+tl.from("#hero", { scale: 0.9, duration: 0.5 }, 0.2);
+gsap.set("#hero", { x: 267, y: 20 });
+window.__timelines["t"] = tl;`;
+
+  it("moves a post-timeline global set above the declaration when updated", () => {
+    const result = updateAnimationInScript(LEGACY, "#hero-set-0-position", {
+      properties: { x: 300, y: 20 },
+    });
+    expect(result).toContain("x: 300");
+    expect(result.indexOf("gsap.set(")).toBeLessThan(result.indexOf("gsap.timeline"));
+    expect(result).toContain('window.__timelines["t"] = tl;');
+  });
+
+  it("leaves an already-hoisted global set in place", () => {
+    const hoisted = `\
+gsap.set("#hero", { x: 267, y: 20 });
+var tl = gsap.timeline({ paused: true });
+tl.from("#hero", { scale: 0.9, duration: 0.5 }, 0.2);
+window.__timelines["t"] = tl;`;
+    const result = updateAnimationInScript(hoisted, "#hero-set-0-position", {
+      properties: { x: 300, y: 20 },
+    });
+    expect(result).toContain("x: 300");
+    expect(result.indexOf("gsap.set(")).toBeLessThan(result.indexOf("gsap.timeline"));
+  });
 });
 
 // ---------------------------------------------------------------------------

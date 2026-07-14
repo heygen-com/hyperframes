@@ -13,6 +13,7 @@
 //   --pr-json <path>   gh pr view --json number,title,body,author,url,baseRefName,
 //                      headRefName,commits,files,additions,deletions,changedFiles,labels,
 //                      reviews,latestReviews,comments,assignees,reviewDecision,mergedBy
+//                      + fetch-pr.mjs's best-effort shipped_version / version_source
 //   --diff <path>      gh pr diff (raw unified diff)  [optional — brief still builds without it]
 // Writes (under --out-dir, default ./capture/extracted):
 //   tokens.json        synthetic design tokens (colors:[] → claude native palette)
@@ -253,6 +254,12 @@ const people = [...peopleMap.values()]
 const reviewDecision = pr.reviewDecision || null;
 const mergedByLogin = pr.mergedBy?.login || null;
 
+// Best-effort shipping version stamped by fetch-pr.mjs (MERGED PRs only). Surfaced
+// in the brief so the end card / cta cites a real version instead of inventing one;
+// null means "no version known — the close names the repo URL only" (see story-design.md).
+const shippedVersion = typeof pr.shipped_version === "string" ? pr.shipped_version : null;
+const versionSource = typeof pr.version_source === "string" ? pr.version_source : null;
+
 // ---------- clean body ----------
 function cleanBody(raw) {
   if (!raw || typeof raw !== "string") return "";
@@ -406,6 +413,8 @@ lines.push(
 );
 if (labels.length) lines.push(`Labels: ${labels.join(", ")}`);
 if (url) lines.push(`URL: ${url}`);
+if (shippedVersion)
+  lines.push(`Shipped in: ${shippedVersion}${versionSource ? ` (${versionSource})` : ""}`);
 lines.push("");
 
 // People & reviews — human context for an optional credits / shipped-by close.

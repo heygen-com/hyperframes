@@ -16,8 +16,10 @@ function createMockDeps() {
     onSetPlaybackRate: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
+    onSetRootDuration: vi.fn(),
     onEnablePickMode: vi.fn(),
     onDisablePickMode: vi.fn(),
+    getCanonicalFps: vi.fn(() => 30),
   };
 }
 
@@ -53,7 +55,22 @@ describe("installRuntimeControlBridge", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("seek", { frame: 150, seekMode: "drag" }));
-    expect(deps.onSeek).toHaveBeenCalledWith(150, "drag");
+    expect(deps.onSeek).toHaveBeenCalledWith(5, "drag");
+  });
+
+  it("prefers canonical seconds in protocol v1 seek messages", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(
+      makeControlMessage("seek", {
+        protocolVersion: 1,
+        capabilities: ["seconds-time", "rational-fps", "seek-keep-playing"],
+        fps: { numerator: 60, denominator: 1 },
+        timeSeconds: 2.5,
+        frame: 999,
+      }),
+    );
+    expect(deps.onSeek).toHaveBeenCalledWith(2.5, "commit");
   });
 
   it("seek defaults frame to 0 and seekMode to commit", () => {
@@ -155,6 +172,13 @@ describe("installRuntimeControlBridge", () => {
     expect(deps.onSetPlaybackRate).toHaveBeenCalledWith(1);
   });
 
+  it("dispatches set-root-duration command with numeric seconds", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-root-duration", { durationSeconds: "18.5" }));
+    expect(deps.onSetRootDuration).toHaveBeenCalledWith(18.5);
+  });
+
   it("dispatches set-color-grading command with target and grading payload", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
@@ -237,7 +261,32 @@ describe("installRuntimeControlBridge", () => {
     const postSpy = vi.spyOn(window.parent, "postMessage");
     const deps = createMockDeps();
     installRuntimeControlBridge(deps);
-    expect(postSpy).toHaveBeenCalledWith({ source: "hf-preview", type: "ready" }, "*");
+    expect(postSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "hf-preview",
+        type: "ready",
+        protocolVersion: 1,
+        fps: { numerator: 30, denominator: 1 },
+      }),
+      "*",
+    );
+    postSpy.mockRestore();
+  });
+
+  it("rejects an unknown protocol major with a diagnostic", () => {
+    const postSpy = vi.spyOn(window.parent, "postMessage");
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("play", { protocolVersion: 2 }));
+
+    expect(deps.onPlay).not.toHaveBeenCalled();
+    expect(postSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "diagnostic",
+        code: "runtime.protocol.unsupported_protocol_version",
+      }),
+      "*",
+    );
     postSpy.mockRestore();
   });
 });

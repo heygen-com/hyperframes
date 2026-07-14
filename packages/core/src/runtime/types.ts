@@ -18,6 +18,7 @@ export type RuntimeBridgeControlAction =
   | "set-media-output-muted"
   | "set-native-media-sync-disabled"
   | "set-web-audio-media-disabled"
+  | "set-root-duration"
   | "stop-media"
   | "flash-elements";
 
@@ -26,8 +27,10 @@ export type RuntimeBridgeControlMessage = {
   type: "control";
   action: RuntimeBridgeControlAction;
   frame?: number;
+  timeSeconds?: number;
   muted?: boolean;
   volume?: number;
+  durationSeconds?: number;
   disabled?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
@@ -51,6 +54,8 @@ export type RuntimeTimelineClip = {
   start: number;
   duration: number;
   track: number;
+  zIndex: number;
+  stackingContextId: string | null;
   kind: "video" | "audio" | "image" | "element" | "composition";
   tagName: string | null;
   compositionId: string | null;
@@ -224,17 +229,32 @@ export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
 };
 
+export type RuntimeTimelineChildLike = {
+  targets?: () => unknown[];
+  vars?: unknown;
+  startTime?: () => number;
+  duration?: () => number;
+  parent?: RuntimeTimelineChildLike;
+};
+
 export type RuntimeTimelineLike = {
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, suppressEvents?: boolean) => void;
-  totalTime?: (timeSeconds: number, suppressEvents?: boolean) => void;
+  seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;
   add: (timeline: RuntimeTimelineLike, startAtSeconds: number) => void;
   paused: (paused?: boolean) => void;
   timeScale?: (rate: number) => void;
   set: (target: RuntimeGsapSetTarget, vars: RuntimeGsapSetVars, atSeconds?: number) => void;
+  getChildren?: (
+    nested?: boolean,
+    tweens?: boolean,
+    timelines?: boolean,
+    ignoreBeforeTime?: number,
+  ) => RuntimeTimelineChildLike[];
 };
 
 export type RuntimeDeterministicAdapter = {

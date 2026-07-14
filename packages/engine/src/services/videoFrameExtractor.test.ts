@@ -143,6 +143,13 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
     );
   });
 
+  it("resolves a browser root-absolute URL from the project root", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
   it("clamps a leading `../` so `../assets/foo.mp4` resolves to assets/foo.mp4", () => {
     const projectDir = join(tmp, "project");
     expect(resolveProjectRelativeSrc("../assets/foo.mp4", projectDir)).toBe(
@@ -959,6 +966,12 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "smpte2084",
       "-colorspace",
       "bt2020nc",
+      // The -color_* flags above only tag the container/encoder context;
+      // whether they reach the H.264 VUI depends on the ffmpeg build (the
+      // pinned Windows CI build drops the transfer). Write the VUI directly
+      // so probing reports smpte2084 on every build (9/16/9 = bt2020/PQ/bt2020nc).
+      "-bsf:v",
+      "h264_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9",
       src,
     ]);
     if (!synth.success) {

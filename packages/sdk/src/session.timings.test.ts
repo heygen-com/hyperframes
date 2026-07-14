@@ -45,6 +45,19 @@ window.__timelines = { t: tl };</script>
 </div>
 `.trim();
 
+const GSAP_TEMPLATE_LABEL_HTML = `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px">
+  <template data-composition-id="label-sub-comp">
+    <div data-hf-id="hf-box" data-start="0" data-duration="5"></div>
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.addLabel("template-label", 1.5);
+      window.__timelines = { t: tl };
+    </script>
+  </template>
+</div>
+`.trim();
+
 // ─── getElementTimings — duration-authored clips ──────────────────────────────
 
 describe("getElementTimings — duration-authored clips", () => {
@@ -110,6 +123,13 @@ describe("getElementTimings — GSAP labels", () => {
     comp.setTiming("hf-box", { start: 0, duration: 5 }); // no-op but triggers re-parse
     const after = comp.getElementTimings()["hf-box"]?.labels ?? [];
     expect(after).toContain("intro");
+  });
+
+  it("reads labels from GSAP scripts inside composition templates", async () => {
+    const comp = await openComposition(GSAP_TEMPLATE_LABEL_HTML);
+    const labels = comp.getElementTimings()["hf-box"]?.labels ?? [];
+
+    expect(labels).toContain("template-label");
   });
 });
 

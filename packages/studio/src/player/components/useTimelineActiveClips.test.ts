@@ -78,6 +78,26 @@ describe("updateTimelineActiveClipClasses", () => {
     expect(previous).toEqual(new Set());
   });
 
+  it("re-applies data-active to a fresh DOM node that stayed active across a re-render", () => {
+    // A clip that moves lanes on a reorder remounts as a new element. It stays
+    // in the previous active set, so the plain diff would skip it and leave the
+    // new node without data-active. syncAll must force the attribute on.
+    const container = document.createElement("div");
+    appendClip(container, "hero", "0", "5");
+    const previous = new Set<string>();
+    updateTimelineActiveClipClasses(container, previous, 2);
+    expect(previous).toEqual(new Set(["hero"]));
+
+    // Simulate a remount: replace the hero clip's DOM node (no data-active).
+    container.replaceChildren();
+    const heroReborn = appendClip(container, "hero", "0", "5");
+    expect(heroReborn.hasAttribute("data-active")).toBe(false);
+
+    // Diff-only would skip it (still active → unchanged); syncAll re-applies.
+    updateTimelineActiveClipClasses(container, previous, 2, true);
+    expect(heroReborn.hasAttribute("data-active")).toBe(true);
+  });
+
   it("ignores clips with invalid timing data", () => {
     const container = document.createElement("div");
     const missingId = appendClip(container, "", "0", "2");

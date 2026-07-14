@@ -268,7 +268,7 @@ Things that cause friction (or wrong output):
 - **Don't ask for React / Vue components.** Hyperframes compositions are plain HTML with `data-*` attributes and a GSAP timeline. Asking for "a React component for the intro" forces the agent to translate later.
 - **Don't ask for 4K or 60fps unless you need it.** Defaults (1920×1080, 30fps) render fast and look great. Higher specs slow rendering meaningfully.
 - **Don't skip the slash command.** Without `/hyperframes`, the agent may guess at HTML video conventions instead of using the framework's actual rules (`class="clip"` on timed elements, `window.__timelines` registration, etc.).
-- **Don't paste long error logs into the prompt without context.** Run `npx hyperframes lint` and `npx hyperframes validate` first — lint catches structural issues, validate catches runtime errors (JS exceptions, missing assets, contrast problems).
+- **Don't paste long error logs into the prompt without context.** Run `npx hyperframes check` first — lint catches structural issues, validate catches runtime errors (JS exceptions, missing assets, contrast problems).
 - **Don't assume the agent knows your assets.** Mention file paths explicitly (`assets/intro.mp4`, `assets/logo.png`) — the agent will check what's there but a hint speeds it up.
 
 ## Recommended workflow

@@ -10,6 +10,21 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
+// Resolves once the z-index patches are persisted, so a caller that also writes
+// the same file (e.g. a timing move) can order its write after this one.
+export type TimelineZIndexReorderCommit = (
+  entries: Array<{
+    element: HTMLElement;
+    zIndex: number;
+    id?: string;
+    selector?: string;
+    selectorIndex?: number;
+    sourceFile: string;
+    key?: string;
+  }>,
+  coalesceKey?: string,
+) => Promise<void>;
+
 export interface UseTimelineEditingOptions {
   projectId: string | null;
   activeCompPath: string | null;
@@ -27,4 +42,10 @@ export interface UseTimelineEditingOptions {
   sdkSession?: Composition | null;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
+  handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
 }
+
+export type TimelineFileDropHandler = (
+  files: File[],
+  placement?: { start: number; track: number },
+) => Promise<void>;

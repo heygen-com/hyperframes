@@ -44,6 +44,11 @@ import {
   resolveConfig,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import {
+  applyRenderWarningPolicy,
+  type RenderJob,
+  type RenderStrictness,
+} from "../renderOrchestrator.js";
 import { closeFileServerSafely } from "../fileServer.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
@@ -199,6 +204,8 @@ export interface DistributedRenderConfig {
   producerConfig?: EngineConfig;
   /** Entry HTML file relative to `projectDir`. Defaults to `"index.html"`. */
   entryFile?: string;
+  /** Strict rejects correctness warnings; best-effort returns a qualified outcome. */
+  strictness?: RenderStrictness;
   /** Caller-supplied AbortSignal. Threaded through compile / probe / extract / audio stages. */
   abortSignal?: AbortSignal;
   /**
@@ -248,6 +255,25 @@ export interface PlanResult {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+}
+
+/** Applies the same audio correctness policy used by the in-process renderer. */
+export function applyDistributedAudioWarningPolicy(
+  job: RenderJob,
+  audioError: string,
+  log: ProducerLogger = defaultLogger,
+): void {
+  applyRenderWarningPolicy(
+    job,
+    [
+      {
+        code: "audio_processing_failed",
+        message: `Audio mix failed; output would be video-only: ${audioError}`,
+        details: { mediaType: "audio" },
+      },
+    ],
+    log,
+  );
 }
 
 /**
@@ -739,6 +765,7 @@ export async function plan(
     // HDR is banned in distributed mode. force-sdr keeps the
     // extract / encoder paths off the HDR branches entirely.
     hdrMode: config.hdrMode ?? "force-sdr",
+    strictness: config.strictness,
     entryFile: config.entryFile ?? "index.html",
     logger: config.logger,
     producerConfig: config.producerConfig,
@@ -906,7 +933,7 @@ export async function plan(
     assertNotAborted,
   });
   if (audioResult.audioError) {
-    log.warn(`[Render] Audio mix failed — output will be video-only: ${audioResult.audioError}`);
+    applyDistributedAudioWarningPolicy(job, audioResult.audioError, log);
   }
 
   // Promote staged artifacts from the temp work tree into the final planDir

@@ -92,6 +92,7 @@ interface PreviewAdapter {
   cancelPreview(): void;
   select(ids: string[], opts?: { additive?: boolean }): void;
   on(event: "selection", handler: (ids: string[]) => void): () => void;
+  attachSync(comp: Composition): () => void;
 }
 ```
 
@@ -117,6 +118,21 @@ interface PreviewAdapter {
 
 <ParamField path="on" type='(event: "selection", handler: (ids: string[]) => void) => () => void'>
   Fired when the preview host changes the selection (for example, the user clicks an element). Returns an unsubscribe function. In the current release, callers listen to the session's own `selectionchange` event instead — this hook is wired in a future stage.
+</ParamField>
+
+<ParamField path="attachSync" type="(comp: Composition) => () => void">
+  Mirrors a composition's edits onto the adapter's own live document: an immediate full sync of the composition's current overrides, then a subscription that replays every future `patch` event — including undo/redo, since both fire through the same event with forward or inverse patches. Calling `attachSync` again while already attached detaches the previous subscription first. Returns an unsubscribe function.
+
+  Script-tag patches (`/script/gsap` and any future `/script/*` path) are never mirrored — rewriting a live `<script>` tag's content doesn't re-execute it, and re-running GSAP setup from scratch would conflict with running timeline state. Every other patch kind (style, text, attribute, timing, hold, element add/remove, stylesheet, variable value, variable declaration) mirrors as-is.
+
+  ```typescript
+  const adapter = createIframePreviewAdapter(iframe, dispatch);
+  const comp = await openComposition(html, { preview: adapter });
+  const detach = adapter.attachSync(comp);
+
+  // later, if the host tears down the preview:
+  detach();
+  ```
 </ParamField>
 
 ### ElementAtPointResult

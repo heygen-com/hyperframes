@@ -1,6 +1,10 @@
 import { useState, useCallback, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
 import { resolveSourceFile, applyPatch } from "../utils/sourcePatcher";
+import {
+  acceptStudioRuntimeMessage,
+  postRuntimeControlMessage,
+} from "../player/lib/runtimeProtocol";
 
 export interface PickedElement {
   id: string | null;
@@ -65,10 +69,7 @@ export function useElementPicker(
 
   const enablePick = useCallback(() => {
     try {
-      getActiveIframe()?.contentWindow?.postMessage(
-        { source: "hf-parent", type: "control", action: "enable-pick-mode" },
-        "*",
-      );
+      postRuntimeControlMessage(getActiveIframe()?.contentWindow, "enable-pick-mode");
       setIsPickMode(true);
     } catch {
       /* cross-origin */
@@ -77,10 +78,7 @@ export function useElementPicker(
 
   const disablePick = useCallback(() => {
     try {
-      getActiveIframe()?.contentWindow?.postMessage(
-        { source: "hf-parent", type: "control", action: "disable-pick-mode" },
-        "*",
-      );
+      postRuntimeControlMessage(getActiveIframe()?.contentWindow, "disable-pick-mode");
     } catch {
       /* cross-origin */
     }
@@ -96,6 +94,7 @@ export function useElementPicker(
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       if (data?.source !== "hf-preview") return;
+      if (!acceptStudioRuntimeMessage(data)) return;
       // Accept events from either the primary iframe or the active override
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;

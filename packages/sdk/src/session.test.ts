@@ -556,3 +556,94 @@ describe("getAllAnimationIds", () => {
     expect(comp.getAllAnimationIds().has(realId)).toBe(true);
   });
 });
+
+// ─── getVariableValue / listVariables / declareVariable / removeVariable ──────
+
+const VARIABLES_HTML = `<!DOCTYPE html>
+<html data-composition-id="c1" data-composition-duration="5" data-composition-variables='${JSON.stringify(
+  [{ id: "brand-color", type: "color", label: "Brand color", default: "#0066cc" }],
+)}'>
+<body>${BASE_HTML}</body>
+</html>`;
+
+describe("variable declarations (Composition API)", () => {
+  it("getVariableValue reads a declared variable's current default", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    expect(comp.getVariableValue("brand-color")).toBe("#0066cc");
+  });
+
+  it("getVariableValue returns undefined for an undeclared id", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    expect(comp.getVariableValue("never-declared")).toBeUndefined();
+  });
+
+  it("listVariables returns every declared variable's full schema", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    expect(comp.listVariables()).toEqual([
+      { id: "brand-color", type: "color", label: "Brand color", default: "#0066cc" },
+    ]);
+  });
+
+  it("listVariables returns [] when the composition declares none", async () => {
+    const comp = await openComposition(BASE_HTML);
+    expect(comp.listVariables()).toEqual([]);
+  });
+
+  it("declareVariable creates a new declaration a variables panel can list immediately", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    comp.declareVariable({ id: "brand-title", type: "string", label: "Title", default: "Hi" });
+    expect(comp.getVariableValue("brand-title")).toBe("Hi");
+    expect(comp.listVariables()).toHaveLength(2);
+  });
+
+  it("declareVariable can create where setVariableValue's model write silently no-ops", async () => {
+    // Full document (not a fragment): declareVariable refuses fragment sources,
+    // whose synthetic <html> is stripped on serialize. No declarations yet.
+    const comp = await openComposition(`<!DOCTYPE html><html><body>${BASE_HTML}</body></html>`);
+    comp.setVariableValue("never-declared", "x");
+    expect(comp.getVariableValue("never-declared")).toBeUndefined();
+    comp.declareVariable({ id: "never-declared", type: "string", label: "New", default: "x" });
+    expect(comp.getVariableValue("never-declared")).toBe("x");
+  });
+
+  it("removeVariable removes the declaration; listVariables reflects it immediately", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    comp.removeVariable("brand-color");
+    expect(comp.listVariables()).toEqual([]);
+    expect(comp.getVariableValue("brand-color")).toBeUndefined();
+  });
+
+  it("declareVariable / removeVariable both support undo", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+    comp.declareVariable({ id: "brand-title", type: "string", label: "Title", default: "Hi" });
+    expect(comp.listVariables()).toHaveLength(2);
+    comp.undo();
+    expect(comp.listVariables()).toHaveLength(1);
+
+    comp.removeVariable("brand-color");
+    expect(comp.listVariables()).toEqual([]);
+    comp.undo();
+    expect(comp.listVariables()).toEqual([
+      { id: "brand-color", type: "color", label: "Brand color", default: "#0066cc" },
+    ]);
+  });
+
+  it("declareVariable / removeVariable both support redo after undo", async () => {
+    const comp = await openComposition(VARIABLES_HTML);
+
+    comp.declareVariable({ id: "brand-title", type: "string", label: "Title", default: "Hi" });
+    comp.undo();
+    comp.redo();
+    expect(comp.listVariables()).toEqual([
+      { id: "brand-color", type: "color", label: "Brand color", default: "#0066cc" },
+      { id: "brand-title", type: "string", label: "Title", default: "Hi" },
+    ]);
+
+    comp.removeVariable("brand-color");
+    comp.undo();
+    comp.redo();
+    expect(comp.listVariables()).toEqual([
+      { id: "brand-title", type: "string", label: "Title", default: "Hi" },
+    ]);
+  });
+});

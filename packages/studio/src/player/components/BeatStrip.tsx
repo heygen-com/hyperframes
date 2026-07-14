@@ -28,13 +28,17 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
-  /** Beat time a dragged clip will snap to — drawn as a bright neon line. */
+  /** Snap guide time — drawn as a bright line even when it is not a beat. */
   highlightTime?: number | null;
 }) {
-  if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
+  const visibleBeatTimes = beatTimes && !beatsTooDense(beatTimes, pps) ? beatTimes : null;
+  const highlightIsBeat =
+    highlightTime != null &&
+    visibleBeatTimes?.some((t) => Math.abs(t - highlightTime) < 1e-3) === true;
+  if (!visibleBeatTimes && highlightTime == null) return null;
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-      {beatTimes.map((t, i) => {
+      {visibleBeatTimes?.map((t, i) => {
         const isHighlight = highlightTime != null && Math.abs(t - highlightTime) < 1e-3;
         const strength = Math.pow(Math.min(1, beatStrengths?.[i] ?? 0.5), 2.2);
         const opacity = isHighlight ? 1 : 0.06 + strength * 0.16;
@@ -52,6 +56,18 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
           />
         );
       })}
+      {highlightTime != null && !highlightIsBeat && (
+        <div
+          className="absolute top-0 bottom-0"
+          style={{
+            left: highlightTime * pps,
+            width: 2,
+            background: "rgba(34,197,94,1)",
+            boxShadow: "0 0 6px rgba(34,197,94,0.9)",
+            zIndex: 1,
+          }}
+        />
+      )}
     </div>
   );
 });

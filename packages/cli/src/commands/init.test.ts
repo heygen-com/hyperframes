@@ -29,7 +29,46 @@ function runInit(args: string[]): { status: number; stdout: string; stderr: stri
   };
 }
 
+function expectScaffoldedScripts(target: string): void {
+  const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
+    scripts?: Record<string, string>;
+  };
+  expect(pkg.scripts).toMatchObject({
+    dev: "npx --yes hyperframes preview",
+    check: "npx --yes hyperframes check",
+    render: "npx --yes hyperframes render",
+    publish: "npx --yes hyperframes publish",
+  });
+  expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+}
+
 describe("hyperframes init flag rename", () => {
+  it("requires an explicit source in non-interactive mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Non-interactive init requires --example, --video, or --audio");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a following flag when --example has no value", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--example", "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("--example requires a value");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--example blank scaffolds a bundled project with npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
@@ -44,18 +83,10 @@ describe("hyperframes init flag rename", () => {
       const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
         private?: boolean;
         type?: string;
-        scripts?: Record<string, string>;
       };
       expect(pkg.private).toBe(true);
       expect(pkg.type).toBe("module");
-      expect(pkg.scripts).toMatchObject({
-        dev: "npx --yes hyperframes preview",
-        check:
-          "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
-        render: "npx --yes hyperframes render",
-        publish: "npx --yes hyperframes publish",
-      });
-      expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+      expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -79,17 +110,7 @@ describe("hyperframes init flag rename", () => {
       expect(html).toContain(tailwindScript);
       expect(html).toContain("window.__tailwindReady");
 
-      const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
-        scripts?: Record<string, string>;
-      };
-      expect(pkg.scripts).toMatchObject({
-        dev: "npx --yes hyperframes preview",
-        check:
-          "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
-        render: "npx --yes hyperframes render",
-        publish: "npx --yes hyperframes publish",
-      });
-      expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+      expectScaffoldedScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

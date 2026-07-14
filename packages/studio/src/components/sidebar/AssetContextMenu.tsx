@@ -1,5 +1,3 @@
-import { useTranslation } from "react-i18next";
-
 export function ContextMenu({
   x,
   y,
@@ -8,6 +6,7 @@ export function ContextMenu({
   onCopy,
   onDelete,
   onRename,
+  onAddAtPlayhead,
 }: {
   x: number;
   y: number;
@@ -16,8 +15,8 @@ export function ContextMenu({
   onCopy: (path: string) => void;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  onAddAtPlayhead?: (path: string) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-[200]"
@@ -31,6 +30,19 @@ export function ContextMenu({
         className="absolute bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px] text-xs"
         style={{ left: x, top: y }}
       >
+        {onAddAtPlayhead && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddAtPlayhead(asset);
+              onClose();
+            }}
+            className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            Add at playhead
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -39,7 +51,7 @@ export function ContextMenu({
           }}
           className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
         >
-          {t("assetsTab.copyPath")}
+          Copy path
         </button>
         {onRename && (
           <button
@@ -49,7 +61,7 @@ export function ContextMenu({
             }}
             className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
           >
-            {t("assetsTab.rename")}
+            Rename
           </button>
         )}
         {onDelete && (
@@ -61,42 +73,9 @@ export function ContextMenu({
             }}
             className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-neutral-800 transition-colors"
           >
-            {t("assetsTab.delete")}
+            Delete
           </button>
         )}
-      </div>
-    </div>
-  );
-}
-
-export function DeleteConfirm({
-  name,
-  onConfirm,
-  onCancel,
-}: {
-  name: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
-      <span className="text-[10px] text-red-400 truncate">
-        {t("assetsTab.deleteConfirm", { name })}
-      </span>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={onConfirm}
-          className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 transition-colors"
-        >
-          {t("assetsTab.delete")}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
-        >
-          {t("assetsTab.cancel")}
-        </button>
       </div>
     </div>
   );

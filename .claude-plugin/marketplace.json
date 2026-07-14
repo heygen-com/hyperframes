@@ -12,6 +12,23 @@
       "description": "HyperFrames by HeyGen. Write HTML, render video. Compositions, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
       "homepage": "https://hyperframes.heygen.com",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "core-skills",
+      "source": "./",
+      "description": "The always-needed HyperFrames core set: the /hyperframes router, the hyperframes-* domain skills, and media-use. The full plugin (all skills) is `hyperframes`.",
+      "homepage": "https://hyperframes.heygen.com",
+      "license": "Apache-2.0",
+      "skills": [
+        "./skills/hyperframes",
+        "./skills/hyperframes-animation",
+        "./skills/hyperframes-cli",
+        "./skills/hyperframes-core",
+        "./skills/hyperframes-creative",
+        "./skills/hyperframes-keyframes",
+        "./skills/hyperframes-registry",
+        "./skills/media-use"
+      ]
     }
   ]
 }

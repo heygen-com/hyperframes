@@ -6,6 +6,7 @@ import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
+import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 
@@ -65,6 +66,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // Browser telemetry id, so the server-emitted render outcome is
       // attributed to the user who triggered the render (joinable funnel).
       telemetryDistinctId?: string;
+      // Composition-variable overrides ({variableId: value}), injected as
+      // window.__hfVariables — same channel as `hyperframes render --variables`.
+      variables?: Record<string, unknown>;
     };
     const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
     const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
@@ -93,6 +97,16 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       composition = body.composition;
     }
 
+    // Unlike fps/quality (lenient with safe fallbacks), a malformed variables
+    // payload means the user's values would be silently dropped — fail loudly.
+    let variables: Record<string, unknown> | undefined;
+    if (body.variables !== undefined) {
+      if (!isVariablesPayload(body.variables)) {
+        return c.json({ error: VARIABLES_PAYLOAD_ERROR }, 400);
+      }
+      variables = body.variables;
+    }
+
     // fallow-ignore-next-line code-duplication
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
@@ -112,6 +126,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       jobId,
       outputResolution,
       composition,
+      variables,
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
     });
@@ -174,6 +189,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   }
 
   // Serve render inline (for in-browser playback — opens in a new tab)
+  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
@@ -194,6 +210,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   });
 
   // Download render
+  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);

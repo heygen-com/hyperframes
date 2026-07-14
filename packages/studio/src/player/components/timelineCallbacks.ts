@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 // fallow-ignore-file dead-code
 import type { TimelineElement } from "../store/playerStore";
+import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import type { BlockedTimelineEditIntent } from "./timelineEditing";
 
 /**
@@ -28,9 +29,26 @@ export interface TimelineEditCallbacks {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
+  /** Atomic multi-clip move (single undo) for main-track ripple + track-insert.
+   *  `coalesceKey` (drag-commit gesture id) merges the move history entry with a
+   *  lane change's follow-up z-reorder entry into one undo step. */
+  onMoveElements?: (
+    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    coalesceKey?: string,
+    operation?: TimelineMoveOperation,
+  ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
+  ) => Promise<void> | void;
+  onResizeElements?: (
+    changes: Array<{
+      element: TimelineElement;
+      start: number;
+      duration: number;
+      playbackStart?: number;
+    }>,
+    options?: { coalesceKey?: string },
   ) => Promise<void> | void;
   onToggleTrackHidden?: (track: number, hidden: boolean) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;

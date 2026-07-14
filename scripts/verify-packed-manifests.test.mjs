@@ -4,9 +4,53 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { listPackedJavaScriptImportIssues } from "./verify-packed-manifests.mjs";
+import {
+  listPackedExportContracts,
+  listPackedJavaScriptImportIssues,
+  packageExportSpecifier,
+  verifyCliLicense,
+} from "./verify-packed-manifests.mjs";
 
 describe("packed manifest verifier", () => {
+  it("requires the CLI package and tarball to declare Apache-2.0", () => {
+    assert.throws(
+      () => verifyCliLicense("packages/cli", {}, {}),
+      /packages\/cli must declare license Apache-2\.0/,
+    );
+    assert.throws(
+      () => verifyCliLicense("packages/cli", { license: "Apache-2.0" }, { license: "UNLICENSED" }),
+      /packages\/cli packed manifest must preserve license Apache-2\.0/,
+    );
+    assert.doesNotThrow(() =>
+      verifyCliLicense("packages/cli", { license: "Apache-2.0" }, { license: "Apache-2.0" }),
+    );
+  });
+
+  it("derives consumer specifiers from the packed export map", () => {
+    assert.equal(packageExportSpecifier("@hyperframes/sdk", "."), "@hyperframes/sdk");
+    assert.equal(
+      packageExportSpecifier("@hyperframes/sdk", "./adapters/fs"),
+      "@hyperframes/sdk/adapters/fs",
+    );
+    assert.deepEqual(
+      listPackedExportContracts([
+        {
+          packedPackage: {
+            name: "@hyperframes/example",
+            exports: {
+              ".": { import: "./dist/index.js", types: "./dist/index.d.ts" },
+              "./runtime": "./dist/runtime.js",
+            },
+          },
+        },
+      ]),
+      [
+        { specifier: "@hyperframes/example", typechecked: true },
+        { specifier: "@hyperframes/example/runtime", typechecked: false },
+      ],
+    );
+  });
+
   function withPackedFiles(files, packedFiles, callback) {
     const dir = mkdtempSync(join(tmpdir(), "hyperframes-pack-test-"));
     try {

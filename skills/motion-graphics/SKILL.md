@@ -17,6 +17,8 @@ metadata:
 
 > **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update motion-graphics`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
+> **figma source**: If the logo/asset/animation to build from comes from a figma.com URL, run `/figma` first — asset export, brand tokens, and Motion→GSAP translation if the graphic is a Figma Motion import — then build from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
+
 # motion-graphics — dispatch entry
 
 > **Confirm the route before Step 0.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). A **longer, multi-scene, or narrated** treatment → `/general-video`; a **narrated video of a website** → `/website-to-video`; a **topic explainer** → `/faceless-explainer`; a **product promo** → `/product-launch-video`; **captions on existing footage** → `/embedded-captions`. **Out of scope**: live / at-render-time data, or footage it can't capture. Unsure motion-first-vs-narrated? **Read `/hyperframes` first.**
@@ -132,7 +134,7 @@ Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot
 ### Step 6 — Verify (Bash → repair subagent on failure)
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes lint . && npx hyperframes inspect .)
+(cd "$PROJECT_DIR" && npx hyperframes check .)
 ```
 
 exit 0 → done. On lint/inspect errors, dispatch the repair subagent (`agents/finalize.md`: snapshot QA + one in-place fix pass + re-render). Never change a fixed duration in repair.

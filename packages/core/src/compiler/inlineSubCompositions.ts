@@ -149,6 +149,7 @@ function defaultBuildScopeSelector(compId: string): string {
  * 10. Remove `data-composition-src` from host
  * 11. Inject the content into the host element
  */
+// fallow-ignore-next-line complexity
 export function inlineSubCompositions(
   document: Document,
   hosts: Element[],
@@ -227,19 +228,31 @@ export function inlineSubCompositions(
       continue;
     }
 
-    // Find the inner composition root
+    // Keep structural flattening tied to an exact mount-id match. A template
+    // may intentionally use a different local id (for example, a
+    // `captions-comp` host mounting a `captions` template); flattening that
+    // fallback root changes the compiled DOM and can invalidate selectors and
+    // regression goldens. Discover it separately so script timeline
+    // registration can still map the authored id onto the runtime mount id.
     const innerRoot = compId
       ? queryByAttr(contentDoc, "data-composition-id", compId)
       : contentDoc.querySelector("[data-composition-id]");
-    const inferredCompId = innerRoot?.getAttribute("data-composition-id")?.trim() || "";
+    const authoredCompositionRoot = innerRoot ?? contentDoc.querySelector("[data-composition-id]");
+    const inferredCompId =
+      authoredCompositionRoot?.getAttribute("data-composition-id")?.trim() || "";
     const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
     const scopeCompId = compId || inferredCompId;
+    const scriptCompositionId = inferredCompId || scopeCompId;
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
-    // Variable merging (bundler feature)
+    // Variable merging (bundler feature). Read declared defaults from the
+    // document element (full-document sub-comps) AND the inner composition root
+    // (template/fragment sub-comps store their schema on the root div, not a
+    // synthetic <html>), then let per-instance host values override.
     if (readVariableDefaults && parseHostVariables && runtimeCompId) {
       const mergedVariables = {
         ...readVariableDefaults(compDoc.documentElement),
+        ...(innerRoot ? readVariableDefaults(innerRoot) : {}),
         ...parseHostVariables(hostEl),
       };
       if (Object.keys(mergedVariables).length > 0) {
@@ -307,13 +320,13 @@ export function inlineSubCompositions(
         }
         scriptItems.push({ kind: "external", src: externalSrc });
       } else {
-        const wrappedScript = scopeCompId
+        const wrappedScript = scriptCompositionId
           ? wrapScopedCompositionScript(
               s.textContent || "",
-              scopeCompId,
+              scriptCompositionId,
               scriptErrorLabel,
               runtimeScope || undefined,
-              runtimeCompId || scopeCompId,
+              runtimeCompId || scopeCompId || scriptCompositionId,
               authoredRootId,
             )
           : wrapInlineScriptWithErrorBoundary(s.textContent || "", scriptErrorLabel);

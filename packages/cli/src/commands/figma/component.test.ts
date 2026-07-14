@@ -41,6 +41,20 @@ const SVG = new TextEncoder().encode("<svg/>");
 function client(): FigmaClient {
   return {
     renderNode: () => Promise.resolve({ url: "https://cdn/x", ext: "svg" }),
+    // Delegates to whatever renderNode is on the final object (via `this`), so
+    // inline clients that spread `...client()` and override renderNode still
+    // drive the batch path; rejections propagate (matching production).
+    renderNodes(fileKey, nodeIds, opts) {
+      return Promise.all(
+        nodeIds.map((nodeId) =>
+          this.renderNode({ fileKey, nodeId }, opts).then((r) => ({
+            nodeId,
+            url: r.url,
+            ext: r.ext,
+          })),
+        ),
+      );
+    },
     imageFills: () => Promise.resolve(new Map()),
     variables: () => Promise.resolve({ variables: {}, variableCollections: {} }),
     styles: () => Promise.resolve([]),

@@ -14,6 +14,7 @@ import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acor
 import {
   findRoot,
   getElementStyles,
+  getGsapScripts,
   getOwnText,
   isNewHostBoundary,
   querySelectorAllDeep,
@@ -67,25 +68,36 @@ function parseLocatedCached(script: string): Array<{ id: string; selector: strin
  */
 function buildAnimationIdMap(document: Document): Map<string, string[]> {
   const map = new Map<string, string[]>();
-  const script = extractGsapScript(document);
-  if (!script) return map;
-  for (const { id, selector } of parseLocatedCached(script)) {
-    if (!selector) continue;
-    let matches: Element[] = [];
-    try {
-      matches = querySelectorAllDeep(document, selector);
-    } catch {
-      continue; // selector not valid for querySelectorAll — skip
-    }
-    for (const el of matches) {
-      const hfId = el.getAttribute("data-hf-id");
-      if (!hfId) continue;
-      const list = map.get(hfId);
-      if (list) list.push(id);
-      else map.set(hfId, [id]);
+  for (const script of getGsapScripts(document)) {
+    for (const { id, selector } of parseLocatedCached(script)) {
+      appendAnimationIdsForSelector(map, document, id, selector);
     }
   }
   return map;
+}
+
+function appendAnimationIdsForSelector(
+  map: Map<string, string[]>,
+  document: Document,
+  animationId: string,
+  selector: string,
+): void {
+  if (!selector) return;
+
+  let matches: Element[];
+  try {
+    matches = querySelectorAllDeep(document, selector);
+  } catch {
+    return; // selector not valid for querySelectorAll — skip
+  }
+
+  for (const el of matches) {
+    const hfId = el.getAttribute("data-hf-id");
+    if (!hfId) continue;
+    const list = map.get(hfId);
+    if (list) list.push(animationId);
+    else map.set(hfId, [animationId]);
+  }
 }
 
 /**
@@ -198,16 +210,7 @@ function buildElement(
 
 // fallow-ignore-next-line complexity
 function extractGsapScript(doc: Document): string | null {
-  // GSAP script is the first <script> tag whose text references gsap. Marker
-  // set must match studio sdkShadow.ts isGsapScriptBody so both pick the same
-  // script from a given composition.
-  for (const script of Array.from(doc.querySelectorAll("script"))) {
-    const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger")) {
-      return text;
-    }
-  }
-  return null;
+  return getGsapScripts(doc)[0] ?? null;
 }
 
 function extractStyles(doc: Document): string | null {

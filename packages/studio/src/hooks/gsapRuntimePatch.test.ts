@@ -133,6 +133,69 @@ describe("patchRuntimeTweenInPlace — set tweens", () => {
   });
 });
 
+describe("patchRuntimeTweenInPlace — authored-opacity capture guard", () => {
+  function makeStampedEl(id: string, stamped: string | null, inlineOpacity: string) {
+    const style = new Map<string, string>([["opacity", inlineOpacity]]);
+    return {
+      el: {
+        id,
+        style: {
+          setProperty: (k: string, v: string) => void style.set(k, v),
+          removeProperty: (k: string) => void style.delete(k),
+        },
+        getAttribute: (name: string) => (name === "data-hf-authored-opacity" ? stamped : null),
+      },
+      style,
+    };
+  }
+
+  it("restores the stamped authored opacity before an opacity-touching patch", () => {
+    // Runtime transient (grading hide / mid-flight tween) baked into inline style.
+    const { el, style } = makeStampedEl("box", "0.75", "0");
+    const setTween = makeTween(
+      { vars: { opacity: 0.2, duration: 0 }, targetIds: ["box"], duration: 0 },
+      el,
+    );
+    const { iframe } = fakeIframe(el, [setTween]);
+
+    const ok = patchRuntimeTweenInPlace(iframe, "#box", {
+      kind: "set",
+      props: { opacity: 0.5 },
+    });
+
+    expect(ok).toBe(true);
+    // The re-init must capture the authored 0.75, not the transient 0.
+    expect(style.get("opacity")).toBe("0.75");
+    expect(setTween.vars.opacity).toBe(0.5);
+  });
+
+  it("removes inline opacity when the stamp recorded no authored value", () => {
+    const { el, style } = makeStampedEl("box", "", "0");
+    const setTween = makeTween(
+      { vars: { opacity: 0.2, duration: 0 }, targetIds: ["box"], duration: 0 },
+      el,
+    );
+    const { iframe } = fakeIframe(el, [setTween]);
+
+    patchRuntimeTweenInPlace(iframe, "#box", { kind: "set", props: { opacity: 0.5 } });
+
+    expect(style.has("opacity")).toBe(false);
+  });
+
+  it("leaves inline opacity alone for a position-only patch", () => {
+    const { el, style } = makeStampedEl("box", "0.75", "0");
+    const setTween = makeTween(
+      { vars: { x: 0, y: 0, duration: 0 }, targetIds: ["box"], duration: 0 },
+      el,
+    );
+    const { iframe } = fakeIframe(el, [setTween]);
+
+    patchRuntimeTweenInPlace(iframe, "#box", { kind: "set", props: { x: 10, y: 20 } });
+
+    expect(style.get("opacity")).toBe("0");
+  });
+});
+
 describe("patchRuntimeTweenInPlace — channel-aware set resolution", () => {
   it("patches the {x,y} set, not a co-located rotation-only set", () => {
     const el = { id: "dual" };

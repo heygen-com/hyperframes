@@ -13,13 +13,28 @@ import type { ParsedDocument } from "./model.js";
 import {
   findById,
   findRoot,
+  declarationElement,
   setElementStyles,
   setOwnText,
   setGsapScript,
   setStyleSheet,
 } from "./model.js";
 import { keyToPath, stylePath } from "./patches.js";
-import { writeVariableDefault, clearVariableDefault } from "./variableModel.js";
+import {
+  writeVariableDefault,
+  clearVariableDefault,
+  writeVariableDeclaration,
+  removeVariableDeclarationEntry,
+} from "./variableModel.js";
+
+function isRawDeclarationEntry(value: unknown): value is { id: string } & Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -32,6 +47,7 @@ interface ParsedPath {
     | "hold"
     | "element"
     | "variable"
+    | "variableDeclaration"
     | "metadata"
     | "script"
     | "stylesheet";
@@ -65,6 +81,9 @@ function parsePath(path: string): ParsedPath | null {
   const elemM = /^\/elements\/([^/]+)$/.exec(path);
   if (elemM) return { type: "element", id: elemM[1] };
 
+  const varDeclM = /^\/variableDeclarations\/(.+)$/.exec(path);
+  if (varDeclM) return { type: "variableDeclaration", id: varDeclM[1] };
+
   const varM = /^\/variables\/(.+)$/.exec(path);
   if (varM) return { type: "variable", id: varM[1] };
 
@@ -87,11 +106,11 @@ function parsePath(path: string): ParsedPath | null {
  * the matching declaration's `default`. No-ops when the attr/decl is absent.
  * Shares the model logic with mutate.ts via ./variableModel.ts.
  */
-function applyVariableDefault(document: Document, id: string, newDefault: unknown): void {
+function applyVariableDefault(declEl: Element | null, id: string, newDefault: unknown): void {
   if (newDefault === null) {
-    clearVariableDefault(document, id);
+    clearVariableDefault(declEl, id);
   } else {
-    writeVariableDefault(document, id, newDefault);
+    writeVariableDefault(declEl, id, newDefault);
   }
 }
 
@@ -106,7 +125,20 @@ function applyVariableDefault(document: Document, id: string, newDefault: unknow
 export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet): void {
   const patches: JsonPatchOp[] = [];
   const rootId = findRoot(parsed.document)?.getAttribute("data-hf-id") ?? null;
-  for (const [key, value] of Object.entries(overrides)) {
+  // Whole-declaration snapshots (varDecl.{id}) must replay BEFORE value keys
+  // (var.{id}): a declaration snapshot embeds the default at fold time, while
+  // var.{id} always carries the latest value — insertion order alone would let
+  // an older snapshot clobber a newer value.
+  const entries = Object.entries(overrides).sort(([a], [b]) => {
+    const aVar = a.startsWith("var.");
+    const bVar = b.startsWith("var.");
+    const aDecl = a.startsWith("varDecl.");
+    const bDecl = b.startsWith("varDecl.");
+    if (aVar && bDecl) return 1;
+    if (aDecl && bVar) return -1;
+    return 0; // stable — every other key keeps its insertion order
+  });
+  for (const [key, value] of entries) {
     const path = keyToPath(key);
     if (!path) continue;
     if (value === null) {
@@ -229,13 +261,31 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       break;
     }
 
+    case "variableDeclaration": {
+      if (!p.id) return;
+      if (patch.op === "remove") {
+        removeVariableDeclarationEntry(declarationElement(parsed.document, parsed.wrapped), p.id);
+      } else if (isRawDeclarationEntry(patch.value)) {
+        // Replay is faithful, not strict: inverse patches capture raw entries
+        // (loose hand-authored declarations included) and undo must restore
+        // them verbatim — gating on isCompositionVariable here would make
+        // undo of a remove/update on a loose entry silently no-op.
+        writeVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), patch.value);
+      }
+      break;
+    }
+
     case "variable": {
       if (!p.id) return;
       // B1: update the JSON model (data-composition-variables) so
       // getVariables() returns the correct value in both preview and render.
       // CSS compat is handled by explicit style-path patches emitted by mutate.ts,
       // so we do NOT write CSS here — the style case above handles those patches.
-      applyVariableDefault(parsed.document, p.id, patch.op === "remove" ? null : patch.value);
+      applyVariableDefault(
+        declarationElement(parsed.document, parsed.wrapped),
+        p.id,
+        patch.op === "remove" ? null : patch.value,
+      );
       break;
     }
 

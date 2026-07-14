@@ -7,6 +7,8 @@ description: "Capture a general website/URL and turn it into a video OF the site
 
 > **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
 
+> **figma source**: If the URL is a figma.com link (not a live product site), run `/figma` first — asset export, brand tokens, and components/storyboard reconstruction if needed — then build this workflow from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
+
 # Website to HyperFrames
 
 Capture a website, then produce a professional video from it.
@@ -105,7 +107,7 @@ Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3,
 
 **Deliver something you're proud of.** Before handing off, ask yourself: would I post this on social media with my name on it? If not, fix what's wrong.
 
-**Gate:** `npx hyperframes lint` and `npx hyperframes validate` pass with zero errors, and the final response includes the active Studio project URL.
+**Gate:** `npx hyperframes check` pass with zero errors, and the final response includes the active Studio project URL.
 
 ---
 

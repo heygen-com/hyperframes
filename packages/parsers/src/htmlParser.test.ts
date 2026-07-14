@@ -148,6 +148,22 @@ describe("parseHtml", () => {
     expect(result.gsapScript).toContain('tl.to("#text1"');
   });
 
+  it("extracts GSAP script from composition templates", () => {
+    const html = `
+      <html>
+      <body>
+        <div id="stage"></div>
+        <template data-composition-id="sub-comp">
+          <script>const tl = gsap.timeline({ paused: true });</script>
+        </template>
+      </body>
+      </html>
+    `;
+    const result = parseHtml(html);
+
+    expect(result.gsapScript).toContain("gsap.timeline");
+  });
+
   it("extracts styles from style tags", () => {
     const html = `
       <html>
@@ -559,6 +575,26 @@ describe("removeElementFromHtml", () => {
     expect(updated).not.toContain("x: 100");
     expect(updated).not.toContain("x: 200");
   });
+
+  it("strips GSAP tweens from composition templates", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div id="stage">
+    <div id="box" data-hf-id="box" data-start="0" data-end="5">box</div>
+  </div>
+  <template data-composition-id="sub-comp">
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.to("[data-hf-id=\\"box\\"]", { x: 100, duration: 1 }, 0);
+    </script>
+  </template>
+</body></html>`;
+
+    const updated = removeElementFromHtml(html, "box");
+
+    expect(updated).not.toContain('data-hf-id="box"');
+    expect(updated).not.toContain("x: 100");
+  });
 });
 
 describe("validateCompositionHtml", () => {
@@ -625,6 +661,25 @@ describe("validateCompositionHtml", () => {
     const result = validateCompositionHtml(html);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Inline event handlers (onclick, onload, etc.) not allowed");
+  });
+
+  it("validates GSAP scripts inside composition templates", () => {
+    const html = `<!DOCTYPE html>
+<html data-composition-id="comp-1" data-composition-duration="10">
+<body>
+  <div id="stage"></div>
+  <template data-composition-id="sub-comp">
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#text1", { onComplete: () => {}, duration: 1 }, 0);
+    </script>
+  </template>
+</body>
+</html>`;
+
+    const result = validateCompositionHtml(html);
+
+    expect(result.errors).toContain("onComplete callback not allowed");
   });
 });
 

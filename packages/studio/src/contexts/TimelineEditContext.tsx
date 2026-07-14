@@ -31,6 +31,7 @@ export function TimelineEditProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       value.onMoveElement,
+      value.onMoveElements,
       value.onResizeElement,
       value.onToggleTrackHidden,
       value.onBlockedEditAttempt,

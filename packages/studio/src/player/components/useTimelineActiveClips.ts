@@ -65,13 +65,23 @@ function setsMatch(left: Set<string>, right: Set<string>): boolean {
   return true;
 }
 
-function applyActiveClipDiff(records: ActiveClipRecord[], previous: Set<string>, time: number) {
+function applyActiveClipDiff(
+  records: ActiveClipRecord[],
+  previous: Set<string>,
+  time: number,
+  // Force every record's attribute to match its active state instead of only
+  // touching clips whose active-state changed. Required whenever `records` were
+  // freshly re-queried after a render: a clip that stayed active but got a new
+  // DOM node (e.g. moved lanes on a reorder) would otherwise be skipped by the
+  // diff and render without `data-active` despite still being at the playhead.
+  syncAll = false,
+) {
   const next = getActiveClipIds(records, time);
   const changed = !setsMatch(previous, next);
   for (const record of records) {
     const wasActive = previous.has(record.id);
     const isActive = next.has(record.id);
-    if (wasActive === isActive) continue;
+    if (!syncAll && wasActive === isActive) continue;
     record.element.toggleAttribute("data-active", isActive);
   }
   previous.clear();
@@ -83,8 +93,9 @@ export function updateTimelineActiveClipClasses(
   container: HTMLElement,
   previous: Set<string>,
   time: number,
+  syncAll = false,
 ) {
-  applyActiveClipDiff(collectTimelineClipRecords(container), previous, time);
+  applyActiveClipDiff(collectTimelineClipRecords(container), previous, time, syncAll);
 }
 
 export function useTimelineActiveClips({
@@ -107,7 +118,7 @@ export function useTimelineActiveClips({
       }
       recordsRef.current = collectTimelineClipRecords(scroll);
       recordsByIdRef.current = indexClipRecordsById(recordsRef.current);
-      applyActiveClipDiff(recordsRef.current, previousActiveIdsRef.current, time);
+      applyActiveClipDiff(recordsRef.current, previousActiveIdsRef.current, time, true);
     },
     [scrollRef],
   );

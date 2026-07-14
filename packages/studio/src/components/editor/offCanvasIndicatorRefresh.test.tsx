@@ -2,10 +2,34 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DomEditOverlay } from "./DomEditOverlay";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
+// happy-dom (20.x) holds each MutationObserver's delivery callback ONLY via a
+// WeakRef (MutationObserverListener: `callback: new WeakRef(...)` — the arrow
+// has no strong referent). If V8 runs a GC between observe() and a mutation,
+// deref() returns undefined and mutation delivery silently stops — the
+// indicator-refresh loop never sees its dirty flag and these tests flake under
+// full-suite memory pressure (passing in isolation). Pin WeakRef to a strong
+// ref for this file so the real observer path stays deterministic.
+const RealWeakRef = globalThis.WeakRef;
+class StrongRef<T extends WeakKey> {
+  #value: T;
+  constructor(value: T) {
+    this.#value = value;
+  }
+  deref(): T {
+    return this.#value;
+  }
+}
+beforeAll(() => {
+  (globalThis as { WeakRef: unknown }).WeakRef = StrongRef;
+});
+afterAll(() => {
+  globalThis.WeakRef = RealWeakRef;
+});
 
 const INDICATOR = '[aria-label="Select off-canvas element index.html:headline:0"]';
 

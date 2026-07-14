@@ -106,14 +106,18 @@ describe("variables", () => {
 });
 
 describe("error mapping", () => {
-  it("maps 429 to RATE_LIMITED and 401 to BAD_TOKEN", async () => {
+  it("maps 429 to RATE_LIMITED (after retries) and 401 to BAD_TOKEN", async () => {
+    const stub = fetchStub(() => jsonResponse(429, {}));
     const c429 = createFigmaClient({
       token: "t",
-      fetch: fetchStub(() => jsonResponse(429, {})).fetch,
+      fetch: stub.fetch,
+      sleep: () => Promise.resolve(),
     });
     await expect(c429.styles("F")).rejects.toThrowError(
       expect.objectContaining({ code: "RATE_LIMITED" }),
     );
+    // 1 initial + 3 retries = 4 attempts
+    expect(stub.calls).toHaveLength(4);
     const c401 = createFigmaClient({
       token: "t",
       fetch: fetchStub(() => jsonResponse(401, {})).fetch,
@@ -121,6 +125,227 @@ describe("error mapping", () => {
     await expect(c401.styles("F")).rejects.toThrowError(
       expect.objectContaining({ code: "BAD_TOKEN" }),
     );
+  });
+
+  it("retries 429 and succeeds when the limit clears", async () => {
+    let n = 0;
+    const waits: number[] = [];
+    const client = createFigmaClient({
+      token: "t",
+      fetch: (() => {
+        n += 1;
+        return Promise.resolve(
+          n < 3
+            ? jsonResponse(429, {})
+            : jsonResponse(200, {
+                meta: { styles: [{ key: "k", name: "P", style_type: "FILL" }] },
+              }),
+        );
+      }) as FigmaFetch,
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    });
+    const styles = await client.styles("F");
+    expect(styles[0]?.key).toBe("k");
+    expect(n).toBe(3); // two 429s then success
+    expect(waits).toEqual([1000, 2000]); // exponential backoff
+  });
+
+  it("caps an oversized Retry-After at 60s so the CLI can't block for an hour", async () => {
+    let n = 0;
+    const waits: number[] = [];
+    const client = createFigmaClient({
+      token: "t",
+      fetch: (() => {
+        n += 1;
+        return Promise.resolve(
+          n === 1
+            ? new Response("{}", { status: 429, headers: { "retry-after": "3600" } })
+            : jsonResponse(200, { meta: { styles: [] } }),
+        );
+      }) as FigmaFetch,
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    });
+    await client.styles("F");
+    expect(waits).toEqual([60_000]); // 3600s clamped, not 3_600_000
+  });
+
+  it("retries 429 on non-styles endpoints too (retry lives in the shared get)", async () => {
+    let n = 0;
+    const client = createFigmaClient({
+      token: "t",
+      fetch: (() => {
+        n += 1;
+        return Promise.resolve(
+          n < 2
+            ? jsonResponse(429, {})
+            : jsonResponse(200, { images: { "1:2": "https://cdn/a.png" } }),
+        );
+      }) as FigmaFetch,
+      sleep: () => Promise.resolve(),
+    });
+    const out = await client.renderNodes("F", ["1:2"], { format: "png" });
+    expect(out[0]?.url).toBe("https://cdn/a.png");
+    expect(n).toBe(2); // one 429 then success
+  });
+
+  it("honors Retry-After (seconds) over the backoff default", async () => {
+    let n = 0;
+    const waits: number[] = [];
+    const client = createFigmaClient({
+      token: "t",
+      fetch: (() => {
+        n += 1;
+        return Promise.resolve(
+          n === 1
+            ? new Response("{}", { status: 429, headers: { "retry-after": "5" } })
+            : jsonResponse(200, { meta: { styles: [] } }),
+        );
+      }) as FigmaFetch,
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    });
+    await client.styles("F");
+    expect(waits).toEqual([5000]);
+  });
+
+  it("names the endpoint scope in the styles 403 when the body is silent", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(403, { message: "no" })).fetch,
+    });
+    await expect(client.styles("F")).rejects.toThrowError(
+      expect.objectContaining({
+        code: "FORBIDDEN",
+        message: expect.stringContaining("library_content:read"),
+      }),
+    );
+  });
+
+  it("surfaces figma's own scope diagnosis verbatim from the 403 body (err field)", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() =>
+        jsonResponse(403, {
+          err: "Invalid scope(s): file_content:read, file_metadata:read. This endpoint requires the library_content:read scope",
+        }),
+      ).fetch,
+    });
+    await expect(client.styles("F")).rejects.toThrowError(
+      expect.objectContaining({
+        code: "FORBIDDEN",
+        message: expect.stringContaining("requires the library_content:read scope"),
+      }),
+    );
+  });
+
+  it("reclassifies a 403 'Invalid token' body as BAD_TOKEN, not a scope problem", async () => {
+    // figma returns 403 (not 401) for bad PATs on file endpoints — verified live
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(403, { err: "Invalid token" })).fetch,
+    });
+    const err = await client.styles("F").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FigmaClientError);
+    if (err instanceof FigmaClientError) {
+      expect(err.code).toBe("BAD_TOKEN");
+      expect(err.message).toContain("Re-mint");
+    }
+  });
+
+  it("keeps REQUIRES_ENTERPRISE for a scopeless variables 403", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(403, { message: "no" })).fetch,
+    });
+    await expect(client.variables("F")).rejects.toThrowError(
+      expect.objectContaining({ code: "REQUIRES_ENTERPRISE" }),
+    );
+  });
+});
+
+describe("endpoint attribution", () => {
+  it("labels each call's error with a low-cardinality endpoint, never the raw fileKey/nodeId", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(500, {})).fetch,
+    });
+    const cases: Array<[string, () => Promise<unknown>]> = [
+      ["images", () => client.renderNode({ fileKey: "SECRET", nodeId: "1:2" }, { format: "png" })],
+      ["images", () => client.renderNodes("SECRET", ["1:2"], { format: "png" })],
+      ["files_images", () => client.imageFills("SECRET")],
+      ["variables_local", () => client.variables("SECRET")],
+      ["styles", () => client.styles("SECRET")],
+      ["files_nodes", () => client.nodeTree({ fileKey: "SECRET", nodeId: "1:2" })],
+      ["file_meta", () => client.fileVersion("SECRET")],
+    ];
+    for (const [expected, call] of cases) {
+      const err = await call().catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(FigmaClientError);
+      if (err instanceof FigmaClientError) {
+        expect(err.endpoint).toBe(expected);
+        expect(err.endpoint).not.toContain("SECRET");
+      }
+    }
+  });
+
+  it("still labels RENDER_FAILED and NODE_NOT_FOUND (thrown outside the shared get())", async () => {
+    const nullRender = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(200, { images: { "1:2": null } })).fetch,
+    });
+    const renderErr = await nullRender
+      .renderNode({ fileKey: "F", nodeId: "1:2" }, { format: "svg" })
+      .catch((e: unknown) => e);
+    expect(renderErr).toBeInstanceOf(FigmaClientError);
+    if (renderErr instanceof FigmaClientError) expect(renderErr.endpoint).toBe("images");
+
+    const missingNode = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() => jsonResponse(200, { nodes: {} })).fetch,
+    });
+    const notFoundErr = await missingNode
+      .nodeTree({ fileKey: "F", nodeId: "9:9" })
+      .catch((e: unknown) => e);
+    expect(notFoundErr).toBeInstanceOf(FigmaClientError);
+    if (notFoundErr instanceof FigmaClientError) expect(notFoundErr.endpoint).toBe("files_nodes");
+  });
+});
+
+describe("renderNodes (batch)", () => {
+  it("fetches many nodes in ONE /v1/images call and maps each url", async () => {
+    const stub = fetchStub(() =>
+      jsonResponse(200, {
+        images: { "1:2": "https://cdn/a.png", "3:4": "https://cdn/b.png" },
+      }),
+    );
+    const client = createFigmaClient({ token: "t", fetch: stub.fetch });
+    const out = await client.renderNodes("F", ["1:2", "3:4"], { format: "png" });
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0]).toContain("ids=1%3A2%2C3%3A4"); // "1:2,3:4" url-encoded
+    expect(out).toEqual([
+      { nodeId: "1:2", url: "https://cdn/a.png", ext: "png" },
+      { nodeId: "3:4", url: "https://cdn/b.png", ext: "png" },
+    ]);
+  });
+
+  it("returns url:null for a node figma couldn't render, without failing the batch", async () => {
+    const client = createFigmaClient({
+      token: "t",
+      fetch: fetchStub(() =>
+        jsonResponse(200, { images: { "1:2": "https://cdn/a.png", "3:4": null } }),
+      ).fetch,
+    });
+    const out = await client.renderNodes("F", ["1:2", "3:4"], { format: "svg" });
+    expect(out[0]?.url).toBe("https://cdn/a.png");
+    expect(out[1]?.url).toBeNull();
   });
 
   it("wraps other failures as HTTP_ERROR with status", async () => {

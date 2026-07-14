@@ -34,5 +34,5 @@ Root `#stage` (`data-composition-id`) needs `position: relative; width: <W>px; h
 - **Count-ups** tween a proxy via `onUpdate`; they only render when the host advances the timeline **with events enabled** (`tl.time()` / non-suppressed seek). A bare `seek(t, true)` freezes them at 0 — the HF render host must seek with events on. _(Eval finding.)_
 - Clamp at tween bounds; don't let a spring overshoot past a held value.
 - Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`).
-- One motif per scene. Run `hyperframes inspect`; mark intentional overflow `data-layout-allow-overflow="true"`.
+- One motif per scene. Run `hyperframes check`; mark intentional overflow `data-layout-allow-overflow="true"`.
 - **Palette discipline**: define all colors in one `palette` object / CSS custom properties — no inline hex scattered through the markup (for `asset-fusion`, eyedropper the palette from the asset).

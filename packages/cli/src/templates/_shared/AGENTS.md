@@ -33,7 +33,7 @@ The domain skills (`/hyperframes-core`, `/hyperframes-animation`, `/hyperframes-
 
 ```bash
 npm run dev          # start the preview server (long-running — keep it alive in background)
-npm run check        # lint + validate + inspect
+npm run check        # lint + runtime + layout + motion + contrast (one command)
 npm run render       # render to MP4
 npm run publish      # publish and get a shareable link
 npx hyperframes lint --verbose  # include info-level findings
@@ -76,7 +76,7 @@ After creating or editing any `.html` composition, **always** run the full check
 npm run check
 ```
 
-Fix all errors before presenting the result. Inspect warnings should be reviewed before rendering.
+Fix all errors before presenting the result. Warnings should be reviewed before rendering.
 
 ## Key Rules
 

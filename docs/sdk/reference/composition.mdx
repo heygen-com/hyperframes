@@ -110,6 +110,99 @@ comp.setVariableValue("brandFont", { name: "Inter", source: "https://fonts.googl
 comp.setVariableValue("heroImage", { url: "/assets/hero.jpg", fit: "cover" });
 ```
 
+<Note>
+  `setVariableValue` only updates a variable's current value — it refuses to create an undeclared variable. Use `declareVariable` to create one.
+</Note>
+
+### `getVariableValue`
+
+```typescript
+getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined
+```
+
+Return a declared variable's current `default` value, or `undefined` if the id is undeclared or has no value set.
+
+```typescript
+const color = comp.getVariableValue("brandColor"); // "#6C5CE7"
+```
+
+### `listVariables`
+
+```typescript
+listVariables(): CompositionVariable[]
+```
+
+Return every declared variable's full schema — `id`, `type`, `label`, `default`, and any type-specific fields (`min`/`max`/`step` for numbers, `options` for enums, `source` for fonts, etc). Returns `[]` when the composition declares no variables.
+
+```typescript
+for (const v of comp.listVariables()) {
+  console.log(v.id, v.type, v.default);
+}
+```
+
+### `declareVariable` / `updateVariableDeclaration` / `removeVariableDeclaration`
+
+```typescript
+declareVariable(declaration: CompositionVariable): void
+updateVariableDeclaration(id: string, declaration: CompositionVariable): void
+removeVariableDeclaration(id: string): void
+```
+
+Manage the `data-composition-variables` schema itself. `declareVariable` adds a new
+typed declaration (creating the attribute when the composition has none);
+`updateVariableDeclaration` replaces an existing declaration wholesale — the id is
+immutable, rename by remove + declare; `removeVariableDeclaration` deletes a
+declaration (the last removal drops the whole attribute). All three validate via
+`can()` (`E_DUPLICATE_VARIABLE`, `E_VARIABLE_NOT_FOUND`, `E_INVALID_ARGS`,
+`E_INVALID_VARIABLE_ID` — the id must match `/^[A-Za-z_][A-Za-z0-9_-]*$/` since it
+becomes a CSS custom-property name, `data-var-*` value, and CLI `--variables` key;
+and `E_FRAGMENT_COMPOSITION`). Declarations live on the composition's declaration
+root: the `<html>` element for a full document, or the composition root element
+(`[data-composition-id]`) for a template / fragment sub-composition. Despite its
+name, `E_FRAGMENT_COMPOSITION` now fires only when the source has **no** root
+element at all to carry the schema — a fragment that has a composition root
+accepts declarations. (The code is kept for compatibility; the fix is "add a
+composition root element", not necessarily "add an `<html>`".)
+
+```typescript
+comp.declareVariable({ id: "title", type: "string", label: "Title", default: "Hello" });
+comp.updateVariableDeclaration("title", { id: "title", type: "string", label: "Headline", default: "Hello" });
+comp.removeVariableDeclaration("title");
+```
+
+<Note>`removeVariable(id)` is a shorthand alias of `removeVariableDeclaration(id)`.</Note>
+
+### `getVariableDeclarations` / `getVariableValues` / `validateVariableValues` / `getVariableUsage`
+
+```typescript
+getVariableDeclarations(): CompositionVariable[]
+getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown>
+validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[]
+getVariableUsage(): VariableUsageReport
+```
+
+Read-only variable APIs (no dispatch). `getVariableDeclarations` returns the typed
+schema (same strict filter the render pipeline uses). `getVariableValues` resolves
+values exactly like the runtime's `getVariables()` — declared defaults merged under
+the given overrides — so callers can predict what a composition script will read for
+a given `--variables` payload. `validateVariableValues` runs the same checks as
+`--strict-variables` (`undeclared` / `type-mismatch` / `enum-out-of-range`).
+`getVariableUsage` statically scans every inline script for `getVariables()` reads
+and cross-references the schema: `{ usedIds, unusedDeclarations, undeclaredReads,
+scanIncomplete }` — `scanIncomplete` flips when scripts access variables dynamically,
+making `usedIds` a lower bound.
+
+### `setPreviewVariables`
+
+```typescript
+setPreviewVariables(values: Record<string, unknown> | null): boolean
+```
+
+Apply ephemeral variable values to the preview surface (never persisted — use
+`setVariableValue` to change a default). Pass `null` to restore declared defaults.
+Delegates to the preview adapter's optional `setPreviewVariables`; returns `false`
+when no adapter support is available.
+
 ### `getElementTimings`
 
 ```typescript
@@ -300,6 +393,18 @@ const images = elements.filter((el) => el.tag === "img");
   For elements inside inlined sub-compositions, use `scopedId` (e.g. `"hf-host/hf-leaf"`) as the dispatch target, not `id`. Top-level elements have `scopedId === id`.
 </Note>
 
+### `getRootElements`
+
+```typescript
+getRootElements(): ElementSnapshot[]
+```
+
+Return only top-level elements, each carrying its full subtree — no id appears twice (unlike `getElements`, which flattens every nested element into the same array). Use this when you need one entry per top-level clip rather than every element in the tree.
+
+```typescript
+const roots = comp.getRootElements();
+```
+
 ### `getElement`
 
 ```typescript
@@ -335,6 +440,18 @@ Search elements by structured query. Returns an array of `scopedId` strings for 
 const headlineIds = comp.find({ name: "headline" });
 const allImages   = comp.find({ tag: "img" });
 const track1Ids   = comp.find({ track: 1 });
+```
+
+### `getAllAnimationIds`
+
+```typescript
+getAllAnimationIds(): Set<string>
+```
+
+Return every GSAP tween id parsed from the composition's script, regardless of whether its target selector currently matches a live DOM element. This differs from a given `ElementSnapshot`'s own `animationIds` field, which only lists tweens whose selector resolves to that specific element.
+
+```typescript
+const allIds = comp.getAllAnimationIds();
 ```
 
 ---

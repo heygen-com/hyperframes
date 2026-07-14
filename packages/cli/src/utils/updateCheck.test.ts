@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isSafeVersion } from "./updateCheck.js";
+import { isSafeVersion, printDeprecationNotice, withMeta } from "./updateCheck.js";
 
 describe("isSafeVersion", () => {
   it("accepts strict semver, incl. prerelease/build metadata", () => {
@@ -149,6 +149,68 @@ async function checkWith(registryVersion: unknown): Promise<{
     globalThis.fetch = origFetch;
   }
 }
+
+/**
+ * U5: validate/inspect/layout are deprecated in favor of `check`. withMeta's
+ * optional `{ deprecated: true }` is the single place that adds `_meta.deprecated`
+ * to a --json envelope; every other command (check, lint, ...) calls withMeta
+ * with no second argument and must never see the key at all — not even `false`.
+ */
+describe("withMeta — deprecated flag", () => {
+  it("omits _meta.deprecated entirely when no options are passed (check/lint et al.)", () => {
+    const wrapped = withMeta({ ok: true });
+    expect("deprecated" in wrapped._meta).toBe(false);
+  });
+
+  it("omits _meta.deprecated when options.deprecated is false", () => {
+    const wrapped = withMeta({ ok: true }, { deprecated: false });
+    expect("deprecated" in wrapped._meta).toBe(false);
+  });
+
+  it("sets _meta.deprecated === true when requested (validate/inspect/layout)", () => {
+    const wrapped = withMeta({ ok: true }, { deprecated: true });
+    expect(wrapped._meta.deprecated).toBe(true);
+  });
+
+  it("preserves the rest of the _meta envelope alongside the deprecated flag", () => {
+    const wrapped = withMeta({ ok: true }, { deprecated: true });
+    expect(wrapped._meta.version).toEqual(expect.any(String));
+    expect(typeof wrapped._meta.updateAvailable).toBe("boolean");
+  });
+});
+
+/**
+ * The stderr-only deprecation notice: printed once per invocation, never on
+ * stdout, so --json output stays pure JSON while humans still see the notice.
+ */
+describe("printDeprecationNotice", () => {
+  it("writes exactly one line to stderr, never stdout", () => {
+    const stderrWrites: string[] = [];
+    const stdoutWrites: string[] = [];
+    const origErrWrite = process.stderr.write.bind(process.stderr);
+    const origOutWrite = process.stdout.write.bind(process.stdout);
+    process.stderr.write = ((chunk: unknown) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    process.stdout.write = ((chunk: unknown) => {
+      stdoutWrites.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      printDeprecationNotice("validate");
+    } finally {
+      process.stderr.write = origErrWrite;
+      process.stdout.write = origOutWrite;
+    }
+
+    expect(stdoutWrites).toEqual([]);
+    expect(stderrWrites).toHaveLength(1);
+    expect(stderrWrites[0]).toContain("hyperframes validate");
+    expect(stderrWrites[0]).toContain("hyperframes check");
+  });
+});
 
 describe("checkForUpdate — registry boundary guard", () => {
   afterEach(() => {

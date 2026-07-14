@@ -6,7 +6,11 @@
  */
 
 import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import {
+  ensureHfIds,
+  isCompositionTemplate,
+  walkCompositionDescendants,
+} from "@hyperframes/core/hf-ids";
 
 export interface ParsedDocument {
   document: Document;
@@ -62,7 +66,7 @@ export function querySelectorAllDeep(root: Document | Element, selector: string)
   const walk = (parent: Element): void => {
     for (const child of Array.from(parent.children)) {
       if (child.tagName.toLowerCase() === "template") {
-        if (child.getAttribute("data-composition-id") !== null) walk(child);
+        if (isCompositionTemplate(child)) walk(child);
         continue;
       }
       if (child.matches(selector)) out.push(child);
@@ -164,10 +168,25 @@ export function isNewHostBoundary(el: Element): boolean {
   return dcf !== parentDcf;
 }
 
+/**
+ * The element that carries composition-level declarations
+ * (`data-composition-variables`). Full-document comps use `<html>`; a wrapped
+ * template/fragment comp has a synthetic `<html>` that serialize() strips, so
+ * its declarations must live on the composition root div (where values/metadata
+ * already live) to survive save.
+ */
+export function declarationElement(document: Document, wrapped: boolean): Element | null {
+  if (wrapped) return findRoot(document);
+  return (document as Document & { documentElement?: Element }).documentElement ?? null;
+}
+
 export function findRoot(document: Document): Element | null {
   return (
     document.querySelector("[data-hf-root]") ??
     document.getElementById("stage") ??
+    // Descend into a composition <template> so a wrapped template sub-comp
+    // resolves to its inner [data-composition-id] root, not the <template> shell.
+    querySelectorAllDeep(document, "[data-composition-id]")[0] ??
     document.body?.firstElementChild ??
     null
   );
@@ -357,12 +376,28 @@ export function setStyleSheet(document: Document, css: string): void {
 
 // ─── GSAP script helpers ──────────────────────────────────────────────────────
 
+function findScriptElementsDeep(document: Document): Element[] {
+  const scripts: Element[] = [];
+  walkCompositionDescendants(document, (child) => {
+    if (child.tagName.toLowerCase() === "script") scripts.push(child);
+  });
+  return scripts;
+}
+
+function isGsapScriptText(text: string): boolean {
+  return text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger");
+}
+
+export function getGsapScripts(document: Document): string[] {
+  return findScriptElementsDeep(document)
+    .map((script) => script.textContent ?? "")
+    .filter(isGsapScriptText);
+}
+
 function findGsapScriptElement(document: Document): Element | null {
-  const scripts = document.querySelectorAll("script");
-  for (const script of Array.from(scripts)) {
+  for (const script of findScriptElementsDeep(document)) {
     const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("ScrollTrigger"))
-      return script as unknown as Element;
+    if (isGsapScriptText(text)) return script;
   }
   return null;
 }

@@ -50,18 +50,26 @@ const HF_BINARY = join(
   "chrome-headless-shell",
 );
 const SYSTEM_CHROME = "/usr/bin/google-chrome";
+const TEST_LOCK_TIMINGS = {
+  staleMs: 50,
+  pollMs: 5,
+  heartbeatMs: 10,
+  waitNoticeMs: 1_000,
+};
 
 interface FsMockOptions {
   existing: ReadonlySet<string>;
   /** map of dir path -> entries returned by readdirSync */
   dirs?: Record<string, string[]>;
+  touchError?: Error;
+  initialMtimeMs?: number;
 }
 
-function installFsMocks({ existing, dirs }: FsMockOptions) {
+function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
-  const mtimes = new Map([...existing].map((p) => [p, 0]));
+  const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
@@ -96,6 +104,15 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
         throw err;
       }
       return { mtimeMs: mtimes.get(p) ?? 0 };
+    },
+    utimesSync: (p: string, _atime: Date, mtime: Date) => {
+      if (touchError) throw touchError;
+      if (!paths.has(p)) {
+        const err = new Error(`ENOENT: no such file or directory, utimes '${p}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      mtimes.set(p, mtime.getTime());
     },
   }));
   vi.doMock("node:os", () => ({
@@ -158,6 +175,7 @@ describe("findBrowser — cache resolution", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
     Object.defineProperty(process, "arch", { value: origArch, configurable: true });
     vi.restoreAllMocks();
@@ -322,20 +340,30 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("withInstallLock reclaims a lock held past the timeout instead of hanging forever", async () => {
-    // A crashed/killed process could leave the lock directory behind
-    // permanently. Reclaiming after a timeout (rather than hanging or
-    // refusing forever) is the behavior that makes the lock safe to add at
-    // all — otherwise one bad exit wedges every future render. Exercises
-    // withInstallLock directly with tiny real timeouts (it takes an
-    // injectable timeoutMs/pollMs for exactly this) rather than mocking
-    // Date.now()/setTimeout through the full ensureBrowser call graph.
     const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
 
     const { withInstallLock } = await import("./manager.js");
-    const result = await withInstallLock(async () => "done", 10, 5);
+    const result = await withInstallLock(async () => "done", TEST_LOCK_TIMINGS);
 
     expect(result).toBe("done");
     expect(paths.has(HF_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock recovers when a crashed reclaimer leaves both lock directories", async () => {
+    vi.useFakeTimers();
+    const paths = installFsMocks({
+      existing: new Set([CACHE_ROOT, HF_LOCK, HF_RECLAIM_LOCK]),
+    });
+
+    const { withInstallLock } = await import("./manager.js");
+    const acquisition = withInstallLock(async () => "done", TEST_LOCK_TIMINGS);
+    await vi.advanceTimersByTimeAsync(TEST_LOCK_TIMINGS.pollMs * 2);
+
+    await expect(Promise.race([acquisition, Promise.resolve("still waiting")])).resolves.toBe(
+      "done",
+    );
+    expect(paths.has(HF_LOCK)).toBe(false);
+    expect(paths.has(HF_RECLAIM_LOCK)).toBe(false);
   });
 
   it("withInstallLock does not reclaim another waiter's fresh lock after this waiter timed out", async () => {
@@ -346,19 +374,88 @@ describe("findBrowser — cache resolution", () => {
     const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
 
     const { withInstallLock } = await import("./manager.js");
-    const first = withInstallLock(
-      async () => {
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        return "first";
-      },
-      10,
-      5,
-    );
-    const second = withInstallLock(async () => "second", 10, 5);
+    const reclaimOnlyTimings = { ...TEST_LOCK_TIMINGS, heartbeatMs: 1_000 };
+    const first = withInstallLock(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return "first";
+    }, reclaimOnlyTimings);
+    const second = withInstallLock(async () => "second", reclaimOnlyTimings);
 
     await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
     expect(paths.has(HF_LOCK)).toBe(false);
     expect(paths.has(HF_RECLAIM_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock does not let a second caller run concurrently with a slow-but-alive holder", async () => {
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT]) });
+
+    const { withInstallLock } = await import("./manager.js");
+
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const trackConcurrency = async (label: string, durationMs: number) => {
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      concurrent -= 1;
+      return label;
+    };
+
+    const first = withInstallLock(() => trackConcurrency("first", 120), TEST_LOCK_TIMINGS);
+    await new Promise((resolve) => setTimeout(resolve, 5)); // let `first` acquire the lock
+    const second = withInstallLock(() => trackConcurrency("second", 10), TEST_LOCK_TIMINGS);
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
+    expect(maxConcurrent).toBe(1);
+    expect(paths.has(HF_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock reports progress while waiting instead of staying silent", async () => {
+    // Fake timers freeze Date.now() so the lock mtime stays non-stale across
+    // the dynamic import that follows — without them, a slow import beat could
+    // push wall-clock past staleMs before `withInstallLock` even starts polling,
+    // firing the immediate-stale short-circuit and skipping the wait-notice
+    // branch this test exists to observe.
+    vi.useFakeTimers();
+    const paths = installFsMocks({
+      existing: new Set([CACHE_ROOT, HF_LOCK]),
+      initialMtimeMs: Date.now(),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { withInstallLock } = await import("./manager.js");
+    const acquisition = withInstallLock(async () => "done", {
+      ...TEST_LOCK_TIMINGS,
+      waitNoticeMs: 20,
+    });
+
+    // Advance past waitNoticeMs (fires the "Waiting for…" warn), then past
+    // staleMs (lets `reclaimStaleInstallLock` clear the held lock so the
+    // acquisition resolves).
+    await vi.advanceTimersByTimeAsync(TEST_LOCK_TIMINGS.staleMs + TEST_LOCK_TIMINGS.pollMs * 5);
+
+    await expect(acquisition).resolves.toBe("done");
+    expect(paths.has(HF_LOCK)).toBe(false);
+    expect(
+      warnSpy.mock.calls.some(([msg]) =>
+        String(msg).includes("Waiting for another hyperframes process"),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the holder running when a heartbeat cannot touch the lock", async () => {
+    installFsMocks({
+      existing: new Set([CACHE_ROOT]),
+      touchError: Object.assign(new Error("EACCES"), { code: "EACCES" }),
+    });
+
+    const { withInstallLock } = await import("./manager.js");
+    await expect(
+      withInstallLock(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return "done";
+      }, TEST_LOCK_TIMINGS),
+    ).resolves.toBe("done");
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {
@@ -597,5 +694,41 @@ describe("installWithCorruptArchiveRecovery", () => {
     );
     expect(runInstall).toHaveBeenCalledTimes(2);
     expect(clearCache).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Regression guard for HF#2103: `hyperframes render` hung forever on macOS
+// (Apple Silicon) under Node >= 24.16. Root cause was NOT in this file — it was
+// the extractor `@puppeteer/browsers` <3.0.2 shells out to. That chain
+// (`@puppeteer/browsers` -> `extract-zip@2.0.1` -> `yauzl@2.10.0`) hits a
+// classic-stream backpressure regression (nodejs/node#63487) that surfaces a
+// latent fd-slicer `destroy()` bug in yauzl 2.x (yauzl#169): the inflate read
+// stream stalls partway through the first entry large enough to cross the write
+// highWaterMark, never emits `end`, and `stream.pipeline` never settles — so
+// extraction busy-spins forever, leaving a half-extracted cache with no
+// executable (puppeteer/puppeteer#14957).
+//
+// `@puppeteer/browsers` 3.0.2 dropped `extract-zip` as a dependency and now
+// extracts with `modern-tar` by default (`yauzl` lingers only as an optional
+// peer fallback — no longer a runtime dependency), which is the fix. This test
+// fails if a dependency change ever drags the pin back below 3.x — i.e.
+// reintroduces the broken extractor as a hard dependency.
+describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", () => {
+  it("stays on the major (>= 3) that dropped extract-zip and no longer depends on yauzl", async () => {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const pkg = require("@puppeteer/browsers/package.json") as {
+      version: string;
+      dependencies?: Record<string, string>;
+    };
+
+    const major = Number.parseInt(pkg.version.split(".")[0] ?? "0", 10);
+    expect(major).toBeGreaterThanOrEqual(3);
+
+    // Belt and suspenders: the durable fix is the *absence* of the broken
+    // extractor, not just a version number, so assert it directly.
+    const deps = pkg.dependencies ?? {};
+    expect(deps["extract-zip"]).toBeUndefined();
+    expect(deps["yauzl"]).toBeUndefined();
   });
 });
