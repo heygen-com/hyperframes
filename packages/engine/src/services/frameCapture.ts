@@ -230,15 +230,59 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void
     };
     const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
     const urls: string[] = [];
-    const urlPattern = /url\(\s*(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^)'"\s][^)]*?))\s*\)/g;
+    const parseBackgroundUrls = (value: string): string[] => {
+      const found: string[] = [];
+      let cursor = 0;
+
+      while (cursor < value.length) {
+        const start = value.indexOf("url(", cursor);
+        if (start < 0) break;
+
+        let index = start + 4;
+        while (index < value.length && /\s/.test(value[index] ?? "")) index += 1;
+
+        const quote = value[index] === '"' || value[index] === "'" ? value[index] : null;
+        if (quote) index += 1;
+        const contentStart = index;
+        let contentEnd = -1;
+
+        while (index < value.length) {
+          const char = value[index];
+          if (char === "\\") {
+            index = Math.min(index + 2, value.length);
+            continue;
+          }
+          if ((quote && char === quote) || (!quote && char === ")")) {
+            contentEnd = index;
+            break;
+          }
+          index += 1;
+        }
+
+        if (contentEnd < 0) break;
+        if (quote) {
+          index += 1;
+          while (index < value.length && /\s/.test(value[index] ?? "")) index += 1;
+          if (value[index] !== ")") {
+            cursor = index;
+            continue;
+          }
+        }
+
+        const url = value.slice(contentStart, contentEnd).trim();
+        if (url) found.push(url);
+        cursor = index + 1;
+      }
+
+      return found;
+    };
 
     for (const element of document.querySelectorAll<HTMLElement>('[style*="background"]')) {
       const backgroundImage = element.style.backgroundImage;
       if (!backgroundImage || backgroundImage === "none") continue;
 
-      for (const match of backgroundImage.matchAll(urlPattern)) {
-        const url = match[1] ?? match[2] ?? match[3]?.trim();
-        if (url && !decoded.has(url)) urls.push(url);
+      for (const url of parseBackgroundUrls(backgroundImage)) {
+        if (!decoded.has(url)) urls.push(url);
       }
     }
 

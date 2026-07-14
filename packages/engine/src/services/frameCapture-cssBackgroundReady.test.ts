@@ -82,6 +82,18 @@ describe("decodeDynamicCssBackgroundImages", () => {
     expect(decoded).toEqual(["/assets/plate.png", "/assets/grain.webp"]);
   });
 
+  it("rejects malformed quoted URLs without exponential backtracking", async () => {
+    const decoded: string[] = [];
+    const malformed = `url("${"\\!".repeat(27)}`;
+    const page = makeMockPage(() => malformed, decoded);
+    const startedAt = performance.now();
+
+    await decodeDynamicCssBackgroundImages(page);
+
+    expect(performance.now() - startedAt).toBeLessThan(250);
+    expect(decoded).toEqual([]);
+  });
+
   it("retries a URL after a transient decode failure", async () => {
     const decoded: string[] = [];
     let attempts = 0;
