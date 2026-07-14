@@ -33,6 +33,33 @@ test("valid bare template fragment passes the shared frame contract", () => {
   );
 });
 
+test("HTML5 unquoted root attributes are accepted", () => {
+  assert.deepEqual(
+    validateFrameHtml(
+      `<template><div data-composition-id=01-valid data-duration=3></div></template>`,
+      { expectedId: "01-valid", expectedDuration: 3 },
+    ),
+    { compositionId: "01-valid", duration: 3 },
+  );
+});
+
+test("duration accepts decimal seconds but rejects alternate numeric syntaxes", () => {
+  assert.doesNotThrow(() =>
+    validateFrameHtml(
+      `<template><div data-composition-id="01-valid" data-duration="3.25"></div></template>`,
+    ),
+  );
+  for (const duration of ["0x10", "3e2", "Infinity"]) {
+    assert.throws(
+      () =>
+        validateFrameHtml(
+          `<template><div data-composition-id="01-valid" data-duration="${duration}"></div></template>`,
+        ),
+      /positive.*duration/i,
+    );
+  }
+});
+
 test("full HTML is rejected even when it contains a valid inner template", () => {
   const html = `<!doctype html><html><head></head><body>${validFrame()}</body></html>`;
   assert.throws(

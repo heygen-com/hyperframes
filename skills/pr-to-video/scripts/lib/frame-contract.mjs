@@ -3,8 +3,10 @@ function fail(message) {
 }
 
 function attrValue(attrs, name) {
-  const match = attrs.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
-  return match ? (match[1] ?? match[2]) : null;
+  const match = attrs.match(
+    new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`, "i"),
+  );
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
 }
 
 export function validateFrameHtml(html, { expectedId, expectedDuration } = {}) {
@@ -38,8 +40,9 @@ export function validateFrameHtml(html, { expectedId, expectedDuration } = {}) {
   }
 
   const durationRaw = attrValue(attrs, "data-duration");
+  const decimalDuration = /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(durationRaw ?? "");
   const duration = Number(durationRaw);
-  if (!durationRaw || !Number.isFinite(duration) || duration <= 0) {
+  if (!decimalDuration || !Number.isFinite(duration) || duration <= 0) {
     fail("root must declare a positive data-duration");
   }
   // Transition injection may extend an outgoing frame beyond its storyboard duration.
