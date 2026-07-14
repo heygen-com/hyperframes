@@ -112,8 +112,13 @@ const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
 const heygenCred = heygenCredential();
-const headers =
-  heygenCred?.headers || heygenCred?.refreshable ? await heygenAuthHeadersWithRefresh() : null;
+let headers = null;
+try {
+  headers =
+    heygenCred?.headers || heygenCred?.refreshable ? await heygenAuthHeadersWithRefresh() : null;
+} catch (error) {
+  console.error(`· heygen auth: ${error.message} — proceeding without HeyGen`);
+}
 const heygenOK = headers !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────

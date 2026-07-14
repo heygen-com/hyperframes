@@ -25,14 +25,22 @@ test("explicit offline TTS provider bypasses expired HeyGen OAuth", () => {
     writeFileSync(
       join(configDir, "credentials"),
       JSON.stringify({
-        oauth: { access_token: "expired", expires_at: "2000-01-01T00:00:00Z" },
+        oauth: {
+          access_token: "expired",
+          refresh_token: "offline-refresh-token",
+          expires_at: "2000-01-01T00:00:00Z",
+        },
       }),
     );
     writeFileSync(
       requestPath,
       JSON.stringify({ provider: "kokoro", lines: [], bgm: { mode: "none" } }),
     );
-    const env = { ...process.env, HEYGEN_CONFIG_DIR: configDir };
+    const env = {
+      ...process.env,
+      HEYGEN_CONFIG_DIR: configDir,
+      HYPERFRAMES_OAUTH_TOKEN_URL: "http://127.0.0.1:1/token",
+    };
     delete env.HEYGEN_API_KEY;
     delete env.HYPERFRAMES_API_KEY;
     const result = spawnSync(
