@@ -1,52 +1,56 @@
 # Text To Speech
 
-`npx hyperframes tts` auto-detects a provider from env vars; explicit override via `--provider`.
+The shared HyperFrames audio engine (`audio/scripts/audio.mjs`) is the canonical
+surface for cloud TTS providers. It selects the first available provider from
+env vars and lets you override with `provider` in `audio_request.json` or with
+`--provider` when invoking the engine directly.
 
 > **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
 
 ## Provider chain
 
-| Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
-| ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
-| 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
-| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | UUIDs from elevenlabs.io dashboard          | No                                        | mp3 → wav via ffmpeg |
-| 3     | Kokoro-82M        | always (local fallback)                     | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
+The engine picks the first provider whose prerequisites are satisfied. This is
+an **availability selection**, not a retry loop. If a selected provider fails
+during synthesis, the engine reports the error and does not fall back to another
+provider.
+
+| Order | Provider          | Env trigger                                 | Local deps                           | Voice IDs                                   | Word timestamps                           | Audio format         |
+| ----- | ----------------- | ------------------------------------------- | ------------------------------------ | ------------------------------------------- | ----------------------------------------- | -------------------- |
+| 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | none (REST)                          | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
+| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | `pip install elevenlabs`             | UUIDs from elevenlabs.io dashboard          | No                                        | mp3 → wav via ffmpeg |
+| 3     | Cartesia          | `$CARTESIA_API_KEY`                         | `pip install cartesia` (Python 3.9+) | IDs from cartesia.ai voice library          | No                                        | wav direct           |
+| 4     | Kokoro-82M        | always (local fallback)                     | `pip install kokoro-onnx soundfile`  | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
 
 ```bash
-# Auto-detect (HeyGen if key set, else ElevenLabs, else Kokoro)
-npx hyperframes tts "Welcome to HyperFrames" -o narration.wav
+# Shared audio engine — auto-detect (HeyGen if credentialed, then ElevenLabs,
+# then Cartesia, then Kokoro)
+node skills/media-use/audio/scripts/audio.mjs --request ./audio_request.json --out ./audio_meta.json
 
-# Pin the provider explicitly
-npx hyperframes tts "Hello" --provider kokoro
-npx hyperframes tts "Hello" --provider heygen --voice <heygen-uuid>
-npx hyperframes tts "Hello" --provider elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
+# Pin a provider in the request
+# { "provider": "cartesia", "lines": [{"id":"01","text":"Hello"}] }
+node skills/media-use/audio/scripts/audio.mjs --request ./audio_request.json --out ./audio_meta.json
 
-# HeyGen path: capture word timestamps in one call (skips a Whisper pass)
-npx hyperframes tts "Hi there" --words narration.words.json
+# Or override on the command line
+node skills/media-use/audio/scripts/audio.mjs --request ./audio_request.json --provider cartesia --out ./audio_meta.json
 ```
 
-## Self-contained HeyGen (no CLI) — `scripts/heygen-tts.mjs`
+The local `npx hyperframes tts` command is **Kokoro only**. It does not accept
+`--provider heygen`, `--provider elevenlabs`, or `--provider cartesia`. Use the
+shared audio engine or the standalone scripts below for cloud providers.
 
-The published `hyperframes tts` CLI synthesizes locally with Kokoro only. When you
-want HeyGen specifically — best quality **plus** word timestamps in one call — use
-the skill's bundled script, which calls the HeyGen v3 REST API directly and needs
-no CLI provider plumbing:
+## Self-contained cloud scripts (no CLI provider plumbing)
 
-The script resolves a HeyGen credential the same way the CLI does — first source
-wins: `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a project `.env` (auto-loaded,
-walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
-`$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
-`Authorization: Bearer`; an API key as `X-Api-Key`; both include
-`X-HeyGen-Source: cli`. OAuth CLI users can consume the web-plan free allowance
-(10 min/month) before paid usage; API keys follow normal API billing. If the
-only credential is an expired OAuth token it stops with a hint to run
-`npx hyperframes auth refresh`.
+These bundled scripts call the provider REST/Python SDK directly and need no
+`hyperframes tts` provider plumbing.
+
+### HeyGen — `scripts/heygen-tts.mjs`
+
+Best quality **plus** word timestamps in one call:
 
 ```bash
 # Only needed if you haven't run `npx hyperframes auth login`:
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
-# Synthesize + capture word timestamps in one call (skips a Whisper pass)
 node skills/media-use/audio/scripts/heygen-tts.mjs \
   "Welcome to HyperFrames." -o narration.wav --words narration.words.json
 
@@ -59,18 +63,57 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 - **Words:** `--words <path>` writes the flat `[{id,text,start,end}]` shape below, drop-in for the captions pipeline. HeyGen's `<start>`/`<end>` boundary sentinels are filtered out and ids are re-contiguous.
 - **Non-English:** `--lang <code>` (anything but `en`) is sent as the request `language`.
 
+### Cartesia
+
+Cartesia is invoked through the shared audio engine, not through `npx hyperframes tts`.
+
+Prerequisites:
+
+```bash
+export CARTESIA_API_KEY=...
+pip install cartesia   # Python 3.9+
+```
+
+Default settings when `provider` is `cartesia` and no `voice` is supplied:
+
+- Voice: **Skylar** (`db6b0ed5-d5d3-463d-ae85-518a07d3c2b4`)
+- Model: `sonic-3.5`
+- API version: `2026-03-01`
+- Output: WAV, 44.1 kHz, mono, `pcm_s16le` (direct from the SDK, no ffmpeg transcode)
+
+In `audio_request.json`:
+
+```json
+{
+  "provider": "cartesia",
+  "lang": "en",
+  "speed": 1.0,
+  "lines": [{ "id": "01", "text": "Welcome to HyperFrames." }]
+}
+```
+
+- `voice` overrides Skylar with any Cartesia voice ID.
+- `lang` is normalized to a base language code before it reaches the SDK (for example, `en-us` and `en-gb` become `en`, `fr-fr` becomes `fr`).
+- `speed` is passed through `generation_config.speed` and accepts the provider's supported range.
+
 ## When to use which provider
 
 | Goal                                                      | Use                                                 |
 | --------------------------------------------------------- | --------------------------------------------------- |
 | Best voice quality + word timestamps in one call          | **HeyGen**                                          |
 | Drop-in cloud TTS, big voice catalog                      | **ElevenLabs**                                      |
+| Fast direct WAV, low-latency cloud synthesis              | **Cartesia**                                        |
 | Offline, no API key, fast iteration                       | **Kokoro**                                          |
 | Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …) |
 
 ## ffmpeg requirement
 
-HeyGen + ElevenLabs return mp3. The CLI transcodes to wav when `--output` ends in `.wav` (the default and what downstream `ffprobe` + Whisper expect). If you'd rather skip the transcode, pass `-o file.mp3`. Without `ffmpeg` on PATH, `.wav` output from the cloud providers fails — install ffmpeg or use `.mp3`.
+HeyGen + ElevenLabs return mp3. The engine transcodes to wav when the requested
+output ends in `.wav` (the default and what downstream `ffprobe` + Whisper
+expect). Cartesia and Kokoro already return wav directly, so no transcode step
+is needed for those providers. If you'd rather skip the transcode for HeyGen or
+ElevenLabs, request `.mp3`. Without `ffmpeg` on PATH, `.wav` output from HeyGen
+or ElevenLabs fails — install ffmpeg or use `.mp3`.
 
 ## Voice selection (Kokoro)
 
@@ -103,8 +146,8 @@ The first letter of a Kokoro voice ID picks the phonemizer language; `--lang` ov
 | `z`    | Mandarin             |
 
 ```bash
-npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --provider kokoro
-npx hyperframes tts "Today is a nice day" --voice af_heart --provider kokoro
+npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora
+npx hyperframes tts "Today is a nice day" --voice af_heart
 ```
 
 Valid `--lang` codes (only needed to override the voice's auto-detected language): `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`.
@@ -118,7 +161,7 @@ Non-English phonemization requires `espeak-ng` system-wide (`brew install espeak
 - `1.1-1.2` — intros, transitions, upbeat content
 - `1.5+` — rarely appropriate, test carefully
 
-Honored by Kokoro + HeyGen; ElevenLabs ignores `--speed` (use voice settings on their dashboard).
+Honored by HeyGen, Cartesia, and Kokoro. ElevenLabs ignores `--speed` (use voice settings on their dashboard).
 
 ## Long scripts
 
@@ -135,4 +178,4 @@ When `--words <path>` is passed to a HeyGen call, the file is written in the sam
 ]
 ```
 
-For ElevenLabs / Kokoro, run `npx hyperframes transcribe narration.wav --model small.en` to get the same shape.
+For ElevenLabs, Cartesia, and Kokoro, run `npx hyperframes transcribe narration.wav --model small.en` to get the same shape.

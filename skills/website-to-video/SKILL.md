@@ -82,7 +82,7 @@ Write the storyboard concept-first: message → narrative arc → beats that ser
 
 **Read:** [references/step-4-vo.md](references/step-4-vo.md)
 
-If Step 2 said no narration — ask about background music, then skip to Step 5. Otherwise: ask the user which TTS provider (HeyGen TTS, ElevenLabs, or Kokoro), generate audio, transcribe, map timestamps to beats. Then ask about captions.
+If Step 2 said no narration — ask about background music, then skip to Step 5. Otherwise: ask the user which TTS provider (HeyGen TTS, ElevenLabs, Cartesia, or Kokoro), generate audio, transcribe, map timestamps to beats. Then ask about captions.
 
 **Gate:** Either (a) no narration was requested and storyboard has manual beat timings, or (b) `narration.wav` + `transcript.json` exist and beat timings updated with real durations.
 

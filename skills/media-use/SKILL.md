@@ -348,12 +348,18 @@ shot), use the shared engine at `audio/scripts/audio.mjs`. It takes a neutral
 node <SKILL_DIR>/audio/scripts/audio.mjs --request ./audio_request.json --out ./audio_meta.json
 ```
 
-- **Request** `{ provider?, lang?, speed?, lines: [{ id, text, sfx?: [names] }], bgm: { mode?, query?, prompt? } }`: `id` joins each line back to your model; `bgm.mode` = `retrieve | generate | none` (omit for auto). `--only tts,bgm,sfx` runs a subset and merges into an existing `--out`.
+- **Request** `{ provider?, lang?, speed?, lines: [{ id, text, sfx?: [names] }], bgm: { mode?, query?, prompt? } }`: `id` joins each line back to your model; `bgm.mode` = `retrieve | generate | none` (omit for auto). `provider` pins TTS to one of `heygen`, `elevenlabs`, `cartesia`, or `kokoro` (omit to follow the automatic chain below). `--only tts,bgm,sfx` runs a subset and merges into an existing `--out`.
 - **Output** `audio_meta.json` (id-keyed): `voices[].{path,duration_s,words[]}` (word timestamps for captions), `sfx[]`, `bgm`, `total_duration_s`.
-- **HeyGen free-usage path**: HeyGen CLI auth unlocks TTS plus music/SFX retrieval. Local/provider-specific generators are explicit alternatives where installed; run `node <SKILL_DIR>/scripts/resolve.mjs --doctor` before assuming retrieval or TTS will work.
+- **TTS provider chain** (automatic availability order): `heygen` -> `elevenlabs` -> `cartesia` -> `kokoro`. The engine uses the first provider whose credentials are present and returns a valid file.
+  - **HeyGen**: best quality plus word timestamps in one call. Requires HeyGen OAuth login or API key.
+  - **ElevenLabs**: drop-in cloud TTS with a large voice catalog. Requires `$ELEVENLABS_API_KEY` and the Python SDK (`pip install elevenlabs`).
+  - **Cartesia**: drop-in cloud TTS. Requires `$CARTESIA_API_KEY` and the Python SDK (`pip install cartesia`).
+  - **Kokoro**: local, offline, no API key. Bundled with `npx hyperframes`; used when no cloud provider is ready.
+- **BGM/SFX**: HeyGen catalog retrieval when authenticated; otherwise generation or bundled SFX per `bgm.mode`. Run `node <SKILL_DIR>/scripts/resolve.mjs --doctor` to check local dependencies.
+- **Not the resolver**: `resolve --type voice` and the resolver provider table above are HeyGen -> Kokoro only. The shared audio engine is a separate surface with its own provider chain.
 - If BGM took the generate path (`bgm_pending: true`), run `audio/scripts/wait-bgm.mjs` before final render.
 
-Single-shot helpers: `audio/scripts/heygen-tts.mjs` (one voice file). Transcription / background removal / captions use the `hyperframes` CLI (`transcribe`, `remove-background`), see the per-topic guides in `audio/references/` (`tts.md`, `bgm.md`, `sfx.md`, `transcribe.md`, `remove-background.md`, `captions/`).
+Single-shot helpers and provider-specific voice IDs, speed behavior, and timestamp details are in the canonical TTS reference: `audio/references/tts.md`. Transcription / background removal / captions use the `hyperframes` CLI (`transcribe`, `remove-background`), see the other per-topic guides in `audio/references/` (`bgm.md`, `sfx.md`, `transcribe.md`, `remove-background.md`, `captions/`).
 
 ## Operating on media (cut, reframe, transform)
 

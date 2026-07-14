@@ -7,7 +7,9 @@
 //        in the same call, so no separate transcribe pass.
 //   2. ElevenLabs         — $ELEVENLABS_API_KEY + `pip install elevenlabs`. No
 //        word timings → caller chains transcribeWav().
-//   3. Kokoro-82M (local) — always available, via the published `hyperframes tts`
+//   3. Cartesia           — $CARTESIA_API_KEY + `pip install cartesia`. No word
+//        timings → caller chains transcribeWav().
+//   4. Kokoro-82M (local) — always available, via the published `hyperframes tts`
 //        CLI. No word timings → caller chains transcribeWav().
 //
 // "HeyGen available" is decided by CREDENTIAL presence (heygenCredential), never
@@ -19,6 +21,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
+
+const CARTESIA_PROVIDER = "cartesia";
+const CARTESIA_API_KEY_ENV = "CARTESIA_API_KEY";
+const CARTESIA_MODEL = "sonic-3.5";
+const CARTESIA_VERSION = "2026-03-01";
+const CARTESIA_DEFAULT_VOICE = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
+const CARTESIA_CONTAINER = "wav";
+const CARTESIA_ENCODING = "pcm_s16le";
+const CARTESIA_SAMPLE_RATE = 44100;
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
@@ -32,30 +43,49 @@ export function elevenlabsAvailable() {
   });
   return r.status === 0;
 }
+export function cartesiaAvailable(spawnSyncFn = spawnSync, invokePython = pythonInvocation) {
+  if (!process.env[CARTESIA_API_KEY_ENV]) return false;
+  const { cmd, args } = invokePython(["-c", "import cartesia"]);
+  const r = spawnSyncFn(cmd, args, {
+    stdio: "ignore",
+  });
+  return r.status === 0;
+}
 
 // First available provider wins; an explicit choice is honored (and validated).
-export function pickProvider(userProvider) {
+export function pickProvider(userProvider, deps = {}) {
+  const hasHeygen = deps.heygenAvailable ?? heygenAvailable;
+  const hasElevenlabs = deps.elevenlabsAvailable ?? elevenlabsAvailable;
+  const hasCartesia = deps.cartesiaAvailable ?? cartesiaAvailable;
   if (userProvider) {
-    if (!["heygen", "elevenlabs", "kokoro"].includes(userProvider))
-      throw new Error(`invalid provider "${userProvider}" (heygen | elevenlabs | kokoro)`);
+    if (!["heygen", "elevenlabs", CARTESIA_PROVIDER, "kokoro"].includes(userProvider))
+      throw new Error(
+        `invalid provider "${userProvider}" (heygen | elevenlabs | cartesia | kokoro)`,
+      );
     if (userProvider === "heygen" && !heygenAvailable())
       throw new Error(
         "provider=heygen but no HeyGen credentials (set $HEYGEN_API_KEY or run `npx hyperframes auth login`)",
       );
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
+    if (userProvider === CARTESIA_PROVIDER && !process.env[CARTESIA_API_KEY_ENV])
+      throw new Error("provider=cartesia but $CARTESIA_API_KEY is not set");
     return userProvider;
   }
-  return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
+  if (hasHeygen()) return "heygen";
+  if (hasElevenlabs()) return "elevenlabs";
+  if (hasCartesia()) return CARTESIA_PROVIDER;
+  return "kokoro";
 }
 
 // ── voice resolution ──────────────────────────────────────────────────────────
 // HeyGen /v3/voices/speech only accepts STARFISH voice_ids; auto-pick the first
-// English public starfish voice when none is pinned. ElevenLabs/Kokoro have
+// English public starfish voice when none is pinned. ElevenLabs/Cartesia/Kokoro have
 // their own defaults.
 export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (userVoice) return userVoice;
   if (provider === "elevenlabs") return "21m00Tcm4TlvDq8ikWAM"; // Rachel
+  if (provider === CARTESIA_PROVIDER) return CARTESIA_DEFAULT_VOICE; // Skylar
   if (provider === "kokoro") {
     if (lang === "en") return "am_michael";
     throw new Error("Kokoro non-English needs an explicit --voice (see references/tts.md)");
@@ -236,20 +266,37 @@ audio = client.text_to_speech.convert(
 save(audio, sys.argv[3])
 `;
 
+const CARTESIA_PY = `
+import os, sys
+from cartesia import Cartesia
+with Cartesia(
+    api_key=os.environ["CARTESIA_API_KEY"],
+    default_headers={"Cartesia-Version": sys.argv[2]},
+) as client:
+    response = client.tts.generate(
+        transcript=open(sys.argv[1]).read(),
+        model_id=sys.argv[3],
+        voice={"mode": "id", "id": sys.argv[4]},
+        language=sys.argv[5],
+        output_format={
+            "container": sys.argv[6],
+            "encoding": sys.argv[7],
+            "sample_rate": int(sys.argv[8]),
+        },
+        generation_config={"speed": float(sys.argv[9])},
+    )
+    response.write_to_file(sys.argv[10])
+`;
+
 // ── synthesize one line ───────────────────────────────────────────────────────
 // Writes wav at wavAbs. Returns { ok, words, error } — words is the raw
-// [{text,start,end}] array for HeyGen (native), or null for ElevenLabs/Kokoro
+// [{text,start,end}] array for HeyGen (native), or null for ElevenLabs/Cartesia/Kokoro
 // (caller must transcribeWav). Never throws; failures return { ok:false, error }
 // where `error` states WHY (so the caller can surface it, not a bare "TTS failed").
-export async function synthesizeOne({
-  provider,
-  text,
-  voiceId,
-  lang = "en",
-  speed = 1.0,
-  wavAbs,
-  hyperframesDir,
-}) {
+export async function synthesizeOne(
+  { provider, text, voiceId, lang = "en", speed = 1.0, wavAbs, hyperframesDir },
+  deps = {},
+) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
   if (provider === "elevenlabs") {
     // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
@@ -274,12 +321,48 @@ export async function synthesizeOne({
     const r = await spawnP(cmd, args, {});
     return synthResult(r, wavAbs, "elevenlabs (python)");
   }
+  if (provider === CARTESIA_PROVIDER) {
+    return synthesizeCartesia({ text, voiceId, lang, speed, wavAbs }, deps.cartesia);
+  }
   // kokoro — via the published CLI; --output is relative to the project dir.
   const wavRel = relTo(hyperframesDir, wavAbs);
   const args = ["hyperframes", "tts", writeTmpText(text), "--voice", voiceId, "--output", wavRel];
   if (lang !== "en") args.push("--lang", lang);
   const r = await spawnP("npx", args, { cwd: hyperframesDir });
   return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
+}
+
+export async function synthesizeCartesia({ text, voiceId, lang, speed, wavAbs }, deps = {}) {
+  const makeDirectory = deps.mkdirSync ?? mkdirSync;
+  try {
+    makeDirectory(dirname(wavAbs), { recursive: true });
+  } catch (error) {
+    const message = error?.message ? String(error.message) : String(error);
+    return {
+      ok: false,
+      words: null,
+      error: `cartesia (python): failed to create output directory (${message})`,
+    };
+  }
+  const invokePython = deps.pythonInvocation ?? pythonInvocation;
+  const runSpawn = deps.spawnP ?? spawnP;
+  const language = String(lang).trim().toLowerCase().split(/[-_]/)[0];
+  const { cmd, args } = invokePython([
+    "-c",
+    CARTESIA_PY,
+    writeTmpText(text),
+    CARTESIA_VERSION,
+    CARTESIA_MODEL,
+    voiceId,
+    language,
+    CARTESIA_CONTAINER,
+    CARTESIA_ENCODING,
+    String(CARTESIA_SAMPLE_RATE),
+    String(speed),
+    wavAbs,
+  ]);
+  const r = await runSpawn(cmd, args, {});
+  return synthResult(r, wavAbs, "cartesia (python)");
 }
 
 // Shape a spawn result into { ok, words, error }, naming why on failure so the
@@ -343,7 +426,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
   }
 }
 
-// ElevenLabs/Kokoro have no word timings — run Whisper over the wav. Returns the
+// ElevenLabs/Cartesia/Kokoro have no word timings — run Whisper over the wav. Returns the
 // flat [{id,text,start,end}] word array, or null. Each call uses a throwaway
 // --dir so parallel scenes don't collide on transcript.json.
 export async function transcribeWav({ wavRel, lang = "en", hyperframesDir }) {

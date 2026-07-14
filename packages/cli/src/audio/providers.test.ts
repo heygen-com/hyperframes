@@ -1,27 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { decideMusic, decideVoice, KOKORO_PIP, MUSICGEN_PIP } from "./providers.js";
 
-describe("decideVoice — mirrors the skill's heygen → elevenlabs → kokoro order", () => {
+describe("decideVoice — mirrors the skill's heygen → elevenlabs → cartesia → kokoro order", () => {
   it("prefers HeyGen when configured", () => {
-    const r = decideVoice({ hasHeygen: true, elevenlabs: true, kokoro: true });
+    const r = decideVoice({ hasHeygen: true, elevenlabs: true, cartesia: true, kokoro: true });
     expect(r.engine).toBe("heygen");
     expect(r.ready).toBe(true);
   });
 
-  it("falls to ElevenLabs only when key + module are both present", () => {
-    expect(decideVoice({ hasHeygen: false, elevenlabs: true, kokoro: true }).engine).toBe(
-      "elevenlabs",
-    );
+  it("prefers ElevenLabs over ready Cartesia and Kokoro", () => {
+    const r = decideVoice({ hasHeygen: false, elevenlabs: true, cartesia: true, kokoro: true });
+    expect(r.engine).toBe("elevenlabs");
   });
 
-  it("falls to Kokoro when no cloud provider is usable", () => {
-    expect(decideVoice({ hasHeygen: false, elevenlabs: false, kokoro: true }).engine).toBe(
-      "kokoro",
-    );
+  it("falls to ready Cartesia before Kokoro", () => {
+    const r = decideVoice({ hasHeygen: false, elevenlabs: false, cartesia: true, kokoro: true });
+    expect(r).toEqual({ engine: "cartesia", label: "Cartesia", local: false, ready: true });
   });
 
-  it("flags Kokoro as not-ready with a pip hint when deps are missing", () => {
-    const r = decideVoice({ hasHeygen: false, elevenlabs: false, kokoro: false });
+  it("falls to ready Kokoro when no cloud provider is usable", () => {
+    const r = decideVoice({ hasHeygen: false, elevenlabs: false, cartesia: false, kokoro: true });
+    expect(r.engine).toBe("kokoro");
+    expect(r.ready).toBe(true);
+  });
+
+  it("flags Kokoro as not-ready with a pip hint when all providers are unavailable", () => {
+    const r = decideVoice({
+      hasHeygen: false,
+      elevenlabs: false,
+      cartesia: false,
+      kokoro: false,
+    });
     expect(r.engine).toBe("kokoro");
     expect(r.ready).toBe(false);
     expect(r.setupHint).toBe(KOKORO_PIP);
@@ -29,7 +38,7 @@ describe("decideVoice — mirrors the skill's heygen → elevenlabs → kokoro o
 
   it("omits the hint when Kokoro is ready", () => {
     expect(
-      decideVoice({ hasHeygen: false, elevenlabs: false, kokoro: true }).setupHint,
+      decideVoice({ hasHeygen: false, elevenlabs: false, cartesia: false, kokoro: true }).setupHint,
     ).toBeUndefined();
   });
 });

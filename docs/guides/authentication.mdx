@@ -3,7 +3,7 @@ title: Authentication & API keys
 description: "Sign in to HeyGen, and how the keys for voice, music, and capture resolve across the CLI and skills — including the priority order and the fully local fallback."
 ---
 
-HyperFrames uses a HeyGen credential for premium voiceover (TTS) and the music / sound-effects library. Other providers are optional, and **everything runs without any key** — voice and music fall back to fully local engines. This page covers signing in, the keys each capability uses, and the order they resolve.
+HyperFrames uses a HeyGen credential for premium voiceover (TTS) and the music / sound-effects library. Other providers are optional, and **everything runs without any key** — voice and music fall back to fully local engines. This page covers signing in, the keys each capability uses, and the provider order for each surface.
 
 ## Sign in
 
@@ -24,6 +24,7 @@ Signing in is the same OAuth step as creating an account — new users land on t
     npx hyperframes auth login --api-key            # hidden-input prompt
     echo "$HEYGEN_API_KEY" | npx hyperframes auth login --api-key   # from stdin
     ```
+
   </Step>
   <Step title="Confirm what's configured">
     ```bash
@@ -31,13 +32,15 @@ Signing in is the same OAuth step as creating an account — new users land on t
     ```
 
     Shows the active credential's source and verified identity, and — when you're signed out — which local engines voice and music will use. Add `--json` for `{ configured, recommended_action, offline_engines }` in scripts.
+
   </Step>
 </Steps>
 
 The credential lives in `~/.heygen/credentials` (mode `0600`) — no per-repo `.env` to manage. Browser OAuth is a `hyperframes auth login` feature. The separate [`heygen` CLI](https://github.com/heygen-com/heygen-cli) (its own install — there's no `npx heygen`) is API-key-only, so `heygen auth login` just stores a key you paste. Both read the same `~/.heygen/credentials`, so signing in with one carries to the other.
 
 <Tip>
-  No account needed to try HyperFrames. With no credential, voice uses **Kokoro** and music uses **MusicGen**, both fully local and offline — see [Working offline](#working-offline).
+  No account needed to try HyperFrames. With no credential, voice uses **Kokoro** and music uses
+  **MusicGen**, both fully local and offline — see [Working offline](#working-offline).
 </Tip>
 
 ## How credentials resolve
@@ -52,14 +55,20 @@ Point at a different config directory with `HEYGEN_CONFIG_DIR`, or a different b
 
 ## Keys by capability
 
-Each capability picks the **first available provider** in order; the last is always a local engine that needs no key. Cloud providers below the HeyGen line need their own key *and* a local Python dependency.
+Each capability below picks the **first available provider** in order; the last is always a local engine that needs no key. Cloud providers below the HeyGen line need their own key _and_ a local Python dependency. Voice provider chains are surface-specific, so the table names the shared audio engine explicitly.
 
-| Capability | Provider order | Key(s) — first match wins | Local dependency |
-|------------|----------------|---------------------------|------------------|
-| **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
-| **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
-| **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
-| **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | — (optional; for [website-to-video](/guides/website-to-video)) |
+| Capability                                       | Provider order                          | Key(s) — first match wins                                                                                    | Local dependency                                                               |
+| ------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| **Shared `/media-use` audio engine voice (TTS)** | HeyGen → ElevenLabs → Cartesia → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` · then `CARTESIA_API_KEY` | Cartesia: `pip install cartesia` · Kokoro: `pip install kokoro-onnx soundfile` |
+| **Music (BGM)**                                  | HeyGen library → Lyria → MusicGen       | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY`                                         | MusicGen: `pip install transformers torch soundfile numpy`                     |
+| **Sound effects**                                | HeyGen library → bundled library        | HeyGen credential (above)                                                                                    | bundled — no deps                                                              |
+| **Capture descriptions**                         | OpenRouter → Gemini                     | `OPENROUTER_API_KEY` → `GEMINI_API_KEY`                                                                      | — (optional; for [website-to-video](/guides/website-to-video))                 |
+
+Voice has three distinct provider surfaces:
+
+- The shared `/media-use` audio engine uses **HeyGen → ElevenLabs → Cartesia → Kokoro**.
+- Direct `npx hyperframes tts` is **Kokoro-only**; the four-provider chain does not apply to that command.
+- `/media-use` `resolve --type voice` uses **HeyGen → Kokoro**; it does not select ElevenLabs or Cartesia.
 
 Run `npx hyperframes doctor` to check which local dependencies are installed. The media skills also run `hyperframes auth status` as a preflight before generating, so you always know whether a run will use HeyGen or a local engine before it starts.
 
@@ -75,14 +84,15 @@ Local engines are free and offline; HeyGen gives higher-quality voices and a pro
 
 ## Environment variables
 
-| Variable | Used for |
-|----------|----------|
-| `HEYGEN_API_KEY` | HeyGen credential — voice + music/SFX retrieval. Highest priority. |
-| `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`. |
-| `HEYGEN_API_URL` | API base URL (default `https://api.heygen.com`). |
-| `HEYGEN_CONFIG_DIR` | Credentials directory (default `~/.heygen`). |
-| `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Lyria music generation (and capture descriptions). |
-| `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step. |
+| Variable                            | Used for                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `HEYGEN_API_KEY`                    | HeyGen credential — voice + music/SFX retrieval. Highest priority.                                      |
+| `HYPERFRAMES_API_KEY`               | Alias for `HEYGEN_API_KEY`.                                                                             |
+| `HEYGEN_API_URL`                    | API base URL (default `https://api.heygen.com`).                                                        |
+| `HEYGEN_CONFIG_DIR`                 | Credentials directory (default `~/.heygen`).                                                            |
+| `ELEVENLABS_API_KEY`                | ElevenLabs TTS, used when no HeyGen credential is present.                                              |
+| `CARTESIA_API_KEY`                  | Cartesia TTS, used when no HeyGen or ElevenLabs credential is present. Requires `pip install cartesia`. |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Lyria music generation (and capture descriptions).                                                      |
+| `OPENROUTER_API_KEY`                | Capture descriptions; takes priority over Gemini for that step.                                         |
 
 See the [`hyperframes auth`](/packages/cli#hyperframes-auth) command reference for subcommand details, and [Cloud rendering](/deploy/cloud) for using the same credential to render in HeyGen's cloud.

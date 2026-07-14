@@ -114,11 +114,12 @@ This maps the skill's full surface (see the `description`) to its references —
 
 ### Audio: one engine (TTS · BGM · SFX)
 
-Only when the piece calls for it (per "build exactly what was asked" — no ambient music on a title card). Don't hand-roll TTS or vendor a copy: write a neutral `audio_request.json` and call the shared engine in `media-use`. It auto-degrades on one switch — HeyGen credential present → HeyGen TTS + music/SFX **retrieval**; absent → ElevenLabs/Kokoro TTS, Lyria/MusicGen BGM **generation**, and the bundled SFX library. Full flag list + request/meta schema: the header comment of `media-use/audio/scripts/audio.mjs`.
+Only when the piece calls for it (per "build exactly what was asked"; no ambient music on a title card). Don't hand-roll TTS or vendor a copy: write a neutral `audio_request.json` and call the shared engine in `media-use`. The engine chooses a TTS provider in this order: **HeyGen -> ElevenLabs -> Cartesia -> Kokoro**. HeyGen is preferred when credentialed because it retrieves music/SFX and returns word timestamps in one call; otherwise the engine falls through to ElevenLabs, Cartesia, or the local Kokoro fallback. Full flag list + request/meta schema: the header comment of `media-use/audio/scripts/audio.mjs`.
 
 ```jsonc
 // audio_request.json — one line per narrated segment; `id` is yours (joins audio_meta back)
 {
+  "provider": "cartesia", // optional: heygen | elevenlabs | cartesia | kokoro
   "lines": [
     { "id": "s1", "text": "Your opening line.", "sfx": ["whoosh"] },
     { "id": "s2", "text": "The next beat." },
@@ -132,7 +133,7 @@ Only when the piece calls for it (per "build exactly what was asked" — no ambi
 node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
 ```
 
-Then read `audio_meta.json`: mount each `voices[].path` + (`bgm.path`, `sfx[]`) as `<audio>` tracks and use `voices[].words` for captions, all per `hyperframes-core` (audio tracks + caption authoring). If BGM took the generate path (`bgm_pending: true`), run `media-use/audio/scripts/wait-bgm.mjs` before final render.
+Provider prerequisites and voice-specific details live in `media-use/audio/references/tts.md` (read it before overriding `provider` or picking a voice). Then read `audio_meta.json`: mount each `voices[].path` + (`bgm.path`, `sfx[]`) as `<audio>` tracks and use `voices[].words` for captions, all per `hyperframes-core` (audio tracks + caption authoring). If BGM took the generate path (`bgm_pending: true`), run `media-use/audio/scripts/wait-bgm.mjs` before final render.
 
 ## Output checklist → `hyperframes-cli`
 
