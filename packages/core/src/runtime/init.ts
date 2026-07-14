@@ -1218,6 +1218,13 @@ export function initSandboxRuntimeModular(): void {
   let childrenBound = false;
   // fallow-ignore-next-line complexity
   const bindRootTimelineIfAvailable = (): boolean => {
+    // Custom eases (hold/spring/wiggle/custom) must be registered in GSAP's
+    // internal ease map BEFORE this function's prime render (progress/totalTime
+    // below), or a keyframe segment using one resolves to a non-function ease
+    // and GSAP throws "_ease is not a function" at render. The one-shot call in
+    // init runs early, but if GSAP wasn't ready then (load-order race) it's a
+    // no-op with no retry — so re-assert here, at the render site. Idempotent.
+    ensureStudioCustomEase();
     if (!externalCompositionsReady) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
