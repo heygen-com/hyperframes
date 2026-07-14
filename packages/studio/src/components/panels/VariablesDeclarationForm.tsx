@@ -308,7 +308,7 @@ export function DeclarationForm({
           onClick={onCancel}
           className="h-6 rounded px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
         >
-          Cancel
+          {t("assetsTab.cancel")}
         </button>
         <button
           type="button"
