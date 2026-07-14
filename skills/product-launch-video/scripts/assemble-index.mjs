@@ -193,12 +193,11 @@ function approvedVideoLayout(attrs) {
     names.map((name) => [name, attrValueFrom(attrs, `data-frame-video-${name}`)]),
   );
   const rawFit = attrValueFrom(attrs, "data-frame-video-fit");
-  const hasLayout = names.some((name) => raw[name] !== null) || rawFit !== null;
-  if (!hasLayout) return { style: null, error: null };
-
   const values = Object.fromEntries(names.map((name) => [name, Number(raw[name])]));
   if (
-    names.some((name) => raw[name] === null || !Number.isFinite(values[name])) ||
+    names.some(
+      (name) => raw[name] === null || raw[name].trim() === "" || !Number.isFinite(values[name]),
+    ) ||
     values.width <= 0 ||
     values.height <= 0
   ) {

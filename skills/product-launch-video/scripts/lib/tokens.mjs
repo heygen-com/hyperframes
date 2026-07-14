@@ -48,10 +48,11 @@ export const UA_DEFAULT_COLORS = new Set(
   ["#0000EE", "#0000FF", "#0000CC", "#1A0DAB", "#551A8B", "#EE0000"].map((c) => c.toUpperCase()),
 );
 
+export const ICON_FONT_PATTERN =
+  /(?:^|[\s_-])icons?(?:[\s_-]|$)|icomoon|font\s*-?awesome|glyphicons?|material\s*icons|feather\s*icons|(?:icon|glyph).*font|font.*(?:icon|glyph)|^vidaxlfont$/i;
+
 export function isIconFont(name) {
-  return /(?:^|[\s_-])icons?(?:[\s_-]|$)|icomoon|font\s*-?awesome|glyphicons?|material\s*icons|feather\s*icons|(?:icon|glyph).*font|font.*(?:icon|glyph)|font$/i.test(
-    String(name),
-  );
+  return ICON_FONT_PATTERN.test(String(name));
 }
 
 // Semantic STATUS roles (green "positive", red "negative"/"error", amber "warning" …). Their HUE
