@@ -390,10 +390,13 @@ async function mountCompositionContent(params: {
 
   if (params.headLinks) {
     for (const link of params.headLinks) {
-      const href = link.getAttribute("href") || "";
+      const rawHref = link.getAttribute("href") || "";
+      const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
       if (!href) continue;
       if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
-      document.head.appendChild(link.cloneNode(true));
+      const clonedLink = link.cloneNode(true) as HTMLLinkElement;
+      clonedLink.href = href;
+      document.head.appendChild(clonedLink);
     }
   }
 
@@ -677,13 +680,11 @@ export async function loadExternalCompositions(
         const headScripts = !template
           ? Array.from(doc.head.querySelectorAll<HTMLScriptElement>("script"))
           : undefined;
-        const headLinks = !template
-          ? Array.from(
-              doc.head.querySelectorAll<HTMLLinkElement>(
-                'link[rel="stylesheet"], link[rel="preconnect"]',
-              ),
-            )
-          : undefined;
+        const headLinks = Array.from(
+          doc.head.querySelectorAll<HTMLLinkElement>(
+            'link[rel="stylesheet"], link[rel="preconnect"]',
+          ),
+        );
         await mountCompositionContent({
           host,
           authoredCompositionId,
