@@ -150,6 +150,21 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     `);
   });
 
+  it("keeps one outer object proxy stable across helper calls", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      const driver = { value: 0 };
+      function animateDriver(at) {
+        tl.to(driver, { value: 1, duration: 1 }, at);
+      }
+      animateDriver(0);
+      animateDriver(0.5);
+    `);
+
+    expect(animations[0]?.targetIdentity).toBeDefined();
+    expect(animations[1]?.targetIdentity).toBe(animations[0]?.targetIdentity);
+  });
+
   it("keeps parameter DOM target assignments visible outside nested blocks", () => {
     const { animations } = parseGsapScriptAcorn(`
       const tl = gsap.timeline();

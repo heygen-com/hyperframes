@@ -1337,9 +1337,11 @@ function tweenCallToAnimation(
           declaration?.node.init?.type === "ObjectExpression" &&
           !identifierBindings.reassignedDeclarations.has(declaration.node)
         ) {
+          const declarationProvenance = readProvenance(declaration.scopeNode);
           const instanceIdentity =
-            provenance && (provenance.kind === "helper" || provenance.kind === "loop")
-              ? `:${provenance.kind}:${provenance.callSite ?? ""}:${provenance.iteration ?? ""}`
+            declarationProvenance &&
+            (declarationProvenance.kind === "helper" || declarationProvenance.kind === "loop")
+              ? `:${declarationProvenance.kind}:${declarationProvenance.callSite ?? ""}:${declarationProvenance.iteration ?? ""}`
               : "";
           targetIdentity = `proxy:${targetNode.name}@${declaration.node.start}${instanceIdentity}`;
         }
