@@ -395,6 +395,50 @@ describe("commitDraggedClipMove", () => {
     expect(map.audio).toEqual({ start: 9, track: 7 });
   });
 
+  it("an audio insert persists zone-local tracks without rewriting visual lanes", () => {
+    const v0 = el("v0", 0, 0, 5);
+    const v1 = el("v1", 1, 0, 5);
+    const a = { ...el("a", 2, 0, 5, "audio"), authoredTrack: 0 };
+    const b = { ...el("b", 3, 10, 5, "audio"), authoredTrack: 1 };
+    const t = { ...el("t", 3, 0, 5, "audio"), authoredTrack: 1 };
+
+    const { onMoveElements } = runClipMove(
+      drag(t, { previewStart: 0, previewTrack: 3, insertRow: 3 }),
+      { elements: [v0, v1, a, b, t], trackOrder: [0, 1, 2, 3] },
+    );
+
+    expect(editMap(onMoveElements.mock.calls[0][0])).toEqual({
+      a: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      b: { start: 10, track: 2 },
+    });
+  });
+
+  it("refuses an audio insert when it would renumber a locked authored row", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const visual = el("visual", 0, 0, 5);
+    const locked = {
+      ...el("locked", 1, 0, 5, "audio"),
+      authoredTrack: 0,
+      timelineLocked: true,
+    };
+    const target = { ...el("target", 2, 0, 5, "audio"), authoredTrack: 1 };
+
+    try {
+      const { onMoveElements } = runClipMove(
+        drag(target, { previewStart: 0, previewTrack: 2, insertRow: 1 }),
+        { elements: [visual, locked, target], trackOrder: [0, 1, 2] },
+      );
+
+      expect(onMoveElements).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("locked clip locked would need renumbering"),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   describe("lane ↔ stacking sync", () => {
     it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", async () => {
       // a & b overlap in time. Elements carry their authored z (as real discovery
@@ -1134,6 +1178,38 @@ describe("commitZMirrorLaneMove", () => {
       a: { start: 0, track: 0 },
       b: { start: 10, track: 2 },
       t: { start: 0, track: 1 },
+    });
+  });
+
+  it("foreign expanded rows never distort the root-file insert topology", async () => {
+    const host = { ...el("host", 0, 0, 5), sourceFile: "index.html" };
+    const child1 = {
+      ...el("child-1", 0.25, 0, 5),
+      sourceFile: "scene.html",
+      expandedParentStart: 0,
+    };
+    const child2 = {
+      ...el("child-2", 0.5, 0, 5),
+      sourceFile: "scene.html",
+      expandedParentStart: 0,
+    };
+    const b = { ...el("b", 1, 0, 5), sourceFile: "index.html" };
+    const t = { ...el("t", 2, 0, 5), sourceFile: "index.html" };
+    const elements = [host, child1, child2, b, t];
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 0.25, 0.5, 1, 2]);
+
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:t",
+    );
+
+    expect(moved).toBe(true);
+    expect(editMap(onMoveElements.mock.calls[0][0])).toEqual({
+      host: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      b: { start: 0, track: 2 },
     });
   });
 

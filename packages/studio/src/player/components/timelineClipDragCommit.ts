@@ -380,14 +380,8 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   });
 }
 
-/**
- * Insert a new track at the drop's gap boundary. The dragged clip lands on the
- * fractional insert lane; normalizeToZones then compacts every lane to a contiguous
- * integer, which shifts the clips at/below the insert down by one. That +1
- * renumber is the ONLY sanctioned multi-clip write; it is index-only (never z).
- * The whole affected set is persisted atomically (single undo), and the deliberate
- * vertical move syncs the dragged clip's stacking afterwards.
- */
+/** Build the one sanctioned multi-clip write: atomically insert and compact a
+ * source-file zone, then let the caller sync the deliberate vertical stacking. */
 // fallow-ignore-next-line complexity
 function buildTrackInsertEdits(
   element: TimelineElement,
@@ -401,31 +395,44 @@ function buildTrackInsertEdits(
 ): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
   const { elements, trackOrder } = deps;
   const editKey = keyOf(element);
-  // Expanded-child rows are synthetic host lanes; inserting one has no meaning
-  // in the child's source file, so refuse instead of persisting host numbers.
+  // Expanded-child rows are synthetic host lanes, not source-file topology.
   if (element.expandedParentStart != null) return null;
   const targetTrack = insertTrackValue(trackOrder, insertRow);
-  // Place the edit on a fractional lane and time-shift selected passengers.
   const candidate = elements.map((e) => {
     if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
     if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
     return e;
   });
-  // Compaction turns the fractional lane into the sanctioned +1 renumber.
-  const normalized = normalizeToZones(candidate);
-  const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // Renumber only the edited source-file zone. Display sets can mix files and
-  // visual/audio zones whose coordinate spaces must remain independent.
+  // Foreign display rows and the opposite zone must not affect this topology.
   const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
     sameSourceFile(src, element) &&
     classifyZone(src) === writableZone &&
     src.expandedParentStart == null;
-  // A partial zone renumber creates lane collisions; refuse if any shifted row
-  // in the write set is locked.
+  const topologyOrder = [...new Set(elements.filter(writable).map((e) => e.track))].sort(
+    (a, b) => a - b,
+  );
+  const topologyInsertRow = topologyOrder.filter((track) => track < targetTrack).length;
+  const topologyTargetTrack = insertTrackValue(topologyOrder, topologyInsertRow);
+  const normalized = normalizeToZones(
+    elements.filter(writable).map((e) => {
+      if (keyOf(e) === editKey) {
+        return { ...e, start: previewStart, track: topologyTargetTrack };
+      }
+      if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
+      return e;
+    }),
+  );
+  const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
+  // A partial zone renumber creates collisions; refuse a shifted locked row.
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
-    if (src && writable(src) && !canMoveElement(src) && norm.track !== src.track) {
+    if (
+      src &&
+      writable(src) &&
+      !canMoveElement(src) &&
+      norm.track !== (src.authoredTrack ?? src.track)
+    ) {
       console.warn(
         `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
       );
@@ -433,23 +440,22 @@ function buildTrackInsertEdits(
     }
   }
   const edits: TimelineMoveEdit[] = [];
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (!src) continue;
-    if (!canMoveElement(src)) continue;
-    const selectedPassenger = keyOf(src) !== editKey && multi?.keys.has(keyOf(src));
-    if (!writable(src)) {
-      // Selection time intent crosses topology scopes, but keeps the passenger's
-      // authored track rather than persisting a display-only renumber.
-      if (selectedPassenger && multi) {
+  // Cross-topology selection passengers move in time, retaining authored track.
+  if (multi) {
+    for (const src of elements) {
+      const srcKey = keyOf(src);
+      if (srcKey !== editKey && multi.keys.has(srcKey) && !writable(src) && canMoveElement(src)) {
         edits.push({
           element: src,
           updates: { start: multi.movedStart(src), track: src.track },
           persistTrack: src.authoredTrack,
         });
       }
-      continue;
     }
+  }
+  for (const norm of normalized) {
+    const src = bySrc.get(keyOf(norm));
+    if (!src || !canMoveElement(src)) continue;
     const start =
       keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
         ? (multi?.movedStart(src) ?? previewStart)
@@ -480,16 +486,9 @@ function commitTrackInsert(
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
   void persistMoveEdits(edits, deps, coalesceKey, "track-insert").then((moved) => {
-    // Skip the z-sync when the insert produced NO move edits (e.g. every clip in
-    // the set is locked/implicit and gets filtered out). persistMoveEdits resolves
-    // `true` for an empty batch so the caller's serialization proceeds, but firing
-    // the z-sync here would record an orphaned z-only history entry for a move that
-    // never persisted.
+    // An empty filtered batch must not create an orphaned z-only history entry.
     if (moved && edits.length > 0) {
-      // Reason the z-sync on the drop-intent `candidate` (dragged clip at its
-      // fractional insert lane) — NOT the re-normalized lanes — so the sync sees
-      // the user's move. The guard lane is the aimed insert row (a boundary in
-      // display-lane space, comparable to the clip's contiguous current lane).
+      // Sync from the fractional drop intent, not the normalized persisted lanes.
       syncStackingForEdit(
         candidate,
         dragKey,
