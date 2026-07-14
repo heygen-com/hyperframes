@@ -242,15 +242,6 @@ export const Timeline = memo(function Timeline({
     return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
   }, [draggedClip, trackOrder]);
 
-  const laneGapStrips = useTimelineGapHighlights({
-    gapHighlight,
-    tracks,
-    selectedElementId,
-    selectedElementIds,
-    expandedElements,
-    dragActive: draggedClip?.started === true || resizingClip != null,
-  });
-
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
   const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
     timelineReady,
@@ -290,6 +281,16 @@ export const Timeline = memo(function Timeline({
     isDragging,
     scrollRef,
     lastScrollLeftRef,
+  });
+
+  const laneGapStrips = useTimelineGapHighlights({
+    gapHighlight,
+    tracks,
+    selectedElementId,
+    selectedElementIds,
+    expandedElements,
+    dragActive: draggedClip?.started === true || resizingClip != null,
+    displayDuration,
   });
 
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({

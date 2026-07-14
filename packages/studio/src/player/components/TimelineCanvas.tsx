@@ -151,8 +151,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
               left: GUTTER + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
               height: TRACK_H - CLIP_Y * 2,
-              background: loud ? "rgba(60,230,172,0.16)" : "rgba(60,230,172,0.055)",
-              border: loud ? "1px dashed rgba(60,230,172,0.55)" : "none",
+              background: loud ? "rgba(60,230,172,0.18)" : "rgba(60,230,172,0.055)",
               borderRadius: 4,
               zIndex: 25,
             }}

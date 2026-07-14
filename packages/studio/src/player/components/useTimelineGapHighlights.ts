@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { resolveAllGapIntervals, type TrackGapInterval } from "./timelineGaps";
+import { resolveLaneEmptyIntervals, type TrackGapInterval } from "./timelineGaps";
 import type { TrackGapHighlight } from "./useTrackGapMenu";
 
 /**
@@ -32,6 +32,9 @@ interface GapHighlightInput {
   selectedElementIds: ReadonlySet<string>;
   expandedElements: TimelineElement[];
   dragActive: boolean;
+  /** Rendered timeline extent (seconds) — the selected-lane highlight spans the
+   *  WHOLE lane minus its clips, trailing open space included. */
+  displayDuration: number;
 }
 
 /**
@@ -51,7 +54,7 @@ function selectedLaneStrips(input: GapHighlightInput): TimelineLaneGapStrips | n
   const selected = expandedElements.find((el) => (el.key ?? el.id) === selectedElementId);
   if (!selected || selected.track === gapHighlight?.track) return null;
   const laneElements = tracks.find(([t]) => t === selected.track)?.[1] ?? [];
-  const intervals = resolveAllGapIntervals(laneElements);
+  const intervals = resolveLaneEmptyIntervals(laneElements, input.displayDuration);
   return intervals.length > 0 ? { track: selected.track, intervals, kind: "selected" } : null;
 }
 
@@ -76,6 +79,7 @@ export function useTimelineGapHighlights(input: GapHighlightInput): TimelineLane
     selectedElementIds,
     expandedElements,
     dragActive,
+    displayDuration,
   } = input;
   return useMemo(
     () =>
@@ -86,7 +90,16 @@ export function useTimelineGapHighlights(input: GapHighlightInput): TimelineLane
         selectedElementIds,
         expandedElements,
         dragActive,
+        displayDuration,
       }),
-    [gapHighlight, tracks, selectedElementId, selectedElementIds, expandedElements, dragActive],
+    [
+      gapHighlight,
+      tracks,
+      selectedElementId,
+      selectedElementIds,
+      expandedElements,
+      dragActive,
+      displayDuration,
+    ],
   );
 }

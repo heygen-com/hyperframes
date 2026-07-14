@@ -121,6 +121,24 @@ export function resolveAllTrackGaps(
   return shifts;
 }
 
+/**
+ * Every empty interval on the lane across the FULL rendered extent `[0, end)`:
+ * the closable gaps plus the open region after the last clip. Powers the
+ * click-selected lane highlight ("light the whole track except the clips") —
+ * unlike {@link resolveAllGapIntervals} it is not limited to what a gap-close
+ * could collapse.
+ */
+export function resolveLaneEmptyIntervals(
+  elements: readonly TimelineElement[],
+  end: number,
+  epsilon: number = TRACK_GAP_EPSILON_S,
+): TrackGapInterval[] {
+  const gaps = resolveAllGapIntervals(elements, epsilon);
+  const maxEnd = Math.max(0, ...elements.map(endOf));
+  if (end - maxEnd > epsilon) gaps.push({ start: maxEnd, end });
+  return gaps;
+}
+
 /** Whether the lane has any gap "Close all gaps" would collapse. */
 export function trackHasGaps(
   elements: readonly TimelineElement[],

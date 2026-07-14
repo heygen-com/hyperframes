@@ -21,6 +21,7 @@ const base = {
   selectedElementIds: new Set<string>(),
   expandedElements,
   dragActive: false,
+  displayDuration: 60,
 };
 
 describe("buildTimelineGapStrips", () => {
@@ -32,7 +33,7 @@ describe("buildTimelineGapStrips", () => {
     expect(strips).toEqual([{ track: 0, intervals: [{ start: 3, end: 5 }], kind: "hover" }]);
   });
 
-  it("emits the subtle strips for a single click-selected clip's lane gaps", () => {
+  it("click-selection lights the WHOLE lane minus clips, trailing space included", () => {
     const strips = buildTimelineGapStrips({ ...base, selectedElementId: "a1" });
     expect(strips).toEqual([
       {
@@ -40,14 +41,28 @@ describe("buildTimelineGapStrips", () => {
         intervals: [
           { start: 0, end: 1 },
           { start: 3, end: 5 },
+          { start: 7, end: 60 },
         ],
         kind: "selected",
       },
     ]);
   });
 
-  it("selection on a gapless lane emits nothing", () => {
-    expect(buildTimelineGapStrips({ ...base, selectedElementId: "b1" })).toEqual([]);
+  it("a contiguous lane still lights its trailing open space", () => {
+    expect(buildTimelineGapStrips({ ...base, selectedElementId: "b1" })).toEqual([
+      { track: 1, intervals: [{ start: 5, end: 60 }], kind: "selected" },
+    ]);
+  });
+
+  it("a lane filling the whole rendered extent emits nothing", () => {
+    const laneFull = [el("f1", 5, 0, 60)];
+    const strips = buildTimelineGapStrips({
+      ...base,
+      tracks: [...tracks, [5, laneFull]],
+      expandedElements: [...expandedElements, ...laneFull],
+      selectedElementId: "f1",
+    });
+    expect(strips).toEqual([]);
   });
 
   it("a one-member selectedElementIds mirror of the click still counts as single", () => {
