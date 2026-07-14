@@ -21,6 +21,8 @@ interface HtmlSourceLike {
 
 const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
 const PROBE_TIMEOUT_MS = 4000;
+// Bounds concurrent ffprobe child processes for compositions referencing many videos.
+const PROBE_CONCURRENCY = 8;
 
 // Minimal PATH/env-based ffprobe resolution, duplicated from
 // packages/cli/src/browser/ffmpeg.ts (findFFprobe). packages/lint must not
@@ -176,8 +178,18 @@ export async function lintHevcPreviewCodec(
   if (!ffprobePath) return [];
 
   const entries = [...candidates.entries()];
-  const isHevc = await Promise.all(
-    entries.map(([resolvedPath]) => probeIsHevc(ffprobePath, resolvedPath)),
+  const isHevc = new Array<boolean>(entries.length).fill(false);
+  let nextIndex = 0;
+  const workerCount = Math.min(PROBE_CONCURRENCY, entries.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < entries.length) {
+        const index = nextIndex++;
+        const entry = entries[index];
+        if (!entry) break;
+        isHevc[index] = await probeIsHevc(ffprobePath, entry[0]);
+      }
+    }),
   );
 
   const hevcSrcs = entries.filter((_, i) => isHevc[i]).map(([, src]) => src);
