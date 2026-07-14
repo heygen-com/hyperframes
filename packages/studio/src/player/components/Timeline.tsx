@@ -21,16 +21,13 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
-import {
-  GUTTER,
-  generateTicks,
-  getTimelineCanvasHeight,
-  shouldShowTimelineShortcutHint,
-} from "./timelineLayout";
+import { GUTTER, generateTicks, getTimelineCanvasHeight } from "./timelineLayout";
+import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
+import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -129,31 +126,12 @@ export const Timeline = memo(function Timeline({
   });
 
   const [showPopover, setShowPopover] = useState(false);
-  const [showShortcutHint, setShowShortcutHint] = useState(true);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
   const [clipContextMenu, setClipContextMenu] = useState<{
     x: number;
     y: number;
     element: TimelineElement;
   } | null>(null);
-  const [viewportWidth, setViewportWidth] = useState(0);
-  const roRef = useRef<ResizeObserver | null>(null);
-  const shortcutHintRafRef = useRef(0);
-
-  const syncShortcutHintVisibility = useCallback(() => {
-    const scroll = scrollRef.current;
-    setShowShortcutHint(
-      scroll ? shouldShowTimelineShortcutHint(scroll.scrollHeight, scroll.clientHeight) : true,
-    );
-  }, []);
-
-  const scheduleShortcutHintVisibilitySync = useCallback(() => {
-    if (shortcutHintRafRef.current) cancelAnimationFrame(shortcutHintRafRef.current);
-    shortcutHintRafRef.current = requestAnimationFrame(() => {
-      shortcutHintRafRef.current = 0;
-      syncShortcutHintVisibility();
-    });
-  }, [syncShortcutHintVisibility]);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el;
@@ -161,31 +139,6 @@ export const Timeline = memo(function Timeline({
 
   // Last horizontal scroll offset, restored across the post-edit iframe reload (pinned zoom).
   const lastScrollLeftRef = useRef(0);
-  const setScrollRef = useCallback(
-    (el: HTMLDivElement | null) => {
-      if (roRef.current) {
-        roRef.current.disconnect();
-        roRef.current = null;
-      }
-      scrollRef.current = el;
-      if (!el) return;
-
-      const syncScrollViewport = () => {
-        setViewportWidth(el.clientWidth);
-        scheduleShortcutHintVisibilitySync();
-      };
-
-      syncScrollViewport();
-      roRef.current = new ResizeObserver(syncScrollViewport);
-      roRef.current.observe(el);
-    },
-    [scheduleShortcutHintVisibilitySync],
-  );
-
-  useMountEffect(() => () => {
-    roRef.current?.disconnect();
-    if (shortcutHintRafRef.current) cancelAnimationFrame(shortcutHintRafRef.current);
-  });
 
   const effectiveDuration = useMemo(() => {
     const safeDur = Number.isFinite(duration) ? duration : 0;
@@ -233,14 +186,21 @@ export const Timeline = memo(function Timeline({
     expandedElementsRef,
   });
 
-  const { gapMenuModel, openGapMenu, dismissGapMenu, closeTrackGap, closeAllTrackGaps } =
-    useTrackGapMenu({
-      tracks,
-      expandedElementsRef,
-      trackOrderRef,
-      onMoveElement: pinnedOnMoveElement,
-      onMoveElements: pinnedOnMoveElements,
-    });
+  const {
+    gapMenuModel,
+    gapHighlight,
+    setHoveredGapAction,
+    openGapMenu,
+    dismissGapMenu,
+    closeTrackGap,
+    closeAllTrackGaps,
+  } = useTrackGapMenu({
+    tracks,
+    expandedElementsRef,
+    trackOrderRef,
+    onMoveElement: pinnedOnMoveElement,
+    onMoveElements: pinnedOnMoveElements,
+  });
 
   const {
     draggedClip,
@@ -282,7 +242,21 @@ export const Timeline = memo(function Timeline({
     return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
   }, [draggedClip, trackOrder]);
 
+  const laneGapStrips = useTimelineGapHighlights({
+    gapHighlight,
+    tracks,
+    selectedElementId,
+    selectedElementIds,
+    expandedElements,
+    dragActive: draggedClip?.started === true || resizingClip != null,
+  });
+
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
+  const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
+    timelineReady,
+    expandedElements.length,
+    totalH,
+  ]);
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
@@ -391,10 +365,6 @@ export const Timeline = memo(function Timeline({
   );
   const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
 
-  useEffect(() => {
-    syncShortcutHintVisibility();
-  }, [syncShortcutHintVisibility, timelineReady, expandedElements.length, totalH]);
-
   const getPreviewElement = useCallback(
     (element: TimelineElement): TimelineElement => {
       if (
@@ -477,6 +447,7 @@ export const Timeline = memo(function Timeline({
           majorTickInterval={majorTickInterval}
           rangeSelection={rangeSelection}
           marqueeRect={marqueeRect}
+          laneGapStrips={laneGapStrips}
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
@@ -593,6 +564,7 @@ export const Timeline = memo(function Timeline({
         onDismissGapContextMenu={dismissGapMenu}
         onCloseTrackGap={closeTrackGap}
         onCloseAllTrackGaps={closeAllTrackGaps}
+        onHoverGapAction={setHoveredGapAction}
       />
     </div>
   );

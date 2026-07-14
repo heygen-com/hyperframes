@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import {
+  resolveAllGapIntervals,
   resolveAllTrackGaps,
   resolveCloseGapShifts,
   resolveTrackGapAt,
@@ -140,6 +141,32 @@ describe("resolveAllTrackGaps", () => {
       { key: "a", newStart: 0 },
       { key: "b", newStart: 2 },
     ]);
+  });
+});
+
+describe("resolveAllGapIntervals", () => {
+  it("reports every current gap, leading gap included, left to right", () => {
+    const els = [el("a", 1, 2), el("b", 5, 3), el("c", 10, 1)];
+    expect(resolveAllGapIntervals(els)).toEqual([
+      { start: 0, end: 1 },
+      { start: 3, end: 5 },
+      { start: 8, end: 10 },
+    ]);
+  });
+
+  it("returns [] for contiguous or empty lanes", () => {
+    expect(resolveAllGapIntervals([el("a", 0, 2), el("b", 2, 3)])).toEqual([]);
+    expect(resolveAllGapIntervals([])).toEqual([]);
+  });
+
+  it("never fabricates an interval from overlapping clips (cursor = max end)", () => {
+    const els = [el("a", 0, 4), el("b", 1, 2), el("c", 6, 1)];
+    expect(resolveAllGapIntervals(els)).toEqual([{ start: 4, end: 6 }]);
+  });
+
+  it("ignores epsilon-level drift seams", () => {
+    const els = [el("a", 0, 8.4), el("b", 8.4, 2.7), el("c", 11.100000000000001, 2)];
+    expect(resolveAllGapIntervals(els)).toEqual([]);
   });
 });
 

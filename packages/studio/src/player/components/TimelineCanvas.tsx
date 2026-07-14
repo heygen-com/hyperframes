@@ -23,6 +23,7 @@ import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes, type TimelineLaneBaseProps } from "./TimelineLanes";
 import { renderClipChildren } from "./timelineClipChildren";
 import { useTimelineRevealClip } from "./useTimelineRevealClip";
+import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -37,6 +38,8 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   /** Playhead is being actively scrubbed — fills the grab-handle head. */
   isScrubbing: boolean;
   playheadRef: React.RefObject<HTMLDivElement | null>;
+  /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
+  laneGapStrips: TimelineLaneGapStrips[];
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
@@ -130,6 +133,32 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           scrollable surface, so a clip can be dragged into the void to create a
           new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
       <div aria-hidden="true" style={{ height: TRACKS_BOTTOM_PAD }} />
+
+      {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
+          menu row would collapse; a quiet tint for every gap on the selected
+          clip's lane. Geometry mirrors the drop placeholder (row top + clip
+          inset) so strips sit exactly where a clip body would. */}
+      {props.laneGapStrips.map((strip) => {
+        const rowIndex = displayTrackOrder.indexOf(strip.track);
+        if (rowIndex < 0) return null;
+        const loud = strip.kind === "hover";
+        return strip.intervals.map((gap) => (
+          <div
+            key={`gap-${strip.kind}-${strip.track}-${gap.start}`}
+            className="pointer-events-none absolute"
+            style={{
+              top: getTimelineRowTop(rowIndex) + CLIP_Y,
+              left: GUTTER + gap.start * props.pps,
+              width: Math.max((gap.end - gap.start) * props.pps, 2),
+              height: TRACK_H - CLIP_Y * 2,
+              background: loud ? "rgba(60,230,172,0.16)" : "rgba(60,230,172,0.055)",
+              border: loud ? "1px dashed rgba(60,230,172,0.55)" : "none",
+              borderRadius: 4,
+              zIndex: 25,
+            }}
+          />
+        ));
+      })}
 
       {/* Drop placeholder — a clip-sized slot at the exact landing spot (target
           lane + snapped start), parallel to the ghost. Hidden in insert mode. */}

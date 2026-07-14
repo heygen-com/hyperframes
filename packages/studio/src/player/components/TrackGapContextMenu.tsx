@@ -16,13 +16,21 @@ interface TrackGapContextMenuProps {
   onClose: () => void;
   onCloseGap: () => void;
   onCloseAllGaps: () => void;
+  /** Hover state for the gap-strip highlight overlay (null = nothing hovered).
+   *  Only reported for ACTIONABLE rows — a disabled row closes nothing, so
+   *  highlighting from it would promise an action that can't happen. */
+  onHoverAction: (action: "close-gap" | "close-all" | null) => void;
 }
 
 /**
  * Context menu for right-clicking EMPTY space on a timeline lane
  * (CapCut/Premiere-style). Offers "Close gap" (collapse the clicked gap by
  * shifting the following clips on that lane left) and "Close all gaps"
- * (compact the whole lane contiguous from 0). Styling mirrors ClipContextMenu.
+ * (compact the whole lane contiguous from 0). Both rows are ALWAYS present —
+ * an inapplicable action dims with a tooltip explaining why, rather than
+ * vanishing into a one-item menu. Hovering an actionable row highlights the
+ * gap strip(s) it would close (via onHoverAction → TimelineCanvas overlay).
+ * Styling mirrors ClipContextMenu.
  */
 export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   x,
@@ -34,6 +42,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   onClose,
   onCloseGap,
   onCloseAllGaps,
+  onHoverAction,
 }: TrackGapContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
 
@@ -50,42 +59,49 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
         : "text-neutral-600 cursor-not-allowed"
     }`;
 
+  // Disabled reasons: no gap under the pointer beats the lock reason — a
+  // pointer not on a gap has nothing to close regardless of movability.
+  const closeGapTitle = canCloseGap
+    ? undefined
+    : gapWidth == null
+      ? "No gap here"
+      : "A clip on this track can't be moved";
+  const closeAllTitle = canCloseAllGaps
+    ? undefined
+    : hasAnyGaps
+      ? "A clip on this track can't be moved"
+      : "No gaps on this track";
+
   return createPortal(
     <div
       ref={menuRef}
       className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
+      onPointerLeave={() => onHoverAction(null)}
     >
-      {/* "Close gap" is only offered when a gap exists under the pointer; it
-          stays visible-but-disabled when a shifting clip is locked, so the
-          refusal is discoverable rather than a silently missing item. */}
-      {gapWidth != null && (
-        <button
-          type="button"
-          className={itemClass(canCloseGap)}
-          disabled={!canCloseGap}
-          title={canCloseGap ? undefined : "A clip on this track can't be moved"}
-          onClick={() => {
-            if (!canCloseGap) return;
-            onCloseGap();
-            onClose();
-          }}
-        >
-          <span>Close gap</span>
+      <button
+        type="button"
+        className={itemClass(canCloseGap)}
+        disabled={!canCloseGap}
+        title={closeGapTitle}
+        onPointerEnter={() => onHoverAction(canCloseGap ? "close-gap" : null)}
+        onClick={() => {
+          if (!canCloseGap) return;
+          onCloseGap();
+          onClose();
+        }}
+      >
+        <span>Close gap</span>
+        {gapWidth != null && (
           <span className="text-neutral-500 text-[10px] ml-3">{gapWidth.toFixed(2)}s</span>
-        </button>
-      )}
+        )}
+      </button>
       <button
         type="button"
         className={itemClass(canCloseAllGaps)}
         disabled={!canCloseAllGaps}
-        title={
-          canCloseAllGaps
-            ? undefined
-            : hasAnyGaps
-              ? "A clip on this track can't be moved"
-              : "No gaps on this track"
-        }
+        title={closeAllTitle}
+        onPointerEnter={() => onHoverAction(canCloseAllGaps ? "close-all" : null)}
         onClick={() => {
           if (!canCloseAllGaps) return;
           onCloseAllGaps();

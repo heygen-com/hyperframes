@@ -51,6 +51,7 @@ interface TimelineOverlaysProps {
   onDismissGapContextMenu: () => void;
   onCloseTrackGap: () => void;
   onCloseAllTrackGaps: () => void;
+  onHoverGapAction: (action: "close-gap" | "close-all" | null) => void;
 }
 
 // The timeline's floating overlays, rendered as siblings above the scroll area:
@@ -80,6 +81,7 @@ export function TimelineOverlays({
   onDismissGapContextMenu,
   onCloseTrackGap,
   onCloseAllTrackGaps,
+  onHoverGapAction,
 }: TimelineOverlaysProps) {
   return (
     <>
@@ -148,6 +150,7 @@ export function TimelineOverlays({
           onClose={onDismissGapContextMenu}
           onCloseGap={onCloseTrackGap}
           onCloseAllGaps={onCloseAllTrackGaps}
+          onHoverAction={onHoverGapAction}
         />
       )}
     </>

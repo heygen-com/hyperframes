@@ -70,6 +70,33 @@ export interface TrackGapShift {
   newStart: number;
 }
 
+/** An empty interval on the lane, [start, end) in seconds. */
+export interface TrackGapInterval {
+  start: number;
+  end: number;
+}
+
+/**
+ * Every CURRENT empty interval on the lane, leading gap included — the regions
+ * "Close all gaps" would collapse, in left-to-right order. Purely descriptive
+ * (for the hover-highlight overlay): unlike {@link resolveAllTrackGaps} it
+ * reports the gaps as they are now, not the post-compaction clip starts.
+ * Overlapping clips never fabricate a negative interval (the cursor tracks the
+ * max end seen so far).
+ */
+export function resolveAllGapIntervals(
+  elements: readonly TimelineElement[],
+  epsilon: number = TRACK_GAP_EPSILON_S,
+): TrackGapInterval[] {
+  const gaps: TrackGapInterval[] = [];
+  let cursor = 0;
+  for (const clip of sortedLaneClips(elements)) {
+    if (clip.start - cursor > epsilon) gaps.push({ start: cursor, end: clip.start });
+    cursor = Math.max(cursor, endOf(clip));
+  }
+  return gaps;
+}
+
 /**
  * Compact the whole lane: every clip lands at the sum of the durations of the
  * clips before it (contiguous from 0, order and durations preserved).

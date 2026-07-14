@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useState, type MutableRefObject } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DragCommitDeps } from "./timelineClipDragCommit";
-import { resolveAllTrackGaps, resolveCloseGapShifts, resolveTrackGapAt } from "./timelineGaps";
+import {
+  resolveAllGapIntervals,
+  resolveAllTrackGaps,
+  resolveCloseGapShifts,
+  resolveTrackGapAt,
+  type TrackGapInterval,
+} from "./timelineGaps";
 import {
   canShiftTrackGapClips,
   commitCloseAllTrackGaps,
@@ -16,14 +22,22 @@ interface TrackGapMenuAnchor {
   time: number;
 }
 
+/** Gap strips to paint on one lane while a menu row is hovered. */
+export interface TrackGapHighlight {
+  track: number;
+  intervals: TrackGapInterval[];
+}
+
 /**
  * Track-gap context menu (right-click on empty lane space) — state, the
  * derived menu model, and the two commit actions. Extracted from Timeline.tsx
  * as a cohesive unit (600-line studio cap); behavior identical.
  *
- * Only the ANCHOR is state; the menu model (gap under the pointer, compaction,
- * movability) derives from live `tracks` so an open menu reflects concurrent
- * edits. Commits are ONE atomic batch each via the existing move-persist
+ * Only the ANCHOR (and the hovered row) is state; the menu model (gap under
+ * the pointer, compaction, movability) derives from live `tracks` so an open
+ * menu reflects concurrent edits. `gapHighlight` — the strips TimelineCanvas
+ * paints while "Close gap" / "Close all gaps" is hovered — derives the same
+ * way. Commits are ONE atomic batch each via the existing move-persist
  * pipeline (see timelineGapCommit.ts).
  */
 export function useTrackGapMenu({
@@ -41,6 +55,7 @@ export function useTrackGapMenu({
 }) {
   const updateElement = usePlayerStore((s) => s.updateElement);
   const [gapContextMenu, setGapContextMenu] = useState<TrackGapMenuAnchor | null>(null);
+  const [hoveredGapAction, setHoveredGapAction] = useState<"close-gap" | "close-all" | null>(null);
 
   const gapMenuLaneElements = useMemo(
     () => (gapContextMenu ? (tracks.find(([t]) => t === gapContextMenu.track)?.[1] ?? []) : null),
@@ -62,6 +77,23 @@ export function useTrackGapMenu({
         allShifts.length > 0 && canShiftTrackGapClips(gapMenuLaneElements, allShifts),
     };
   }, [gapContextMenu, gapMenuLaneElements]);
+
+  // The strips to paint while a menu row is hovered: the one gap under the
+  // pointer for "Close gap", every current gap (leading included) for
+  // "Close all gaps". Null when nothing is hovered / nothing would close.
+  const gapHighlight = useMemo<TrackGapHighlight | null>(() => {
+    if (!gapContextMenu || !gapMenuLaneElements || !hoveredGapAction) return null;
+    if (hoveredGapAction === "close-gap") {
+      const gap = resolveTrackGapAt(gapMenuLaneElements, gapContextMenu.time);
+      if (!gap) return null;
+      return {
+        track: gapContextMenu.track,
+        intervals: [{ start: gap.gapStart, end: gap.gapEnd }],
+      };
+    }
+    const intervals = resolveAllGapIntervals(gapMenuLaneElements);
+    return intervals.length > 0 ? { track: gapContextMenu.track, intervals } : null;
+  }, [gapContextMenu, gapMenuLaneElements, hoveredGapAction]);
 
   const closeTrackGap = useCallback(() => {
     if (!gapContextMenu || !gapMenuLaneElements) return;
@@ -99,8 +131,22 @@ export function useTrackGapMenu({
     onMoveElements,
   ]);
 
-  const openGapMenu = useCallback((anchor: TrackGapMenuAnchor) => setGapContextMenu(anchor), []);
-  const dismissGapMenu = useCallback(() => setGapContextMenu(null), []);
+  const openGapMenu = useCallback((anchor: TrackGapMenuAnchor) => {
+    setHoveredGapAction(null);
+    setGapContextMenu(anchor);
+  }, []);
+  const dismissGapMenu = useCallback(() => {
+    setHoveredGapAction(null);
+    setGapContextMenu(null);
+  }, []);
 
-  return { gapMenuModel, openGapMenu, dismissGapMenu, closeTrackGap, closeAllTrackGaps };
+  return {
+    gapMenuModel,
+    gapHighlight,
+    setHoveredGapAction,
+    openGapMenu,
+    dismissGapMenu,
+    closeTrackGap,
+    closeAllTrackGaps,
+  };
 }
