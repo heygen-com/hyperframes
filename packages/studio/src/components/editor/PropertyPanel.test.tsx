@@ -254,11 +254,13 @@ const openGroupText = (host: HTMLElement) =>
 
 describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED off", () => {
   it(
-    "renders the legacy header, not the flat header",
+    "renders the legacy edit panel, not the flat inspector",
     async () => {
       const { host, root } = await renderPanel(false);
       expect(host.querySelector('[data-flat-header-icon="true"]')).toBeNull();
       expect(host.textContent).toContain("Mono Label");
+      expect(host.querySelector('[data-panel-section="text"]')).not.toBeNull();
+      expect(host.querySelector('[data-flat-group-open="true"]')).toBeNull();
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

@@ -303,7 +303,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     );
   }
 
-  return (
+  // Keep the pre-redesign inspector as a complete renderer rather than a
+  // compatibility shim. With the flat-inspector flag off, every legacy
+  // section below remains available for an immediate rollback.
+  const renderLegacyPropertyPanel = () => (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
@@ -593,4 +596,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       </div>
     </div>
   );
+
+  return renderLegacyPropertyPanel();
 });

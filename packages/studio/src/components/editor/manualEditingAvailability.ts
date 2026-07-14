@@ -98,8 +98,9 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
 );
 
 // Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
-// flat identity header/footer/groups behind a flag for incremental review.
-// Default false; enable via VITE_STUDIO_FLAT_INSPECTOR_ENABLED=true.
+// Keep the legacy panel as the default while the redesign is rolled out.
+// Set VITE_STUDIO_FLAT_INSPECTOR_ENABLED=true to select the flat inspector
+// without a rebuild.
 export const STUDIO_FLAT_INSPECTOR_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_FLAT_INSPECTOR", "VITE_STUDIO_FLAT_INSPECTOR_ENABLED"],
