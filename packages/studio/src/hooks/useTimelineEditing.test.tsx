@@ -896,10 +896,80 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     h.unmount();
   });
 
+  it("rebinds the preview in place (no blink) for a time-move of a no-domId clip", async () => {
+    // The gap-close blink path: "Close gap" issues pure TIME moves through
+    // handleTimelineGroupMove. A selector-addressed clip (no domId — e.g. a
+    // .sub caption) has no id-addressed GSAP tweens, so the mutation step has
+    // nothing to rewrite and used to fall through to a full reloadPreview().
+    // The sync must instead rebind the runtime timing in place — seek + rebind
+    // re-derive the clip windows from the already-patched DOM — WITHOUT
+    // re-executing any script (a comp's init-style scripts, e.g. a three.js
+    // setup, must never run twice) and without the full-reload blink.
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    doc.body.innerHTML =
+      '<div class="cap" data-start="2" data-duration="1" data-track-index="0"></div>';
+    const liveScript = doc.createElement("script");
+    liveScript.textContent =
+      'window.__timelines = window.__timelines || {}; window.__timelines["root"] = { kill: function () {} };';
+    doc.body.appendChild(liveScript);
+    const win = iframe.contentWindow as unknown as Record<string, unknown>;
+    win.gsap = { timeline: vi.fn(), set: vi.fn() };
+    win.__timelines = { root: { kill: vi.fn() } };
+    win.__hfForceTimelineRebind = vi.fn();
+    win.__player = { getTime: () => 0, seek: vi.fn() };
+
+    const cap: TimelineElement = {
+      ...timelineElement({ id: "cap", track: 0, zIndex: 0, start: 2, duration: 1 }),
+      domId: undefined,
+      selector: ".cap",
+      selectorIndex: 0,
+    };
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const reloadPreview = vi.fn();
+    const fetchMock = stubProjectFetch(
+      '<div class="cap" data-hf-id="hf-cap" data-start="2" data-duration="1" data-track-index="0"></div>',
+    );
+    const { groupMove, unmount } = renderTimelineEditingHook({
+      timelineElements: [cap],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview,
+    });
+
+    await act(async () => {
+      // Mirror timelineGapCommit: a pure time move keeping the current lane.
+      await groupMove([{ element: cap, start: 1, track: cap.track }]);
+      await flushAsyncWork();
+    });
+
+    // The move persisted (live DOM + file)...
+    expect(doc.querySelector(".cap")?.getAttribute("data-start")).toBe("1");
+    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="1"');
+    // ...no GSAP mutation ran (nothing id-addressed to rewrite)...
+    expect(
+      fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
+    ).toBe(false);
+    // ...and the preview was rebound in place, NOT full-reloaded (blink),
+    // with the live script element left untouched (no re-execution).
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(win.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+    expect(doc.body.contains(liveScript)).toBe(true);
+    expect(doc.querySelectorAll("script")).toHaveLength(1);
+
+    unmount();
+  });
+
   it("keeps the GSAP fallback + reload for a MIXED batch (any start change)", async () => {
     // One clip changes lane only, the other shifts in time — the batch is not
     // track-only, so the existing behavior (GSAP shift + full reload when no
-    // rewritten scriptText comes back) must be preserved.
+    // rewritten scriptText comes back — this stub iframe has no runtime rebind
+    // hook, so the in-place rebind can't apply) must be preserved.
     const source = [
       '<div id="a" data-start="0" data-duration="1" data-track-index="0"></div>',
       '<div id="b" data-start="1" data-duration="1" data-track-index="1"></div>',

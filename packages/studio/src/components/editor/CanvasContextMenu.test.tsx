@@ -110,9 +110,9 @@ describe("CanvasContextMenu — handler gating", () => {
 
     // Labels stay the exact industry-standard names (the icons add no text)...
     expect(buttons.map((b) => b.textContent)).toEqual([
+      "Bring to front",
       "Bring forward",
       "Send backward",
-      "Bring to front",
       "Send to back",
     ]);
     // ...and each item leads with a stroke icon that inherits the item's text

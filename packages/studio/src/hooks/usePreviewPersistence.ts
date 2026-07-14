@@ -10,7 +10,7 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapSoftReload";
+import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */

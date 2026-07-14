@@ -131,9 +131,9 @@ function ZActionIcon({ action }: { action: ZAction }) {
 }
 
 const Z_ACTIONS: Array<{ action: ZAction; label: string }> = [
+  { action: "bring-to-front", label: "Bring to front" },
   { action: "bring-forward", label: "Bring forward" },
   { action: "send-backward", label: "Send backward" },
-  { action: "bring-to-front", label: "Bring to front" },
   { action: "send-to-back", label: "Send to back" },
 ];
 

@@ -3,7 +3,7 @@
 // edit's undo history, and swapping the rewritten script into the live preview
 // without a full iframe reload when possible.
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
-import { applySoftReload } from "../utils/gsapSoftReload";
+import { applySoftReload, applySoftReloadFinalization } from "../utils/gsapSoftReload";
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { patchDocumentRootDuration } from "./timelineEditingGsap";
@@ -77,7 +77,9 @@ export function captureDurationRollback(iframe: HTMLIFrameElement | null): () =>
  * `scriptText` is the rewritten root GSAP script — feeding it to `applySoftReload`
  * swaps the runtime timeline in place (no iframe reload = no all-clips flash). Null
  * when the endpoint didn't return one (older server, or a multi-script comp the
- * soft path can't scope), in which case the caller full-reloads as before.
+ * soft path can't scope) — the caller then full-reloads when `mutated`, or
+ * rebinds the runtime timing in place when nothing was rewritten (see
+ * syncTimingEditPreview).
  */
 export type GsapMutationStatus = { mutated: boolean; scriptText: string | null };
 
@@ -99,6 +101,26 @@ function readMutationError(value: unknown, fallback: string): string {
 }
 
 /**
+ * Flashless preview sync for a timing edit that rewrote NO script: the live
+ * DOM timing attributes were already patched (patchIframeDomTiming), the GSAP
+ * timelines in `window.__timelines` are still valid, so the preview only needs
+ * the runtime to re-derive clip visibility windows from the live
+ * `data-start`/`data-duration` attributes and re-seek to the current time.
+ * That is exactly applySoftReload's finalization (seek →
+ * `__hfForceTimelineRebind` → manual-edits reapply) — run WITHOUT touching or
+ * re-executing any script. Re-running init-style scripts is the unsafe case
+ * this replaces: a comp loading three.js / heavy inline scripts must not have
+ * them executed twice.
+ *
+ * Works for zero-GSAP compositions too — the rebind hook is installed by the
+ * runtime unconditionally. Returns false when the iframe/runtime hook is
+ * unavailable (caller full-reloads).
+ */
+function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: number): boolean {
+  return applySoftReloadFinalization(iframe, currentTime);
+}
+
+/**
  * Sync the live preview after a TIMING-ONLY edit (move / resize), preferring a
  * soft reload over the full iframe reload that flashes every clip.
  *
@@ -115,15 +137,34 @@ function readMutationError(value: unknown, fallback: string): string {
  * Escalates to the full `reloadPreview()` only on the PERMANENT `cannot-soft-reload`
  * result (no gsap runtime / rebind hook / scopable key / script element, or the
  * re-run threw). The TRANSIENT `verify-failed` is NOT escalated — the live re-run
- * already applied the shift; a remount would re-flash for nothing. When the server
- * returned no `scriptText` (older server, multi-script comp), we also full-reload.
+ * already applied the shift; a remount would re-flash for nothing.
+ *
+ * When there is no rewritten `scriptText`, `mutated` disambiguates two very
+ * different situations:
+ * - `mutated: false` — nothing was rewritten because there was NOTHING TO
+ *   REWRITE (the clip has no domId so no id-addressed tweens, the delta was
+ *   zero, or the server confirmed a no-op). Every script is unchanged and the
+ *   timing attributes are already live-patched, so (when `rebindWhenUnmutated`
+ *   allows it) `rebindPreviewTiming` re-seeks + rebinds and the runtime
+ *   re-derives the clip windows from the live DOM — no script re-execution,
+ *   no full-reload blink. This covers comps with zero GSAP scripts too; only
+ *   a missing iframe/runtime hook falls back to the full reload.
+ * - `mutated: true` with no script — the file on disk WAS rewritten but the
+ *   server returned no script (older server, multi-script comp): the live
+ *   script is now stale, so a rebind against it would show wrong positions →
+ *   full-reload.
  */
 function syncTimingEditPreview(
   iframe: HTMLIFrameElement | null,
-  outcome: Pick<GsapMutationStatus, "scriptText">,
+  outcome: GsapMutationStatus,
   currentTime: number,
   reloadPreview: () => void,
+  rebindWhenUnmutated: boolean,
 ): void {
+  if (!outcome.scriptText && !outcome.mutated && rebindWhenUnmutated) {
+    if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
+    return;
+  }
   if (!iframe || !outcome.scriptText) {
     reloadPreview();
     return;
@@ -140,6 +181,14 @@ async function finishTimelineTimingFallback(input: {
   reloadPreview: () => void;
   gsapMutation?: () => Promise<GsapMutationStatus>;
   onGsapError: (error: unknown) => void;
+  /**
+   * When the mutation produced no rewrite (mutated:false, no scriptText),
+   * rebind the runtime timing in place (no script re-execution) instead of
+   * full-reloading (see syncTimingEditPreview). Callers pass false when a full
+   * reload is the only sync that reflects everything (e.g. a multi-file group
+   * edit).
+   */
+  rebindWhenUnmutated: boolean;
 }): Promise<void> {
   let outcome: GsapMutationStatus = { mutated: false, scriptText: null };
   if (input.gsapMutation) {
@@ -155,6 +204,7 @@ async function finishTimelineTimingFallback(input: {
     outcome,
     usePlayerStore.getState().currentTime,
     input.reloadPreview,
+    input.rebindWhenUnmutated,
   );
 }
 
@@ -297,8 +347,11 @@ export type SingleClipGsapEdit =
  * Post-persist GSAP sync for a SINGLE-clip timing edit (move / resize): runs the
  * server shift/scale mutation, folds the rewrite into the timing edit's history
  * entry (see foldGsapMutationIntoHistory), then soft-reloads the preview with
- * the rewritten script — full reload when the mutation is skipped, failed, or
- * returned no script.
+ * the rewritten script. When there was nothing to rewrite (no domId — e.g. a
+ * selector-addressed caption clip — zero delta, or a server no-op) it rebinds
+ * the runtime timing in place instead of full-reloading; full reload remains
+ * for genuine rewrites without a returned script and for comps the soft path
+ * can't handle (see syncTimingEditPreview).
  */
 export function finishClipTimingFallback(input: {
   iframe: HTMLIFrameElement | null;
@@ -347,6 +400,7 @@ export function finishClipTimingFallback(input: {
             })
         : undefined,
     onGsapError,
+    rebindWhenUnmutated: true,
   });
 }
 
@@ -408,5 +462,10 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
         onFoldError: onGsapError,
       }),
     onGsapError,
+    // A batch where nothing needed rewriting (every change was zero-delta or
+    // no-domId, e.g. closing a gap over caption clips) still needs the runtime
+    // to re-derive clip windows — the in-place timing rebind covers that. But
+    // when another file changed, only a full reload reflects every file.
+    rebindWhenUnmutated: !otherFileChanged,
   });
 }

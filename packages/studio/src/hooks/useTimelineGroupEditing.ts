@@ -237,7 +237,9 @@ export function useTimelineGroupEditing({
       // nothing for the preview to recompute: skip the fallback below entirely.
       // Running it anyway is what made the mirrored z-order lane move blink —
       // a zero-delta batch yields no scriptText, and finishGroupTimingGsapFallback
-      // full-reloads the iframe when there is no script to soft-swap.
+      // used to full-reload the iframe when there was no script to soft-swap
+      // (it now rebinds the runtime timing in place, but a track-only batch
+      // needs NO preview sync at all, so the skip stays).
       const trackOnly = changes.every((change) => change.start === change.element.start);
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.element.duration));
