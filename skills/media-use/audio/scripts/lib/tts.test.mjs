@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -201,6 +208,12 @@ test("synthesizeHeygen reports wav transcode failures", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("standalone HeyGen TTS surfaces the provider error", () => {
+  const source = readFileSync(new URL("../heygen-tts.mjs", import.meta.url), "utf8");
+  assert.match(source, /const \{ ok, words, error \} = await synthesizeOne/);
+  assert.match(source, /error \? `synthesis failed: \$\{error\}`/);
 });
 
 test("synthResult names a non-zero subprocess exit", () => {
