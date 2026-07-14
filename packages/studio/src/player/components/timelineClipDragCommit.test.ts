@@ -3,6 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 import {
   commitDraggedClipMove,
+  commitZMirrorLaneMove,
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
@@ -1022,5 +1023,122 @@ describe("commitDraggedClipMove", () => {
       expect(onMoveElements).toHaveBeenCalledTimes(1);
       expect(onStackingPatches).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("commitZMirrorLaneMove", () => {
+  const mirrorDeps = (elements: TimelineElement[], trackOrder: number[]) => {
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn();
+    return {
+      updateElement,
+      onMoveElements,
+      deps: { elements, trackOrder, updateElement, onMoveElements } as DragCommitDeps,
+    };
+  };
+
+  it("kind:move persists start + display lane with the persistTrack override (same shape as a lane drag)", async () => {
+    // t sits at lane 2 in a sparse file (authored 7); the mirror lands it on
+    // lane 0 whose authored track is 3.
+    const t = { ...el("t", 2, 0, 10), authoredTrack: 7 };
+    const elements = [{ ...el("a", 0, 20, 5), authoredTrack: 3 }, el("b", 1, 0, 10), t];
+    const { updateElement, onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 3 },
+      deps,
+      "z-reorder:bring-forward:t",
+    );
+    expect(moved).toBe(true);
+    // Optimistic store update: DISPLAY lane + the written authoredTrack mirror.
+    expect(updateElement).toHaveBeenCalledWith("t", {
+      start: 0,
+      track: 0,
+      authoredTrack: 3,
+    });
+    // Persist: authored-space track, the z persist's coalesce key, lane-reorder op.
+    expect(onMoveElements).toHaveBeenCalledTimes(1);
+    const [persistEdits, coalesceKey, operation] = onMoveElements.mock.calls[0];
+    expect(editMap(persistEdits)).toEqual({ t: { start: 0, track: 3 } });
+    expect(coalesceKey).toBe("z-reorder:bring-forward:t");
+    expect(operation).toBe("lane-reorder");
+  });
+
+  it("kind:insert reuses the track-insert renumber core (+1 shift below the new lane)", async () => {
+    // a,b,c mutually overlapping on lanes 0/1/2. Mirror-insert c at row 1: c
+    // lands on the new lane, b (at/below) shifts down — identical to the drag
+    // insert test above, proving the shared core (no duplicated renumber logic).
+    const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      elements[2],
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:c",
+    );
+    expect(moved).toBe(true);
+    expect(onMoveElements).toHaveBeenCalledTimes(1);
+    expect(onMoveElements.mock.calls[0][1]).toBe("z-reorder:bring-forward:c");
+    expect(onMoveElements.mock.calls[0][2]).toBe("track-insert");
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a.track).toBe(0);
+    expect(map.c.track).toBe(1);
+    expect(map.b.track).toBe(2);
+  });
+
+  it("never triggers the lane→z stacking sync (it would fight the just-set z values)", async () => {
+    // Even with BOTH z-sync deps supplied (the drag paths would engage them for
+    // a vertical move like this), the mirror commit must not emit stacking
+    // patches — the z values were just written by the user's menu action.
+    const t = el("t", 2, 0, 10);
+    const elements = [el("a", 0, 20, 5), el("b", 1, 0, 10), t];
+    const { deps } = mirrorDeps(elements, [0, 1, 2]);
+    const onStackingPatches = vi.fn();
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 0 },
+      { ...deps, readZIndex: () => 0, onStackingPatches },
+      "z-reorder:bring-forward:t",
+    );
+    await flushMicrotasks();
+    expect(moved).toBe(true);
+    expect(onStackingPatches).not.toHaveBeenCalled();
+  });
+
+  it("resolves false and rolls the store back when the persist rejects", async () => {
+    const t = el("t", 1, 0, 10);
+    const elements = [el("a", 0, 20, 5), t];
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn().mockRejectedValue(new Error("boom"));
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 0 },
+      { elements, trackOrder: [0, 1], updateElement, onMoveElements },
+      "z-reorder:send-backward:t",
+    );
+    expect(moved).toBe(false);
+    // Optimistic write then rollback to the original lane.
+    expect(updateElement).toHaveBeenLastCalledWith("t", {
+      start: 0,
+      track: 1,
+      authoredTrack: undefined,
+    });
+  });
+
+  it("resolves false for a refused insert (locked clip would need renumbering)", async () => {
+    // b is locked and sits at/below the insert row, so the whole-set renumber
+    // is refused — no persist call.
+    const a = el("a", 0, 0, 5);
+    const b: TimelineElement = { ...el("b", 1, 0, 5), timelineLocked: true };
+    const c = el("c", 2, 0, 5);
+    const { onMoveElements, deps } = mirrorDeps([a, b, c], [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      c,
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:c",
+    );
+    expect(moved).toBe(false);
+    expect(onMoveElements).not.toHaveBeenCalled();
   });
 });

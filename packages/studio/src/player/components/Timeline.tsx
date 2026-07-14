@@ -9,7 +9,7 @@ import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
-import { type TrackVisualStyle, getTrackStyle } from "./timelineIcons";
+import { getTrackStyle } from "./timelineIcons";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
@@ -20,6 +20,7 @@ import { TimelineOverlays } from "./TimelineOverlays";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
+import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
   GUTTER,
   generateTicks,
@@ -195,25 +196,8 @@ export const Timeline = memo(function Timeline({
     return Number.isFinite(result) ? result : safeDur;
   }, [rawElements, duration]);
 
-  const tracks = useMemo(() => {
-    const map = new Map<number, typeof expandedElements>();
-    for (const el of expandedElements) {
-      const list = map.get(el.track) ?? [];
-      list.push(el);
-      map.set(el.track, list);
-    }
-    return Array.from(map.entries()).sort(([a], [b]) => a - b);
-  }, [expandedElements]);
-
-  const trackStyles = useMemo(() => {
-    const map = new Map<number, TrackVisualStyle>();
-    for (const [trackNum, els] of tracks) {
-      map.set(trackNum, getTrackStyle(els[0]?.tag ?? ""));
-    }
-    return map;
-  }, [tracks]);
-
-  const trackOrder = useMemo(() => tracks.map(([trackNum]) => trackNum), [tracks]);
+  const { tracks, trackStyles, trackOrder, zOverrideKeys } =
+    useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
   const expandedElementsRef = useRef(expandedElements);
@@ -492,6 +476,7 @@ export const Timeline = memo(function Timeline({
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
+          zOverrideKeys={zOverrideKeys}
           tracks={tracks}
           trackStyles={trackStyles}
           selectedElementId={selectedElementId}

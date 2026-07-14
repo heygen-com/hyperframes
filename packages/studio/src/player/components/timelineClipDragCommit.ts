@@ -1,5 +1,8 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
+// Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
+// value-import edge stays acyclic.
+import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone, normalizeToZones } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import { getTimelineEditCapabilities } from "./timelineEditing";
@@ -173,7 +176,7 @@ function persistMoveEdits(
 /** Same-source-file predicate: authored track numbers only compare within ONE
  *  file's coordinate space (an expanded sub-comp child's authoredTrack is in ITS
  *  file, not the host timeline's). `undefined` means the active composition. */
-const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean =>
+export const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean =>
   (a.sourceFile ?? null) === (b.sourceFile ?? null);
 
 /**
@@ -203,7 +206,7 @@ const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean =>
  * Edge-created lanes (min-1 / max+1 inserts) route through the insert path,
  * never here.
  */
-function authoredTrackForLane(
+export function authoredTrackForLane(
   lane: number,
   elements: TimelineElement[],
   dragged: TimelineElement,
@@ -375,21 +378,23 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
  * vertical move syncs the dragged clip's stacking afterwards.
  */
 // fallow-ignore-next-line complexity
-function commitTrackInsert(
-  drag: DraggedClipState,
-  deps: DragCommitDeps,
+function buildTrackInsertEdits(
+  element: TimelineElement,
+  previewStart: number,
+  insertRow: number,
   multi: {
     keys: ReadonlySet<string>;
     movedStart: (e: TimelineElement) => number;
   } | null,
-): void {
+  deps: DragCommitDeps,
+): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
   const { elements, trackOrder } = deps;
-  const dragKey = keyOf(drag.element);
-  const targetTrack = insertTrackValue(trackOrder, drag.insertRow!);
-  // Drop-intent set: dragged clip at the fractional insert lane (so it sorts
+  const editKey = keyOf(element);
+  const targetTrack = insertTrackValue(trackOrder, insertRow);
+  // Drop-intent set: edited clip at the fractional insert lane (so it sorts
   // between its neighbours), selection members time-shifted, others as-is.
   const candidate = elements.map((e) => {
-    if (keyOf(e) === dragKey) return { ...e, start: drag.previewStart, track: targetTrack };
+    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
     if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
     return e;
   });
@@ -407,7 +412,7 @@ function commitTrackInsert(
       console.warn(
         `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
       );
-      return;
+      return null;
     }
   }
   const edits: TimelineMoveEdit[] = [];
@@ -418,11 +423,32 @@ function commitTrackInsert(
     // a locked/implicit clip.
     if (!canMoveElement(src)) continue;
     const start =
-      keyOf(norm) === dragKey || multi?.keys.has(keyOf(norm))
-        ? (multi?.movedStart(src) ?? drag.previewStart)
+      keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
+        ? (multi?.movedStart(src) ?? previewStart)
         : src.start;
     edits.push({ element: src, updates: { start, track: norm.track } });
   }
+  return { candidate, edits };
+}
+
+function commitTrackInsert(
+  drag: DraggedClipState,
+  deps: DragCommitDeps,
+  multi: {
+    keys: ReadonlySet<string>;
+    movedStart: (e: TimelineElement) => number;
+  } | null,
+): void {
+  const dragKey = keyOf(drag.element);
+  const built = buildTrackInsertEdits(
+    drag.element,
+    drag.previewStart,
+    drag.insertRow!,
+    multi,
+    deps,
+  );
+  if (!built) return;
+  const { candidate, edits } = built;
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
   void persistMoveEdits(edits, deps, coalesceKey, "track-insert").then((moved) => {
@@ -447,6 +473,46 @@ function commitTrackInsert(
       );
     }
   });
+}
+
+/**
+ * Commit the timeline lane move that MIRRORS a canvas z-order menu action
+ * (resolveZMirrorLaneMove's non-null result). Same machinery as a lane drag:
+ *
+ * - kind "move": persistMoveEdits with `{start: element.start, track: displayTrack}`
+ *   + `persistTrack` — identical shape to commitDraggedClipMove's lane-change
+ *   branch (optimistic store update, authoredTrack mirror, rollback on failure).
+ * - kind "insert": buildTrackInsertEdits — the SAME renumber core commitTrackInsert
+ *   uses — then the same atomic persist.
+ *
+ * Deliberately NO syncStackingForEdit here: the z values were just set by the
+ * user's menu action, and the lane→z sync would recompute (and fight) them. The
+ * mirror caller also omits `readZIndex`/`onStackingPatches` from `deps`, so even
+ * a future call into the sync would no-op (double protection; see
+ * useCanvasZOrderTimelineMirror).
+ *
+ * `coalesceKey` MUST be the z persist's key (`z-reorder:<action>:<ids>`) so
+ * editHistory folds the z write and this track write into ONE undo entry.
+ *
+ * Resolves `true` once the move persisted, `false` on rollback / refused insert.
+ */
+export function commitZMirrorLaneMove(
+  element: TimelineElement,
+  move: NonNullable<ZMirrorLaneMove>,
+  deps: DragCommitDeps,
+  coalesceKey: string,
+): Promise<boolean> {
+  if (move.kind === "move") {
+    const edit: TimelineMoveEdit = {
+      element,
+      updates: { start: element.start, track: move.displayTrack },
+      persistTrack: move.persistTrack,
+    };
+    return persistMoveEdits([edit], deps, coalesceKey, "lane-reorder");
+  }
+  const built = buildTrackInsertEdits(element, element.start, move.insertRow, null, deps);
+  if (!built || built.edits.length === 0) return Promise.resolve(false);
+  return persistMoveEdits(built.edits, deps, coalesceKey, "track-insert");
 }
 
 /**

@@ -25,6 +25,26 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
 
+/**
+ * Undo coalesce key for a z-reorder commit. The key carries the action kind so
+ * two DIFFERENT actions on the same element set (e.g. "bring-forward" then
+ * "send-backward" within the coalesce window) never merge into one undo step.
+ *
+ * Exported as THE single implementation of the key: the canvas z-order mirror
+ * (useCanvasZOrderTimelineMirror) passes this exact key into its timeline lane
+ * persist so editHistory folds the z write and the track write into one undo
+ * entry — a drifting duplicate formula would silently split the undo.
+ */
+export function zReorderCoalesceKey(
+  entries: ReadonlyArray<{ element: HTMLElement; id?: string; selector?: string }>,
+  actionKind?: string,
+): string {
+  const ids = entries
+    .map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el")
+    .join(":");
+  return `z-reorder:${actionKind ?? "reorder"}:${ids}`;
+}
+
 export function useElementLifecycleOps({
   activeCompPath,
   showToast,
@@ -158,9 +178,7 @@ export function useElementLifecycleOps({
       // same element set (e.g. "bring-forward" then "send-backward" within the
       // coalesce window) never merge into one undo step. Callers that share a
       // gesture (lane moves) pass an explicit gestureCoalesceKey instead.
-      const coalesceKey =
-        gestureCoalesceKey ??
-        `z-reorder:${actionKind ?? "reorder"}:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      const coalesceKey = gestureCoalesceKey ?? zReorderCoalesceKey(entries, actionKind);
       const patchesBySourceFile = new Map<string, DomEditPatchBatch["patches"]>();
       const rollbacks: Array<() => void> = [];
       for (const entry of entries) {

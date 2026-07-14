@@ -50,8 +50,17 @@ interface CanvasContextMenuProps {
    * affected siblings). The menu does NOT touch the live DOM — wire to
    * handleDomZIndexReorderCommit, which applies the live styles itself
    * (see module-level wiring comment).
+   *
+   * `crossed` is the sibling a forward/backward step moved past, resolved from
+   * the SAME pre-mutation render order as the patches (null for front/back or
+   * when there is no neighbor). The host uses it to mirror the z action into a
+   * timeline lane move (resolveZMirrorLaneMove's crossedKey).
    */
-  onApplyZIndex?: (patches: ZOrderPatch[], action: ZOrderAction) => void;
+  onApplyZIndex?: (
+    patches: ZOrderPatch[],
+    action: ZOrderAction,
+    crossed: HTMLElement | null,
+  ) => void;
   /**
    * Called after a successful bring-forward / send-backward with the sibling
    * the target stepped over (resolved from the SAME pre-mutation state as the
@@ -113,14 +122,16 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     const patches = resolveZOrderChange(el, action);
     if (patches === null) return;
     // Resolve the crossed neighbor BEFORE the commit path mutates live styles —
-    // both resolvers must read the same pre-change render order.
-    const crossed = onZOrderCrossed ? resolveCrossedNeighbor(el, action) : null;
+    // both resolvers must read the same pre-change render order. Always resolved
+    // (not only for the flash): onApplyZIndex forwards it so the host can mirror
+    // the z step into a timeline lane move.
+    const crossed = resolveCrossedNeighbor(el, action);
     // Do NOT pre-apply styles here: handleDomZIndexReorderCommit writes the
     // live z-index (and injects position:relative for static elements) in the
     // same synchronous flow, so feedback is still instant — and it must read
     // the PRE-change styles itself, both to capture true rollback values and
     // to detect a static position that needs persisting.
-    onApplyZIndex(patches, action);
+    onApplyZIndex(patches, action, crossed);
     if (crossed && onZOrderCrossed) onZOrderCrossed(crossed, action);
     onClose();
   }

@@ -15,6 +15,12 @@ interface TimelineClipProps {
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
   isComposition: boolean;
+  /**
+   * Paint order contradicts lane order for this clip (an authored z override —
+   * see timelineZOverride.computeZOverrideKeys). Renders a small "z" badge so
+   * the lane order isn't silently misleading about what the canvas paints.
+   */
+  hasZOverride?: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
   onPointerDown?: (e: React.PointerEvent) => void;
@@ -37,6 +43,7 @@ export const TimelineClip = memo(function TimelineClip({
   capabilities,
   theme = defaultTimelineTheme,
   isComposition,
+  hasZOverride = false,
   onHoverStart,
   onHoverEnd,
   onPointerDown,
@@ -159,6 +166,35 @@ export const TimelineClip = memo(function TimelineClip({
             }}
           />
         </div>
+      )}
+      {/* "z" badge: this clip's authored z contradicts lane order — the lanes no
+          longer tell you what paints on top. Kept above the trim handles (z 5)
+          and gated on width so micro clips don't clutter. */}
+      {hasZOverride && widthPx >= 24 && (
+        <span
+          data-testid="timeline-clip-z-override"
+          title="Paint order overridden — see Layers panel"
+          style={{
+            position: "absolute",
+            top: 3,
+            right: 3,
+            zIndex: 5,
+            width: 12,
+            height: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 9,
+            lineHeight: 1,
+            fontWeight: 600,
+            borderRadius: 3,
+            color: theme.textSecondary,
+            background: theme.gutterBackground,
+            border: `1px solid ${theme.clipBorder}`,
+          }}
+        >
+          z
+        </span>
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
       {showDefaultText && (

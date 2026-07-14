@@ -86,7 +86,10 @@ const contextKey = (el: { stackingContextId?: string | null }): string | null =>
  * epsilon guards against float fuzz (e.g. 5.0000001 vs 5) spuriously overlapping two
  * abutting clips and shuffling lanes. The two are intended to differ, not align.
  */
-function overlapsInTime(a: StackingElement, b: StackingElement): boolean {
+export function overlapsInTime(
+  a: Pick<StackingElement, "start" | "duration">,
+  b: Pick<StackingElement, "start" | "duration">,
+): boolean {
   return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
 }
 
@@ -114,9 +117,14 @@ interface MutZ extends StackingElement {
  * Does `a` currently paint ON TOP of `b`? Higher z wins; equal z breaks by DOM
  * order (later in DOM paints on top). When either domIndex is absent, equal z is
  * treated as "not strictly above" (ambiguous) — callers should supply domIndex to
- * disambiguate (see StackingElement.domIndex). Operates on resolved (`MutZ`) clips.
+ * disambiguate (see StackingElement.domIndex). Exported (like laneIsAbove) as the
+ * ONE paint-order predicate — the z-override badge (timelineZOverride.ts) must
+ * agree with the sync on what "paints above" means.
  */
-function paintsAbove(a: MutZ, b: MutZ): boolean {
+export function paintsAbove(
+  a: Pick<StackingElement, "zIndex" | "domIndex">,
+  b: Pick<StackingElement, "zIndex" | "domIndex">,
+): boolean {
   if (a.zIndex !== b.zIndex) return a.zIndex > b.zIndex;
   if (a.domIndex != null && b.domIndex != null) return a.domIndex > b.domIndex;
   return false;

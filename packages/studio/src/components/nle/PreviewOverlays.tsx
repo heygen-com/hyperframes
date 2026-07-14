@@ -19,6 +19,8 @@ import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { readHfId, type DomEditSelection } from "../editor/domEditing";
 import { buildStableSelector } from "../editor/domEditingDom";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
+import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
+import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
@@ -158,6 +160,7 @@ export function PreviewOverlays({
     handleDomEditElementDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditActionsContext();
+  const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
 
   // fallow-ignore-next-line complexity
   const [snapPrefs, setSnapPrefs] = useState(() => {
@@ -224,7 +227,7 @@ export function PreviewOverlays({
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
         onDeleteSelection={handleDomEditElementDelete}
-        onApplyZIndex={(sel, patches, action) => {
+        onApplyZIndex={(sel, patches, action, crossed) => {
           const { entries, dropped } = resolveZIndexEntries(sel, patches);
           if (dropped.length > 0) {
             // These siblings can't be written to source. Apply their live z
@@ -237,7 +240,28 @@ export function PreviewOverlays({
               dropped.map((patch) => describeZIndexElement(patch.element)).join(", "),
             );
           }
-          if (entries.length > 0) handleDomZIndexReorderCommit(entries, undefined, action);
+          if (entries.length === 0) return;
+          // Shared undo coalesce key: passed to BOTH the z persist and the
+          // timeline lane mirror below so editHistory folds the two records
+          // into one undo entry (same value handleDomZIndexReorderCommit would
+          // default to — passed explicitly so the mirror shares it by
+          // construction, not by formula duplication).
+          const coalesceKey = zReorderCoalesceKey(entries, action);
+          // Mirror the z action into a timeline lane move AFTER the z commit
+          // resolves: the two persists patch the same source file, so they are
+          // serialized (same reasoning as the lane-drag's move→z ordering).
+          // A failed z commit already toasted + rolled back — skip the mirror.
+          handleDomZIndexReorderCommit(entries, coalesceKey, action)
+            .then(() =>
+              mirrorZOrderToTimeline({
+                selectionKey: entries.find((e) => e.element === sel.element)?.key,
+                action,
+                crossed,
+                sourceFile: sel.sourceFile,
+                coalesceKey,
+              }),
+            )
+            .catch(() => undefined);
         }}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}

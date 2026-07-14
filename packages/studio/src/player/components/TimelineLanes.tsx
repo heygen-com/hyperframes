@@ -38,6 +38,8 @@ export interface TimelineLaneBaseProps {
   theme: TimelineTheme;
   displayTrackOrder: number[];
   trackOrder: number[];
+  /** Clips whose paint order contradicts lane order — get the "z" badge (see timelineZOverride.ts). */
+  zOverrideKeys: ReadonlySet<string>;
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
   selectedElementId: string | null;
@@ -100,6 +102,7 @@ export function TimelineLanes({
   theme,
   displayTrackOrder,
   trackOrder,
+  zOverrideKeys,
   tracks,
   trackStyles,
   selectedElementId,
@@ -300,6 +303,7 @@ export function TimelineLanes({
                         capabilities={capabilities}
                         theme={theme}
                         isComposition={isComposition}
+                        hasZOverride={zOverrideKeys.has(elementKey)}
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
                         onResizeStart={
