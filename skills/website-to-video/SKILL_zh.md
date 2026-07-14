@@ -108,13 +108,13 @@ description: |
 
 各视频类型的典型约束——作为起点，而非公式。节拍数量应来自内容与旁白，而非目标区间。
 
-| 类型 | 典型时长 | 时长驱动因素 | 旁白 |
-| --------------------- | ---------------- | ------------------ | --------------------- |
-| 社交广告（IG/TikTok） | 10–15s | 平台限制 | 可选 |
-| 产品演示 | 30–60s | 脚本长度 | 完整旁白 |
-| 功能发布 | 15–30s | 功能复杂度 | 完整旁白 |
-| 品牌短片 | 20–45s | 音乐轨道 | 可选，以音乐为主 |
-| 发布预告 | 10–20s | 开场冲击力 | 极简 |
+| 类型                  | 典型时长 | 时长驱动因素 | 旁白             |
+| --------------------- | -------- | ------------ | ---------------- |
+| 社交广告（IG/TikTok） | 10–15s   | 平台限制     | 可选             |
+| 产品演示              | 30–60s   | 脚本长度     | 完整旁白         |
+| 功能发布              | 15–30s   | 功能复杂度   | 完整旁白         |
+| 品牌短片              | 20–45s   | 音乐轨道     | 可选，以音乐为主 |
+| 发布预告              | 10–20s   | 开场冲击力   | 极简             |
 
 节拍数量有意不在此表中——应来自分镜，而非「社交广告 = 3–4 节拍」。复杂产品的社交广告可能需要 5 个节奏精准的节拍。只有一个强视觉论点的品牌短片可能只需 3 个。
 
@@ -126,15 +126,15 @@ description: |
 
 ### 参考文件
 
-| 文件 | 何时阅读 |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| [step-0-capture.md](references/step-0-capture.md) | Step 0 — 抓取、理解品牌与产品，撰写策略优先的网站摘要 |
-| [step-1-design.md](references/step-1-design.md) | Step 1 — 编写 DESIGN.md 品牌速查表（5 节，250–350 行；广告牌式社交广告可走 50 行快速路径） |
-| [step-2-brief.md](references/step-2-brief.md) | Step 2 — 与用户对齐信息、叙事弧线、受众 |
-| [capabilities.md](references/capabilities.md) | Step 2 与 5 — HyperFrames 能力全览（24 节）。简报阶段浏览目录，构建阶段深入具体章节 |
-| [step-3-storyboard.md](references/step-3-storyboard.md) | Step 3 — 分镜 + 脚本（合并）及用户审阅门槛 |
-| [step-4-vo.md](references/step-4-vo.md) | Step 4 — TTS 提供商选择、生成、时间轴 |
-| [step-5-build.md](references/step-5-build.md) | Step 5 — 构建 index.html + compositions |
-| [step-6-validate.md](references/step-6-validate.md) | Step 6 — lint、validate、快照（按视频长度缩放）、预览 |
-| [techniques.md](../hyperframes/references/techniques.md) | Step 3 与 5 — 13 种基础动效技法及代码模式（适配使用，勿照搬） |
-| [html-in-canvas-patterns.md](../hyperframes/references/html-in-canvas-patterns.md) | Step 5 — HTML-in-Canvas 效果的完整代码模式（位于 hyperframes 技能中） |
+| 文件                                                                               | 何时阅读                                                                                   |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [step-0-capture.md](references/step-0-capture.md)                                  | Step 0 — 抓取、理解品牌与产品，撰写策略优先的网站摘要                                      |
+| [step-1-design.md](references/step-1-design.md)                                    | Step 1 — 编写 DESIGN.md 品牌速查表（5 节，250–350 行；广告牌式社交广告可走 50 行快速路径） |
+| [step-2-brief.md](references/step-2-brief.md)                                      | Step 2 — 与用户对齐信息、叙事弧线、受众                                                    |
+| [capabilities.md](references/capabilities.md)                                      | Step 2 与 5 — HyperFrames 能力全览（24 节）。简报阶段浏览目录，构建阶段深入具体章节        |
+| [step-3-storyboard.md](references/step-3-storyboard.md)                            | Step 3 — 分镜 + 脚本（合并）及用户审阅门槛                                                 |
+| [step-4-vo.md](references/step-4-vo.md)                                            | Step 4 — TTS 提供商选择、生成、时间轴                                                      |
+| [step-5-build.md](references/step-5-build.md)                                      | Step 5 — 构建 index.html + compositions                                                    |
+| [step-6-validate.md](references/step-6-validate.md)                                | Step 6 — lint、validate、快照（按视频长度缩放）、预览                                      |
+| [techniques.md](../hyperframes/references/techniques.md)                           | Step 3 与 5 — 13 种基础动效技法及代码模式（适配使用，勿照搬）                              |
+| [html-in-canvas-patterns.md](../hyperframes/references/html-in-canvas-patterns.md) | Step 5 — HTML-in-Canvas 效果的完整代码模式（位于 hyperframes 技能中）                      |

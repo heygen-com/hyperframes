@@ -13,7 +13,7 @@ import { SnapToolbar } from "./SnapToolbar";
 
 afterEach(() => {
   document.body.innerHTML = "";
-  window.localStorage.clear();
+  window.localStorage?.clear();
   usePlayerStore.getState().reset();
 });
 

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { clearMockStorage, mockLocalStorage } from "./testUtils";
 
 // `shouldTrack()` reads module-level constants evaluated at module load time,
 // so changing env after import has no effect. Each test resets module cache.
@@ -29,8 +30,9 @@ describe("studio client shouldTrack", () => {
   beforeEach(() => {
     setDev(false);
     setNoTelemetry(undefined);
-    localStorage.clear();
+    clearMockStorage();
     vi.unstubAllGlobals();
+    mockLocalStorage(vi);
   });
 
   it("returns true when not in dev mode and no opt-outs", async () => {

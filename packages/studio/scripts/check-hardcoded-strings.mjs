@@ -24,12 +24,12 @@ function looksLikeEnglish(text) {
   if (!/[a-zA-Z]/.test(trimmed)) return false;
 
   // Skip identifiers, paths, and technical tokens without spaces.
-  if (!/\s/.test(trimmed) && /^[\w./:@#%+\-]+$/.test(trimmed)) {
+  if (!/\s/.test(trimmed) && /^[\w./:@#%+-]+$/.test(trimmed)) {
     if (trimmed.length <= 6 || /^[a-z][\w-]*$/.test(trimmed)) return false;
   }
 
   // Skip units, numbers, and punctuation-only fragments.
-  if (/^[\d\s%px°×\-+.,:;!?()[\]{}]+$/.test(trimmed)) return false;
+  if (/^[\d\s%px°×+.,:;!?()[\]{} -]+$/.test(trimmed)) return false;
 
   return true;
 }

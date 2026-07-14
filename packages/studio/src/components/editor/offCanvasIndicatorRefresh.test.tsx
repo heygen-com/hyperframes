@@ -141,6 +141,8 @@ describe("off-canvas indicator refresh", () => {
       await act(async () => {
         await Promise.resolve();
         await flushAnimationFrames();
+        // Extra frames to let the rAF-driven refresh + React commit settle.
+        await flushAnimationFrames();
       });
 
       const after = h.host.querySelector(INDICATOR);

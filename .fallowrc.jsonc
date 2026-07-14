@@ -76,6 +76,8 @@
     "skills/**/fonts/**",
     // Golden snapshot files: data consumed by toMatchFileSnapshot, not importable modules.
     "packages/**/__goldens__/**",
+    // macOS Finder duplicates (e.g. "keyframes 2.ts") — not project source.
+    "**/* 2.*",
     "registry/**",
     "examples/**",
     "packages/sdk/examples/**",
@@ -139,6 +141,18 @@
         "buildElementLabel",
         "refreshDomEditSelection",
       ],
+    },
+    // GestureRecordBadge: public API exported for use by external composition
+    // overlays; dom editing overlay integration planned in follow-up PR.
+    {
+      "file": "packages/studio/src/components/editor/GestureRecordControl.tsx",
+      "exports": ["GestureRecordBadge"],
+    },
+    // DeleteConfirm: shared confirmation dialog component, consumed by the
+    // FileTree barrel and sibling components via dynamic resolution.
+    {
+      "file": "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
+      "exports": ["DeleteConfirm"],
     },
     // domEditing barrel: re-exports consumed throughout the studio but
     // fallow's static analyzer can't trace re-exports through barrel files.
@@ -416,6 +430,14 @@
       // scopeRootSelectors handling shifts lines and re-flags both.
       "packages/core/src/compiler/inlineSubCompositions.ts",
       "packages/core/src/compiler/compositionScoping.test.ts",
+      // i18n branch: pre-existing internal clones re-flagged by import-path
+      // line shifts (no logic changed).
+      "packages/studio/src/components/LintModal.tsx",
+      "packages/studio/src/components/editor/FileTree.tsx",
+      "packages/studio/src/components/editor/FileTreeNodes.tsx",
+      "packages/studio/src/hooks/useElementLifecycleOps.ts",
+      "packages/studio/src/hooks/useGroupCommits.ts",
+      "packages/studio/src/components/sidebar/LeftSidebar.tsx",
     ],
   },
   "health": {
@@ -481,10 +503,21 @@
       // vs base-var args, validation throws) but small and well-tested via the
       // generated table's shape test; this is dev tooling, not shipped runtime.
       "packages/cli/scripts/sync-agent-dirs.ts",
-      // Files modified only for import-path updates (one-line changes to switch
-      // from @hyperframes/core/* subpaths to the new packages). Their complexity
-      // is pre-existing; the line-shift fingerprint problem makes fallow treat
-      // the violations as new even though no logic changed.
+    // check-hardcoded-strings.mjs: pre-existing complexity in scanFile,
+    // shouldSkipLine, looksLikeEnglish, and walk — all pre-date the lint fix
+    // (escaping `\-`). The line-shift re-flags them as inherited.
+    "packages/studio/scripts/check-hardcoded-strings.mjs",
+    // i18n branch: pre-existing complexity in files with import-path line
+    // shifts (no logic changed).
+    "packages/studio/src/hooks/useClipboard.ts",
+    "packages/studio/src/components/StudioHeader.tsx",
+    "packages/studio/src/hooks/useRazorSplit.ts",
+    "packages/studio/src/components/editor/propertyPanelSections.tsx",
+    "packages/studio/src/components/editor/MotionPathOverlay.tsx",
+    // Files modified only for import-path updates (one-line changes to switch
+    // from @hyperframes/core/* subpaths to the new packages). Their complexity
+    // is pre-existing; the line-shift fingerprint problem makes fallow treat
+    // the violations as new even though no logic changed.
       "packages/cli/src/server/studioServer.ts",
       "packages/core/src/core.types.ts",
       "packages/core/src/generators/hyperframes.ts",

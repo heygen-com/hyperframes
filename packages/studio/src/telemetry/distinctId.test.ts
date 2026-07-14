@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { clearMockStorage, mockLocalStorage } from "./testUtils";
 import {
   resolveStudioDistinctId,
   getCliDistinctId,
@@ -15,7 +16,8 @@ function clearCliId(): void {
 
 describe("resolveStudioDistinctId", () => {
   beforeEach(() => {
-    localStorage.clear();
+    clearMockStorage();
+    mockLocalStorage(vi);
     clearCliId();
     __resetStudioDistinctIdForTests();
   });
