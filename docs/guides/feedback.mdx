@@ -167,7 +167,7 @@ Feedback is anonymous. Each installation has a random UUID (`anonymousId`) — t
 
 ## Rating Scale Compatibility
 
-New feedback stores the raw integer together with `rating_scale: 10`. Where an NPS category is needed, scores `0–6` are detractors, `7–8` are passives, and `9–10` are promoters.
+New feedback stores the raw integer together with `rating_scale: 10`.
 
 Feedback collected before this change remains on the historical 1–5 satisfaction scale. Historical events have no `rating_scale`, and historical Slack or GitHub records retain their `/5` denominator. Consumers must treat a missing scale as legacy 1–5 data and must not reinterpret those scores as NPS.
 
