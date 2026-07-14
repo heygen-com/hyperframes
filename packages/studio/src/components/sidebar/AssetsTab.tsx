@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -98,6 +99,7 @@ export const AssetsTab = memo(function AssetsTab({
   onRename,
   onAddAssetToTimeline,
 }: AssetsTabProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -237,7 +239,7 @@ export const AssetsTab = memo(function AssetsTab({
                   : "text-panel-text-3 hover:text-panel-text-1"
               }`}
             >
-              {m === "local" ? "This project" : "All projects"}
+              {m === "local" ? t("assetsTab.thisProject") : t("assetsTab.allProjects")}
             </button>
           ))}
         </div>
@@ -259,7 +261,7 @@ export const AssetsTab = memo(function AssetsTab({
               >
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              Import media
+              {t("assetsTab.importMedia")}
             </button>
             <input
               ref={fileInputRef}
@@ -389,7 +391,9 @@ export const AssetsTab = memo(function AssetsTab({
               <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
             </svg>
-            <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
+            <p className="text-[10px] text-neutral-600 text-center">
+              {t("assetsTab.dropMediaHere")}
+            </p>
           </div>
         ) : (
           visibleCategories.map((cat) => (

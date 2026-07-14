@@ -7,6 +7,8 @@ import {
   type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
+import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
@@ -14,9 +16,6 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
-import { VariablesPanel } from "./panels/VariablesPanel";
-import { PanelTabButton } from "./PanelTabButton";
-import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
@@ -24,7 +23,6 @@ import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailabil
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
-import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -200,6 +198,7 @@ export function StudioRightPanel({
 
   const renderJobs = renderQueue.jobs as RenderJob[];
   const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
+  const { t } = useTranslation();
 
   // Derive scene list from the live clip manifest in the preview iframe.
   // fallow-ignore-next-line complexity
@@ -343,74 +342,63 @@ export function StudioRightPanel({
   );
 
   const propertyPanel = (
-    <DesignPanelPromoteProvider
-      selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
+    <PropertyPanel
       projectId={projectId}
-      activeCompPath={activeCompPath}
-      readProjectFile={readProjectFile}
-      writeProjectFile={writeProjectFile}
-      recordEdit={recordEdit}
-      reloadPreview={reloadPreview}
-      domEditSaveTimestampRef={domEditSaveTimestampRef}
-    >
-      <PropertyPanel
-        projectId={projectId}
-        projectDir={projectDir}
-        assets={assets}
-        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
-        multiSelectCount={domEditGroupSelections.length}
-        copiedAgentPrompt={copiedAgentPrompt}
-        onClearSelection={clearDomSelection}
-        onToggleElementHidden={onToggleElementHidden}
-        onUngroup={handleUngroupSelection}
-        onSetStyle={handleDomStyleCommit}
-        onSetAttribute={handleDomAttributeCommit}
-        onSetAttributeLive={handleDomAttributeLiveCommit}
-        onApplyColorGradingScope={handleApplyColorGradingScope}
-        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
-        onRemoveBackground={handleRemoveBackground}
-        onSetManualOffset={handleDomPathOffsetCommit}
-        onSetManualSize={handleDomBoxSizeCommit}
-        onSetManualRotation={handleDomRotationCommit}
-        onSetText={handleDomTextCommit}
-        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-        onAddTextField={handleDomAddTextField}
-        onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
-        onImportAssets={handleImportFiles}
-        fontAssets={fontAssets}
-        onImportFonts={handleImportFonts}
-        previewIframeRef={previewIframeRef}
-        gsapAnimations={selectedGsapAnimations}
-        gsapMultipleTimelines={gsapMultipleTimelines}
-        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-        onUpdateGsapProperty={handleGsapUpdateProperty}
-        onUpdateGsapMeta={handleGsapUpdateMeta}
-        onDeleteGsapAnimation={handleGsapDeleteAnimation}
-        onAddGsapProperty={handleGsapAddProperty}
-        onRemoveGsapProperty={handleGsapRemoveProperty}
-        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
-        onAddGsapFromProperty={handleGsapAddFromProperty}
-        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
-        onAddGsapAnimation={handleGsapAddAnimation}
-        onCommitAnimatedProperty={commitAnimatedProperty}
-        onCommitAnimatedProperties={commitAnimatedProperties}
-        onAddKeyframe={handleGsapAddKeyframe}
-        onRemoveKeyframe={handleGsapRemoveKeyframe}
-        onConvertToKeyframes={(animId, duration) =>
-          handleGsapConvertToKeyframes(animId, undefined, duration)
-        }
-        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
-        onSetArcPath={handleSetArcPath}
-        onUpdateArcSegment={handleUpdateArcSegment}
-        onUnroll={handleUnroll}
-        onUpdateKeyframeEase={handleUpdateKeyframeEase}
-        onSetAllKeyframeEases={handleSetAllKeyframeEases}
-        recordingState={recordingState}
-        recordingDuration={recordingDuration}
-        onToggleRecording={onToggleRecording}
-      />
-    </DesignPanelPromoteProvider>
+      projectDir={projectDir}
+      assets={assets}
+      element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+      multiSelectCount={domEditGroupSelections.length}
+      copiedAgentPrompt={copiedAgentPrompt}
+      onClearSelection={clearDomSelection}
+      onToggleElementHidden={onToggleElementHidden}
+      onUngroup={handleUngroupSelection}
+      onSetStyle={handleDomStyleCommit}
+      onSetAttribute={handleDomAttributeCommit}
+      onSetAttributeLive={handleDomAttributeLiveCommit}
+      onApplyColorGradingScope={handleApplyColorGradingScope}
+      onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+      onRemoveBackground={handleRemoveBackground}
+      onSetManualOffset={handleDomPathOffsetCommit}
+      onSetManualSize={handleDomBoxSizeCommit}
+      onSetManualRotation={handleDomRotationCommit}
+      onSetText={handleDomTextCommit}
+      onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+      onAddTextField={handleDomAddTextField}
+      onRemoveTextField={handleDomRemoveTextField}
+      onAskAgent={handleAskAgent}
+      onImportAssets={handleImportFiles}
+      fontAssets={fontAssets}
+      onImportFonts={handleImportFonts}
+      previewIframeRef={previewIframeRef}
+      gsapAnimations={selectedGsapAnimations}
+      gsapMultipleTimelines={gsapMultipleTimelines}
+      gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+      onUpdateGsapProperty={handleGsapUpdateProperty}
+      onUpdateGsapMeta={handleGsapUpdateMeta}
+      onDeleteGsapAnimation={handleGsapDeleteAnimation}
+      onAddGsapProperty={handleGsapAddProperty}
+      onRemoveGsapProperty={handleGsapRemoveProperty}
+      onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+      onAddGsapFromProperty={handleGsapAddFromProperty}
+      onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+      onAddGsapAnimation={handleGsapAddAnimation}
+      onCommitAnimatedProperty={commitAnimatedProperty}
+      onCommitAnimatedProperties={commitAnimatedProperties}
+      onAddKeyframe={handleGsapAddKeyframe}
+      onRemoveKeyframe={handleGsapRemoveKeyframe}
+      onConvertToKeyframes={(animId, duration) =>
+        handleGsapConvertToKeyframes(animId, undefined, duration)
+      }
+      onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+      onSetArcPath={handleSetArcPath}
+      onUpdateArcSegment={handleUpdateArcSegment}
+      onUnroll={handleUnroll}
+      onUpdateKeyframeEase={handleUpdateKeyframeEase}
+      onSetAllKeyframeEases={handleSetAllKeyframeEases}
+      recordingState={recordingState}
+      recordingDuration={recordingDuration}
+      onToggleRecording={onToggleRecording}
+    />
   );
 
   const renderQueuePanel = (
@@ -434,9 +422,6 @@ export function StudioRightPanel({
           format,
           resolution,
           composition,
-          // Render what the user is previewing: active variable overrides
-          // from the Variables panel ride along (undefined = defaults).
-          variables: usePreviewVariablesStore.getState().values ?? undefined,
         });
       }}
       compositionDimensions={compositionDimensions}
@@ -446,14 +431,12 @@ export function StudioRightPanel({
 
   return (
     <>
-      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
-          the absolutely-positioned inner hit area. */}
       <div
         role="separator"
         aria-label="Resize inspector panel"
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
@@ -467,13 +450,10 @@ export function StudioRightPanel({
           setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
         }}
       >
-        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
-        <div className="absolute inset-y-0 -left-[2.5px] w-2" />
-        {/* Visible hairline */}
-        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+        <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-l border-neutral-800 bg-neutral-900"
         style={{ width: rightWidth }}
       >
         {captionEditMode ? (
@@ -483,38 +463,66 @@ export function StudioRightPanel({
             <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
-                  <PanelTabButton
-                    label="Design"
-                    tooltip="Element styles and properties"
-                    active={designPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("design")}
-                  />
-                  <PanelTabButton
-                    label="Layers"
-                    tooltip="Composition layer stack"
-                    active={layersPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("layers")}
-                  />
+                  <Tooltip label={t("rightPanel.tooltipDesign")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => handleInspectorPaneButtonClick("design")}
+                      aria-pressed={designPaneOpen}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
+                        designPaneOpen
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      {t("rightPanel.design")}
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={t("rightPanel.tooltipLayers")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => handleInspectorPaneButtonClick("layers")}
+                      aria-pressed={layersPaneOpen}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
+                        layersPaneOpen
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                      }`}
+                    >
+                      {t("rightPanel.layers")}
+                    </button>
+                  </Tooltip>
                 </>
               )}
-              <PanelTabButton
-                label={renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
-                tooltip="Render queue and exports"
-                active={rightPanelTab === "renders"}
-                onClick={() => setRightPanelTab("renders")}
-              />
-              <PanelTabButton
-                label="Slideshow"
-                tooltip="Slideshow branching editor"
-                active={rightPanelTab === "slideshow"}
-                onClick={() => setRightPanelTab("slideshow")}
-              />
-              <PanelTabButton
-                label="Variables"
-                tooltip="Template variables — declare, preview with values"
-                active={rightPanelTab === "variables"}
-                onClick={() => setRightPanelTab("variables")}
-              />
+              <Tooltip label={t("rightPanel.tooltipRenders")} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("renders")}
+                  aria-pressed={rightPanelTab === "renders"}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
+                    rightPanelTab === "renders"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                  }`}
+                >
+                  {renderJobs.length > 0
+                    ? t("rightPanel.rendersWithCount", { count: renderJobs.length })
+                    : t("rightPanel.renders")}
+                </button>
+              </Tooltip>
+              <Tooltip label={t("rightPanel.tooltipSlideshow")} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setRightPanelTab("slideshow")}
+                  aria-pressed={rightPanelTab === "slideshow"}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
+                    rightPanelTab === "slideshow"
+                      ? "bg-neutral-800 text-white"
+                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+                  }`}
+                >
+                  {t("rightPanel.slideshow")}
+                </button>
+              </Tooltip>
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (
@@ -530,13 +538,6 @@ export function StudioRightPanel({
                   scenes={slideshowScenes}
                   onPersist={onPersistSlideshow}
                   onPersistNotes={onPersistSlideshowNotes}
-                />
-              ) : rightPanelTab === "variables" ? (
-                <VariablesPanel
-                  sdkSession={sdkSession}
-                  reloadPreview={reloadPreview}
-                  domEditSaveTimestampRef={domEditSaveTimestampRef}
-                  recordEdit={recordEdit}
                 />
               ) : layersPaneOpen && designPaneOpen ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">

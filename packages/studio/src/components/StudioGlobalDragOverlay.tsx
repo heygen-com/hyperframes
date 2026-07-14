@@ -1,4 +1,8 @@
+import { useTranslation } from "react-i18next";
+
 export function StudioGlobalDragOverlay() {
+  const { t } = useTranslation();
+
   return (
     <div className="hf-backdrop-in absolute inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
       <div className="flex flex-col items-center gap-3 px-8 py-6 rounded-xl border-2 border-dashed border-studio-accent/60 bg-studio-accent/[0.06]">
@@ -17,7 +21,9 @@ export function StudioGlobalDragOverlay() {
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        <span className="text-sm font-medium text-studio-accent">Drop to add at the playhead</span>
+        <span className="text-sm font-medium text-studio-accent">
+          {t("shell.globalDragOverlay.dropFiles")}
+        </span>
       </div>
     </div>
   );

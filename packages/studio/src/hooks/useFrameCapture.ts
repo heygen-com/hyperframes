@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, type MouseEvent } from "react";
+import i18n from "../i18n";
 import { useMountEffect } from "./useMountEffect";
 import { liveTime, usePlayerStore } from "../player";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "../utils/frameCapture";
@@ -44,7 +45,10 @@ export function useFrameCapture({
         await Promise.race([
           waitForPendingDomEditSaves(),
           new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error("Save queue timed out")), 5000),
+            setTimeout(
+              () => reject(new Error(i18n.t("hooks.frameCapture.saveQueueTimedOut"))),
+              5000,
+            ),
           ),
         ]);
         const href = buildFrameCaptureUrl({
@@ -59,7 +63,7 @@ export function useFrameCapture({
           const response = await fetch(href, { cache: "no-store", signal: controller.signal });
           clearTimeout(timeout);
           if (!response.ok) {
-            let msg = `Capture failed (${response.status})`;
+            let msg = i18n.t("hooks.frameCapture.failedStatus", { status: response.status });
             try {
               const json = await response.json();
               if (json?.error) msg = json.error;
@@ -80,12 +84,15 @@ export function useFrameCapture({
         } catch (fetchErr) {
           clearTimeout(timeout);
           if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-            throw new Error("Capture timed out — the server took too long to respond");
+            throw new Error(i18n.t("hooks.frameCapture.timedOut"));
           }
           throw fetchErr;
         }
       } catch (err) {
-        showToast(err instanceof Error ? err.message : "Capture failed", "error");
+        showToast(
+          err instanceof Error ? err.message : i18n.t("hooks.frameCapture.failed"),
+          "error",
+        );
       } finally {
         capturingRef.current = false;
         setCapturing(false);

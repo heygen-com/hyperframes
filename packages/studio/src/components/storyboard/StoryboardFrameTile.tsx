@@ -1,6 +1,7 @@
+import { useTranslation } from "react-i18next";
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
 import { FramePoster, posterTime } from "./FramePoster";
-import { FRAME_STATUS_META } from "./frameStatus";
+import { getFrameStatusMeta } from "./frameStatus";
 
 export interface StoryboardFrameTileProps {
   projectId: string;
@@ -18,19 +19,20 @@ function firstLine(text: string): string {
   );
 }
 
-function placeholderMessage(frame: StoryboardFrameView): string {
-  if (frame.status === "outline") return "Not built yet";
-  if (frame.src && !frame.srcExists) return "Frame file not found";
-  return "No preview";
-}
-
 /** A single contact-sheet tile: poster preview + its metadata. Click to focus. */
 // fallow-ignore-next-line complexity
 export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFrameTileProps) {
-  const meta = FRAME_STATUS_META[frame.status];
+  const { t } = useTranslation();
+  const meta = getFrameStatusMeta(frame.status);
   const renderable = frame.srcExists && frame.status !== "outline";
-  const title = frame.title ?? `Frame ${frame.index}`;
+  const title = frame.title ?? t("storyboard.frameFallback", { index: frame.index });
   const sceneLine = frame.scene ?? firstLine(frame.narrative);
+
+  const placeholderMessage = () => {
+    if (frame.status === "outline") return t("storyboard.notBuiltYet");
+    if (frame.src && !frame.srcExists) return t("storyboard.frameFileNotFound");
+    return t("storyboard.noPreview");
+  };
 
   return (
     <article className="min-w-0">
@@ -50,7 +52,11 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
             title={title}
           />
         ) : (
-          <FrameTilePlaceholder frame={frame} />
+          <FrameTilePlaceholder
+            frame={frame}
+            message={placeholderMessage()}
+            outlineLabel={t("storyboard.outlineFallback")}
+          />
         )}
       </button>
 
@@ -58,7 +64,7 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
         <h3 className="truncate text-sm font-medium text-neutral-200">{title}</h3>
         <span
           title={meta.tooltip}
-          aria-label={`Status: ${meta.label} — ${meta.tooltip}`}
+          aria-label={t("storyboard.statusAria", { label: meta.label, tooltip: meta.tooltip })}
           className={`shrink-0 cursor-default rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.chipClass}`}
         >
           {meta.label}
@@ -78,11 +84,19 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
   );
 }
 
-function FrameTilePlaceholder({ frame }: { frame: StoryboardFrameView }) {
+function FrameTilePlaceholder({
+  frame,
+  message,
+  outlineLabel,
+}: {
+  frame: StoryboardFrameView;
+  message: string;
+  outlineLabel: string;
+}) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-1 border border-dashed border-neutral-700 bg-neutral-950 text-center">
-      <span className="text-xs font-medium text-neutral-400">{frame.title ?? "Outline"}</span>
-      <span className="text-[11px] text-neutral-600">{placeholderMessage(frame)}</span>
+      <span className="text-xs font-medium text-neutral-400">{frame.title ?? outlineLabel}</span>
+      <span className="text-[11px] text-neutral-600">{message}</span>
     </div>
   );
 }

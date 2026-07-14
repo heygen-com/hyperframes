@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, ClipboardList, Film, Music, Scissors } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -38,6 +39,7 @@ export function MediaSection({
     },
   ) => Promise<BackgroundRemovalResult>;
 }) {
+  const { t } = useTranslation();
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -81,7 +83,11 @@ export function MediaSection({
       ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
       : "";
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
-  const panelTitle = isImage ? "Image" : isVideo ? "Video" : "Audio";
+  const panelTitle = isImage
+    ? t("propertyPanel.image")
+    : isVideo
+      ? t("editor.media.video")
+      : t("editor.media.audio");
 
   useEffect(() => {
     setRemoveProgress(null);
@@ -99,7 +105,11 @@ export function MediaSection({
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
     setRemoveBusy(true);
-    setRemoveProgress({ status: "processing", progress: 0, stage: "Preparing" });
+    setRemoveProgress({
+      status: "processing",
+      progress: 0,
+      stage: t("editor.colorGrading.preparing"),
+    });
     try {
       const result = await onRemoveBackground(projectSrc, {
         createBackgroundPlate: isVideo && createPlate,
@@ -110,14 +120,14 @@ export function MediaSection({
       setRemoveProgress({
         status: "complete",
         progress: 100,
-        stage: "Applied cutout",
+        stage: t("editor.colorGrading.appliedCutout"),
         ...result,
       });
     } catch (error) {
       setRemoveProgress({
         status: "failed",
         progress: 0,
-        stage: "Failed",
+        stage: t("editor.colorGrading.failed"),
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -131,7 +141,9 @@ export function MediaSection({
         {srcAttr && (
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-medium text-neutral-500">Source</div>
+              <div className="text-[11px] font-medium text-neutral-500">
+                {t("editor.media.source")}
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -143,7 +155,7 @@ export function MediaSection({
                 className="flex h-6 items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200"
               >
                 {copied ? <Check size={11} /> : <ClipboardList size={11} />}
-                <span>{copied ? "Copied" : "Copy"}</span>
+                <span>{copied ? t("propertyPanel.copied") : t("propertyPanel.copy")}</span>
               </button>
             </div>
             <div
@@ -159,9 +171,9 @@ export function MediaSection({
           <div className="grid min-w-0 max-w-full gap-2 overflow-hidden rounded-md bg-panel-input/30 p-2">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className={LABEL}>Cutout</div>
+                <div className={LABEL}>{t("editor.media.cutout")}</div>
                 <div className="mt-0.5 truncate text-[10px] text-panel-text-4">
-                  Create transparent {isVideo ? "WebM video" : "PNG image"}
+                  {isVideo ? t("editor.media.cutoutDescVideo") : t("editor.media.cutoutDescImage")}
                 </div>
               </div>
               <button
@@ -174,35 +186,40 @@ export function MediaSection({
                 className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   canRemoveBackground
-                    ? "Remove background and save a transparent asset"
-                    : "Select a project-local image or video asset"
+                    ? t("editor.media.removeBgTitle")
+                    : t("editor.media.selectLocalAsset")
                 }
               >
                 <Scissors size={13} />
-                <span>{removeBusy ? "Working" : "Remove BG"}</span>
+                <span>{removeBusy ? t("editor.media.working") : t("editor.media.removeBg")}</span>
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <SelectField
-                label="Quality"
+                label={t("editor.media.quality")}
                 value={quality}
                 onChange={(next) => setQuality(next as typeof quality)}
                 options={["fast", "balanced", "best"]}
+                optionLabels={{
+                  fast: t("editor.media.qualityFast"),
+                  balanced: t("editor.media.qualityBalanced"),
+                  best: t("editor.media.qualityBest"),
+                }}
               />
               {isVideo ? (
                 <div className="grid min-w-0 gap-1.5">
-                  <span className={LABEL}>BG plate</span>
+                  <span className={LABEL}>{t("editor.media.bgPlate")}</span>
                   <SegmentedControl
                     value={createPlate ? "on" : "off"}
                     onChange={(next) => setCreatePlate(next === "on")}
                     options={[
-                      { label: "On", value: "on" },
-                      { label: "Off", value: "off" },
+                      { label: t("editor.media.on"), value: "on" },
+                      { label: t("editor.media.off"), value: "off" },
                     ]}
                   />
                   <span className="text-[10px] leading-tight text-panel-text-4">
-                    Optional hole-cut background copy.
+                    {t("editor.media.bgPlateHint")}
                   </span>
                 </div>
               ) : (
@@ -214,7 +231,9 @@ export function MediaSection({
               <div className="space-y-1">
                 <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] text-panel-text-4">
                   <span className="min-w-0 flex-1 truncate">
-                    {removeProgress.error ?? removeProgress.stage ?? "Processing"}
+                    {removeProgress.error ??
+                      removeProgress.stage ??
+                      t("editor.colorGrading.processing")}
                   </span>
                   <span>{Math.round(removeProgress.progress)}%</span>
                 </div>
@@ -234,7 +253,7 @@ export function MediaSection({
                 className="truncate text-[10px] font-medium text-panel-text-3"
                 title={removeProgress.outputPath}
               >
-                Applied {removeProgress.outputPath}
+                {t("editor.media.appliedPath", { path: removeProgress.outputPath })}
               </div>
             )}
           </div>
@@ -243,7 +262,7 @@ export function MediaSection({
         {(isVideo || isAudio) && (
           <>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Volume</span>
+              <span className={LABEL}>{t("editor.media.volume")}</span>
               <SliderControl
                 value={volumePercent}
                 min={0}
@@ -258,7 +277,7 @@ export function MediaSection({
             </div>
 
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Playback rate</span>
+              <span className={LABEL}>{t("editor.media.playbackRate")}</span>
               <SliderControl
                 value={playbackRate * 100}
                 min={25}
@@ -273,7 +292,7 @@ export function MediaSection({
             </div>
 
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Media start</span>
+              <span className={LABEL}>{t("editor.media.mediaStart")}</span>
               <SliderControl
                 value={Math.round(mediaStart * 100)}
                 min={0}
@@ -289,28 +308,28 @@ export function MediaSection({
 
             <div className={RESPONSIVE_GRID}>
               <div className="grid min-w-0 gap-1.5">
-                <span className={LABEL}>Loop</span>
+                <span className={LABEL}>{t("editor.media.loop")}</span>
                 <SegmentedControl
                   value={hasLoop ? "on" : "off"}
                   onChange={(next) => {
                     void onSetHtmlAttribute("loop", next === "on" ? "true" : null);
                   }}
                   options={[
-                    { label: "On", value: "on" },
-                    { label: "Off", value: "off" },
+                    { label: t("editor.media.on"), value: "on" },
+                    { label: t("editor.media.off"), value: "off" },
                   ]}
                 />
               </div>
               <div className="grid min-w-0 gap-1.5">
-                <span className={LABEL}>Muted</span>
+                <span className={LABEL}>{t("editor.media.muted")}</span>
                 <SegmentedControl
                   value={hasMuted ? "on" : "off"}
                   onChange={(next) => {
                     void onSetHtmlAttribute("muted", next === "on" ? "true" : null);
                   }}
                   options={[
-                    { label: "On", value: "on" },
-                    { label: "Off", value: "off" },
+                    { label: t("editor.media.on"), value: "on" },
+                    { label: t("editor.media.off"), value: "off" },
                   ]}
                 />
               </div>
@@ -318,7 +337,7 @@ export function MediaSection({
 
             {isVideo && (
               <div className="grid min-w-0 gap-1.5">
-                <span className={LABEL}>Has audio track</span>
+                <span className={LABEL}>{t("editor.media.hasAudioTrack")}</span>
                 <SegmentedControl
                   value={hasAudio ? "yes" : "no"}
                   onChange={(next) => {
@@ -331,8 +350,8 @@ export function MediaSection({
                     }
                   }}
                   options={[
-                    { label: "Yes", value: "yes" },
-                    { label: "No", value: "no" },
+                    { label: t("editor.media.yes"), value: "yes" },
+                    { label: t("editor.media.no"), value: "no" },
                   ]}
                 />
               </div>
@@ -344,7 +363,7 @@ export function MediaSection({
           <>
             <div className={RESPONSIVE_GRID}>
               <SelectField
-                label="Fit"
+                label={t("editor.media.fit")}
                 value={objectFit}
                 onChange={(next) => {
                   void onSetStyle("object-fit", next);
@@ -352,7 +371,7 @@ export function MediaSection({
                 options={["contain", "cover", "fill", "none", "scale-down"]}
               />
               <SelectField
-                label="Position"
+                label={t("propertyPanel.position")}
                 value={objectPosition}
                 onChange={(next) => {
                   void onSetStyle("object-position", next);

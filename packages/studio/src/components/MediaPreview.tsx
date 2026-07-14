@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { IMAGE_EXT, VIDEO_EXT, AUDIO_EXT } from "../utils/mediaTypes";
 
 function MediaErrorPanel({ name, filePath }: { name: string; filePath: string }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col items-center justify-center h-full p-4 bg-neutral-950 gap-2">
       <svg
@@ -20,14 +23,13 @@ function MediaErrorPanel({ name, filePath }: { name: string; filePath: string })
       </svg>
       <span className="text-sm text-neutral-400 font-medium">{name}</span>
       <span className="text-[11px] text-neutral-600 font-mono">{filePath}</span>
-      <span className="text-[10px] text-neutral-500">
-        Couldn't load this file — it may be missing or corrupt
-      </span>
+      <span className="text-[10px] text-neutral-500">{t("shell.mediaPreview.loadError")}</span>
     </div>
   );
 }
 
 export function MediaPreview({ projectId, filePath }: { projectId: string; filePath: string }) {
+  const { t } = useTranslation();
   const serveUrl = `/api/projects/${projectId}/preview/${filePath}`;
   const name = filePath.split("/").pop() ?? filePath;
   // Keyed by path so switching to another file clears a previous failure.
@@ -108,7 +110,7 @@ export function MediaPreview({ projectId, filePath }: { projectId: string; fileP
       </svg>
       <span className="text-sm text-neutral-400 font-medium">{name}</span>
       <span className="text-[11px] text-neutral-600 font-mono">{filePath}</span>
-      <span className="text-[10px] text-neutral-600">Binary file — preview not available</span>
+      <span className="text-[10px] text-neutral-600">{t("shell.mediaPreview.binaryFile")}</span>
     </div>
   );
 }

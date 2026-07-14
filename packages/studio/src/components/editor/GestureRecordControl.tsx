@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 export type GestureRecordingState = "idle" | "recording" | "preview";
 
 interface GestureRecordIconProps {
@@ -27,6 +29,7 @@ export function GestureRecordPanelButton({
   recordingDuration,
   onToggleRecording,
 }: GestureRecordPanelButtonProps) {
+  const { t } = useTranslation();
   const recording = recordingState === "recording";
 
   return (
@@ -43,8 +46,10 @@ export function GestureRecordPanelButton({
       >
         <GestureRecordIcon recording={recording} />
         {recording
-          ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s -- press R`
-          : "Record gesture (R) -- move pointer to capture motion"}
+          ? t("propertyPanel.stopRecordingDuration", {
+              seconds: (recordingDuration ?? 0).toFixed(1),
+            })
+          : t("propertyPanel.recordGesture")}
       </button>
     </div>
   );
@@ -61,8 +66,9 @@ export function GestureRecordBadge({
   recordingState,
   onToggleRecording,
 }: GestureRecordBadgeProps) {
+  const { t } = useTranslation();
   const recording = recordingState === "recording";
-  const label = recording ? "Stop gesture recording (R)" : "Record gesture (R)";
+  const label = recording ? t("propertyPanel.stopRecording") : t("propertyPanel.recordGesture");
 
   return (
     <button

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
@@ -56,6 +57,7 @@ export function StyleSections({
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
 }) {
+  const { t } = useTranslation();
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
@@ -146,7 +148,7 @@ export function StyleSections({
   return (
     <>
       {isFlex && (
-        <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
+        <Section title={t("propertyPanel.flex")} icon={<Layers size={15} />} defaultCollapsed>
           <div className="space-y-4">
             <SegmentedControl
               disabled={styleEditingDisabled}
@@ -159,7 +161,7 @@ export function StyleSections({
             />
             <div className={RESPONSIVE_GRID}>
               <SelectField
-                label="Justify"
+                label={t("propertyPanel.justify")}
                 value={styles["justify-content"] || "flex-start"}
                 disabled={styleEditingDisabled}
                 onChange={(next) => onSetStyle("justify-content", next)}
@@ -173,7 +175,7 @@ export function StyleSections({
                 ]}
               />
               <SelectField
-                label="Align"
+                label={t("propertyPanel.align")}
                 value={styles["align-items"] || "stretch"}
                 disabled={styleEditingDisabled}
                 onChange={(next) => onSetStyle("align-items", next)}
@@ -181,7 +183,7 @@ export function StyleSections({
               />
             </div>
             <DetailField
-              label="Gap"
+              label={t("propertyPanel.gap")}
               value={styles.gap ?? "0px"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
@@ -191,7 +193,7 @@ export function StyleSections({
       )}
 
       {hasVisualBackground && (
-        <Section title="Radius" icon={<Settings size={15} />} defaultCollapsed>
+        <Section title={t("propertyPanel.radius")} icon={<Settings size={15} />} defaultCollapsed>
           <BorderRadiusEditor
             tl={radiusTL}
             tr={radiusTR}
@@ -216,11 +218,11 @@ export function StyleSections({
         </Section>
       )}
 
-      <Section title="Stroke" icon={<Square size={15} />} defaultCollapsed>
+      <Section title={t("propertyPanel.stroke")} icon={<Square size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <MetricField
-              label="Width"
+              label={t("propertyPanel.width")}
               value={formatPxMetricValue(borderWidthValue)}
               disabled={styleEditingDisabled}
               liveCommit
@@ -240,7 +242,7 @@ export function StyleSections({
               }}
             />
             <SelectField
-              label="Style"
+              label={t("propertyPanel.style")}
               value={borderStyleValue}
               disabled={styleEditingDisabled}
               onChange={async (next) => {
@@ -266,7 +268,7 @@ export function StyleSections({
             />
           </div>
           <ColorField
-            label="Stroke color"
+            label={t("propertyPanel.strokeColor")}
             value={borderColorValue}
             disabled={styleEditingDisabled}
             onCommit={(next) => onSetStyle("border-color", next)}
@@ -274,10 +276,10 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Effects" icon={<Zap size={15} />} defaultCollapsed>
+      <Section title={t("propertyPanel.effects")} icon={<Zap size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SelectField
-            label="Shadow"
+            label={t("propertyPanel.shadow")}
             value={boxShadowPreset}
             disabled={styleEditingDisabled}
             onChange={(next) => {
@@ -291,7 +293,7 @@ export function StyleSections({
           />
           <div className={RESPONSIVE_GRID}>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Layer blur</span>
+              <span className={LABEL}>{t("propertyPanel.layerBlur")}</span>
               <SliderControl
                 value={filterBlurValue}
                 min={0}
@@ -306,7 +308,7 @@ export function StyleSections({
               />
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Backdrop</span>
+              <span className={LABEL}>{t("propertyPanel.backdrop")}</span>
               <SliderControl
                 value={backdropBlurValue}
                 min={0}
@@ -327,18 +329,18 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Clip" icon={<Layers size={15} />} defaultCollapsed>
+      <Section title={t("propertyPanel.clip")} icon={<Layers size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <SelectField
-              label="Overflow"
+              label={t("propertyPanel.overflow")}
               value={styles.overflow || "visible"}
               disabled={styleEditingDisabled}
               onChange={(next) => onSetStyle("overflow", next)}
               options={["visible", "hidden", "clip", "auto", "scroll"]}
             />
             <SelectField
-              label="Mask"
+              label={t("propertyPanel.mask")}
               value={clipPathPreset}
               disabled={styleEditingDisabled}
               onChange={(next) => {
@@ -356,7 +358,7 @@ export function StyleSections({
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Mask inset</span>
+            <span className={LABEL}>{t("propertyPanel.maskInset")}</span>
             <SliderControl
               value={clipInsetValue}
               min={0}
@@ -403,7 +405,7 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
+      <Section title={t("propertyPanel.transparency")} icon={<Eye size={15} />} defaultCollapsed>
         <div className="space-y-4">
           <SliderControl
             value={opacityValue}
@@ -416,7 +418,7 @@ export function StyleSections({
             onCommit={(next) => onSetStyle("opacity", formatNumericValue(next / 100))}
           />
           <SelectField
-            label="Mode"
+            label={t("propertyPanel.mode")}
             value={styles["mix-blend-mode"] || "normal"}
             disabled={styleEditingDisabled}
             onChange={(next) => onSetStyle("mix-blend-mode", next)}
@@ -425,21 +427,21 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Fill" icon={<Palette size={15} />}>
+      <Section title={t("propertyPanel.fill")} icon={<Palette size={15} />}>
         <div className="space-y-4">
           <SegmentedControl
             disabled={styleEditingDisabled}
             value={preferredFillMode}
             onChange={handleFillModeChange}
             options={[
-              { label: "Solid", value: "Solid" },
-              { label: "Gradient", value: "Gradient" },
-              { label: "Image", value: "Image" },
+              { label: t("propertyPanel.solid"), value: "Solid" },
+              { label: t("propertyPanel.gradient"), value: "Gradient" },
+              { label: t("propertyPanel.image"), value: "Image" },
             ]}
           />
           {preferredFillMode === "Solid" ? (
             <ColorField
-              label="Fill color"
+              label={t("propertyPanel.fillColor")}
               value={styles["background-color"] ?? "transparent"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("background-color", next)}
@@ -468,7 +470,7 @@ export function StyleSections({
           )}
           {!hasTextControls && (
             <ColorField
-              label="Text color"
+              label={t("propertyPanel.textColor")}
               value={styles.color ?? "rgb(0, 0, 0)"}
               disabled={styleEditingDisabled}
               onCommit={(next) => onSetStyle("color", next)}

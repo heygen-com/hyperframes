@@ -1,6 +1,7 @@
 // fallow-ignore-file unused-file
 // (consumers land in the sidebar/panels PR later in this stack)
 import { type InputHTMLAttributes } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
   /** Accessible name — placeholder alone is not one. */
@@ -11,7 +12,10 @@ interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "
  * Shared search input — one visual system (panel-input tokens) for every
  * panel search box, with a required accessible name.
  */
-export function SearchInput({ className = "", ...props }: SearchInputProps) {
+export function SearchInput({ className = "", placeholder, ...props }: SearchInputProps) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t("ui.searchPlaceholder");
+
   return (
     <div
       className={`flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] ${className}`}
@@ -45,6 +49,7 @@ export function SearchInput({ className = "", ...props }: SearchInputProps) {
       </svg>
       <input
         type="text"
+        placeholder={resolvedPlaceholder}
         className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
         {...props}
       />

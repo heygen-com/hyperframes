@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   googleFontStylesheetUrl,
   POPULAR_GOOGLE_FONT_FAMILIES,
@@ -133,6 +134,7 @@ export function FontFamilyField({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const currentFamily = primaryFontFamily(value);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -207,9 +209,21 @@ export function FontFamilyField({
     if (imported) loadImportedFontStylesheet(imported);
   }, [currentFamily, googleFonts, importedFonts]);
 
+  const translateFontSource = (source: FontOption["source"]) => {
+    const keyMap = {
+      Current: "editor.font.sourceCurrent",
+      Document: "editor.font.sourceDocument",
+      Imported: "editor.font.sourceImported",
+      Google: "editor.font.sourceGoogle",
+      Local: "editor.font.sourceLocal",
+      System: "editor.font.sourceSystem",
+    } as const satisfies Record<FontOption["source"], string>;
+    return t(keyMap[source]);
+  };
+
   const loadBrowserLocalFonts = async () => {
     if (!canQueryLocalFonts || !window.queryLocalFonts) {
-      setFontNotice("This browser does not expose installed fonts. Import a font file instead.");
+      setFontNotice(t("editor.font.browserNoLocalFonts"));
       return;
     }
     setLoadingLocalFonts(true);
@@ -223,13 +237,13 @@ export function FontFamilyField({
         .map((name) => fontFamilyFromAssetPath(`${name}.ttf`));
       setLocalFontData(sorted);
       setLocalFonts((cur) => uniqueFontFamilies([...cur, ...families]));
-      setFontNotice(fonts.length === 0 ? "No browser-local fonts were returned." : null);
+      setFontNotice(fonts.length === 0 ? t("editor.font.noLocalFontsReturned") : null);
     } catch (error) {
       const name = error instanceof Error ? error.name : "";
       setFontNotice(
         name === "NotAllowedError"
-          ? "Local font access was denied. Import a font file instead."
-          : "Local font access is unavailable. Import a font file instead.",
+          ? t("editor.font.localFontDenied")
+          : t("editor.font.localFontUnavailable"),
       );
     } finally {
       setLoadingLocalFonts(false);
@@ -249,7 +263,7 @@ export function FontFamilyField({
         setQuery("");
         setOpen(false);
       } else {
-        setFontNotice("No supported font files were imported.");
+        setFontNotice(t("editor.font.noSupportedFontsImported"));
       }
     } finally {
       setImportingFonts(false);
@@ -368,7 +382,7 @@ export function FontFamilyField({
 
   return (
     <div ref={containerRef} className="relative grid min-w-0 gap-1.5">
-      <span className={LABEL}>Font family</span>
+      <span className={LABEL}>{t("propertyPanel.fontFamily")}</span>
       <button
         type="button"
         disabled={disabled}
@@ -382,7 +396,7 @@ export function FontFamilyField({
           {currentFamily}
         </span>
         <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
-          Font
+          {t("editor.font.fontBadge")}
         </span>
       </button>
 
@@ -394,7 +408,11 @@ export function FontFamilyField({
               type="text"
               value={query}
               disabled={disabled}
-              placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
+              placeholder={
+                loadingGoogleFonts
+                  ? t("editor.font.loadingGoogleFonts")
+                  : t("editor.font.searchFonts")
+              }
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -415,7 +433,7 @@ export function FontFamilyField({
                 onClick={loadBrowserLocalFonts}
                 className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
               >
-                {loadingLocalFonts ? "..." : "Local"}
+                {loadingLocalFonts ? "..." : t("editor.font.local")}
               </button>
             )}
             <button
@@ -424,14 +442,14 @@ export function FontFamilyField({
               onClick={() => fontInputRef.current?.click()}
               className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
             >
-              {importingFonts ? "..." : "Import"}
+              {importingFonts ? "..." : t("editor.font.import")}
             </button>
             <input
               ref={fontInputRef}
               type="file"
               accept=".ttf,.otf,.ttc,.woff,.woff2,.eot,font/*"
               multiple
-              aria-label="Import local font files"
+              aria-label={t("editor.font.importLocalFontsAria")}
               disabled={disabled || importingFonts || !onImportFonts}
               className="hidden"
               onChange={async (event) => {
@@ -447,7 +465,9 @@ export function FontFamilyField({
           )}
           <div className="max-h-64 overflow-y-auto p-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-2 py-3 text-[11px] text-neutral-500">No fonts found.</div>
+              <div className="px-2 py-3 text-[11px] text-neutral-500">
+                {t("editor.font.noFontsFound")}
+              </div>
             ) : (
               filteredOptions.map((option) => (
                 <button
@@ -469,7 +489,7 @@ export function FontFamilyField({
                     )}
                   </span>
                   <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
-                    {option.source}
+                    {translateFontSource(option.source)}
                   </span>
                 </button>
               ))

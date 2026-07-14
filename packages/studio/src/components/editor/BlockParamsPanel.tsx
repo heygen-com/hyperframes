@@ -1,4 +1,5 @@
 import { memo, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { BlockParam } from "@hyperframes/core/registry";
 
 interface BlockParamsPanelProps {
@@ -15,6 +16,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   compositionPath: _compositionPath,
   onClose,
 }: BlockParamsPanelProps) {
+  const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const p of params) {
@@ -54,7 +56,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-          Parameters
+          {t("blockParamsPanel.parameters")}
         </div>
         {params.map((param) => (
           <ParamControl

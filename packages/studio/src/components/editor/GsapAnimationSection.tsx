@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
@@ -34,21 +35,19 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onSetAllKeyframeEases,
   onUnroll,
 }: GsapAnimationSectionProps) {
+  const { t } = useTranslation();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   return (
-    <Section title="Animation" icon={<Film size={15} />}>
+    <Section title={t("gsapSection.title")} icon={<Film size={15} />}>
       {multipleTimelines && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-          This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss
-          — consolidate into a single timeline to enable editing.
+          {t("gsapSection.multipleTimelinesWarning")}
         </p>
       )}
       {unsupportedTimelinePattern && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
-          This timeline uses a computed key (window.__timelines[variable]) the editor can&apos;t
-          resolve statically. Use a string-literal key (window.__timelines[&quot;id&quot;]) or a
-          variable declaration (const tl = gsap.timeline()) to enable editing.
+          {t("gsapSection.unsupportedPatternWarning")}
         </p>
       )}
       {multipleTimelines || unsupportedTimelinePattern ? null : (
@@ -98,7 +97,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                   onClick={() => setAddMenuOpen(false)}
                   className="px-1.5 text-[11px] text-neutral-500 hover:text-neutral-300"
                 >
-                  Cancel
+                  {t("gsapSection.cancel")}
                 </button>
               </div>
             ) : (
@@ -106,9 +105,8 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                 type="button"
                 onClick={() => setAddMenuOpen(true)}
                 className="text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200"
-                title="Add a new animation effect to this element"
               >
-                + Add effect
+                {t("gsapSection.addEffect")}
               </button>
             )}
           </div>

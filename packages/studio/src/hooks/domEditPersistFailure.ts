@@ -1,10 +1,11 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
+import i18n from "../i18n";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
 export class DomEditPersistUnresolvableError extends Error {
   constructor(targetPath: string) {
-    super(`Couldn't find this element in the source file (${targetPath})`);
+    super(i18n.t("hooks.domEdit.elementNotFoundInSource", { targetPath }));
     this.name = "DomEditPersistUnresolvableError";
   }
 }
@@ -21,7 +22,7 @@ export class DomEditPersistUnsafeValueError extends Error {
 
 export class DomEditPersistUnsupportedTextStructureError extends Error {
   constructor() {
-    super("Couldn't save this text structure change");
+    super(i18n.t("hooks.domEdit.textStructureChangeFailed"));
     this.name = "DomEditPersistUnsupportedTextStructureError";
   }
 }
@@ -50,7 +51,9 @@ function getErrorDetail(error: unknown): string {
 }
 
 function getSelectionLabel(selection: DomEditPersistFailureSelection): string {
-  return selection.label || selection.selector || selection.id || "this element";
+  return (
+    selection.label || selection.selector || selection.id || i18n.t("hooks.domEdit.thisElement")
+  );
 }
 
 export function reportDomEditPersistFailure(
@@ -73,7 +76,10 @@ export function reportDomEditPersistFailure(
     return;
   }
 
-  showToast(`Couldn't save "${getSelectionLabel(selection)}": ${detail}`, "error");
+  showToast(
+    i18n.t("hooks.domEdit.saveFailed", { label: getSelectionLabel(selection), detail }),
+    "error",
+  );
 }
 
 export function warnDomEditPersistNoOp(

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
 import { StoryboardFrameTile } from "./StoryboardFrameTile";
 
@@ -10,10 +11,12 @@ export interface StoryboardGridProps {
 
 /** The contact sheet: ordered frame tiles in a responsive grid. */
 export function StoryboardGrid({ projectId, frames, onOpenFrame }: StoryboardGridProps) {
+  const { t } = useTranslation();
+
   if (frames.length === 0) {
     return (
       <div className="mt-8 rounded-lg border border-dashed border-neutral-800 px-6 py-12 text-center text-sm text-neutral-500">
-        This storyboard has no frames yet.
+        {t("storyboard.noFrames")}
       </div>
     );
   }

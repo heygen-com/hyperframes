@@ -548,7 +548,12 @@
       tl.to("#scene-5", { opacity: 1, duration: 0.1 }, 11.7);
       tl.fromTo(".wes-text-top", { y: -100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.0);
       tl.to(".wes-rule", { width: 400, duration: 0.6 }, 12.3);
-      tl.fromTo(".wes-text-bottom", { y: 100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.6);
+      tl.fromTo(
+        ".wes-text-bottom",
+        { y: 100 },
+        { y: 0, duration: 0.6, ease: "back.out(1.2)" },
+        12.6,
+      );
       tl.to("#scene-5", { opacity: 0, duration: 0.5 }, 13.0);
 
       // --- Scene 6: Vignelli Style (13.5s - 14.72s) ---

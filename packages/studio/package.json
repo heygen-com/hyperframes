@@ -40,7 +40,8 @@
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:i18n": "node scripts/check-hardcoded-strings.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -63,8 +64,10 @@
     "bpm-detective": "^2.0.5",
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",
+    "i18next": "^26.3.6",
     "marked": "^14.1.4",
-    "mediabunny": "^1.45.3"
+    "mediabunny": "^1.45.3",
+    "react-i18next": "^17.0.9"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",

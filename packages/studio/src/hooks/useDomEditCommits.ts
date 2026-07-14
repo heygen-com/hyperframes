@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import i18n from "../i18n";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
 
@@ -49,8 +50,11 @@ async function readErrorResponseBody(
 }
 
 function formatPatchRejectionMessage(body: { error?: string; fields?: string[] } | null): string {
-  if (!body?.error) return "Couldn't save edit";
-  return `Couldn't save edit: ${body.error}${formatFieldsSuffix(body.fields)}`;
+  if (!body?.error) return i18n.t("hooks.domEdit.couldntSaveEdit");
+  return i18n.t("hooks.domEdit.couldntSaveEditWithDetail", {
+    detail: body.error,
+    fieldsSuffix: formatFieldsSuffix(body.fields),
+  });
 }
 
 interface RecordEditInput {
@@ -263,7 +267,7 @@ export function useDomEditCommits({
       const unsafeFields = findUnsafeDomPatchValues(patchBody);
       if (unsafeFields.length > 0) {
         const fields = formatUnsafeFieldList(unsafeFields);
-        showToast("Couldn't save edit because it contains invalid layout values", "error");
+        showToast(i18n.t("hooks.domEdit.invalidLayoutValues"), "error");
         throw new DomEditPersistUnsafeValueError(`DOM patch contains unsafe values: ${fields}`, {
           alreadyToasted: true,
         });
@@ -347,7 +351,10 @@ export function useDomEditCommits({
             // the already-persisted patchedContent instead of throwing, which
             // would otherwise revert a change the server already committed.
             showToast(
-              `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
+              i18n.t("hooks.domEdit.savedButUpdateFailed", {
+                path: targetPath,
+                detail: getErrorDetail(error),
+              }),
               "error",
             );
           }
@@ -389,7 +396,7 @@ export function useDomEditCommits({
           batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
         );
         if (unsafeFields.length > 0) {
-          showToast("Couldn't save edit because it contains invalid layout values", "error");
+          showToast(i18n.t("hooks.domEdit.invalidLayoutValues"), "error");
           throw new DomEditPersistUnsafeValueError(
             `DOM patch contains unsafe values: ${formatUnsafeFieldList(unsafeFields)}`,
             { alreadyToasted: true },
@@ -429,7 +436,10 @@ export function useDomEditCommits({
             error instanceof DomEditPersistUnsafeValueError) &&
           error.alreadyToasted;
         if (!alreadyToasted) {
-          showToast(error instanceof Error ? error.message : "Failed to reorder layers", "error");
+          showToast(
+            error instanceof Error ? error.message : i18n.t("hooks.domEdit.reorderFailed"),
+            "error",
+          );
         }
         trackStudioSaveFailure({
           source: "dom_edit",

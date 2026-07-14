@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useId } from "react";
+import { useTranslation } from "react-i18next";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
@@ -251,6 +252,7 @@ function FormatExportButton({
   compositionDimensions?: CompositionDimensions | null;
   lastRenderDurationMs?: number;
 }) {
+  const { t } = useTranslation();
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
@@ -317,9 +319,9 @@ function FormatExportButton({
             disabled={isRendering}
             className={selectCls}
           >
-            <option value={24}>24 fps</option>
-            <option value={30}>30 fps</option>
-            <option value={60}>60 fps</option>
+            <option value={24}>{t("renderQueue.fps24")}</option>
+            <option value={30}>{t("renderQueue.fps30")}</option>
+            <option value={60}>{t("renderQueue.fps60")}</option>
           </select>
         </div>
         {showQuality && (
@@ -357,7 +359,7 @@ function FormatExportButton({
         }}
         className="w-full text-[11px] font-semibold"
       >
-        {isRendering ? "Rendering…" : "Export"}
+        {isRendering ? t("renderQueue.rendering") : t("renderQueue.export")}
       </Button>
       {lastRenderDurationMs !== undefined && !isRendering && (
         <p className="text-[9px] text-panel-text-5 text-center -mt-1.5">
@@ -382,6 +384,7 @@ export const RenderQueue = memo(function RenderQueue({
   onDismissActionError,
   compositionDimensions,
 }: RenderQueueProps) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new jobs are added.
@@ -464,7 +467,9 @@ export const RenderQueue = memo(function RenderQueue({
                 strokeLinejoin="round"
               />
             </svg>
-            <p className="text-[10px] text-panel-text-5 text-center">No renders yet</p>
+            <p className="text-[10px] text-panel-text-5 text-center">
+              {t("renderQueue.noRenders")}
+            </p>
           </div>
         ) : (
           <div>

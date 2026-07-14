@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MetricField } from "./propertyPanelPrimitives";
 import { formatNumericValue, parseNumericValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 
@@ -34,6 +35,7 @@ export function BorderRadiusEditor({
   disabled,
   onCommit,
 }: BorderRadiusEditorProps) {
+  const { t } = useTranslation();
   const uniform = tl === tr && tr === br && br === bl;
   const [linked, setLinked] = useState(uniform);
 
@@ -114,7 +116,9 @@ export function BorderRadiusEditor({
           className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
           onClick={handleToggleLinked}
           disabled={disabled}
-          title={linked ? "Unlink corners" : "Link all corners"}
+          title={
+            linked ? t("editor.borderRadius.unlinkCorners") : t("editor.borderRadius.linkCorners")
+          }
         >
           {linked ? (
             <svg
@@ -144,7 +148,7 @@ export function BorderRadiusEditor({
 
       {linked ? (
         <MetricField
-          label="All"
+          label={t("editor.borderRadius.all")}
           value={formatNumericValue(tl)}
           disabled={disabled}
           liveCommit

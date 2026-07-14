@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { TimelineTheme } from "./timelineTheme";
 
 interface TimelineShortcutHintProps {
@@ -5,6 +6,8 @@ interface TimelineShortcutHintProps {
 }
 
 export function TimelineShortcutHint({ theme }: TimelineShortcutHintProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="absolute bottom-2 right-3 pointer-events-none z-20">
       <div
@@ -18,7 +21,7 @@ export function TimelineShortcutHint({ theme }: TimelineShortcutHintProps) {
           Shift
         </kbd>
         <span className="text-[9px]" style={{ color: theme.textSecondary }}>
-          + drag/click to edit range
+          {t("player.editRangeHint")}
         </span>
       </div>
     </div>

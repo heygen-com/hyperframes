@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import i18n from "../i18n";
 import { usePlayerStore } from "../player";
 import {
   readProjectFileContent,
@@ -62,7 +63,7 @@ export function useElementLifecycleOps({
           if (handled) {
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
-            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+            showToast(i18n.t("hooks.timeline.deletedUseUndo", { label }), "info");
             return;
           }
         }
@@ -109,9 +110,10 @@ export function useElementLifecycleOps({
         forceReloadSdkSession?.();
         reloadPreview();
         onElementDeleted?.(selection);
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        showToast(i18n.t("hooks.timeline.deletedUseUndo", { label }), "info");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete element";
+        const message =
+          error instanceof Error ? error.message : i18n.t("hooks.element.deleteFailed");
         showToast(message);
       }
     },

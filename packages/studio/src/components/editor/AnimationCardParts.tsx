@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { MetricField } from "./propertyPanelPrimitives";
 import {
   PERCENT_PROPS,
@@ -12,16 +13,16 @@ import { P } from "./panelTokens";
 export const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
 const FILTER_PRESETS = [
-  { label: "Blur", value: "blur(4px)" },
-  { label: "Bright", value: "brightness(1.5)" },
-  { label: "Gray", value: "grayscale(1)" },
-  { label: "None", value: "none" },
-];
+  { labelKey: "editor.animationCard.filterBlur", value: "blur(4px)" },
+  { labelKey: "editor.animationCard.filterBright", value: "brightness(1.5)" },
+  { labelKey: "editor.animationCard.filterGray", value: "grayscale(1)" },
+  { labelKey: "editor.animationCard.filterNone", value: "none" },
+] as const;
 const CLIP_PATH_PRESETS = [
-  { label: "Circle", value: "circle(50% at 50% 50%)" },
-  { label: "Inset", value: "inset(10%)" },
-  { label: "None", value: "none" },
-];
+  { labelKey: "editor.animationCard.clipCircle", value: "circle(50% at 50% 50%)" },
+  { labelKey: "editor.animationCard.clipInset", value: "inset(10%)" },
+  { labelKey: "editor.animationCard.clipNone", value: "none" },
+] as const;
 
 function isPercentProp(prop: string): boolean {
   return PERCENT_PROPS.has(prop);
@@ -77,6 +78,7 @@ export function PropertyRow({
   onRemove: () => void;
   removeTitle: string;
 }) {
+  const { t } = useTranslation();
   if (BOOLEAN_PROPS.has(prop)) {
     const isVisible = val === "visible" || val === 1;
     return (
@@ -90,7 +92,11 @@ export function PropertyRow({
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
             className="flex-shrink-0 rounded-full transition-all duration-150 relative"
             style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
-            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
+            title={
+              isVisible
+                ? t("editor.animationCard.visibleHide")
+                : t("editor.animationCard.hiddenShow")
+            }
           >
             <span
               className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
@@ -138,7 +144,7 @@ export function PropertyRow({
                 onClick={() => onCommit(p.value)}
                 className="px-1.5 py-0.5 rounded text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
               >
-                {p.label}
+                {t(p.labelKey)}
               </button>
             ))}
           </div>
@@ -183,6 +189,7 @@ export function AddPropertyTrigger({
   onClose: () => void;
   buttonClassName: string;
 }) {
+  const { t } = useTranslation();
   if (adding && available.length > 0) {
     return (
       <select
@@ -196,7 +203,7 @@ export function AddPropertyTrigger({
         onBlur={onClose}
       >
         <option value="" disabled>
-          Choose property…
+          {t("editor.animationCard.chooseProperty")}
         </option>
         {available.map((p) => (
           <option key={p} value={p}>

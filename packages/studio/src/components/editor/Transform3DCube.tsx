@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { projectAxes, projectCubeFaces, wrapDeg } from "./transform3dProjection";
 
 export interface CubePose {
@@ -61,6 +62,7 @@ export function Transform3DCube({
   /** Whether the 3D transform is already keyframed (drives the toggle's state). */
   keyframed?: boolean;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<CubePose | null>(null);
   const [depthDraft, setDepthDraft] = useState<number | null>(null);
   const dragRef = useRef<{ x: number; y: number; pose: CubePose } | null>(null);
@@ -175,7 +177,7 @@ export function Transform3DCube({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         role="slider"
-        aria-label="Drag to rotate in 3D; hold Shift to roll; scroll to change depth"
+        aria-label={t("propertyPanel.rotate3d")}
         aria-valuetext={`X ${Math.round(shown.rotationX)}°, Y ${Math.round(
           shown.rotationY,
         )}°, Z ${Math.round(shown.rotationZ)}°`}
@@ -271,8 +273,8 @@ export function Transform3DCube({
         <button
           type="button"
           onClick={onRecenter}
-          title="Reset 3D orientation"
-          aria-label="Reset 3D orientation"
+          title={t("propertyPanel.resetOrientation")}
+          aria-label={t("propertyPanel.resetOrientation")}
           className="absolute right-1.5 top-1.5 rounded p-0.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -287,10 +289,10 @@ export function Transform3DCube({
           onClick={onKeyframe}
           title={
             keyframed
-              ? "3D transform is keyframed — click a field diamond to add keyframes"
-              : "Keyframe the 3D transform (animate it over time)"
+              ? t("propertyPanel.keyframeTransformActive")
+              : t("propertyPanel.keyframeTransform")
           }
-          aria-label="Keyframe 3D transform"
+          aria-label={t("propertyPanel.keyframeTransform")}
           aria-pressed={keyframed}
           className={`absolute left-1.5 top-1.5 rounded p-0.5 hover:bg-neutral-800 ${
             keyframed ? "text-[#5ff0bf]" : "text-neutral-500 hover:text-neutral-200"

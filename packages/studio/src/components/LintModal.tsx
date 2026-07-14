@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { XIcon, WarningIcon, CheckCircleIcon, CaretRightIcon } from "@phosphor-icons/react";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { useDialogBehavior } from "./ui/useDialogBehavior";
@@ -14,7 +15,7 @@ export function LintModal({
   findings,
   projectId,
   projectDir,
-  title = "HyperFrame Lint Results",
+  title,
   promptIntro = "Fix these HyperFrames lint issues",
   onClose,
 }: {
@@ -28,6 +29,8 @@ export function LintModal({
   promptIntro?: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("lintModal.subtitle");
   const errors = findings.filter((f) => f.severity === "error");
   const warnings = findings.filter((f) => f.severity === "warning");
   const hasIssues = findings.length > 0;
@@ -65,7 +68,7 @@ export function LintModal({
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={resolvedTitle}
         tabIndex={-1}
         className="bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden outline-none"
         onClick={(e) => e.stopPropagation()}
@@ -85,15 +88,18 @@ export function LintModal({
             <div>
               <h2 className="text-sm font-semibold text-neutral-200">
                 {hasIssues
-                  ? `${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`
-                  : "All checks passed"}
+                  ? t("lintModal.resultsTitle", {
+                      errors: errors.length,
+                      warnings: warnings.length,
+                    })
+                  : t("lintModal.allChecksPassed")}
               </h2>
-              <p className="text-xs text-neutral-500">{title}</p>
+              <p className="text-xs text-neutral-500">{resolvedTitle}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors active:scale-[0.98]"
           >
             <XIcon size={16} />
@@ -114,17 +120,17 @@ export function LintModal({
               }`}
             >
               {copied
-                ? "Copied!"
+                ? t("lintModal.copied")
                 : copyFailed
-                  ? "Copy failed — check permissions"
-                  : "Copy to Agent"}
+                  ? t("lintModal.copyFailed")
+                  : t("lintModal.copyToAgent")}
             </button>
           </div>
         )}
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {!hasIssues && (
             <div className="py-8 text-center text-neutral-500 text-sm">
-              No errors or warnings found. Your composition looks good!
+              {t("lintModal.noIssuesFound")}
             </div>
           )}
           {errors.map((f, i) => (

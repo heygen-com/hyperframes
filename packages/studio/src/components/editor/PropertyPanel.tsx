@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Move } from "../../icons/SystemIcons";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
@@ -101,6 +102,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   recordingDuration,
   onToggleRecording,
 }: PropertyPanelProps) {
+  const { t } = useTranslation();
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
@@ -110,7 +112,9 @@ export const PropertyPanel = memo(function PropertyPanel({
   const timelineElements = usePlayerStore((s) => s.elements);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
-  const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
+  const visibilityToggleLabel = selectedElementHidden
+    ? t("propertyPanel.showElement")
+    : t("propertyPanel.hideElement");
   const liveTimeRef = useRef(storeTime);
   const [, forceRender] = useState(0);
   useEffect(() => {
@@ -381,12 +385,12 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
-        <Section title="Layout" icon={<Move size={15} />}>
+        <Section title={t("propertyPanel.layout")} icon={<Move size={15} />}>
           <div className={RESPONSIVE_GRID}>
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
-                  label="X"
+                  label={t("propertyPanel.x")}
                   value={formatPxMetricValue(displayX)}
                   disabled={manualOffsetEditingDisabled}
                   scrub
@@ -411,7 +415,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
-                  label="Y"
+                  label={t("propertyPanel.y")}
                   value={formatPxMetricValue(displayY)}
                   disabled={manualOffsetEditingDisabled}
                   scrub
@@ -436,7 +440,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
-                  label="W"
+                  label={t("propertyPanel.w")}
                   value={formatPxMetricValue(displayW)}
                   disabled={manualSizeEditingDisabled}
                   scrub
@@ -461,7 +465,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
-                  label="H"
+                  label={t("propertyPanel.h")}
                   value={formatPxMetricValue(displayH)}
                   disabled={manualSizeEditingDisabled}
                   scrub
@@ -486,7 +490,7 @@ export const PropertyPanel = memo(function PropertyPanel({
             <div className="flex items-center gap-1">
               <div className="flex-1">
                 <MetricField
-                  label="R"
+                  label={t("propertyPanel.r")}
                   value={`${displayR}°`}
                   disabled={manualRotationEditingDisabled}
                   onCommit={(next) => commitManualRotation(next.replace("°", ""))}
@@ -535,10 +539,10 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
           <div className="mt-3">
             <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
-              Stacking
+              {t("propertyPanel.stacking")}
             </div>
             <MetricField
-              label="Z-index"
+              label={t("propertyPanel.zIndex")}
               value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
               scrub
               onCommit={(next) => onSetStyle("z-index", next)}

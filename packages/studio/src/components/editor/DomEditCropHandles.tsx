@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import {
@@ -94,6 +95,7 @@ export function DomEditCropHandles({
   overlayRect,
   onStyleCommit,
 }: DomEditCropHandlesProps) {
+  const { t } = useTranslation();
   const gestureRef = useRef<CropGestureState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [hotEdge, setHotEdge] = useState<CropEdge | null>(null);
@@ -320,8 +322,8 @@ export function DomEditCropHandles({
       {hasCrop && (
         <button
           type="button"
-          aria-label="Reposition crop"
-          title="Reposition crop"
+          aria-label={t("editor.cropHandles.reposition")}
+          title={t("editor.cropHandles.reposition")}
           data-dom-edit-crop-handle="true"
           className="pointer-events-auto absolute rounded-full border-2 border-studio-accent bg-studio-accent/30 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
           style={{
@@ -355,7 +357,7 @@ export function DomEditCropHandles({
             key={edge}
             type="button"
             aria-label={`Crop ${edge}`}
-            title="Crop"
+            title={t("editor.cropHandles.crop")}
             data-dom-edit-crop-handle="true"
             className="pointer-events-auto absolute flex items-center justify-center border-0 bg-transparent p-0"
             style={{

@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useEffect } from "react";
+import { useTranslation, Trans } from "react-i18next";
 import { createPortal } from "react-dom";
 import { useBlockCatalog } from "../../hooks/useBlockCatalog";
 import {
@@ -8,6 +9,10 @@ import {
   type BlockCategory,
 } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
+
+function blockCategoryLabelKey(id: BlockCategory): `blocksTab.category.${BlockCategory}` {
+  return `blocksTab.category.${id}`;
+}
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
@@ -24,6 +29,7 @@ interface BlocksTabProps {
 
 // fallow-ignore-next-line complexity
 export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }: BlocksTabProps) {
+  const { t } = useTranslation();
   const { loading, error, search, setSearch, category, setCategory, filteredBlocks } =
     useBlockCatalog();
   const [promptModal, setPromptModal] = useState<{ title: string; prompt: string } | null>(null);
@@ -31,7 +37,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-neutral-600 text-xs">
-        Loading blocks…
+        {t("blocksTab.loading")}
       </div>
     );
   }
@@ -67,7 +73,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, category, or tag…"
+            placeholder={t("blocksTab.searchPlaceholder")}
             className="w-full bg-neutral-900 border border-neutral-800 rounded-md pl-7 pr-2 py-1.5 text-[11px] text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-700 transition-colors"
           />
         </div>
@@ -76,11 +82,15 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       {/* Category pills */}
       <div className="px-3 pt-1 pb-2 flex-shrink-0 overflow-x-auto">
         <div className="flex gap-1">
-          <CategoryPill label="All" active={category === null} onClick={() => setCategory(null)} />
+          <CategoryPill
+            label={t("blocksTab.all")}
+            active={category === null}
+            onClick={() => setCategory(null)}
+          />
           {BLOCK_CATEGORIES.map((cat) => (
             <CategoryPill
               key={cat.id}
-              label={cat.label}
+              label={t(blockCategoryLabelKey(cat.id))}
               category={cat.id}
               active={category === cat.id}
               onClick={() => setCategory(category === cat.id ? null : cat.id)}
@@ -93,14 +103,16 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
         {category === "vfx" && (
           <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-purple-300 leading-relaxed">
-            VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
-            <span className="font-mono text-purple-200">chrome://flags/#html-in-canvas</span> for
-            preview.
+            <Trans i18nKey="blocksTab.vfxNotice">
+              VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
+              <span className="font-mono text-purple-200">chrome://flags/#html-in-canvas</span> for
+              preview.
+            </Trans>
           </div>
         )}
         {filteredBlocks.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-neutral-600 text-xs">
-            No blocks match your search
+            {t("blocksTab.noMatch")}
           </div>
         ) : (
           <div
@@ -308,6 +320,7 @@ function BlockCard({
   onShowPrompt?: (info: { title: string; prompt: string }) => void;
   onPreview?: (preview: BlockPreviewInfo | null) => void;
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [adding, setAdding] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -428,7 +441,7 @@ function BlockCard({
             <button
               type="button"
               onClick={handleAdd}
-              title="Add to composition at current time"
+              title={t("blocksTab.addToComposition")}
               className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-white text-black text-[10px] font-semibold hover:bg-neutral-200 transition-colors"
             >
               <svg
@@ -441,13 +454,13 @@ function BlockCard({
               >
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              {adding ? "Added!" : "Add"}
+              {adding ? t("blocksTab.added") : t("blocksTab.add")}
             </button>
           )}
           <button
             type="button"
             onClick={handleShowPrompt}
-            title="Generate a prompt to paste into your AI agent"
+            title={t("blocksTab.generatePrompt")}
             className={`flex items-center gap-1.5 px-3 ${onAdd ? "py-1" : "py-1.5"} rounded-md transition-colors ${
               onAdd
                 ? "bg-white/15 text-white/90 hover:bg-white/25 text-[9px]"
@@ -465,7 +478,7 @@ function BlockCard({
               <rect x="9" y="9" width="13" height="13" rx="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            Ask agent
+            {t("blocksTab.askAgent")}
           </button>
         </div>
 
@@ -473,7 +486,7 @@ function BlockCard({
         <div className="absolute top-1 right-1 flex items-center gap-0.5 pointer-events-none">
           {needsWebGL && (
             <span className="px-1 py-px rounded text-[7px] font-semibold text-purple-300 bg-purple-900/70">
-              WebGL
+              {t("blocksTab.webgl")}
             </span>
           )}
           {duration != null && (
@@ -491,9 +504,7 @@ function BlockCard({
         </div>
         <div className="flex items-center gap-1 mt-0.5">
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
-          <span className={`text-[8px] ${colors.text}`}>
-            {BLOCK_CATEGORIES.find((c) => c.id === category)?.label}
-          </span>
+          <span className={`text-[8px] ${colors.text}`}>{t(blockCategoryLabelKey(category))}</span>
         </div>
       </div>
     </div>
@@ -509,6 +520,7 @@ function PromptPreviewModal({
   prompt: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(prompt);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -534,7 +546,7 @@ function PromptPreviewModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
           <div>
-            <h3 className="text-sm font-medium text-neutral-200">Ask agent</h3>
+            <h3 className="text-sm font-medium text-neutral-200">{t("blocksTab.modalTitle")}</h3>
             <p className="text-xs text-neutral-500 mt-0.5">{title}</p>
           </div>
           <button
@@ -556,9 +568,7 @@ function PromptPreviewModal({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-[11px] text-neutral-500 mb-2">
-            Edit the prompt below, then copy and paste into your AI agent
-          </p>
+          <p className="text-[11px] text-neutral-500 mb-2">{t("blocksTab.modalDescription")}</p>
           <textarea
             ref={textareaRef}
             value={value}
@@ -572,7 +582,9 @@ function PromptPreviewModal({
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
           <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+            {navigator.platform.includes("Mac")
+              ? t("blocksTab.shortcutHintMac")
+              : t("blocksTab.shortcutHintOther")}
           </span>
           <button
             className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -582,7 +594,7 @@ function PromptPreviewModal({
             }`}
             onClick={handleCopy}
           >
-            {copied ? "Copied!" : "Copy prompt"}
+            {copied ? t("blocksTab.copied") : t("blocksTab.copyPrompt")}
           </button>
         </div>
       </div>

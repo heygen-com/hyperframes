@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { setFrameStatus, setFrameVoiceover, type FrameStatus } from "@hyperframes/core/storyboard";
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 import { useViewMode } from "../../contexts/ViewModeContext";
 import { Button } from "../ui/Button";
 import { FramePoster, posterTime } from "./FramePoster";
-import { FRAME_STATUS_META, FRAME_STATUS_ORDER } from "./frameStatus";
+import { getFrameStatusMeta, FRAME_STATUS_ORDER } from "./frameStatus";
 
 export interface StoryboardFrameFocusProps {
   projectId: string;
@@ -40,6 +41,7 @@ export function StoryboardFrameFocus({
   onSaved,
   onSelectComposition,
 }: StoryboardFrameFocusProps) {
+  const { t } = useTranslation();
   const { readProjectFile, writeProjectFile } = useFileManagerContext();
   const { setViewMode } = useViewMode();
   const [draft, setDraft] = useState(frame.voiceover ?? "");
@@ -56,15 +58,15 @@ export function StoryboardFrameFocus({
         await writeProjectFile(storyboardPath, edit(source));
         onSaved();
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "failed to save");
+        setError(err instanceof Error ? err.message : t("storyboard.failedToSave"));
       } finally {
         setBusy(false);
       }
     },
-    [readProjectFile, writeProjectFile, storyboardPath, onSaved, busy],
+    [readProjectFile, writeProjectFile, storyboardPath, onSaved, busy, t],
   );
 
-  const title = frame.title ?? `Frame ${frame.index}`;
+  const title = frame.title ?? t("storyboard.frameFallback", { index: frame.index });
   const dirty = draft !== (frame.voiceover ?? "");
   const canOpenPreview = frame.srcExists && Boolean(frame.src);
 
@@ -87,7 +89,7 @@ export function StoryboardFrameFocus({
   // dirty. An in-flight save does NOT count as safe: if it fails after unmount
   // the error lands on an unmounted component and the draft is silently lost,
   // so keep confirming until the save actually lands (dirty clears on success).
-  const confirmLeave = () => !dirty || window.confirm("Discard unsaved voiceover changes?");
+  const confirmLeave = () => !dirty || window.confirm(t("storyboard.discardVoiceoverChanges"));
   const handleBack = () => {
     if (confirmLeave()) onBack();
   };
@@ -122,19 +124,22 @@ export function StoryboardFrameFocus({
           onClick={handleBack}
           className="rounded px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800"
         >
-          ← Board
+          {t("storyboard.backToBoard")}
         </button>
         <span className="text-sm font-medium text-neutral-200">
-          Frame {frame.number ?? frame.index} — {title}
+          {t("storyboard.frameHeader", {
+            number: frame.number ?? frame.index,
+            title,
+          })}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <NavButton
-            label="‹ Prev"
+            label={t("storyboard.prev")}
             disabled={frame.index <= 1}
             onClick={() => handleNavigate(-1)}
           />
           <NavButton
-            label="Next ›"
+            label={t("storyboard.next")}
             disabled={frame.index >= frameCount}
             onClick={() => handleNavigate(1)}
           />
@@ -154,7 +159,9 @@ export function StoryboardFrameFocus({
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-sm text-neutral-600">
-                {frame.status === "outline" ? "Not built yet" : "No preview"}
+                {frame.status === "outline"
+                  ? t("storyboard.notBuiltYet")
+                  : t("storyboard.noPreview")}
               </div>
             )}
           </div>
@@ -168,14 +175,19 @@ export function StoryboardFrameFocus({
           />
 
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-neutral-500">
-            {frame.duration && <span>Duration {frame.duration}</span>}
-            {frame.transitionIn && <span>Transition {frame.transitionIn}</span>}
+            {frame.duration && <span>{t("storyboard.duration", { value: frame.duration })}</span>}
+            {frame.transitionIn && (
+              <span>{t("storyboard.transition", { value: frame.transitionIn })}</span>
+            )}
           </div>
 
           <section>
             <div className="mb-1 flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                🎙 Voiceover <span className="font-normal normal-case text-neutral-600">guide</span>
+                🎙 {t("storyboard.voiceoverGuide")}{" "}
+                <span className="font-normal normal-case text-neutral-600">
+                  {t("storyboard.voiceoverGuideHint")}
+                </span>
               </h3>
               <Button
                 size="sm"
@@ -185,7 +197,7 @@ export function StoryboardFrameFocus({
                 loading={busy}
                 className="bg-emerald-600 text-white enabled:hover:bg-emerald-500 shadow-none"
               >
-                {busy ? "Saving…" : "Save"}
+                {busy ? t("storyboard.saving") : t("storyboard.save")}
               </Button>
             </div>
             <textarea
@@ -199,11 +211,11 @@ export function StoryboardFrameFocus({
                 if (dirty && !busy) void saveVoiceover();
               }}
               rows={3}
-              placeholder="What the narrator says over this frame…"
+              placeholder={t("storyboard.voiceoverPlaceholder")}
               className="w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
             />
             <p className="mt-1 text-[11px] text-neutral-600">
-              A draft guide. SCRIPT.md locks the final narration that drives TTS.
+              {t("storyboard.voiceoverDraftHint")}
             </p>
             {error && <p className="mt-1 text-[11px] text-red-400">{error}</p>}
           </section>
@@ -211,14 +223,14 @@ export function StoryboardFrameFocus({
           {frame.narrative && (
             <section>
               <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                Narrative
+                {t("storyboard.narrative")}
               </h3>
               <p className="whitespace-pre-wrap text-sm text-neutral-300">{frame.narrative}</p>
             </section>
           )}
 
           <Button size="sm" variant="secondary" onClick={openInPreview} disabled={!canOpenPreview}>
-            Open in Preview →
+            {t("storyboard.openInPreview")}
           </Button>
         </div>
       </div>
@@ -256,29 +268,34 @@ function StatusRow({
   busy: boolean;
   onSet: (next: FrameStatus) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-        Status
+        {t("storyboard.statusLabel")}
       </span>
       <div className="flex items-center gap-0.5 rounded-md bg-neutral-900 p-0.5">
-        {FRAME_STATUS_ORDER.map((option) => (
-          <button
-            key={option}
-            type="button"
-            disabled={busy}
-            aria-pressed={status === option}
-            title={FRAME_STATUS_META[option].tooltip}
-            onClick={() => onSet(option)}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
-              status === option
-                ? "bg-neutral-700 text-neutral-100"
-                : "text-neutral-400 hover:text-neutral-200"
-            }`}
-          >
-            {FRAME_STATUS_META[option].label}
-          </button>
-        ))}
+        {FRAME_STATUS_ORDER.map((option) => {
+          const meta = getFrameStatusMeta(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              disabled={busy}
+              aria-pressed={status === option}
+              title={meta.tooltip}
+              onClick={() => onSet(option)}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                status === option
+                  ? "bg-neutral-700 text-neutral-100"
+                  : "text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

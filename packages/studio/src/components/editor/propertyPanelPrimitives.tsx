@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
 function CommitField({
@@ -12,6 +13,7 @@ function CommitField({
   liveCommit?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
@@ -87,7 +89,7 @@ function CommitField({
         setDraft(nextDraft);
         scheduleCommit(nextDraft);
       }}
-      title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
+      title={parseNumericToken(value) ? t("propertyPanel.scrollToAdjust") : undefined}
       className="min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
     />
   );
@@ -306,12 +308,14 @@ export function SelectField({
   value,
   disabled,
   options,
+  optionLabels,
   onChange,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   options: string[];
+  optionLabels?: Record<string, string>;
   onChange: (nextValue: string) => void;
 }) {
   const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
@@ -326,7 +330,7 @@ export function SelectField({
       >
         {renderedOptions.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabels?.[option] ?? option}
           </option>
         ))}
       </select>

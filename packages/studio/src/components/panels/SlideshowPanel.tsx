@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { parseSlideshowManifest } from "@hyperframes/core/slideshow";
 import type { SlideshowManifest, SlideHotspot } from "@hyperframes/core/slideshow";
 import { usePlayerStore } from "../../player";
@@ -170,6 +171,7 @@ export interface SlideshowPanelProps {
 type SectionKey = "slides" | "inspector" | "branches" | "hotspot";
 
 export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowPanelProps) {
+  const { t } = useTranslation();
   const { editingFile } = useFileManagerContext();
   const compHtml = editingFile?.content ?? null;
 
@@ -388,7 +390,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("slides")}
         onToggle={() => toggleSection("slides")}
       >
-        Slides ({manifest.slides.length})
+        {t("slideshowPanel.slides", { count: manifest.slides.length })}
       </SectionHeader>
       {expandedSections.has("slides") && (
         <div className="py-1">
@@ -410,7 +412,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("inspector")}
         onToggle={() => toggleSection("inspector")}
       >
-        Slide Inspector
+        {t("slideshowPanel.slideInspector")}
       </SectionHeader>
       {expandedSections.has("inspector") && (
         <>
@@ -425,7 +427,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
             />
           ) : (
             <p className="px-3 py-2 text-[11px] text-neutral-500 italic">
-              Select a scene above to inspect
+              {t("slideshowPanel.selectSceneHint")}
             </p>
           )}
         </>
@@ -435,7 +437,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("branches")}
         onToggle={() => toggleSection("branches")}
       >
-        Branches ({sequences.length})
+        {t("slideshowPanel.branches", { count: sequences.length })}
       </SectionHeader>
       {expandedSections.has("branches") && (
         <BranchTree
@@ -455,7 +457,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
         expanded={expandedSections.has("hotspot")}
         onToggle={() => toggleSection("hotspot")}
       >
-        Hotspot Tool
+        {t("slideshowPanel.hotspotTool")}
       </SectionHeader>
       {expandedSections.has("hotspot") && (
         <HotspotTool

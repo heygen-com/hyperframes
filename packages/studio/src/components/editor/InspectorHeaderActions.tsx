@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { X } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
 
@@ -15,16 +16,17 @@ export function InspectorHeaderActions({
   onClear: () => void;
   onUngroup?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
       {onUngroup && element.dataAttributes["hf-group"] != null && (
         <button
           type="button"
           onClick={onUngroup}
-          title="Ungroup (⌘⇧G)"
+          title={t("propertyPanel.ungroup") + " (⌘⇧G)"}
           className="flex h-6 items-center rounded px-2 text-[11px] font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
         >
-          Ungroup
+          {t("propertyPanel.ungroup")}
         </button>
       )}
       <button
@@ -35,7 +37,7 @@ export function InspectorHeaderActions({
             ? "text-studio-accent"
             : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
         }`}
-        title={copied ? "Copied!" : "Copy element info to clipboard"}
+        title={copied ? t("common.copied") : t("propertyPanel.copyInfo")}
       >
         <svg
           width="13"
@@ -51,7 +53,7 @@ export function InspectorHeaderActions({
       </button>
       <button
         type="button"
-        aria-label="Clear selection"
+        aria-label={t("propertyPanel.clearSelection")}
         onClick={onClear}
         className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
       >

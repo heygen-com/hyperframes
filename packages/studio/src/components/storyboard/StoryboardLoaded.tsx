@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { StoryboardResponse } from "../../hooks/useStoryboard";
 import { StoryboardDirection } from "./StoryboardDirection";
 import { StoryboardGrid } from "./StoryboardGrid";
@@ -30,6 +31,7 @@ export function StoryboardLoaded({
   reload,
   onSelectComposition,
 }: StoryboardLoadedProps) {
+  const { t } = useTranslation();
   const [subView, setSubView] = useState<SubView>("board");
   const [sourceDirty, setSourceDirty] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
@@ -41,6 +43,11 @@ export function StoryboardLoaded({
     // produces a fresh object and would needlessly re-create this array.
   }, [data.path, data.script?.path, data.script?.exists]);
 
+  const subViews: Array<{ value: SubView; label: string }> = [
+    { value: "board", label: t("storyboard.board") },
+    { value: "source", label: t("storyboard.source") },
+  ];
+
   // Leaving the source editor drops its in-memory buffer; confirm when it's dirty.
   // fallow-ignore-next-line complexity
   const changeSubView = (next: SubView) => {
@@ -48,7 +55,7 @@ export function StoryboardLoaded({
     if (
       subView === "source" &&
       sourceDirty &&
-      !window.confirm("Discard unsaved markdown changes?")
+      !window.confirm(t("storyboard.discardMarkdownChanges"))
     ) {
       return;
     }
@@ -79,7 +86,7 @@ export function StoryboardLoaded({
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-neutral-950 text-neutral-200">
       <div className="flex items-center border-b border-neutral-800 px-4 py-2">
-        <SubViewToggle value={subView} onChange={changeSubView} />
+        <SubViewToggle value={subView} options={subViews} onChange={changeSubView} />
       </div>
       {subView === "board" ? (
         <div className="flex-1 min-h-0 overflow-auto">
@@ -107,20 +114,25 @@ export function StoryboardLoaded({
   );
 }
 
-const SUB_VIEWS: Array<{ value: SubView; label: string }> = [
-  { value: "board", label: "Board" },
-  { value: "source", label: "Source" },
-];
+function SubViewToggle({
+  value,
+  options,
+  onChange,
+}: {
+  value: SubView;
+  options: Array<{ value: SubView; label: string }>;
+  onChange: (next: SubView) => void;
+}) {
+  const { t } = useTranslation();
 
-function SubViewToggle({ value, onChange }: { value: SubView; onChange: (next: SubView) => void }) {
   // Complete tabs contract: roving tabIndex + arrow-key navigation (the roles
   // alone promised keyboard behavior the buttons didn't have).
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    const currentIndex = SUB_VIEWS.findIndex((v) => v.value === value);
+    const currentIndex = options.findIndex((v) => v.value === value);
     const delta = e.key === "ArrowRight" ? 1 : -1;
-    const next = SUB_VIEWS[(currentIndex + delta + SUB_VIEWS.length) % SUB_VIEWS.length];
+    const next = options[(currentIndex + delta + options.length) % options.length];
     if (next) onChange(next.value);
   };
 
@@ -128,10 +140,10 @@ function SubViewToggle({ value, onChange }: { value: SubView; onChange: (next: S
     <div
       className="flex items-center gap-0.5 rounded-md bg-neutral-900 p-0.5"
       role="tablist"
-      aria-label="Storyboard view"
+      aria-label={t("storyboard.viewAriaLabel")}
       onKeyDown={handleKeyDown}
     >
-      {SUB_VIEWS.map((option) => (
+      {options.map((option) => (
         <button
           key={option.value}
           type="button"

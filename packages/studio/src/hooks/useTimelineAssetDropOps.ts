@@ -3,6 +3,7 @@
 // Extracted verbatim from useTimelineEditing.ts to keep it under the studio
 // 600-line cap.
 import { useCallback, type MutableRefObject, type RefObject } from "react";
+import i18n from "../i18n";
 import type { TimelineElement } from "../player";
 import {
   buildTimelineAssetId,
@@ -56,7 +57,7 @@ export function useTimelineAssetDropOps({
       durationOverride?: number,
     ) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -64,7 +65,7 @@ export function useTimelineAssetDropOps({
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        showToast("Only image, video, and audio assets can be dropped onto the timeline.");
+        showToast(i18n.t("hooks.timeline.assetDropRestricted"));
         return;
       }
 
@@ -143,7 +144,7 @@ export function useTimelineAssetDropOps({
     // fallow-ignore-next-line complexity
     async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;

@@ -1,4 +1,5 @@
 import { ArrowLeft, CaretRight } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 
 export interface CompositionLevel {
@@ -16,11 +17,13 @@ interface CompositionBreadcrumbProps {
 }
 
 export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcrumbProps) {
+  const { t } = useTranslation();
+
   if (stack.length <= 1) return null;
 
   return (
     <nav
-      aria-label="Composition navigation"
+      aria-label={t("nle.compositionNavigation")}
       className="flex items-center gap-1 px-2 h-8 border-b border-neutral-800/50 bg-neutral-900/50 flex-shrink-0"
     >
       {/* Back button — always goes to parent */}
@@ -34,8 +37,8 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           onNavigate(stack.length - 2);
         }}
         className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
-        title="Back (Esc, or double-click empty timeline)"
-        aria-label="Back to parent composition"
+        title={t("nle.backTooltip")}
+        aria-label={t("nle.backToParentAria")}
       >
         <ArrowLeft size={12} weight="bold" />
       </button>
@@ -43,11 +46,12 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
       {/* Breadcrumb path */}
       {stack.map((level, i) => {
         const isLast = i === stack.length - 1;
+        const displayLabel = level.id === "master" ? t("nle.master") : level.label;
         return (
           <span key={level.id} className="flex items-center gap-1">
             {i > 0 && <CaretRight size={10} className="text-neutral-600 flex-shrink-0" />}
             {isLast ? (
-              <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
+              <span className="text-xs text-neutral-200 font-medium">{displayLabel}</span>
             ) : (
               <button
                 type="button"
@@ -57,7 +61,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
                 }}
                 className="text-xs text-neutral-500 hover:text-neutral-200 transition-colors"
               >
-                {level.label}
+                {displayLabel}
               </button>
             )}
           </span>

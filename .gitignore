@@ -28,6 +28,7 @@ videos/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 
@@ -152,6 +153,9 @@ hyperframes-bench/
 tmp/
 # Studio-generated preview thumbnails
 .thumbnails/
+
+# macOS Finder duplicates
+* 2.*
 
 # Local editor settings
 .zed/

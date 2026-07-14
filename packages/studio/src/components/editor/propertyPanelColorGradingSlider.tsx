@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LABEL } from "./propertyPanelHelpers";
 
@@ -59,6 +60,7 @@ export function ColorGradingSliderControl({
     onClick: () => void;
   };
 }) {
+  const { t } = useTranslation();
   const [draftState, setDraftState] = useState<{ value: number; source: number } | null>(null);
   const [inputDraft, setInputDraft] = useState<{ value: string; source: number } | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,13 +165,13 @@ export function ColorGradingSliderControl({
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Reset ${label}`}
+            aria-label={t("editor.colorGrading.resetSlider", { label })}
             onClick={(event) => {
               event.stopPropagation();
               onReset();
             }}
             className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-panel-text-5 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Reset ${label}`}
+            title={t("editor.colorGrading.resetSlider", { label })}
           >
             <RotateCcw size={11} />
           </button>
@@ -251,20 +253,20 @@ export function ColorGradingSliderControl({
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Decrease ${label}`}
+            aria-label={t("editor.colorGrading.decreaseSlider", { label })}
             onClick={() => nudge(-1)}
             className="flex h-5 w-5 items-center justify-center text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Decrease ${label}`}
+            title={t("editor.colorGrading.decreaseSlider", { label })}
           >
             <Minus size={11} />
           </button>
           <button
             type="button"
             disabled={disabled}
-            aria-label={`Increase ${label}`}
+            aria-label={t("editor.colorGrading.increaseSlider", { label })}
             onClick={() => nudge(1)}
             className="flex h-5 w-5 items-center justify-center border-l border-panel-border text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-            title={`Increase ${label}`}
+            title={t("editor.colorGrading.increaseSlider", { label })}
           >
             <Plus size={11} />
           </button>

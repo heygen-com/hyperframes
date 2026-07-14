@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import type { CompositionVariable, CompositionVariableType } from "@hyperframes/sdk";
+import { useTranslation } from "react-i18next";
 import { VARIABLES_INPUT_CLASS } from "./VariablesValueControls";
 
 const VARIABLE_TYPES: CompositionVariableType[] = [
@@ -211,6 +212,7 @@ export function DeclarationForm({
   const [draft, setDraft] = useState<DeclarationDraft>(initial);
   const [error, setError] = useState<string | null>(null);
   const editingExisting = initial.id.length > 0;
+  const { t } = useTranslation();
   const set = (patch: Partial<DeclarationDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const submit = () => {
@@ -226,28 +228,28 @@ export function DeclarationForm({
   return (
     <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
       <div className="grid grid-cols-2 gap-2">
-        <Field label="ID">
+        <Field label={t("variablesForm.id")}>
           <input
             type="text"
             value={draft.id}
             disabled={editingExisting}
             onChange={(e) => set({ id: e.target.value })}
-            placeholder="title"
+            placeholder={t("variablesForm.idPlaceholder")}
             className={`${VARIABLES_INPUT_CLASS} font-mono disabled:opacity-50`}
           />
         </Field>
-        <Field label="Label">
+        <Field label={t("variablesForm.label")}>
           <input
             type="text"
             value={draft.label}
             onChange={(e) => set({ label: e.target.value })}
-            placeholder="Title"
+            placeholder={t("variablesForm.labelPlaceholder")}
             className={VARIABLES_INPUT_CLASS}
           />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Type">
+        <Field label={t("variablesForm.type")}>
           <select
             value={draft.type}
             onChange={(e) => {
@@ -263,7 +265,7 @@ export function DeclarationForm({
             ))}
           </select>
         </Field>
-        <Field label="Default">
+        <Field label={t("variablesForm.default")}>
           <DefaultField draft={draft} onChange={(defaultRaw) => set({ defaultRaw })} />
         </Field>
       </div>
@@ -282,7 +284,7 @@ export function DeclarationForm({
         </div>
       )}
       {draft.type === "enum" && (
-        <Field label="Options (one per line, value:Label)">
+        <Field label={t("variablesForm.optionsHint")}>
           <textarea
             value={draft.optionsRaw}
             onChange={(e) => set({ optionsRaw: e.target.value })}
@@ -291,7 +293,7 @@ export function DeclarationForm({
           />
         </Field>
       )}
-      <Field label="Description (optional)">
+      <Field label={t("variablesForm.descriptionOptional")}>
         <input
           type="text"
           value={draft.description}
@@ -306,7 +308,7 @@ export function DeclarationForm({
           onClick={onCancel}
           className="h-6 rounded px-2 text-[10px] text-neutral-500 hover:text-neutral-300"
         >
-          Cancel
+          {t("assetsTab.cancel")}
         </button>
         <button
           type="button"

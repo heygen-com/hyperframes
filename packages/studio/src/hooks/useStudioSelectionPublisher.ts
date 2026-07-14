@@ -25,12 +25,11 @@ function reportSelectionPublishError(error: unknown): void {
   console.warn("[Studio] Failed to update agent selection context", error);
 }
 
-function putSelection(projectId: string, selection: unknown, signal?: AbortSignal): Promise<void> {
+function putSelection(projectId: string, selection: unknown): Promise<void> {
   return fetch(`/api/projects/${encodeURIComponent(projectId)}/selection`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ selection }),
-    signal,
   }).then(() => undefined);
 }
 
@@ -55,9 +54,13 @@ export function useStudioSelectionPublisher({
           currentTime: usePlayerStore.getState().currentTime,
         })
       : null;
-    const controller = new AbortController();
-    void putSelection(projectId, selection, controller.signal).catch(reportSelectionPublishError);
-    return () => controller.abort();
+    let cancelled = false;
+    putSelection(projectId, selection).catch((err) => {
+      if (!cancelled) reportSelectionPublishError(err);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [domEditSelection, projectId]);
 
   // Clear server-side agent context when Studio leaves a project. Without this,
@@ -82,9 +85,13 @@ export function useStudioSelectionPublisher({
     lastSelectionRefreshKeyRef.current = refreshKey;
     pendingSelectionRefreshKeyRef.current = domEditSelectionRef.current ? refreshKey : null;
     if (!projectId || !domEditSelectionRef.current) return;
-    const controller = new AbortController();
-    void putSelection(projectId, null, controller.signal).catch(reportSelectionPublishError);
-    return () => controller.abort();
+    let cancelled = false;
+    putSelection(projectId, null).catch((err) => {
+      if (!cancelled) reportSelectionPublishError(err);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [domEditSelectionRef, projectId, refreshKey]);
 
   // `refreshPreviewDocumentVersion` ticks after iframe load and shortly after.

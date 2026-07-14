@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import type { DomEditSelection } from "./domEditing";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -68,6 +69,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   compositionSize,
   isPlaying,
 }: MotionPathOverlayProps) {
+  const { t } = useTranslation();
   const {
     commitMutation,
     selectedGsapAnimations,
@@ -354,7 +356,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
         d.ref.pct,
         iframeRef.current,
         { commitMutation: (_sel, mutation, options) => commitMutation(mutation, options) },
-        "Move animation path",
+        t("editor.domEdit.moveAnimationPath"),
       );
     } else {
       void commitNode(d.ref, x, y, animId, commitMutation);

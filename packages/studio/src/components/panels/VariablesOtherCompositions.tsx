@@ -8,6 +8,7 @@
 
 import { useCallback, useState, type MutableRefObject } from "react";
 import type { Composition, CompositionVariable } from "@hyperframes/sdk";
+import { useTranslation } from "react-i18next";
 import {
   useEditVariablesInFile,
   useProjectCompositionVariables,
@@ -34,6 +35,7 @@ function CompositionSection({
   onSave: (path: string, decl: CompositionVariable) => void;
   onRemove: (path: string, id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1.5">
       <p
@@ -56,13 +58,13 @@ function CompositionSection({
               </span>
               <span className="ml-auto flex items-center gap-1">
                 <RowAction
-                  label="Edit"
-                  title="Edit declaration"
+                  label={t("variablesPanel.edit")}
+                  title={t("variablesPanel.editDeclaration")}
                   onClick={() => onToggleEdit(editing ? null : key)}
                 />
                 <RowAction
                   label="✕"
-                  title="Remove declaration"
+                  title={t("variablesPanel.removeDeclaration")}
                   danger
                   onClick={() => onRemove(group.path, decl.id)}
                 />
@@ -104,6 +106,7 @@ export function VariablesOtherCompositions({
   domEditSaveTimestampRef: MutableRefObject<number>;
 }) {
   const [selfRefresh, setSelfRefresh] = useState(0);
+  const { t } = useTranslation();
   const groups = useProjectCompositionVariables(
     fileTree,
     excludePath,

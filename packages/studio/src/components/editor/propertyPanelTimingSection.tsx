@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Clock } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
@@ -39,6 +40,7 @@ export function TimingSection({
   animations?: GsapAnimation[];
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const explicitStart = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
   const explicitDuration =
     Number.parseFloat(
@@ -70,21 +72,29 @@ export function TimingSection({
   };
 
   return (
-    <Section title="Timing" icon={<Clock size={15} />}>
+    <Section title={t("propertyPanel.timing")} icon={<Clock size={15} />}>
       <div className={RESPONSIVE_GRID}>
-        <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
-        <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />
+        <MetricField
+          label={t("propertyPanel.start")}
+          value={formatTimingValue(start)}
+          onCommit={commitStart}
+        />
+        <MetricField
+          label={t("propertyPanel.end")}
+          value={formatTimingValue(end)}
+          onCommit={commitEnd}
+        />
       </div>
       <div className="mt-3">
         <MetricField
-          label="Duration"
+          label={t("propertyPanel.duration")}
           value={formatTimingValue(duration)}
           onCommit={commitDuration}
         />
       </div>
       {derived && (
         <p className="mt-2 text-[10px] leading-snug text-neutral-500">
-          Inferred from this element’s animation — edit to pin an explicit clip range.
+          {t("propertyPanel.inferredTiming")}
         </p>
       )}
     </Section>

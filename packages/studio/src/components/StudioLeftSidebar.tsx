@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { SourceEditor } from "./editor/SourceEditor";
 import { LeftSidebar, type LeftSidebarHandle } from "./sidebar/LeftSidebar";
 import { MediaPreview } from "./MediaPreview";
@@ -33,6 +34,7 @@ export function StudioLeftSidebar({
   lintFindingsByFile,
   onAddAssetToTimeline,
 }: StudioLeftSidebarProps) {
+  const { t } = useTranslation();
   const {
     leftCollapsed,
     leftWidth,
@@ -76,8 +78,8 @@ export function StudioLeftSidebar({
           type="button"
           onClick={toggleLeftSidebar}
           className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
-          title="Show sidebar"
-          aria-label="Show sidebar"
+          title={t("shell.leftSidebar.showSidebar")}
+          aria-label={t("shell.leftSidebar.showSidebar")}
         >
           <svg
             width="14"
@@ -128,7 +130,7 @@ export function StudioLeftSidebar({
               // Never mount the editor on unloaded content: a keystroke would
               // autosave an empty document over the real file.
               <div className="flex h-full items-center justify-center text-[11px] text-neutral-600">
-                Loading {editingFile.path}…
+                {t("shell.leftSidebar.loadingFile", { path: editingFile.path })}
               </div>
             ) : (
               <SourceEditor
@@ -157,7 +159,7 @@ export function StudioLeftSidebar({
           element widens the hit area to 8px without affecting layout. */}
       <div
         role="separator"
-        aria-label="Resize sidebar"
+        aria-label={t("shell.leftSidebar.resizeSidebar")}
         aria-orientation="vertical"
         tabIndex={0}
         className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
