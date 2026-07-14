@@ -27,6 +27,14 @@ describe("CLI command registration", () => {
     );
   });
 
+  it("shows the check command used by workflow capability preflight in root help", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toMatch(/\bcheck:\s*\(\)\s*=>\s*import\("\.\/commands\/check\.js"\)/);
+    expect(helpSource).toContain(
+      '["check", "Run lint, runtime validation, and layout inspection as one gate"]',
+    );
+  });
+
   // A command actively reconciling skills (`skills check`/`skills update`)
   // must not also nudge the user to go reconcile skills — that nudge is
   // either redundant (it just ran) or misleading (a stale cached count from

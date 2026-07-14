@@ -437,12 +437,19 @@ describe("anonymous timeline identity", () => {
 });
 
 describe("mergeTimelineElementsPreservingDowngrades", () => {
-  it("preserves missing current elements when a shorter manifest arrives", () => {
+  it("preserves missing sub-composition elements when a shorter manifest arrives", () => {
     expect(
       mergeTimelineElementsPreservingDowngrades(
         [
           { id: "hero", tag: "div", start: 0, duration: 4, track: 0 },
-          { id: "cta", tag: "div", start: 4, duration: 2, track: 1 },
+          {
+            id: "cta",
+            tag: "div",
+            start: 4,
+            duration: 2,
+            track: 1,
+            compositionSrc: "scenes/cta.html",
+          },
         ],
         [{ id: "hero", tag: "div", start: 0, duration: 4, track: 0 }],
         8,
@@ -450,8 +457,29 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
       ),
     ).toEqual([
       { id: "hero", tag: "div", start: 0, duration: 4, track: 0 },
-      { id: "cta", tag: "div", start: 4, duration: 2, track: 1 },
+      {
+        id: "cta",
+        tag: "div",
+        start: 4,
+        duration: 2,
+        track: 1,
+        compositionSrc: "scenes/cta.html",
+      },
     ]);
+  });
+
+  it("drops missing top-level elements so undo does not leave ghost clips", () => {
+    expect(
+      mergeTimelineElementsPreservingDowngrades(
+        [
+          { id: "hero", tag: "div", start: 0, duration: 4, track: 0 },
+          { id: "split-clone", tag: "div", start: 4, duration: 2, track: 1 },
+        ],
+        [{ id: "hero", tag: "div", start: 0, duration: 4, track: 0 }],
+        8,
+        8,
+      ),
+    ).toEqual([{ id: "hero", tag: "div", start: 0, duration: 4, track: 0 }]);
   });
 
   it("accepts longer-duration or same-size updates as authoritative", () => {
@@ -477,6 +505,7 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
             start: 0,
             duration: 3,
             track: 0,
+            compositionSrc: "scenes/cards.html",
           },
           {
             id: "Card",
@@ -486,6 +515,7 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
             start: 3,
             duration: 3,
             track: 1,
+            compositionSrc: "scenes/cards.html",
           },
         ],
         [
@@ -497,6 +527,7 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
             start: 0,
             duration: 3,
             track: 0,
+            compositionSrc: "scenes/cards.html",
           },
         ],
         8,
@@ -511,6 +542,7 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
         start: 0,
         duration: 3,
         track: 0,
+        compositionSrc: "scenes/cards.html",
       },
       {
         id: "Card",
@@ -520,6 +552,7 @@ describe("mergeTimelineElementsPreservingDowngrades", () => {
         start: 3,
         duration: 3,
         track: 1,
+        compositionSrc: "scenes/cards.html",
       },
     ]);
   });

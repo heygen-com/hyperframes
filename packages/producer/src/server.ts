@@ -33,7 +33,9 @@ import {
   RenderCancelledError,
   createRenderJob,
   executeRenderJob,
+  type ProgressCallback,
   type RenderConfig,
+  type RenderJob,
 } from "./services/renderOrchestrator.js";
 import { prepareHyperframeLintBody, runHyperframeLint } from "./services/hyperframeLint.js";
 import { startHealthWorker, type HealthWorkerHandle } from "./services/healthWorker.js";
@@ -79,6 +81,7 @@ interface RenderInput {
   workers?: number;
   useGpu: boolean;
   debug: boolean;
+  strictness: RenderConfig["strictness"];
   entryFile?: string;
   /**
    * data-composition-variables overrides forwarded into the render config.
@@ -100,36 +103,50 @@ interface PreparedRenderInput {
   cleanupProjectDir?: string;
 }
 
+const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
+
+function parseServerFps(value: unknown): RenderInput["fps"] {
+  if (typeof value !== "number" && typeof value !== "string") return DEFAULT_SERVER_FPS;
+  const parsed = parseFps(value);
+  return parsed.ok ? parsed.value : DEFAULT_SERVER_FPS;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOutputCandidate(body: Record<string, unknown>): string | null {
+  return nonEmptyString(body.outputPath) ?? nonEmptyString(body.output) ?? null;
+}
+
+function parseServerQuality(value: unknown): RenderInput["quality"] {
+  return value === "draft" || value === "standard" || value === "high" ? value : "high";
+}
+
+function parseServerFormat(value: unknown): RenderInput["format"] {
+  return value === "mp4" || value === "webm" || value === "mov" ? value : undefined;
+}
+
 export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderInput, "projectDir"> {
   // Accept either a JSON `number` (integer fps) or a JSON `string` (rational
   // like "30000/1001"). Falls back to 30 fps on parse failure to preserve the
   // forgiving behaviour the original whitelist had — the producer surfaces a
   // clearer downstream error if the value is genuinely unusable.
-  const fpsRaw = body.fps;
-  const fpsParse =
-    typeof fpsRaw === "number" || typeof fpsRaw === "string" ? parseFps(fpsRaw) : null;
-  const fps = fpsParse && fpsParse.ok ? fpsParse.value : ({ num: 30, den: 1 } as const);
-  const quality = (
-    ["draft", "standard", "high"].includes(body.quality as string) ? body.quality : "high"
-  ) as "draft" | "standard" | "high";
+  const fps = parseServerFps(body.fps);
+  const quality = parseServerQuality(body.quality);
   const workers = typeof body.workers === "number" ? body.workers : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
-  const outputPath =
-    typeof body.outputPath === "string" && body.outputPath.trim().length > 0
-      ? body.outputPath
-      : typeof body.output === "string" && body.output.trim().length > 0
-        ? body.output
-        : null;
-
-  const entryFile =
-    typeof body.entryFile === "string" && body.entryFile.trim().length > 0
-      ? body.entryFile.trim()
-      : undefined;
-
-  const format = (
-    ["mp4", "webm", "mov"].includes(body.format as string) ? body.format : undefined
-  ) as RenderInput["format"];
+  // Preserve the pre-structured-warning HTTP contract for callers that do
+  // not yet send this field. Strict readiness is an explicit opt-in via
+  // `bestEffort: false`; omission must keep producing degraded output with
+  // structured warnings while downstream callers migrate.
+  const strictness = body.bestEffort === false ? "strict" : "best-effort";
+  const outputPath = parseOutputCandidate(body);
+  const entryFile = nonEmptyString(body.entryFile);
+  const format = parseServerFormat(body.format);
   const videoFrameFormat = isVideoFrameFormat(body.videoFrameFormat)
     ? body.videoFrameFormat
     : undefined;
@@ -143,6 +160,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     workers,
     useGpu,
     debug,
+    strictness,
     entryFile,
     format,
     variables,
@@ -188,6 +206,7 @@ function buildRenderJobConfig(input: RenderInput, log: ProducerLogger) {
     workers: input.workers,
     useGpu: input.useGpu,
     debug: input.debug,
+    strictness: input.strictness,
     entryFile: input.entryFile,
     variables: input.variables,
     outputResolution: input.outputResolution,
@@ -249,61 +268,77 @@ function validateOutputResolutionOverride(body: Record<string, unknown>): string
   return undefined;
 }
 
+type PrepareRenderResult = { prepared: PreparedRenderInput } | { error: string };
+
+function prepareProjectDirectory(
+  projectDir: unknown,
+  options: Omit<RenderInput, "projectDir">,
+): PrepareRenderResult | null {
+  const candidate = nonEmptyString(projectDir);
+  if (!candidate) return null;
+  const absProjectDir = resolve(candidate);
+  if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
+    return { error: `Project directory not found: ${absProjectDir}` };
+  }
+  const entry = options.entryFile || "index.html";
+  if (!existsSync(resolve(absProjectDir, entry))) {
+    return { error: `Entry file "${entry}" not found in project directory: ${absProjectDir}` };
+  }
+  return { prepared: { input: { projectDir: absProjectDir, ...options } } };
+}
+
+async function resolveInlineRenderHtml(body: Record<string, unknown>): Promise<
+  | { html: string }
+  | {
+      error: string;
+    }
+> {
+  const inlineHtml = typeof body.html === "string" ? body.html : "";
+  if (inlineHtml) return { html: inlineHtml };
+  const previewUrl = nonEmptyString(body.previewUrl);
+  if (!previewUrl)
+    return { error: "Missing render source: provide projectDir, previewUrl, or html" };
+  try {
+    const response = await fetch(previewUrl, { method: "GET" });
+    if (!response.ok) {
+      return { error: `Failed to fetch previewUrl: ${response.status} ${response.statusText}` };
+    }
+    return { html: await response.text() };
+  } catch (error) {
+    return {
+      error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function materializeInlineProject(
+  html: string,
+  options: Omit<RenderInput, "projectDir">,
+): PrepareRenderResult {
+  const tempRoot = process.env.PRODUCER_TMP_PROJECT_DIR || tmpdir();
+  const tempProjectDir = mkdtempSync(join(tempRoot, "producer-project-"));
+  writeFileSync(join(tempProjectDir, "index.html"), html, "utf-8");
+  return {
+    prepared: {
+      input: { projectDir: tempProjectDir, ...options },
+      cleanupProjectDir: tempProjectDir,
+    },
+  };
+}
+
 export async function prepareRenderBody(
   body: Record<string, unknown>,
-): Promise<{ prepared: PreparedRenderInput } | { error: string }> {
+): Promise<PrepareRenderResult> {
   // Reject explicitly-supplied-but-malformed overrides up front so the caller
   // gets a clear 400 instead of a silently-ignored value.
   const overrideError = validateRenderOverrides(body);
   if (overrideError) return { error: overrideError };
 
   const options = parseRenderOptions(body);
-  const projectDir = typeof body.projectDir === "string" ? body.projectDir : undefined;
-  if (projectDir) {
-    const absProjectDir = resolve(projectDir);
-    if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
-      return { error: `Project directory not found: ${absProjectDir}` };
-    }
-    const entry = options.entryFile || "index.html";
-    if (!existsSync(resolve(absProjectDir, entry))) {
-      return { error: `Entry file "${entry}" not found in project directory: ${absProjectDir}` };
-    }
-    return { prepared: { input: { projectDir: absProjectDir, ...options } } };
-  }
-
-  const previewUrl = typeof body.previewUrl === "string" ? body.previewUrl.trim() : "";
-  const inlineHtml = typeof body.html === "string" ? body.html : "";
-  if (!previewUrl && !inlineHtml) {
-    return { error: "Missing render source: provide projectDir, previewUrl, or html" };
-  }
-
-  let htmlContent = inlineHtml;
-  if (!htmlContent) {
-    try {
-      const response = await fetch(previewUrl, { method: "GET" });
-      if (!response.ok) {
-        return { error: `Failed to fetch previewUrl: ${response.status} ${response.statusText}` };
-      }
-      htmlContent = await response.text();
-    } catch (error) {
-      return {
-        error: `Failed to fetch previewUrl: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  }
-
-  const tempRoot = process.env.PRODUCER_TMP_PROJECT_DIR || tmpdir();
-  const tempProjectDir = mkdtempSync(join(tempRoot, "producer-project-"));
-  writeFileSync(join(tempProjectDir, "index.html"), htmlContent, "utf-8");
-  return {
-    prepared: {
-      input: {
-        projectDir: tempProjectDir,
-        ...options,
-      },
-      cleanupProjectDir: tempProjectDir,
-    },
-  };
+  const project = prepareProjectDirectory(body.projectDir, options);
+  if (project) return project;
+  const source = await resolveInlineRenderHtml(body);
+  return "error" in source ? source : materializeInlineProject(source.html, options);
 }
 
 function resolveOutputPath(
@@ -370,6 +405,115 @@ function cleanupTempDir(dir: string | undefined, log: ProducerLogger): void {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function outputFileSize(path: string): number {
+  return existsSync(path) ? statSync(path).size : 0;
+}
+
+function createBlockingProgressReporter(log: ProducerLogger, requestId: string): ProgressCallback {
+  let lastLoggedPct = -10;
+  return (job, message) => {
+    const pct = job.progress;
+    if (pct < lastLoggedPct + 10) return;
+    lastLoggedPct = pct;
+    log.info(`render progress ${pct}%`, { requestId, stage: job.currentStage, message });
+  };
+}
+
+interface SseWriter {
+  writeSSE(event: { data: string }): Promise<void>;
+}
+
+async function prepareSseRenderRequest(
+  c: Context,
+  stream: SseWriter,
+  requestId: string,
+): Promise<PreparedRenderInput | null> {
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json();
+  } catch {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        type: "error",
+        requestId,
+        error: "Invalid JSON body",
+        stage: "validation",
+      }),
+    });
+    return null;
+  }
+  const prepared = await prepareRenderBody(body);
+  if (!("error" in prepared)) return prepared.prepared;
+  await stream.writeSSE({
+    data: JSON.stringify({
+      type: "error",
+      requestId,
+      error: prepared.error,
+      stage: "validation",
+    }),
+  });
+  return null;
+}
+
+function createSseProgressReporter(stream: SseWriter, requestId: string): ProgressCallback {
+  return async (job, message) => {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        type: "progress",
+        requestId,
+        stage: job.currentStage,
+        progress: job.progress,
+        framesRendered: job.framesRendered ?? 0,
+        totalFrames: job.totalFrames ?? 0,
+        message,
+      }),
+    });
+  };
+}
+
+async function writeRenderStreamFailure(input: {
+  error: unknown;
+  job: RenderJob;
+  stream: SseWriter;
+  requestId: string;
+  startedAtMs: number;
+  log: ProducerLogger;
+}): Promise<void> {
+  const { error, job, stream, requestId, startedAtMs, log } = input;
+  if (error instanceof RenderCancelledError) {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        type: "cancelled",
+        requestId,
+        stage: job.currentStage,
+        outcome: job.outcome ?? "cancelled",
+        message: error.message,
+      }),
+    });
+    return;
+  }
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  const elapsedMs = Date.now() - startedAtMs;
+  log.error("render-stream failed", {
+    requestId,
+    elapsedMs,
+    error: errorMsg,
+    stage: job.currentStage,
+  });
+  await stream.writeSSE({
+    data: JSON.stringify({
+      type: "error",
+      requestId,
+      error: errorMsg,
+      stage: job.currentStage,
+      elapsedMs,
+      errorDetails: job.errorDetails ?? null,
+      outcome: job.outcome ?? "failed",
+      warnings: job.warnings,
+    }),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -476,17 +620,15 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 
     const job = createRenderJob(buildRenderJobConfig(input, log));
 
-    let lastLoggedPct = -10;
     try {
-      await executeRenderJob(job, input.projectDir, absoluteOutputPath, async (j, message) => {
-        const pct = Math.floor(j.progress * 100);
-        if (pct >= lastLoggedPct + 10) {
-          lastLoggedPct = pct;
-          log.info(`render progress ${pct}%`, { requestId, stage: j.currentStage, message });
-        }
-      });
+      await executeRenderJob(
+        job,
+        input.projectDir,
+        absoluteOutputPath,
+        createBlockingProgressReporter(log, requestId),
+      );
 
-      const fileSize = existsSync(absoluteOutputPath) ? statSync(absoluteOutputPath).size : 0;
+      const fileSize = outputFileSize(absoluteOutputPath);
       const durationMs = Date.now() - t0;
       const outputToken = store.register(absoluteOutputPath);
       const outputUrl = `${outputUrlPrefix}/${outputToken}`;
@@ -506,6 +648,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         fileSize,
         durationMs,
         videoDurationSeconds: job.duration ?? null,
+        outcome: job.outcome ?? "completed",
+        warnings: job.warnings,
         perf: job.perfSummary ?? null,
       });
     } catch (error) {
@@ -539,36 +683,11 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const requestId = getRequestId(c);
       const t0 = Date.now();
 
-      let body: Record<string, unknown>;
-      try {
-        body = await c.req.json();
-      } catch {
-        await stream.writeSSE({
-          data: JSON.stringify({
-            type: "error",
-            requestId,
-            error: "Invalid JSON body",
-            stage: "validation",
-          }),
-        });
-        return;
-      }
-
-      const preparedResult = await prepareRenderBody(body);
-      if ("error" in preparedResult) {
-        await stream.writeSSE({
-          data: JSON.stringify({
-            type: "error",
-            requestId,
-            error: preparedResult.error,
-            stage: "validation",
-          }),
-        });
-        return;
-      }
+      const prepared = await prepareSseRenderRequest(c, stream, requestId);
+      if (!prepared) return;
 
       const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
-        preparedResult.prepared,
+        prepared,
         rendersDir,
         log,
       );
@@ -597,23 +716,11 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           job,
           input.projectDir,
           absoluteOutputPath,
-          async (j, message) => {
-            await stream.writeSSE({
-              data: JSON.stringify({
-                type: "progress",
-                requestId,
-                stage: j.currentStage,
-                progress: j.progress,
-                framesRendered: j.framesRendered ?? 0,
-                totalFrames: j.totalFrames ?? 0,
-                message,
-              }),
-            });
-          },
+          createSseProgressReporter(stream, requestId),
           abortController.signal,
         );
 
-        const fileSize = existsSync(absoluteOutputPath) ? statSync(absoluteOutputPath).size : 0;
+        const fileSize = outputFileSize(absoluteOutputPath);
         const outputToken = store.register(absoluteOutputPath);
         const outputUrl = `${outputUrlPrefix}/${outputToken}`;
         log.info("render-stream completed", { requestId, fileSize, perf: job.perfSummary ?? null });
@@ -626,38 +733,19 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             outputUrl,
             fileSize,
             videoDurationSeconds: job.duration ?? null,
+            outcome: job.outcome ?? "completed",
+            warnings: job.warnings,
             perf: job.perfSummary ?? null,
           }),
         });
       } catch (error) {
-        if (error instanceof RenderCancelledError) {
-          await stream.writeSSE({
-            data: JSON.stringify({
-              type: "cancelled",
-              requestId,
-              stage: job.currentStage,
-              message: error.message,
-            }),
-          });
-          return;
-        }
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        const elapsedMs = Date.now() - t0;
-        log.error("render-stream failed", {
+        await writeRenderStreamFailure({
+          error,
+          job,
+          stream,
           requestId,
-          elapsedMs,
-          error: errorMsg,
-          stage: job.currentStage,
-        });
-        await stream.writeSSE({
-          data: JSON.stringify({
-            type: "error",
-            requestId,
-            error: errorMsg,
-            stage: job.currentStage,
-            elapsedMs,
-            errorDetails: job.errorDetails ?? null,
-          }),
+          startedAtMs: t0,
+          log,
         });
       } finally {
         release();

@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: HyperFrames CLI dev loop. Use when running npx hyperframes init, add, catalog, capture, lint, check, snapshot, compare, grade-compare, preview, play, render, publish, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs, benchmark, telemetry, transcribe, tts, or remove-background (validate/inspect/layout are deprecated aliases covered by check), or when troubleshooting the HyperFrames build/render environment. Entry point for AWS Lambda cloud rendering (`hyperframes lambda deploy / render / progress / destroy / policies / sites`).
+description: HyperFrames CLI dev loop. Use when running npx hyperframes init, add, catalog, capture, lint, check, snapshot, compare, grade-compare, preview, play, render, publish, cloud, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs, benchmark, telemetry, transcribe, tts, or remove-background (validate/inspect/layout are deprecated aliases covered by check), or when troubleshooting the HyperFrames build/render environment. Entry point for HeyGen-hosted cloud rendering (`hyperframes cloud render / list / get / delete`) and self-managed AWS Lambda rendering (`hyperframes lambda deploy / render / progress / destroy / policies / sites`).
 ---
 
 # HyperFrames CLI
@@ -18,7 +18,8 @@ Everything runs through `npx hyperframes` unless project instructions specify a 
    - Iterate: `npx hyperframes render --quality draft`
    - Deliver: `npx hyperframes render --quality high --output out.mp4`
    - CI / cross-host repro: `npx hyperframes render --docker --strict --output out.mp4`
-   - Cloud (long / large): `npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait` (see Lambda below)
+   - Cloud, zero-infra: `npx hyperframes cloud render` (HeyGen hosts the render; no local Chrome/FFmpeg/AWS, see Cloud below)
+   - Cloud, bring-your-own-AWS: `npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait` (see Lambda below)
 7. **Report feedback** — after verifying the output, `npx hyperframes feedback --rating <1-5> --comment "..."` once per task (see Agent Conventions).
 
 Run `check` before preview. It runs the linter first (and skips the browser entirely on lint errors), then does everything the old validate → inspect → snapshot sequence did in **one** browser session and one seek pass: runtime console errors and failed requests, layout defects (text spilling out of bubbles/containers or off canvas, held overlaps, occlusion), motion-sidecar verification (`*.motion.json` — entrances under seek, stagger order, in-frame, liveness), and WCAG contrast. Contrast failures are errors and carry the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color, so most contrast fixes need no screenshot. Every finding carries a selector, `data-*` identity, composition source file, bbox, and sample time — jump straight to the HTML. Single-sample transients demote to info; findings held across samples gate the exit code (`--strict` gates warnings too). `validate`, `inspect`, and `layout` still work but are deprecated aliases of parts of `check`.
@@ -50,14 +51,16 @@ Cross-cutting rules that hold for every command:
 
 ## Routing
 
-| Want to…                                                                                                   | Read                                  |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| Scaffold a project (`init`, `capture`, `skills`)                                                           | `references/init-and-scaffold.md`     |
-| Check correctness (`lint`, `check`, `snapshot`, deprecated `validate`/`inspect`)                           | `references/lint-validate-inspect.md` |
-| Preview or render (`preview`, `play`, `render`, `publish`)                                                 | `references/preview-render.md`        |
-| Diagnose the environment (`doctor`, `browser`)                                                             | `references/doctor-browser.md`        |
-| Cloud render on AWS Lambda (`lambda deploy / sites / render / progress / destroy / policies`)              | `references/lambda.md`                |
-| Everything else (`info`, `upgrade`, `compositions`, `docs`, `benchmark`, `telemetry`, asset preprocessing) | `references/upgrade-info-misc.md`     |
+| Want to…                                                                                                   | Read                                                                  |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Scaffold a project (`init`, `capture`, `skills`)                                                           | `references/init-and-scaffold.md`                                     |
+| Check correctness (`lint`, `check`, `snapshot`, deprecated `validate`/`inspect`)                           | `references/lint-validate-inspect.md`                                 |
+| Preview or render (`preview`, `play`, `render`, `publish`)                                                 | `references/preview-render.md`                                        |
+| Diagnose the environment (`doctor`, `browser`)                                                             | `references/doctor-browser.md`                                        |
+| Cloud render, zero-infra HeyGen-hosted (`cloud render / list / get / delete`, `auth`)                      | `references/cloud.md`                                                 |
+| Cloud render on your own AWS Lambda (`lambda deploy / sites / render / progress / destroy / policies`)     | `references/lambda.md`                                                |
+| Parametrize / template renders (`--variables`, `--variables-file`, `--strict-variables`, `--batch`)        | `references/cloud.md` + `hyperframes-core` (`variables-and-media.md`) |
+| Everything else (`info`, `upgrade`, `compositions`, `docs`, `benchmark`, `telemetry`, asset preprocessing) | `references/upgrade-info-misc.md`                                     |
 
 ## Cross-Skill Hand-Offs
 
@@ -65,6 +68,32 @@ Cross-cutting rules that hold for every command:
 - **Registry blocks/components** (`hyperframes add`, `hyperframes catalog`) → use `hyperframes-registry` for install paths, sub-composition wiring, and snippet merging.
 - **Asset preprocessing** (`tts`, `transcribe`, `remove-background`) → use `media-use` for voice selection, Whisper model rules, captions, and TTS-to-captions chain.
 - **Parametrized renders** (`--variables`) → declared via `data-composition-variables` on `<html>`; see `hyperframes-core` for the full schema.
+
+## Cloud (HeyGen-hosted rendering)
+
+`hyperframes cloud render` is the **zero-infra** render path: the CLI zips your project, uploads it, renders on HeyGen's cloud, and downloads the mp4. No Chrome, no FFmpeg, no AWS, and you pay per credit. This is the default answer to "render this in the cloud"; reach for Lambda only when you already own AWS and need distributed/chunked rendering.
+
+```bash
+npx hyperframes auth login            # one-time sign-in (shared with the `heygen` CLI)
+npx hyperframes cloud render          # zip, upload, render, download to renders/<id>.mp4
+```
+
+Common flags: `--composition <html>`, `--output <path>`, `--quality draft|standard|high`, `--fps`, `--resolution 1080p|4k`, `--format mp4|webm|mov`, `--aspect-ratio` (auto-detected from `data-width`/`data-height`). Fire-and-forget with `--no-wait` + `--callback-url`; make retries safe with `--idempotency-key "$(uuidgen)"`. Manage jobs with `cloud list` / `cloud get <id>` / `cloud delete <id>`.
+
+The idiomatic **template workflow is upload-once, re-render-many**: render a local project once to get its `asset_id`, then re-submit against that asset with different `--variables` (skips zip + upload). See `references/cloud.md` for the full flag set, the auth model, webhooks, and the template loop.
+
+## Variables (parametrized / template renders)
+
+Any render (local, cloud, or Lambda) can fill declared template slots at render time. Declarations live on the composition (`data-composition-variables`); the CLI surface is:
+
+```bash
+npx hyperframes render --variables '{"title":"Q4 Recap","theme":"dark"}' --output q4.mp4
+npx hyperframes render --variables-file ./vars.json --output out.mp4
+npx hyperframes render --batch rows.json --output "renders/{name}.mp4" --strict-variables
+npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Ada"}'
+```
+
+`--strict-variables` fails the render on any undeclared key or type mismatch (use it in CI). `--batch <rows.json>` renders one output per data row with `{key}`/`{index}` path placeholders and writes a `manifest.json`. For the **full schema** (declaring types, `data-var-src`/`data-var-text` declarative bindings, per-instance `data-variable-values` for sub-compositions, and precedence) use the `hyperframes-core` skill (`references/variables-and-media.md`). The cloud template loop lives in `references/cloud.md`.
 
 ## Lambda (Cloud Rendering)
 

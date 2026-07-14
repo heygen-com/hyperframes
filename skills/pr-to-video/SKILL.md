@@ -13,7 +13,7 @@ Use this skill to ingest a GitHub pull request, understand the change, plan a co
 
 > **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue. This skill is for a **GitHub pull request** (a code change). Route other intents elsewhere: any website input — promo or site tour → `/product-launch-video`; a topic explainer with no PR → `/faceless-explainer`; captions on existing footage → `/embedded-captions`; a short unnarrated motion graphic → `/motion-graphics`; a whole-repo or multi-PR release walkthrough → `/general-video`. **Out of scope:** live / at-render-time data — PR facts are read once at author time and baked in. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
-You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the gate types and how `BRIEF.md`'s `flow`/`storyboard` derive the mode that governs the Step 3/4/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
+You are the orchestrator. Work in the resolved external `PROJECT_DIR`, never in the caller repository by default. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the gate types and how `BRIEF.md`'s `flow`/`storyboard` derive the mode that governs the Step 3/4/6 gates. Do every step yourself except Step 5, where you dispatch a bounded pool of frame workers. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 
 Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extracted/` + `assets/<login>.png`; Step 2 design system → `frame.md`; Step 3 storyboard/script → `STORYBOARD.md` and `SCRIPT.md`; Step 3.1 audio → `audio_meta.json`; Step 4 visual design → enriched `STORYBOARD.md`; Step 5 frames → `compositions/frames/NN-*.html` and `index.html`; Step 6 final render → `renders/video.mp4`.
 
@@ -25,9 +25,26 @@ Goal: Enter with a confirmed brief — including the **PR reference** (a full UR
 
 **The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`): it checks recipes and remembered defaults, and conducts this route's questions — including the PR-size → length doctrine, which lives whole in `../hyperframes/references/route-briefs.md` § /pr-to-video — then hands back the locked brief. Edit requests skip all of this — go do the edit.
 
-Initialize only if `hyperframes.json` is missing. Name `<project>` from the PR in kebab-case, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
+Resolve the project directory before doing any other work. Preserve a user-supplied project directory; otherwise use the durable external cache location printed by the resolver. Never create `videos/` in the caller repository:
 
-`npx hyperframes init "videos/<project>" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+```bash
+PR="<url | owner/repo#N>"
+if [ -n "${EXPLICIT_PROJECT_DIR:-}" ]; then
+  PROJECT_DIR="$(node <SKILL_DIR>/scripts/project-dir.mjs --pr "$PR" --project-dir "$EXPLICIT_PROJECT_DIR")"
+else
+  PROJECT_DIR="$(node <SKILL_DIR>/scripts/project-dir.mjs --pr "$PR")"
+fi
+echo "PR-to-video project: $PROJECT_DIR"
+node <SKILL_DIR>/scripts/preflight.mjs
+```
+
+The capability preflight runs before fetch, story work, audio, or frame dispatch. If the installed CLI cannot run the validation command required by this skill, stop with its upgrade instruction rather than spending the run's context first.
+
+Initialize only if `$PROJECT_DIR/hyperframes.json` is missing. Its basename comes from the PR, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
+
+`npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+
+Every relative-path command below runs with `$PROJECT_DIR` as its working directory. Examples without an explicit subshell mean `(cd "$PROJECT_DIR" && …)`; never change the caller repository's working tree.
 
 **Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Then record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset), and if the intent layer adopted a recipe, adopt it now: `node ../media-use/scripts/recipe.mjs use --hyperframes . --name <name>` copies its frame.md in (Step 2 is then skipped) and hands back the skeletons Step 3 drafts from — a recipe fills in answers, not approvals; the review gates still run.
 
@@ -47,16 +64,16 @@ PR="<url | owner/repo#N | N>"
 # Fetch the PR deterministically: runs gh, completes the files list via paginated
 # gh api (so a big PR doesn't truncate at ~100 files), writes only capture/pr.json +
 # capture/diff.patch — no scratch dir. gh auth / not-found / private errors exit 1 here.
-(cd "videos/<project>" && node <SKILL_DIR>/scripts/fetch-pr.mjs --pr "$PR" --out-dir ./capture)
+(cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-pr.mjs --pr "$PR" --out-dir ./capture)
 
 # Offline transform → capture/extracted/{tokens.json (colors:[] → claude palette),
 # visible-text.txt (the brief), people.json (contributors, bot-filtered, avatarFile=assets/<login>.png)}.
-(cd "videos/<project>" && node <SKILL_DIR>/scripts/ingest.mjs \
+(cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/ingest.mjs \
   --pr-json ./capture/pr.json --diff ./capture/diff.patch --out-dir ./capture/extracted)
 
 # The people front's one network step — download each contributor's GitHub avatar to
 # assets/<login>.png for the credits close. Best-effort; always exits 0.
-(cd "videos/<project>" && node <SKILL_DIR>/scripts/fetch-people-avatars.mjs \
+(cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-people-avatars.mjs \
   --people ./capture/extracted/people.json)
 ```
 
@@ -90,7 +107,7 @@ Read `../hyperframes-creative/references/story-spine.md` (hook language, value-b
 
 Use `story-design.md` for the PR archetype (changelog / feature-reveal / fix-explainer / refactor-walkthrough), the PR-native frame types, hook, persuasion, beats, the per-frame word budget, and the credits close. The sequence comes from **narrative design, not the diff's file order** — explain the change, don't read the diff aloud. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, write the voiceover in the shape its candidate blueprint implies and tag that candidate `blueprint:` id when one fits (story truth still decides which beats exist — never force a beat to fit a shape). Feature 2–4 real diff hunks (from `capture/diff.patch`), each a small legible snippet; name the `code-*` block each wants in the frame's `scene`. Frames carry no `asset_candidates` except the `credits` close (1–6 `assets/<login>.png` avatars). Use the exact required fields from the storyboard and script references.
 
-After drafting, run the review loop's plan pass — `../hyperframes-core/references/review-loop.md` § 1: open the board (don't ask whether to), present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback loops through chat or the board's comments file until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is no board and nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the one preview question comes at Step 6.
+After drafting, run the review loop's plan pass — `../hyperframes-core/references/review-loop.md` § 1: open the board (don't ask whether to — run the preview from `PROJECT_DIR` in the background), present the plan as a proposal, and ask the two questions — approve or change, and **sketches first** (recommended) or skip. Feedback loops through chat or the board's comments file until approved. This is a **checkpoint gate** (brief contract § 1): in autonomous mode there is no board and nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the one preview question comes at Step 6.
 
 **Gate:** `STORYBOARD.md` exists, every frame has the required narrative fields, `SCRIPT.md` exists when narration is needed, and the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -124,7 +141,7 @@ Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` 
 
 Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.md`, `references/motion-language.md`, `references/code-vocabulary.md`, and `../hyperframes-animation/rules-index.md`. Use `visual-design.md` for the method (the time-coded shot sequence, the inline Layout vocabulary, and the code-beat treatment), plus the required `## Video direction` block. Use `../hyperframes-animation/blueprints-index.md` to pick each frame's shot shape. Use `code-vocabulary.md` to pick the right `code-*` block per code beat (diff = `code-diff`, refactor = `code-morph`, new code = `code-typing`, …). Use `motion-language.md` (the motion vocabulary + the motion doctrine) and `../hyperframes-animation/rules-index.md` (valid rule names) for motion — do not invent motion or block/blueprint names.
 
-For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. **For a code beat, the `code-*` block is the frame's `focal`** and the Scenes choreograph the surrounding claude Code Surface (the entry of the file/header, the camera onto the hunk, the landing line) — **not** the code animation itself, which the block owns. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
+For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. **For a code beat, the `code-*` block is the frame's `focal`** and the Scenes choreograph the surrounding claude Code Surface (the entry of the file/header, the camera onto the hunk, the landing line) — **not** the code animation itself, which the block owns. Immediately after each code frame's fields, add a `### Source excerpt` fenced `diff` block containing only the exact real hunk the worker must render (12 lines maximum). Select it here from `capture/diff.patch`; workers are forbidden from reopening that full diff. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
 Do not change story, script, `transition_in`, `asset_candidates`, or the PR source. Do not write HTML in this step. There is **no asset-staging step** — the only real assets are the credits avatars, already in `assets/`.
 
@@ -148,7 +165,15 @@ Duration sync is mechanical: real voice duration wins; silent frames keep estima
 
 `for b in <each registry block named in the storyboard>; do npx hyperframes add "$b"; done`
 
-Before dispatch, read `sub-agents/frame-worker.md` and `../hyperframes-core/references/subagent-dispatch.md`. Dispatch one sub-agent per frame, in parallel if possible; otherwise run workers in waves. Each worker gets exactly one frame. Each worker's context must include `PROJECT_DIR`, `frame_id`, whether the frame has a **confirmed sketch** on disk, canvas size, caption status and keep-out band if captions are enabled, `RULES_DIR` (absolute path to this skill's `../hyperframes-animation/rules/`), and the absolute path to `references/code-vocabulary.md`. Each worker reads `frame.md`, its own `## Frame N` block from `STORYBOARD.md`, the confirmed sketch when one exists (keep its layout — frame-worker § When a confirmed sketch exists), the local rule recipe (`../hyperframes-animation/rules/<id>.md`) for each cited motion, the frame's blueprint template (`../hyperframes-animation/blueprints/<id>.md`), and — for a code beat — `code-vocabulary.md` for the named block's inputs. Each worker writes only `compositions/frames/NN-*.html`; workers never edit `STORYBOARD.md`.
+Before dispatch, read `sub-agents/frame-worker.md` and `../hyperframes-core/references/subagent-dispatch.md`. Build bounded packets:
+
+```bash
+node <SKILL_DIR>/scripts/frame-packets.mjs --project "$PROJECT_DIR" --storyboard "$PROJECT_DIR/STORYBOARD.md"
+```
+
+The packet builder hard-fails a code frame without the upstream-selected `### Source excerpt`, and hard-caps packet bytes. Dispatch **at most three workers total**, balanced across the packet paths; each worker may build multiple assigned frames sequentially and reads shared instructions once. Workers read only their packet(s) and `frame.md`. They never open the full `STORYBOARD.md`, `capture/diff.patch`, or `capture/extracted/visible-text.txt`. Each worker writes only its assigned `compositions/frames/NN-*.html`; workers never edit `STORYBOARD.md`. When a frame has a **confirmed sketch** on disk (collaborative runs — review loop § 3), say so in that worker's dispatch context: the sketch is the existing `compositions/frames/NN-*.html`, and the worker dresses that layout rather than redrawing it (frame-worker § When a confirmed sketch exists).
+
+On a failed frame, re-dispatch **that frame only**, with its existing packet plus the exact validator/lint finding. One retry maximum. Do not replay a whole batch and do not retry without a concrete finding.
 
 **Full-bleed backgrounds ride on a `class="clip"` layer, never the `#root`.** A frame's ground (color field / gradient / grid) is its own full-duration background clip — a `background` set on the `#root` / `data-composition-id` element is clip-gated to the frame's window and is not a dependable ground, so dark content can land on the black host `body` and render invisible. The video's base ground is painted by the assembler from `frame.md`'s `canvas` color onto the index `#root`. (Full rule + self-check: `sub-agents/frame-worker.md`.)
 
@@ -180,8 +205,6 @@ Inject transitions, run checks, pause for review, then render.
 
 `npx hyperframes check`
 
-`npx hyperframes check`
-
 `npx hyperframes snapshot --at <frame-midpoints>`
 
 `snapshot` stitches the captured frames into one contact sheet (`snapshots/contact-sheet.jpg`). Glance at it; if nothing is obviously broken, move on — don't linger here.
@@ -190,15 +213,17 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 **Known false-positive — do not chase it.** `inspect` may report a handful of `text_box_overflow` errors of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
-After checks pass, pause for user review — the review loop's final look (`../hyperframes-core/references/review-loop.md` § 4): one question, on the Studio that has been open since Step 3 — render now, or what changes? (Autonomous: the one kept question, preview first or render.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
+After checks pass, pause for user review — the review loop's final look (`../hyperframes-core/references/review-loop.md` § 4): one question, on the Studio that has been open since Step 3 — render now, or what changes? (Autonomous: the one kept question, preview first or render — open the preview with the command below on a yes.) Then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
-Preview: `npx hyperframes preview`
+Preview: `npx hyperframes preview "$PROJECT_DIR" --background`
 
 Render only after user approval (autonomous mode: after the preview-or-render question):
 
 `npx hyperframes render --skill=pr-to-video --quality high --output renders/video.mp4`
 
 Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless the user asks.
+
+After the user is done reviewing (or after render when no more live edits are expected), stop only this project's background server: `npx hyperframes preview "$PROJECT_DIR" --stop`. Never tear it down while waiting for review.
 
 **Gate:** `lint`, `validate`, and `inspect` passed before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states the MP4 path and final duration.
 

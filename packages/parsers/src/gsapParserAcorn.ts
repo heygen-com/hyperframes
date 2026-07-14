@@ -296,6 +296,12 @@ function resolveCollectionSelector(
 
 function collectScopeBindings(ast: any): ScopeBindings {
   const bindings = new Map<string, number | string | boolean>();
+  // This compact resolver is intentionally conservative: it does not carry a
+  // full lexical environment. If the same identifier has different constant
+  // values in separate function/IIFE scopes, treating either value as global
+  // corrupts every tween in the other scope. Mark that name ambiguous so its
+  // expressions stay __raw and timing-sensitive lint rules skip them.
+  const ambiguousBindings = new Set<string>();
   // Const ARRAY/OBJECT literals are kept as AST nodes for member/index folding
   // (resolveMemberNode), exposed to resolveNode via the CONST_NODES side-table.
   const constNodes: ConstNodes = new Map();
@@ -310,7 +316,14 @@ function collectScopeBindings(ast: any): ScopeBindings {
         return;
       }
       const val = resolveNode(init, bindings);
-      if (val !== undefined) bindings.set(name, val);
+      if (val === undefined || ambiguousBindings.has(name)) return;
+      const existing = bindings.get(name);
+      if (existing !== undefined && existing !== val) {
+        bindings.delete(name);
+        ambiguousBindings.add(name);
+      } else if (existing === undefined) {
+        bindings.set(name, val);
+      }
     },
   });
   return bindings;
@@ -1171,7 +1184,13 @@ function tweenCallToAnimation(
   const hasPositionArg = !!call.positionArg;
   const posVal = hasPositionArg ? extractLiteralValue(call.positionArg, scope) : 0;
   const position: number | string =
-    typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
+    typeof posVal === "number"
+      ? posVal
+      : typeof posVal === "string"
+        ? posVal
+        : hasPositionArg
+          ? `__raw:${source.slice(call.positionArg.start, call.positionArg.end)}`
+          : 0;
   let duration = typeof vars.duration === "number" ? vars.duration : undefined;
   const ease = typeof vars.ease === "string" ? vars.ease : undefined;
 

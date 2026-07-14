@@ -26,6 +26,7 @@ import {
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
+import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
 
@@ -95,6 +96,7 @@ export const Timeline = memo(function Timeline({
     [beatAnalysis, musicElement, beatEdits],
   );
   const duration = usePlayerStore((s) => s.duration);
+  const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
@@ -156,11 +158,8 @@ export const Timeline = memo(function Timeline({
     containerRef.current = el;
   }, []);
 
-  // Last horizontal scroll offset, tracked so it can be RESTORED across the
-  // post-edit iframe reload: an edit re-derives elements (and may shrink the
-  // content width), which the browser clamps into a scroll jump. Paired with the
-  // pinned zoom (which keeps pps constant so the pixel offset stays meaningful),
-  // restoring this keeps the user parked at the same spot after any edit.
+  // Last horizontal scroll offset, RESTORED across the post-edit iframe reload (which clamps into
+  // a scroll jump); with the pinned zoom this keeps the user parked at the same spot after edits.
   const lastScrollLeftRef = useRef(0);
   const setScrollRef = useCallback(
     (el: HTMLDivElement | null) => {
@@ -395,9 +394,11 @@ export const Timeline = memo(function Timeline({
     }
   });
 
+  // Frame display mode labels ruler ticks as frame numbers — pass the fps so ticks snap to frames.
+  const tickFps = timeDisplayMode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
   const { major, minor } = useMemo(
-    () => generateTicks(displayDuration, pps),
-    [displayDuration, pps],
+    () => generateTicks(displayDuration, pps, tickFps),
+    [displayDuration, pps, tickFps],
   );
   const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
 
@@ -526,8 +527,7 @@ export const Timeline = memo(function Timeline({
             const elKey = el.key ?? el.id;
             setSelectedElementId(elKey);
             onSelectElement?.(el);
-            // Visually select the clicked diamond (matches shift-click / motion-path
-            // selection); cleared above so this single-selects it.
+            // Select the clicked diamond (matches shift-click); cleared above so this single-selects.
             toggleSelectedKeyframe(`${elKey}:${pct}`);
             const absTime = el.start + (pct / 100) * el.duration;
             onSeek?.(absTime);

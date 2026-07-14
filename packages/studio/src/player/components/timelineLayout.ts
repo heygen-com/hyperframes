@@ -67,51 +67,105 @@ export const DRAG_EXTEND_MARGIN_PX = 160;
  * with 60s of ruler after it.
  */
 export const MIN_TIMELINE_EXTENT_S = 60;
+/**
+ * Fit-mode headroom (CapCut-style): "fit" maps `duration * 1.2` — not the bare
+ * duration — onto the viewport, so the composition ends at ~83% of the width
+ * and the trailing ~17% stays empty ruler + droppable lane surface (room to
+ * drag clips past the current end without first zooming out). Applied ONLY
+ * inside {@link getTimelineFitPps}, the single fit-pps source, so the ruler,
+ * lanes, playhead, marquee, and drag math all inherit it consistently. Manual
+ * zoom percentages stay defined relative to this fit basis (100% == fit).
+ */
+export const FIT_ZOOM_HEADROOM = 1.2;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
-function getMajorTickInterval(duration: number, pixelsPerSecond?: number): number {
-  const zoomIntervals = [0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+// fallow-ignore-next-line complexity
+function getMajorTickInterval(
+  duration: number,
+  pixelsPerSecond?: number,
+  frameRate?: number,
+): number {
+  // "Nice" NLE steps: 1-2-5 sub-second decades, then 1s/2s/5s/10s/15s/30s,
+  // minute multiples, and 15m/30m/1h so ultra-zoomed-out long comps still get
+  // readable (non-colliding) labels instead of the old 10m fallback everywhere.
+  const zoomIntervals = [
+    0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600,
+  ];
+  let interval: number;
   if (Number.isFinite(pixelsPerSecond) && (pixelsPerSecond ?? 0) > 0) {
     const targetMajorPx = 88;
-    return (
-      zoomIntervals.find((interval) => interval * (pixelsPerSecond ?? 0) >= targetMajorPx) ?? 600
-    );
+    interval =
+      zoomIntervals.find((candidate) => candidate * (pixelsPerSecond ?? 0) >= targetMajorPx) ??
+      3600;
+  } else {
+    const durationIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
+    const target = duration / 6;
+    interval = durationIntervals.find((candidate) => candidate >= target) ?? 60;
   }
-  const durationIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
-  const target = duration / 6;
-  return durationIntervals.find((interval) => interval >= target) ?? 60;
+  // Frame display mode: labels are frame numbers, so a major step must be a
+  // WHOLE number of frames — sub-frame steps produce duplicate/uneven labels
+  // (e.g. 0.02s at 30fps is 0.6 frames → "0, 1, 1, 2, 2…"). Snap UP (ceil) so
+  // the label spacing never drops below the readability target.
+  if (Number.isFinite(frameRate) && (frameRate ?? 0) > 0) {
+    const fps = frameRate ?? 0;
+    return Math.max(1, Math.ceil(interval * fps - 1e-6)) / fps;
+  }
+  return interval;
 }
 
 // How many equal parts to split each major interval into for minor ticks. Prefer
 // quarters (4) so the midpoint stays a minor tick; fall back to halves (2) then
-// none (0) as ticks get too dense to read (< ~8px apart).
-function getMinorSubdivisions(majorInterval: number, pixelsPerSecond?: number): number {
+// none (0) as ticks get too dense to read (< ~8px apart). In frame display mode
+// the subdivision must also keep minor ticks on WHOLE frames (a minor tick at a
+// sub-frame time is not a seekable position), so only divisors of the major
+// step's frame count qualify — quarters, then fifths (15/30-frame majors),
+// thirds, halves.
+// fallow-ignore-next-line complexity
+function getMinorSubdivisions(
+  majorInterval: number,
+  pixelsPerSecond?: number,
+  frameRate?: number,
+): number {
   const pps = Number.isFinite(pixelsPerSecond) ? (pixelsPerSecond ?? 0) : 0;
   if (pps <= 0) return 4; // no zoom info (duration-fit mode): quarter ticks
-  if ((majorInterval / 4) * pps >= 8) return 4;
-  if ((majorInterval / 2) * pps >= 8) return 2;
+  const fps = Number.isFinite(frameRate) ? (frameRate ?? 0) : 0;
+  const majorFrames = fps > 0 ? Math.round(majorInterval * fps) : 0;
+  const candidates = fps > 0 ? [4, 5, 3, 2] : [4, 2];
+  for (const parts of candidates) {
+    if (fps > 0 && majorFrames % parts !== 0) continue;
+    if ((majorInterval / parts) * pps >= 8) return parts;
+  }
   return 0;
+}
+
+// Ticks are exact multiples of the interval (multiplied per index, never
+// accumulated with `+=`, so long rulers don't drift), then rounded to 1µs to
+// keep values/keys clean without disturbing frame-exact positions like 2/30s.
+function roundTickValue(t: number): number {
+  return Math.round(t * 1e6) / 1e6;
 }
 
 export function generateTicks(
   duration: number,
   pixelsPerSecond?: number,
+  frameRate?: number,
 ): { major: number[]; minor: number[] } {
-  if (duration <= 0 || !Number.isFinite(duration) || duration > 7200)
+  if (duration <= 0 || !Number.isFinite(duration) || duration > 14400)
     return { major: [], minor: [] };
-  const majorInterval = getMajorTickInterval(duration, pixelsPerSecond);
-  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond);
+  const majorInterval = getMajorTickInterval(duration, pixelsPerSecond, frameRate);
+  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
   const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000; // Safety cap to prevent runaway tick generation
-  for (let t = 0; t <= duration + 0.001 && major.length < maxTicks; t += majorInterval) {
-    const rounded = Math.round(t * 100) / 100;
-    major.push(rounded);
+  for (let i = 0; major.length < maxTicks; i++) {
+    const t = i * majorInterval;
+    if (t > duration + 0.001) break;
+    major.push(roundTickValue(t));
     // Emit the (subdivisions - 1) minor ticks between this major and the next.
     for (let k = 1; k < subdivisions && major.length + minor.length < maxTicks; k++) {
-      const m = Math.round((t + k * minorInterval) * 100) / 100;
-      if (m <= duration + 0.001) minor.push(m);
+      const m = t + k * minorInterval;
+      if (m <= duration + 0.001) minor.push(roundTickValue(m));
     }
   }
   return { major, minor };
@@ -144,15 +198,17 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
 
 /* ── Width / duration derivation ──────────────────────────────────── */
 /**
- * Fit-mode pixels-per-second: fill the viewport with the composition, but
- * never map fewer than MIN_TIMELINE_EXTENT_S seconds onto it — a short comp
- * takes a fraction of the width and the remaining ruler runs to 1:00.
+ * Fit-mode pixels-per-second: fill the viewport with the composition plus
+ * FIT_ZOOM_HEADROOM trailing headroom (CapCut-style — the comp never slams
+ * into the right edge), and never map fewer than MIN_TIMELINE_EXTENT_S
+ * seconds onto it — a short comp takes a fraction of the width and the
+ * remaining ruler runs to 1:00.
  * Manual zoom multiplies this base, so the floor only anchors the default.
  */
 export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
   const safeDuration =
     Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
-  const span = Math.max(safeDuration, MIN_TIMELINE_EXTENT_S);
+  const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
   if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER) return 100;
   return (viewportWidth - GUTTER - 2) / span;
 }
@@ -227,9 +283,26 @@ export function getTimelineScrollLeftForZoomAnchor(input: {
 }
 
 /* ── Playhead / canvas ────────────────────────────────────────────── */
+/**
+ * Width of the playhead wrapper element (== the diamond head chip's layout
+ * width, which the wrapper shrink-wraps to). The 1px vertical line inside
+ * PlayheadIndicator is centered at 50% of this wrapper, so the wrapper must be
+ * shifted LEFT by half this width for the line's center to land exactly on
+ * `GUTTER + time * pps` — see {@link getTimelinePlayheadLeft}.
+ */
+export const PLAYHEAD_HEAD_W = 9;
+
+/**
+ * The `left` for the playhead WRAPPER such that the vertical line's CENTER
+ * sits exactly on `GUTTER + time * pps` (the same x the ruler ticks center
+ * on) at every zoom level. Without the half-head offset the line sat
+ * `PLAYHEAD_HEAD_W / 2` px to the right of its ruler tick.
+ */
 export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
-  if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) return GUTTER;
-  return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond);
+  if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) {
+    return GUTTER - PLAYHEAD_HEAD_W / 2;
+  }
+  return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond) - PLAYHEAD_HEAD_W / 2;
 }
 
 export function getTimelineCanvasHeight(trackCount: number): number {

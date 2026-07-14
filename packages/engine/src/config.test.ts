@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveConfig, DEFAULT_CONFIG, scaleProtocolTimeoutForComposition } from "./config.js";
+import {
+  resolveConfig,
+  DEFAULT_CONFIG,
+  scaleProtocolTimeoutForComposition,
+  shouldClampToScreenshotForConcreteGpu,
+  applyConcreteGpuScreenshotClamp,
+} from "./config.js";
+import type { EngineConfig } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
 
 describe("resolveConfig", () => {
@@ -293,6 +300,221 @@ describe("resolveConfig", () => {
     it("leaves page-side compositing on when fast capture is off", () => {
       const config = resolveConfig({ useDrawElement: false });
       expect(config.enablePageSideCompositing).toBe(true);
+    });
+  });
+
+  describe("forceScreenshot (software-GPU clamp)", () => {
+    it("forces screenshot capture when browserGpuMode resolves to software", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig();
+      expect(config.forceScreenshot).toBe(true);
+    });
+
+    it("leaves forceScreenshot alone on hardware GPU (default off)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig();
+      expect(config.forceScreenshot).toBe(false);
+    });
+
+    it("does not force screenshot on auto (auto probes to hardware on real GPUs)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "auto");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig();
+      expect(config.forceScreenshot).toBe(false);
+    });
+
+    it("explicit env opt-out (PRODUCER_FORCE_SCREENSHOT=false) is honored on software", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      setEnv("PRODUCER_FORCE_SCREENSHOT", "false");
+      const config = resolveConfig();
+      expect(config.forceScreenshot).toBe(false);
+    });
+
+    it("explicit programmatic opt-out is honored on software", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig({ forceScreenshot: false });
+      expect(config.forceScreenshot).toBe(false);
+    });
+
+    it("caller override forceScreenshot=true stays true regardless of GPU mode", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      const config = resolveConfig({ forceScreenshot: true });
+      expect(config.forceScreenshot).toBe(true);
+    });
+
+    it("documents the auto-branch gap: resolveConfig leaves auto→software as forceScreenshot=false", () => {
+      // resolveConfig's clamp keys on the string `browserGpuMode`; `"auto"`
+      // that runtime-probes to software is invisible to this layer. The
+      // runtime companion `shouldClampToScreenshotForConcreteGpu` (below)
+      // closes the gap at the frameCapture + renderOrchestrator sites.
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "auto");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig();
+      expect(config.browserGpuMode).toBe("auto");
+      expect(config.forceScreenshot).toBe(false);
+    });
+  });
+
+  describe("shouldClampToScreenshotForConcreteGpu (runtime companion for auto→software)", () => {
+    it("returns true when resolved GPU is software AND forceScreenshot is currently false", () => {
+      // Env explicitly cleared so PRODUCER_FORCE_SCREENSHOT="false" opt-out
+      // doesn't fire.
+      expect(
+        shouldClampToScreenshotForConcreteGpu("software", false, {} as NodeJS.ProcessEnv),
+      ).toBe(true);
+    });
+
+    it("returns false when resolved GPU is hardware (no clamp needed)", () => {
+      expect(
+        shouldClampToScreenshotForConcreteGpu("hardware", false, {} as NodeJS.ProcessEnv),
+      ).toBe(false);
+    });
+
+    it("returns false when forceScreenshot is already true (invariant already satisfied)", () => {
+      expect(shouldClampToScreenshotForConcreteGpu("software", true, {} as NodeJS.ProcessEnv)).toBe(
+        false,
+      );
+    });
+
+    it("honors PRODUCER_FORCE_SCREENSHOT=false env opt-out on software", () => {
+      // BeginFrame-on-software debugging escape hatch.
+      expect(
+        shouldClampToScreenshotForConcreteGpu("software", false, {
+          PRODUCER_FORCE_SCREENSHOT: "false",
+        } as NodeJS.ProcessEnv),
+      ).toBe(false);
+    });
+
+    it("does NOT treat other PRODUCER_FORCE_SCREENSHOT values as opt-out", () => {
+      // Only literal "false" opts out; "true", "0", missing, anything else clamps.
+      for (const value of [undefined, "true", "1", "0", "no", ""]) {
+        const env = (
+          value === undefined ? {} : { PRODUCER_FORCE_SCREENSHOT: value }
+        ) as NodeJS.ProcessEnv;
+        expect(shouldClampToScreenshotForConcreteGpu("software", false, env)).toBe(true);
+      }
+    });
+
+    it("honors the programmatic opt-out via opts.programmaticOptOut on software", () => {
+      // The auto→software probe path is what this really guards: `resolveConfig`
+      // sets `forceScreenshotExplicitlyOptedOut = true` when the caller passed
+      // `overrides.forceScreenshot === false`, and the helper reads it here so
+      // the concrete-resolution route matches the config-time behavior.
+      expect(
+        shouldClampToScreenshotForConcreteGpu("software", false, {} as NodeJS.ProcessEnv, {
+          programmaticOptOut: true,
+        }),
+      ).toBe(false);
+    });
+
+    it("programmatic opt-out beats a missing env opt-out (both escape hatches independent)", () => {
+      // Even with no env opt-out set, a programmatic opt-out preserves BeginFrame-
+      // on-software debugging on the auto→software probe path.
+      expect(
+        shouldClampToScreenshotForConcreteGpu(
+          "software",
+          false,
+          { PRODUCER_FORCE_SCREENSHOT: "true" } as NodeJS.ProcessEnv,
+          { programmaticOptOut: true },
+        ),
+      ).toBe(false);
+    });
+  });
+
+  describe("applyConcreteGpuScreenshotClamp (caller-level contract)", () => {
+    // This is the helper both frameCapture.ts and renderOrchestrator.ts call
+    // to compute the value the AUTHORITATIVE `forceScreenshot` local should
+    // hold after the concrete GPU is resolved. Routing AND telemetry read
+    // from that one value, so this contract must hold across default and
+    // opt-out combinations.
+    type OptOutCfg = Pick<EngineConfig, "forceScreenshotExplicitlyOptedOut">;
+    const cleanEnv = {} as NodeJS.ProcessEnv;
+
+    it("resolved software + default false → promotes to true (screenshot route)", () => {
+      // The core auto→software fix: routing AND downstream telemetry read
+      // the promoted value, so `updateCaptureObservability({ forceScreenshot:
+      // captureForceScreenshot })` at the capture_strategy site reports
+      // screenshot instead of overwriting back to beginframe.
+      expect(applyConcreteGpuScreenshotClamp(false, "software", {} as OptOutCfg, cleanEnv)).toBe(
+        true,
+      );
+    });
+
+    it("resolved software + programmatic opt-out → stays false (BeginFrame preserved)", () => {
+      // The programmatic escape hatch caller-level contract: setting
+      // overrides.forceScreenshot=false must keep BeginFrame across BOTH
+      // routing (frameCapture) and telemetry (renderOrchestrator) — since
+      // resolveConfig lifts the flag onto the config, both callers converge.
+      expect(
+        applyConcreteGpuScreenshotClamp(
+          false,
+          "software",
+          { forceScreenshotExplicitlyOptedOut: true } as OptOutCfg,
+          cleanEnv,
+        ),
+      ).toBe(false);
+    });
+
+    it("resolved hardware + default false → stays false (no clamp needed)", () => {
+      expect(applyConcreteGpuScreenshotClamp(false, "hardware", {} as OptOutCfg, cleanEnv)).toBe(
+        false,
+      );
+    });
+
+    it("resolved software + already-true forceScreenshot → stays true (idempotent)", () => {
+      // Config-time clamp already fired (literal browserGpuMode:"software"),
+      // so re-applying at the concrete-resolved site is a no-op.
+      expect(applyConcreteGpuScreenshotClamp(true, "software", {} as OptOutCfg, cleanEnv)).toBe(
+        true,
+      );
+    });
+
+    it("resolved software + env PRODUCER_FORCE_SCREENSHOT=false → stays false", () => {
+      // Env opt-out preserved even when programmatic flag is not set (some
+      // callers, like debugging BeginFrame-on-software from CI, opt-out via
+      // env only).
+      expect(
+        applyConcreteGpuScreenshotClamp(
+          false,
+          "software",
+          {} as OptOutCfg,
+          {
+            PRODUCER_FORCE_SCREENSHOT: "false",
+          } as NodeJS.ProcessEnv,
+        ),
+      ).toBe(false);
+    });
+
+    it("resolved software + undefined cfg → default (no programmatic opt-out) → clamps to true", () => {
+      // Sanity: frameCapture.ts calls with `config` possibly undefined.
+      // Default case must still promote.
+      expect(applyConcreteGpuScreenshotClamp(false, "software", undefined, cleanEnv)).toBe(true);
+    });
+  });
+
+  describe("forceScreenshotExplicitlyOptedOut provenance", () => {
+    it("is set to true when programmatic override forceScreenshot=false is passed", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig({ forceScreenshot: false });
+      expect(config.forceScreenshotExplicitlyOptedOut).toBe(true);
+    });
+
+    it("is set to true when env PRODUCER_FORCE_SCREENSHOT=false is set", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      setEnv("PRODUCER_FORCE_SCREENSHOT", "false");
+      const config = resolveConfig();
+      expect(config.forceScreenshotExplicitlyOptedOut).toBe(true);
+    });
+
+    it("stays unset when neither opt-out is present (default)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      unsetEnv("PRODUCER_FORCE_SCREENSHOT");
+      const config = resolveConfig();
+      expect(config.forceScreenshotExplicitlyOptedOut).toBeUndefined();
     });
   });
 

@@ -55,6 +55,7 @@ import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
+import { validateFrameHtml } from "./lib/frame-contract.mjs";
 import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
 
 // ---------- argv ----------
@@ -284,6 +285,11 @@ for (const f of manifest.frames) {
     die(
       `${label}: ${f.src} is empty or has no HTML — the worker wrote a blank/partial file. Re-dispatch that worker before assembling.`,
     );
+  }
+  try {
+    validateFrameHtml(html, { expectedId: compId, expectedDuration: f.durationSeconds });
+  } catch (error) {
+    die(`${label}: ${error.message}`);
   }
   // pre-assembly guards: ① repair missing root dims in place, ②/③ collect fatal violations.
   const guard = guardFrame(html, label);

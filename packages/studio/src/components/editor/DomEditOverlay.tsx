@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
+import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFlash";
+import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
@@ -27,7 +29,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
-import type { ZOrderPatch } from "./canvasContextMenuZOrder";
+import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
 // Re-exports for external consumers — preserving existing import paths.
@@ -91,12 +93,17 @@ interface DomEditOverlayProps {
    */
   onDeleteSelection?: (selection: DomEditSelection) => void;
   /**
-   * Called with the resolved z-order patch list after an optimistic DOM update.
-   * The patch list is tie-aware and may include sibling elements (see
-   * canvasContextMenuZOrder). Wire to handleDomZIndexReorderCommit from
+   * Called with the resolved z-order patch list and the menu action that
+   * produced it (feeds the undo coalesce key). The patch list is tie-aware and
+   * may include sibling elements (see canvasContextMenuZOrder); the live DOM is
+   * NOT yet mutated. Wire to handleDomZIndexReorderCommit from
    * useDomEditActionsContext. See CanvasContextMenu.tsx module comment.
    */
-  onApplyZIndex?: (selection: DomEditSelection, patches: ZOrderPatch[]) => void;
+  onApplyZIndex?: (
+    selection: DomEditSelection,
+    patches: ZOrderPatch[],
+    action: ZOrderAction,
+  ) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -139,30 +146,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
 
-  // Context menu state: position of the right-click that opened it.
-  // contextMenuSelection is the element the menu targets — captured at right-click
-  // time so the menu can open even before the React selection state settles.
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    sel: DomEditSelection;
-  } | null>(null);
-
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
 
-  // Close the context menu whenever the selection moves off the element the menu
-  // targets (a click that reselects elsewhere, a deselect, or a preview reload
-  // that rebuilds the selection). Without this the menu can linger — orphaned —
-  // over a stale target after the underlying element is gone. A right-click that
-  // OPENS the menu also selects its target, so the common open path keeps the
-  // menu (same element) rather than immediately dismissing it.
-  useEffect(() => {
-    if (!contextMenu) return;
-    if (!selection || selection.element !== contextMenu.sel.element) {
-      setContextMenu(null);
-    }
-  }, [selection, contextMenu]);
+  // Brief highlight on the sibling a forward/backward z step crossed — drawn
+  // in this studio overlay, never in the iframe DOM (see useZOrderCrossedFlash).
+  const { zOrderFlashRect, handleZOrderCrossed } = useZOrderCrossedFlash({ overlayRef, iframeRef });
 
   const activeCompositionPathRef = useRef(activeCompositionPath);
   activeCompositionPathRef.current = activeCompositionPath;
@@ -428,37 +417,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     e.stopPropagation();
   };
 
-  // Right-click: select element first (if not already selected), then open menu.
-  const handleContextMenu = useCallback(
-    async (event: React.MouseEvent<HTMLDivElement>) => {
-      event.preventDefault();
-
-      // If no element is selected yet, resolve it from the pointer position first.
-      const currentSel = selectionRef.current;
-      let activeSel: DomEditSelection | null = currentSel;
-      if (!currentSel) {
-        const pointerEvent = event as unknown as React.PointerEvent<HTMLDivElement>;
-        const resolved = await onCanvasPointerMoveRef.current(pointerEvent);
-        if (!resolved) return; // Nothing under the cursor — skip menu.
-        onSelectionChangeRef.current(resolved, { revealPanel: true });
-        // Use `resolved` directly: React state (and therefore selectionRef) won't
-        // update synchronously after onSelectionChange — we'd be reading stale null.
-        activeSel = resolved;
-      } else {
-        // Check if the user right-clicked on an unselected element (hover target).
-        const hover = hoverSelectionRef.current;
-        if (hover && hover.element !== currentSel.element) {
-          onSelectionChangeRef.current(hover, { revealPanel: true });
-          activeSel = hover;
-        }
-      }
-
-      if (!activeSel) return;
-      setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  // Right-click state + handler: select the element under the pointer (if
+  // needed), then open the menu; closes when the selection moves off-target.
+  const { contextMenu, closeContextMenu, handleContextMenu } = useCanvasContextMenuState({
+    selection,
+    selectionRef,
+    hoverSelectionRef,
+    onCanvasPointerMoveRef,
+    onSelectionChangeRef,
+  });
 
   return (
     <div
@@ -551,24 +518,26 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           x={contextMenu.x}
           y={contextMenu.y}
           selection={contextMenu.sel}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onDelete={
             onDeleteSelection
               ? (sel) => {
-                  setContextMenu(null);
+                  closeContextMenu();
                   onDeleteSelection(sel);
                 }
               : undefined
           }
           onApplyZIndex={
             onApplyZIndex
-              ? (patches) => {
-                  onApplyZIndex(contextMenu.sel, patches);
+              ? (patches, action) => {
+                  onApplyZIndex(contextMenu.sel, patches, action);
                 }
               : undefined
           }
+          onZOrderCrossed={handleZOrderCrossed}
         />
       )}
+      <ZOrderCrossedFlash rect={zOrderFlashRect} />
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}

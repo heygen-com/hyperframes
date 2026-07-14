@@ -17,7 +17,7 @@ import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
-import { findFFmpeg } from "../browser/ffmpeg.js";
+import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
 
@@ -60,6 +60,13 @@ function orbitStageSource(): string {
  * `hyperframes snapshot` indefinitely. */
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
+export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
+  if (ffmpegPath) return ffmpegPath;
+  throw new Error(
+    `FFmpeg is required to extract video frames for snapshots. ${getFFmpegInstallHint()}`,
+  );
+}
+
 /**
  * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
  * Used to work around Chrome-headless's inability to reliably seek
@@ -73,8 +80,7 @@ async function extractVideoFrameToBuffer(
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
   try {
-    const ffmpegPath = findFFmpeg();
-    if (!ffmpegPath) return null;
+    const ffmpegPath = requireSnapshotFfmpeg(findFFmpeg());
     // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
     // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
     const args = ["-hide_banner", "-loglevel", "error"];
@@ -159,7 +165,11 @@ export function computeSnapshotTimes(
   const round = (t: number) => Math.round(t * 1000) / 1000;
 
   if (opts.at?.length) {
-    const times = opts.at.map(round);
+    // `--at` is an evidence contract: callers may pass exact fractional-frame
+    // boundaries (for example 101 / 30). Do not normalize their requested
+    // positions; rounding to milliseconds can move a transition sample to the
+    // other side of the boundary.
+    const times = [...opts.at];
     // Only append if the user didn't already sample at/near the readable tail.
     const hasTail = times.some((t) => Math.abs(t - tail) < 0.05 || t >= duration);
     if (includeEnd && duration > 0 && !hasTail) {
@@ -481,7 +491,7 @@ async function captureSnapshots(
           );
           writeFileSync(framePath, buffer);
         } else {
-          await page.screenshot({ path: framePath, type: "png" });
+          await page.screenshot({ path: framePath, type: "png", omitBackground: true });
         }
         const rel = relative(projectDir, framePath);
         savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);

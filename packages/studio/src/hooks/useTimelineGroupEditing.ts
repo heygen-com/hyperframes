@@ -6,17 +6,20 @@ import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
   extendRootDurationIfNeeded,
-  finishTimelineTimingFallback,
-  foldGsapMutationIntoHistory,
   formatTimelineAttributeNumber,
   patchIframeDomTiming,
   persistTimelineBatchEdit,
-  readFileContent,
-  scaleGsapPositions,
-  shiftGsapPositions,
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import {
+  captureDurationRollback,
+  finishGroupTimingGsapFallback,
+  readFileContent,
+  scaleGsapPositions,
+  shiftGsapPositions,
+  syncPreviewContentDuration,
+} from "./timelineTimingSync";
 
 export interface TimelineGroupMoveChange {
   element: TimelineElement;
@@ -73,6 +76,15 @@ function moveCoalesceKey(changes: readonly TimelineGroupMoveChange[]): string {
 
 function resizeCoalesceKey(changes: readonly TimelineGroupResizeChange[]): string {
   return `timeline-group-resize:${changes.map((change) => change.element.hfId ?? change.element.id).join(",")}`;
+}
+
+function toSdkTimingChanges<T extends { element: TimelineElement }>(
+  changes: readonly T[],
+  timingUpdate: (change: T) => { start: number; duration?: number },
+): Array<{ hfId: string; timingUpdate: { start: number; duration?: number } } | null> {
+  return changes.map((change) =>
+    change.element.hfId ? { hfId: change.element.hfId, timingUpdate: timingUpdate(change) } : null,
+  );
 }
 
 function resizeHasPlaybackStartAdjustment(change: TimelineGroupResizeChange): boolean {
@@ -149,6 +161,55 @@ export function useTimelineGroupEditing({
     ],
   );
 
+  // Shared SDK fast path for group move/resize: eligible when nothing needs the
+  // server (no root-duration growth, one shared file, every change SDK-addressable
+  // and `eligible` per the caller's own gate). Returns whether the SDK handled it;
+  // false → caller falls through to the server batch persist.
+  const trySdkBatchPersist = useCallback(
+    async (input: {
+      changes: readonly { element: TimelineElement }[];
+      sdkChanges: Array<{
+        hfId: string;
+        timingUpdate: { start: number; duration?: number };
+      } | null>;
+      eligible: boolean;
+      needsExtension: boolean;
+      label: string;
+      coalesceKey: string;
+    }): Promise<boolean> => {
+      const sharedPath = allChangesSharePath(input.changes, activeCompPath);
+      const canUseSdk =
+        !input.needsExtension &&
+        sharedPath !== null &&
+        input.eligible &&
+        input.sdkChanges.every((change) => change !== null);
+      if (!canUseSdk) return false;
+      return sdkTimingBatchPersist(
+        input.sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
+        sharedPath,
+        sdkSession,
+        {
+          editHistory: { recordEdit },
+          writeProjectFile,
+          reloadPreview,
+          domEditSaveTimestampRef,
+          compositionPath: activeCompPath,
+          readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+        },
+        { label: input.label, coalesceKey: input.coalesceKey },
+      );
+    },
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      projectIdRef,
+      recordEdit,
+      reloadPreview,
+      sdkSession,
+      writeProjectFile,
+    ],
+  );
+
   const handleTimelineGroupMove = useCallback(
     (changes: TimelineGroupMoveChange[], options?: TimelineGroupCommitOptions) => {
       if (changes.length === 0) return Promise.resolve();
@@ -163,38 +224,27 @@ export function useTimelineGroupEditing({
       }
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.element.duration));
+      // Snapshot the duration BEFORE the optimistic updates below so a failed
+      // persist can roll the readout + live root back (see captureDurationRollback).
+      const rollbackDuration = captureDurationRollback(previewIframeRef.current);
+      // needsExtension gates the SDK path (setTiming can't grow the root duration),
+      // so read the store BEFORE the readout sync below optimistically updates it.
       const needsExtension = extendRootDurationIfNeeded(maxEnd);
+      // Optimistic duration readout: content-driven (grow AND shrink), read from
+      // the just-patched live DOM. See syncPreviewContentDuration.
+      syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
       return enqueueGroupOperation("Move timeline clips", async (projectId) => {
         await options?.beforeTiming;
-        const sharedPath = allChangesSharePath(changes, activeCompPath);
-        const sdkChanges = changes.map((change) =>
-          change.element.hfId
-            ? { hfId: change.element.hfId, timingUpdate: { start: change.start } }
-            : null,
-        );
-        const canUseSdk =
-          !needsExtension &&
-          sharedPath !== null &&
-          changes.every((change) => change.track == null) &&
-          sdkChanges.every((change) => change !== null);
-        if (canUseSdk) {
-          const handled = await sdkTimingBatchPersist(
-            sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
-            sharedPath,
-            sdkSession,
-            {
-              editHistory: { recordEdit },
-              writeProjectFile,
-              reloadPreview,
-              domEditSaveTimestampRef,
-              compositionPath: activeCompPath,
-              readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-            },
-            { label: "Move timeline clips", coalesceKey },
-          );
-          if (handled) return;
-        }
+        const handledBySdk = await trySdkBatchPersist({
+          changes,
+          sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
+          eligible: changes.every((change) => change.track == null),
+          needsExtension,
+          label: "Move timeline clips",
+          coalesceKey,
+        });
+        if (handledBySdk) return;
 
         await persistServerBatch(
           projectId,
@@ -212,50 +262,39 @@ export function useTimelineGroupEditing({
           })),
           coalesceKey,
         );
-        await finishTimelineTimingFallback({
+        await finishGroupTimingGsapFallback({
+          projectId,
           iframe: previewIframeRef.current,
-          needsExtension,
-          rootDurationSeconds: maxEnd,
           reloadPreview,
-          gsapMutation: () =>
-            foldGsapMutationIntoHistory({
-              projectId,
-              paths: changes.map((change) => targetPathFor(change.element, activeCompPath)),
-              label: "Move timeline clips",
-              coalesceKey,
-              recordEdit,
-              gsapMutation: async () => {
-                let mutated = false;
-                for (const change of changes) {
-                  const delta = change.start - change.element.start;
-                  const domId = change.element.domId;
-                  if (delta === 0 || !domId) continue;
-                  const status = await shiftGsapPositions(
-                    projectId,
-                    targetPathFor(change.element, activeCompPath),
-                    domId,
-                    delta,
-                  );
-                  mutated = mutated || status.mutated;
-                }
-                return { mutated };
-              },
-            }),
-          onGsapError: (err) => console.error("[Timeline] Failed to shift GSAP positions", err),
+          label: "Move timeline clips",
+          errorLabel: "Failed to shift GSAP positions",
+          coalesceKey,
+          recordEdit,
+          activeCompPath,
+          changes,
+          resolveChangePath: (element) => targetPathFor(element, activeCompPath),
+          mutateChange: (change, changePath) => {
+            const delta = change.start - change.element.start;
+            const domId = change.element.domId;
+            if (delta === 0 || !domId) return null;
+            return shiftGsapPositions(projectId, changePath, domId, delta);
+          },
         });
+      }).catch((error) => {
+        // Failed persist: revert the optimistic duration readout + live root
+        // alongside the gesture owner's store rollback.
+        rollbackDuration();
+        throw error;
       });
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       enqueueGroupOperation,
       persistServerBatch,
       previewIframeRef,
-      projectIdRef,
       recordEdit,
       reloadPreview,
-      sdkSession,
-      writeProjectFile,
+      trySdkBatchPersist,
     ],
   );
 
@@ -278,41 +317,30 @@ export function useTimelineGroupEditing({
       }
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.duration));
+      // Snapshot the duration BEFORE the optimistic updates below so a failed
+      // persist can roll the readout + live root back (see captureDurationRollback).
+      const rollbackDuration = captureDurationRollback(previewIframeRef.current);
+      // needsExtension gates the SDK path (setTiming can't grow the root duration),
+      // so read the store BEFORE the readout sync below optimistically updates it.
       const needsExtension = extendRootDurationIfNeeded(maxEnd);
+      // Optimistic duration readout: content-driven (grow AND shrink), read from
+      // the just-patched live DOM. See syncPreviewContentDuration.
+      syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? resizeCoalesceKey(changes);
       return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
         await options?.beforeTiming;
-        const sharedPath = allChangesSharePath(changes, activeCompPath);
-        const sdkChanges = changes.map((change) =>
-          change.element.hfId
-            ? {
-                hfId: change.element.hfId,
-                timingUpdate: { start: change.start, duration: change.duration },
-              }
-            : null,
-        );
-        const canUseSdk =
-          !needsExtension &&
-          sharedPath !== null &&
-          changes.every((change) => !resizeHasPlaybackStartAdjustment(change)) &&
-          sdkChanges.every((change) => change !== null);
-        if (canUseSdk) {
-          const handled = await sdkTimingBatchPersist(
-            sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
-            sharedPath,
-            sdkSession,
-            {
-              editHistory: { recordEdit },
-              writeProjectFile,
-              reloadPreview,
-              domEditSaveTimestampRef,
-              compositionPath: activeCompPath,
-              readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-            },
-            { label: "Resize timeline clips", coalesceKey },
-          );
-          if (handled) return;
-        }
+        const handledBySdk = await trySdkBatchPersist({
+          changes,
+          sdkChanges: toSdkTimingChanges(changes, (change) => ({
+            start: change.start,
+            duration: change.duration,
+          })),
+          eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
+          needsExtension,
+          label: "Resize timeline clips",
+          coalesceKey,
+        });
+        if (handledBySdk) return;
 
         await persistServerBatch(
           projectId,
@@ -328,55 +356,48 @@ export function useTimelineGroupEditing({
           })),
           coalesceKey,
         );
-        await finishTimelineTimingFallback({
+        await finishGroupTimingGsapFallback({
+          projectId,
           iframe: previewIframeRef.current,
-          needsExtension,
-          rootDurationSeconds: maxEnd,
           reloadPreview,
-          gsapMutation: () =>
-            foldGsapMutationIntoHistory({
+          label: "Resize timeline clips",
+          errorLabel: "Failed to scale GSAP positions",
+          coalesceKey,
+          recordEdit,
+          activeCompPath,
+          changes,
+          resolveChangePath: (element) => targetPathFor(element, activeCompPath),
+          mutateChange: (change, changePath) => {
+            const domId = change.element.domId;
+            const timingChanged =
+              change.start !== change.element.start || change.duration !== change.element.duration;
+            if (!timingChanged || !domId) return null;
+            return scaleGsapPositions(
               projectId,
-              paths: changes.map((change) => targetPathFor(change.element, activeCompPath)),
-              label: "Resize timeline clips",
-              coalesceKey,
-              recordEdit,
-              gsapMutation: async () => {
-                let mutated = false;
-                for (const change of changes) {
-                  const domId = change.element.domId;
-                  const timingChanged =
-                    change.start !== change.element.start ||
-                    change.duration !== change.element.duration;
-                  if (!timingChanged || !domId) continue;
-                  const status = await scaleGsapPositions(
-                    projectId,
-                    targetPathFor(change.element, activeCompPath),
-                    domId,
-                    change.element.start,
-                    change.element.duration,
-                    change.start,
-                    change.duration,
-                  );
-                  mutated = mutated || status.mutated;
-                }
-                return { mutated };
-              },
-            }),
-          onGsapError: (err) => console.error("[Timeline] Failed to scale GSAP positions", err),
+              changePath,
+              domId,
+              change.element.start,
+              change.element.duration,
+              change.start,
+              change.duration,
+            );
+          },
         });
+      }).catch((error) => {
+        // Failed persist: revert the optimistic duration readout + live root
+        // alongside the gesture owner's store rollback.
+        rollbackDuration();
+        throw error;
       });
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       enqueueGroupOperation,
       persistServerBatch,
       previewIframeRef,
-      projectIdRef,
       recordEdit,
       reloadPreview,
-      sdkSession,
-      writeProjectFile,
+      trySdkBatchPersist,
     ],
   );
 

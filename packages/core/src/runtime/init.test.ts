@@ -1284,6 +1284,49 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 
+  it.each([24, 30, 60, 30_000 / 1_001])(
+    "preserves public playback state across keepPlaying seeks at %s fps",
+    (fps) => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+      document.body.innerHTML = `
+        <div
+          data-composition-id="main"
+          data-root="true"
+          data-start="0"
+          data-duration="10"
+          data-width="1920"
+          data-height="1080"
+        ></div>
+      `;
+      window.__timelines = { main: createMockTimeline(10) };
+      window.__HF_EXPORT_RENDER_SEEK_CONFIG = {
+        fps,
+        fpsSource: "render-options",
+      };
+
+      initSandboxRuntimeModular();
+
+      const player = window.__player;
+      player?.play();
+      raf.step(500);
+      player?.seek(2.07, { keepPlaying: true });
+
+      const quantized = Math.floor(2.07 * fps + 1e-9) / fps;
+      expect(player?.isPlaying()).toBe(true);
+      expect(player?.getTime()).toBeCloseTo(quantized, 6);
+
+      raf.step(500);
+      expect(player?.isPlaying()).toBe(true);
+      expect(player?.getTime()).toBeCloseTo(quantized + 0.5, 5);
+    },
+  );
+
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

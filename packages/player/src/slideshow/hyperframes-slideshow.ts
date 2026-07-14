@@ -11,6 +11,7 @@ import {
   type PresenterMediaAction,
   type PresenterMediaMessage,
 } from "./slideshowPresenter";
+import { OwnedMediaRegistry } from "./owned-media-registry";
 
 interface Hotspot {
   id: string;
@@ -68,9 +69,18 @@ type PlayerElement = HTMLElement & {
   readonly ready: boolean;
 };
 
-type SlideshowMediaElement = HTMLMediaElement & {
-  dataset: DOMStringMap;
-};
+type SlideshowMediaElement = HTMLMediaElement;
+
+const SLIDESHOW_MEDIA_ACTIONS = [
+  "play",
+  "pause",
+  "seeking",
+  "seeked",
+  "ratechange",
+  "volumechange",
+  "ended",
+  "timeupdate",
+] as const satisfies readonly PresenterMediaAction[];
 
 /** True when the keydown originated in a text-entry control (typing must never
  *  navigate the deck). Duck-typed so it works for events from the composition
@@ -202,6 +212,10 @@ export class HyperframesSlideshow extends HTMLElement {
   // Bumped whenever autoplay starts or media is stopped (slide change), so a
   // pending re-assert from a previous autoplay can't replay a clip we've left.
   private autoplayToken = 0;
+  private readonly ownedMedia = new OwnedMediaRegistry<PresenterMediaAction>(
+    SLIDESHOW_MEDIA_ACTIONS,
+    (el, key, action) => this.publishMediaState(el, key, action),
+  );
 
   /** Whether audio is currently muted. Reflects `data-hf-muted` attribute. */
   get muted(): boolean {
@@ -291,6 +305,7 @@ export class HyperframesSlideshow extends HTMLElement {
       this.playerObserver.disconnect();
       this.playerObserver = null;
     }
+    this.ownedMedia.clear();
     this.audienceMediaUnlockButton?.remove();
     this.audienceMediaUnlockButton = null;
     this.audienceMutedPlaybackKeys.clear();
@@ -545,8 +560,8 @@ export class HyperframesSlideshow extends HTMLElement {
     this.wireSlideshowMedia();
     if (this.mediaWireInterval === null) {
       // Same-origin player iframes can hydrate media after the slideshow binds.
-      // The dataset guard prevents duplicate listeners, and removed iframe nodes
-      // are collectable because this component keeps no media element references.
+      // The owned registry prevents duplicate listeners and releases removed
+      // iframe nodes through AbortController-backed teardown.
       this.mediaWireInterval = setInterval(() => this.wireSlideshowMedia(), 1000);
     }
   }
@@ -668,22 +683,9 @@ export class HyperframesSlideshow extends HTMLElement {
   }
 
   private wireSlideshowMedia(): void {
-    const actions: PresenterMediaAction[] = [
-      "play",
-      "pause",
-      "seeking",
-      "seeked",
-      "ratechange",
-      "volumechange",
-      "ended",
-      "timeupdate",
-    ];
-    for (const { key, el } of this.mediaEntries()) {
-      if (el.dataset.hfSlideshowMediaSync === "1") continue;
-      el.dataset.hfSlideshowMediaSync = "1";
-      for (const action of actions) {
-        el.addEventListener(action, () => this.publishMediaState(el, key, action));
-      }
+    const added = this.ownedMedia.sync(this.mediaEntries());
+    for (const el of added) {
+      el.muted = this._muted || el.defaultMuted;
     }
   }
 
@@ -1161,20 +1163,16 @@ export class HyperframesSlideshow extends HTMLElement {
       }
     }
 
-    const doc = this.ownerDocument;
-    for (const el of doc.querySelectorAll("video, audio")) {
-      if (el instanceof HTMLMediaElement) el.muted = muted || el.defaultMuted;
-    }
+    this.ownedMedia.sync(this.mediaEntries());
+    this.ownedMedia.setMuted(muted);
   }
 
   private stopDocumentMedia(): void {
     // Invalidate any in-flight autoplay re-assert so leaving a slide can't be
     // undone by a pending timeout replaying the clip we just paused.
     this.autoplayToken++;
-    const doc = this.ownerDocument;
-    for (const el of doc.querySelectorAll("video, audio")) {
-      if (el instanceof HTMLMediaElement) el.pause();
-    }
+    this.ownedMedia.sync(this.mediaEntries());
+    this.ownedMedia.pauseAll();
   }
 
   /**

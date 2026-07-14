@@ -142,6 +142,32 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(wrappedScript).toContain('"intro"');
   });
 
+  it("maps a template-local timeline id onto a differently named mount", () => {
+    const document = makeHostDocument("captions-comp");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const captionsHtml = `<template id="captions-template">
+  <div data-composition-id="captions" data-width="1920" data-height="1080">
+    <style>[data-composition-id="captions"] { opacity: 1; }</style>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["captions"] = { duration: 4 };
+    </script>
+  </div>
+</template>`;
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => captionsHtml,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(host.getAttribute("data-composition-id")).toBe("captions-comp");
+    expect(host.querySelector('[data-composition-id="captions"]')).not.toBeNull();
+    expect(result.styles.join("\n")).toContain('[data-composition-id="captions-comp"]');
+    const wrappedScript = result.scripts.join("\n");
+    expect(wrappedScript).toContain('var __hfCompId = "captions"');
+    expect(wrappedScript).toContain('var __hfTimelineCompId = "captions-comp"');
+  });
+
   it("bundler path (with flattenInnerRoot): preserves inner root as a child element", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;

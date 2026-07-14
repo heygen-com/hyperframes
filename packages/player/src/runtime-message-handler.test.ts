@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleRuntimeMessage, type MessageHandlerCallbacks } from "./runtime-message-handler.js";
 import type { ParentMediaManager } from "./parent-media.js";
 import type { ShaderLoaderState } from "./shader-loader-state.js";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 
 // Only the stage-size branch is exercised here; the rest of the callback
 // surface is satisfied with inert spies so the handler's type contract
@@ -13,6 +14,7 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   dispatchEvent: vi.fn(),
   onRuntimeReady: vi.fn(),
   onRuntimeTimelineReady: vi.fn(),
+  setRuntimeFps: vi.fn(),
   seek: vi.fn(),
   play: vi.fn(),
   getLoop: vi.fn(() => false),
@@ -104,10 +106,20 @@ describe("handleRuntimeMessage media autoplay fallback", () => {
 });
 
 describe("handleRuntimeMessage timeline ready", () => {
-  const timelineEvent = (durationInFrames: unknown, source: object): MessageEvent =>
+  const timelineEvent = (
+    durationInFrames: unknown,
+    source: object,
+    metadata: Record<string, unknown> = {},
+  ): MessageEvent =>
     ({
       source,
-      data: { source: "hf-preview", type: "timeline", durationInFrames, scenes: [] },
+      data: {
+        source: "hf-preview",
+        type: "timeline",
+        durationInFrames,
+        scenes: [],
+        ...metadata,
+      },
     }) as unknown as MessageEvent;
 
   it("reports a finite positive timeline duration in seconds", () => {
@@ -117,6 +129,45 @@ describe("handleRuntimeMessage timeline ready", () => {
     handleRuntimeMessage(timelineEvent(120, frameWindow), frameWindow, callbacks);
 
     expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4);
+  });
+
+  it.each([
+    [24, 48, 2],
+    [60, 120, 2],
+    [24_000 / 1_001, 24, 1.001],
+  ])("uses explicit %s fps metadata", (fps, durationInFrames, expectedSeconds) => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(
+      timelineEvent(durationInFrames, frameWindow, runtimeProtocolMetadata(fps)),
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.setRuntimeFps).toHaveBeenCalledWith(expect.closeTo(fps, 6));
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(
+      expect.closeTo(expectedSeconds, 6),
+    );
+  });
+
+  it("rejects unknown protocol majors with a public diagnostic event", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(
+      timelineEvent(120, frameWindow, { protocolVersion: 2 }),
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.onRuntimeTimelineReady).not.toHaveBeenCalled();
+    const event = vi.mocked(callbacks.dispatchEvent).mock.calls[0]?.[0] as CustomEvent;
+    expect(event.type).toBe("runtimeprotocolerror");
+    expect(event.detail).toMatchObject({
+      code: "unsupported_protocol_version",
+      receivedVersion: 2,
+    });
   });
 
   it("does not report invalid timeline durations as ready", () => {

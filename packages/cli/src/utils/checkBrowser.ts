@@ -510,7 +510,11 @@ async function collectContrast(
     // This screenshot is the one contrast math is sampled from below — it must
     // stay untouched by the annotation overlay (finishContrast reads real
     // painted pixels), so annotation only ever happens on a SECOND shot.
-    const measurementShot = await page.screenshot({ encoding: "base64", type: "png" });
+    const measurementShot = await page.screenshot({
+      encoding: "base64",
+      type: "png",
+      omitBackground: true,
+    });
     if (typeof measurementShot !== "string") throw new Error("Contrast screenshot was not base64");
     const raw = await finishContrast(
       page,
@@ -955,6 +959,9 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "text_not_painted",
   "caption_zone_collision",
   "frame_out_of_frame",
+  "escaped_container",
+  "panel_out_of_canvas",
+  "connector_detached",
   "motion_appears_late",
   "motion_out_of_order",
   "motion_off_frame",

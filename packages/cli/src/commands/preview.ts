@@ -10,6 +10,9 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["Keep preview running after this command exits", "hyperframes preview --background"],
+  ["Show the background preview for this project", "hyperframes preview --status"],
+  ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
   [
@@ -53,6 +56,11 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  readBackgroundPreviewStatus,
+  startBackgroundPreview,
+  stopBackgroundPreview,
+} from "./previewLifecycle.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -97,6 +105,21 @@ export default defineCommand({
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
+    background: {
+      type: "boolean",
+      description: "Start an embedded preview that remains running after the command exits",
+      default: false,
+    },
+    status: {
+      type: "boolean",
+      description: "Show the background preview for this project and exit",
+      default: false,
+    },
+    stop: {
+      type: "boolean",
+      description: "Stop the background preview for this project and exit",
       default: false,
     },
     list: {
@@ -162,6 +185,30 @@ export default defineCommand({
   async run({ args }) {
     const startPort = parseInt(args.port ?? "3002", 10);
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
+
+    if (args.status || args.stop) {
+      const project = resolveProject(args.dir);
+      if (args.stop) {
+        const stopped = await stopBackgroundPreview(project.dir, startPort);
+        console.log(
+          stopped
+            ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+            : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+        );
+        return;
+      }
+      const status = await readBackgroundPreviewStatus(project.dir, startPort);
+      if (!status) {
+        console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+        return;
+      }
+      console.log(`\n  ${c.success("Background preview running")}`);
+      console.log(
+        `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
+      );
+      console.log(`  ${c.dim(status.logPath)}\n`);
+      return;
+    }
 
     // --list: scan and display active servers
     if (args.list) {
@@ -276,6 +323,11 @@ export default defineCommand({
     }
 
     if (isDevMode()) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runDevMode(dir, {
         projectName,
         noOpen,
@@ -288,6 +340,11 @@ export default defineCommand({
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runLocalStudioMode(dir, {
         projectName,
         noOpen,
@@ -296,6 +353,38 @@ export default defineCommand({
         remoteDebuggingPort,
         browserNoGpu,
       });
+    }
+
+    if (args.background) {
+      let background;
+      try {
+        background = await startBackgroundPreview(dir, startPort, {
+          forceNew: Boolean(args["force-new"]),
+        });
+      } catch (error) {
+        clack.log.error(errorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      const url = `http://localhost:${background.port}`;
+      clack.intro(c.bold("hyperframes preview"));
+      printStudioSummary(projectName, url, {
+        details: [
+          background.type === "reused"
+            ? "Reusing the background server already running for this project."
+            : `Running in the background. Log: ${background.logPath}`,
+          "Changes reload automatically in the studio.",
+        ],
+        footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+      });
+      openStudioBrowser(url, projectName, {
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+      });
+      return;
     }
 
     const forceNew = !!args["force-new"];

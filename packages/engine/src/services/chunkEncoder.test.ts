@@ -894,7 +894,17 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv");
+  });
+
+  it("adds the pad after range conversion for odd CPU output dimensions", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, height: 1081, codec: "h264", preset: "medium", quality: 23 },
+      inputArgs,
+      "out.mp4",
+    );
+    const vfIdx = args.indexOf("-vf");
+    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2");
   });
 
   it("prepends range conversion to VAAPI filter chain", () => {
@@ -912,7 +922,14 @@ describe("buildEncoderArgs color space", () => {
   it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
     for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
       const args = buildEncoderArgs(
-        { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+        {
+          ...baseOptions,
+          height: 1081,
+          codec: "h264",
+          preset: "medium",
+          quality: 23,
+          useGpu: true,
+        },
         inputArgs,
         "out.mp4",
         gpu,
@@ -927,10 +944,21 @@ describe("buildEncoderArgs color space", () => {
     }
   });
 
+  it("does not require the pad filter for even GPU output dimensions", () => {
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 23, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "videotoolbox",
+    );
+    expect(args).not.toContain("-vf");
+  });
+
   it("pads odd dimensions for 10-bit (yuv420p10le) GPU HDR encoding", () => {
     const args = buildEncoderArgs(
       {
         ...baseOptions,
+        height: 1081,
         codec: "h265",
         preset: "medium",
         quality: 23,

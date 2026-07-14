@@ -14,10 +14,13 @@ export const examples: Example[] = [
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
-  ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
+  [
+    "Non-interactive mode (for CI or AI agents)",
+    "hyperframes init my-video --example blank --non-interactive",
+  ],
   [
     "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
+    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --example blank --non-interactive",
   ],
 ];
 import {
@@ -719,6 +722,10 @@ export default defineCommand({
       process.exit(1);
     }
     const exampleFlag = args.example;
+    if (exampleFlag?.startsWith("-")) {
+      console.error(c.error(`--example requires a value; received flag "${exampleFlag}" instead.`));
+      process.exit(1);
+    }
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
@@ -767,6 +774,16 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
+      if (!exampleFlag && !videoFlag && !audioFlag) {
+        console.error(
+          c.error(
+            "Non-interactive init requires --example, --video, or --audio. " +
+              "For an empty starter project, pass --example blank explicitly.",
+          ),
+        );
+        process.exit(1);
+      }
+
       const templateId = exampleFlag ?? "blank";
       const name = args.name ?? "my-video";
       const destDir = resolve(name);

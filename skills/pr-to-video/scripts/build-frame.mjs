@@ -359,6 +359,41 @@ if (brandFonts.length) {
   summary.push("fonts: no brand fonts — preset fonts kept");
 }
 
+// ── stage preset-owned offline font faces ────────────────────────────────────
+// PR ingestion has no captured brand fonts. Presets that own a type system must
+// therefore carry their own licensed files instead of depending on a first-run
+// Google Fonts fetch or a renderer-only embedding path that Studio workers cannot see.
+const presetFontsDir = join(presetDir, presetName, "fonts");
+if (existsSync(presetFontsDir)) {
+  const fontSpecs = [
+    ["EB Garamond", "EBGaramond", 400],
+    ["EB Garamond", "EBGaramond", 700],
+    ["Inter", "Inter", 400],
+    ["Inter", "Inter", 700],
+    ["JetBrains Mono", "JetBrainsMono", 400],
+    ["JetBrains Mono", "JetBrainsMono", 700],
+  ];
+  const outDir = join(hyperframesDir, "assets/fonts");
+  const faces = [];
+  for (const [family, stem, weight] of fontSpecs) {
+    const file = `${stem}-${weight}.woff2`;
+    const source = join(presetFontsDir, file);
+    if (!existsSync(source)) die(`preset font is missing: ${source}`);
+    mkdirSync(outDir, { recursive: true });
+    copyFileSync(source, join(outDir, file));
+    faces.push(
+      `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url("assets/fonts/${file}") format("woff2");}`,
+    );
+  }
+  md +=
+    `\n\n## Font loading (preset-owned, offline)\n\n` +
+    `These licensed faces are staged in \`assets/fonts/\`. Paste this block inside every frame template; do not link Google Fonts:\n\n` +
+    "```html\n<style>\n" +
+    faces.join("\n") +
+    "\n</style>\n```\n";
+  summary.push(`fonts: staged ${fontSpecs.length} preset face(s) for offline preview/render`);
+}
+
 // ── cap type weights to the brand font's available faces ──────────────────────
 // The remix swaps the font FAMILY but keeps the preset's weights; a brand font that ships
 // only e.g. 400/500 would faux-bold every 600/700 heading. Clamp each `typography:` weight

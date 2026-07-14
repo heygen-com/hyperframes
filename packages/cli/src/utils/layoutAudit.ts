@@ -19,6 +19,10 @@ export type LayoutIssueCode =
   | "text_not_painted"
   | "caption_zone_collision"
   | "frame_out_of_frame"
+  // Coordinate-frame findings — geometry computed in one frame, rendered in another.
+  | "escaped_container"
+  | "panel_out_of_canvas"
+  | "connector_detached"
   // Frozen-sweep guard (#U10) — a whole-run meta-finding, not a per-sample
   // geometry observation; never persistence-tiered (see `applyPersistenceTier`).
   | "sweep_static"
@@ -203,6 +207,9 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "container_overflow",
   "content_overlap",
   "text_occluded",
+  "escaped_container",
+  "panel_out_of_canvas",
+  "connector_detached",
 ]);
 
 export function collapseStaticLayoutIssues(
@@ -255,12 +262,13 @@ export function collapseStaticLayoutIssues(
  * Held-duration severity tiering (#U10). A finding observed at only one
  * sample among several (held 0ms) is an entrance/exit transient, not a held
  * defect — demote to info so it stays in the data (verbose/--json output)
- * without gating the run. `content_overlap` specifically re-promotes from
- * warning to error once it's held long enough to be a real, sustained
- * collision rather than a crossfade/transition blip (resolves the TODO in
- * layout-audit.browser.js's `overlapIssue`). A finding held at every sample
- * (a genuinely static defect) is well past both thresholds and is left
- * untouched either way — persistence, not the code, decides the tier.
+ * without gating the run. Two codes re-promote once held: `content_overlap`
+ * warning->error when the collision is sustained rather than a crossfade blip
+ * (resolves the TODO in layout-audit.browser.js's `overlapIssue`), and
+ * `canvas_overflow` info->warning when the breach is held, canvas-scale
+ * (>= 5% of the short edge) AND partially visible — a fully off-canvas rect
+ * is a parked entrance, not drift. Codes without a promotion rule are left
+ * untouched when held — persistence, not the code, decides their tier.
  */
 function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): LayoutIssue {
   if (!multiSampleRun) return issue;
@@ -276,7 +284,31 @@ function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): Layo
   if (issue.code === "content_overlap" && isContentOverlapHeldLongEnough(issue, occurrences)) {
     return { ...issue, severity: "error" };
   }
+  if (issue.code === "canvas_overflow" && isCanvasBreachHeldLarge(issue, occurrences)) {
+    return { ...issue, severity: "warning" };
+  }
   return issue;
+}
+
+// A held, canvas-scale, PARTIALLY visible breach is drift; a fully off-canvas rect is a parked entrance.
+function isCanvasBreachHeldLarge(issue: LayoutIssue, occurrences: number): boolean {
+  if (
+    occurrences < HELD_ACROSS_SAMPLES_MIN_OCCURRENCES ||
+    !issue.overflow ||
+    !issue.containerRect
+  ) {
+    return false;
+  }
+  const breach = Math.max(
+    ...Object.values(issue.overflow).filter((value) => typeof value === "number"),
+  );
+  if (breach < Math.min(issue.containerRect.width, issue.containerRect.height) * 0.05) return false;
+  const container = issue.containerRect;
+  const overlapX =
+    Math.min(issue.rect.right, container.right) - Math.max(issue.rect.left, container.left);
+  const overlapY =
+    Math.min(issue.rect.bottom, container.bottom) - Math.max(issue.rect.top, container.top);
+  return overlapX > 0 && overlapY > 0;
 }
 
 // Split out of applyPersistenceTier so the two independent "held long enough"
@@ -326,7 +358,8 @@ function staticIssueKey(issue: LayoutIssue): string {
 }
 
 function framePositionKey(issue: LayoutIssue): string {
-  return issue.code === "frame_out_of_frame"
+  // connector_detached shares it: id-less paths collapse to one selector, so distinct lines need geometry in the key.
+  return issue.code === "frame_out_of_frame" || issue.code === "connector_detached"
     ? `${Math.round(issue.rect.left)},${Math.round(issue.rect.top)}`
     : "";
 }

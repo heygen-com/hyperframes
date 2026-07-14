@@ -43,6 +43,32 @@ function expectScaffoldedScripts(target: string): void {
 }
 
 describe("hyperframes init flag rename", () => {
+  it("requires an explicit source in non-interactive mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Non-interactive init requires --example, --video, or --audio");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a following flag when --example has no value", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--example", "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("--example requires a value");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--example blank scaffolds a bundled project with npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");

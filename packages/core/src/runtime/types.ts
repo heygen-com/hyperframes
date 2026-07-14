@@ -27,6 +27,7 @@ export type RuntimeBridgeControlMessage = {
   type: "control";
   action: RuntimeBridgeControlAction;
   frame?: number;
+  timeSeconds?: number;
   muted?: boolean;
   volume?: number;
   durationSeconds?: number;

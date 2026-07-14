@@ -9,11 +9,15 @@ import { captureOverviewShot, runBrowserCheck } from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
+  bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
 }));
 
-vi.mock("@hyperframes/core/compiler", () => ({
-  bundleToSingleHtml: vi.fn(async () => "<html></html>"),
+vi.mock("./bundleWithLocalizedFonts.js", () => ({
+  // Keep browser-check unit tests focused on the page driver and audit pipeline.
+  // The real helper cold-loads the producer/font graph, which is covered by its
+  // own tests and can exhaust this suite's timeout under Windows CI contention.
+  bundleWithLocalizedFonts: mocks.bundleWithLocalizedFonts,
 }));
 
 vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
@@ -47,6 +51,7 @@ const PROJECT: ProjectDir = {
 };
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
@@ -100,6 +105,7 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
     runAuditGrid,
   );
 
+  expect(mocks.bundleWithLocalizedFonts).toHaveBeenCalledWith(PROJECT.dir);
   expect(result.layoutIssues).toEqual([
     expect.objectContaining({
       code: "frame_out_of_frame",

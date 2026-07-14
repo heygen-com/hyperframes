@@ -15,6 +15,7 @@ import {
 import { Layers } from "../../icons/SystemIcons";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
 import { computeReorderZValues, getElementZIndex } from "../../player/lib/layerOrdering";
+import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -280,9 +281,17 @@ export const LayersPanel = memo(function LayersPanel() {
         selector: layer.selector,
         selectorIndex: layer.selectorIndex,
         sourceFile: layer.sourceFile,
+        key: deriveTimelineStoreKey({
+          domId: layer.id,
+          selector: layer.selector,
+          selectorIndex: layer.selectorIndex,
+          sourceFile: layer.sourceFile,
+        }),
       }));
 
-      handleDomZIndexReorderCommit(entries);
+      // "layer-drag" keeps consecutive drops of the same sibling set coalescing
+      // into one undo step, without merging with a context-menu z action.
+      handleDomZIndexReorderCommit(entries, undefined, "layer-drag");
     },
     [handleDomZIndexReorderCommit],
   );

@@ -20,6 +20,7 @@ import {
   buildTimelineElementIdentity,
   readTimelineElementZIndex,
 } from "./timelineElementHelpers";
+import { postRuntimeControlMessage } from "./runtimeProtocol";
 
 // ---------------------------------------------------------------------------
 // Viewport / DOM normalisation
@@ -103,10 +104,7 @@ function postPreviewControl(
   action: string,
   payload: Record<string, unknown>,
 ): void {
-  iframe.contentWindow?.postMessage(
-    { source: "hf-parent", type: "control", action, ...payload },
-    "*",
-  );
+  postRuntimeControlMessage(iframe.contentWindow, action, payload);
 }
 
 export function shouldMutePreviewAudio(audioMuted: boolean, playbackRate: number): boolean {

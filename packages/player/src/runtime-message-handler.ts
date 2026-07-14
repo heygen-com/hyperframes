@@ -12,8 +12,7 @@ import {
 } from "./playback-state.js";
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
-
-const FPS = 30;
+import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
 
 type SceneRecord = { id: string; start: number; duration: number };
 
@@ -45,6 +44,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number) => void;
+  setRuntimeFps?: (fps: number) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -62,6 +62,16 @@ export function handleRuntimeMessage(
   if (event.source !== frameWindow) return;
   const data = event.data as Record<string, unknown> | undefined;
   if (!data || data["source"] !== "hf-preview") return;
+  const protocol = inspectRuntimeProtocol(data);
+  if (protocol.status === "unsupported") {
+    callbacks.dispatchEvent(
+      new CustomEvent("runtimeprotocolerror", {
+        detail: { code: protocol.code, receivedVersion: protocol.receivedVersion },
+      }),
+    );
+    return;
+  }
+  callbacks.setRuntimeFps?.(protocol.fps);
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =
@@ -86,7 +96,7 @@ export function handleRuntimeMessage(
     callbacks.setPlaybackState(
       applyRuntimeStateMessage(
         { frame: (data["frame"] as number) ?? 0, isPlaying: !!data["isPlaying"] },
-        FPS,
+        protocol.fps,
         callbacks.getPlaybackState(),
         callbacks,
       ),
@@ -112,7 +122,7 @@ export function handleRuntimeMessage(
   if (data["type"] === "timeline" && (data["durationInFrames"] as number) > 0) {
     if (Number.isFinite(data["durationInFrames"])) {
       const pb = callbacks.getPlaybackState();
-      const duration = (data["durationInFrames"] as number) / FPS;
+      const duration = (data["durationInFrames"] as number) / protocol.fps;
       callbacks.setPlaybackState({ ...pb, duration });
       callbacks.updateControlsTime(pb.currentTime, duration);
       callbacks.onRuntimeTimelineReady(duration);

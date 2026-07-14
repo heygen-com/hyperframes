@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readCompositionSizeFromDocument } from "./composition-probe.js";
+import { readCompositionSizeFromDocument, runtimeCdnUrlForVersion } from "./composition-probe.js";
 
 describe("readCompositionSizeFromDocument", () => {
   it("reads dimensions from the composition root", () => {
@@ -22,5 +22,17 @@ describe("readCompositionSizeFromDocument", () => {
     doc.body.innerHTML = '<div data-width="0" data-height="1920"></div>';
 
     expect(readCompositionSizeFromDocument(doc)).toBeNull();
+  });
+});
+
+describe("runtimeCdnUrlForVersion", () => {
+  it("pins the injected core runtime to the Player-compatible version", () => {
+    expect(runtimeCdnUrlForVersion("1.2.3")).toBe(
+      "https://cdn.jsdelivr.net/npm/@hyperframes/core@1.2.3/dist/hyperframe.runtime.iife.js",
+    );
+  });
+
+  it("rejects values that could create an unversioned or malformed URL", () => {
+    expect(() => runtimeCdnUrlForVersion("latest")).toThrow("Invalid HyperFrames runtime version");
   });
 });

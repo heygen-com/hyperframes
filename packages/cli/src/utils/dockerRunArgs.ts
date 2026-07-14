@@ -51,6 +51,7 @@ export interface DockerRenderOptions {
   videoFrameFormat?: "auto" | "jpg" | "png";
   quiet: boolean;
   debug?: boolean;
+  bestEffort?: boolean;
   variables?: Record<string, unknown>;
   entryFile?: string;
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
@@ -136,6 +137,9 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
       : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.debug ? ["--debug"] : []),
+    // The in-container CLI is best-effort by default. Only forward the
+    // explicit strict opt-in so Docker and local renders cannot drift.
+    ...(options.bestEffort === false ? ["--no-best-effort"] : []),
     ...(options.gpu ? ["--gpu"] : []),
     ...(options.browserGpu ? [] : ["--no-browser-gpu"]),
     ...(options.hdrMode === "force-hdr" ? ["--hdr"] : []),

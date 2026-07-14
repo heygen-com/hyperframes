@@ -56,7 +56,7 @@ One command, one Chrome boot. `check` runs the linter first and skips the browse
 
 Every finding carries a selector, the element's `data-*` identity, the composition source file, a bbox, and the sample time: jump straight from the JSON to the HTML you must edit and re-run.
 
-**Severity is persistence-aware.** A dynamic issue observed at a single grid sample (an entrance/exit transient) demotes to info and never gates. Issues held across samples gate the exit code, and a held `content_overlap` is an error. If a 3s+ composition shows zero geometry change across every sample, `check` fails with `sweep_static`: a frozen timeline makes every green verdict unreliable, so it refuses to pass.
+**Severity is persistence-aware.** A dynamic issue observed at a single grid sample (an entrance/exit transient) demotes to info and never gates. Issues held across samples gate the exit code, a held `content_overlap` is an error, and a held, partially-visible `canvas_overflow` breaching ≥5% of the canvas promotes to warning. Coordinate-frame findings (`escaped_container`, `panel_out_of_canvas`, `connector_detached`) flag geometry computed in one frame but rendered in another — an element far outside its offset parent, a painted panel stuck across the canvas edge, a connector line detached from every node. If a 3s+ composition shows zero geometry change across every sample, `check` fails with `sweep_static`: a frozen timeline makes every green verdict unreliable, so it refuses to pass.
 
 **Escape hatches** (mark intent in the HTML, then re-run):
 

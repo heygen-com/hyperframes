@@ -532,7 +532,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     npx hyperframes check [dir] --strict       # exit non-zero on warnings too
     ```
 
-    `check` runs the linter first (browser skipped entirely on lint errors), then loads the bundled composition once and sweeps one seek grid running every audit per sample: runtime console errors and failed requests, layout defects (overflow, clipping, held overlaps, occlusion), `*.motion.json` sidecar assertions, and WCAG AA contrast.
+    `check` runs the linter first (browser skipped entirely on lint errors), then loads the bundled composition once and sweeps one seek grid running every audit per sample: runtime console errors and failed requests, layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame drift), `*.motion.json` sidecar assertions, and WCAG AA contrast.
 
     | Flag | Description |
     |------|-------------|

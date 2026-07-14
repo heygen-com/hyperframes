@@ -685,6 +685,19 @@ describe("variable-target resolution (querySelector pattern)", () => {
     expect(result.animations[2].extras?.stagger).toBe("__raw:0.1");
   });
 
+  it("does not leak same-named constants across IIFE scopes", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      (() => { const T = 0; tl.to("#x", { opacity: 1, duration: 1 }, T + 0); })();
+      (() => { const T = 10; tl.to("#x", { opacity: 0, duration: 1 }, T + 0); })();
+    `;
+    const result = parseGsapScript(script);
+    expect(result.animations.map((animation) => animation.position)).toEqual([
+      "__raw:T + 0",
+      "__raw:T + 0",
+    ]);
+  });
+
   it("marks unresolvable variable targets with __unresolved__ and hasUnresolvedSelector", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

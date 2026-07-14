@@ -163,7 +163,14 @@ function buildChildElements(
       key,
       start: clamped.start,
       duration: clamped.duration,
+      // `track` becomes a synthetic display row under the expanded host, but the
+      // factory-set `authoredTrack` (the child's data-track-index in ITS OWN
+      // file's coordinate space) and the runtime-computed `stackingContextId`
+      // must survive verbatim — lane persists and z-sync read them, they are
+      // never reconstructed from display lanes.
       track: display.track + result.length,
+      authoredTrack: base.authoredTrack,
+      stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,
       domId,
       selector,

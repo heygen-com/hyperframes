@@ -394,35 +394,70 @@ describe("<hyperframes-slideshow>", () => {
     el.remove();
   });
 
-  it("mute button applies globally to child players and page media", () => {
-    const el = document.createElement("hyperframes-slideshow") as any;
-    el.setAttribute("sound", "");
-    const player = document.createElement("hyperframes-player") as any;
-    player.muted = false;
-    el.appendChild(player);
+  it("mute and stopMedia affect only media owned by that slideshow", () => {
+    const bind = (el: any) => {
+      el.__setControllerForTest({
+        next: () => {},
+        prev: () => {},
+        onChange: () => () => {},
+        counter: { index: 1, total: 1 },
+        breadcrumb: [{ id: "main", label: "Main deck" }],
+        currentSlide: { hotspots: [] },
+        nextSlide: null,
+      });
+    };
+    const attachPlayerMedia = (slideshow: HTMLElement, id: string) => {
+      const player = document.createElement("hyperframes-player") as any;
+      player.id = id;
+      player.muted = false;
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+      const frameDoc = frame.contentDocument!;
+      const video = frameDoc.createElement("video");
+      video.id = `${id}-video`;
+      video.pause = vi.fn();
+      frameDoc.body.appendChild(video);
+      Object.defineProperty(player, "iframeElement", { configurable: true, value: frame });
+      slideshow.appendChild(player);
+      return { player, frame, video };
+    };
+
+    const slideshowA = document.createElement("hyperframes-slideshow") as any;
+    const slideshowB = document.createElement("hyperframes-slideshow") as any;
+    slideshowA.setAttribute("sound", "");
+    slideshowB.setAttribute("sound", "");
+    const ownedA = attachPlayerMedia(slideshowA, "a");
+    const ownedB = attachPlayerMedia(slideshowB, "b");
     const pageVideo = document.createElement("video");
-    document.body.append(pageVideo, el);
-    el.__setControllerForTest({
-      next: () => {},
-      prev: () => {},
-      onChange: () => () => {},
-      counter: { index: 1, total: 1 },
-      breadcrumb: [{ id: "main", label: "Main deck" }],
-      currentSlide: { hotspots: [] },
-      nextSlide: null,
-    });
+    pageVideo.pause = vi.fn();
+    document.body.append(pageVideo, slideshowA, slideshowB);
+    bind(slideshowA);
+    bind(slideshowB);
 
-    const muteBtn = el.querySelector("[data-hf-mute]") as HTMLElement;
+    const muteBtn = slideshowA.querySelector("[data-hf-mute]") as HTMLElement;
     muteBtn.click();
-    expect(player.muted).toBe(true);
-    expect(pageVideo.muted).toBe(true);
-
-    const muteBtnAfter = el.querySelector("[data-hf-mute]") as HTMLElement;
-    muteBtnAfter.click();
-    expect(player.muted).toBe(false);
+    expect(ownedA.player.muted).toBe(true);
+    expect(ownedA.video.muted).toBe(true);
+    expect(ownedB.player.muted).toBe(false);
+    expect(ownedB.video.muted).toBe(false);
     expect(pageVideo.muted).toBe(false);
 
-    el.remove();
+    const muteBtnAfter = slideshowA.querySelector("[data-hf-mute]") as HTMLElement;
+    muteBtnAfter.click();
+    expect(ownedA.player.muted).toBe(false);
+    expect(ownedA.video.muted).toBe(false);
+    expect(ownedB.video.muted).toBe(false);
+    expect(pageVideo.muted).toBe(false);
+
+    slideshowA.stopDocumentMedia();
+    expect(ownedA.video.pause).toHaveBeenCalledTimes(1);
+    expect(ownedB.video.pause).not.toHaveBeenCalled();
+    expect(pageVideo.pause).not.toHaveBeenCalled();
+
+    slideshowA.remove();
+    slideshowB.remove();
+    ownedA.frame.remove();
+    ownedB.frame.remove();
     pageVideo.remove();
   });
 

@@ -164,6 +164,14 @@ describe("buildStreamingArgs", () => {
       expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-color_range") + 1]).toBe("tv");
+      expect(args[args.indexOf("-vf") + 1]).toBe("scale=in_range=pc:out_range=tv");
+    });
+
+    it("adds the pad after range conversion for odd SDR output dimensions", () => {
+      const args = buildStreamingArgs({ ...baseSdr, height: 1081 }, "/tmp/out.mp4");
+      expect(args[args.indexOf("-vf") + 1]).toBe(
+        "scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      );
     });
   });
 
@@ -315,11 +323,16 @@ describe("buildStreamingArgs", () => {
     // even-dim pad (and only the pad, not the SW range scale) must be added.
     it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
       for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
-        const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", gpu);
+        const args = buildStreamingArgs({ ...baseGpu, height: 1081 }, "/tmp/out.mp4", gpu);
         const vfIdx = args.indexOf("-vf");
         expect(args[vfIdx + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
         expect(args[vfIdx + 1]).not.toContain("scale=in_range");
       }
+    });
+
+    it("does not require the pad filter for even GPU output dimensions", () => {
+      const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "videotoolbox");
+      expect(args).not.toContain("-vf");
     });
 
     it("prepends range conversion to VAAPI chain (nv12 covers even-dim)", () => {

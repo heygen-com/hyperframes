@@ -490,6 +490,9 @@ export function trackCliError(props: {
   stack_trace?: string;
   command?: string;
   kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+  /** Low-cardinality figma REST call label (e.g. "images", "files_nodes") —
+   *  which endpoint failed, for FigmaClientError-backed failures only. */
+  endpoint?: string;
 }): void {
   trackEvent("cli_error", {
     error_name: props.error_name,
@@ -502,6 +505,7 @@ export function trackCliError(props: {
       : undefined,
     command: props.command,
     kind: props.kind,
+    endpoint: props.endpoint,
   });
 }
 

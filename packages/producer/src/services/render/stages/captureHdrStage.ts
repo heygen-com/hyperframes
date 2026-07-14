@@ -40,6 +40,7 @@ import { join } from "node:path";
 import {
   type BeforeCaptureHook,
   type CaptureOptions,
+  type CaptureWarning,
   type EngineConfig,
   type HdrTransfer,
   type StreamingEncoder,
@@ -138,6 +139,19 @@ export interface CaptureHdrStageResult {
   captureDurationMs: number;
   /** ffmpeg-reported encode duration; overlapped with capture. */
   encodeMs: number;
+  warnings: CaptureWarning[];
+}
+
+function cloneCaptureWarnings(warnings: readonly CaptureWarning[]): CaptureWarning[] {
+  return warnings.map((warning) => ({
+    ...warning,
+    details: warning.details
+      ? {
+          ...warning.details,
+          sources: warning.details.sources ? [...warning.details.sources] : undefined,
+        }
+      : undefined,
+  }));
 }
 
 export async function runCaptureHdrStage(
@@ -490,5 +504,6 @@ export async function runCaptureHdrStage(
     hdrPerf,
     captureDurationMs,
     encodeMs,
+    warnings: cloneCaptureWarnings(domSession.warnings),
   };
 }
