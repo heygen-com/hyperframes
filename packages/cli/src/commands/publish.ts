@@ -26,7 +26,7 @@ export const examples: Example[] = [
 ];
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
-function parseUpdateTarget(value: string): string {
+export function parseUpdateTarget(value: string): string {
   const trimmed = value.trim();
   // Pull the id straight out of a `/p/<id>` path — works for full URLs, scheme-less URLs
   // (which `new URL` rejects), and links carrying `?query`/`#hash`.
