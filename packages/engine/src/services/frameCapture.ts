@@ -341,6 +341,27 @@ export function formatRequestFailureDiagnostic(input: {
   );
 }
 
+/**
+ * Chromium reports media loads that it intentionally cancels during probing as
+ * request failures. They are expected when the probe discovers or seeks local
+ * audio/video and do not indicate a missing asset.
+ */
+export function shouldIgnoreRequestFailureDiagnostic(input: {
+  resourceType: string;
+  url: string;
+  failureText: string;
+}): boolean {
+  if (input.failureText !== "net::ERR_ABORTED") return false;
+  if (input.resourceType === "media") return true;
+  try {
+    return /\.(?:aac|flac|m4a|mp3|mp4|mov|oga|ogg|ogv|wav|webm)$/i.test(
+      new URL(input.url).pathname,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function formatHttpErrorDiagnostic(input: {
   method: string;
   resourceType: string;
@@ -1581,16 +1602,20 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   });
 
   page.on("requestfailed", (request) => {
-    if (request.resourceType() === "script") {
+    const resourceType = request.resourceType();
+    const url = request.url();
+    const failureText = request.failure()?.errorText ?? "unknown";
+    if (resourceType === "script") {
       recordScriptLoadFailure(session, request.url());
     }
+    if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
     appendBrowserDiagnostic(
       session,
       formatRequestFailureDiagnostic({
         method: request.method(),
-        resourceType: request.resourceType(),
-        url: request.url(),
-        failureText: request.failure()?.errorText ?? "unknown",
+        resourceType,
+        url,
+        failureText,
       }),
     );
   });

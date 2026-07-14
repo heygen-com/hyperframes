@@ -7,6 +7,7 @@ import {
   formatRequestFailureDiagnostic,
   isFontResourceError,
   sanitizeDiagnosticUrl,
+  shouldIgnoreRequestFailureDiagnostic,
 } from "./frameCapture.js";
 
 describe("isFontResourceError", () => {
@@ -220,5 +221,36 @@ describe("navigation diagnostics", () => {
         statusText: "Forbidden",
       }),
     ).toBe("[Browser:HTTP403] GET https://cdn.example.com/frame.png resource=image Forbidden");
+  });
+
+  it("ignores benign media aborts without hiding real request failures", () => {
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "media",
+        url: "http://127.0.0.1:4173/assets/video.mp4",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "other",
+        url: "http://127.0.0.1:4173/assets/audio.oga?cache=1",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "media",
+        url: "http://127.0.0.1:4173/assets/video.mp4",
+        failureText: "net::ERR_FAILED",
+      }),
+    ).toBe(false);
+    expect(
+      shouldIgnoreRequestFailureDiagnostic({
+        resourceType: "script",
+        url: "http://127.0.0.1:4173/assets/app.js",
+        failureText: "net::ERR_ABORTED",
+      }),
+    ).toBe(false);
   });
 });
