@@ -3,9 +3,11 @@
 //
 // The counterpart to ingest.mjs: ingest is a pure offline transform, THIS is the
 // one network step on the people front. It reads the people list ingest produced
-// and downloads each contributor's GitHub avatar into assets/<login>.png,
-// then rewrites people.json with `avatarFetched` flags so downstream (story-design)
-// knows which avatars actually exist.
+// and downloads each contributor's GitHub avatar into assets/<login>.png, resolves
+// a display `name` for any reviewer/commenter/assignee ingest.mjs couldn't name
+// (gh only hands over `name` for the PR author, commit authors, and mergedBy), and
+// rewrites people.json with `avatarFetched` flags + resolved names so downstream
+// (story-design) knows which avatars exist and never has to narrate a raw login.
 //
 // Avatars + a credits/shipped-by scene are the ONE place the faceless default is
 // relaxed. They are an OPTIONAL enhancement, so this script is best-effort:
@@ -20,7 +22,8 @@
 //   --people <path>      capture/extracted/people.json (from ingest.mjs)
 // Writes:
 //   assets/<login>.png    one per contributor whose avatar resolved
-//   (rewrites people.json in place with avatarFetched: true/false)
+//   (rewrites people.json in place with avatarFetched: true/false and any
+//    newly-resolved `name`)
 //
 // Flags: --project-dir .  --timeout 8000 (ms per request)
 //   Avatars are written to <project-dir>/<person.avatarFile>, where avatarFile is
@@ -86,6 +89,29 @@ try {
 const people = Array.isArray(doc.people) ? doc.people : [];
 if (!people.length) softExit("no contributors in people.json — skipping");
 
+// Best-effort display-name lookup for people gh pr view left unnamed (reviewers,
+// commenters, assignees only ever carry a bare login). Same "never block the
+// build" contract as the avatar fetch: any failure just leaves person.name null,
+// and the credits close falls back to the login.
+async function resolveName(person) {
+  if (person.name || !person.login) return;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  try {
+    const res = await fetch(`https://api.github.com/users/${encodeURIComponent(person.login)}`, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "hyperframes-pr-to-video", Accept: "application/vnd.github+json" },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (typeof data?.name === "string" && data.name.trim()) person.name = data.name.trim();
+  } catch {
+    // offline / rate-limited / timed out — name stays null, login is the fallback
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchOne(person) {
   const { login, avatarUrl } = person;
   if (!login || !avatarUrl) return "skip";
@@ -141,6 +167,7 @@ for (const person of people) {
   if (r === "ok") ok++;
   else if (r === "cached") cached++;
   else if (r === "fail") fail++;
+  await resolveName(person);
 }
 
 // Persist avatarFetched flags so story-design can reference only real avatars.

@@ -98,17 +98,19 @@ PR="<url | owner/repo#N | N>"
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-pr.mjs --pr "$PR" --out-dir ./capture)
 
 # Offline transform → capture/extracted/{tokens.json (colors:[] → claude palette),
-# visible-text.txt (the brief), people.json (contributors, bot-filtered, avatarFile=assets/<login>.png)}.
+# visible-text.txt (the brief), people.json (contributors, bot-filtered, name+login,
+# avatarFile=assets/<login>.png)}.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/ingest.mjs \
   --pr-json ./capture/pr.json --diff ./capture/diff.patch --out-dir ./capture/extracted)
 
 # The people front's one network step — download each contributor's GitHub avatar to
-# assets/<login>.png for the credits close. Best-effort; always exits 0.
+# assets/<login>.png for the credits close, and resolve a display `name` for anyone
+# ingest.mjs couldn't name (reviewers/commenters/assignees). Best-effort; always exits 0.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-people-avatars.mjs \
   --people ./capture/extracted/people.json)
 ```
 
-If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and stop — **do not fabricate PR contents**. If `ingest.mjs` exits 1, read its stderr (usually a malformed `pr.json`), fix, and rerun (deterministic). `fetch-people-avatars.mjs` always exits 0; missing avatars just mean no credits close to author.
+If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and stop — **do not fabricate PR contents**. If `ingest.mjs` exits 1, read its stderr (usually a malformed `pr.json`), fix, and rerun (deterministic). `fetch-people-avatars.mjs` always exits 0; missing avatars just mean no credits close to author, and a missing `name` just means the credits close falls back to the login for that one person (see story-design.md's credits section — the voiceover must still say names, never raw handles).
 
 **Gate:** `capture/pr.json`, `capture/diff.patch`, `capture/extracted/tokens.json`, `capture/extracted/visible-text.txt`, and `capture/extracted/people.json` exist; you can state the PR's change in one clear sentence. `assets/<login>.png` is best-effort — its absence is not a failure.
 
