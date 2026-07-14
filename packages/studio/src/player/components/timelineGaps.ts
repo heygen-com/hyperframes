@@ -16,6 +16,18 @@ import type { TimelineElement } from "../store/playerStore";
 const TRACK_GAP_EPSILON_S = 1e-3;
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
+
+/**
+ * The lane's time ORIGIN — the earliest start a clip on this lane may take.
+ * 0 for ordinary lanes; for a lane of expanded sub-comp children (post-
+ * collision-fix a lane is always single-origin) it is the children's host
+ * window start (`expandedParentStart`): display times are host-absolute, so
+ * compacting toward absolute 0 would drag a child BEFORE its host's window
+ * and persist a wrong (even negative) local time.
+ */
+export function laneGapFloor(elements: readonly TimelineElement[]): number {
+  return Math.max(0, ...elements.map((e) => e.expandedParentStart ?? 0));
+}
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const endOf = (e: TimelineElement) => e.start + e.duration;
 
@@ -44,6 +56,7 @@ export function resolveTrackGapAt(
   elements: readonly TimelineElement[],
   time: number,
   epsilon: number = TRACK_GAP_EPSILON_S,
+  floor: number = 0,
 ): TrackGapAt | null {
   const clips = sortedLaneClips(elements);
   // Point inside a clip's half-open [start, end) → not empty space.
@@ -55,9 +68,10 @@ export function resolveTrackGapAt(
 
   const gapEnd = following[0].start;
   // Max end among clips left of the point (they all end at/before it since the
-  // point is unoccupied); 0 for the leading gap before the first clip.
+  // point is unoccupied); the lane floor for the leading gap before the first
+  // clip (0 for ordinary lanes, the host window start for expanded children).
   const gapStart = Math.max(
-    0,
+    floor,
     ...clips.filter((c) => c.start <= time - epsilon).map((c) => endOf(c)),
   );
   if (gapEnd - gapStart <= epsilon) return null; // epsilon-adjacent — no gap
@@ -87,9 +101,10 @@ export interface TrackGapInterval {
 export function resolveAllGapIntervals(
   elements: readonly TimelineElement[],
   epsilon: number = TRACK_GAP_EPSILON_S,
+  floor: number = 0,
 ): TrackGapInterval[] {
   const gaps: TrackGapInterval[] = [];
-  let cursor = 0;
+  let cursor = floor;
   for (const clip of sortedLaneClips(elements)) {
     if (clip.start - cursor > epsilon) gaps.push({ start: cursor, end: clip.start });
     cursor = Math.max(cursor, endOf(clip));
@@ -108,9 +123,10 @@ export function resolveAllGapIntervals(
 export function resolveAllTrackGaps(
   elements: readonly TimelineElement[],
   epsilon: number = TRACK_GAP_EPSILON_S,
+  floor: number = 0,
 ): TrackGapShift[] {
   const shifts: TrackGapShift[] = [];
-  let cursor = 0;
+  let cursor = floor;
   for (const clip of sortedLaneClips(elements)) {
     const newStart = round3(cursor);
     if (Math.abs(newStart - clip.start) > epsilon) {
@@ -132,9 +148,10 @@ export function resolveLaneEmptyIntervals(
   elements: readonly TimelineElement[],
   end: number,
   epsilon: number = TRACK_GAP_EPSILON_S,
+  floor: number = 0,
 ): TrackGapInterval[] {
-  const gaps = resolveAllGapIntervals(elements, epsilon);
-  const maxEnd = Math.max(0, ...elements.map(endOf));
+  const gaps = resolveAllGapIntervals(elements, epsilon, floor);
+  const maxEnd = Math.max(floor, ...elements.map(endOf));
   if (end - maxEnd > epsilon) gaps.push({ start: maxEnd, end });
   return gaps;
 }
@@ -143,8 +160,9 @@ export function resolveLaneEmptyIntervals(
 export function trackHasGaps(
   elements: readonly TimelineElement[],
   epsilon: number = TRACK_GAP_EPSILON_S,
+  floor: number = 0,
 ): boolean {
-  return resolveAllTrackGaps(elements, epsilon).length > 0;
+  return resolveAllTrackGaps(elements, epsilon, floor).length > 0;
 }
 
 /**
@@ -160,5 +178,5 @@ export function resolveCloseGapShifts(
   const followSet = new Set(gap.followingKeys);
   return sortedLaneClips(elements)
     .filter((c) => followSet.has(keyOf(c)))
-    .map((c) => ({ key: keyOf(c), newStart: Math.max(0, round3(c.start - width)) }));
+    .map((c) => ({ key: keyOf(c), newStart: Math.max(gap.gapStart, round3(c.start - width)) }));
 }

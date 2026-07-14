@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { resolveLaneEmptyIntervals, type TrackGapInterval } from "./timelineGaps";
+import { laneGapFloor, resolveLaneEmptyIntervals, type TrackGapInterval } from "./timelineGaps";
 import type { TrackGapHighlight } from "./useTrackGapMenu";
 
 /**
@@ -54,7 +54,12 @@ function selectedLaneStrips(input: GapHighlightInput): TimelineLaneGapStrips | n
   const selected = expandedElements.find((el) => (el.key ?? el.id) === selectedElementId);
   if (!selected || selected.track === gapHighlight?.track) return null;
   const laneElements = tracks.find(([t]) => t === selected.track)?.[1] ?? [];
-  const intervals = resolveLaneEmptyIntervals(laneElements, input.displayDuration);
+  const intervals = resolveLaneEmptyIntervals(
+    laneElements,
+    input.displayDuration,
+    undefined,
+    laneGapFloor(laneElements),
+  );
   return intervals.length > 0 ? { track: selected.track, intervals, kind: "selected" } : null;
 }
 

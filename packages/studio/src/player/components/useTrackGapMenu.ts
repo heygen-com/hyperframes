@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type MutableRefObject } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DragCommitDeps } from "./timelineClipDragCommit";
 import {
+  laneGapFloor,
   resolveAllGapIntervals,
   resolveAllTrackGaps,
   resolveCloseGapShifts,
@@ -63,8 +64,9 @@ export function useTrackGapMenu({
   );
   const gapMenuModel = useMemo(() => {
     if (!gapContextMenu || !gapMenuLaneElements) return null;
-    const gap = resolveTrackGapAt(gapMenuLaneElements, gapContextMenu.time);
-    const allShifts = resolveAllTrackGaps(gapMenuLaneElements);
+    const floor = laneGapFloor(gapMenuLaneElements);
+    const gap = resolveTrackGapAt(gapMenuLaneElements, gapContextMenu.time, undefined, floor);
+    const allShifts = resolveAllTrackGaps(gapMenuLaneElements, undefined, floor);
     return {
       x: gapContextMenu.x,
       y: gapContextMenu.y,
@@ -83,15 +85,16 @@ export function useTrackGapMenu({
   // "Close all gaps". Null when nothing is hovered / nothing would close.
   const gapHighlight = useMemo<TrackGapHighlight | null>(() => {
     if (!gapContextMenu || !gapMenuLaneElements || !hoveredGapAction) return null;
+    const floor = laneGapFloor(gapMenuLaneElements);
     if (hoveredGapAction === "close-gap") {
-      const gap = resolveTrackGapAt(gapMenuLaneElements, gapContextMenu.time);
+      const gap = resolveTrackGapAt(gapMenuLaneElements, gapContextMenu.time, undefined, floor);
       if (!gap) return null;
       return {
         track: gapContextMenu.track,
         intervals: [{ start: gap.gapStart, end: gap.gapEnd }],
       };
     }
-    const intervals = resolveAllGapIntervals(gapMenuLaneElements);
+    const intervals = resolveAllGapIntervals(gapMenuLaneElements, undefined, floor);
     return intervals.length > 0 ? { track: gapContextMenu.track, intervals } : null;
   }, [gapContextMenu, gapMenuLaneElements, hoveredGapAction]);
 

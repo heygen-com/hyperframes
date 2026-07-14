@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import {
+  laneGapFloor,
   resolveAllGapIntervals,
   resolveAllTrackGaps,
   resolveCloseGapShifts,
@@ -179,5 +180,42 @@ describe("trackHasGaps", () => {
   it("is false for contiguous or empty tracks", () => {
     expect(trackHasGaps([el("a", 0, 2), el("b", 2, 1)])).toBe(false);
     expect(trackHasGaps([])).toBe(false);
+  });
+});
+
+describe("lane floor (expanded sub-comp children)", () => {
+  const child = (id: string, start: number, duration: number): TimelineElement => ({
+    ...el(id, start, duration),
+    expandedParentStart: 16,
+    sourceFile: "scene.html",
+  });
+
+  it("laneGapFloor is 0 for ordinary lanes and the host window start for child lanes", () => {
+    expect(laneGapFloor([el("a", 0, 2)])).toBe(0);
+    expect(laneGapFloor([child("c1", 16.5, 2), child("c2", 20, 2)])).toBe(16);
+  });
+
+  it("compaction lands the first child at the HOST window start, never absolute 0", () => {
+    const lane = [child("c1", 18, 2), child("c2", 22, 2)];
+    expect(resolveAllTrackGaps(lane, undefined, laneGapFloor(lane))).toEqual([
+      { key: "c1", newStart: 16 },
+      { key: "c2", newStart: 18 },
+    ]);
+  });
+
+  it("the leading gap starts at the floor for both close-one and the highlight intervals", () => {
+    const lane = [child("c1", 18, 2)];
+    const floor = laneGapFloor(lane);
+    expect(resolveTrackGapAt(lane, 17, undefined, floor)).toEqual({
+      gapStart: 16,
+      gapEnd: 18,
+      followingKeys: ["c1"],
+    });
+    expect(resolveAllGapIntervals(lane, undefined, floor)).toEqual([{ start: 16, end: 18 }]);
+  });
+
+  it("a child lane contiguous from its host start has no gaps", () => {
+    const lane = [child("c1", 16, 2), child("c2", 18, 2)];
+    expect(trackHasGaps(lane, undefined, laneGapFloor(lane))).toBe(false);
   });
 });

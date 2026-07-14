@@ -6,6 +6,7 @@ import {
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
 import {
+  laneGapFloor,
   resolveAllTrackGaps,
   resolveCloseGapShifts,
   resolveTrackGapAt,
@@ -80,7 +81,7 @@ export function commitCloseTrackGap(
   time: number,
   deps: DragCommitDeps,
 ): boolean {
-  const gap = resolveTrackGapAt(laneElements, time);
+  const gap = resolveTrackGapAt(laneElements, time, undefined, laneGapFloor(laneElements));
   if (!gap) return false;
   return commitShifts(laneElements, resolveCloseGapShifts(laneElements, gap), deps);
 }
@@ -94,5 +95,9 @@ export function commitCloseAllTrackGaps(
   laneElements: readonly TimelineElement[],
   deps: DragCommitDeps,
 ): boolean {
-  return commitShifts(laneElements, resolveAllTrackGaps(laneElements), deps);
+  return commitShifts(
+    laneElements,
+    resolveAllTrackGaps(laneElements, undefined, laneGapFloor(laneElements)),
+    deps,
+  );
 }

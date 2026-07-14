@@ -273,3 +273,41 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBe("caption");
   });
 });
+
+describe("buildExpandedElements — collision-free synthetic rows (cross-file lane safety)", () => {
+  it("expanded children NEVER share a display track with an unrelated top-level clip", () => {
+    // The Deepwork regression: host on track 0 with two children used to put
+    // child #2 on integer track 1 — the same lane as index.html#foreign. Lane
+    // grouping merges purely by track number, so a gap-close on that "one"
+    // lane batch-persisted a foreign file's clip.
+    const elements = [
+      el({ id: "host", start: 0, duration: 20, track: 0, compositionSrc: "scene.html" }),
+      el({ id: "foreign", start: 20, duration: 5, track: 1 }),
+    ];
+    const manifest = [
+      clip({ id: "host", start: 0, duration: 20, compositionSrc: "scene.html" }),
+      clip({ id: "c1", start: 0, duration: 5 }),
+      clip({ id: "c2", start: 10, duration: 5 }),
+    ];
+    const parentMap = new Map([
+      ["c1", "host"],
+      ["c2", "host"],
+    ]);
+
+    const out = buildExpandedElements(elements, manifest, parentMap, "host", "host");
+    const foreign = out.find((e) => e.id === "foreign")!;
+    const children = out.filter((e) => e.domId === "c1" || e.domId === "c2");
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      // No lane sharing with the foreign clip…
+      expect(child.track).not.toBe(foreign.track);
+      // …and structurally impossible to collide with ANY normalized (integer)
+      // lane: synthetic rows are strict fractions under the host's lane.
+      expect(Number.isInteger(child.track)).toBe(false);
+      expect(child.track).toBeGreaterThan(0);
+      expect(child.track).toBeLessThan(1);
+    }
+    // Distinct ordered rows per child.
+    expect(children[0].track).not.toBe(children[1].track);
+  });
+});
