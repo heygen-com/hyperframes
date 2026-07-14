@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Page } from "puppeteer-core";
 import { decodeDynamicCssBackgroundImages } from "./frameCapture.js";
@@ -52,7 +54,12 @@ function makeMockPage(
 }
 
 afterEach(() => {
-  delete (globalThis as { __hf_css_background_decoded?: Set<string> }).__hf_css_background_decoded;
+  const root = globalThis as {
+    __hf_css_background_decoded?: Set<string>;
+    __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+  };
+  delete root.__hf_css_background_decoded;
+  delete root.__hfDecodeDynamicCssBackgroundImages;
 });
 
 describe("decodeDynamicCssBackgroundImages", () => {
@@ -110,5 +117,38 @@ describe("decodeDynamicCssBackgroundImages", () => {
     await decodeDynamicCssBackgroundImages(page);
 
     expect(decoded).toEqual(["/assets/late.jpg", "/assets/late.jpg"]);
+  });
+
+  it("installs a page-local decoder that can run after an in-page seek", async () => {
+    let backgroundImage = 'url("/assets/row-0.jpg")';
+    const decoded: string[] = [];
+    const page = makeMockPage(() => backgroundImage, decoded);
+
+    await decodeDynamicCssBackgroundImages(page);
+    backgroundImage = 'url("/assets/row-1.jpg")';
+
+    await page.evaluate(async () => {
+      const decodeAfterSeek = (
+        globalThis as { __hfDecodeDynamicCssBackgroundImages?: () => Promise<void> }
+      ).__hfDecodeDynamicCssBackgroundImages;
+      expect(decodeAfterSeek).toBeTypeOf("function");
+      await decodeAfterSeek?.();
+    });
+
+    expect(decoded).toEqual(["/assets/row-0.jpg", "/assets/row-1.jpg"]);
+  });
+
+  it("awaits the page-local decoder after every seek in drawElement batch capture", () => {
+    const drawElementSource = readFileSync(
+      fileURLToPath(new URL("./drawElementService.ts", import.meta.url)),
+      "utf8",
+    );
+    const batchSource = drawElementSource.slice(
+      drawElementSource.indexOf("export async function produceDrawElementFrameBatch"),
+    );
+
+    expect(batchSource).toMatch(
+      /aw\.__hf\.seek\(t\);\s*await aw\.__hfDecodeDynamicCssBackgroundImages\?\.\(\);/,
+    );
   });
 });

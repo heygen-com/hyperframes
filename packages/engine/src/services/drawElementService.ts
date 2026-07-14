@@ -941,6 +941,7 @@ export async function produceDrawElementFrameBatch(
         __hf_accel_canvases?: HTMLCanvasElement[];
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
+        __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
         __hfDeInvalidate?: () => boolean;
         __HF_ROOT_PROPS__?: boolean;
         __HF_ROOT_BASE_OPACITY__?: number;
@@ -975,6 +976,7 @@ export async function produceDrawElementFrameBatch(
         const { t, fid } = frame;
         try {
           if (aw.__hf && typeof aw.__hf.seek === "function") aw.__hf.seek(t);
+          await aw.__hfDecodeDynamicCssBackgroundImages?.();
           aw.__hf3d?.update();
           const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
           for (const c of accel) {

@@ -227,77 +227,82 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void
   await page.evaluate(async () => {
     const root = globalThis as typeof globalThis & {
       __hf_css_background_decoded?: Set<string>;
+      __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
     };
-    const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
-    const urls: string[] = [];
-    const parseBackgroundUrls = (value: string): string[] => {
-      const found: string[] = [];
-      let cursor = 0;
+    const decode = (root.__hfDecodeDynamicCssBackgroundImages ??= async () => {
+      const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
+      const urls: string[] = [];
+      const parseBackgroundUrls = (value: string): string[] => {
+        const found: string[] = [];
+        let cursor = 0;
 
-      while (cursor < value.length) {
-        const start = value.indexOf("url(", cursor);
-        if (start < 0) break;
+        while (cursor < value.length) {
+          const start = value.indexOf("url(", cursor);
+          if (start < 0) break;
 
-        let index = start + 4;
-        while (index < value.length && /\s/.test(value[index] ?? "")) index += 1;
-
-        const quote = value[index] === '"' || value[index] === "'" ? value[index] : null;
-        if (quote) index += 1;
-        const contentStart = index;
-        let contentEnd = -1;
-
-        while (index < value.length) {
-          const char = value[index];
-          if (char === "\\") {
-            index = Math.min(index + 2, value.length);
-            continue;
-          }
-          if ((quote && char === quote) || (!quote && char === ")")) {
-            contentEnd = index;
-            break;
-          }
-          index += 1;
-        }
-
-        if (contentEnd < 0) break;
-        if (quote) {
-          index += 1;
+          let index = start + 4;
           while (index < value.length && /\s/.test(value[index] ?? "")) index += 1;
-          if (value[index] !== ")") {
-            cursor = index;
-            continue;
+
+          const quote = value[index] === '"' || value[index] === "'" ? value[index] : null;
+          if (quote) index += 1;
+          const contentStart = index;
+          let contentEnd = -1;
+
+          while (index < value.length) {
+            const char = value[index];
+            if (char === "\\") {
+              index = Math.min(index + 2, value.length);
+              continue;
+            }
+            if ((quote && char === quote) || (!quote && char === ")")) {
+              contentEnd = index;
+              break;
+            }
+            index += 1;
           }
+
+          if (contentEnd < 0) break;
+          if (quote) {
+            index += 1;
+            while (index < value.length && /\s/.test(value[index] ?? "")) index += 1;
+            if (value[index] !== ")") {
+              cursor = index;
+              continue;
+            }
+          }
+
+          const url = value.slice(contentStart, contentEnd).trim();
+          if (url) found.push(url);
+          cursor = index + 1;
         }
 
-        const url = value.slice(contentStart, contentEnd).trim();
-        if (url) found.push(url);
-        cursor = index + 1;
-      }
+        return found;
+      };
 
-      return found;
-    };
+      for (const element of document.querySelectorAll<HTMLElement>('[style*="background"]')) {
+        const backgroundImage = element.style.backgroundImage;
+        if (!backgroundImage || backgroundImage === "none") continue;
 
-    for (const element of document.querySelectorAll<HTMLElement>('[style*="background"]')) {
-      const backgroundImage = element.style.backgroundImage;
-      if (!backgroundImage || backgroundImage === "none") continue;
-
-      for (const url of parseBackgroundUrls(backgroundImage)) {
-        if (!decoded.has(url)) urls.push(url);
-      }
-    }
-
-    await Promise.all(
-      [...new Set(urls)].map(async (url) => {
-        const image = new Image();
-        image.src = url;
-        try {
-          await image.decode();
-          decoded.add(url);
-        } catch {
-          // Keep existing capture behavior for missing assets; request diagnostics report them.
+        for (const url of parseBackgroundUrls(backgroundImage)) {
+          if (!decoded.has(url)) urls.push(url);
         }
-      }),
-    );
+      }
+
+      await Promise.all(
+        [...new Set(urls)].map(async (url) => {
+          const image = new Image();
+          image.src = url;
+          try {
+            await image.decode();
+            decoded.add(url);
+          } catch {
+            // Keep existing capture behavior for missing assets; request diagnostics report them.
+          }
+        }),
+      );
+    });
+
+    await decode();
   });
 }
 
@@ -791,6 +796,9 @@ async function finalizeDrawElementInit(
   opts: { transparent: boolean; forceDE: boolean },
 ): Promise<void> {
   const { transparent, forceDE } = opts;
+  // Install the page-local decoder before batch drawElement capture begins;
+  // the batch loop re-runs it after every in-page seek.
+  await decodeDynamicCssBackgroundImages(page);
   // Self-verification ground truth: must run pre-injection — after the canvas
   // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
   // not the live DOM (see the Lim 6 boundary-screenshot note).
