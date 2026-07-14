@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const producerMocks = vi.hoisted(() => ({
+  loadProducer: vi.fn(async () => ({
+    injectDeterministicFontFaces: async (html: string) => `${html}<!--bundled-producer-->`,
+  })),
+}));
+
 vi.mock("@hyperframes/core/compiler", () => ({
   bundleToSingleHtml: vi.fn(async () => "<html><body>bundled</body></html>"),
+}));
+
+vi.mock("./producer.js", () => ({
+  loadProducer: producerMocks.loadProducer,
 }));
 
 import {
@@ -31,6 +41,12 @@ describe("bundleWithLocalizedFonts (call-site integration)", () => {
 });
 
 describe("localizeWithProducer", () => {
+  it("loads the injector through the producer module bundled with the CLI", async () => {
+    const out = await localizeWithProducer("<html></html>");
+    expect(producerMocks.loadProducer).toHaveBeenCalledOnce();
+    expect(out).toBe("<html></html><!--bundled-producer-->");
+  });
+
   it("embeds fonts when the injector is available", async () => {
     const inject = vi.fn(async (html: string) => `${html}<!--fonts-->`);
     const warn = vi.fn();
