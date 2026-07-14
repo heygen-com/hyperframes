@@ -3,11 +3,11 @@ title: Feedback Collection
 description: "How HyperFrames collects feedback, what data is collected, and how to opt out."
 ---
 
-HyperFrames occasionally asks how a render went or how a Studio session felt. This page explains why we do it, when prompts appear, what data is collected, and how to disable them.
+HyperFrames occasionally asks how likely you are to recommend the render experience or Studio. This page explains why we do it, when prompts appear, what data is collected, and how to disable them.
 
 ## Why We Ask
 
-We use anonymous satisfaction scores to understand whether the tool is actually working well — not just whether it runs without errors. A render that takes 10 minutes and produces a broken file counts as a success in logs but a failure in practice. The feedback prompt is the only signal we have for that gap.
+We use anonymous recommendation scores to understand whether the tool is actually working well — not just whether it runs without errors. A render that takes 10 minutes and produces a broken file counts as a success in logs but a failure in practice. The feedback prompt is the only signal we have for that gap.
 
 No account, email, or identity is tied to responses. Each installation generates a random UUID at setup; that is the only identifier.
 
@@ -18,7 +18,7 @@ No account, email, or identity is tied to responses. Each installation generates
 After a successful `hyperframes render`, a short prompt may appear:
 
 ```
-  How was this render? [1=poor 5=great, enter to skip]
+  How likely are you to recommend HyperFrames? [0=not likely 10=extremely likely, enter to skip]
   Any details? (enter to skip)
 ```
 
@@ -64,15 +64,15 @@ You can submit feedback manually at any time:
 
 ```bash
 # Quick rating
-hyperframes feedback --rating 5
+hyperframes feedback --rating 10
 
 # Rating with details
-hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate text overlay"
+hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate text overlay"
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--rating` | Satisfaction score, 1–5 (required) |
+| `--rating` | Recommendation score, 0–10 (required) |
 | `--comment` | Optional free-text details |
 | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
 | `--dir` | Project directory to publish as the repro (default: current directory) |
@@ -85,7 +85,7 @@ This command collects a doctor summary automatically, flushes telemetry, and exi
 When a render misbehaves, add `--file-issue` so maintainers can reproduce it:
 
 ```bash
-hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
+hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
 ```
 
 This is **opt-in** and **consented**. With `--file-issue` set, after the usual feedback is sent the CLI:
@@ -101,7 +101,7 @@ The issue is **not auto-submitted**: you review and file it under your own GitHu
 When an AI agent is detected, HyperFrames **skips the interactive readline prompt** and prints a structured hint instead:
 
 ```
-  [hyperframes] Agent feedback: hyperframes feedback --rating <1-5> --comment "..."
+  [hyperframes] Agent feedback: hyperframes feedback --rating <0-10> --comment "..."
 ```
 
 Agents can then submit feedback using the `hyperframes feedback` command above.
@@ -130,7 +130,8 @@ Only the existence (or in some cases the value) of these variables is checked �
 | Field | Value |
 |-------|-------|
 | `$survey_id` | `render_satisfaction` |
-| `$survey_response` | Rating (1–5) |
+| `$survey_response` | Raw rating (0–10) |
+| `rating_scale` | `10` for the current recommendation scale |
 | `$survey_response_2` | Free-text comment (only when provided) |
 | `render_duration_ms` | Time the render took in milliseconds |
 | `doctor_summary` | System context (see below) |
@@ -148,7 +149,8 @@ It may also include `wsl` or sandbox runtime flags when those environments are d
 | Field | Value |
 |-------|-------|
 | `$survey_id` | `studio_experience` |
-| `$survey_response` | Rating (1–5) |
+| `$survey_response` | Raw rating (0–10) |
+| `rating_scale` | `10` for the current recommendation scale |
 | `$survey_response_2` | Free-text comment (only when provided) |
 | `source` | `studio` |
 | `doctor_summary` | Browser context (platform, screen, CPU cores, device memory, network type) |
@@ -162,6 +164,12 @@ It may also include `wsl` or sandbox runtime flags when those environments are d
 - IP addresses or precise location
 
 Feedback is anonymous. Each installation has a random UUID (`anonymousId`) — there is no account, login, or email association.
+
+## Rating Scale Compatibility
+
+New feedback stores the raw integer together with `rating_scale: 10`. Where an NPS category is needed, scores `0–6` are detractors, `7–8` are passives, and `9–10` are promoters.
+
+Feedback collected before this change remains on the historical 1–5 satisfaction scale. Historical events have no `rating_scale`, and historical Slack or GitHub records retain their `/5` denominator. Consumers must treat a missing scale as legacy 1–5 data and must not reinterpret those scores as NPS.
 
 ## Config File
 

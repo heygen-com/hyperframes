@@ -900,22 +900,22 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     ### `feedback`
 
-    Submit anonymous satisfaction feedback about your experience:
+    Submit anonymous recommendation feedback about your experience:
 
     ```bash
-    # Quick rating (1 = poor, 5 = great)
-    npx hyperframes feedback --rating 5
+    # Quick rating (0 = not likely, 10 = extremely likely)
+    npx hyperframes feedback --rating 10
 
     # Rating with optional details
-    npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
+    npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
 
     # Also file a pre-filled GitHub issue with a published minimal repro (opt-in, consented)
-    npx hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
+    npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
     ```
 
     | Flag | Description |
     |------|-------------|
-    | `--rating` | Satisfaction score, 1–5 (required) |
+    | `--rating` | Recommendation score, 0–10 (required) |
     | `--comment` | Optional free-text details |
     | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
     | `--dir` | Project directory to publish as the repro (default: current directory) |

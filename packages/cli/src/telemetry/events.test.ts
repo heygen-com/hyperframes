@@ -400,6 +400,7 @@ describe("trackRenderFeedback", () => {
     const [, props] = trackEvent.mock.calls[0] as [string, Record<string, unknown>];
     expect(props).not.toHaveProperty("render_duration_ms");
     expect(props.$survey_response).toBe(4);
+    expect(props.rating_scale).toBe(10);
   });
 
   it("includes render_duration_ms when a real duration is supplied", () => {
