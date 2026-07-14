@@ -97,6 +97,9 @@ interface SurfacedComposition {
 // querySelectorAll does not traverse — and sub-compositions are REQUIRED to wrap
 // markup + script in <template>. Query the document and every template fragment,
 // or template-wrapped compositions surface zero tweens/keyframes.
+// Reaches top-level templates only: a <template> nested inside another template's
+// fragment is not walked. The sub-composition contract mandates a single
+// top-level template, so nested templates are out of contract here.
 function queryIncludingTemplates(html: string, selector: string): Element[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];

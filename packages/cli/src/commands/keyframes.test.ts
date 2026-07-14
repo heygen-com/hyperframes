@@ -195,6 +195,34 @@ describe("keyframes template-wrapped sub-compositions", () => {
     expect(cssKeyframes.map((k) => k.name)).toContain("rise");
   });
 
+  it("aggregates extraction across multiple <template> blocks in one document", () => {
+    // Pins the every-template-fragment walk: styles from BOTH templates must
+    // surface, and a script in a NON-FIRST template must surface. (Two GSAP
+    // timelines in one file is a separate parser limitation — the static parser
+    // follows a single __timelines registration — so scripts are split so that
+    // the tween lives in the second template.)
+    const twoTemplates = `<template>
+      <style>
+        @keyframes rise { 0% { opacity: 0; } 100% { opacity: 1; } }
+      </style>
+      <div id="a" class="clip"></div>
+    </template>
+    <template>
+      <style>
+        @keyframes spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+      </style>
+      <div id="b" class="clip"></div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#b", { y: 50, duration: 1 });
+        window.__timelines = { multi: tl };
+      </script>
+    </template>`;
+    const { tweens, cssKeyframes } = surfaceComposition(twoTemplates, "multi.html", "multi.html");
+    expect(cssKeyframes.map((k) => k.name)).toEqual(expect.arrayContaining(["rise", "spin"]));
+    expect(tweens.map((t) => t.target)).toContain("#b");
+  });
+
   it("still surfaces top-level scripts outside any template", () => {
     const topLevel = `<!doctype html><html><body><div id="dot" class="clip"></div><script>
       const tl = gsap.timeline({ paused: true });
