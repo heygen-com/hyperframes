@@ -2,6 +2,7 @@ import type { TimelineElement } from "../store/playerStore";
 import { classifyZone } from "./timelineZones";
 import { isLaneFree, timeRangesOverlap } from "./timelineCollision";
 import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
+import { samePaintScope } from "./timelineStackingSync";
 
 /**
  * Mirror a canvas z-order action (Bring to Front / Bring Forward / Send Backward /
@@ -91,15 +92,6 @@ export type ZMirrorLaneMove =
 const keyOf = (el: TimelineElement): string => el.key ?? el.id;
 
 /**
- * Paint-comparability scope for the mirror's reference sets: same source file
- * AND same CSS stacking context. A single file can hold several stacking
- * contexts (any transformed / z-indexed container starts one), and leaf z is
- * only comparable within one context — sameSourceFile alone would let the
- * mirror reason across contexts it can't actually reorder. The context id is
- * only unique within its document, so the file check also stops null root
- * contexts of DIFFERENT files from comparing equal in the expanded view.
- */
-/**
  * Lane candidates for an EXPANDED sub-comp child: only its own siblings' lanes
  * (same file). An expanded child's display row is synthetic host-space — landing
  * it on an arbitrary host lane has no same-file occupant to translate the
@@ -117,10 +109,6 @@ function expandedChildAllowedLanes(
       .filter((el) => keyOf(el) !== selfKey && sameSourceFile(el, element))
       .map((el) => el.track),
   );
-}
-
-function samePaintScope(a: TimelineElement, b: TimelineElement): boolean {
-  return sameSourceFile(a, b) && (a.stackingContextId ?? null) === (b.stackingContextId ?? null);
 }
 
 /** Ascending unique display lanes of `elements` — identical to how Timeline.tsx

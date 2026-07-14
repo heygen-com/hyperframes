@@ -43,6 +43,8 @@ export interface StackingElement {
   zIndex: number;
   /** Audio clips have no visual stacking and are excluded from the computation. */
   isAudio: boolean;
+  /** Source document. Leaf z-indexes are comparable only inside this file. */
+  sourceFile?: string;
   /**
    * CSS stacking context the clip's node lives in (TimelineElement.stackingContextId).
    * Leaf z-indexes are only comparable WITHIN one context — across contexts the
@@ -70,12 +72,20 @@ export interface StackingPatch {
 const EPS = 1e-6;
 
 /**
- * Canonical stacking-context key: null/undefined both mean the root context.
- * The ONLY place the normalization lives — context partitioning, membership
- * checks, and pairwise equality must all go through it.
+ * Canonical paint-scope key: leaf z-indexes are comparable only within the same
+ * source document and CSS stacking context. The ONLY place this normalization
+ * lives — partitioning, membership checks, and pairwise equality all use it.
  */
-const contextKey = (el: { stackingContextId?: string | null }): string | null =>
-  el.stackingContextId ?? null;
+const paintScopeKey = (el: { sourceFile?: string; stackingContextId?: string | null }): string =>
+  JSON.stringify([el.sourceFile ?? null, el.stackingContextId ?? null]);
+
+/** Canonical paint-scope equality for stacking sync and its inverse mirror. */
+export function samePaintScope(
+  a: { sourceFile?: string; stackingContextId?: string | null },
+  b: { sourceFile?: string; stackingContextId?: string | null },
+): boolean {
+  return paintScopeKey(a) === paintScopeKey(b);
+}
 
 /**
  * Two clips overlap in time when their half-open [start, end) intervals intersect.
@@ -308,12 +318,11 @@ export function computeStackingPatches(
   // excluded outright (item 13).
   const allResolved = elements.filter((e) => Number.isFinite(e.zIndex));
 
-  // Leaf z is only meaningful within ONE stacking context: across contexts the
-  // ancestor contexts' z decides paint order, so comparing (or patching) leaf
-  // values across contexts is nonsense. Restrict the computation to the edited
-  // clips' own context(s); cross-context lane relations are out of scope.
-  const editedContexts = new Set(allResolved.filter((e) => editedSet.has(e.key)).map(contextKey));
-  const resolved = allResolved.filter((e) => editedContexts.has(contextKey(e)));
+  // Leaf z is only meaningful within ONE source document and stacking context:
+  // across either boundary the ancestor composition/context decides paint order.
+  // Restrict the computation to the edited clips' own paint scope(s).
+  const editedScopes = new Set(allResolved.filter((e) => editedSet.has(e.key)).map(paintScopeKey));
+  const resolved = allResolved.filter((e) => editedScopes.has(paintScopeKey(e)));
 
   // Mutable z snapshot so edits + cascaded bumps see each other's applied z.
   const byKey = new Map<string, MutZ>(resolved.map((e) => [e.key, { ...e }]));
@@ -333,10 +342,9 @@ export function computeStackingPatches(
   // The full live set, so the transitive cascade can reach clips that overlap a
   // LIFTED neighbour without overlapping the edited clip itself (#2198).
   const all = [...byKey.values()];
-  const sameContext = (a: MutZ, b: MutZ) => contextKey(a) === contextKey(b);
   const overlappersOf = (clip: MutZ): MutZ[] =>
     all.filter(
-      (o) => o.key !== clip.key && !o.isAudio && sameContext(clip, o) && overlapsInTime(clip, o),
+      (o) => o.key !== clip.key && !o.isAudio && samePaintScope(clip, o) && overlapsInTime(clip, o),
     );
 
   for (const clip of edited) {

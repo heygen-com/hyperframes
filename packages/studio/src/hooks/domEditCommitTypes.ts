@@ -25,13 +25,15 @@ export type CommitDomEditPatchBatches = (
 ) => Promise<DomEditPatchBatchesResult>;
 
 /**
- * Durability report for a patch-batches commit. `allMatched === false` means
- * the server could not locate at least one patch target on disk — the write is
- * NOT durable for that target (the preview was reloaded to reconverge), and
- * dependent follow-up writes (the z→lane timeline mirror) must be skipped.
- * `changed === false` means every batch was a byte-identical no-op.
+ * Durability report for a patch-batches commit. `durable === false` means the
+ * server could not locate at least one patch target on disk — the preview was
+ * reloaded to reconverge, and dependent follow-up writes (the z→lane timeline
+ * mirror) must be skipped. `allMatched` retains the underlying match detail.
+ * `changed === false` means no source file was written: every patch was a
+ * byte-identical no-op, or the atomic gesture was refused before any write.
  */
 export interface DomEditPatchBatchesResult {
+  durable: boolean;
   allMatched: boolean;
   changed: boolean;
 }

@@ -11,6 +11,7 @@
 import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild } from "../store/playerStore";
+import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   parseTimelineFromDOM,
@@ -199,6 +200,7 @@ export function useTimelineSyncCallbacks({
                   parentId,
                   hostId,
                   label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
+                  stackingContextId: resolveCssStackingContextId(child),
                 });
                 parentMap.set(child.id, parentId);
                 if (isGroup) collect(child, child.id);

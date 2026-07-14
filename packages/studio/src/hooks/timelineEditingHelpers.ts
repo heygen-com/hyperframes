@@ -13,6 +13,7 @@ import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/stud
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
+import { findElementForSelection } from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -53,12 +54,6 @@ export function applyTimelineStackingReorder(input: {
     input.timelineElements.map((el) => [getTimelineElementIdentity(el), el]),
   );
   const doc = input.iframe?.contentDocument ?? null;
-  const findLive = (domId?: string, selector?: string, selectorIndex?: number): Element | null => {
-    if (!doc) return null;
-    if (domId) return doc.getElementById(domId);
-    if (selector) return doc.querySelectorAll(selector)[selectorIndex ?? 0] ?? null;
-    return null;
-  };
   const commitEntries: Array<{
     element: HTMLElement;
     zIndex: number;
@@ -73,7 +68,15 @@ export function applyTimelineStackingReorder(input: {
     const domId = change.domId ?? sibling?.domId;
     const selector = change.selector ?? sibling?.selector;
     const selectorIndex = change.selectorIndex ?? sibling?.selectorIndex;
-    const element = findLive(domId, selector, selectorIndex);
+    const sourceFile =
+      change.sourceFile ?? sibling?.sourceFile ?? input.activeCompPath ?? "index.html";
+    const element = doc
+      ? findElementForSelection(
+          doc,
+          { id: domId, selector, selectorIndex, sourceFile },
+          input.activeCompPath,
+        )
+      : null;
     if (!isHTMLElement(element)) return Promise.resolve();
     if (getElementZIndex(element) === change.zIndex) continue;
     commitEntries.push({
@@ -82,7 +85,7 @@ export function applyTimelineStackingReorder(input: {
       id: domId ?? sibling?.id ?? change.key,
       selector,
       selectorIndex,
-      sourceFile: change.sourceFile ?? sibling?.sourceFile ?? input.activeCompPath ?? "index.html",
+      sourceFile,
       key: change.key,
     });
   }
@@ -129,15 +132,22 @@ export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
 export function findTimelineElementInIframe(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
+  activeCompositionPath: string | null = null,
 ): Element | null {
   try {
     const doc = iframe?.contentDocument;
     if (!doc) return null;
-    return element.domId
-      ? doc.getElementById(element.domId)
-      : element.selector
-        ? (doc.querySelectorAll(element.selector)[element.selectorIndex ?? 0] ?? null)
-        : null;
+    return findElementForSelection(
+      doc,
+      {
+        hfId: element.hfId,
+        id: element.domId,
+        selector: element.selector,
+        selectorIndex: element.selectorIndex,
+        sourceFile: element.sourceFile || activeCompositionPath || "index.html",
+      },
+      activeCompositionPath,
+    );
   } catch {
     return null;
   }
@@ -146,9 +156,10 @@ export function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
   attrs: Array<[string, string]>,
+  activeCompositionPath: string | null = null,
 ): void {
   try {
-    const el = findTimelineElementInIframe(iframe, element);
+    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
     if (!el) return;
     for (const [name, value] of attrs) el.setAttribute(name, value);
   } catch {

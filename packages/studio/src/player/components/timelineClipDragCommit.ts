@@ -11,6 +11,7 @@ import {
   beginTimelineOptimisticGesture,
   isLatestTimelineOptimisticGesture,
 } from "./timelineOptimisticRevision";
+import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -66,18 +67,13 @@ export interface DragCommitDeps {
    * the canvas z-order commit uses (handleDomZIndexReorderCommit). Documented in
    * research/STAGE3-NEEDED-WIRING.md.
    */
-  onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => void;
+  onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
-// One coalesce key per lane-change gesture, shared by the move-persist history
-// entry ("Move timeline clips") and the follow-up z-reorder entry ("Reorder
-// layers") so editHistory (pushEditHistoryEntry) folds the two consecutive
-// records into a single undo step. A monotonic counter — NOT Date.now() /
-// Math.random(), which the determinism rules forbid — suffices: the key only has
-// to be unique per gesture and identical across the gesture's two records.
+// One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
 
 /** Whether Studio may write timing to this clip (false for locked/implicit rows). */
@@ -365,8 +361,13 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     return e;
   });
   const multiKeys = multi ? multi.keys : null;
-  void persistMoveEdits(edits, deps, coalesceKey, "lane-reorder").then((moved) => {
-    if (moved && isVertical) {
+  if (!isVertical || !deps.readZIndex || !deps.onStackingPatches) {
+    void persistMoveEdits(edits, deps, coalesceKey, "lane-reorder");
+    return;
+  }
+  void runLaneZGesture({
+    commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "lane-reorder"),
+    commitZ: () =>
       syncStackingForEdit(
         candidate,
         dragKey,
@@ -375,9 +376,8 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
         multiKeys,
         deps,
         coalesceKey,
-      );
-    }
-  });
+      ),
+  }).catch(() => undefined);
 }
 
 /** Build the one sanctioned multi-clip write: atomically insert and compact a
@@ -440,7 +440,6 @@ function buildTrackInsertEdits(
     }
   }
   const edits: TimelineMoveEdit[] = [];
-  // Cross-topology selection passengers move in time, retaining authored track.
   if (multi) {
     for (const src of elements) {
       const srcKey = keyOf(src);
@@ -483,11 +482,16 @@ function commitTrackInsert(
   );
   if (!built) return;
   const { candidate, edits } = built;
+  if (edits.length === 0) return;
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
-  void persistMoveEdits(edits, deps, coalesceKey, "track-insert").then((moved) => {
-    // An empty filtered batch must not create an orphaned z-only history entry.
-    if (moved && edits.length > 0) {
+  if (!deps.readZIndex || !deps.onStackingPatches) {
+    void persistMoveEdits(edits, deps, coalesceKey, "track-insert");
+    return;
+  }
+  void runLaneZGesture({
+    commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "track-insert"),
+    commitZ: () =>
       // Sync from the fractional drop intent, not the normalized persisted lanes.
       syncStackingForEdit(
         candidate,
@@ -497,9 +501,8 @@ function commitTrackInsert(
         multi ? multi.keys : null,
         deps,
         coalesceKey,
-      );
-    }
-  });
+      ),
+  }).catch(() => undefined);
 }
 
 /**
@@ -566,18 +569,16 @@ function syncStackingForEdit(
   multiKeys: ReadonlySet<string> | null,
   deps: DragCommitDeps,
   coalesceKey?: string,
-): void {
+): Promise<void> {
   const { readZIndex, onStackingPatches } = deps;
-  if (!readZIndex || !onStackingPatches) return;
+  if (!readZIndex || !onStackingPatches) return Promise.resolve();
 
   // Aiming at the clip's OWN current display lane is not a relocation — never
   // touch z (guards the pure-time-move invariant even if a spurious topology call
   // slips through). Every real lane-realization drop aims at a DIFFERENT lane.
-  if (aimedLane === currentLane) return;
+  if (aimedLane === currentLane) return Promise.resolve();
 
-  // `candidate` is in discovery order, so its array index IS the DOM document
-  // position. Equal-z clips paint by DOM order, so the sync needs it to decide
-  // "is A above B" (see StackingElement.domIndex).
+  // Discovery order is DOM order, which breaks equal-z ties.
   const stackingEls = candidate.map((el, domIndex) => ({
     key: keyOf(el),
     start: el.start,
@@ -585,6 +586,7 @@ function syncStackingForEdit(
     track: el.track,
     zIndex: readZIndex(el),
     isAudio: classifyZone(el) === "audio",
+    sourceFile: el.sourceFile,
     domIndex,
     stackingContextId: el.stackingContextId ?? null,
   }));
@@ -593,5 +595,6 @@ function syncStackingForEdit(
   if (multiKeys) for (const k of multiKeys) if (k !== dragKey) editedKeys.push(k);
 
   const patches = computeStackingPatches(stackingEls, editedKeys);
-  if (patches.length > 0) onStackingPatches(patches, coalesceKey);
+  if (patches.length === 0) return Promise.resolve();
+  return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
 }

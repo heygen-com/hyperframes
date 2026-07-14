@@ -82,9 +82,10 @@ function patchLiveHiddenState(
   iframe: HTMLIFrameElement | null,
   elements: readonly TimelineElement[],
   hidden: boolean,
+  activeCompPath: string | null,
 ): void {
   for (const element of elements) {
-    const target = findTimelineElementInIframe(iframe, element);
+    const target = findTimelineElementInIframe(iframe, element, activeCompPath);
     if (!target) continue;
     if (hidden) {
       target.setAttribute("data-hidden", "");
@@ -134,7 +135,7 @@ async function setElementsHidden({
 }: SetElementsHiddenInput): Promise<string[]> {
   if (elements.length === 0) return [];
 
-  patchLiveHiddenState(previewIframe, elements, hidden);
+  patchLiveHiddenState(previewIframe, elements, hidden, activeCompPath);
   reseekPreviewRuntime(previewIframe);
 
   const hiddenOperation: PatchOperation = {
@@ -188,7 +189,7 @@ async function setElementsHidden({
     // The optimistic live patch already ran; a patch-target/save failure here would
     // otherwise leave the preview showing the wrong visibility until a reload. Revert
     // the live DOM to the prior state so what's on screen matches what persisted.
-    patchLiveHiddenState(previewIframe, elements, !hidden);
+    patchLiveHiddenState(previewIframe, elements, !hidden, activeCompPath);
     reseekPreviewRuntime(previewIframe);
     throw error;
   }

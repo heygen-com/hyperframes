@@ -31,9 +31,7 @@ function el(
 /** Flush the microtask chain: the z-sync now fires only after the move persist
  *  promise resolves (serialized), so tests asserting on it must await. */
 async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let step = 0; step < 8; step += 1) await Promise.resolve();
 }
 
 function drag(

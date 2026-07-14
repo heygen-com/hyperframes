@@ -167,7 +167,9 @@ function renderTimelineEditingHookWithLifecycle(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
   commitDomEditPatchBatches: ReturnType<
-    typeof vi.fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>
+    typeof vi.fn<
+      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+    >
   >;
 }): {
   move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
@@ -223,18 +225,27 @@ async function flushAsyncWork(): Promise<void> {
  * string, or a path → content map) and answers the GSAP-mutation endpoint
  * with `gsapBody`. Returns the mock for call inspection.
  */
-function stubProjectFetch(
-  files: string | Record<string, string>,
-  gsapBody: unknown = { ok: true },
-) {
+function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unknown) {
+  // Keep this test server's capability, file-read, and mutation routes together;
+  // splitting the fixture would obscure the request sequence asserted by callers.
+  // fallow-ignore-next-line complexity
   const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
     const url = requestUrl(input);
+    if (url.includes("/api/projects/p1/gsap-mutation-capabilities")) {
+      return jsonResponse({ atomicOwnershipPairs: true });
+    }
     if (url.includes("/api/projects/p1/files/")) {
       if (typeof files === "string") return jsonResponse({ content: files });
       const path = decodeURIComponent(url.split("/files/")[1] ?? "index.html");
       return jsonResponse({ content: files[path] });
     }
-    if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse(gsapBody);
+    if (url.includes("/api/projects/p1/gsap-mutations/")) {
+      const path = decodeURIComponent(url.split("/gsap-mutations/")[1] ?? "index.html");
+      const content = typeof files === "string" ? files : (files[path] ?? "");
+      return jsonResponse(
+        gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
+      );
+    }
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -326,7 +337,12 @@ async function setupRootDurationFallback() {
   const iframeWindow = iframe.contentWindow;
   if (!iframeWindow) throw new Error("Expected iframe window");
   const postMessageSpy = vi.spyOn(iframeWindow, "postMessage");
-  stubProjectFetch(ROOT_DURATION_FALLBACK_SOURCE, { ok: true, mutated: false });
+  stubProjectFetch(ROOT_DURATION_FALLBACK_SOURCE, {
+    mutated: false,
+    scriptText: null,
+    before: ROOT_DURATION_FALLBACK_SOURCE,
+    after: ROOT_DURATION_FALLBACK_SOURCE,
+  });
   usePlayerStore.getState().setDuration(4);
   const hook = renderTimelineEditingHook({
     timelineElements: [clip],
@@ -514,8 +530,8 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
     const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
     const commitDomEditPatchBatches = vi.fn<
-      (...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>
-    >(async () => ({ allMatched: true, changed: true }));
+      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+    >(async () => ({ durable: true, allMatched: true, changed: true }));
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
@@ -560,7 +576,9 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const saveError = new Error("save failed");
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>()
+      .fn<
+        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+      >()
       .mockRejectedValueOnce(saveError);
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
@@ -624,8 +642,12 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       releaseBatch = resolve;
     });
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>()
-      .mockReturnValueOnce(batchSave.then(() => ({ allMatched: true, changed: true })));
+      .fn<
+        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+      >()
+      .mockReturnValueOnce(
+        batchSave.then(() => ({ durable: true, allMatched: true, changed: true })),
+      );
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
@@ -981,7 +1003,12 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     const { iframe, a, b } = makeTwoClipPair();
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const reloadPreview = vi.fn();
-    const fetchMock = stubProjectFetch(source, { ok: true, mutated: false });
+    const fetchMock = stubProjectFetch(source, {
+      mutated: false,
+      scriptText: null,
+      before: source,
+      after: source,
+    });
     const { groupMove, unmount } = renderTimelineEditingHook({
       timelineElements: [a, b],
       iframe,

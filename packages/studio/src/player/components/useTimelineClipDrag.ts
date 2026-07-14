@@ -76,7 +76,7 @@ interface UseTimelineClipDragInput {
    * commitDraggedClipMove. Both optional → absent = no-op (backward compatible).
    */
   readZIndex?: (element: TimelineElement) => number;
-  onStackingPatches?: (patches: StackingPatch[]) => void;
+  onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
 }
 
 export function useTimelineClipDrag({

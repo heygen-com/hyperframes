@@ -44,7 +44,7 @@ export interface TimelineElement {
   zIndex?: number;
   /** True when the effective z-index was authored inline or through CSS, not auto. */
   hasExplicitZIndex?: boolean;
-  /** Stacking context this element belongs to; root clips use the root composition id. */
+  /** Canonical CSS stacking context this element's z-index participates in. */
   stackingContextId?: string | null;
   /** Nearest parent composition context, matching RuntimeTimelineClip. */
   parentCompositionId?: string | null;
@@ -282,6 +282,7 @@ export interface DomClipChild {
   /** The manifest sub-comp host clip id this descendant ultimately lives under. */
   hostId: string;
   label: string;
+  stackingContextId: string;
 }
 
 interface BeatHistoryEntry {

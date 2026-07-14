@@ -44,7 +44,9 @@ describe("toggleTimelineTrackHidden", () => {
     if (iframe.contentDocument) {
       iframe.contentDocument.body.innerHTML = `
         <div id="hero"></div>
-        <div id="subtitle"></div>
+        <div data-composition-id="scene" data-composition-file="scene.html">
+          <div id="subtitle"></div>
+        </div>
       `;
     }
 

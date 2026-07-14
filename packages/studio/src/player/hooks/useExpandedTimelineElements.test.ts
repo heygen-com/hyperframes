@@ -152,10 +152,34 @@ describe("buildExpandedElements", () => {
       ["pill-3", "group-1"],
     ]);
     const domClipChildren = [
-      { id: "group-1", parentId: "scene-host", hostId: "scene-host", label: "Group 1" },
-      { id: "pill-1", parentId: "group-1", hostId: "scene-host", label: "pill-1" },
-      { id: "pill-2", parentId: "group-1", hostId: "scene-host", label: "pill-2" },
-      { id: "pill-3", parentId: "group-1", hostId: "scene-host", label: "pill-3" },
+      {
+        id: "group-1",
+        parentId: "scene-host",
+        hostId: "scene-host",
+        label: "Group 1",
+        stackingContextId: "css:0",
+      },
+      {
+        id: "pill-1",
+        parentId: "group-1",
+        hostId: "scene-host",
+        label: "pill-1",
+        stackingContextId: "css:0.0",
+      },
+      {
+        id: "pill-2",
+        parentId: "group-1",
+        hostId: "scene-host",
+        label: "pill-2",
+        stackingContextId: "css:0.1",
+      },
+      {
+        id: "pill-3",
+        parentId: "group-1",
+        hostId: "scene-host",
+        label: "pill-3",
+        stackingContextId: "css:0.1",
+      },
     ];
 
     // Expanding pill-3's siblings: topLevel scene-host, immediate parent group-1.
@@ -173,6 +197,7 @@ describe("buildExpandedElements", () => {
     expect(pills[0]!.start).toBe(5);
     expect(pills[0]!.duration).toBe(6);
     expect(pills[0]!.sourceFile).toBe("scene.html");
+    expect(pills.map((pill) => pill.stackingContextId)).toEqual(["css:0.0", "css:0.1", "css:0.1"]);
     // The host row is replaced by its children.
     expect(out.some((e) => e.domId === "scene-host")).toBe(false);
   });

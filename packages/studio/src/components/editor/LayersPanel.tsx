@@ -112,14 +112,10 @@ export const LayersPanel = memo(function LayersPanel() {
   const prevDocVersionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const mirrorLayerReorderToTimeline = useLayerReorderTimelineMirror();
-  const { reveal, restoreReveal, revealedBase } = useLayerRevealOverride({ isPlaying });
-
-  // Drop the temporary reveal when the selection leaves the revealed layer
-  // (deselect, or a selection made anywhere else in the studio).
-  useEffect(() => {
-    const base = revealedBase();
-    if (base && domEditSelection?.element !== base) restoreReveal();
-  }, [domEditSelection, revealedBase, restoreReveal]);
+  const { scheduleReveal } = useLayerRevealOverride({
+    isPlaying,
+    selectedElement: domEditSelection?.element ?? null,
+  });
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
@@ -244,7 +240,6 @@ export const LayersPanel = memo(function LayersPanel() {
     [currentTime, resolveSelection, timelineElements],
   );
 
-  const revealTimerRef = useRef(0);
   const handleSelectLayer = useCallback(
     async (layer: DomEditLayerItem) => {
       const selection = await resolveSelection(layer);
@@ -255,14 +250,10 @@ export const LayersPanel = memo(function LayersPanel() {
       // a clip made active by the seek shows naturally and needs no override,
       // so the reveal only touches nodes that REMAIN hidden (animation-parked
       // opacity, non-clip display/visibility hides, hidden ancestors).
-      window.clearTimeout(revealTimerRef.current);
-      revealTimerRef.current = window.setTimeout(() => {
-        if (selection.element.isConnected) reveal(selection.element);
-      }, 150);
+      scheduleReveal(selection.element, 150);
     },
-    [resolveSelection, applyDomSelection, seekToLayer, reveal],
+    [resolveSelection, applyDomSelection, seekToLayer, scheduleReveal],
   );
-  useEffect(() => () => window.clearTimeout(revealTimerRef.current), []);
 
   // Double-click a group row → drill into it; any other row → select it.
   const handleLayerDoubleClick = useCallback(

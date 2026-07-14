@@ -225,7 +225,7 @@ export function useTimelineGroupEditing({
         if (change.track != null) {
           attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
         }
-        patchIframeDomTiming(previewIframeRef.current, change.element, attrs);
+        patchIframeDomTiming(previewIframeRef.current, change.element, attrs, activeCompPath);
       }
 
       // TRACK-ONLY batch: every change keeps its start (moves never carry a
@@ -342,7 +342,7 @@ export function useTimelineGroupEditing({
               : "data-media-start";
           liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
         }
-        patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs);
+        patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.duration));

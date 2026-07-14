@@ -20,6 +20,16 @@ describe("diffSoftReloadableRestore", () => {
     expect(diffSoftReloadableRestore(prev, next)).toEqual({ changedElementKeys: ["hf:hf-x1"] });
   });
 
+  it("fails closed when fallback ids are duplicated without unique data-hf-ids", () => {
+    const prev = wrap(
+      `<div id="dup" style="z-index: 8">first</div><div id="dup" style="z-index: 9">last</div>`,
+    );
+    const next = wrap(
+      `<div id="dup" style="z-index: 3">first</div><div id="dup" style="z-index: 9">last</div>`,
+    );
+    expect(diffSoftReloadableRestore(prev, next)).toBeNull();
+  });
+
   it("a child change inside an identified CONTAINER is soft (nested identities)", () => {
     // The composition root wraps every clip — the old innerHTML comparison at
     // the root re-detected the child's change and forced a full reload.
@@ -122,6 +132,55 @@ describe("applyUndoRestoreToPreview", () => {
     expect(doc.querySelector('[data-hf-id="hf-x1"]')!.getAttribute("style")).toBe("z-index: 3");
   });
 
+  it.each([
+    { label: "first", firstRestored: 3, lastRestored: 9 },
+    { label: "last", firstRestored: 8, lastRestored: 3 },
+  ])(
+    "soft-restores the $label element when authored ids are duplicated",
+    ({ firstRestored, lastRestored }) => {
+      const markup = (firstZ: number, lastZ: number) =>
+        `<div id="dup" data-hf-id="hf-first" style="z-index: ${firstZ}">first</div>` +
+        `<div id="dup" data-hf-id="hf-last" style="z-index: ${lastZ}">last</div>`;
+      const { iframe, doc } = buildLiveIframe(markup(8, 9));
+      const reloadPreview = vi.fn();
+      const files = {
+        [ROOT]: {
+          previous: wrap(markup(8, 9)),
+          restored: wrap(markup(firstRestored, lastRestored)),
+        },
+      };
+
+      expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("soft");
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(doc.querySelector('[data-hf-id="hf-first"]')!.getAttribute("style")).toBe(
+        `z-index: ${firstRestored}`,
+      );
+      expect(doc.querySelector('[data-hf-id="hf-last"]')!.getAttribute("style")).toBe(
+        `z-index: ${lastRestored}`,
+      );
+    },
+  );
+
+  it("full-reloads without partially restoring when any changed live target is missing", () => {
+    const { iframe, doc } = buildLiveIframe(`<div id="a" style="z-index: 8">a</div>`);
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(
+          `<div id="a" style="z-index: 8">a</div><div id="b" style="z-index: 8">b</div>`,
+        ),
+        restored: wrap(
+          `<div id="a" style="z-index: 3">a</div><div id="b" style="z-index: 3">b</div>`,
+        ),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    // Target a resolved first, but the preflight found missing b before syncing either.
+    expect(doc.getElementById("a")!.getAttribute("style")).toBe("z-index: 8");
+  });
+
   it("does NOT re-run an UNCHANGED GSAP script for an attribute-only restore", () => {
     // The live doc holds a script element; a re-run would mutate/remove it
     // (applySoftReload removes stale script elements before re-running).
@@ -144,6 +203,33 @@ describe("applyUndoRestoreToPreview", () => {
     expect(contentWindow.__player.seek).toHaveBeenCalledWith(3);
     expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalled();
     expect(doc.getElementById("a")!.getAttribute("style")).toBe("z-index: 3");
+  });
+
+  it("full-reloads a changed two-script restore without partially touching the live DOM", () => {
+    const previousScripts = [
+      `window.__timelines["root"]=gsap.timeline().to("#a",{x:1});`,
+      `window.__timelines["captions"]=gsap.timeline().to("#a",{y:1});`,
+    ];
+    const restoredScripts = previousScripts.map((script) => script.replace(":1", ":9"));
+    const scripts = (values: string[]) =>
+      values.map((value) => `<script>${value}</script>`).join("");
+    const { iframe, doc } = buildLiveIframe(
+      `<div id="a" style="z-index: 8">t</div>${scripts(previousScripts)}`,
+    );
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="z-index: 8">t</div>${scripts(previousScripts)}`),
+        restored: wrap(`<div id="a" style="z-index: 3">t</div>${scripts(restoredScripts)}`),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(doc.getElementById("a")!.getAttribute("style")).toBe("z-index: 8");
+    expect([...doc.querySelectorAll("script")].map((script) => script.textContent)).toEqual(
+      previousScripts,
+    );
   });
 
   it("full-reloads a multi-file restore", () => {

@@ -40,7 +40,6 @@ describe("useTimelineStackingSync", () => {
       start: 0,
       duration: 2,
       track: 0,
-      sourceFile: "nested.html",
     };
     let apply: ((patches: Array<{ key: string; zIndex: number }>, key?: string) => unknown) | null =
       null;

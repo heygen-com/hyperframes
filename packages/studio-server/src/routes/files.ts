@@ -166,6 +166,50 @@ interface ElementPatchRequest {
   operations: PatchOperation[];
 }
 
+interface ElementPatchBatchRequest {
+  sourceFile: string;
+  patches: ElementPatchRequest[];
+}
+
+interface ElementPatchBatchFileResult {
+  sourceFile: string;
+  changed: boolean;
+  matched: boolean[];
+  before: string;
+  after: string;
+  backupPath?: string | null;
+}
+
+function isElementPatchRequest(value: unknown): value is ElementPatchRequest {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("target" in value) || typeof value.target !== "object" || value.target === null) {
+    return false;
+  }
+  return "operations" in value && Array.isArray(value.operations) && value.operations.length > 0;
+}
+
+function isElementPatchBatchRequest(value: unknown): value is ElementPatchBatchRequest {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sourceFile" in value &&
+    typeof value.sourceFile === "string" &&
+    value.sourceFile.length > 0 &&
+    "patches" in value &&
+    Array.isArray(value.patches) &&
+    value.patches.length > 0 &&
+    value.patches.every(isElementPatchRequest)
+  );
+}
+
+function findUnsafeElementPatchBatchValues(
+  batches: readonly ElementPatchBatchRequest[],
+): UnsafeMutationValue[] {
+  return batches.flatMap((batch) =>
+    batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
+  );
+}
+
 function foldElementPatches(
   originalContent: string,
   patches: ElementPatchRequest[],
@@ -178,6 +222,113 @@ function foldElementPatches(
     matched.push(result.matched);
   }
   return { content, matched };
+}
+
+/**
+ * The single commit owner for element patch batches. All files are resolved,
+ * read, and folded before the first write; any unmatched target refuses the
+ * whole request. The final snapshots/writes are synchronous, so another route
+ * cannot interleave once the commit section begins.
+ */
+export function commitElementPatchBatches(
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+  writeFile: (path: string, content: string, encoding: "utf-8") => void = writeFileSync,
+):
+  | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
+  | { durable: boolean; files: ElementPatchBatchFileResult[] } {
+  const resolvedPaths = new Set<string>();
+  const prepared: Array<{
+    sourceFile: string;
+    absPath: string;
+    before: string;
+    matched: boolean[];
+    after: string;
+  }> = [];
+
+  for (const batch of batches) {
+    const absPath = resolveWithinProject(projectDir, batch.sourceFile);
+    if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
+    if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
+    resolvedPaths.add(absPath);
+
+    let before: string;
+    try {
+      before = readFileSync(absPath, "utf-8");
+    } catch {
+      return { error: "not-found", sourceFile: batch.sourceFile };
+    }
+    const folded = foldElementPatches(before, batch.patches);
+    prepared.push({
+      sourceFile: batch.sourceFile,
+      absPath,
+      before,
+      matched: folded.matched,
+      after: folded.content,
+    });
+  }
+
+  const durable = prepared.every((file) => file.matched.every(Boolean));
+  if (!durable) {
+    return {
+      durable: false,
+      files: prepared.map((file) => ({
+        sourceFile: file.sourceFile,
+        changed: false,
+        matched: file.matched,
+        before: file.before,
+        after: file.before,
+      })),
+    };
+  }
+
+  const files: ElementPatchBatchFileResult[] = [];
+  const attemptedWrites: typeof prepared = [];
+  try {
+    for (const file of prepared) {
+      if (file.after === file.before) {
+        files.push({
+          sourceFile: file.sourceFile,
+          changed: false,
+          matched: file.matched,
+          before: file.before,
+          after: file.before,
+        });
+        continue;
+      }
+      const backup = snapshotBeforeWrite(projectDir, file.absPath);
+      if (backup.error) {
+        throw new Error(`Failed to create backup for ${file.sourceFile}: ${backup.error}`);
+      }
+      attemptedWrites.push(file);
+      writeFile(file.absPath, file.after, "utf-8");
+      files.push({
+        sourceFile: file.sourceFile,
+        changed: true,
+        matched: file.matched,
+        before: file.before,
+        after: file.after,
+        backupPath: backupPathForResponse(projectDir, backup.backupPath),
+      });
+    }
+  } catch (error) {
+    const rollbackErrors: unknown[] = [];
+    for (const file of attemptedWrites.reverse()) {
+      try {
+        writeFile(file.absPath, file.before, "utf-8");
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "Element patch batch failed and rollback did not complete",
+      );
+    }
+    throw error;
+  }
+  return { durable: true, files };
 }
 
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
@@ -216,6 +367,16 @@ function rejectUnsafeMutationValues(
     },
     400,
   );
+}
+
+function elementPatchBatchCommitErrorResponse(
+  c: RouteContext,
+  error: "duplicate" | "forbidden" | "not-found",
+  sourceFile: string,
+): Response {
+  if (error === "not-found") return c.json({ error, sourceFile }, 404);
+  if (error === "forbidden") return c.json({ error, sourceFile }, 403);
+  return c.json({ error: "duplicate source file", sourceFile }, 400);
 }
 
 /**
@@ -895,10 +1056,12 @@ async function prepareGsapMutationScript(
   | Response
   | {
       html: string;
+      beforeHtml: string;
       block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>;
     }
 > {
-  let html = readFileSync(res.absPath, "utf-8");
+  const beforeHtml = readFileSync(res.absPath, "utf-8");
+  let html = beforeHtml;
   let block = extractGsapScriptBlock(html);
   if (!block && (firstMutation.type === "add" || firstMutation.type === "add-with-keyframes")) {
     const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
@@ -935,7 +1098,7 @@ async function prepareGsapMutationScript(
     });
   }
   if (!block) return c.json({ error: "no GSAP script found in file" }, 400);
-  return { html, block };
+  return { html, beforeHtml, block };
 }
 
 async function applyGsapMutations(
@@ -947,7 +1110,7 @@ async function applyGsapMutations(
   if (!firstMutation) return c.json({ error: "mutations array required" }, 400);
   const prepared = await prepareGsapMutationScript(c, res, firstMutation);
   if (prepared instanceof Response) return prepared;
-  const { html, block } = prepared;
+  const { html, beforeHtml, block } = prepared;
 
   const initialScript = block.scriptText;
   const skippedSelectors = new Set<string>();
@@ -971,6 +1134,12 @@ async function applyGsapMutations(
   const changed = block.scriptText !== initialScript;
   const newHtml = changed ? block.replaceScript(block.scriptText) : html;
   let backupPath: string | null = null;
+  // Parsing can await lazy imports. Revalidate before EVERY successful response,
+  // including semantic no-ops: a stale no-op response would otherwise claim
+  // the old bytes and let the client keep a preview that missed a successor.
+  if (readFileSync(res.absPath, "utf-8") !== beforeHtml) {
+    return c.json({ error: "file changed during GSAP mutation", conflict: true }, 409);
+  }
   if (changed) {
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
@@ -983,7 +1152,7 @@ async function applyGsapMutations(
     changed,
     mutated: changed,
     parsed: parseGsapScriptAcorn(block.scriptText),
-    before: html,
+    before: beforeHtml,
     after: newHtml,
     scriptText: block.scriptText,
     path: res.filePath,
@@ -1950,6 +2119,31 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     });
   });
 
+  api.post("/projects/:id/file-mutations/patch-element-batches", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("batches" in body) ||
+      !Array.isArray(body.batches) ||
+      body.batches.length === 0 ||
+      !body.batches.every(isElementPatchBatchRequest)
+    ) {
+      return c.json({ error: "batches with sourceFile and patches required" }, 400);
+    }
+    const unsafeFields = findUnsafeElementPatchBatchValues(body.batches);
+    if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
+
+    const result = commitElementPatchBatches(project.dir, body.batches);
+    if ("error" in result) {
+      return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
+    }
+    return c.json(result);
+  });
+
   api.post("/projects/:id/file-mutations/patch-elements-batch/*", async (c) => {
     const ctx = await resolveFileMutationContext(c, adapter, "patch-elements-batch");
     if ("error" in ctx) return ctx.error;
@@ -1961,44 +2155,29 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       !body ||
       !Array.isArray(body.patches) ||
       body.patches.length === 0 ||
-      body.patches.some(
-        (patch) =>
-          !patch?.target || !Array.isArray(patch.operations) || patch.operations.length === 0,
-      )
+      !body.patches.every(isElementPatchRequest)
     ) {
       return c.json({ error: "patches with target and operations required" }, 400);
     }
-    const unsafeFields = body.patches.flatMap((patch) => findUnsafeDomPatchValues(patch));
+    const batch = { sourceFile: ctx.filePath, patches: body.patches };
+    const unsafeFields = findUnsafeElementPatchBatchValues([batch]);
     if (unsafeFields.length > 0) {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
-    let originalContent: string;
-    try {
-      originalContent = readFileSync(ctx.absPath, "utf-8");
-    } catch {
-      return c.json({ error: "not found" }, 404);
+    const result = commitElementPatchBatches(ctx.project.dir, [batch]);
+    if ("error" in result) {
+      return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
     }
-    const result = foldElementPatches(originalContent, body.patches);
-    if (result.content === originalContent) {
-      return c.json({
-        ok: true,
-        changed: false,
-        matched: result.matched,
-        content: originalContent,
-        path: ctx.filePath,
-      });
-    }
-    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
-    if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
-    writeFileSync(ctx.absPath, result.content, "utf-8");
+    const file = result.files[0];
+    if (!file) return c.json({ error: "empty element patch result" }, 500);
     return c.json({
       ok: true,
-      changed: true,
-      matched: result.matched,
-      content: result.content,
-      path: ctx.filePath,
-      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+      changed: file.changed,
+      matched: file.matched,
+      content: file.after,
+      path: file.sourceFile,
+      backupPath: file.backupPath,
     });
   });
 
@@ -2236,6 +2415,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
   // ── GSAP Mutations ──
 
+  api.get("/projects/:id/gsap-mutation-capabilities", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    return c.json({ atomicOwnershipPairs: true });
+  });
+
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
       mustExist: true,
@@ -2269,5 +2454,33 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       if (error) return error;
     }
     return applyGsapMutations(c, res, body.mutations);
+  });
+
+  // A failed multi-step GSAP transaction may restore only the exact bytes its
+  // mutation wrote. Keep compare + write in this synchronous server section so
+  // another request cannot land between a client-side check and the restore.
+  api.post("/projects/:id/gsap-mutation-rollback/*", async (c) => {
+    const res = await resolveProjectPath(
+      c,
+      adapter,
+      (id) => `/projects/${id}/gsap-mutation-rollback/`,
+      { mustExist: true },
+    );
+    if ("error" in res) return res.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      expected?: unknown;
+      restore?: unknown;
+    } | null;
+    if (!body || typeof body.expected !== "string" || typeof body.restore !== "string") {
+      return c.json({ error: "expected and restore contents required" }, 400);
+    }
+
+    const current = readFileSync(res.absPath, "utf-8");
+    if (current !== body.expected) {
+      return c.json({ ok: true, restored: false, conflict: true });
+    }
+    writeFileSync(res.absPath, body.restore, "utf-8");
+    return c.json({ ok: true, restored: true, conflict: false });
   });
 }

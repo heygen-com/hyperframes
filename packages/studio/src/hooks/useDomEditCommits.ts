@@ -28,7 +28,6 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { formatFieldsSuffix } from "./gsapScriptCommitHelpers";
-import { readProjectFileContent } from "../utils/studioFileHistory";
 
 // ── Helpers ──
 
@@ -67,9 +66,9 @@ function describeBatchPatchTarget(patch: DomEditPatchBatch["patches"][number]): 
 }
 
 /**
- * Surface server-reported unmatched patches. The matched subset already
- * persisted, so this must NOT throw (a throw would roll back applied state) —
- * warn and emit save-failure telemetry with a distinct reason instead.
+ * Surface server-reported unmatched patches. The server atomically refuses the
+ * whole multi-file gesture; the caller uses `durable: false` to roll back and
+ * reload, so report the refusal without turning it into a second failure.
  */
 function reportUnmatchedBatchPatches(batch: DomEditPatchBatch, matched: boolean[]): void {
   const unmatchedIds = batch.patches
@@ -78,7 +77,7 @@ function reportUnmatchedBatchPatches(batch: DomEditPatchBatch, matched: boolean[
   if (unmatchedIds.length === 0) return;
   console.warn(
     `[studio] z-index reorder: server could not match ${unmatchedIds.length} patch target(s) in ` +
-      `${batch.sourceFile} (their z-order will revert on reload):`,
+      `${batch.sourceFile} (the whole z-order gesture will revert on reload):`,
     unmatchedIds.join(", "),
   );
   trackStudioSaveFailure({
@@ -89,40 +88,95 @@ function reportUnmatchedBatchPatches(batch: DomEditPatchBatch, matched: boolean[
   });
 }
 
-async function patchElementBatch(projectId: string, batch: DomEditPatchBatch) {
-  const before = await readProjectFileContent(projectId, batch.sourceFile);
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-elements-batch/${encodeURIComponent(batch.sourceFile)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patches: batch.patches }),
-    },
-  );
-  if (!response.ok) {
-    const rejection = await readErrorResponseBody(response);
-    throw new StudioSaveHttpError(formatPatchRejectionMessage(rejection), response.status);
+interface AtomicElementPatchFile {
+  sourceFile: string;
+  changed: boolean;
+  matched?: boolean[];
+  before: string;
+  after: string;
+}
+
+class AtomicElementPatchConvergenceError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AtomicElementPatchConvergenceError";
   }
-  const result = (await response.json()) as {
-    changed?: boolean;
-    matched?: boolean[];
-    content?: string;
-  };
-  if (Array.isArray(result.matched)) reportUnmatchedBatchPatches(batch, result.matched);
-  return {
-    sourceFile: batch.sourceFile,
-    changed: result.changed === true,
-    // Skip-reload safety: the persist is only provably in sync with the live
-    // DOM when the server confirmed EVERY patch target matched. A missing /
-    // short matched[] is treated as unknown (false) so the caller falls back
-    // to reloading rather than silently diverging from disk.
-    allMatched:
-      Array.isArray(result.matched) &&
-      result.matched.length === batch.patches.length &&
-      result.matched.every(Boolean),
-    before,
-    after: typeof result.content === "string" ? result.content : before,
-  };
+}
+
+// Keep the atomic response contract in one guard so callers do not compose validity.
+// fallow-ignore-next-line complexity
+function isAtomicElementPatchFile(value: unknown): value is AtomicElementPatchFile {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sourceFile" in value &&
+    typeof value.sourceFile === "string" &&
+    "changed" in value &&
+    typeof value.changed === "boolean" &&
+    (!("matched" in value) ||
+      (Array.isArray(value.matched) &&
+        value.matched.every((matched) => typeof matched === "boolean"))) &&
+    "before" in value &&
+    typeof value.before === "string" &&
+    "after" in value &&
+    typeof value.after === "string" &&
+    value.changed === (value.before !== value.after)
+  );
+}
+
+// This is the single client owner for dispatching and validating the aggregate
+// atomic endpoint. Splitting validation from the request would weaken that wire contract.
+// fallow-ignore-next-line complexity
+async function patchElementBatches(projectId: string, batches: DomEditPatchBatch[]) {
+  const body = JSON.stringify({ batches });
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/file-mutations/patch-element-batches`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      },
+    );
+    if (!response.ok) {
+      const rejection = await readErrorResponseBody(response);
+      throw new StudioSaveHttpError(formatPatchRejectionMessage(rejection), response.status);
+    }
+    const result: unknown = await response.json().catch(() => null);
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      !("durable" in result) ||
+      typeof result.durable !== "boolean" ||
+      !("files" in result) ||
+      !Array.isArray(result.files) ||
+      result.files.length !== batches.length ||
+      !result.files.every(isAtomicElementPatchFile) ||
+      (!result.durable && result.files.some((file) => file.changed))
+    ) {
+      throw new StudioSaveHttpError("Invalid atomic element patch response", 502);
+    }
+    const files = result.files.map((file, index) => {
+      const batch = batches[index];
+      const matched = file.matched ?? [];
+      if (
+        !batch ||
+        file.sourceFile !== batch.sourceFile ||
+        (matched.length !== 0 && matched.length !== batch.patches.length)
+      ) {
+        throw new StudioSaveHttpError("Invalid atomic element patch response", 502);
+      }
+      reportUnmatchedBatchPatches(batch, matched);
+      return {
+        ...file,
+        matched,
+        allMatched: matched.length === batch.patches.length && matched.every(Boolean),
+      };
+    });
+    return { durable: result.durable, files };
+  } catch (error) {
+    throw new AtomicElementPatchConvergenceError(getErrorDetail(error), { cause: error });
+  }
 }
 
 /**
@@ -382,49 +436,59 @@ export function useDomEditCommits({
 
   const commitDomEditPatchBatches: CommitDomEditPatchBatches = useCallback(
     (batches, options) =>
-      queueDomEditSave(async () => {
-        const pid = projectIdRef.current;
-        if (!pid) throw new Error("No active project");
-        const unsafeFields = batches.flatMap((batch) =>
-          batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
-        );
-        if (unsafeFields.length > 0) {
-          showToast("Couldn't save edit because it contains invalid layout values", "error");
-          throw new DomEditPersistUnsafeValueError(
-            `DOM patch contains unsafe values: ${formatUnsafeFieldList(unsafeFields)}`,
-            { alreadyToasted: true },
+      queueDomEditSave(
+        // One queued transaction owns validation, persistence, history, reload,
+        // and its durable result; splitting those phases risks partial commits.
+        // fallow-ignore-next-line complexity
+        async () => {
+          const pid = projectIdRef.current;
+          if (!pid) throw new Error("No active project");
+          const unsafeFields = batches.flatMap((batch) =>
+            batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
           );
-        }
+          if (unsafeFields.length > 0) {
+            showToast("Couldn't save edit because it contains invalid layout values", "error");
+            throw new DomEditPersistUnsafeValueError(
+              `DOM patch contains unsafe values: ${formatUnsafeFieldList(unsafeFields)}`,
+              { alreadyToasted: true },
+            );
+          }
 
-        domEditSaveTimestampRef.current = Date.now();
-        const results = await Promise.all(batches.map((batch) => patchElementBatch(pid, batch)));
-        const allMatched = results.every((result) => result.allMatched);
-        const files = Object.fromEntries(
-          results
-            .filter((result) => result.changed)
-            .map((result) => [result.sourceFile, { before: result.before, after: result.after }]),
-        );
-        if (Object.keys(files).length === 0) return { allMatched, changed: false };
-        await editHistory.recordEdit({
-          label: options.label,
-          kind: "manual",
-          coalesceKey: options.coalesceKey,
-          coalesceMs: options.coalesceMs,
-          files,
-        });
-        forceReloadSdkSession?.();
-        // A z-only reorder already applied its inline styles to the live iframe
-        // DOM (and the store) synchronously, so remounting the iframe here only
-        // produces a visible blink. Skip the reload when the caller asked for it
-        // AND the persist is provably in sync: style-only ops, every target
-        // matched. Any unmatched patch means the live DOM now shows state disk
-        // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
-        // reload is independently suppressed by domEditSaveTimestampRef above.)
-        const skipSafe =
-          options.skipReload === true && batchesAreInlineStyleOnly(batches) && allMatched;
-        if (!skipSafe) reloadPreview();
-        return { allMatched, changed: true };
-      }).catch((error) => {
+          domEditSaveTimestampRef.current = Date.now();
+          const atomicResult = await patchElementBatches(pid, batches);
+          const allMatched =
+            atomicResult.durable && atomicResult.files.every((result) => result.allMatched);
+          const files = Object.fromEntries(
+            atomicResult.files
+              .filter((result) => result.changed)
+              .map((result) => [result.sourceFile, { before: result.before, after: result.after }]),
+          );
+          const changed = Object.keys(files).length > 0;
+          if (changed) {
+            await editHistory.recordEdit({
+              label: options.label,
+              kind: "manual",
+              coalesceKey: options.coalesceKey,
+              coalesceMs: options.coalesceMs,
+              files,
+            });
+            forceReloadSdkSession?.();
+          }
+          const durable = allMatched;
+          // A z-only reorder already applied its inline styles to the live iframe
+          // DOM (and the store) synchronously, so remounting the iframe here only
+          // produces a visible blink. Skip the reload when the caller asked for it
+          // AND the persist is provably in sync: style-only ops, every target
+          // matched. Any unmatched patch means the live DOM now shows state disk
+          // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
+          // reload is independently suppressed by domEditSaveTimestampRef above.)
+          const skipSafe =
+            options.skipReload === true && batchesAreInlineStyleOnly(batches) && durable;
+          if (!durable || (changed && !skipSafe)) reloadPreview();
+          return { durable, allMatched, changed };
+        },
+      ).catch((error) => {
+        if (error instanceof AtomicElementPatchConvergenceError) reloadPreview();
         const alreadyToasted =
           (error instanceof StudioSaveHttpError ||
             error instanceof DomEditPersistUnsafeValueError) &&

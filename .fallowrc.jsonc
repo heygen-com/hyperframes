@@ -499,6 +499,31 @@
       // scopeRootSelectors handling shifts lines and re-flags both.
       "packages/core/src/compiler/inlineSubCompositions.ts",
       "packages/core/src/compiler/compositionScoping.test.ts",
+      // useCanvasZOrderTimelineMirror.test.tsx: independent gesture cases repeat
+      // the minimal hook/store harness so rapid and rejected z writes cannot
+      // leak state through a shared fixture.
+      "packages/studio/src/components/nle/useCanvasZOrderTimelineMirror.test.tsx",
+      // timelineTimingSync.test.ts: ownership, rollback, transport, and preview
+      // convergence cases deliberately keep their server stubs and assertions
+      // local; extracting the repeated arrange/act/assert shape would couple
+      // otherwise independent failure-domain regressions.
+      "packages/studio/src/hooks/timelineTimingSync.test.ts",
+      // useElementLifecycleOps.test.tsx: the reveal and atomic multi-file cases
+      // repeat a small render/persist harness to keep each transaction's setup,
+      // durable outcome, and rollback assertions visible together.
+      "packages/studio/src/hooks/useElementLifecycleOps.test.tsx",
+      // timelineClipDragCommit.test.ts: drag permutations are self-contained
+      // arrange/act/assert scenarios; the repeated clip/file fixture makes each
+      // lane and timing outcome readable without shared mutable setup.
+      "packages/studio/src/player/components/timelineClipDragCommit.test.ts",
+      // timelineZMirror.test.ts: mirror acceptance/refusal cases repeat their
+      // compact lane fixture so each z-to-lane decision remains independently
+      // understandable and cannot inherit state from another case.
+      "packages/studio/src/player/components/timelineZMirror.test.ts",
+      // gsapUndoRestore.test.ts: soft/full restore cases keep the serialized and
+      // live DOM snapshots beside their assertions; sharing those short fixtures
+      // would obscure the exact script/identity difference under test.
+      "packages/studio/src/utils/gsapUndoRestore.test.ts",
     ],
   },
   "health": {

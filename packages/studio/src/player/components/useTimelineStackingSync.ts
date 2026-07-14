@@ -37,7 +37,7 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
           id: el.domId ?? el.id,
           selector: el.selector,
           selectorIndex: el.selectorIndex,
-          sourceFile: el.sourceFile,
+          sourceFile: el.sourceFile ?? zSyncActiveCompPath ?? "index.html",
         },
         zSyncActiveCompPath,
       );
@@ -61,7 +61,7 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
 
   const applyStackingPatches = useCallback(
     (patches: StackingPatch[], coalesceKey?: string) => {
-      if (!handleDomZIndexReorderCommit) return;
+      if (!handleDomZIndexReorderCommit) return Promise.resolve();
       const entries = patches.flatMap((p) => {
         const el = expandedElementsRef.current.find((e) => (e.key ?? e.id) === p.key);
         const node = el && resolveIframeElement(el);
@@ -82,7 +82,9 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
       });
       // Forward the drag-commit's shared coalesce key so the z-reorder history
       // entry merges with the lane change's move entry into one undo step.
-      if (entries.length) handleDomZIndexReorderCommit(entries, coalesceKey);
+      return entries.length
+        ? handleDomZIndexReorderCommit(entries, coalesceKey).then(() => undefined)
+        : Promise.resolve();
     },
     [handleDomZIndexReorderCommit, resolveIframeElement, zSyncActiveCompPath, expandedElementsRef],
   );

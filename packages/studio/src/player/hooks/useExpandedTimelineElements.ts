@@ -215,6 +215,7 @@ function domSiblingClips(
         parentCompositionId: host.id ?? null,
         compositionSrc: host.compositionSrc ?? null,
         assetUrl: null,
+        stackingContextId: c.stackingContextId,
       }),
     );
 }

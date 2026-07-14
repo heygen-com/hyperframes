@@ -19,23 +19,36 @@ afterEach(() => {
 
 /**
  * Stub fetch: `/files/` reads return contents from the queue (repeating the
- * last entry), the GSAP-mutation endpoint answers with `gsapBody` (a thrown
- * Error rejects the call with a non-ok response).
+ * last entry), the GSAP-mutation endpoint owns the first/last contents as its
+ * atomic before/after pair, and rollback succeeds conditionally.
  */
-function stubFetch(fileContents: string[], gsapBody: unknown | Error) {
-  let readIndex = 0;
+function stubFetch(
+  fileContents: string[],
+  gsapBody: unknown | Error,
+  supportsOwnedMutations = true,
+  gsapStatus = 200,
+) {
   const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
     const url = requestUrl(input);
+    if (url.includes("/gsap-mutation-capabilities")) {
+      return supportsOwnedMutations
+        ? jsonResponse({ atomicOwnershipPairs: true })
+        : new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    }
     if (url.includes("/files/")) {
-      const content = fileContents[Math.min(readIndex, fileContents.length - 1)];
-      readIndex += 1;
-      return jsonResponse({ content });
+      return jsonResponse({ content: fileContents.at(-1) });
+    }
+    if (url.includes("/gsap-mutation-rollback/")) {
+      return jsonResponse({ ok: true, restored: true, conflict: false });
     }
     if (url.includes("/gsap-mutations/")) {
       if (gsapBody instanceof Error) {
         return new Response(JSON.stringify({ error: gsapBody.message }), { status: 500 });
       }
-      return jsonResponse(gsapBody);
+      return new Response(JSON.stringify(gsapBody), {
+        status: gsapStatus,
+        headers: { "content-type": "application/json" },
+      });
     }
     throw new Error(`Unexpected fetch: ${url}`);
   });
@@ -60,12 +73,13 @@ function clipFallbackInput(overrides: {
 }
 
 describe("finishClipTimingFallback failure domains", () => {
-  it("still syncs the preview when the history-fold step fails after a successful mutation", async () => {
-    // Mutation succeeds (server rewrite already on disk), but recordEdit (the
-    // fold step) throws. The preview MUST still be synced — otherwise stale
-    // GSAP positions stay on screen. iframe=null makes the sync observable as
-    // one reloadPreview() call.
-    stubFetch(["<before>", "<after>"], { mutated: true, scriptText: "tl.to()" });
+  it("rolls back and skips preview sync when history recording fails", async () => {
+    stubFetch(["<before>", "<before>", "<after>"], {
+      mutated: true,
+      scriptText: "tl.to()",
+      before: "<before>",
+      after: "<after>",
+    });
     const reloadPreview = vi.fn();
     const foldError = new Error("history fold failed");
     const recordEdit = vi.fn(async () => {
@@ -76,12 +90,18 @@ describe("finishClipTimingFallback failure domains", () => {
     await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
 
     expect(recordEdit).toHaveBeenCalledTimes(1);
-    expect(reloadPreview).toHaveBeenCalledTimes(1);
-    // The fold error is surfaced, not swallowed silently.
+    expect(reloadPreview).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("GSAP"), foldError);
+    const rollback = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => requestUrl(input).includes("/gsap-mutation-rollback/"));
+    expect(JSON.parse(String(rollback?.[1]?.body))).toEqual({
+      expected: "<after>",
+      restore: "<before>",
+    });
   });
 
-  it("skips the preview sync when the MUTATION itself fails", async () => {
+  it("reloads when the mutation endpoint fails after dispatch", async () => {
     stubFetch(["<before>"], new Error("mutation blew up"));
     const reloadPreview = vi.fn();
     const recordEdit = vi.fn(async () => {});
@@ -90,12 +110,77 @@ describe("finishClipTimingFallback failure domains", () => {
     await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
 
     expect(recordEdit).not.toHaveBeenCalled();
-    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledTimes(1);
   });
 
+  it("reloads when a successful response omits the exact ownership pair", async () => {
+    stubFetch(["<possible-write>"], {});
+    const reloadPreview = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
+
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("GSAP"),
+      expect.objectContaining({ message: "Invalid owned GSAP mutation response" }),
+    );
+  });
+
+  it("reloads when the mutation transport fails after dispatch", async () => {
+    const transportError = new TypeError("connection reset");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = requestUrl(input);
+        if (url.includes("/gsap-mutation-capabilities")) {
+          return jsonResponse({ atomicOwnershipPairs: true });
+        }
+        if (url.includes("/gsap-mutations/")) throw transportError;
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+    const reloadPreview = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
+
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("GSAP"),
+      expect.objectContaining({ cause: transportError }),
+    );
+  });
+
+  it("reloads the preview when the mutation endpoint reports an ownership conflict", async () => {
+    stubFetch(
+      ["<successor>"],
+      { error: "file changed during GSAP mutation", conflict: true },
+      true,
+      409,
+    );
+    const reloadPreview = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
+
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
   it("records the fold and syncs on the happy path", async () => {
-    stubFetch(["<before>", "<after>"], { mutated: true, scriptText: "tl.to()" });
+    stubFetch(["<before>", "<before>", "<after>"], {
+      mutated: true,
+      scriptText: "tl.to()",
+      before: "<before>",
+      after: "<after>",
+    });
     const reloadPreview = vi.fn();
     const recordEdit = vi.fn(async () => {});
 
@@ -103,6 +188,51 @@ describe("finishClipTimingFallback failure domains", () => {
 
     expect(recordEdit).toHaveBeenCalledTimes(1);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("preflights ownership support before sending a mutation", async () => {
+    const fetchMock = stubFetch(["<before>"], { mutated: true, scriptText: null }, false);
+    const reloadPreview = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
+
+    expect(
+      fetchMock.mock.calls.some(([input]) => requestUrl(input).includes("/gsap-mutations/")),
+    ).toBe(false);
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("GSAP"),
+      expect.objectContaining({ message: "Server does not support owned GSAP mutations" }),
+    );
+  });
+
+  it("reloads and surfaces a server that violates its advertised ownership contract", async () => {
+    const fetchMock = stubFetch(["<after>"], { mutated: true, scriptText: null });
+    const reloadPreview = vi.fn();
+    const recordEdit = vi.fn(async () => {});
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await finishClipTimingFallback(clipFallbackInput({ reloadPreview, recordEdit }));
+
+    expect(
+      fetchMock.mock.calls.some(([input]) => requestUrl(input).includes("/gsap-mutations/")),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        requestUrl(input).includes("/gsap-mutation-rollback/"),
+      ),
+    ).toBe(false);
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("GSAP"),
+      expect.objectContaining({
+        message: "Invalid owned GSAP mutation response",
+      }),
+    );
   });
 });
 
@@ -131,7 +261,12 @@ describe("fetch URL encoding (user-influenced segments)", () => {
   });
 
   it("URI-encodes the projectId in GSAP mutation calls", async () => {
-    const fetchMock = stubFetch([], { mutated: false, scriptText: null });
+    const fetchMock = stubFetch([], {
+      mutated: false,
+      scriptText: null,
+      before: "<html>",
+      after: "<html>",
+    });
     await shiftGsapPositions("p one", "scenes/intro.html", "clip", 1);
     expect(requestUrl(fetchMock.mock.calls[0]![0])).toBe(
       "/api/projects/p%20one/gsap-mutations/scenes%2Fintro.html",
@@ -250,6 +385,29 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
     expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
   });
 
+  it("server-confirmed no-op with an unchanged script rebinds without executing any script", async () => {
+    stubFetch([], {
+      mutated: false,
+      scriptText: LIVE_SCRIPT,
+      before: "<same>",
+      after: "<same>",
+    });
+    const { iframe, contentWindow, container, scriptEls, appendedScripts } = buildLivePreviewIframe(
+      [LIVE_SCRIPT, LIVE_CAPTION_SCRIPT],
+    );
+    const reloadPreview = vi.fn();
+
+    await finishClipTimingFallback({
+      ...clipFallbackInput({ reloadPreview, recordEdit: vi.fn(async () => {}) }),
+      iframe,
+    });
+
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(appendedScripts).toHaveLength(0);
+    expect(scriptEls.every((script) => container.contains(script))).toBe(true);
+    expect(contentWindow.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+  });
+
   it("comp with ZERO GSAP scripts also rebinds in place (previously full-reloaded)", async () => {
     // The rebind hook is installed by the runtime unconditionally — it does not
     // depend on GSAP — so a script-less comp gets the flashless path too.
@@ -287,7 +445,12 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
     // mutated:true with scriptText:null (older server) means the live script is
     // now STALE relative to disk — a rebind against it would show wrong
     // positions.
-    stubFetch(["<before>", "<after>"], { mutated: true, scriptText: null });
+    stubFetch(["<before>", "<before>", "<after>"], {
+      mutated: true,
+      scriptText: null,
+      before: "<before>",
+      after: "<after>",
+    });
     const { iframe, contentWindow, appendedScripts } = buildLivePreviewIframe();
     const reloadPreview = vi.fn();
 
@@ -304,9 +467,11 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
   it("mutated WITH a rewritten script keeps the script-swap soft path (not rebind-only)", async () => {
     // A genuine rewrite must re-run the REWRITTEN script — the rebind-only
     // shortcut is reserved for the no-op case where every script is unchanged.
-    stubFetch(["<before>", "<after>"], {
+    stubFetch(["<before>", "<before>", "<after>"], {
       mutated: true,
       scriptText: 'window.__timelines["root"] = tl2;',
+      before: "<before>",
+      after: "<after>",
     });
     const { iframe, contentWindow, appendedScripts } = buildLivePreviewIframe();
     const reloadPreview = vi.fn();
@@ -378,37 +543,98 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
   });
 });
 
-describe("foldGsapMutationIntoHistory — batch rollback (via finishGroupTimingGsapFallback)", () => {
-  it("a late per-clip failure restores every touched file to its snapshot", async () => {
-    // Custom fetch: reads return per-path CURRENT content (mutated after clip 1
-    // "succeeds"), and the rollback PUT is captured.
-    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
-    const puts: Array<{ path: string; body: string }> = [];
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+function installOwnedFileServer(
+  contents: Map<string, string>,
+  options: {
+    failReadAt?: number;
+    failRollback?: boolean;
+    beforeRollback?: (path: string) => void;
+  } = {},
+) {
+  let reads = 0;
+  const rollbacks: Array<{ path: string; expected: string; restore: string; conflict: boolean }> =
+    [];
+  vi.stubGlobal(
+    "fetch",
+    // One in-memory server fixture owns capability, file, and CAS rollback
+    // routes so each transaction test observes a coherent content map.
+    // fallow-ignore-next-line complexity
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = requestUrl(input);
-      const path = decodeURIComponent(url.split("/files/")[1] ?? "");
-      if (url.includes("/files/") && init?.method === "PUT") {
-        puts.push({ path, body: String(init.body) });
-        contents.set(path, String(init.body));
-        return new Response(null, { status: 200 });
+      if (url.includes("/gsap-mutation-capabilities")) {
+        return jsonResponse({ atomicOwnershipPairs: true });
       }
       if (url.includes("/files/")) {
+        reads += 1;
+        if (reads === options.failReadAt) throw new Error("verification read failed");
+        const path = decodeURIComponent(url.split("/files/")[1] ?? "");
         return jsonResponse({ content: contents.get(path) ?? "" });
       }
+      if (url.includes("/gsap-mutation-rollback/")) {
+        const path = decodeURIComponent(url.split("/gsap-mutation-rollback/")[1] ?? "");
+        const body = JSON.parse(String(init?.body)) as { expected: string; restore: string };
+        if (options.failRollback) {
+          return new Response(JSON.stringify({ error: "rollback unavailable" }), { status: 503 });
+        }
+        options.beforeRollback?.(path);
+        const conflict = contents.get(path) !== body.expected;
+        if (!conflict) contents.set(path, body.restore);
+        rollbacks.push({ path, ...body, conflict });
+        return jsonResponse({ ok: true, restored: !conflict, conflict });
+      }
       throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    }),
+  );
+  return { rollbacks, readCount: () => reads };
+}
 
-    const { iframe } = buildLivePreviewIframe();
-    const reloadPreview = vi.fn();
-    const element = { sourceFile: "index.html" } as TimelineElement;
-    const boom = new Error("clip 2 rewrite failed");
+function ownedMutation(contents: Map<string, string>, path: string, before: string, after: string) {
+  contents.set(path, after);
+  return { mutated: true, scriptText: null, before, after };
+}
 
+describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
+  const element = { sourceFile: "index.html" } as TimelineElement;
+
+  it("reverse-rolls back every successful same-file step after a late failure", async () => {
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    const server = installOwnedFileServer(contents);
     let clipIndex = 0;
+
     await finishGroupTimingGsapFallback({
       projectId: "p1",
-      iframe,
-      reloadPreview,
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview: vi.fn(),
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: vi.fn(async () => {}) as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => {
+        clipIndex += 1;
+        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1");
+        if (clipIndex === 2) return ownedMutation(contents, "index.html", "STEP-1", "STEP-2");
+        throw new Error("late failure");
+      },
+    });
+
+    expect(server.rollbacks).toEqual([
+      { path: "index.html", expected: "STEP-2", restore: "STEP-1", conflict: false },
+      { path: "index.html", expected: "STEP-1", restore: "ORIGINAL", conflict: false },
+    ]);
+    expect(contents.get("index.html")).toBe("ORIGINAL");
+  });
+
+  it("uses the endpoint's atomic before when a foreign write precedes mutation", async () => {
+    const contents = new Map<string, string>([["index.html", "FOREIGN"]]);
+    const server = installOwnedFileServer(contents);
+    let clipIndex = 0;
+
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview: vi.fn(),
       label: "Move timeline clips",
       errorLabel: "Failed to shift GSAP positions",
       recordEdit: vi.fn(async () => {}) as never,
@@ -418,16 +644,177 @@ describe("foldGsapMutationIntoHistory — batch rollback (via finishGroupTimingG
       mutateChange: async () => {
         clipIndex += 1;
         if (clipIndex === 1) {
-          // Clip 1 "succeeded": its rewrite landed on disk.
-          contents.set("index.html", "MUTATED-BY-CLIP-1");
-          return { mutated: true, scriptText: null };
+          return ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+OWNED");
         }
-        throw boom; // clip 2 fails AFTER clip 1's write
+        throw new Error("late failure");
       },
     });
 
-    // The batch rolled the file back to the pre-batch snapshot.
-    expect(puts).toEqual([{ path: "index.html", body: "ORIGINAL" }]);
+    expect(server.readCount()).toBe(0);
+    expect(server.rollbacks[0]).toEqual({
+      path: "index.html",
+      expected: "FOREIGN+OWNED",
+      restore: "FOREIGN",
+      conflict: false,
+    });
+    expect(contents.get("index.html")).toBe("FOREIGN");
+  });
+
+  it("server CAS preserves a successor that arrives as rollback starts", async () => {
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    const server = installOwnedFileServer(contents, {
+      beforeRollback: () => contents.set("index.html", "SUCCESSOR"),
+    });
+    let clipIndex = 0;
+
+    const reloadPreview = vi.fn();
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview,
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: vi.fn(async () => {}) as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => {
+        clipIndex += 1;
+        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "OWNED");
+        throw new Error("late failure");
+      },
+    });
+
+    expect(server.rollbacks[0]?.conflict).toBe(true);
+    expect(contents.get("index.html")).toBe("SUCCESSOR");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads when a failed rollback request leaves owned bytes without history", async () => {
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    installOwnedFileServer(contents, { failRollback: true });
+    const reloadPreview = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    let clipIndex = 0;
+
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview,
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: vi.fn(async () => {}) as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => {
+        clipIndex += 1;
+        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "OWNED");
+        throw new Error("late failure");
+      },
+    });
+
+    expect(contents.get("index.html")).toBe("OWNED");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("GSAP"),
+      expect.objectContaining({ message: "Failed to restore index.html" }),
+    );
+  });
+
+  it("records first owned before and last owned after without a client snapshot", async () => {
+    const contents = new Map<string, string>([["index.html", "FOREIGN"]]);
+    const server = installOwnedFileServer(contents);
+    const recordEdit = vi.fn(async () => {});
+
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview: vi.fn(),
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: recordEdit as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async (_change, _path) => {
+        const before = contents.get("index.html")!;
+        const after = before === "FOREIGN" ? "FOREIGN+ONE" : "FOREIGN+ONE+TWO";
+        return ownedMutation(contents, "index.html", before, after);
+      },
+    });
+
+    expect(server.readCount()).toBe(1); // final ownership verification only
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: {
+          "index.html": { before: "FOREIGN", after: "FOREIGN+ONE+TWO" },
+        },
+      }),
+    );
+  });
+
+  it("rejects a discontinuous same-file chain without claiming foreign bytes", async () => {
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    const server = installOwnedFileServer(contents);
+    const recordEdit = vi.fn(async () => {});
+    let clipIndex = 0;
+
+    const reloadPreview = vi.fn();
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview,
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: recordEdit as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => {
+        clipIndex += 1;
+        if (clipIndex === 1) return ownedMutation(contents, "index.html", "ORIGINAL", "STEP-1");
+        return ownedMutation(contents, "index.html", "FOREIGN", "FOREIGN+STEP-2");
+      },
+    });
+
+    expect(recordEdit).not.toHaveBeenCalled();
+    expect(server.rollbacks).toEqual([
+      {
+        path: "index.html",
+        expected: "FOREIGN+STEP-2",
+        restore: "FOREIGN",
+        conflict: false,
+      },
+      { path: "index.html", expected: "STEP-1", restore: "ORIGINAL", conflict: true },
+    ]);
+    expect(contents.get("index.html")).toBe("FOREIGN");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back the owned output when the history verification reread fails", async () => {
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    const server = installOwnedFileServer(contents, { failReadAt: 1 });
+
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe: buildLivePreviewIframe().iframe,
+      reloadPreview: vi.fn(),
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: vi.fn(async () => {}) as never,
+      activeCompPath: "index.html",
+      changes: [{ element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => ownedMutation(contents, "index.html", "ORIGINAL", "OWNED"),
+    });
+
+    expect(server.rollbacks[0]).toEqual({
+      path: "index.html",
+      expected: "OWNED",
+      restore: "ORIGINAL",
+      conflict: false,
+    });
     expect(contents.get("index.html")).toBe("ORIGINAL");
   });
 });

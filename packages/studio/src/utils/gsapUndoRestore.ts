@@ -21,27 +21,31 @@ export interface UndoRestoreFile {
 }
 
 /**
- * Identity for the soft diff: `id` when present, else `data-hf-id`. Nearly
+ * Identity for the soft diff: `data-hf-id` when present, else `id`. Nearly
  * every studio-editable element carries one of the two — z-order commits and
  * timeline patches target by id OR hf-id OR stable selector, and hf-ids are
- * stamped by the SDK — so keying on both keeps selector-targeted clips (no
- * DOM id) inside soft-undo's reach instead of forcing a full reload.
+ * stamped uniquely by the SDK — so preferring them keeps duplicate authored
+ * ids distinct and selector-targeted clips inside soft-undo's reach.
  */
 function elementIdentityKey(el: Element): string | null {
-  const id = el.getAttribute("id");
-  if (id) return `id:${id}`;
   const hfId = el.getAttribute("data-hf-id");
   if (hfId) return `hf:${hfId}`;
+  const id = el.getAttribute("id");
+  if (id) return `id:${id}`;
   return null;
 }
 
 const IDENTITY_SELECTOR = "[id], [data-hf-id]";
 
-function identityElementMap(doc: Document): Map<string, Element> {
+function identityElementMap(doc: Document): Map<string, Element> | null {
   const map = new Map<string, Element>();
   for (const el of doc.querySelectorAll(IDENTITY_SELECTOR)) {
     const key = elementIdentityKey(el);
-    if (key) map.set(key, el);
+    if (!key) continue;
+    // Ambiguous identity must full-reload; silently overwriting would restore
+    // one element's attributes onto another element sharing the same key.
+    if (map.has(key)) return null;
+    map.set(key, el);
   }
   return map;
 }
@@ -103,6 +107,7 @@ export function diffSoftReloadableRestore(
   }
   const prevByKey = identityElementMap(prevDoc);
   const nextByKey = identityElementMap(nextDoc);
+  if (!prevByKey || !nextByKey) return null;
   // A different identity set means an element was added or removed (e.g. a
   // split, a delete) — structural, so soft-reload can't express it.
   if (prevByKey.size !== nextByKey.size) return null;
@@ -129,10 +134,19 @@ function syncElementAttributes(target: Element, source: Element): void {
   }
 }
 
-/** Resolve an identity key (`id:` / `hf:` prefixed) in the live document. */
-function findLiveElementByKey(doc: Document, key: string): Element | null {
-  if (key.startsWith("id:")) return doc.getElementById(key.slice(3));
-  return doc.querySelector(`[data-hf-id="${CSS.escape(key.slice(3))}"]`);
+function readGsapScriptTexts(html: string): string[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return findGsapScriptElements(doc).map((script) => script.textContent ?? "");
+}
+
+function hasAmbiguousGsapScriptChange(previous: string, restored: string): boolean {
+  const previousScripts = readGsapScriptTexts(previous);
+  const restoredScripts = readGsapScriptTexts(restored);
+  if (previousScripts.length <= 1 && restoredScripts.length <= 1) return false;
+  return (
+    previousScripts.length !== restoredScripts.length ||
+    previousScripts.some((script, index) => script !== restoredScripts[index])
+  );
 }
 
 /**
@@ -195,16 +209,36 @@ export function applyUndoRestoreToPreview(
     reloadPreview();
     return "full";
   }
-
-  // Sync each changed element's attributes onto the live DOM from the restored
-  // markup, so the runtime's seek-reapply (which reads inline offset props off
-  // the live element) folds the REVERTED values, not the stale current ones.
-  const restoredByKey = identityElementMap(new DOMParser().parseFromString(restored, "text/html"));
-  for (const key of diff.changedElementKeys) {
-    const liveEl = findLiveElementByKey(doc, key);
-    const restoredEl = restoredByKey.get(key);
-    if (liveEl && restoredEl) syncElementAttributes(liveEl, restoredEl);
+  // A serialized snapshot cannot identify which of several GSAP scripts owns a
+  // rewrite. Keep attribute-only restores soft when every script byte is equal,
+  // but fail closed before touching the live DOM when an ambiguous script changed.
+  if (hasAmbiguousGsapScriptChange(previous, restored)) {
+    reloadPreview();
+    return "full";
   }
+
+  // Resolve every changed pair BEFORE touching the live DOM. A missing target
+  // makes the soft restore incomplete, so escalate without leaving a partially
+  // restored preview behind.
+  const liveByKey = identityElementMap(doc);
+  const restoredByKey = identityElementMap(new DOMParser().parseFromString(restored, "text/html"));
+  if (!liveByKey || !restoredByKey) {
+    reloadPreview();
+    return "full";
+  }
+  const changedTargets: Array<{ live: Element; restored: Element }> = [];
+  for (const key of diff.changedElementKeys) {
+    const liveEl = liveByKey.get(key);
+    const restoredEl = restoredByKey.get(key);
+    if (!liveEl || !restoredEl) {
+      reloadPreview();
+      return "full";
+    }
+    changedTargets.push({ live: liveEl, restored: restoredEl });
+  }
+  // Sync each changed element's attributes onto the live DOM from the restored
+  // markup, so the runtime's seek-reapply reads the reverted values.
+  for (const target of changedTargets) syncElementAttributes(target.live, target.restored);
 
   const restoredScript = extractGsapScriptText(restored);
   const previousScript = extractGsapScriptText(previous);

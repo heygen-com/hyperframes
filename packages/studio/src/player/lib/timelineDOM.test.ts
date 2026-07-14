@@ -150,6 +150,39 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
 });
 
 describe("createImplicitTimelineLayersFromDOM — hfId from data-hf-id", () => {
+  it("uses the runtime root paint scope for implicit siblings of manifest clips", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="timed" data-start="0" data-duration="5"></div>
+        <div id="implicit"></div>
+      </div>
+    `);
+    const timedHost = doc.getElementById("timed");
+    const timed = createTimelineElementFromManifestClip({
+      clip: {
+        id: "timed",
+        label: "Timed",
+        start: 0,
+        duration: 5,
+        track: 0,
+        stackingContextId: "css:root",
+        kind: "element",
+        tagName: "div",
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: timedHost,
+    });
+    const implicit = createImplicitTimelineLayersFromDOM(doc, 5, [timed])[0];
+
+    expect(implicit?.stackingContextId).toBe("css:root");
+    expect(implicit?.stackingContextId).toBe(timed.stackingContextId);
+  });
+
   it("harvests hfId from an implicit layer child that has data-hf-id", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">

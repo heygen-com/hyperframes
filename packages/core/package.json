@@ -113,6 +113,12 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/stacking-context": {
+      "bun": "./src/runtime/stackingContext.ts",
+      "node": "./dist/runtime/stackingContext.js",
+      "import": "./src/runtime/stackingContext.ts",
+      "types": "./src/runtime/stackingContext.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
@@ -316,6 +322,10 @@
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
+      },
+      "./runtime/stacking-context": {
+        "import": "./dist/runtime/stackingContext.js",
+        "types": "./dist/runtime/stackingContext.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

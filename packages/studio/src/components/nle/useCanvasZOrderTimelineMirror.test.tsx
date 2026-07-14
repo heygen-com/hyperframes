@@ -118,7 +118,7 @@ function mountMirrorHarness(history: {
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (_batches, options) => {
           record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
-          return { allMatched: true, changed: true };
+          return { durable: true, allMatched: true, changed: true };
         },
       }),
     );
