@@ -160,3 +160,48 @@ describe("keyframes runtime surfacing", () => {
     expect(selectors).toEqual(expect.arrayContaining([".dot", ".chip"]));
   });
 });
+
+describe("keyframes template-wrapped sub-compositions", () => {
+  // Sub-compositions are REQUIRED to put markup + script + style inside <template>.
+  // Template content is an inert DocumentFragment that document-level
+  // querySelectorAll does not traverse, so extraction must walk template.content
+  // too — otherwise every spec-conformant sub-composition surfaces zero motion.
+  const templateWrapped = `<template>
+    <style>
+      #hero { opacity: 0; }
+      @keyframes rise {
+        0% { transform: translateY(40px); }
+        100% { transform: translateY(0); }
+      }
+    </style>
+    <div id="root" data-composition-id="beat" data-duration="4">
+      <div id="hero" class="clip"></div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#hero", { y: 34, opacity: 0 }, { y: 0, opacity: 1, duration: 0.75 }, 0.5);
+      window.__timelines = { beat: tl };
+    </script>
+  </template>`;
+
+  it("surfaces GSAP tweens from a script inside <template>", () => {
+    const { tweens } = surfaceComposition(templateWrapped, "beat.html", "beat.html");
+    expect(tweens.length).toBeGreaterThan(0);
+    expect(tweens[0]!.target).toBe("#hero");
+  });
+
+  it("surfaces @keyframes from a style inside <template>", () => {
+    const { cssKeyframes } = surfaceComposition(templateWrapped, "beat.html", "beat.html");
+    expect(cssKeyframes.map((k) => k.name)).toContain("rise");
+  });
+
+  it("still surfaces top-level scripts outside any template", () => {
+    const topLevel = `<!doctype html><html><body><div id="dot" class="clip"></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { x: 100, duration: 1 });
+      window.__timelines = [tl];
+    </script></body></html>`;
+    const { tweens } = surfaceComposition(topLevel, "index.html", "index.html");
+    expect(tweens.length).toBeGreaterThan(0);
+  });
+});

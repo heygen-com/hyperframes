@@ -93,17 +93,29 @@ interface SurfacedComposition {
 
 // ── GSAP extraction ──────────────────────────────────────────────────────────
 
-function inlineScriptText(html: string): string {
+// <template> content lives in an inert DocumentFragment that document-level
+// querySelectorAll does not traverse — and sub-compositions are REQUIRED to wrap
+// markup + script in <template>. Query the document and every template fragment,
+// or template-wrapped compositions surface zero tweens/keyframes.
+function queryIncludingTemplates(html: string, selector: string): Element[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  return Array.from(doc.querySelectorAll("script"))
+  const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];
+  for (const tpl of doc.querySelectorAll("template")) {
+    const content = (tpl as HTMLTemplateElement).content;
+    if (content) roots.push(content);
+  }
+  return roots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
+}
+
+function inlineScriptText(html: string): string {
+  return queryIncludingTemplates(html, "script")
     .filter((s) => !s.getAttribute("src"))
     .map((s) => s.textContent ?? "")
     .join("\n");
 }
 
 function inlineStyleText(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return Array.from(doc.querySelectorAll("style"))
+  return queryIncludingTemplates(html, "style")
     .map((s) => s.textContent ?? "")
     .join("\n");
 }
