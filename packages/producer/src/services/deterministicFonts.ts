@@ -778,7 +778,12 @@ async function fetchGoogleFont(
   const faceRegex =
     /@font-face\s*\{[^}]*font-style:\s*(normal|italic)[^}]*font-weight:\s*(\d+)[^}]*src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)(?:[^}]*?unicode-range:\s*([^;}]+))?[^}]*\}/gi;
 
-  const faces: GoogleFontFace[] = [];
+  const parsedFaces: Array<{
+    style: string;
+    weight: string;
+    woff2Url: string;
+    unicodeRange?: string;
+  }> = [];
 
   for (const match of cssText.matchAll(faceRegex)) {
     const style = match[1] || "normal";
@@ -788,6 +793,19 @@ async function fetchGoogleFont(
 
     if (!woff2Url) continue;
 
+    parsedFaces.push({ style, weight, woff2Url, unicodeRange });
+  }
+
+  if (parsedFaces.length > 100) {
+    defaultLogger.warn(
+      `[Compiler] Google Fonts "${familyName}" expands to ${parsedFaces.length} subset faces. ` +
+        `Embedding them can make compile iterations several minutes slower. Consider self-hosting or subsetting ` +
+        `the font to the characters used by this composition: https://hyperframes.heygen.com/docs/fonts`,
+    );
+  }
+
+  const faces: GoogleFontFace[] = [];
+  for (const { style, weight, woff2Url, unicodeRange } of parsedFaces) {
     const cachePath = cachedWoff2Path(slug, weight, style, subsetToken(woff2Url));
     const dataUri = await ensureWoff2DataUri(
       cachePath,

@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { defaultLogger } from "../logger.js";
 import {
   FONT_FETCH_FAILED,
   FontFetchError,
@@ -56,6 +57,43 @@ function makeHttp503Fetch(): typeof fetch {
 }
 
 describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)", () => {
+  it("warns before downloading a very large Google Fonts subset matrix", async () => {
+    const faces = Array.from(
+      { length: 101 },
+      (_, index) => `
+      @font-face {
+        font-style: normal;
+        font-weight: 400;
+        src: url(https://fonts.gstatic.test/noto-${index}.woff2) format('woff2');
+        unicode-range: U+${index.toString(16).padStart(4, "0")};
+      }`,
+    ).join("\n");
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = String(input);
+      return url.includes("fonts.googleapis.com")
+        ? new Response(faces, { status: 200 })
+        : new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    }) as unknown as typeof fetch;
+    const html = `<!doctype html><html><head><style>
+      body { font-family: "Noto Sans JP", sans-serif; }
+    </style></head><body>日本語</body></html>`;
+    const warnings: string[] = [];
+    const originalWarn = defaultLogger.warn;
+    defaultLogger.warn = (message) => warnings.push(message);
+
+    try {
+      await injectDeterministicFontFaces(html, {
+        allowSystemFontCapture: false,
+        fetchImpl,
+      });
+    } finally {
+      defaultLogger.warn = originalWarn;
+    }
+
+    expect(warnings).toContainEqual(expect.stringContaining("101 subset faces"));
+    expect(warnings).toContainEqual(expect.stringContaining("self-hosting or subsetting"));
+  });
+
   it("swallows a network failure and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
       failClosedFontFetch: false,
