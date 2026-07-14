@@ -1,7 +1,7 @@
 {
   "name": "hyperframes",
   "description": "HyperFrames by HeyGen. Write HTML, render video. Compositions, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website-to-video capture for HyperFrames.",
-  "version": "0.7.57",
+  "version": "0.7.58",
   "author": {
     "name": "HeyGen",
     "email": "hyperframes@heygen.com",
