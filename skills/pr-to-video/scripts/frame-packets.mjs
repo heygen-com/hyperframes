@@ -32,9 +32,7 @@ function frameId(frame) {
 }
 
 function sourceExcerpt(block) {
-  const match = block.match(
-    /^### Source excerpt\s*\n+(```[^\n]*\n[\s\S]*?\n```)/im,
-  );
+  const match = block.match(/^### Source excerpt\s*\n+(```[^\n]*\n[\s\S]*?\n```)/im);
   return match?.[1] ?? null;
 }
 
@@ -54,9 +52,7 @@ function codeVocabularySection(block) {
   const vocab = readFileSync(vocabPath, "utf8");
   const lines = vocab.split("\n");
   const exactToken = `\`${codeId.toLowerCase()}\``;
-  const matchingLines = lines.filter((line) =>
-    line.toLowerCase().includes(exactToken),
-  );
+  const matchingLines = lines.filter((line) => line.toLowerCase().includes(exactToken));
   if (matchingLines.length === 0) {
     return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
   }
@@ -102,21 +98,15 @@ export function buildFramePackets({
 
   const packets = frames.map((frame) => {
     const id = frameId(frame);
-    const codeFrame = /\bcode-[a-z0-9-]+\b/i.test(
-      field(frame.block, "focal") ?? "",
-    );
+    const codeFrame = /\bcode-[a-z0-9-]+\b/i.test(field(frame.block, "focal") ?? "");
     const excerpt = sourceExcerpt(frame.block);
     if (codeFrame && !excerpt) {
-      throw new Error(
-        `${frame.heading}: code frame requires an upstream-selected Source excerpt`,
-      );
+      throw new Error(`${frame.heading}: code frame requires an upstream-selected Source excerpt`);
     }
     const packet = `# Frame packet: ${id}\n\n## Structural contract\n\n${COMPACT_CONTRACT}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n- Design tokens: ${join(resolve(projectDir), "frame.md")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block)}${codeVocabularySection(frame.block)}`;
     const bytes = Buffer.byteLength(packet);
     if (bytes > maxPacketBytes) {
-      throw new Error(
-        `${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`,
-      );
+      throw new Error(`${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`);
     }
     return { frameId: id, path: join(outDir, `${id}.md`), bytes, packet };
   });
@@ -137,22 +127,12 @@ function main() {
   try {
     const packets = buildFramePackets({
       projectDir,
-      storyboardPath: resolve(
-        flag(argv, "storyboard", join(projectDir, "STORYBOARD.md")),
-      ),
-      outDir: resolve(
-        flag(
-          argv,
-          "out-dir",
-          join(projectDir, ".hyperframes", "frame-packets"),
-        ),
-      ),
+      storyboardPath: resolve(flag(argv, "storyboard", join(projectDir, "STORYBOARD.md"))),
+      outDir: resolve(flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets"))),
     });
     console.log(`✓ frame packets: ${packets.length} bounded packet(s)`);
     for (const packet of packets)
-      console.log(
-        `  ${packet.frameId}: ${packet.bytes} bytes → ${packet.path}`,
-      );
+      console.log(`  ${packet.frameId}: ${packet.bytes} bytes → ${packet.path}`);
   } catch (error) {
     console.error(`✗ frame packets: ${error.message}`);
     process.exit(1);

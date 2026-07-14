@@ -1,19 +1,10 @@
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 
-import {
-  parsePrReference,
-  resolvePrToVideoProjectDir,
-} from "./project-dir.mjs";
+import { parsePrReference, resolvePrToVideoProjectDir } from "./project-dir.mjs";
 import { buildFramePackets } from "./frame-packets.mjs";
 import { hasCliCommand } from "./preflight.mjs";
 
@@ -75,19 +66,14 @@ test("distinct owner and repository segments cannot collide in the durable cache
 
 test("PR parsing sanitizes owner and repository path traversal", () => {
   assert.deepEqual(
-    parsePrReference(
-      "https://github.com/EveryInc/compound-engineering-plugin/pull/1092",
-    ),
+    parsePrReference("https://github.com/EveryInc/compound-engineering-plugin/pull/1092"),
     {
       owner: "everyinc",
       repo: "compound-engineering-plugin",
       number: 1092,
     },
   );
-  assert.throws(
-    () => parsePrReference("../../outside#1092"),
-    /valid GitHub PR reference/i,
-  );
+  assert.throws(() => parsePrReference("../../outside#1092"), /valid GitHub PR reference/i);
 });
 
 test("#1092 packets contain selected excerpts but never the full diff", () => {
@@ -126,8 +112,7 @@ test("packet validation is atomic and leaves no partial output on overflow", () 
   );
 
   assert.throws(
-    () =>
-      buildFramePackets({ projectDir: project, outDir, maxPacketBytes: 2_000 }),
+    () => buildFramePackets({ projectDir: project, outDir, maxPacketBytes: 2_000 }),
     /limit 2000/,
   );
   assert.equal(existsSync(outDir), false);

@@ -15,9 +15,7 @@ export function runCliPreflight({ command = "check", spawn = spawnSync } = {}) {
   });
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   if (result.status !== 0) {
-    throw new Error(
-      `unable to inspect HyperFrames CLI capabilities\n${output.trim()}`,
-    );
+    throw new Error(`unable to inspect HyperFrames CLI capabilities\n${output.trim()}`);
   }
   if (!hasCliCommand(output, command)) {
     throw new Error(
@@ -30,9 +28,7 @@ export function runCliPreflight({ command = "check", spawn = spawnSync } = {}) {
 function main() {
   try {
     runCliPreflight();
-    console.log(
-      "✓ pr-to-video preflight: required CLI capabilities are available",
-    );
+    console.log("✓ pr-to-video preflight: required CLI capabilities are available");
   } catch (error) {
     console.error(`✗ pr-to-video preflight: ${error.message}`);
     process.exit(1);
