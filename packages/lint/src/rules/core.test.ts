@@ -160,7 +160,7 @@ describe("core rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
-  it("reports error when root is missing data-width or data-height", async () => {
+  it("reports error when a standalone root is missing data-width or data-height", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1"></div>
@@ -170,6 +170,40 @@ describe("core rules", () => {
     const finding = result.findings.find((f) => f.code === "root_missing_dimensions");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
+  });
+
+  it("allows an elastic root inside a template-wrapped sub-composition", async () => {
+    const html = `<!doctype html>
+<html lang="en" data-composition-id="elastic-badge">
+<head><meta charset="UTF-8" /></head>
+<body>
+  <template>
+    <style>#root { position: absolute; inset: 0; }</style>
+    <div id="root" data-composition-id="elastic-badge" data-duration="4" data-fps="30">
+      <span>Elastic badge</span>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["elastic-badge"] = tl;
+    </script>
+  </template>
+</body>
+</html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+  });
+
+  it("still requires a composition id on a template-wrapped root", async () => {
+    const html = `<html><body><template>
+  <div id="root" data-duration="4" data-fps="30"></div>
+</template></body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeDefined();
   });
 
   it("accepts body as the composition root", async () => {

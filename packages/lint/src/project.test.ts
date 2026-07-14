@@ -40,6 +40,61 @@ afterEach(() => {
   dirs = [];
 });
 
+describe("multiple_root_compositions", () => {
+  it("ignores a template-wrapped mountable sub-composition beside its demo host", async () => {
+    const project = makeProject(`<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /></head><body>
+  <div id="root" data-composition-id="sub-comp-demo" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+    <div class="clip" data-composition-id="elastic-badge" data-composition-src="./sub.html" data-start="0" data-duration="4" data-track-index="1" data-width="1920" data-height="1080"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["sub-comp-demo"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`);
+    writeFileSync(
+      join(project, "sub.html"),
+      `<!doctype html>
+<html lang="en" data-composition-id="elastic-badge">
+<head><meta charset="UTF-8" /></head>
+<body>
+  <template>
+    <style>#root { position: absolute; inset: 0; }</style>
+    <div id="root" data-composition-id="elastic-badge" data-duration="4" data-fps="30">
+      <span>Elastic badge</span>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["elastic-badge"] = tl;
+    </script>
+  </template>
+</body>
+</html>`,
+    );
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((entry) => entry.result.findings)
+      .find((item) => item.code === "multiple_root_compositions");
+
+    expect(finding).toBeUndefined();
+  });
+
+  it("reports two standalone root compositions in the same directory", async () => {
+    const project = makeProject(validHtml("primary"));
+    writeFileSync(join(project, "alternate.html"), validHtml("alternate"));
+
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((entry) => entry.result.findings)
+      .find((item) => item.code === "multiple_root_compositions");
+
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+});
+
 describe("missing_or_empty_sub_composition", () => {
   function htmlWithSubComp(srcPath: string): string {
     return `<html><body>

@@ -342,13 +342,45 @@ function stripHtmlCommentsOnce(source: string): string {
 // comment can splice adjacent markers into a fresh, complete <!-- … --> (e.g.
 // "<<!-- -->!-- … -->" → "<!-- … -->"), which would otherwise survive and let a
 // commented-out <template>/tag hijack the linter's tag scan.
-export function stripHtmlComments(source: string): string {
+function stripHtmlComments(source: string): string {
   let out = source;
   for (let prev = ""; prev !== out; ) {
     prev = out;
     out = stripHtmlCommentsOnce(out);
   }
   return out;
+}
+
+export function resolveRootStructure(rawSource: string): {
+  source: string;
+  structure: ReturnType<typeof parseHtmlStructure>;
+  isTemplateWrappedRoot: boolean;
+} {
+  let source = stripHtmlComments(rawSource);
+  const initialStructure = parseHtmlStructure(source);
+  const templateTags = initialStructure.tags.filter(
+    (tag) => tag.name === "template" && tag.closeIndex != null,
+  );
+  let sourceWithoutTemplates = source;
+  for (const template of [...templateTags].reverse()) {
+    const end = template.endIndex ?? template.index;
+    sourceWithoutTemplates =
+      sourceWithoutTemplates.slice(0, template.index) +
+      " ".repeat(end - template.index) +
+      sourceWithoutTemplates.slice(end);
+  }
+
+  const template = templateTags[0];
+  if (template && !findRootTag(sourceWithoutTemplates)) {
+    source = source.slice(template.index + template.raw.length, template.closeIndex);
+    return {
+      source,
+      structure: parseHtmlStructure(source),
+      isTemplateWrappedRoot: true,
+    };
+  }
+
+  return { source, structure: initialStructure, isTemplateWrappedRoot: false };
 }
 
 export function extractScriptTextsAndSrcs(scripts: ExtractedBlock[]): {
