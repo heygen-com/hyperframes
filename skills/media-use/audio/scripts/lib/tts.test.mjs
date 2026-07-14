@@ -70,9 +70,11 @@ test("expired HeyGen OAuth with a refresh token remains an available TTS provide
   const previousConfigDir = process.env.HEYGEN_CONFIG_DIR;
   const previousApiKey = process.env.HEYGEN_API_KEY;
   const previousHyperframesApiKey = process.env.HYPERFRAMES_API_KEY;
+  const previousElevenlabsApiKey = process.env.ELEVENLABS_API_KEY;
   try {
     delete process.env.HEYGEN_API_KEY;
     delete process.env.HYPERFRAMES_API_KEY;
+    process.env.ELEVENLABS_API_KEY = "configured-offline-fallback";
     process.env.HEYGEN_CONFIG_DIR = dir;
     writeFileSync(
       join(dir, "credentials"),
@@ -94,6 +96,27 @@ test("expired HeyGen OAuth with a refresh token remains an available TTS provide
     else process.env.HEYGEN_API_KEY = previousApiKey;
     if (previousHyperframesApiKey === undefined) delete process.env.HYPERFRAMES_API_KEY;
     else process.env.HYPERFRAMES_API_KEY = previousHyperframesApiKey;
+    if (previousElevenlabsApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = previousElevenlabsApiKey;
+  }
+});
+
+test("auto provider selects a HeyGen API key before configured fallbacks", () => {
+  const previousApiKey = process.env.HEYGEN_API_KEY;
+  const previousHyperframesApiKey = process.env.HYPERFRAMES_API_KEY;
+  const previousElevenlabsApiKey = process.env.ELEVENLABS_API_KEY;
+  try {
+    process.env.HEYGEN_API_KEY = "heygen-first";
+    delete process.env.HYPERFRAMES_API_KEY;
+    process.env.ELEVENLABS_API_KEY = "configured-offline-fallback";
+    assert.equal(pickProvider(), "heygen");
+  } finally {
+    if (previousApiKey === undefined) delete process.env.HEYGEN_API_KEY;
+    else process.env.HEYGEN_API_KEY = previousApiKey;
+    if (previousHyperframesApiKey === undefined) delete process.env.HYPERFRAMES_API_KEY;
+    else process.env.HYPERFRAMES_API_KEY = previousHyperframesApiKey;
+    if (previousElevenlabsApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = previousElevenlabsApiKey;
   }
 });
 
