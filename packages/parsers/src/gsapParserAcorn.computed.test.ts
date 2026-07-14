@@ -20,6 +20,13 @@ describe("editabilityForProvenance", () => {
 
 const start = (a: { resolvedStart?: number }): number | undefined => a.resolvedStart;
 
+function expectDistinctProxyIdentities(script: string): void {
+  const { animations } = parseGsapScriptAcorn(script);
+  expect(animations[0]?.targetIdentity).toBeDefined();
+  expect(animations[1]?.targetIdentity).toBeDefined();
+  expect(animations[0]?.targetIdentity).not.toBe(animations[1]?.targetIdentity);
+}
+
 describe("parseGsapScriptAcorn — computed timelines", () => {
   it("resolves an add-to-basket helper called twice (the reported case)", () => {
     const script = `
@@ -106,7 +113,7 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
   });
 
   it("uses declaration-scoped identities for object proxy targets", () => {
-    const { animations } = parseGsapScriptAcorn(`
+    expectDistinctProxyIdentities(`
       const tl = gsap.timeline();
       (() => {
         const driver = { value: 0 };
@@ -117,10 +124,6 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
         tl.to(driver, { value: 1, duration: 1 }, 0);
       })();
     `);
-
-    expect(animations[0]?.targetIdentity).toBeDefined();
-    expect(animations[1]?.targetIdentity).toBeDefined();
-    expect(animations[0]?.targetIdentity).not.toBe(animations[1]?.targetIdentity);
   });
 
   it("withholds object proxy identity when the binding is reassigned", () => {
@@ -133,6 +136,33 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     `);
 
     expect(animations.map((animation) => animation.targetIdentity)).toEqual([undefined, undefined]);
+  });
+
+  it("keeps helper-created object proxy instances distinct", () => {
+    expectDistinctProxyIdentities(`
+      const tl = gsap.timeline();
+      function addDriver(at) {
+        const driver = { value: 0 };
+        tl.to(driver, { value: 1, duration: 1 }, at);
+      }
+      addDriver(0);
+      addDriver(0.5);
+    `);
+  });
+
+  it("keeps parameter DOM target assignments visible outside nested blocks", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      function configure(card) {
+        if (true) {
+          card = document.getElementById("caption-card");
+        }
+        tl.to(card, { opacity: 1, duration: 1 }, 0);
+      }
+      configure(null);
+    `);
+
+    expect(animations.map((animation) => animation.targetSelector)).toEqual(["#caption-card"]);
   });
 
   it("leaves a literal-position composition unchanged (regression)", () => {

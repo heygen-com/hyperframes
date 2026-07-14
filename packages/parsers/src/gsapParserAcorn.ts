@@ -55,6 +55,7 @@ type IdentifierDeclaration = {
   node: any;
   scopeNode: any;
   name: string;
+  kind: "const" | "let" | "var" | "param";
 };
 
 type IdentifierBindingIndex = {
@@ -272,7 +273,11 @@ function findVisibleIdentifierDeclaration(
   for (const scopeNode of scopeChainFromAncestors(ancestors)) {
     const candidates = declarations
       .filter(
-        (declaration) => declaration.scopeNode === scopeNode && declaration.node.start < usageStart,
+        (declaration) =>
+          declaration.scopeNode === scopeNode &&
+          (declaration.kind === "var" ||
+            declaration.kind === "param" ||
+            declaration.node.start < usageStart),
       )
       .sort((left, right) => right.node.start - left.node.start);
     if (candidates[0]) return candidates[0];
@@ -289,13 +294,17 @@ function collectIdentifierBindingIndex(ast: any): IdentifierBindingIndex {
       const name = node.id?.name;
       if (!name) return;
       const declaration = ancestors.at(-2);
-      const includeBlocks =
-        declaration?.type !== "VariableDeclaration" || declaration.kind !== "var";
+      const kind = declaration?.kind as "const" | "let" | "var" | undefined;
+      if (!kind) return;
+      const includeBlocks = declaration?.type !== "VariableDeclaration" || kind !== "var";
       const scopeNode = enclosingScopeNodeFromAncestors(ancestors, includeBlocks);
       const entries = declarationsByName.get(name) ?? [];
-      entries.push({ node, scopeNode, name });
+      entries.push({ node, scopeNode, name, kind });
       declarationsByName.set(name, entries);
     },
+    FunctionDeclaration: indexFunctionParameters,
+    FunctionExpression: indexFunctionParameters,
+    ArrowFunctionExpression: indexFunctionParameters,
   } as any);
 
   const index = { declarationsByName, reassignedDeclarations };
@@ -308,6 +317,15 @@ function collectIdentifierBindingIndex(ast: any): IdentifierBindingIndex {
     },
   } as any);
   return index;
+
+  function indexFunctionParameters(node: any): void {
+    for (const parameter of node.params ?? []) {
+      if (parameter?.type !== "Identifier") continue;
+      const entries = declarationsByName.get(parameter.name) ?? [];
+      entries.push({ node: parameter, scopeNode: node, name: parameter.name, kind: "param" });
+      declarationsByName.set(parameter.name, entries);
+    }
+  }
 }
 
 // ── Target bindings ───────────────────────────────────────────────────────────
@@ -435,7 +453,9 @@ function collectTargetBindings(
         );
         addBinding(
           bindings,
-          declaration?.scopeNode ?? enclosingScopeNodeFromAncestors(ancestors),
+          declaration?.scopeNode ??
+            nearestExpandedScopeFromAncestors(ancestors) ??
+            enclosingScopeNodeFromAncestors(ancestors),
           left.name,
           selector,
         );
@@ -503,6 +523,14 @@ function collectTargetBindings(
   } as any);
 
   return bindings;
+
+  function nearestExpandedScopeFromAncestors(ancestors: any[]): any | undefined {
+    for (let index = ancestors.length - 2; index >= 0; index--) {
+      const candidate = ancestors[index];
+      if (candidate?.type === "BlockStatement" && readProvenance(candidate)) return candidate;
+    }
+    return undefined;
+  }
 }
 
 // fallow-ignore-next-line complexity
@@ -1192,6 +1220,7 @@ function tweenCallToAnimation(
   source: string,
   identifierBindings: IdentifierBindingIndex,
 ): Omit<GsapAnimation, "id"> {
+  const provenance = readProvenance(call.node);
   const vars = objectExpressionToRecord(call.varsArg, scope, source);
   const properties: Record<string, number | string> = {};
   const extras: Record<string, unknown> = {};
@@ -1308,7 +1337,11 @@ function tweenCallToAnimation(
           declaration?.node.init?.type === "ObjectExpression" &&
           !identifierBindings.reassignedDeclarations.has(declaration.node)
         ) {
-          targetIdentity = `proxy:${targetNode.name}@${declaration.node.start}`;
+          const instanceIdentity =
+            provenance && (provenance.kind === "helper" || provenance.kind === "loop")
+              ? `:${provenance.kind}:${provenance.callSite ?? ""}:${provenance.iteration ?? ""}`
+              : "";
+          targetIdentity = `proxy:${targetNode.name}@${declaration.node.start}${instanceIdentity}`;
         }
       }
     }
@@ -1340,7 +1373,6 @@ function tweenCallToAnimation(
   if (motionPathResult) anim.arcPath = motionPathResult.arcPath;
   if (hasUnresolvedKeyframes) anim.hasUnresolvedKeyframes = true;
   if (selector === "__unresolved__") anim.hasUnresolvedSelector = true;
-  const provenance = readProvenance(call.node);
   if (provenance) anim.provenance = provenance;
   return anim;
 }
