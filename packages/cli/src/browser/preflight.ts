@@ -55,15 +55,23 @@ function configuredMissingDetail(envName: string): string | undefined {
   return `Configured path does not exist: ${envName}="${configured}"`;
 }
 
-function readToolVersion(binaryPath: string): string {
+type ToolVersionResult = { ok: true; detail: string } | { ok: false; detail: string };
+
+function readToolVersion(binaryPath: string): ToolVersionResult {
   try {
     const raw =
       execFileSync(binaryPath, ["-version"], { encoding: "utf-8", timeout: 5000 }).split("\n")[0] ??
       "";
     const version = parseToolVersion(raw);
-    return version ? `${version} at ${binaryPath}` : binaryPath;
-  } catch {
-    return binaryPath;
+    return { ok: true, detail: version ? `${version} at ${binaryPath}` : binaryPath };
+  } catch (error) {
+    const status =
+      typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+    const exitDetail = typeof status === "number" ? ` (exit code ${status})` : "";
+    return {
+      ok: false,
+      detail: `Failed to run "${binaryPath}" -version${exitDetail}.`,
+    };
   }
 }
 
@@ -82,7 +90,19 @@ function checkFFmpeg(): EnvironmentCheckOutcome {
 
   const path = findFFmpeg();
   if (path) {
-    return { name: "FFmpeg", ok: true, level: "ok", detail: readToolVersion(path), path };
+    const version = readToolVersion(path);
+    if (!version.ok) {
+      return {
+        name: "FFmpeg",
+        ok: false,
+        level: "error",
+        title: "FFmpeg cannot start",
+        detail: version.detail,
+        hint: "Install a working 64-bit FFmpeg build with all required runtime DLLs.",
+        path,
+      };
+    }
+    return { name: "FFmpeg", ok: true, level: "ok", detail: version.detail, path };
   }
 
   return {
@@ -110,7 +130,8 @@ function checkFFprobe(): EnvironmentCheckOutcome {
 
   const path = findFFprobe();
   if (path) {
-    return { name: "FFprobe", ok: true, level: "ok", detail: readToolVersion(path), path };
+    const version = readToolVersion(path);
+    return { name: "FFprobe", ok: true, level: "ok", detail: version.detail, path };
   }
 
   return {
@@ -270,7 +291,7 @@ export async function runEnvironmentChecks(
 
   return {
     outcomes,
-    ...(ffmpeg.path ? { ffmpegPath: ffmpeg.path } : {}),
+    ...(ffmpeg.ok && ffmpeg.path ? { ffmpegPath: ffmpeg.path } : {}),
     ...(ffprobe.path ? { ffprobePath: ffprobe.path } : {}),
     ...(browser ? { browser } : {}),
   };
