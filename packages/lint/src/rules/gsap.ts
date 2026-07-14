@@ -1,6 +1,7 @@
 interface LintParsedGsap {
   animations: Array<{
     targetSelector: string;
+    targetIdentity?: string;
     method: string;
     position: number | string;
     properties: Record<string, number | string>;
@@ -38,6 +39,7 @@ import {
 
 type GsapWindow = {
   targetSelector: string;
+  targetIdentity?: string;
   position: number;
   end: number;
   properties: string[];
@@ -64,7 +66,8 @@ const UNRESOLVED_TARGET = "__unresolved__";
 // Parser labels for object-proxy tweens describe their role, not target
 // identity. Two independent proxies can both be labelled `dwell/hold` (or the
 // same driven DOM channel), so equality cannot prove they conflict.
-function targetHasNoStableIdentity(selector: string): boolean {
+function targetHasNoStableIdentity(selector: string, identity?: string): boolean {
+  if (identity) return false;
   return (
     selector === UNRESOLVED_TARGET || selector === "dwell/hold" || selector.startsWith("proxy → ")
   );
@@ -146,6 +149,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       animation.method === "set" ? 0 : (animation.duration ?? 0) * cycleCount;
     windows.push({
       targetSelector: animation.targetSelector,
+      targetIdentity: animation.targetIdentity,
       position: animation.position,
       end: animation.position + effectiveDuration,
       properties: Object.keys(animation.properties),
@@ -602,12 +606,14 @@ export const gsapRules: LintRule<LintContext>[] = [
         if (left.end <= left.position) continue;
         // Unresolved targets are unknown elements: two of them are not provably
         // the same element, so an overlap between them cannot be asserted.
-        if (targetHasNoStableIdentity(left.targetSelector)) continue;
+        if (targetHasNoStableIdentity(left.targetSelector, left.targetIdentity)) continue;
         for (let j = i + 1; j < gsapWindows.length; j++) {
           const right = gsapWindows[j];
           if (!right) continue;
           if (right.end <= right.position) continue;
-          if (left.targetSelector !== right.targetSelector) continue;
+          const leftIdentity = left.targetIdentity ?? left.targetSelector;
+          const rightIdentity = right.targetIdentity ?? right.targetSelector;
+          if (leftIdentity !== rightIdentity) continue;
           const overlapStart = Math.max(left.position, right.position);
           const overlapEnd = Math.min(left.end, right.end);
           if (overlapEnd <= overlapStart) continue;

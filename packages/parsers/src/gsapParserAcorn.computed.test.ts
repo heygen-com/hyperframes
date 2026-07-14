@@ -80,6 +80,61 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     ]);
   });
 
+  it("keeps var DOM target bindings visible outside ordinary blocks", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      if (true) {
+        var card = document.getElementById("caption-card");
+      }
+      tl.to(card, { opacity: 1, duration: 1 }, 0);
+    `);
+
+    expect(animations.map((animation) => animation.targetSelector)).toEqual(["#caption-card"]);
+  });
+
+  it("keeps an outer let DOM target binding after assignment inside a block", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      let card;
+      if (true) {
+        card = document.getElementById("caption-card");
+      }
+      tl.to(card, { opacity: 1, duration: 1 }, 0);
+    `);
+
+    expect(animations.map((animation) => animation.targetSelector)).toEqual(["#caption-card"]);
+  });
+
+  it("uses declaration-scoped identities for object proxy targets", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      (() => {
+        const driver = { value: 0 };
+        tl.to(driver, { value: 1, duration: 1 }, 0);
+      })();
+      (() => {
+        const driver = { value: 0 };
+        tl.to(driver, { value: 1, duration: 1 }, 0);
+      })();
+    `);
+
+    expect(animations[0]?.targetIdentity).toBeDefined();
+    expect(animations[1]?.targetIdentity).toBeDefined();
+    expect(animations[0]?.targetIdentity).not.toBe(animations[1]?.targetIdentity);
+  });
+
+  it("withholds object proxy identity when the binding is reassigned", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      let driver = { value: 0 };
+      tl.to(driver, { value: 1, duration: 1 }, 0);
+      driver = { value: 0 };
+      tl.to(driver, { value: 1, duration: 1 }, 0);
+    `);
+
+    expect(animations.map((animation) => animation.targetIdentity)).toEqual([undefined, undefined]);
+  });
+
   it("leaves a literal-position composition unchanged (regression)", () => {
     const { animations } = parseGsapScriptAcorn(`
       const tl = gsap.timeline();
