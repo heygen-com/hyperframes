@@ -27,11 +27,11 @@ import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
 
-// CDK synth + Template.fromStack is slow on cold start in CI (~5-8s on
-// the first call). The default bun:test 5s timeout trips it on the
-// first `it()` that calls `synth()`. Run synth once in `beforeAll`
-// and reuse the result — each test is a few µs of pure assertions
-// against the already-synthed template.
+// CDK synth + Template.fromStack is sub-second locally but jsii cold-start on a
+// contended CI runner can spike far past the default bun:test 5s timeout
+// (observed >30s). Run synth once in `beforeAll` under a generous 120s ceiling
+// and reuse the result — each test is a few µs of pure assertions against the
+// already-synthed template.
 let SYNTHED: ReturnType<typeof doSynth>;
 
 const EXPECTED_RESOURCE_COUNTS: Record<string, number> = {
@@ -105,7 +105,7 @@ describe("HyperframesRenderStack — snapshot", () => {
   // 30s is plenty: cold synth on the slowest CI runner has measured ~8s.
   beforeAll(() => {
     SYNTHED = doSynth();
-  }, 30000);
+  }, 120000);
 
   it("emits the expected set of AWS resource types in the expected counts", () => {
     const { template } = SYNTHED;

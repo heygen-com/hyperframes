@@ -17,11 +17,12 @@ import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
 
-// CDK synth is slow on cold start (~5-8s on the slowest CI runner). The
-// default bun:test 5s timeout trips the first `it()` that calls it. Cache
-// the default-args synth in `beforeAll` so each test is pure assertions.
-// Tests that need non-default props still synth on demand and bump their
-// own per-test timeout.
+// CDK synth is sub-second locally, but jsii cold-start on a contended CI runner
+// can spike it far past the default bun:test 5s timeout (observed >30s, which
+// tripped the old 30s cap). The default-args synth is cached in `beforeAll` so
+// each test is pure assertions; synth calls carry a generous 120s ceiling —
+// enough to ride out CI variance while still surfacing a genuine hang. Tests
+// that need non-default props synth on demand under the same ceiling.
 let DEFAULT_TEMPLATE: Template;
 
 function synthFixture(): Template {
@@ -37,7 +38,7 @@ function synthFixture(): Template {
 describe("HyperframesRenderStack — contract", () => {
   beforeAll(() => {
     DEFAULT_TEMPLATE = synthFixture();
-  }, 30000);
+  }, 120000);
 
   it("provisions exactly one Lambda function on the Node.js 22 runtime, x86_64, 10 GiB /tmp", () => {
     const t = DEFAULT_TEMPLATE;
@@ -117,7 +118,7 @@ describe("HyperframesRenderStack — contract", () => {
     t.hasResourceProperties("AWS::Lambda::Function", {
       ReservedConcurrentExecutions: 4,
     });
-  }, 30000);
+  }, 120000);
 
   it("uses the projectName prefix on function + state-machine names", () => {
     const zipDir = mkdtempSync(join(tmpdir(), "hf-cdk-test-"));
@@ -133,5 +134,5 @@ describe("HyperframesRenderStack — contract", () => {
     t.hasResourceProperties("AWS::StepFunctions::StateMachine", {
       StateMachineName: "demo-render",
     });
-  }, 30000);
+  }, 120000);
 });
