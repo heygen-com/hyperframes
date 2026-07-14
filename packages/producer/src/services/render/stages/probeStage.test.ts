@@ -1,5 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
-import { hasAutoStartVideos, hasScriptedAudioVolumeAutomation } from "./probeStage.js";
+import {
+  hasAutoStartVideos,
+  hasScriptedAudioVolumeAutomation,
+  hasVariableBoundMedia,
+} from "./probeStage.js";
 
 // ── Mocks for runProbeStage tests ────────────────────────────────────────────
 // Capture the cfg passed to createCaptureSession so we can assert it carries
@@ -244,7 +248,36 @@ describe("hasAutoStartVideos", () => {
   });
 });
 
+describe("hasVariableBoundMedia", () => {
+  it("requires a browser probe when an audio src is overridden by render variables", () => {
+    const html = `<audio id="voice" src="fallback.wav" data-var-src="voice_src"></audio>`;
+
+    expect(hasVariableBoundMedia(html, { voice_src: "row-02.wav" })).toBe(true);
+  });
+
+  it("does not probe unrelated overrides or image-only bindings", () => {
+    const audio = `<audio src="fallback.wav" data-var-src="voice_src"></audio>`;
+    const image = `<img src="fallback.png" data-var-src="hero_src" />`;
+
+    expect(hasVariableBoundMedia(audio, { title: "Row 02" })).toBe(false);
+    expect(hasVariableBoundMedia(image, { hero_src: "row-02.png" })).toBe(false);
+  });
+});
+
 describe("runProbeStage — forceScreenshot threading", () => {
+  it("launches a probe for a static-duration composition with variable-bound audio", async () => {
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<audio id="voice" src="fallback.wav" data-var-src="voice_src"></audio>`;
+    input.job.config.variables = { voice_src: "row-02.wav" };
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+  });
+
   it("passes forceScreenshot:true to createCaptureSession when stage input carries it but cfg does not (low-memory mode fix #1236)", async () => {
     capturedCfgs.length = 0;
 

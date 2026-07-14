@@ -135,6 +135,25 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+/**
+ * Variable-bound audio/video sources are resolved by the browser runtime, not
+ * the static compiler. Probe them whenever the current render overrides the
+ * referenced variable so media extraction follows the resolved row value.
+ */
+export function hasVariableBoundMedia(
+  html: string,
+  variables: Record<string, unknown> | undefined,
+): boolean {
+  if (!variables || Object.keys(variables).length === 0) return false;
+  const { document } = parseHTML(html);
+  return Array.from(
+    document.querySelectorAll("audio[data-var-src], video[data-var-src], source[data-var-src]"),
+  ).some((element) => {
+    const variableId = element.getAttribute("data-var-src")?.trim();
+    return Boolean(variableId && Object.hasOwn(variables, variableId));
+  });
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -166,11 +185,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
+  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
   const needsBrowser =
     composition.duration <= 0 ||
     compiled.unresolvedCompositions.length > 0 ||
     hasAutoStart ||
-    hasScriptedAudio;
+    hasScriptedAudio ||
+    hasVariableMedia;
 
   if (needsBrowser) {
     const reasons = [];
@@ -179,6 +200,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
     if (hasAutoStart) reasons.push("auto-start video(s)");
     if (hasScriptedAudio) reasons.push("scripted audio volume");
+    if (hasVariableMedia) reasons.push("variable-bound media source(s)");
 
     log.info("Launching browser for composition probe...", {
       reasons,
