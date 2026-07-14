@@ -173,6 +173,22 @@ export function readAttr(tagSource: string, attr: string): string | null {
   return match?.[1] || null;
 }
 
+/** Read an HTML attribute using browser-equivalent character-reference decoding. */
+export function readDecodedAttr(tagSource: string, attr: string): string | null {
+  if (!tagSource) return null;
+  let value: string | null = null;
+  const parser = new Parser(
+    {
+      onattribute(name, decodedValue) {
+        if (name.toLowerCase() === attr.toLowerCase()) value = decodedValue;
+      },
+    },
+    { decodeEntities: true, lowerCaseAttributeNames: false, lowerCaseTags: true },
+  );
+  parser.end(tagSource);
+  return value;
+}
+
 /**
  * Read an attribute that may legitimately contain the opposite quote
  * character. `readAttr` truncates `data-variable-values='{"title":"Hello"}'`

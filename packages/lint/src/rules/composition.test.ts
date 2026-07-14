@@ -235,6 +235,30 @@ describe("composition rules", () => {
       const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
       expect(finding).toBeUndefined();
     });
+
+    it("ignores composition ids inside inert template content", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <template><div data-composition-id="main"></div></template>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("flags entity-equivalent composition ids", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <meta data-composition-id="&#109;ain">
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+    });
   });
 
   it("reports error when querySelector uses template literal variable", async () => {

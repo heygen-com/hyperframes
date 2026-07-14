@@ -2,6 +2,7 @@ import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from
 import {
   findHtmlTag,
   readAttr,
+  readDecodedAttr,
   readJsonAttr,
   stripJsComments,
   truncateSnippet,
@@ -156,12 +157,23 @@ function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | nul
   return declared;
 }
 
+function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean {
+  return tags.some(
+    (candidate) =>
+      candidate.name === "template" &&
+      candidate.closeIndex != null &&
+      tag.index > candidate.index &&
+      tag.index < candidate.closeIndex,
+  );
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // duplicate_composition_id catches meta-tag/root collisions that create duplicate composition entries.
   ({ tags }) => {
     const tagsByCompositionId = new Map<string, string[]>();
     for (const tag of tags) {
-      const compositionId = readAttr(tag.raw, "data-composition-id");
+      if (isInsideInertTemplate(tag, tags)) continue;
+      const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
       if (!compositionId || compositionId.trim().length === 0) continue;
 
       const matchingTags = tagsByCompositionId.get(compositionId) ?? [];
