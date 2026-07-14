@@ -1372,7 +1372,7 @@
       document.body;
     const rootRect = rootRectFor(root);
     const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element),
+      isVisibleElement(element, 0.05),
     );
     const issues = [];
 

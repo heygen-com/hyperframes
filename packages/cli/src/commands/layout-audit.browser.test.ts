@@ -1498,6 +1498,7 @@ describe("layout-audit.browser occlusion", () => {
       },
       headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
       topmostId: "overlay",
+      textRectElementId: "inner",
     });
     installAuditScript();
     expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
