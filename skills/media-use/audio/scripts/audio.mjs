@@ -42,7 +42,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
+import {
+  heygenAuthHeadersWithRefresh,
+  heygenCredential,
+  loadEnvFromDir,
+} from "./lib/heygen.mjs";
 import {
   ffprobeDuration,
   pickProvider,
@@ -112,7 +116,8 @@ const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
 const heygenCred = heygenCredential();
-const headers = heygenCred?.headers ? heygenAuthHeaders() : null;
+const headers =
+  heygenCred?.headers || heygenCred?.refreshable ? await heygenAuthHeadersWithRefresh() : null;
 const heygenOK = headers !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────

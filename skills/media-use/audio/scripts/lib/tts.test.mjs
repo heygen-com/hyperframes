@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
   heygenAvailable,
+  pickProvider,
   parseFfmpegDurationBanner,
   ffprobeDuration,
   synthesizeOne,
@@ -61,6 +62,38 @@ test("expired HeyGen OAuth is not an available TTS provider", () => {
     if (saved.configDir === undefined) delete process.env.HEYGEN_CONFIG_DIR;
     else process.env.HEYGEN_CONFIG_DIR = saved.configDir;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("expired HeyGen OAuth with a refresh token remains an available TTS provider", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-refreshable-heygen-"));
+  const previousConfigDir = process.env.HEYGEN_CONFIG_DIR;
+  const previousApiKey = process.env.HEYGEN_API_KEY;
+  const previousHyperframesApiKey = process.env.HYPERFRAMES_API_KEY;
+  try {
+    delete process.env.HEYGEN_API_KEY;
+    delete process.env.HYPERFRAMES_API_KEY;
+    process.env.HEYGEN_CONFIG_DIR = dir;
+    writeFileSync(
+      join(dir, "credentials"),
+      JSON.stringify({
+        oauth: {
+          access_token: "expired",
+          refresh_token: "refreshable",
+          expires_at: "2000-01-01T00:00:00Z",
+        },
+      }),
+    );
+    assert.equal(heygenAvailable(), true);
+    assert.equal(pickProvider(), "heygen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (previousConfigDir === undefined) delete process.env.HEYGEN_CONFIG_DIR;
+    else process.env.HEYGEN_CONFIG_DIR = previousConfigDir;
+    if (previousApiKey === undefined) delete process.env.HEYGEN_API_KEY;
+    else process.env.HEYGEN_API_KEY = previousApiKey;
+    if (previousHyperframesApiKey === undefined) delete process.env.HYPERFRAMES_API_KEY;
+    else process.env.HYPERFRAMES_API_KEY = previousHyperframesApiKey;
   }
 });
 

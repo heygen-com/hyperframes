@@ -17,12 +17,17 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
+import {
+  heygenAuthHeadersWithRefresh,
+  heygenCredential,
+  heygenJSON,
+} from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
-  return heygenCredential()?.headers != null;
+  const credential = heygenCredential();
+  return credential?.headers != null || credential?.refreshable === true;
 }
 export function elevenlabsAvailable() {
   if (!process.env.ELEVENLABS_API_KEY) return false;
@@ -66,7 +71,7 @@ export async function resolveVoiceId({ provider, userVoice, lang = "en" }) {
   if (lang === "en") return "05f19352e8f74b0392a8f411eba40de1"; // Marcia · English · female
   // Non-English: no fixed default — fall back to the first matching catalog voice.
   const payload = await heygenJSON(`/voices?engine=starfish&type=public&limit=50`, {
-    headers: heygenAuthHeaders(),
+    headers: await heygenAuthHeadersWithRefresh(),
   });
   const voices = payload.data ?? payload.voices ?? [];
   const pick = voices.find((v) => v.language === "English") ?? voices[0];
@@ -318,7 +323,7 @@ export function synthResult(r, wavAbs, label) {
 // (e.g. an HTTP 402 plan_upgrade_required thrown by heygenJSON was swallowed).
 export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, deps = {}) {
   const requestJSON = deps.heygenJSON ?? heygenJSON;
-  const authHeaders = deps.heygenAuthHeaders ?? heygenAuthHeaders;
+  const authHeaders = deps.heygenAuthHeaders ?? heygenAuthHeadersWithRefresh;
   const fetchImpl = deps.fetch ?? fetch;
   const transcode = deps.transcodeToWav ?? transcodeToWav;
   try {
@@ -326,7 +331,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
     if (lang !== "en") body.language = lang;
     const payload = await requestJSON(`/voices/speech`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body,
     });
     const inner = payload.data ?? payload;

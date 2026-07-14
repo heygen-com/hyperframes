@@ -17,7 +17,11 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import {
+  heygenAuthHeadersWithRefresh,
+  heygenJSON,
+  loadEnvFromDir,
+} from "./lib/heygen.mjs";
 import { ffprobeDuration, resolveVoiceId, synthesizeOne, withWordIds } from "./lib/tts.mjs";
 
 const argv = process.argv.slice(2);
@@ -66,7 +70,7 @@ const listOnly = flag("list") === true;
 loadEnvFromDir(process.cwd());
 let authHeaders;
 try {
-  authHeaders = heygenAuthHeaders();
+  authHeaders = await heygenAuthHeadersWithRefresh();
 } catch (e) {
   die(e.message);
 }
