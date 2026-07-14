@@ -162,7 +162,7 @@ async function prepareTextElements(session) {
       if (rgb) {
         const values = rgb[1]
           .trim()
-          .split(/[\s,\/]+/)
+          .split(/[\s,/]+/)
           .map((part, index) => {
             const value = parseFloat(part);
             if (Number.isNaN(value)) return NaN;
@@ -177,7 +177,7 @@ async function prepareTextElements(session) {
       if (!srgb) return null;
       const values = srgb[1]
         .trim()
-        .split(/[\s\/]+/)
+        .split(/[\s/]+/)
         .map((part, index) => {
           const value = parseFloat(part);
           if (Number.isNaN(value)) return NaN;
