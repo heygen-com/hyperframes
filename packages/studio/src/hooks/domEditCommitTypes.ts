@@ -22,7 +22,19 @@ export type CommitDomEditPatchBatches = (
      */
     skipReload?: boolean;
   },
-) => Promise<void>;
+) => Promise<DomEditPatchBatchesResult>;
+
+/**
+ * Durability report for a patch-batches commit. `allMatched === false` means
+ * the server could not locate at least one patch target on disk — the write is
+ * NOT durable for that target (the preview was reloaded to reconverge), and
+ * dependent follow-up writes (the z→lane timeline mirror) must be skipped.
+ * `changed === false` means every batch was a byte-identical no-op.
+ */
+export interface DomEditPatchBatchesResult {
+  allMatched: boolean;
+  changed: boolean;
+}
 
 export type PersistDomEditOperations = (
   selection: DomEditSelection,

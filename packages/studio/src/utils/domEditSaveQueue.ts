@@ -13,7 +13,7 @@ interface DomEditSaveQueueOptions {
 }
 
 export interface DomEditSaveQueue {
-  enqueue: (save: () => Promise<void>) => Promise<void>;
+  enqueue: <T>(save: () => Promise<T>) => Promise<T>;
   waitForIdle: () => Promise<void>;
   reset: () => void;
   destroy: () => void;
@@ -52,10 +52,11 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
     });
   };
 
-  const run = async (save: () => Promise<void>) => {
+  const run = async <T>(save: () => Promise<T>): Promise<T> => {
     try {
-      await save();
+      const result = await save();
       if (!breakerOpen) consecutiveFailures = 0;
+      return result;
     } catch (error) {
       consecutiveFailures += 1;
       if (consecutiveFailures >= failureThreshold) open(error);

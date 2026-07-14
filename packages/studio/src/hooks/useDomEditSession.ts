@@ -43,7 +43,7 @@ export interface UseDomEditSessionParams {
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   updateEditingFileContent: (path: string, content: string) => void;

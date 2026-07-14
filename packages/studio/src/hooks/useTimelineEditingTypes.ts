@@ -23,7 +23,7 @@ export type TimelineZIndexReorderCommit = (
     key?: string;
   }>,
   coalesceKey?: string,
-) => Promise<void>;
+) => Promise<import("./domEditCommitTypes").DomEditPatchBatchesResult | undefined | void>;
 
 export interface UseTimelineEditingOptions {
   projectId: string | null;

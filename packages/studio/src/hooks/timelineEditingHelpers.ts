@@ -87,7 +87,10 @@ export function applyTimelineStackingReorder(input: {
     });
   }
   if (commitEntries.length === 0) return Promise.resolve();
-  return input.commit?.(commitEntries, input.coalesceKey) ?? Promise.resolve();
+  // The durability report is for gesture-level callers (z→lane mirror); this
+  // lane-drag z-sync path has no dependent follow-up write — swallow it.
+  // Promise.resolve-wrapped: a commit implementation may return void.
+  return Promise.resolve(input.commit?.(commitEntries, input.coalesceKey)).then(() => undefined);
 }
 export function extendRootDurationIfNeeded(newEnd: number): boolean {
   const store = usePlayerStore.getState();

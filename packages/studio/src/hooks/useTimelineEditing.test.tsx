@@ -166,7 +166,9 @@ type TimelineRecordEdit = NonNullable<
 function renderTimelineEditingHookWithLifecycle(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
-  commitDomEditPatchBatches: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>;
+  commitDomEditPatchBatches: ReturnType<
+    typeof vi.fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>
+  >;
 }): {
   move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
   unmount: () => void;
@@ -511,7 +513,9 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
     const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    const commitDomEditPatchBatches = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const commitDomEditPatchBatches = vi.fn<
+      (...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>
+    >(async () => ({ allMatched: true, changed: true }));
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
@@ -556,7 +560,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const saveError = new Error("save failed");
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<void>>()
+      .fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>()
       .mockRejectedValueOnce(saveError);
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
@@ -620,8 +624,8 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       releaseBatch = resolve;
     });
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<void>>()
-      .mockReturnValueOnce(batchSave);
+      .fn<(...args: unknown[]) => Promise<{ allMatched: boolean; changed: boolean }>>()
+      .mockReturnValueOnce(batchSave.then(() => ({ allMatched: true, changed: true })));
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,

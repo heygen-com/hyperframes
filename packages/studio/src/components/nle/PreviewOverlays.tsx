@@ -21,6 +21,7 @@ import { buildStableSelector } from "../editor/domEditingDom";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
+import { runZLaneGesture } from "./zLaneGesture";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
@@ -247,12 +248,13 @@ export function PreviewOverlays({
           // default to — passed explicitly so the mirror shares it by
           // construction, not by formula duplication).
           const coalesceKey = zReorderCoalesceKey(entries, action);
-          // Mirror the z action into a timeline lane move AFTER the z commit
-          // resolves: the two persists patch the same source file, so they are
-          // serialized (same reasoning as the lane-drag's move→z ordering).
-          // A failed z commit already toasted + rolled back — skip the mirror.
-          handleDomZIndexReorderCommit(entries, coalesceKey, action)
-            .then(() =>
+          // One serialized z→lane transaction: the mirror runs only AFTER the
+          // z commit resolved AND reported durable targets, and a second rapid
+          // gesture cannot interleave between the two phases — see
+          // runZLaneGesture. A failed z commit already toasted + rolled back.
+          runZLaneGesture({
+            commitZ: () => handleDomZIndexReorderCommit(entries, coalesceKey, action),
+            mirror: () =>
               mirrorZOrderToTimeline({
                 selectionKey: entries.find((e) => e.element === sel.element)?.key,
                 action,
@@ -260,8 +262,7 @@ export function PreviewOverlays({
                 sourceFile: sel.sourceFile,
                 coalesceKey,
               }),
-            )
-            .catch(() => undefined);
+          }).catch(() => undefined);
         }}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}

@@ -142,7 +142,7 @@ export interface UseDomEditCommitsParams {
   activeCompPath: string | null;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
-  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -398,12 +398,13 @@ export function useDomEditCommits({
 
         domEditSaveTimestampRef.current = Date.now();
         const results = await Promise.all(batches.map((batch) => patchElementBatch(pid, batch)));
+        const allMatched = results.every((result) => result.allMatched);
         const files = Object.fromEntries(
           results
             .filter((result) => result.changed)
             .map((result) => [result.sourceFile, { before: result.before, after: result.after }]),
         );
-        if (Object.keys(files).length === 0) return;
+        if (Object.keys(files).length === 0) return { allMatched, changed: false };
         await editHistory.recordEdit({
           label: options.label,
           kind: "manual",
@@ -420,10 +421,9 @@ export function useDomEditCommits({
         // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
         // reload is independently suppressed by domEditSaveTimestampRef above.)
         const skipSafe =
-          options.skipReload === true &&
-          batchesAreInlineStyleOnly(batches) &&
-          results.every((result) => result.allMatched);
+          options.skipReload === true && batchesAreInlineStyleOnly(batches) && allMatched;
         if (!skipSafe) reloadPreview();
+        return { allMatched, changed: true };
       }).catch((error) => {
         const alreadyToasted =
           (error instanceof StudioSaveHttpError ||

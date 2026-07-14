@@ -40,7 +40,7 @@ type ReorderCommit = (
   }>,
   coalesceKeyOverride?: string,
   actionKind?: string,
-) => Promise<void>;
+) => Promise<unknown>;
 
 function renderReorderHook(
   capturedCalls: CapturedBatchCall[],
@@ -51,6 +51,7 @@ function renderReorderHook(
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (batches, options) => {
           capturedCalls.push({ batches, options });
+          return { allMatched: true, changed: true };
         },
       }),
     );
@@ -246,12 +247,14 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     let resolveBatch: (() => void) | undefined;
+    const batchResult = { allMatched: true, changed: true };
     function Harness() {
       const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
         makeLifecycleOpsParams({
           // Persist stays pending so the assertion below can only be satisfied
           // by the SYNCHRONOUS store update (the lane-sync path's requirement).
-          commitDomEditPatchBatches: () => new Promise((resolve) => (resolveBatch = resolve)),
+          commitDomEditPatchBatches: () =>
+            new Promise((resolve) => (resolveBatch = () => resolve(batchResult))),
         }),
       );
       commit = handleDomZIndexReorderCommit;
@@ -259,7 +262,7 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     }
     const root = mountReactHarness(<Harness />);
 
-    let pending: Promise<void> | undefined;
+    let pending: Promise<unknown> | undefined;
     act(() => {
       pending = commit!([
         {

@@ -180,6 +180,7 @@ function renderCommitHook(captured: CapturedBatchCall[]) {
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (batches, options) => {
           captured.push({ batches, options });
+          return { allMatched: true, changed: true };
         },
       }),
     ));

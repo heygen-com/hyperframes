@@ -57,7 +57,7 @@ type ReorderEntries = Array<{
 }>;
 
 interface HarnessApi {
-  commitZ: (entries: ReorderEntries, coalesceKey: string, action: string) => Promise<void>;
+  commitZ: (entries: ReorderEntries, coalesceKey: string, action: string) => Promise<unknown>;
   mirror: (input: MirrorZOrderInput) => Promise<boolean>;
 }
 
@@ -118,6 +118,7 @@ function mountMirrorHarness(history: {
       makeLifecycleOpsParams({
         commitDomEditPatchBatches: async (_batches, options) => {
           record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
+          return { allMatched: true, changed: true };
         },
       }),
     );

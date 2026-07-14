@@ -156,7 +156,7 @@ export function usePreviewPersistence({
 
   // ── Queue / drain helpers ──
 
-  const queueDomEditSave = useCallback((save: () => Promise<void>) => {
+  const queueDomEditSave = useCallback(<T>(save: () => Promise<T>): Promise<T> => {
     return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 
