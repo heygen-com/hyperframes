@@ -95,6 +95,34 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain("./bg.svg");
   });
 
+  it("preserves external SVG fragment references used by <use>", async () => {
+    const spriteSvg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <symbol id="patch-head" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></symbol>
+    </svg>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="1">
+          <svg>
+            <use id="href-use" href="assets/patch.svg#patch-head"></use>
+            <use id="xlink-use" xlink:href="assets/patch.svg#patch-head"></use>
+          </svg>
+        </div>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.main = {}</script>
+      </body></html>`,
+      "assets/patch.svg": spriteSvg,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    expect(document.getElementById("href-use")?.getAttribute("href")).toBe(
+      "assets/patch.svg#patch-head",
+    );
+    expect(document.getElementById("xlink-use")?.getAttribute("xlink:href")).toBe(
+      "assets/patch.svg#patch-head",
+    );
+    expect(bundled).not.toContain("data:image/svg+xml;base64");
+  });
+
   it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
