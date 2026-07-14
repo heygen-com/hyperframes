@@ -33,6 +33,7 @@ const GROUPS: Group[] = [
     title: "Project",
     commands: [
       ["lint", "Validate a composition for common mistakes"],
+      ["check", "Run lint, runtime validation, and layout inspection as one gate"],
       [
         "validate",
         "Runtime-validate a composition in headless Chrome (JS errors, missing assets, contrast)",
