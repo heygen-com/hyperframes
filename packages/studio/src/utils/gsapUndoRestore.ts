@@ -1,9 +1,13 @@
 // Soft-apply of undo/redo restores to the live preview: diff a restored file
 // against the live one, sync attribute-only changes onto the live DOM, and
-// re-run the restored GSAP script via applySoftReload — avoiding the full
-// iframe remount (black flash + WebGL context loss) whenever the restore is
-// expressible in place.
-import { applySoftReload, extractGsapScriptText, findGsapScriptElements } from "./gsapSoftReload";
+// refresh the runtime in place — avoiding the full iframe remount (black flash
+// + WebGL context loss) whenever the restore is expressible without one.
+import {
+  applySoftReload,
+  applySoftReloadFinalization,
+  extractGsapScriptText,
+  findGsapScriptElements,
+} from "./gsapSoftReload";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -16,36 +20,79 @@ export interface UndoRestoreFile {
   restored: string;
 }
 
-function idElementMap(doc: Document): Map<string, Element> {
+/**
+ * Identity for the soft diff: `id` when present, else `data-hf-id`. Nearly
+ * every studio-editable element carries one of the two — z-order commits and
+ * timeline patches target by id OR hf-id OR stable selector, and hf-ids are
+ * stamped by the SDK — so keying on both keeps selector-targeted clips (no
+ * DOM id) inside soft-undo's reach instead of forcing a full reload.
+ */
+function elementIdentityKey(el: Element): string | null {
+  const id = el.getAttribute("id");
+  if (id) return `id:${id}`;
+  const hfId = el.getAttribute("data-hf-id");
+  if (hfId) return `hf:${hfId}`;
+  return null;
+}
+
+const IDENTITY_SELECTOR = "[id], [data-hf-id]";
+
+function identityElementMap(doc: Document): Map<string, Element> {
   const map = new Map<string, Element>();
-  for (const el of doc.querySelectorAll("[id]")) {
-    const id = el.getAttribute("id");
-    if (id) map.set(id, el);
+  for (const el of doc.querySelectorAll(IDENTITY_SELECTOR)) {
+    const key = elementIdentityKey(el);
+    if (key) map.set(key, el);
   }
   return map;
 }
 
-// Strip id'd elements to bare `id` and blank GSAP scripts, in place: docs that
-// differ only in id'd attributes/inline-style/script text normalize equal; any
-// residual difference is beyond soft-reload's reach → caller full-reloads.
+// Strip identified elements to their bare identity attributes and blank GSAP
+// scripts, in place: docs that differ only in identified-element attributes/
+// inline-style/script text normalize equal; any residual difference is beyond
+// soft-reload's reach → caller full-reloads. Both identity attributes are
+// KEPT, so a change to `id`/`data-hf-id` themselves stays a residual
+// (structural) difference.
 function normalizeSoftResidual(doc: Document): void {
-  for (const el of doc.querySelectorAll("[id]")) {
+  for (const el of doc.querySelectorAll(IDENTITY_SELECTOR)) {
     const id = el.getAttribute("id");
+    const hfId = el.getAttribute("data-hf-id");
     for (const name of [...el.getAttributeNames()]) {
-      if (name !== "id") el.removeAttribute(name);
+      if (name !== "id" && name !== "data-hf-id") el.removeAttribute(name);
     }
     if (id) el.setAttribute("id", id);
+    if (hfId) el.setAttribute("data-hf-id", hfId);
   }
   for (const script of findGsapScriptElements(doc)) script.textContent = "";
 }
 
-// Soft-reloadable iff the docs differ SOLELY in id'd-element attributes/inline
-// style and/or the GSAP script; returns the changed ids to sync onto the live
-// DOM. Structural/text diffs → null → the caller full-reloads. Pure.
+/** Same attribute set with identical values (order-insensitive). */
+function attributesEqual(a: Element, b: Element): boolean {
+  const aNames = a.getAttributeNames();
+  if (aNames.length !== b.getAttributeNames().length) return false;
+  for (const name of aNames) {
+    if (a.getAttribute(name) !== b.getAttribute(name)) return false;
+  }
+  return true;
+}
+
+// Soft-reloadable iff the docs differ SOLELY in identified-element attributes/
+// inline style and/or the GSAP script; returns the changed identity keys to
+// sync onto the live DOM. Structural/text diffs → null → the caller
+// full-reloads. Pure.
+//
+// Change detection deliberately compares each identified element's OWN
+// attribute surface — never its innerHTML. Identified elements NEST (the
+// composition root wraps every clip), so an innerHTML comparison at the parent
+// re-detects every descendant change and rejects the restore; that was the
+// original always-full-reload undo blink. Structure/text integrity is instead
+// guaranteed by the normalize-residual pass below: with identified-element
+// attributes stripped and scripts blanked, ANY remaining difference (text,
+// added/removed/reordered nodes, un-identified element attrs) still fails the
+// docs-equal check and escalates to a full reload.
 export function diffSoftReloadableRestore(
   previous: string,
   restored: string,
-): { changedElementIds: string[] } | null {
+): { changedElementKeys: string[] } | null {
   let prevDoc: Document;
   let nextDoc: Document;
   try {
@@ -54,25 +101,22 @@ export function diffSoftReloadableRestore(
   } catch {
     return null;
   }
-  const prevById = idElementMap(prevDoc);
-  const nextById = idElementMap(nextDoc);
-  // A different id set means an element was added or removed (e.g. a split, a
-  // delete) — structural, so soft-reload can't express it.
-  if (prevById.size !== nextById.size) return null;
-  const changedElementIds: string[] = [];
-  for (const [id, nextEl] of nextById) {
-    const prevEl = prevById.get(id);
+  const prevByKey = identityElementMap(prevDoc);
+  const nextByKey = identityElementMap(nextDoc);
+  // A different identity set means an element was added or removed (e.g. a
+  // split, a delete) — structural, so soft-reload can't express it.
+  if (prevByKey.size !== nextByKey.size) return null;
+  const changedElementKeys: string[] = [];
+  for (const [key, nextEl] of nextByKey) {
+    const prevEl = prevByKey.get(key);
     if (!prevEl || prevEl.tagName !== nextEl.tagName) return null;
-    // A change inside the element (text / children) is out of soft scope; only
-    // its own attributes may differ. (GSAP scripts are handled via re-run.)
-    if (prevEl.innerHTML !== nextEl.innerHTML) return null;
-    if (prevEl.outerHTML !== nextEl.outerHTML) changedElementIds.push(id);
+    if (!attributesEqual(prevEl, nextEl)) changedElementKeys.push(key);
   }
-  // Confirm nothing OUTSIDE id'd-element attributes and GSAP scripts changed.
+  // Confirm nothing OUTSIDE identified-element attributes and GSAP scripts changed.
   normalizeSoftResidual(prevDoc);
   normalizeSoftResidual(nextDoc);
   if (prevDoc.documentElement.outerHTML !== nextDoc.documentElement.outerHTML) return null;
-  return { changedElementIds };
+  return { changedElementKeys };
 }
 
 /** Copy every attribute from `source` onto the live `target`, dropping extras. */
@@ -85,25 +129,42 @@ function syncElementAttributes(target: Element, source: Element): void {
   }
 }
 
+/** Resolve an identity key (`id:` / `hf:` prefixed) in the live document. */
+function findLiveElementByKey(doc: Document, key: string): Element | null {
+  if (key.startsWith("id:")) return doc.getElementById(key.slice(3));
+  return doc.querySelector(`[data-hf-id="${CSS.escape(key.slice(3))}"]`);
+}
+
 /**
  * Soft-apply an undo/redo restore to the live preview WITHOUT a full iframe
  * remount (which blanks the frame black and re-flashes the WebGL context). Only
  * the active composition — the document living in the root iframe — is eligible;
  * a sub-comp or multi-file restore falls back to `reloadPreview`.
  *
- * The restore is soft-applied when its only differences are id'd-element
- * attributes / inline-style and/or the GSAP script (see diffSoftReloadableRestore):
+ * The restore is soft-applied when its only differences are identified-element
+ * (id / data-hf-id) attributes / inline-style and/or the GSAP script (see
+ * diffSoftReloadableRestore):
  *   1. Each changed element's attribute surface (inline style, data-start /
  *      -duration, the studio manual-offset props + flags) is synced onto the live
  *      element — so a canvas-position revert lands on the live DOM the runtime's
  *      seek-reapply reads from, not just on disk.
- *   2. The restored GSAP script is re-run in place via applySoftReload, which
- *      re-seeks to `currentTime` (playhead-invariant) and re-folds manual edits.
- *      With no single script, the manual-edit reapply is invoked directly.
+ *   2. The runtime refresh depends on what changed:
+ *      - GSAP script text actually CHANGED between previous and restored → the
+ *        restored script is re-run in place via applySoftReload (re-seeks to
+ *        `currentTime`, re-folds manual edits).
+ *      - Script unchanged or absent (the overwhelmingly common undo: z-order,
+ *        lane move, timing shift, style tweak) → NO script execution — the
+ *        blink-free finalization only (seek + __hfForceTimelineRebind + manual
+ *        reapply, exactly the rebindPreviewTiming path), so timing-attribute
+ *        reverts refresh their visibility windows. Re-running an unchanged
+ *        script here used to be the biggest undo blink source: it tore down
+ *        and rebuilt live timelines (and full-reloaded whenever the script
+ *        couldn't be scoped) for restores that never touched it.
  *
  * Returns "soft" when applied in place, "full" when it escalated to reloadPreview
  * (ineligible restore, missing target, or a permanent soft-reload failure).
  */
+// fallow-ignore-next-line complexity
 export function applyUndoRestoreToPreview(
   iframe: HTMLIFrameElement | null,
   activeCompPath: string | null,
@@ -111,9 +172,14 @@ export function applyUndoRestoreToPreview(
   currentTime: number,
   reloadPreview: () => void,
 ): "soft" | "full" {
+  // The master view carries a NULL activeCompPath but the root iframe shows
+  // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
+  // Without this normalization every master-view undo failed the path gate and
+  // full-reloaded: the original "undo always blinks".
+  const activeDocPath = activeCompPath ?? "index.html";
   const paths = files ? Object.keys(files) : [];
   // Soft path only covers the single active-comp document in the root iframe.
-  if (!iframe || !activeCompPath || !files || paths.length !== 1 || paths[0] !== activeCompPath) {
+  if (!iframe || !files || paths.length !== 1 || paths[0] !== activeDocPath) {
     reloadPreview();
     return "full";
   }
@@ -123,7 +189,7 @@ export function applyUndoRestoreToPreview(
     reloadPreview();
     return "full";
   }
-  const { previous, restored } = files[activeCompPath]!;
+  const { previous, restored } = files[activeDocPath]!;
   const diff = diffSoftReloadableRestore(previous, restored);
   if (!diff) {
     reloadPreview();
@@ -133,16 +199,17 @@ export function applyUndoRestoreToPreview(
   // Sync each changed element's attributes onto the live DOM from the restored
   // markup, so the runtime's seek-reapply (which reads inline offset props off
   // the live element) folds the REVERTED values, not the stale current ones.
-  const restoredById = idElementMap(new DOMParser().parseFromString(restored, "text/html"));
-  for (const id of diff.changedElementIds) {
-    const liveEl = doc.getElementById(id);
-    const restoredEl = restoredById.get(id);
+  const restoredByKey = identityElementMap(new DOMParser().parseFromString(restored, "text/html"));
+  for (const key of diff.changedElementKeys) {
+    const liveEl = findLiveElementByKey(doc, key);
+    const restoredEl = restoredByKey.get(key);
     if (liveEl && restoredEl) syncElementAttributes(liveEl, restoredEl);
   }
 
-  const script = extractGsapScriptText(restored);
-  if (script) {
-    const result = applySoftReload(iframe, script, {
+  const restoredScript = extractGsapScriptText(restored);
+  const previousScript = extractGsapScriptText(previous);
+  if (restoredScript && restoredScript !== previousScript) {
+    const result = applySoftReload(iframe, restoredScript, {
       onAsyncFailure: reloadPreview,
       currentTimeOverride: currentTime,
     });
@@ -152,8 +219,11 @@ export function applyUndoRestoreToPreview(
     }
     return "soft";
   }
-  // No single GSAP script to re-run — the change was pure attribute/style. Re-fold
-  // manual edits and hold the playhead so the synced attributes take visible effect.
+  // Script unchanged or absent — the live timelines are still valid; only the
+  // synced attributes need to take effect. Rebind-only finalization (zero
+  // script execution); plain seek + manual reapply as a degraded fallback when
+  // the runtime rebind hook is unavailable.
+  if (applySoftReloadFinalization(iframe, currentTime)) return "soft";
   try {
     win.__player?.seek?.(currentTime);
     win.__hfStudioManualEditsApply?.();
