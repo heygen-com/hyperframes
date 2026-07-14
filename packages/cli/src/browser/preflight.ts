@@ -261,6 +261,7 @@ function checkWindowsUncPath(projectDir = process.cwd()): EnvironmentCheckOutcom
   };
 }
 
+// fallow-ignore-next-line complexity
 export async function runEnvironmentChecks(
   options: EnvironmentCheckOptions = {},
 ): Promise<EnvironmentCheckResult> {
