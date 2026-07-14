@@ -1,15 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import {
   parseFfmpegDurationBanner,
+  cartesiaAvailable,
   ffprobeDuration,
+  pickProvider,
+  resolveVoiceId,
   synthesizeOne,
   synthesizeHeygen,
   synthResult,
 } from "./tts.mjs";
+
+const CARTESIA_SKYLAR_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
+
+function restoreEnv(name, value) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
   const stderr = [
@@ -67,6 +77,337 @@ test("ffprobeDuration returns NaN when neither ffprobe nor ffmpeg resolve", () =
     assert.ok(Number.isNaN(ffprobeDuration("/does/not/matter.wav")));
   } finally {
     process.env.PATH = originalPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pickProvider preserves explicit existing provider choices", () => {
+  assert.equal(pickProvider("kokoro"), "kokoro");
+});
+
+test("cartesiaAvailable skips the SDK probe when CARTESIA_API_KEY is missing", () => {
+  const savedKey = process.env.CARTESIA_API_KEY;
+  let probeCount = 0;
+  try {
+    delete process.env.CARTESIA_API_KEY;
+    assert.equal(
+      cartesiaAvailable(
+        () => {
+          probeCount += 1;
+          return { status: 0 };
+        },
+        () => {
+          throw new Error("Python invocation must not resolve without a key");
+        },
+      ),
+      false,
+    );
+    assert.equal(probeCount, 0);
+  } finally {
+    restoreEnv("CARTESIA_API_KEY", savedKey);
+  }
+});
+
+test("cartesiaAvailable requires a successful import cartesia probe", () => {
+  const savedKey = process.env.CARTESIA_API_KEY;
+  const captured = [];
+  try {
+    process.env.CARTESIA_API_KEY = "test-cartesia-key";
+    const invokePython = (args) => ({ cmd: "fake-python", args: ["-3", ...args] });
+    const failed = cartesiaAvailable((cmd, args, opts) => {
+      captured.push({ cmd, args, opts });
+      return { status: 1 };
+    }, invokePython);
+    const succeeded = cartesiaAvailable((cmd, args, opts) => {
+      captured.push({ cmd, args, opts });
+      return { status: 0 };
+    }, invokePython);
+    assert.equal(failed, false);
+    assert.equal(succeeded, true);
+    assert.deepEqual(captured, [
+      {
+        cmd: "fake-python",
+        args: ["-3", "-c", "import cartesia"],
+        opts: { stdio: "ignore" },
+      },
+      {
+        cmd: "fake-python",
+        args: ["-3", "-c", "import cartesia"],
+        opts: { stdio: "ignore" },
+      },
+    ]);
+  } finally {
+    restoreEnv("CARTESIA_API_KEY", savedKey);
+  }
+});
+
+test("pickProvider chooses HeyGen before ElevenLabs, Cartesia, and Kokoro", () => {
+  assert.equal(
+    pickProvider(undefined, {
+      heygenAvailable: () => true,
+      elevenlabsAvailable: () => true,
+      cartesiaAvailable: () => true,
+    }),
+    "heygen",
+  );
+});
+
+test("pickProvider chooses ElevenLabs before Cartesia and Kokoro", () => {
+  assert.equal(
+    pickProvider(undefined, {
+      heygenAvailable: () => false,
+      elevenlabsAvailable: () => true,
+      cartesiaAvailable: () => true,
+    }),
+    "elevenlabs",
+  );
+});
+
+test("pickProvider chooses Cartesia before Kokoro", () => {
+  assert.equal(
+    pickProvider(undefined, {
+      heygenAvailable: () => false,
+      elevenlabsAvailable: () => false,
+      cartesiaAvailable: () => true,
+    }),
+    "cartesia",
+  );
+});
+
+test("pickProvider falls back to Kokoro when no cloud provider is available", () => {
+  assert.equal(
+    pickProvider(undefined, {
+      heygenAvailable: () => false,
+      elevenlabsAvailable: () => false,
+      cartesiaAvailable: () => false,
+    }),
+    "kokoro",
+  );
+});
+
+test("pickProvider rejects forced Cartesia when CARTESIA_API_KEY is missing", () => {
+  const savedKey = process.env.CARTESIA_API_KEY;
+  try {
+    delete process.env.CARTESIA_API_KEY;
+    assert.throws(
+      () => pickProvider("cartesia"),
+      /provider=cartesia but \$CARTESIA_API_KEY is not set/,
+    );
+  } finally {
+    restoreEnv("CARTESIA_API_KEY", savedKey);
+  }
+});
+
+test("pickProvider honors forced Cartesia with a key without probing SDK importability", () => {
+  const savedKey = process.env.CARTESIA_API_KEY;
+  try {
+    process.env.CARTESIA_API_KEY = "test-cartesia-key";
+    assert.equal(
+      pickProvider("cartesia", {
+        cartesiaAvailable: () => {
+          throw new Error("forced selection must not probe the SDK");
+        },
+      }),
+      "cartesia",
+    );
+  } finally {
+    restoreEnv("CARTESIA_API_KEY", savedKey);
+  }
+});
+
+test("resolveVoiceId preserves existing ElevenLabs and Kokoro defaults", async () => {
+  assert.equal(
+    await resolveVoiceId({ provider: "elevenlabs", userVoice: null, lang: "en" }),
+    "21m00Tcm4TlvDq8ikWAM",
+  );
+  assert.equal(
+    await resolveVoiceId({ provider: "kokoro", userVoice: null, lang: "en" }),
+    "am_michael",
+  );
+});
+
+test("resolveVoiceId uses Skylar for Cartesia by default", async () => {
+  assert.equal(
+    await resolveVoiceId({ provider: "cartesia", userVoice: null, lang: "en-US" }),
+    CARTESIA_SKYLAR_VOICE_ID,
+  );
+});
+
+test("resolveVoiceId preserves an explicit Cartesia voice", async () => {
+  assert.equal(
+    await resolveVoiceId({ provider: "cartesia", userVoice: "custom-cartesia-voice", lang: "en" }),
+    "custom-cartesia-voice",
+  );
+});
+
+test("synthesizeOne(Cartesia) invokes the SDK contract and writes a non-empty WAV", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-cartesia-success-"));
+  const wavAbs = join(dir, "assets", "voice", "line-0.wav");
+  const argsPath = join(dir, "cartesia-args.json");
+  const fakePython = join(dir, "fake-python.mjs");
+  const savedKey = process.env.CARTESIA_API_KEY;
+  const savedArgsPath = process.env.CARTESIA_FAKE_ARGS_PATH;
+  const savedPath = process.env.PATH;
+  try {
+    process.env.CARTESIA_API_KEY = "test-cartesia-key";
+    process.env.CARTESIA_FAKE_ARGS_PATH = argsPath;
+    process.env.PATH = dir;
+    writeFileSync(
+      fakePython,
+      [
+        'import { writeFileSync } from "node:fs";',
+        "const args = process.argv.slice(2);",
+        "writeFileSync(process.env.CARTESIA_FAKE_ARGS_PATH, JSON.stringify(args));",
+        "const wavAbs = args.at(-1);",
+        'writeFileSync(wavAbs, Buffer.from("RIFFcartesia-test-wav"));',
+      ].join("\n"),
+    );
+
+    const result = await synthesizeOne(
+      {
+        provider: "cartesia",
+        text: "Hello from Cartesia",
+        voiceId: CARTESIA_SKYLAR_VOICE_ID,
+        lang: "pt-BR",
+        speed: 1.25,
+        wavAbs,
+        hyperframesDir: dir,
+      },
+      {
+        cartesia: {
+          pythonInvocation: (args) => ({ cmd: process.execPath, args: [fakePython, ...args] }),
+        },
+      },
+    );
+
+    assert.deepEqual(result, { ok: true, words: null });
+    assert.ok(readFileSync(wavAbs).length > 0);
+    const invokedArgs = JSON.parse(readFileSync(argsPath, "utf8"));
+    assert.equal(invokedArgs[0], "-c");
+    assert.match(invokedArgs[1], /Cartesia/);
+    assert.equal(invokedArgs[3], "2026-03-01");
+    assert.equal(invokedArgs[4], "sonic-3.5");
+    assert.equal(invokedArgs[5], CARTESIA_SKYLAR_VOICE_ID);
+    assert.equal(invokedArgs[6], "pt");
+    assert.equal(invokedArgs[7], "wav");
+    assert.equal(invokedArgs[8], "pcm_s16le");
+    assert.equal(invokedArgs[9], "44100");
+    assert.equal(invokedArgs[10], "1.25");
+    assert.equal(invokedArgs[11], wavAbs);
+    assert.ok(invokedArgs.every((arg) => !String(arg).includes(process.env.CARTESIA_API_KEY)));
+  } finally {
+    restoreEnv("CARTESIA_API_KEY", savedKey);
+    restoreEnv("CARTESIA_FAKE_ARGS_PATH", savedArgsPath);
+    restoreEnv("PATH", savedPath);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeOne(Cartesia) reports a named non-zero Python exit without fallback", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-cartesia-exit-"));
+  let spawnCount = 0;
+  try {
+    const result = await synthesizeOne(
+      {
+        provider: "cartesia",
+        text: "failure",
+        voiceId: CARTESIA_SKYLAR_VOICE_ID,
+        lang: "fr-FR",
+        speed: 1,
+        wavAbs: join(dir, "voice.wav"),
+        hyperframesDir: dir,
+      },
+      {
+        cartesia: {
+          pythonInvocation: (args) => ({ cmd: "fake-python", args }),
+          spawnP: async () => {
+            spawnCount += 1;
+            return { status: 7 };
+          },
+        },
+      },
+    );
+    assert.deepEqual(result, {
+      ok: false,
+      words: null,
+      error: "cartesia (python) exited with status 7",
+    });
+    assert.equal(spawnCount, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeOne(Cartesia) reports missing SDK output without fallback", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-cartesia-output-"));
+  let spawnCount = 0;
+  try {
+    const result = await synthesizeOne(
+      {
+        provider: "cartesia",
+        text: "missing output",
+        voiceId: CARTESIA_SKYLAR_VOICE_ID,
+        lang: "en-US",
+        speed: 1,
+        wavAbs: join(dir, "voice.wav"),
+        hyperframesDir: dir,
+      },
+      {
+        cartesia: {
+          pythonInvocation: (args) => ({ cmd: "fake-python", args }),
+          spawnP: async () => {
+            spawnCount += 1;
+            return { status: 0 };
+          },
+        },
+      },
+    );
+    assert.deepEqual(result, {
+      ok: false,
+      words: null,
+      error: "cartesia (python) produced no wav file",
+    });
+    assert.equal(spawnCount, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeOne(Cartesia) reports output directory creation failure without spawning", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-cartesia-mkdir-"));
+  let spawnCount = 0;
+  try {
+    const result = await synthesizeOne(
+      {
+        provider: "cartesia",
+        text: "directory failure",
+        voiceId: CARTESIA_SKYLAR_VOICE_ID,
+        lang: "en-US",
+        speed: 1,
+        wavAbs: join(dir, "voice", "line-0.wav"),
+        hyperframesDir: dir,
+      },
+      {
+        cartesia: {
+          mkdirSync: () => {
+            throw new Error("read-only filesystem");
+          },
+          pythonInvocation: (args) => ({ cmd: "fake-python", args }),
+          spawnP: async () => {
+            spawnCount += 1;
+            return { status: 0 };
+          },
+        },
+      },
+    );
+
+    assert.deepEqual(result, {
+      ok: false,
+      words: null,
+      error: "cartesia (python): failed to create output directory (read-only filesystem)",
+    });
+    assert.equal(spawnCount, 0);
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -17,34 +17,37 @@ The installer shows a picker. Select the **core skills** below — every project
 
 **Core skills — install all of these**
 
-| Slash command           | What it loads                                                              |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `/hyperframes`          | **Read first.** The entry skill — capability map + video router; sends "make me a video" intent to the right workflow |
-| `/hyperframes-core`     | Composition contract — HTML structure, `data-*` attributes, clips, tracks  |
-| `/hyperframes-animation`| All animation — motion rules, scene blueprints, transitions, and the runtime adapters (GSAP, Lottie, Three.js, Anime.js, CSS, WAAPI, TypeGPU) |
-| `/hyperframes-creative` | Creative direction — design spec, palettes, typography, narration, beats   |
-| `/hyperframes-cli`      | Dev-loop CLI — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `doctor` |
-| `/media-use`    | Asset preprocessing — `tts`, `transcribe`, `remove-background`             |
-| `/hyperframes-registry` | Block and component installation via `hyperframes add`                     |
-| `/general-video`        | The general authoring workflow — fallback for any video that doesn't match a specific workflow below |
+| Slash command            | What it loads                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/hyperframes`           | **Read first.** The entry skill — capability map + video router; sends "make me a video" intent to the right workflow                         |
+| `/hyperframes-core`      | Composition contract — HTML structure, `data-*` attributes, clips, tracks                                                                     |
+| `/hyperframes-animation` | All animation — motion rules, scene blueprints, transitions, and the runtime adapters (GSAP, Lottie, Three.js, Anime.js, CSS, WAAPI, TypeGPU) |
+| `/hyperframes-creative`  | Creative direction — design spec, palettes, typography, narration, beats                                                                      |
+| `/hyperframes-cli`       | Dev-loop CLI — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `doctor`                                                           |
+| `/media-use`             | Asset preprocessing — `tts`, `transcribe`, `remove-background`                                                                                |
+| `/hyperframes-registry`  | Block and component installation via `hyperframes add`                                                                                        |
+| `/general-video`         | The general authoring workflow — fallback for any video that doesn't match a specific workflow below                                          |
 
 **Optional workflows — add the ones that match your inputs** (`/hyperframes` routes to whichever you've installed)
 
-| Slash command            | Input → output                                                              |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `/product-launch-video`  | A product URL / brief / script → launch or promo video                      |
-| `/website-to-video`      | A general website / URL → a video of the site (tour / showcase / social clip) |
-| `/faceless-explainer`    | Arbitrary text (no URL) → faceless explainer with its own TTS narration     |
-| `/pr-to-video`           | A GitHub PR → code-change explainer                                         |
-| `/embedded-captions`     | An existing talking-head video → the same footage with captions / subtitles |
-| `/talking-head-recut`      | An existing talking-head video → footage packaged with designed graphic cards |
-| `/motion-graphics`       | A short, unnarrated, design-led motion graphic (logo sting, kinetic type, stat / chart) |
-| `/music-to-video`        | A music track (audio file or video) → a beat-synced video (lyric, slideshow, or kinetic promo) |
-| `/slideshow`             | A presentation / pitch deck / interactive deck — discrete slides, fragment reveals, branching |
-| `/remotion-to-hyperframes` | Port an existing Remotion (React) composition to HyperFrames HTML         |
+| Slash command              | Input → output                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | A product URL / brief / script → launch or promo video                                         |
+| `/website-to-video`        | A general website / URL → a video of the site (tour / showcase / social clip)                  |
+| `/faceless-explainer`      | Arbitrary text (no URL) → faceless explainer with its own TTS narration                        |
+| `/pr-to-video`             | A GitHub PR → code-change explainer                                                            |
+| `/embedded-captions`       | An existing talking-head video → the same footage with captions / subtitles                    |
+| `/talking-head-recut`      | An existing talking-head video → footage packaged with designed graphic cards                  |
+| `/motion-graphics`         | A short, unnarrated, design-led motion graphic (logo sting, kinetic type, stat / chart)        |
+| `/music-to-video`          | A music track (audio file or video) → a beat-synced video (lyric, slideshow, or kinetic promo) |
+| `/slideshow`               | A presentation / pitch deck / interactive deck — discrete slides, fragment reveals, branching  |
+| `/remotion-to-hyperframes` | Port an existing Remotion (React) composition to HyperFrames HTML                              |
 
 <Tip>
-  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all`. And start Hyperframes prompts with `/hyperframes` (or invoke the skill another way for non-Claude agents) — it loads the routing + composition context explicitly so the agent picks the right workflow and gets the rules right the first time.
+  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add
+  heygen-com/hyperframes --all`. And start Hyperframes prompts with `/hyperframes` (or invoke the
+  skill another way for non-Claude agents) — it loads the routing + composition context explicitly
+  so the agent picks the right workflow and gets the rules right the first time.
 </Tip>
 
 ## Claude Design
@@ -83,7 +86,7 @@ Cold-start prompts work best when you specify:
 
 ### Warm start — turn context into a video
 
-You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where Hyperframes shines because the agent does the research/summarization step *and* the production step in one flow.
+You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where Hyperframes shines because the agent does the research/summarization step _and_ the production step in one flow.
 
 > Take a look at this GitHub repo https://github.com/heygen-com/hyperframes and explain its uses and architecture to me using `/hyperframes`.
 
@@ -93,7 +96,7 @@ You give the agent something to work with — a URL, a doc, a CSV, a transcript 
 
 > Turn this CSV into an animated bar chart race using `/hyperframes`.
 
-Warm-start prompts produce richer, more grounded videos because the agent is writing about *something specific* instead of inventing copy.
+Warm-start prompts produce richer, more grounded videos because the agent is writing about _something specific_ instead of inventing copy.
 
 ## Iterating
 
@@ -117,30 +120,30 @@ The skills map natural-language adjectives to specific framework settings. Using
 
 ### Motion & easing
 
-Describe how motion should *feel* and the agent picks the matching GSAP ease:
+Describe how motion should _feel_ and the agent picks the matching GSAP ease:
 
-| Say this    | Agent uses       | Feels like                     |
-| ----------- | ---------------- | ------------------------------ |
-| smooth      | `sine` / `power1`| Natural deceleration           |
-| snappy      | `power4.out`     | Quick and decisive             |
-| bouncy      | `back.out`       | Overshoots then settles        |
-| springy     | `elastic.out`    | Oscillates into place          |
-| dramatic    | `expo.out`       | Fast start, long glide         |
-| dreamy      | `sine.inOut`     | Slow, symmetrical              |
+| Say this | Agent uses        | Feels like              |
+| -------- | ----------------- | ----------------------- |
+| smooth   | `sine` / `power1` | Natural deceleration    |
+| snappy   | `power4.out`      | Quick and decisive      |
+| bouncy   | `back.out`        | Overshoots then settles |
+| springy  | `elastic.out`     | Oscillates into place   |
+| dramatic | `expo.out`        | Fast start, long glide  |
+| dreamy   | `sine.inOut`      | Slow, symmetrical       |
 
 **Timing shorthand:** fast (0.2s) = energy, medium (0.4s) = professional, slow (0.6s) = luxury, very slow (1–2s) = cinematic.
 
 ### Caption tones
 
-Describe the *energy* of your captions and the agent picks matching typography, size, and animation:
+Describe the _energy_ of your captions and the agent picks matching typography, size, and animation:
 
-| Tone         | Typography             | Animation    | Size range |
-| ------------ | ---------------------- | ------------ | ---------- |
-| Hype         | Heavy weight fonts     | Scale-pop    | 72–96px    |
-| Corporate    | Clean sans-serif       | Fade + slide | 56–72px    |
-| Tutorial     | Monospace              | Typewriter   | 48–64px    |
-| Storytelling | Serif                  | Slow fade    | 44–56px    |
-| Social       | Rounded, playful       | Bounce       | 56–80px    |
+| Tone         | Typography         | Animation    | Size range |
+| ------------ | ------------------ | ------------ | ---------- |
+| Hype         | Heavy weight fonts | Scale-pop    | 72–96px    |
+| Corporate    | Clean sans-serif   | Fade + slide | 56–72px    |
+| Tutorial     | Monospace          | Typewriter   | 48–64px    |
+| Storytelling | Serif              | Slow fade    | 44–56px    |
+| Social       | Rounded, playful   | Bounce       | 56–80px    |
 
 ```
 "Hype-style captions with scale-pop"
@@ -160,11 +163,11 @@ Per-word styling also works:
 
 Every multi-scene composition benefits from transitions. Describe the energy level:
 
-| Energy  | CSS option       | Shader option       |
-| ------- | ---------------- | ------------------- |
-| Calm    | Blur crossfade   | Cross-warp morph    |
-| Medium  | Push slide       | Whip pan            |
-| High    | Zoom through     | Glitch, ridged burn |
+| Energy | CSS option     | Shader option       |
+| ------ | -------------- | ------------------- |
+| Calm   | Blur crossfade | Cross-warp morph    |
+| Medium | Push slide     | Whip pan            |
+| High   | Zoom through   | Glitch, ridged burn |
 
 Or describe by mood:
 
@@ -179,12 +182,12 @@ Or describe by mood:
 
 Map audio frequency bands to visual properties. The agent uses these defaults:
 
-| Audio band | Maps to   | Visual effect       |
-| ---------- | --------- | ------------------- |
-| Bass       | `scale`   | Pulse on the beat   |
-| Treble     | `glow`    | Shimmer intensity   |
-| Amplitude  | `opacity` | Breathing           |
-| Mids       | `borderRadius` | Shape morphing |
+| Audio band | Maps to        | Visual effect     |
+| ---------- | -------------- | ----------------- |
+| Bass       | `scale`        | Pulse on the beat |
+| Treble     | `glow`         | Shimmer intensity |
+| Amplitude  | `opacity`      | Breathing         |
+| Mids       | `borderRadius` | Shape morphing    |
 
 ```
 "Make the text pulse with the beat"
@@ -200,13 +203,13 @@ Map audio frequency bands to visual properties. The agent uses these defaults:
 
 Hand-drawn emphasis effects for text:
 
-| Mode        | Effect             | Best for      |
-| ----------- | ------------------ | ------------- |
-| `highlight` | Marker sweep       | Key phrases   |
-| `circle`    | Hand-drawn ellipse | Single words  |
-| `burst`     | Radiating lines    | Hype moments  |
-| `scribble`  | Chaotic scratch    | Rough emphasis|
-| `sketchout` | Cross-hatch lines       | Crossing out |
+| Mode        | Effect             | Best for       |
+| ----------- | ------------------ | -------------- |
+| `highlight` | Marker sweep       | Key phrases    |
+| `circle`    | Hand-drawn ellipse | Single words   |
+| `burst`     | Radiating lines    | Hype moments   |
+| `scribble`  | Chaotic scratch    | Rough emphasis |
+| `sketchout` | Cross-hatch lines  | Crossing out   |
 
 ```
 "Add a marker highlight sweep on 'revolutionary'"
@@ -216,13 +219,13 @@ Hand-drawn emphasis effects for text:
 
 ### Text-to-speech voices
 
-HyperFrames supports three TTS providers: **HeyGen** (Starfish voices, requires sign-in via `npx hyperframes auth`), **ElevenLabs** (requires API key), and **Kokoro** (free, runs locally, no API key needed). The agent asks which provider to use — or picks automatically in autonomous mode. Describe the content and the agent picks a voice, or request one directly:
+HyperFrames supports four TTS providers in the shared `/media-use` audio engine: **HeyGen** (Starfish voices, requires sign-in via `npx hyperframes auth`), **ElevenLabs** (requires API key), **Cartesia** (requires API key and `pip install cartesia`; uses Sonic 3.5 and defaults to the Skylar voice), and **Kokoro** (free, runs locally, no API key needed). The agent asks which provider to use — or picks automatically in autonomous mode. Describe the content and the agent picks a voice, or request one directly:
 
-| Content type  | Kokoro voices              |
-| ------------- | -------------------------- |
-| Product demo  | `af_heart`, `af_nova`      |
-| Tutorial      | `am_adam`, `bf_emma`       |
-| Marketing     | `af_sky`, `am_michael`     |
+| Content type | Kokoro voices          |
+| ------------ | ---------------------- |
+| Product demo | `af_heart`, `af_nova`  |
+| Tutorial     | `am_adam`, `bf_emma`   |
+| Marketing    | `af_sky`, `am_michael` |
 
 ```
 "Generate narration for this script"
@@ -233,11 +236,11 @@ HyperFrames supports three TTS providers: **HeyGen** (Starfish voices, requires 
 
 ### Rendering quality
 
-| Quality    | Use for                  |
-| ---------- | ------------------------ |
-| `draft`    | Fast iteration           |
-| `standard` | Review and feedback      |
-| `high`     | Final delivery           |
+| Quality    | Use for             |
+| ---------- | ------------------- |
+| `draft`    | Fast iteration      |
+| `standard` | Review and feedback |
+| `high`     | Final delivery      |
 
 ```
 "Quick draft render"
@@ -258,7 +261,8 @@ The skills enforce these automatically, but if you hand-edit compositions or deb
 7. **Add transitions between scenes** — jump cuts between scenes are almost always unintentional in composed video.
 
 <Warning>
-  Rules 1–5 are technical requirements — breaking them produces incorrect renders. Rules 6–7 are best practices that the skills apply by default. You can override them when you have a reason to.
+  Rules 1–5 are technical requirements — breaking them produces incorrect renders. Rules 6–7 are
+  best practices that the skills apply by default. You can override them when you have a reason to.
 </Warning>
 
 ## Anti-patterns

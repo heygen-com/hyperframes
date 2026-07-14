@@ -11,18 +11,21 @@ This pipeline is the backbone of the [website-to-video workflow](/guides/website
 
 Each step produces an artifact that feeds the next:
 
-| # | Step                    | Output                                  | What happens                                                            |
-|---|-------------------------|-----------------------------------------|-------------------------------------------------------------------------|
-| 1 | **Capture**             | `capture/`                              | Extract screenshots, design tokens, fonts, assets, animations from a source |
-| 2 | **Design**              | `DESIGN.md`                             | Brand reference: colors, typography, component stylings, spacing, iteration guide |
-| 3 | **Strategy & Messaging**| —                                       | Align on video type, style, the ONE message, narrative arc, and audience |
-| 4 | **Storyboard + Script** | `STORYBOARD.md` + `SCRIPT.md`          | Concept-first storyboard and narration script, written together         |
-| 5 | **VO + Timing**         | `narration.wav` + `transcript.json`     | TTS audio with word-level timestamps                                    |
-| 6 | **Build**               | `compositions/*.html`                   | Animated HTML compositions, one per beat                                |
-| 7 | **Validate**            | Snapshot PNGs + `lint`/`validate` pass  | Visual verification and runtime checks before delivery                  |
+| #   | Step                     | Output                                 | What happens                                                                      |
+| --- | ------------------------ | -------------------------------------- | --------------------------------------------------------------------------------- |
+| 1   | **Capture**              | `capture/`                             | Extract screenshots, design tokens, fonts, assets, animations from a source       |
+| 2   | **Design**               | `DESIGN.md`                            | Brand reference: colors, typography, component stylings, spacing, iteration guide |
+| 3   | **Strategy & Messaging** | —                                      | Align on video type, style, the ONE message, narrative arc, and audience          |
+| 4   | **Storyboard + Script**  | `STORYBOARD.md` + `SCRIPT.md`          | Concept-first storyboard and narration script, written together                   |
+| 5   | **VO + Timing**          | `narration.wav` + `transcript.json`    | TTS audio with word-level timestamps                                              |
+| 6   | **Build**                | `compositions/*.html`                  | Animated HTML compositions, one per beat                                          |
+| 7   | **Validate**             | Snapshot PNGs + `lint`/`validate` pass | Visual verification and runtime checks before delivery                            |
 
 <Tip>
-  Not every project uses every step. A no-narration brand reel skips Step 5; a hand-authored composition skips Steps 1-2. But the order matters: scene durations come from narration, animation choices come from the storyboard, and the storyboard depends on the design reference. Skip a step only when you don't need its artifact downstream.
+  Not every project uses every step. A no-narration brand reel skips Step 5; a hand-authored
+  composition skips Steps 1-2. But the order matters: scene durations come from narration, animation
+  choices come from the storyboard, and the storyboard depends on the design reference. Skip a step
+  only when you don't need its artifact downstream.
 </Tip>
 
 ## Project layout
@@ -78,13 +81,13 @@ For sources that aren't websites (PDFs, decks, CSVs, notes), capture isn't a lit
 
 A typical `DESIGN.md` has five sections:
 
-| Section | What it captures |
-|---------|------------------|
-| **Visual Theme** | 3-5 sentences describing the brand's visual personality — dark/light, contrast, mood, what makes it distinctive |
-| **Quick Reference** | Colors (8-12 HEX values with semantic roles and WCAG contrast ratios) and fonts (families, weights, roles, file paths) |
-| **Component Stylings** | Exact CSS-level specs for 6-12 components the brand uses: buttons, cards, containers, distinctive UI patterns |
-| **Spacing & Layout** | Base spacing unit, scale with usage, max-width / grid, and breakpoint strategy |
-| **Iteration Guide** | Do's and don'ts, common failure modes, and rules for modifying the design in later steps |
+| Section                | What it captures                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Visual Theme**       | 3-5 sentences describing the brand's visual personality — dark/light, contrast, mood, what makes it distinctive        |
+| **Quick Reference**    | Colors (8-12 HEX values with semantic roles and WCAG contrast ratios) and fonts (families, weights, roles, file paths) |
+| **Component Stylings** | Exact CSS-level specs for 6-12 components the brand uses: buttons, cards, containers, distinctive UI patterns          |
+| **Spacing & Layout**   | Base spacing unit, scale with usage, max-width / grid, and breakpoint strategy                                         |
+| **Iteration Guide**    | Do's and don'ts, common failure modes, and rules for modifying the design in later steps                               |
 
 `DESIGN.md` is also the input format for [Open Design](/guides/open-design) and [Claude Design](/guides/claude-design); both produce a `DESIGN.md` you can drop into a Hyperframes project.
 
@@ -110,15 +113,15 @@ Write the storyboard concept-first: message → narrative arc → beats that ser
 
 Each beat in `STORYBOARD.md` typically covers:
 
-| Field            | What it specifies |
-|------------------|-------------------|
-| Timing           | `0.0s - 5.8s`, taken from `transcript.json` once Step 5 runs |
-| Narration line   | The exact words spoken during this beat |
-| Mood & camera    | One sentence describing the feel and the shot |
-| Assets           | Which captured images, icons, and fonts go in this beat, referenced by path |
-| Techniques       | 2-3 picks from the [techniques library](https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/techniques.md): SVG path drawing, Canvas 2D, CSS 3D, per-word typography, Lottie, video compositing, typing effects, variable fonts, MotionPath, velocity transitions, audio-reactive |
-| Transitions      | How this beat enters from the previous one and exits to the next |
-| SFX              | Short, specific sound effects (e.g. _"woosh on logo entry, soft tick on counter"_) |
+| Field          | What it specifies                                                                                                                                                                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Timing         | `0.0s - 5.8s`, taken from `transcript.json` once Step 5 runs                                                                                                                                                                                                                                                    |
+| Narration line | The exact words spoken during this beat                                                                                                                                                                                                                                                                         |
+| Mood & camera  | One sentence describing the feel and the shot                                                                                                                                                                                                                                                                   |
+| Assets         | Which captured images, icons, and fonts go in this beat, referenced by path                                                                                                                                                                                                                                     |
+| Techniques     | 2-3 picks from the [techniques library](https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/techniques.md): SVG path drawing, Canvas 2D, CSS 3D, per-word typography, Lottie, video compositing, typing effects, variable fonts, MotionPath, velocity transitions, audio-reactive |
+| Transitions    | How this beat enters from the previous one and exits to the next                                                                                                                                                                                                                                                |
+| SFX            | Short, specific sound effects (e.g. _"woosh on logo entry, soft tick on counter"_)                                                                                                                                                                                                                              |
 
 The storyboard typically opens with a global-direction block: format, voiceover direction, style basis, and guardrails that apply to every beat. `SCRIPT.md` contains the narration backbone: **hook** (one sentence that earns attention), **story** (what the product or topic is), **proof** (numbers, components, customers), **CTA** (one clear action). For videos without narration, `SCRIPT.md` becomes a per-beat copy plan with on-screen text and timing notes.
 
@@ -135,13 +138,13 @@ npx hyperframes tts SCRIPT.md --voice af_nova --output narration.wav
 npx hyperframes transcribe narration.wav
 ```
 
-| File             | What it contains |
-|------------------|------------------|
-| `narration.wav`  | The TTS audio that ships with the final render |
-| `narration.txt`  | The exact spoken text with pronunciation substitutions applied (`API` → `A P I`, `$2T` → `two trillion`). Distinct from `SCRIPT.md` so you can regenerate the audio later with a different voice without redoing the substitutions. |
-| `transcript.json`| `[{ text, start, end }]` for every word. Every later step reads this for timing. |
+| File              | What it contains                                                                                                                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `narration.wav`   | The TTS audio that ships with the final render                                                                                                                                                                                      |
+| `narration.txt`   | The exact spoken text with pronunciation substitutions applied (`API` → `A P I`, `$2T` → `two trillion`). Distinct from `SCRIPT.md` so you can regenerate the audio later with a different voice without redoing the substitutions. |
+| `transcript.json` | `[{ text, start, end }]` for every word. Every later step reads this for timing.                                                                                                                                                    |
 
-Hyperframes ships multiple TTS adapters (Kokoro, ElevenLabs, HeyGen); see [`/media-use`](/guides/prompting) for the skill that picks one. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
+Hyperframes ships multiple TTS adapters (HeyGen, ElevenLabs, Cartesia, Kokoro); see [`/media-use`](/guides/prompting) for the skill that picks one. The local `npx hyperframes tts` command is Kokoro-only; cloud providers are selected by the `/media-use` audio engine. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
 
 **Gate:** `narration.wav`, `narration.txt`, and `transcript.json` exist. `STORYBOARD.md` beat timings reference real timestamps, not estimates.
 

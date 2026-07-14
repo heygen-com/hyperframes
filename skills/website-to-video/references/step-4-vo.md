@@ -56,14 +56,18 @@ Ask the user which voice provider they'd like:
 >
 > 1. **HeyGen TTS** — Good quality voices, and it returns word-level timestamps automatically (saves a separate transcription step). Requires HeyGen API key.
 > 2. **ElevenLabs** — Large voice library, very natural output. Requires ElevenLabs API key. Does not return word timestamps — you'll transcribe separately.
-> 3. **Kokoro** (Free) — Runs locally, no API key needed. Decent quality but more robotic than the others. Good for drafts or budget runs.
+> 3. **Cartesia** — Fast Sonic voices with natural intonation. Requires Cartesia API key and the Python SDK. Does not return word timestamps — you'll transcribe separately.
+> 4. **Kokoro** (Free) — Runs locally, no API key needed. Decent quality but more robotic than the others. Good for drafts or budget runs.
 
-If the user picks ElevenLabs or HeyGen and doesn't have a key set up yet, help them:
+If the user picks ElevenLabs, Cartesia, or HeyGen and doesn't have a key set up yet, help them:
 
 - **ElevenLabs:** "Add `ELEVENLABS_API_KEY=your-key` to a `.env` file in the project root, or just paste it here and I'll set it up."
+- **Cartesia:** "Add `CARTESIA_API_KEY=your-key` to a `.env` file in the project root. Then install the SDK with `pip install cartesia` in the environment where HyperFrames runs Python subprocesses."
 - **HeyGen:** "Add `HEYGEN_API_KEY=your-key` to a `.env` file, or paste it here."
 
 Don't judge or critique if the user pastes a key directly in chat — just use it and move on.
+
+HyperFrames does not install the Cartesia or ElevenLabs SDK automatically, and it does not prompt for API keys. If the SDK is missing, stop and ask the user to run `pip install cartesia` before continuing.
 
 ## Audition voices
 
@@ -87,6 +91,13 @@ After the provider is selected, audition at least 2 voices with the first senten
     --output narration.mp3
   ```
 
+- Does not return word timestamps — transcribe separately after generating.
+
+**Cartesia:**
+
+- Browse voices and copy a voice ID from the Cartesia voice library at https://docs.cartesia.ai/build-with-cartesia/voices/voice-library.
+- The default voice is **Skylar** (`db6b0ed5-d5d3-463d-ae85-518a07d3c2b4`). Use it unless the user asks for another voice.
+- Cartesia is invoked through the shared media-use audio engine, not `npx hyperframes tts`. Build an `audio_request.json` with `"provider": "cartesia"` and `"voice": "<cartesia-voice-id>"`, then run the engine (see the full-generation example below).
 - Does not return word timestamps — transcribe separately after generating.
 
 **HeyGen TTS:**
@@ -158,7 +169,33 @@ Never sit idle for 10 minutes hoping a stuck process will finish.
 - Always generate a short test clip with the first 2 sentences before generating the full audio
 - **No SSML tags** — Kokoro reads them as literal text. `<break time="1s"/>` is spoken as "break time equals one slash." Use blank lines or `...` for pauses in `narration.txt`
 
-For ElevenLabs and HeyGen TTS, substitutions are usually unnecessary — they handle product names correctly.
+For ElevenLabs, Cartesia, and HeyGen TTS, substitutions are usually unnecessary — they handle product names correctly.
+
+**Cartesia full generation (shared audio engine):**
+
+Cartesia is not available through `npx hyperframes tts`. Generate it with the shared media-use audio engine instead:
+
+```bash
+# audio_request.json — single narration line
+{
+  "provider": "cartesia",
+  "voice": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+  "lang": "en",
+  "speed": 1.0,
+  "lines": [{ "id": "narration", "text": "First sentence. Second sentence." }],
+  "bgm": { "mode": "none" }
+}
+```
+
+```bash
+node skills/media-use/audio/scripts/audio.mjs \
+  --request ./audio_request.json \
+  --hyperframes . \
+  --out ./audio_meta.json \
+  --only tts
+```
+
+The engine writes `assets/voice/narration.wav`. Rename or copy it to `narration.wav` in the project root so the rest of the workflow can find it. The engine also returns `audio_meta.json`; `words` is `null` for Cartesia, so run `npx hyperframes transcribe narration.wav` next to produce `transcript.json`.
 
 **Also save the exact spoken text** — with pronunciation substitutions applied (e.g., `API` → `A P I`, `$2T` → `two trillion` and etc.) — as `narration.txt` in the same directory. This is the string passed to TTS, distinct from `SCRIPT.md` which is the human-readable creative doc. Having `narration.txt` makes it trivial to regenerate the audio later with a different voice without re-deriving the substitutions. Name it exactly `narration.txt`.
 
@@ -175,7 +212,7 @@ json.dump(normalized, open('transcript.json', 'w'), indent=2)
 
 No separate transcription step needed.
 
-**If you used ElevenLabs or Kokoro:**
+**If you used ElevenLabs, Cartesia, or Kokoro:**
 
 ```bash
 npx hyperframes transcribe narration.wav

@@ -6,16 +6,16 @@
 //
 //   node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
 //
-// The three capabilities degrade on ONE switch — whether HeyGen is configured
-// (credential present, NOT the CLI). This mirrors the table in ../SKILL.md:
+// TTS selects the first available provider; BGM/SFX retrieval switches on whether
+// HeyGen is configured (credential present, NOT the CLI). This mirrors ../SKILL.md:
 //
-//   TTS : HeyGen REST → ElevenLabs → Kokoro (CLI)
+//   TTS : HeyGen REST → ElevenLabs → Cartesia → Kokoro (CLI)
 //   BGM : HeyGen retrieve  → (no credential) Lyria/MusicGen generate
 //   SFX : HeyGen retrieve  → (no credential) bundled 19-file library
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {
-//     "provider": "auto",          // auto|heygen|elevenlabs|kokoro (override: --provider)
+//     "provider": "auto",          // auto|heygen|elevenlabs|cartesia|kokoro (override: --provider)
 //     "lang": "en", "speed": 1.0,
 //     "lines": [                   // one TTS unit each; id joins back to the caller's model
 //       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] }
