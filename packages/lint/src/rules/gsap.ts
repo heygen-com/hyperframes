@@ -28,6 +28,7 @@ import type { HyperframeLintFinding, LintRule } from "../types";
 import type { OpenTag } from "../utils";
 import {
   readAttr,
+  readDecodedAttr,
   truncateSnippet,
   stripJsComments,
   hasCaptionStyles,
@@ -272,7 +273,7 @@ function findTagEnd(source: string, tag: OpenTag): number {
 function collectCompositionRanges(source: string, tags: OpenTag[]): CompositionRange[] {
   return tags
     .map((tag) => {
-      const id = readAttr(tag.raw, "data-composition-id");
+      const id = readDecodedAttr(tag.raw, "data-composition-id");
       if (!id) return null;
       return {
         id,

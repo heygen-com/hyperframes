@@ -49,7 +49,7 @@ export function isRegistryInstalledFile(rawSource: string): boolean {
 
 function isCompositionRootOrMount(rawTag: string): boolean {
   return Boolean(
-    readAttr(rawTag, "data-composition-id") || readAttr(rawTag, "data-composition-src"),
+    readDecodedAttr(rawTag, "data-composition-id") || readAttr(rawTag, "data-composition-src"),
   );
 }
 
@@ -326,7 +326,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const tag of tags) {
       if (tag.name === "audio" || tag.name === "script" || tag.name === "style") continue;
       if (!readAttr(tag.raw, "data-start")) continue;
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       if (readAttr(tag.raw, "data-composition-src")) continue;
       const classAttr = readAttr(tag.raw, "class") || "";
       const styleAttr = readAttr(tag.raw, "style") || "";
@@ -441,7 +441,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const tag of tags) {
       if (skipTags.has(tag.name)) continue;
       // Skip composition hosts
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       if (readAttr(tag.raw, "data-composition-src")) continue;
 
       const hasStart = readAttr(tag.raw, "data-start") !== null;
@@ -524,7 +524,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const findings: HyperframeLintFinding[] = [];
     if (options.isSubComposition) return findings;
     if (!rootTag) return findings;
-    const compId = readAttr(rootTag.raw, "data-composition-id");
+    const compId = readDecodedAttr(rootTag.raw, "data-composition-id");
     if (!compId) return findings;
     const hasStart = readAttr(rootTag.raw, "data-start") !== null;
     if (!hasStart) {
@@ -960,7 +960,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // — e.g. a slideshow demo.html mounts <hyperframes-player src="index.html">
     // with no data-composition-id of its own. Nothing to capture there, so
     // there's no duration contract to enforce.
-    if (readAttr(rootTag.raw, "data-composition-id") === null) return [];
+    if (readDecodedAttr(rootTag.raw, "data-composition-id") === null) return [];
     if (readAttr(rootTag.raw, "data-duration") !== null) return [];
 
     // Strip comments before scanning for signals — a commented-out

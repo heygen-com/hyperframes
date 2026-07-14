@@ -801,6 +801,20 @@ body {
       expect(finding).toBeUndefined();
     });
 
+    it("matches timeline keys against browser-decoded composition ids", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="&#99;1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "timeline_id_mismatch")).toBeUndefined();
+    });
+
     it("accepts object-literal timeline registration and extracts its keys", async () => {
       const html = `
 <html><body>
