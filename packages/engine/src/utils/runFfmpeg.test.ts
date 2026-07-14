@@ -70,7 +70,7 @@ describe("formatFfmpegError", () => {
       const message = formatFfmpegError(exitCode, "");
 
       expect(message).toContain("0xC0000135 (STATUS_DLL_NOT_FOUND)");
-      expect(message).toContain("/tools/ffmpeg.exe");
+      expect(message).toContain(resolve("/tools/ffmpeg.exe"));
       expect(message).toContain("working 64-bit Windows FFmpeg build");
     },
   );
