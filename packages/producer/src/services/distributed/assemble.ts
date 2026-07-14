@@ -34,7 +34,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { applyFaststart, muxVideoWithAudio, runFfmpeg } from "@hyperframes/engine";
+import {
+  applyFaststart,
+  extractVideoStreamStats,
+  muxVideoWithAudio,
+  runFfmpeg,
+  validateVideoStreamParity,
+} from "@hyperframes/engine";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { formatExportFrameName } from "../../utils/paths.js";
@@ -156,18 +162,14 @@ export async function assemble(
       den: plan.dimensions.fpsDen,
     });
 
-    // Single-chunk renders bypass the concat demuxer entirely. ffmpeg's
-    // concat demuxer with a one-entry list re-runs as a straight remux of
-    // the single source, and in that path the input-side `-r` flag does
-    // not consistently override the source's PTS-derived r_frame_rate
-    // (observed: `359/12` carrying through to the output container while
-    // the equivalent multi-chunk path produces `30/1` exact). Running a
-    // direct `-c copy` remux with `-r <fps>` as an output flag gives the
-    // muxer the authoritative rate to stamp into the container without
-    // touching the encoded stream. Multi-chunk renders continue through
-    // the concat demuxer where the existing `-r` input flag works.
+    // Single-chunk renders bypass the concat demuxer entirely. Keep the
+    // stream-copy remux, but preserve the encoder's packet timestamps.
+    // Output `-r` may drop or retimestamp packets even with `-c copy`.
     if (chunkPaths.length === 1) {
-      const remuxArgs = ["-i", chunkPaths[0]!, "-c", "copy", "-r", fpsArg, "-y", concatOutputPath];
+      // Never use output `-r` with stream copy: FFmpeg may drop or retimestamp
+      // packets to satisfy the requested rate. The encoded chunk already owns
+      // the authoritative timestamps.
+      const remuxArgs = ["-i", chunkPaths[0]!, "-c", "copy", "-y", concatOutputPath];
       const remuxResult = await runFfmpeg(remuxArgs, { signal: abortSignal });
       if (!remuxResult.success) {
         throw new Error(
@@ -343,6 +345,11 @@ export async function assemble(
     if (!faststartResult.success) {
       throw new Error(`[assemble] faststart failed: ${faststartResult.error}`);
     }
+    const [sourceVideo, finalVideo] = await Promise.all([
+      extractVideoStreamStats(postConcatPath, abortSignal),
+      extractVideoStreamStats(outputPath, abortSignal),
+    ]);
+    validateVideoStreamParity(sourceVideo, finalVideo);
   } finally {
     try {
       rmSync(workDir, { recursive: true, force: true });

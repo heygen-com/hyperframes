@@ -16,7 +16,12 @@
  *     verbatim on the respective `success: false` results.
  */
 
-import { applyFaststart, muxVideoWithAudio } from "@hyperframes/engine";
+import {
+  applyFaststart,
+  extractVideoStreamStats,
+  muxVideoWithAudio,
+  validateVideoStreamParity,
+} from "@hyperframes/engine";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { updateJobStatus } from "../shared.js";
 
@@ -80,6 +85,16 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       throw new Error(`Faststart failed: ${faststartResult.error}`);
     }
   }
+
+  // A successful ffmpeg exit is not sufficient for stream-copy assembly:
+  // output `-r` and muxer timestamp bugs have produced full-length audio with
+  // only a handful of retained video packets. Count packets (no decode) and
+  // compare the authoritative video-only stream to the final container.
+  const [sourceVideo, finalVideo] = await Promise.all([
+    extractVideoStreamStats(videoOnlyPath, abortSignal),
+    extractVideoStreamStats(outputPath, abortSignal),
+  ]);
+  validateVideoStreamParity(sourceVideo, finalVideo);
 
   return { assembleMs: Date.now() - stage6Start };
 }
