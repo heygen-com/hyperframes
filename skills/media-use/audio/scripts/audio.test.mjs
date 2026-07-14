@@ -61,7 +61,50 @@ test("explicit offline TTS provider bypasses expired HeyGen OAuth", () => {
       { encoding: "utf8", env },
     );
     assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /heygen auth|proceeding without HeyGen/i);
     assert.equal(JSON.parse(readFileSync(outPath, "utf8")).tts_provider, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("HeyGen-dependent retrieval degrades with an explicit auth diagnostic", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-expired-auth-"));
+  const configDir = join(dir, "config");
+  const requestPath = join(dir, "audio_request.json");
+  const outPath = join(dir, "audio_meta.json");
+  const engine = join(HERE, "audio.mjs");
+  try {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "credentials"),
+      JSON.stringify({
+        oauth: {
+          access_token: "expired",
+          refresh_token: "offline-refresh-token",
+          expires_at: "2000-01-01T00:00:00Z",
+        },
+      }),
+    );
+    writeFileSync(
+      requestPath,
+      JSON.stringify({ provider: "kokoro", lines: [], bgm: { mode: "retrieve" } }),
+    );
+    const env = {
+      ...process.env,
+      HEYGEN_CONFIG_DIR: configDir,
+      HYPERFRAMES_OAUTH_TOKEN_URL: "http://127.0.0.1:1/token",
+    };
+    delete env.HEYGEN_API_KEY;
+    delete env.HYPERFRAMES_API_KEY;
+    const result = spawnSync(
+      process.execPath,
+      [engine, "--request", requestPath, "--hyperframes", dir, "--out", outPath, "--only", "bgm"],
+      { encoding: "utf8", env },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /heygen auth: .*proceeding without HeyGen/i);
+    assert.match(result.stdout, /retrieve requires a HeyGen credential/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
