@@ -21,7 +21,7 @@ metadata:
 
 # motion-graphics — dispatch entry
 
-> **Confirm the route before Step 0.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). A **longer, multi-scene, or narrated** treatment → `/general-video`; a **narrated video of a website** (promo or tour) → `/product-launch-video`; a **topic explainer** → `/faceless-explainer`; a **product promo** → `/product-launch-video`; **captions on existing footage** → `/embedded-captions`. **Out of scope**: live / at-render-time data, or footage it can't capture. Unsure motion-first-vs-narrated? **Read `/hyperframes` first.**
+> **The front door is `/hyperframes`.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). Anything longer, narrated, or multi-scene — or any uncertainty → read `/hyperframes` first: the intent layer owns every route decision.
 
 This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then straight through to render; the collaborative/autonomous distinction in `../hyperframes-core/references/brief-contract.md` adds no gates here. The intent layer (`/hyperframes` → `references/intent.md`) routes here directly without its run-shape questions — a board and a companion session have nothing to add to a piece this short. When a `BRIEF.md` exists (a companion run reaching for a motion graphic, or a routed run that wrote one), read it as the confirmed brief before the director's question.
 

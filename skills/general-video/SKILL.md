@@ -19,7 +19,7 @@ metadata:
 
 # general-video — general video workflow
 
-> **Confirm the route before you build.** This is the **fallback** for custom composition authoring — and the **home of companion mode**: when `BRIEF.md` says `flow: companion`, this skill is the destination, not the fallback — stay here even when the input resembles a specialized workflow's. Otherwise, if the input clearly fits a specialized workflow, prefer it: any website input — promo or site tour → `/product-launch-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/talking-head-recut`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
+> **The front door is `/hyperframes`.** This is the **fallback** for custom composition authoring — and the **home of companion mode**: when `BRIEF.md` says `flow: companion`, this skill is the destination, not the fallback — stay here even when the input resembles a specialized workflow's. Any other clearly-typed input (a website, a PR, footage, a music track), a bare "make a video", or any uncertainty → read `/hyperframes`: the intent layer owns every route decision, and a fresh creation arriving here without `BRIEF.md` goes through it anyway (Setup's opening rule).
 
 ## Setup — the brief, the project, and the mode
 
