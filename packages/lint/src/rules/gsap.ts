@@ -61,6 +61,15 @@ const SCENE_BOUNDARY_EPSILON_SECONDS = 0.05;
 // overlap analysis must never treat them as one.
 const UNRESOLVED_TARGET = "__unresolved__";
 
+// Parser labels for object-proxy tweens describe their role, not target
+// identity. Two independent proxies can both be labelled `dwell/hold` (or the
+// same driven DOM channel), so equality cannot prove they conflict.
+function targetHasNoStableIdentity(selector: string): boolean {
+  return (
+    selector === UNRESOLVED_TARGET || selector === "dwell/hold" || selector.startsWith("proxy → ")
+  );
+}
+
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
 function countClassUsage(tags: OpenTag[]): Map<string, number> {
@@ -593,7 +602,7 @@ export const gsapRules: LintRule<LintContext>[] = [
         if (left.end <= left.position) continue;
         // Unresolved targets are unknown elements: two of them are not provably
         // the same element, so an overlap between them cannot be asserted.
-        if (left.targetSelector === UNRESOLVED_TARGET) continue;
+        if (targetHasNoStableIdentity(left.targetSelector)) continue;
         for (let j = i + 1; j < gsapWindows.length; j++) {
           const right = gsapWindows[j];
           if (!right) continue;
