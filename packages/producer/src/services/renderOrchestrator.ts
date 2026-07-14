@@ -557,7 +557,10 @@ export function applyRenderWarningPolicy(
     strictness,
     warningCodes: job.warnings.map((warning) => warning.code),
   });
-  if (strictness === "strict") {
+  const hasAudioProcessingFailure = job.warnings.some(
+    (warning) => warning.code === "audio_processing_failed",
+  );
+  if (strictness === "strict" || hasAudioProcessingFailure) {
     throw new RenderQualityError(job.warnings);
   }
 }
