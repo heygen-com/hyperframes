@@ -6,7 +6,7 @@ import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER, TRACK_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import { GUTTER, TRACK_H, TRACKS_LEFT_PAD, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -221,6 +221,15 @@ export function TimelineLanes({
                   )}
                 </button>
               </div>
+              {/* Left breathing pad — empty lane surface before t=0, scrolling
+                  with the content (the horizontal TRACKS_TOP_PAD). Sits OUTSIDE
+                  the time-mapped content div so clip/beat/menu math stays
+                  content-relative (clip left = t·pps). */}
+              <div
+                aria-hidden="true"
+                className="flex-shrink-0"
+                style={{ width: TRACKS_LEFT_PAD }}
+              />
               <div
                 style={{
                   width: trackContentWidth,

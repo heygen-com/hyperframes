@@ -21,7 +21,7 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
-import { GUTTER, generateTicks, getTimelineCanvasHeight } from "./timelineLayout";
+import { GUTTER, TRACKS_LEFT_PAD, generateTicks, getTimelineCanvasHeight } from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -427,7 +427,8 @@ export const Timeline = memo(function Timeline({
         onPointerDown={(e) => {
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
-            const x = e.clientX - rect.left + scrollRef.current.scrollLeft - GUTTER;
+            const x =
+              e.clientX - rect.left + scrollRef.current.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
             const splitTime = Math.max(0, x / pps);
             onRazorSplitAll?.(splitTime);
             return;

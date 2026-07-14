@@ -10,6 +10,7 @@ import {
   CLIP_Y,
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
+  TRACKS_LEFT_PAD,
   PLAYHEAD_HEAD_W,
   getTimelinePlayheadLeft,
   getTimelineRowTop,
@@ -100,7 +101,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   return (
     <div
       className="relative"
-      style={{ height: props.totalH, width: GUTTER + props.trackContentWidth }}
+      style={{ height: props.totalH, width: GUTTER + TRACKS_LEFT_PAD + props.trackContentWidth }}
     >
       <TimelineRuler
         major={props.major}
@@ -148,7 +149,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             className="pointer-events-none absolute"
             style={{
               top: getTimelineRowTop(rowIndex) + CLIP_Y,
-              left: GUTTER + gap.start * props.pps,
+              left: GUTTER + TRACKS_LEFT_PAD + gap.start * props.pps,
               width: Math.max((gap.end - gap.start) * props.pps, 2),
               height: TRACK_H - CLIP_Y * 2,
               background: loud ? "rgba(60,230,172,0.18)" : "rgba(60,230,172,0.055)",
@@ -166,7 +167,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             top: getTimelineRowTop(draggedRowIndex) + CLIP_Y,
-            left: GUTTER + draggedClip.previewStart * props.pps,
+            left: GUTTER + TRACKS_LEFT_PAD + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
             height: TRACK_H - CLIP_Y * 2,
             border: "1px solid rgba(60,230,172,0.55)",
@@ -185,7 +186,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           style={{
             top: getTimelineRowTop(draggedClip.insertRow) - 0.5,
             left: GUTTER,
-            width: props.trackContentWidth,
+            width: TRACKS_LEFT_PAD + props.trackContentWidth,
             height: 1,
             background: "#3CE6AC",
             boxShadow: "0 0 3px rgba(60,230,172,0.5)",
@@ -199,7 +200,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         <div
           className="absolute pointer-events-none"
           style={{
-            left: GUTTER + draggedClip.snapTime * props.pps,
+            left: GUTTER + TRACKS_LEFT_PAD + draggedClip.snapTime * props.pps,
             top: RULER_H,
             bottom: 0,
             width: 1,
@@ -279,7 +280,9 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             left:
-              GUTTER + Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
+              GUTTER +
+              TRACKS_LEFT_PAD +
+              Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
             width: Math.abs(props.rangeSelection.end - props.rangeSelection.start) * props.pps,
             top: RULER_H,
             bottom: 0,
