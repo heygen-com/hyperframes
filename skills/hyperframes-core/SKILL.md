@@ -46,18 +46,18 @@ File shape, host wiring, and the pre-render checklist → `references/sub-compos
 
 ### Root must be sized (silent layout bug)
 
-The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. `lint`/`validate`/`inspect` do **not** catch this. Skeleton → `references/minimal-composition.md`.
+The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. Do not rely on automated gates alone to catch this; inspect a snapshot. Skeleton → `references/minimal-composition.md`.
 
 ### One paused timeline
 
 Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`), built **synchronously** at page load. Render duration = root `data-duration`, not timeline length. Don't manually nest sub-timelines into the host. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
 
-### Non-negotiable rules (silent bugs `lint`/`validate`/`inspect` won't catch)
+### Non-negotiable rules (silent bugs automated gates may miss)
 
 Surfaced here; full rationale in the linked reference. Do not violate:
 
 - No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
-- Animate only the visual-property allowlist; never `display`/`visibility`; no `gsap.set` on later-scene clips. → `determinism-rules.md`
+- Animate only the visual-property allowlist; never tween `display` or raw `visibility`. GSAP `autoAlpha` and zero-duration timeline boundary sets are the only visibility exceptions, and only on non-clip elements or wrappers inside a clip. The framework alone controls `.clip` visibility. Do not `gsap.set` later-scene clips at page load. → `determinism-rules.md`
 - No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
 - `<video>`/`<audio>` must be a **direct child of the host root** (never inside a sub-comp `<template>`/wrapper); the framework owns playback. → `variables-and-media.md`
 - Every `id` must be unique across the **assembled** page; inside a sub-comp, prefix ids with the composition id (`#<id>-hero`). Duplicate `<video>`/`<img>` ids render **blank** — the producer injects frames by `getElementById`, and cross-file dupes slip past `lint`. → `composition-patterns.md`

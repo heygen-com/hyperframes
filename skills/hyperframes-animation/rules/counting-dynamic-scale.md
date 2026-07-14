@@ -1,22 +1,22 @@
 ---
 name: counting-dynamic-scale
-description: Counter animation where font size grows with the counting value, creating escalating visual weight.
+description: Counter animation where the value counts up while transform scale grows to its final size, creating escalating visual weight without per-frame text reflow.
 metadata:
-  tags: counter, counting, scale, font-size, number, dynamic, emphasis
+  tags: counter, counting, scale, transform, number, dynamic, emphasis
 ---
 
 # Counting with Dynamic Scale
 
-A number counts from A → B while its font size simultaneously grows, creating escalating visual weight that reinforces magnitude.
+A number counts from A → B while its transform scale grows to the final size. The effect preserves escalating visual weight without tweening `font-size` or forcing text layout on every frame.
 
 ## How It Works
 
-A single eased timeline drives **two synchronized properties**:
+A single paused timeline drives **two synchronized tweens**:
 
 1. The numeric value (rendered as DOM text via `onUpdate`)
-2. The font size (tweened from `START_SIZE` → `END_SIZE`)
+2. The counter transform (`scale: START_SCALE` → `scale: 1`)
 
-As the number gets bigger, the text gets larger — visually communicating "this is impressive."
+As the number gets bigger, the text grows in place — visually communicating “this is impressive” while keeping the final font size static in CSS.
 
 ## Easing
 
@@ -76,8 +76,10 @@ Pick by drama desired (the choice is discrete; coefficient is implicit):
   color: {textColor};
   /* MANDATORY — tabular-nums keeps digits the same width */
   font-variant-numeric: tabular-nums;
-  /* Initial font-size; GSAP will tween this */
-  font-size: {startSize};
+  /* Final size is static. GSAP animates transform scale, not font-size. */
+  display: inline-block;
+  font-size: {endSize};
+  transform-origin: center center;
   letter-spacing: -2px;
   line-height: 1;
 }
@@ -109,21 +111,28 @@ Pick by drama desired (the choice is discrete; coefficient is implicit):
   const tl = gsap.timeline({ paused: true });
 
   const counter = document.getElementById("counter");
-  const state = { value: 0, fontSize: START_SIZE };
+  const state = { value: 0 };
+  const START_SCALE = START_SIZE / END_SIZE;
 
-  // Synchronized count + font-size tween
+  // Count value. onUpdate changes text only.
   tl.to(
     state,
     {
       value: TARGET_VALUE,
-      fontSize: END_SIZE,
       duration: COUNT_DUR,
       ease: COUNT_EASE,
       onUpdate: () => {
         counter.textContent = Math.round(state.value).toLocaleString();
-        counter.style.fontSize = `${state.fontSize}px`;
       },
     },
+    0,
+  );
+
+  // Visual growth uses a compositor transform and shares the count timing.
+  tl.fromTo(
+    counter,
+    { scale: START_SCALE },
+    { scale: 1, duration: COUNT_DUR, ease: COUNT_EASE },
     0,
   );
 
@@ -161,17 +170,17 @@ Pick by drama desired (the choice is discrete; coefficient is implicit):
   - Effects: 2–3 digits reads best at hero size; 4+ digits requires wider container
   - Constraints: must fit horizontally at END_SIZE inside the container
 
-- **START_SIZE / END_SIZE** — initial and final font size
+- **START_SIZE / END_SIZE** — design inputs used once to calculate `START_SCALE`
   - Range: START_SIZE ≈ 40–60 % of END_SIZE
   - Effects: smaller START_SIZE = more dramatic growth; larger = subtler
-  - Constraints: END_SIZE × digit count must fit the container width without clipping
+  - Constraints: set CSS `font-size` to END_SIZE; never tween either value. END_SIZE × digit count must fit the container width without clipping
 
 - **COUNT_DUR** — count + scale tween duration
   - Range: 1.2–2.5 s
   - Effects: shorter = aggressive; longer = settled, gives reading time
   - Constraints: must allow the eye to read the digits scrolling past; below ~0.8 s reads as a flash
 
-- **COUNT_EASE** — shared ease for value AND font-size
+- **COUNT_EASE** — shared ease for the value and transform scale
   - Discrete choice: `power2.out`, `power3.out`, `expo.out` (see table above)
   - Constraint: avoid `back.out` / `elastic.out` — overshoot reads as unstable data
 
@@ -201,7 +210,7 @@ tl.to(
 );
 ```
 
-`snap: { innerText: 1 }` keeps it integer. Keep the proxy-object `onUpdate` form (above) whenever you must **co-drive** font-size, locale formatting (`toLocaleString`), or a suffix in the same tween — `innerText` alone can't do those, and dynamic scale is the whole point of this rule, so the proxy form is the default here.
+`snap: { innerText: 1 }` keeps it integer. Keep the proxy-object `onUpdate` form above when you need locale formatting (`toLocaleString`) or suffix logic. In either form, the synchronized scale remains a separate transform tween at timeline position `0`.
 
 ### 3D depth entry
 
@@ -253,11 +262,12 @@ For 3 stats counting in parallel, share the SAME ease and duration so they finis
 
 ## Key Principles
 
-- **Synchronized value + size in ONE tween** so they share an ease and stay coordinated
+- **Synchronized value + scale at one timeline position** so the two tweens share an ease and stay coordinated
 - **`font-variant-numeric: tabular-nums` is mandatory** — without it digit-count transitions (e.g. 9 → 10 → 100) cause visible jitter as glyph widths change
 - **Fixed-width container** as belt-and-suspenders — even with tabular-nums, glyph shape changes can shift baselines
 - **Grow in place, don't bounce** — the number should feel weighty, not springy. `power3.out` ends at exact value; `back.out` overshoots and feels cartoonish
 - **Start small enough to grow noticeably** (~50 % of final size); end large enough to feel decisive but not clip viewport
+- **Never set `fontSize` in `onUpdate`** — final type size is static CSS; only the transform changes per frame
 - **Suffix animates AFTER the count, not during** — gives the number its own beat
 - **❗ Label is BIG TEXT, not a page-style tiny caption** — for VIDEO, a small paragraph-style caption below a hero-size number reads as visual noise. Use display-size, uppercase, tracked label so the layout is "two-line big-text"; the label is part of the headline, not a footer.
 
@@ -266,7 +276,7 @@ For 3 stats counting in parallel, share the SAME ease and duration so they finis
 - **`tabular-nums` mandatory** — required CSS for layout stability
 - **Timeline must be paused**: `gsap.timeline({ paused: true })`. Never `tl.play()`
 - **Registry key = `data-composition-id`**: `window.__timelines["counter-scene"]` must match scene root
-- **`onUpdate` mutates DOM**: HF runtime seeks the timeline frame-by-frame, so `onUpdate` runs on every seek call. Keep `onUpdate` work O(1) — set text + font-size, no DOM creation
+- **`onUpdate` mutates DOM**: HF runtime seeks the timeline frame-by-frame, so `onUpdate` runs on every seek call. Keep `onUpdate` work O(1) — set text only, with no style writes or DOM creation
 - **`Math.round` not `Math.floor`** — half-way through the final integer should display the final value briefly, not the previous one
 - **Avoid `back.out` / `elastic.out`** for the counter itself — overshoot makes the number look unstable (it's data, not decoration)
 

@@ -1,6 +1,6 @@
 # Route briefs — what the intent layer asks, per route
 
-The adaptive half of the intent layer (`references/intent.md` § 4–5): each route's entry names the **must-haves** to ask now, the **conditional** questions its input can add, the **deferred asks** to announce (questions that stay in the workflow because their recommendations need pipeline data — a probed clip, a captured site), and whether the two **run-shape questions** (storyboard? · automation or companion?) apply. These entries live here, in the router skill, because workflow skills install lazily — at routing time the matched workflow may not be on the machine yet.
+The adaptive half of the intent layer (`/hyperframes` § 4, steps 4–5): each route's entry names the **must-haves** to ask now, the **conditional** questions its input can add, the **deferred asks** to announce (questions that stay in the workflow because their recommendations need pipeline data — a probed clip, a captured site), and whether the two **run-shape questions** (storyboard? · automation or companion?) apply. These entries live here, in the router skill, because workflow skills install lazily — at routing time the matched workflow may not be on the machine yet.
 
 Field semantics and question rules: `hyperframes-core/references/brief-contract.md` § 2–3. Every question: recommended option first, receipt attached; a remembered value becomes the recommendation with its source named. The intro text of the brief always states **message** and **language** (state, don't ask).
 
@@ -41,8 +41,9 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 ## `/general-video`
 
-- **Must-haves** (the former Discovery, for open-ended requests only — a specific ask like "a title card with our logo" skips them): **audience** — developers / executives / general consumers? · **platform** — social (15s) / website hero / product demo / internal? (this is `destination` by another name) · **priority** — motion quality / content accuracy / brand fidelity / speed? · **variations** — one best shot, or 2–3 meaningfully different options?
-- **Run-shape:** storyboard — yes; companion — general-video **is** the companion host, so the question only matters when it was reached as the fallback route (ask it; a companion answer simply stays here with the full toolbox).
+- **Open-ended requests only:** first derive a one-sentence `message`. Ask `audience` only when it is unclear and would change the story or terminology. Ask `destination` only when it would change aspect or composition. Ask for a priority only when the brief contains a real trade-off. Default to one best version; ask about variations only when the user requests options or comparison.
+- **Specific requests:** a complete ask such as “a static title card with our logo for a website hero” needs no discovery questions.
+- **Run-shape:** both questions apply. `/general-video` is also the companion host, so `flow: companion` stays on this route with the full toolbox.
 
 ## `/music-to-video`
 
@@ -54,11 +55,13 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 - Autonomous by design: at most **one** clarifying question, owned by its director step, in the flow. No must-haves here beyond confirming the input; route directly.
 - **Run-shape:** neither — the piece is seconds long; a board and a companion session have nothing to add.
+- **Front-door capability offer:** skip it. The director's one-question limit is authoritative.
 
 ## `/slideshow`
 
 - The one question is the routing confirmation itself — "do you want this as a HyperFrames slideshow?" — asked during triage (it survives every mode: wrong routing is a quality problem). The deck contract owns everything after.
 - **Run-shape:** neither — the deliverable is a navigable deck, not a rendered video.
+- **Front-door capability offer:** skip it. After route confirmation, the deck workflow owns all remaining choices.
 
 ## `/embedded-captions`
 

@@ -1,6 +1,6 @@
 # Video Composition
 
-Video frames are not web pages. These rules apply to every composition regardless of brand, style, or design spec.
+Video frames are not web pages. Use these rules for design-led compositions while respecting the requested format, brand, and scope. Minimal technical compositions and intentionally sparse formats may need less detail.
 
 ## The Design Spec Is Brand, Not Layout
 
@@ -12,15 +12,15 @@ The design spec (`frame.md` or `design.md`) defines what the brand looks like: c
 
 ## Density
 
-A beat with 3 elements looks empty. A beat with 8-10 feels alive.
+Choose density from the message and format. A brand or sizzle frame often needs several visual roles to feel produced; a lower-third, logo sting, or static title may need only a few.
 
-Every scene needs:
+For a scene that should feel layered, plan these roles:
 
-- **Background texture** — radial glow, oversized ghost type, color panel, grain, grid. Never solid flat color.
+- **Background treatment** — radial glow, oversized ghost type, color panel, grain, grid, or an intentionally flat field justified by the concept.
 - **Midground content** — the actual message. Cards, stats, code blocks, images.
 - **Foreground accents** — dividers, labels, data bars, registration marks, monospace metadata. The details that make it feel produced, not generated.
 
-Aim for 8-10 visual elements per scene. Two of those should be decorative elements the user didn't ask for — you add them because empty frames look broken.
+For produced marketing frames, roughly 6–10 visual roles can be a useful starting point, not a contract. Add decoration only when it reinforces hierarchy, motion, or the concept. Decorative treatment must not become new user-facing content, new scenes, or unrequested claims.
 
 ## Color Presence
 

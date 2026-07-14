@@ -7,7 +7,7 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 <rules>
 <hacker-flip-3d path="rules/hacker-flip-3d.md">Character-level 3D rotation with deterministic glyph substitution (decryption). GSAP `back.out` ease + per-glyph `onUpdate` for the flicker hash. Tags: text, 3d, reveal, decode</hacker-flip-3d>
 <vertical-spring-ticker path="rules/vertical-spring-ticker.md">Slot-machine vertical scrolling using stepped GSAP tweens within a masked column. Tags: text, ticker, scroll, vertical</vertical-spring-ticker>
-<counting-dynamic-scale path="rules/counting-dynamic-scale.md">Counter where font size grows with the value for escalating emphasis. Single GSAP tween on a numeric proxy. Tags: counter, scale, font-size, number, dynamic</counting-dynamic-scale>
+<counting-dynamic-scale path="rules/counting-dynamic-scale.md">Counter where transform scale grows with the value for escalating emphasis. A numeric proxy and scale tween share one timeline position. Tags: counter, scale, transform, number, dynamic</counting-dynamic-scale>
 <discrete-text-sequence path="rules/discrete-text-sequence.md">Replace entire text states at time thresholds for non-linear typing (typos, holds, bulk additions, backspaces). GSAP onUpdate-driven reverse search. Tags: text, typing, discrete, threshold, non-linear</discrete-text-sequence>
 <asr-keyword-glow path="rules/asr-keyword-glow.md">Highlight keywords with glow + scale + color synced to ASR word timestamps. Two GSAP tweens per word drive a CSS custom property `--glow` through attack-decay-rest envelope. Tags: asr, audio-sync, highlight, glow, keyword, text</asr-keyword-glow>
 <3d-text-depth-layers path="rules/3d-text-depth-layers.md">Multiple offset text layers (N divs at `(i*dx, i*dy)` with decreasing alpha) create a stacked 3D extrusion illusion on large typography. Tags: text, 3d, depth, layers, shadow, typography, stacked</3d-text-depth-layers>
@@ -19,7 +19,7 @@ Atomic motion recipes. Each lives at `rules/<name>.md`. Compose 2-4 per scene wi
 ## Data & Stats
 
 <rules>
-<counting-dynamic-scale path="rules/counting-dynamic-scale.md">Counter whose font size grows with the value; seek-safe `onUpdate`, `Math.round`, `tabular-nums`, multi-stat chord. (Also listed under Text & Typography.) Tags: counter, number, stat, count-up</counting-dynamic-scale>
+<counting-dynamic-scale path="rules/counting-dynamic-scale.md">Counter whose transform scale grows with the value; seek-safe `onUpdate`, `Math.round`, `tabular-nums`, multi-stat chord. (Also listed under Text & Typography.) Tags: counter, number, stat, count-up</counting-dynamic-scale>
 <stat-bars-and-fills path="rules/stat-bars-and-fills.md">Data-viz primitives that pair a number with a graphic — growth bars (CSS `scaleY` stagger), progress fill (bar `scaleX` or measured SVG ring), and fractional star-rating wipe (`clip-path`). Transforms only, seek-safe. Pick single-focus vs split-frame and hold it. Tags: data, stats, chart, bars, progress, ring, stars, rating, infographic</stat-bars-and-fills>
 </rules>
 

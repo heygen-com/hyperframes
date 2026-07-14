@@ -7,11 +7,12 @@ npx hyperframes auth login            # one-time sign-in
 npx hyperframes cloud render          # zip, upload, render, download
 ```
 
-## When to use cloud vs lambda vs local
+## When to use managed cloud, Lambda, Cloud Run, or local
 
 - **`hyperframes render`** (local): fastest iteration loop, use while authoring.
 - **`hyperframes cloud render`**: zero-infra. HeyGen runs the render and you pay per credit. This is the default answer to "render in the cloud" when you don't want to manage Chrome/FFmpeg/AWS.
 - **`hyperframes lambda render`**: bring-your-own-AWS distributed rendering with chunked parallelism. Only worth it when you've already invested in AWS (see `lambda.md`).
+- **`hyperframes cloudrun render`**: bring-your-own-GCP distributed rendering through Cloud Run and Workflows. Use only when GCP ownership is explicit (see `cloudrun.md`).
 
 ## Authentication
 
@@ -63,7 +64,7 @@ npx hyperframes cloud render --quality high --fps 60
 
 ## Templates and variables
 
-Cloud rendering supports [variables](../SKILL.md#variables-parametrized--template-renders): declare `data-composition-variables` on the composition, then fill them at render time.
+Cloud rendering supports [composition variables](../../hyperframes-core/references/variables-and-media.md#variables): declare `data-composition-variables` on the composition, then fill them at render time.
 
 ```bash
 npx hyperframes cloud render --variables '{"title":"Q4 Recap","theme":"dark"}'
@@ -81,7 +82,7 @@ npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Ada"}'
 npx hyperframes cloud render --asset-id asst_abc123 --variables '{"name":"Linus"}'
 ```
 
-For high-volume personalized batches, the Lambda path adds a JSONL fan-out (see `lambda.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in the `hyperframes-core` skill.
+For high-volume personalized batches, both self-managed paths provide JSONL fan-out: AWS Lambda (`lambda.md`) and Google Cloud Run (`cloudrun.md`). The full variables schema (types, declarative bindings, sub-composition overrides, precedence) lives in the `hyperframes-core` skill.
 
 ## Fire-and-forget and webhooks
 

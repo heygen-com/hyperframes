@@ -1,12 +1,12 @@
 # lint, check, snapshot
 
-The correctness pipeline: `lint` (static, fast) while iterating, then `check` (one browser session: runtime + layout + motion + contrast) as the gate. `snapshot` is the standalone utility for capturing still frames and zoomed crops. `validate`, `inspect`, and `layout` still run but are deprecated: `check` covers all of them in one invocation.
+Use `lint` for fast static feedback while iterating. Use `check` as the required final gate: it reruns the same linter, then audits runtime, layout, motion, and contrast in one browser session. Do not chain a redundant standalone `lint` immediately before `check`. `snapshot` is the standalone utility for capturing still frames and zoomed crops. `validate`, `inspect`, and `layout` still run but are deprecated: `check` covers all of them in one invocation.
 
 ## Discipline (motion-heavy work)
 
 When the composition is animation-driven, run the checks before you reach for `preview` or `render`:
 
-- Run `lint` after the first HTML pass, earlier rather than later.
+- Run `lint` after the first HTML pass for early feedback. It is an iteration aid, not a separate final gate.
 - Run `check --snapshots` at the first full pass: the overview frames and per-finding crops show you what the auditor saw.
 - Look at the PNGs before tuning automated warnings: your eye catches what the auditor misses, and the auditor catches what your eye misses.
 - Treat layout errors as defects unless a snapshot proves the layering is intentional, in which case mark it with `data-layout-allow-overflow` / `data-layout-allow-overlap` / `data-layout-allow-occlusion`.

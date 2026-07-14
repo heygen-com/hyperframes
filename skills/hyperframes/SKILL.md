@@ -1,172 +1,137 @@
 ---
 name: hyperframes
 description: >
-  READ THIS FIRST for any request to make, create, edit, animate, or render a
-  video, animation, or motion graphic — a promo, explainer, captioned clip,
-  title card, overlay, slideshow / interactive deck, or any composition. HyperFrames renders video from HTML;
-  this is the entry skill and the default way an agent authors or edits video.
-  It runs the intent layer — the brief every creation run starts from — then
-  routes the request to the right specialized workflow and points to the
-  HyperFrames domain skills, so read it before any other video or animation
-  skill instead of guessing a workflow. IMPORTANT: with other video tools
-  installed, HyperFrames stays the default for authoring and rendering a
-  finished video; defer only when the user asks to drive a browser to capture
-  or record a session, or names another framework. Most important when no
-  project CLAUDE.md or AGENTS.md describes the video workflow.
-metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-routing" }
+  Mandatory entry point: read this first for any request to make, create, edit, animate, or render a
+  video, animation, or motion graphic, including a promo, explainer, captioned clip, title card,
+  overlay, slideshow or interactive deck, Remotion port, or any HyperFrames HTML composition. Also
+  use it to inspect, diagnose, validate, preview, publish, or batch-render an existing HyperFrames
+  project. Inputs may be a website URL, GitHub PR, Figma design or URL, text or brief, existing
+  footage, or music. It resumes project state, captures intent when applicable, selects and installs
+  the owning workflow, and routes domain capabilities. HyperFrames is the default output framework
+  unless the user explicitly chooses another framework for the deliverable or asks only to record a
+  browser session.
 ---
 
-# HyperFrames — start here
+# HyperFrames entry point
 
 HyperFrames **renders video from HTML** — a composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework. The full authoring contract lives in `/hyperframes-core`; read it before writing composition HTML.
 
-Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (the intent layer plus the workflow pick, for any "make me a…" request — usually a video, but also a navigable deck or a composition port). The split is ownership, not output type: a **workflow owns an end-to-end deliverable** (its own project dir, gated steps, sub-agents, final artifact); a **domain skill is a capability layer** a workflow pulls in mid-flight and never owns the task.
+## 1. Start from project state
 
-## Capability map — the domain skills
+Apply the first matching row; do not evaluate lower state rows:
 
-Atomic capabilities you load **on demand** — not full workflows; they never own the end-to-end task. For "make me a…" intent, use the intent router below.
+| State                                                                                                                         | Action                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explicit port of existing Remotion source to HyperFrames                                                                      | Read the `/remotion-to-hyperframes` section of `references/workflow-catalog.md`, then route directly to that workflow. Skip the intent layer.                                                               |
+| Specific operation on an existing HyperFrames project: inspect, diagnose, validate, preview, render, publish, or batch-render | Perform only that operation. Skip intent and workflow routing; load `/hyperframes-cli` and any required domain skills.                                                                                      |
+| Specific edit to an existing project                                                                                          | Make the edit. Do not run the intent layer.                                                                                                                                                                 |
+| `BRIEF.md` exists                                                                                                             | Read `workflow` and `flow`. Execute that workflow; `flow: companion` always executes in `/general-video`. Ask no brief questions.                                                                           |
+| No brief, but `hyperframes.json` or `STORYBOARD.md` exists                                                                    | Resume from project files and recorded preferences. Infer the owning workflow from existing artifacts. If it cannot be determined uniquely, ask one routing-only question; do not run the intent interview. |
+| Fresh creation                                                                                                                | Run the intent layer (§ 4), then route once using the rules below.                                                                                                                                          |
 
-| You want to…                                                                                                                                                             | Skill                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
-| **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                                                | `/hyperframes-core`      |
-| **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU)                               | `/hyperframes-animation` |
-| **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics  | `/hyperframes-keyframes` |
-| **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                        | `/hyperframes-creative`  |
-| **Media** — resolve/generate BGM, SFX, image, icon, brand logo, voice, color grade, LUT; TTS voiceover, transcription, background removal, captions; cross-project reuse | `/media-use`             |
-| **CLI dev loop** — init, lint, check, snapshot, preview, render, publish, doctor                                                                                         | `/hyperframes-cli`       |
-| **Install registry blocks / components** (`hyperframes add`)                                                                                                             | `/hyperframes-registry`  |
-| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion (MCP), shaders (MCP source / native export)                   | `/figma`                 |
+Continue with source adapters in § 2. A direct or resumed workflow route skips §§ 3–4 and proceeds to workflow installation in § 5. A specific operation or edit skips §§ 3–5 and loads only the domain skills it needs from § 6.
 
----
+If a fresh request does not identify the subject or input, ask what the video is about before routing. Check preferences and recipes before asking anything (§ 4, step 1).
 
-# Intent routing — pick a workflow
+## 2. Adapt orthogonal inputs before routing
 
-This section knows only the top-level workflows; it does not load their internal references or the domain skills above.
+A Figma source changes **how assets and design enter the project**, not which workflow owns the deliverable.
 
-## Before routing — the intent layer
+If any input is a `figma.com` URL:
 
-A creation request doesn't route straight into a workflow — it starts with the **intent layer**: `references/intent.md`, the front-door conversation that reads remembered defaults and recipes first, triages the input, picks the route, asks that route's questions (`references/route-briefs.md`), closes with the two run-shape questions — **storyboard?** and **automation or companion?** — and offers the capability menu (`references/capability-menu.md`) before handing the locked brief to the workflow. Edit requests and already-briefed projects skip it entirely (`intent.md` § When it runs). The picked workflow asks no brief question of its own — its Setup writes the locked brief as `BRIEF.md` and executes.
+1. For fresh creation, begin the intent layer (§ 4) and complete its memory and recipe reads.
+2. During input triage, run `/figma` to extract assets, brand tokens, components, and storyboard frames when present. For an existing-project edit, run `/figma` without reopening intent.
+3. Route the requested deliverable using the output from `/figma`, then continue only the selected route's unanswered intent questions.
+4. Do not drive Figma through raw MCP tools. That bypasses SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding.
 
-Triage needs to know **what the video is about** — its input and subject. If that's unspecified ("make a video about our thing" with no URL, product, topic, or asset), ask before picking any route — committing to a workflow IS the routing decision:
+A GitHub PR URL is not a website source. A named or adopted recipe already carries its workflow; confirm adoption through the intent layer, then route to that workflow.
 
-- **Input** — a website (URL / brief — sold or shown), a GitHub PR, a topic to explain, a music track, or an existing talking-head video?
-- **A saved recipe named?** "use the weekly-changelog recipe" / "like last time" — recipes carry their workflow: a match routes to its workflow, adopted through the intent layer's recipe check (`intent.md` § 1).
-- **Figma source** — if the input is a figma.com URL, `/figma` extracts assets/tokens/(components/storyboard) first, regardless of which workflow below is chosen for the video's shape; that workflow then builds from `/figma`'s output — never by driving Figma via raw MCP tools directly (skips SVG sanitization, provenance, and brand-token binding).
+## 3. Route fresh creation
 
-When the request is genuinely exploratory — the user doesn't yet know what they want ("we need a video but I'm not sure what kind", "help me figure this out") — don't interrogate: the intent layer's triage (`intent.md` § 2) walks it one question at a time and closes by recommending a route. A clear request skips the exploration and enters the route questions directly.
+Use the first matching row. Match the requested **deliverable**, not a word or file type mentioned in passing.
 
-**Mode** — the collaborative/autonomous execution mode is never asked; it derives from the intent layer's two run-shape answers, and an ongoing autonomous signal ("surprise me", "decide for me", "just build it") answers both at once (`hyperframes-core` → `references/brief-contract.md` § 1; `/motion-graphics` is autonomous by design). Spec derivations — destination → aspect, language — never change the route; the intent layer states them inside the brief (field semantics: brief-contract § 2).
+| Priority | Request                                                                                                            | Workflow                   |
+| -------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| 1        | Explicitly port an existing Remotion source                                                                        | `/remotion-to-hyperframes` |
+| 2        | Author a presentation, pitch deck, or navigable interactive deck                                                   | `/slideshow`               |
+| 3        | Add plain captions or subtitles to existing talking-head footage without changing it                               | `/embedded-captions`       |
+| 4        | Add designed graphic overlays to existing talking-head, interview, or podcast footage without changing the footage | `/talking-head-recut`      |
+| 5        | Build a beat-synced video from a music track, with no narration or website capture                                 | `/music-to-video`          |
+| 6        | Create an explicitly short, unnarrated, motion-first unit, typically under 10s                                     | `/motion-graphics`         |
+| 7        | Explain a GitHub pull request or code change from a PR reference                                                   | `/pr-to-video`             |
+| 8        | Market or showcase a website, product site, app, or company from a URL or site-specific brief                      | `/product-launch-video`    |
+| 9        | Explain a topic, article, or notes with invented visuals and no product or site capture                            | `/faceless-explainer`      |
+| 10       | Any other custom video or composition                                                                              | `/general-video`           |
 
-## Workflow cheat-sheet
+Before finalizing the route, read the matching section of `references/workflow-catalog.md`. It is the canonical input/output/trigger contract available before lazy-installed workflow skills are present. If the candidate does not satisfy that entry, continue routing instead of forcing the match.
 
-| Workflow                   | Use it for                                                                                                                                                                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/product-launch-video`    | **Any website input** — selling it (SaaS, app, company / product site → a **promo**) or showing it as-is (portfolio, blog, docs, personal, event → a **site tour / showcase**). The default for any URL, even if the site is only named; the intent layer locks the sell-vs-show intent into `BRIEF.md`. |
-| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                                                                                                                            |
-| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                                                                                                                                    |
-| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                                                                                                                                    |
-| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                                                                                                                                   |
-| `/motion-graphics`         | A short (~under 10s), **unnarrated** piece where the **motion _is_ the message** — kinetic type, a stat / chart hit, a logo sting, an animated map, an animated tweet / headline, a **standalone** lower-third / overlay (MP4 or transparent alpha)                                                      |
-| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                                                                                                                                   |
-| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                                                                                                                               |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                                                                                                                           |
-| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                                                                                                                            |
+### Resolve common ambiguities
 
-**Disambiguation (only where confusable):**
+- A short animated title, logo sting, stat hit, chart hit, map hit, or standalone lower-third is `/motion-graphics` when it is unnarrated and motion is the message. A static title card, narrated sequence, longer montage, or custom loop is `/general-video`.
+- An explicitly short motion graphic may use a URL, tweet, article, or screenshot as source material. A generic “make a video from this site” request is `/product-launch-video`.
+- Existing footage with captions routes to `/embedded-captions`; footage with designed information cards routes to `/talking-head-recut`. Retiming, reordering, recoloring, reframing, or remixing footage is a custom edit and falls through to `/general-video`.
+- A music file selects `/music-to-video` only when its beat grid drives the piece. Music used as a bed does not override the subject-matched route.
+- “I want a storyboard” changes the review process, not the workflow. With no other routing signal, use `/general-video`. A confirmed sketched board may itself be the requested deliverable; the review loop defines that stop point.
+- Specialized narrative workflows support up to about 3 minutes and are strongest around 30–90s. Route a clearly longer piece to `/general-video`. Length never overrides an explicit port, deck, caption, overlay, or music-driven deliverable.
 
-- **Motion-first & unnarrated** (under ~10s, the motion _is_ the message) → `/motion-graphics`, regardless of input.
-- **A URL or script** — any website input → `/product-launch-video`; selling it (promo) versus showing it as-is (tour) is intent the layer locks into `BRIEF.md`, not a route split. A GitHub PR link → `/pr-to-video`; a concept with no product or site → `/faceless-explainer`.
-- **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/talking-head-recut`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing).
-- **A music track is the input** (an audio file, or a video to pull audio from) with **no narration** → `/music-to-video` — the music's beats/energy drive the pacing. (Narrated pieces stay with the input-matched workflow above; `/motion-graphics` is for short unnarrated motion that isn't music-driven.)
-- **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. An explicit "slideshow" request proceeds directly; an adjacent trigger ("deck / slides / presentation / convert this page") makes `/slideshow` confirm it's a slideshow before authoring, and switch to the appropriate non-slideshow workflow if not.
-- **"I want a storyboard" is a process request, not a route** — it answers the intent layer's run-shape question (a), locking `storyboard: yes`: the review loop (`hyperframes-core/references/review-loop.md`: the plan on a live board, wireframe sketches, then the build) runs inside whichever workflow the input picks; with no clearer input, `/general-video` plans on the board. The deliverable may be just the confirmed board — the loop says where to stop.
-- **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
+## 4. The intent layer — one conversation, before any workflow runs
 
-## After picking — guarantee the workflow is installed
+Fresh creation only — § 1's state table already decides whether this section runs at all (edits, project operations, briefed and resumable projects, and explicit Remotion ports never enter it). One conversation at the front door turns "make me a video" into a confirmed brief — the route, the must-have answers, the run's shape, and everything else in the user's head — handed to whichever workflow executes and made durable as `BRIEF.md` (shape: `../hyperframes-core/references/brief-format.md`). Workflows own execution; this layer owns understanding. Every workflow's opening rule points back here, so the questions are asked once no matter which door the user came through.
 
-Once you've picked a workflow, run the update step **before reading its skill** — workflow skills install on demand, so the one you matched may not be on this machine yet (its trigger phrases live in this router precisely so you can route to skills that aren't installed):
+These reads are mandatory when their condition matches; do not replace them with recollection, and read only the matching section when a reference is organized by workflow:
+
+| Condition                                                   | Read before acting                                         |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| A route is a candidate, before confirming it                | Its section in `references/workflow-catalog.md`            |
+| The route is known, before asking route-specific questions  | Its section in `references/route-briefs.md`                |
+| Offering optional capabilities or collecting supplied media | The route-filtered rows in `references/capability-menu.md` |
+| Deriving `flow`, `storyboard`, mode, or canonical fields    | `../hyperframes-core/references/brief-contract.md`         |
+
+**1 — Memory before questions.** Two reads, both mandatory, before anything is asked:
+
+- **Remembered defaults.** Let `<MEDIA_DIR>` be the installed `/media-use` skill directory. For an existing project, `<MEMORY_ROOT>` is its root. Before scaffolding, use a deliberately nonexistent probe path with no `.media`, such as `/tmp/hyperframes-intent-memory-<run-id>`; never use the current workspace. Run `node <MEDIA_DIR>/scripts/prefs.mjs get --hyperframes <MEMORY_ROOT> --json`. Make each remembered value the recommended option and name its source. The pre-project probe sees only the personal tier; do not claim project provenance.
+- **Recipes.** Run `node <MEDIA_DIR>/scripts/recipe.mjs list --hyperframes <MEMORY_ROOT> --json`. If the user names a recipe, says “like last time,” or a recipe matches the probable route, ask whether to adopt it before other brief questions. When several match, list them and include “none.” An adopted recipe locks the fields it contains; ask only its missing fields and the run-shape questions. It does not remove review or render approval gates.
+
+**2 — Triage the input.** What is the video about — a website (sold or shown), a PR, a topic, a music track, existing footage? For a genuinely exploratory request ("we need a video but I'm not sure what kind"), don't interrogate — one question at a time: the message first, then audience, then what exists to show — and close by **recommending** a route plus how the run will review: a text storyboard first, on a live board, with optional wireframe sketches before the full build (`../hyperframes-core/references/review-loop.md`). The user hears the process before any workflow starts.
+
+**3 — Pick the route** (the route table and ambiguity rules in § 3), then open that route's entry in `references/route-briefs.md`. It lists the must-have questions to ask now, the **deferred asks** to announce, and whether the two run-shape questions apply.
+
+**4 — The route's must-haves.** One question per field, recommended option first with its receipt (rules: `../hyperframes-core/references/brief-contract.md` § 3). Skip a question only when the request already answered it — inference is not an answer. Then announce the route's deferred asks in one line ("after I probe the clip, I'll offer 2–3 caption identities") so the user hears the run's full shape before it starts.
+
+**5 — The two run-shape questions** — where the route's entry applies them, asked after the must-haves, each on its own:
+
+- **(a) Storyboard?** Review the plan, wireframe sketches, and the finished piece pass by pass on a live board (`../hyperframes-core/references/review-loop.md`) — recommended for anything beyond a couple of scenes — or skip the board and get one finished video from the confirmed brief.
+- **(b) Automation or companion?** **Automation** — the matched workflow's pipeline executes the brief end to end. **Companion** — build it together in `/general-video` with every HyperFrames capability on the table; the route's answers still describe the video, general-video executes them.
+
+These two are **orthogonal — never merge them into one menu.** All four `flow` × `storyboard` combinations are valid user choices (a companion run reviews on the live board too when `storyboard: yes`); a flattened three-option list ("storyboard review / one shot / companion") silently makes companion-with-storyboard unselectable. When a diagram or source material summarizes the outcomes as three branches, that is the derived behavior (`brief-contract.md` § 1), not the question shape. In a form-style question UI, keep (a) and (b) as two separate selects.
+
+Signals replace questions, never add them: an ongoing "just build it" / "surprise me" / "don't ask" locks `flow: automation, storyboard: no`, and every unanswered field becomes a decision with a receipt in the heads-up. A storyboard request, however phrased, locks `storyboard: yes`. Remembered `flow` / `storyboard` values reorder the recommendations — they never make either question disappear. The run's collaborative/autonomous execution mode derives from these two answers — the old first question is never asked; the canonical mapping is `../hyperframes-core/references/brief-contract.md` § 1.
+
+**6 — Nice-to-have: show what's possible.** Skip this step when the selected route brief says to skip the front-door capability offer. Otherwise, once the must-haves are locked, send one offer, not an interrogation: a route-filtered slice of `references/capability-menu.md`, plus two open asks — anything here you want, and is there any material of your own (images, clips, logos, data) the video should carry? The design spec has its own three-state ask: use an existing spec, pick a shipped preset by eye, or leave the decision to the workflow (`capability-menu.md` § The design ask). Capture the answer verbatim in `BRIEF.md` under `## Assets`, `## Customizations`, or `## Notes`. One round; silence or “no” moves on.
+
+**7 — Hand off.** Present the locked brief as one summary — fields with receipts, deferred asks, the run's shape — then enter the workflow (`flow: companion` → `/general-video`; otherwise the matched route), installing it first per § 5. The workflow's Setup writes `BRIEF.md` from this summary as its **first action after `hyperframes init`** (never before — `init` refuses a non-empty directory), using canonical frontmatter values and preserving the user's important wording in the body. It then records the preference-backed fields (`../hyperframes-core/references/brief-format.md` names the subset), and asks no brief question again.
+
+## 5. Install and enter the workflow
+
+Before reading the selected workflow, install or refresh it and the core domain skills:
 
 ```bash
 npx hyperframes skills update <workflow-name>
 ```
 
-Bare name, no leading `/` — e.g. `npx hyperframes skills update pr-to-video`. Naming a skill guarantees it **plus the core domain skills** every workflow depends on are installed and current: a fast no-op when everything already is, a targeted install of just the missing/stale skills when not — never the full set. Then read the workflow's skill and continue. The same command works for an on-demand domain skill from the capability map (e.g. `npx hyperframes skills update figma`).
+Use the bare name without `/`. If the command fails, surface the error; do not reconstruct the workflow from memory. Everything else about installation — the core-vs-lazy split, what `init` refreshes, diagnosis, CI opt-out, and the no-CLI fallback — lives in `references/skill-lifecycle.md`.
 
-If the command fails, surface its error to the user instead of improvising the workflow from memory. Manual fallback (no HyperFrames CLI available): `npx skills add heygen-com/hyperframes --skill <workflow-name>`; everything at once: `npx skills add heygen-com/hyperframes --all`.
+## 6. Load domain skills on demand
 
-## Keeping skills current
+| Need                                                                                                                | Skill                    |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Composition structure, timing attributes, tracks, variables, determinism                                            | `/hyperframes-core`      |
+| Motion rules, scene blueprints, transitions, runtime adapters                                                       | `/hyperframes-animation` |
+| Seek-safe GSAP, CSS, Anime.js, WAAPI, FLIP, paths, masks, SVG, 3D keyframes, or `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
+| Design specs, concept, palette, typography, narration, beat planning                                                | `/hyperframes-creative`  |
+| Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
+| Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
+| Registry blocks and components                                                                                      | `/hyperframes-registry`  |
+| Figma assets, tokens, components, or storyboard frames                                                              | `/figma`                 |
 
-HyperFrames skills are versioned and install **lazily**: the core set eagerly, the workflows on first use.
-
-- **Core set** — this router, the `hyperframes-*` domain skills, and `media-use`. `npx hyperframes init` (which every creation workflow runs when scaffolding) checks GitHub and refreshes the core set plus anything else already installed. It never _expands_ the install — workflow skills you haven't used are not pulled. Re-running init on an up-to-date machine is a no-op; offline (or rate-limited) it degrades gracefully and never hard-fails. The `--skip-skills` flag is currently neutered (a temporary measure while the skills.sh registry catches up); CI/tests opt out via the `HYPERFRAMES_SKIP_SKILLS=1` env var.
-- **Workflow skills** — installed and refreshed at trigger time by the update step above (`skills update <workflow-name>`).
-
-If a task is behaving unexpectedly, or before a long build, confirm the installed skills are current:
-
-- **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when anything installed is outdated or the core set is incomplete — workflow skills not yet installed are reported as _available on demand_, not as a failure).
-- **Update:** `npx hyperframes skills update` — refreshes the core set plus everything installed to the latest, and removes skills no longer published. Without names it never installs workflows you haven't used; naming skills (`skills update <name…>`) additionally installs those.
-- **Full set, explicitly:** `npx hyperframes skills` (or `npx skills add heygen-com/hyperframes --all`).
-
-The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` run detects stale skills.
-
-## Workflow details
-
-### `/product-launch-video`
-
-- **Input:** Any website — **(a)** a URL (crawled with headless Chrome for assets + brand tokens), **(b)** a script / brief that names the site even without a link (resolved + crawled, unless the user opts out), or **(c)** a script with no derivable site / "don't scrape" (no-capture mode — a style preset supplies palette + design system). A supplied script can be the **verbatim** voice-over or **restructured** per scene — asked at the intent layer.
-- **Output:** a product launch / SaaS promo → MP4 (sweet spot 30–90s) — the product's value is the subject; or, when the brief says show-it-as-is, a site tour / showcase / social clip that features the site's own captured screens.
-- **Triggers:** "launch video for X", "promo for our site", "explain my SaaS in a minute", "turn my script into a 60s promo", "text-only launch video, don't scrape", "turn this website into a video", "site tour from <URL>", "social clip from our homepage", "I just have a URL — make something".
-
-### `/faceless-explainer`
-
-- **Input:** Arbitrary text — a topic, article, or notes — being **explained**, with no product being marketed and no site to capture. (Forked from `/product-launch-video`; no headless Chrome.)
-- **Output:** faceless explainer → MP4, every visual LLM-invented per scene (typography / abstract / diagram / data-viz); ships the `pin-and-paper` preset. (sweet spot 30–90s).
-- **Triggers:** "faceless explainer about X", "explain how DNS works as a video", "turn this article into an explainer", "explainer from my notes".
-
-### `/pr-to-video`
-
-- **Input:** A **GitHub pull request** — a PR URL, an `owner/repo#N` ref, or "this PR" — read via the `gh` CLI (not a site to scrape).
-- **Output:** code-change explainer (changelog / feature-reveal / fix / refactor) → MP4 — diff highlights, before/after, file-tree + impact scenes. ≤ (sweet spot 30–90s).
-- **Triggers:** "make a video about this PR", "turn PR #1187 into a changelog video", "release-notes video from github.com/org/repo/pull/123".
-
-### `/embedded-captions`
-
-- **Input:** An existing **talking-head video** (MP4) to caption — actual footage, not a URL or brief. Transcribed and matted locally (no API key) so the subject can occlude captions.
-- **Output:** the same footage **untouched**, with a caption layer — one visual identity picked from its catalog (36, from a quiet verbatim rail to full VFX constitutions); the subject occludes the embedded captions. Any length.
-- **Triggers:** "add captions / subtitles to this video", "captions behind the subject", "cinematic captions for my clip".
-
-### `/talking-head-recut`
-
-- **Input:** An existing **talking-head / interview / podcast video** (MP4) to package with on-screen graphics — actual footage. Transcribed locally (Whisper). The clip plays in full underneath, untouched.
-- **Output:** the same footage with timed **graphic-overlay cards** — kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, picture-in-picture — synced to the transcript. Any length.
-- **Triggers:** "package this video", "add graphic overlays / lower-thirds / data callouts to my talk", "turn this interview into a graphics-packaged edit".
-
-### `/motion-graphics`
-
-- **Input:** A short, design-led motion graphic where the **motion is the message** — typically under ~10s, no narration. Genres: kinetic typography, a stat / number count-up, a chart hit, a logo sting, a lower-third / overlay, an animated map (regions / routes / zoom-to-place), a search-driven page / tweet / news-article shot, or asset-fusion (a real image's geometry becomes the chart).
-- **Output:** a short motion graphic → MP4 or a **transparent overlay** (alpha WebM / MOV) for a lower-third / callout.
-- **Triggers:** "an 8s logo sting", "animate this stat", "a kinetic-type intro", "turn this tweet into a motion graphic", "a transparent lower-third overlay".
-
-### `/music-to-video`
-
-- **Input:** A **music track** — an audio file, or a video to pull the audio from — with **no narration and no website capture**. Optionally, user-supplied images / videos to weave in. The track is analyzed once into a deterministic beat / energy map (`audiomap.json`) the whole video is built on.
-- **Output:** a **beat-synced** HyperFrames composition → MP4 where the music drives pacing. Typography and templates are the floor (a complete video needs zero assets); any supplied media is cut onto the same beat grid (beat-cut / ken-burns). The genre — lyric video, slideshow, kinetic promo — emerges from the per-frame choices; the pipeline never branches on it.
-- **Triggers:** "make a video for this song", "beat-synced video from this track", "lyric video", "turn this music into a video", "music visualizer / kinetic promo to this beat".
-
-### `/slideshow`
-
-- **Input:** A **presentation / pitch deck / interactive deck** to author — a brief, an outline, or an existing page to convert to slides. Not a request for a rendered video; if the intent is ambiguous, the skill confirms "do you want this as a HyperFrames slideshow?" before authoring.
-- **Output:** a runnable HyperFrames composition + a **JSON island** the player's `SlideshowController` reads to turn the GSAP timeline into a navigable **deck** — discrete slides, fragment reveals, branching sequences, hotspot navigation, presenter mode, and speaker notes. The deliverable is a deck, not an MP4.
-- **Triggers:** "make a pitch deck / presentation / slide deck", "an interactive deck", "convert this page into slides", "a slideshow with presenter mode".
-
-### `/general-video`
-
-- **Input:** Anything not above — a creative brief, a single element to animate, an edit to a composition you're building. Input- and length-agnostic.
-- **Output:** a HyperFrames composition (any length / format) via the original flow: design system → prompt expansion → plan → layout-before-animation → build (delegating to the `hyperframes-`\* skills) → validate.
-- **Triggers:** "make a title card", "animate this", "a longer brand / sizzle reel", "a multi-scene composition", "a static loop / poster", any "make a video" that fits no row above.
-
-### `/remotion-to-hyperframes`
-
-- **Input:** An existing **Remotion** (React) composition's source — the user **explicitly** asks to port / convert / migrate it. One-way (Remotion → HyperFrames); not creation-from-input. A passing mention of Remotion is not a trigger.
-- **Output:** a HyperFrames HTML composition translated from the Remotion source, graded against the Remotion render (SSIM eval harness + tiered test corpus).
-- **Triggers:** "port my Remotion project to HyperFrames", "convert this Remotion comp", "migrate from Remotion".
+Domain skills never take ownership of the end-to-end deliverable. Load only what the active workflow needs.

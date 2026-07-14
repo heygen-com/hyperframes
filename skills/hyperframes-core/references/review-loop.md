@@ -1,18 +1,18 @@
 # The review loop — plan, sketch, build
 
-How a collaborative run earns fidelity one pass at a time: the plan is reviewed as text on a live board, the layouts as wireframe sketches, and the finished piece as the assembled video — each pass gated on the user before the next one spends more. Autonomous runs skip every gate here and keep exactly one question, right before render.
+How a `storyboard: yes` run earns fidelity one pass at a time: the plan is reviewed as text on a live board, the layouts as wireframe sketches, and the finished piece as the assembled video. Collaborative mode waits at each checkpoint. Autonomous mode posts the same checkpoint summaries and continues, keeping exactly one question before render.
 
 This is the shared process for any workflow that plans on a storyboard. The contracts it leans on live next door: interaction mode, gate types, and the comments channel in `brief-contract.md`; the `STORYBOARD.md` format, the `outline → built → animated` statuses, and the comments sidecar in `storyboard-format.md`. A workflow's SKILL.md says **when** its steps hit each pass and supplies its **sketch stand-ins** (what the plain blocks represent); how the loop runs is defined here, once. The stage mechanics between the passes — audio, frames, assembly, transitions, captions, verify — live in `production-loop.md`; this file owns only the user-facing pauses.
 
 ## § 1 — The plan, on a live board
 
-Open the board before presenting the plan — collaborative review happens on a live board, so don't ask whether to open it: run `npx hyperframes preview` from the project directory in the background, confirm it is serving, and open the Storyboard view — `http://localhost:<port>/?view=storyboard#project/<project-name>`. The plan shows there as frame cards, and the board refreshes itself as work lands — no reload instructions needed.
+Open the **storyboard board** before presenting the plan: run `npx hyperframes preview` from the project directory in the background, confirm it is serving, and open `http://localhost:<port>/?view=storyboard#project/<project-name>`. This is an early planning surface, not the final composition preview; it may open before composition checks. The plan appears as frame cards and refreshes as work lands.
 
 Present the plan as a proposal (shape: `hyperframes-creative/references/story-spine.md` § 3): open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). Hand the board URL with it, noting feedback lands in both places — comment on the board or reply here, one revision loop — and that a board submit still needs one reply here (anything) to get picked up.
 
 In the same message ask two things: **(a)** approve or request changes, and **(b)** **sketches first** (recommended — a quick wireframe look check right after this approval) or skip sketches and build in one go. Iterate until approved — feedback arrives in chat or as the comments file (`brief-contract.md` § 1, the comments channel): revise exactly the frames it names, clear the file, re-present.
 
-This is a **checkpoint gate** (`brief-contract.md` § 1). In autonomous mode there is no board and nothing to ask — post the same summary as a heads-up and proceed; sketches collapse into the build, and the loop's one kept question comes at § 4.
+This is a **checkpoint gate** (`brief-contract.md` § 1). A run that starts autonomous normally has `storyboard: no` and does not enter this loop. If mode switches to autonomous after a board exists, keep updating the board, post the same summary as a heads-up, and continue without waiting; the one kept question comes at § 4.
 
 ## § 2 — The sketch pass (collaborative, unless skipped)
 
@@ -36,6 +36,6 @@ Mark each frame `animated` as it lands. The build gate carries the loop's condit
 
 ## § 4 — The final look
 
-After the workflow's checks pass, pause for the user. In collaborative mode Studio has been open since § 1 — do not ask about previews; hand the project URL again (the timeline view now holds the assembled video) and ask one thing: render now, or what changes? In autonomous mode this is the one question the mode keeps: ask "preview first, or render?" — open the preview on yes, render on no. Render only on approval.
+After the workflow's checks pass, use the **final composition preview**. In collaborative mode Studio may already be serving from § 1; hand the timeline URL and ask one thing: render now, or what changes? In autonomous mode this is the one question the mode keeps: ask “preview first, or render?” Open the final preview on yes; render on an explicit render answer. Render only on approval.
 
 **After approval, offer the recipe — once.** An approved run is a proven bundle. At delivery, offer to freeze it: `media-use` → `scripts/recipe.mjs freeze --name <name> --workflow <workflow>` keeps the design spec, the storyboard skeleton (structure kept, content blanked), the brief skeleton, and the confirmed brief values, and the next run of this type starts from it (the intent layer checks for a matching recipe before its first question). When the freeze lands, teach the recall in the confirmation — "Saved as **<name>** (v<N>). Next time say _make another <name>_, or just _like last time_." — the name is something the system reminds the user of, never something they must remember. In autonomous mode don't ask — name the freeze command in the delivery note instead.

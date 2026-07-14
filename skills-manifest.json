@@ -2,11 +2,11 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "a6b46ac0735a9f79",
+      "hash": "cabda69328a29062",
       "files": 144
     },
     "faceless-explainer": {
-      "hash": "3c66e7652e2a13a7",
+      "hash": "d3d68b6202a37a3e",
       "files": 18
     },
     "figma": {
@@ -14,55 +14,55 @@
       "files": 2
     },
     "general-video": {
-      "hash": "de424aa5a4986181",
+      "hash": "b6e9aee27dc8c460",
       "files": 1
     },
     "hyperframes": {
-      "hash": "bf64f0cac0364b9d",
-      "files": 4
+      "hash": "6bb50b5636ec66c7",
+      "files": 5
     },
     "hyperframes-animation": {
-      "hash": "b982a1af9821e326",
+      "hash": "ea0972b9de3654e0",
       "files": 99
     },
     "hyperframes-cli": {
-      "hash": "12b6d6ac98167a86",
-      "files": 8
+      "hash": "c5b427b8b952b9f4",
+      "files": 11
     },
     "hyperframes-core": {
-      "hash": "c4205d5ef642440d",
+      "hash": "91ffd4935d89a04c",
       "files": 17
     },
     "hyperframes-creative": {
-      "hash": "ac2a8b009f060056",
+      "hash": "266d77cf036b9afe",
       "files": 78
     },
     "hyperframes-keyframes": {
-      "hash": "040453e302a0e15b",
+      "hash": "a568c05c01b27461",
       "files": 3
     },
     "hyperframes-registry": {
-      "hash": "5f49178cc43e100b",
+      "hash": "3a864992e765b9bf",
       "files": 10
     },
     "media-use": {
-      "hash": "b7fe73f82f0c43fa",
+      "hash": "a75c1820d9b39c26",
       "files": 130
     },
     "motion-graphics": {
-      "hash": "5334060796399eaf",
+      "hash": "1aee662a16dedc08",
       "files": 23
     },
     "music-to-video": {
-      "hash": "92c441defb60d3bd",
+      "hash": "5bba048c425edcfa",
       "files": 132
     },
     "pr-to-video": {
-      "hash": "a5058f733dc1fddf",
+      "hash": "e13d28a433c11b81",
       "files": 28
     },
     "product-launch-video": {
-      "hash": "75a889595128fb80",
+      "hash": "60b531c30bc7f13e",
       "files": 21
     },
     "remotion-to-hyperframes": {

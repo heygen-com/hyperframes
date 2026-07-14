@@ -25,15 +25,22 @@ Workflow: Step 0 setup -> `hyperframes.json`; Step 1 capture -> `capture/`; Step
 
 Goal: Enter with a confirmed brief, create the HyperFrames project, and make the brief durable.
 
-**The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`): it checks recipes and remembered defaults, conducts this route's questions (`../hyperframes/references/route-briefs.md`), and hands back the locked brief. Edit requests skip all of this — go do the edit.
+**The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run its intent layer (§ 4): it checks recipes and remembered defaults, conducts this route's questions (`../hyperframes/references/route-briefs.md`), and hands back the locked brief. Edit requests skip all of this — go do the edit.
 
 Initialize only if `hyperframes.json` is missing. Name `<project>` from the brand or domain in kebab-case, such as `acme-promo`; never use workspace name or timestamp.
 
 `npx hyperframes init "videos/<project>" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
-**Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Then record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset), and if the intent layer adopted a recipe, adopt it now: `node ../media-use/scripts/recipe.mjs use --hyperframes . --name <name>` copies its frame.md in (Step 2 is then skipped) and hands back the skeletons Step 3 drafts from — a recipe fills in answers, not approvals; the review gates still run.
+After init, let `<PROJECT_ROOT>` be `videos/<project>` and run every subsequent relative-path command with that directory as its working directory. In the commands below, `.` means `<PROJECT_ROOT>`; never write `.media`, `capture`, or output files in the caller directory.
 
-**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before any later step.** Treat it as a real decision point, not a passing note; don't fold the choice into another question, and don't write keys into a per-repo `.env`. (In an autonomous run, note the status and continue offline.) Auth ownership and offline fallbacks: `/media-use` § Providers.
+**Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Resolve `<MEDIA_DIR>` as the installed `/media-use` skill directory. Then record each preference-backed answer with `node <MEDIA_DIR>/scripts/prefs.mjs record --hyperframes .` (`brief-format.md` names the subset). If the intent layer adopted a recipe, run `node <MEDIA_DIR>/scripts/recipe.mjs use --hyperframes . --name <name>`; it copies its `frame.md` into the project (Step 2 is then skipped) and returns the skeletons Step 3 drafts from. A recipe fills answers, not approvals; the review gates still run.
+
+**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and relay its output verbatim. It reports whether voice/BGM will use HeyGen or local engines and, when signed out, how to sign in. Apply one branch:
+
+- **Collaborative:** wait for the user to sign in or explicitly choose `offline` / `go`.
+- **Autonomous:** state the status and continue through the available local engines.
+
+Do not silently omit a required capability when no offline provider exists; surface the blocker. Do not fold this decision into another question or write keys into a per-repo `.env`. Auth ownership and offline fallbacks: `/media-use` § Providers.
 
 **Gate:** `hyperframes.json` and `BRIEF.md` exist; the preference-backed answers were recorded (brief contract § 2); sign-in status was shown (signed in, or continuing offline).
 
@@ -93,7 +100,7 @@ Goal: Generate narration, word timings, music, and audio metadata from the appro
 
 Start audio after Step 3 approval. Run it in the background, then continue to Step 4.
 
-**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node ../media-use/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `../media-use/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). When the user expressed no preference, fall back to the remembered voice (brief contract § 2) before the pipeline default, and say which one you used; omit `--voice` only when neither names one. When the user explicitly picked a voice this run, record it (`prefs.mjs record --key voice`).
+**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node <MEDIA_DIR>/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `<MEDIA_DIR>/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). When the user expressed no preference, fall back to the remembered voice (brief contract § 2) before the pipeline default, and say which one you used; omit `--voice` only when neither names one. When the user explicitly picked a voice this run, record it (`prefs.mjs record --key voice`).
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --voice <voice-id> &`
 
@@ -173,8 +180,6 @@ Inject transitions, run checks, pause for review, then render.
 
 `npx hyperframes check`
 
-`npx hyperframes check`
-
 `npx hyperframes snapshot --at <frame-midpoints>`
 
 `snapshot` stitches the captured frames into one contact sheet (`snapshots/contact-sheet.jpg`). Glance at it; if nothing is obviously broken, move on — don't linger here.
@@ -189,9 +194,9 @@ Render only after user approval (autonomous mode: after the preview-or-render qu
 
 `npx hyperframes render --skill=product-launch-video --quality high --output renders/video.mp4`
 
-Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless the user asks.
+Do not rerun `lint`, `check`, or `snapshot` after rendering unless the user asks.
 
-**Gate:** `lint`, `validate`, and `inspect` passed before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states MP4 path and final duration.
+**Gate:** `lint` and `check` passed and the snapshots were inspected before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states MP4 path and final duration.
 
 ---
 

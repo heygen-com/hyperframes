@@ -1,12 +1,12 @@
 # Brief format — `BRIEF.md`
 
-Defines the **intent document** — the file a confirmed brief becomes. The questions that fill it live in the intent layer (`/hyperframes` → `references/intent.md` + `references/route-briefs.md`); the field semantics live in `brief-contract.md` § 2. This file defines only the artifact: its shape, its home, and its lifecycle.
+Defines the **intent document** — the file a confirmed brief becomes. The questions that fill it live in the intent layer (`/hyperframes` § 4 + its `references/route-briefs.md`); the field semantics live in `brief-contract.md` § 2. This file defines only the artifact: its shape, its home, and its lifecycle.
 
 `BRIEF.md` sits at the project root, and the project's files read as four layers: **`BRIEF.md`** (why, for whom, and everything the user asked for) → **`STORYBOARD.md`** (what, frame by frame) → **`frame.md`** (how it looks) → **`compositions/`** (the thing itself).
 
 ## Frontmatter — the confirmed fields
 
-YAML block at the top: one key per confirmed deterministic field — the run's shape first, then whatever registry fields (`brief-contract.md` § 2) the route asked. Values are the user's confirmed answers, verbatim.
+YAML block at the top: one key per deterministic field — the run's shape first, then the registry fields (`brief-contract.md` § 2) used by the route. Store canonical normalized values. Some values come directly from the user; others, such as `workflow`, `aspect`, and `language`, are routed, derived, or normalized and must use the vocabulary defined by the contract. Preserve the user's own wording in the body when it matters.
 
 | Key                                                                       | Meaning                                                                                                                    | Example                     |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
@@ -31,10 +31,10 @@ Body prose is **project-local** — nothing in it enters cross-project memory. (
 
 ## Lifecycle
 
-- **Written once, by the workflow's Setup, as its first action after `hyperframes init`** — never before (`init` refuses a non-empty directory). The intent layer confirms the answers pre-project; Setup makes them durable, then records the preference-backed fields.
+- **Created once, by the workflow's Setup, as its first action after `hyperframes init`** — never before (`init` refuses a non-empty directory). The intent layer confirms the answers pre-project; Setup makes them durable, then records the preference-backed fields. Later confirmed changes update this same file.
 - **It is the no-repeat token.** A workflow that finds `BRIEF.md` reads it and asks no brief question. Its `workflow:` names the executor — a workflow that finds another's name there is in the wrong room: load that skill and hand over, don't re-route through the intent layer. No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → a pre-BRIEF project: resume from the storyboard's frontmatter and the recorded preferences, optionally backfilling `BRIEF.md` from what they already say — never re-interrogate a half-built project.
 - **It stays the run's truth.** A mid-run decision updates it as it happens: an explicit change to a frontmatter field ("make it 9:16 after all") rewrites the field and re-records the preference — a changed mind is a confirmed answer; an accepted capability, adopted material, or bespoke ask lands as one line in the matching body section. Resume reads this file, so write-back is what makes a dead session resumable — a decision that lives only in chat is a decision resume never sees.
-- **Execution mode derives; the storyboard's copy wins on resume.** `flow` × `storyboard` derive the run's collaborative/autonomous behavior (`brief-contract.md` § 1). The derived mode is still recorded in `STORYBOARD.md` frontmatter; a mid-run switch ("stop asking") updates **both** files, and on resume the storyboard's `mode:` is read first — it is the later signal.
+- **Execution mode derives; the storyboard's copy wins on resume.** `flow` × `storyboard` derive collaborative/autonomous checkpoint behavior (`brief-contract.md` § 1). Persist the derived mode in `STORYBOARD.md` frontmatter when that file exists. A mid-run mode-only switch updates `STORYBOARD.md`, not the already-confirmed `flow` or `storyboard`; an explicit change to either run-shape field still updates `BRIEF.md`.
 - **`message` / `audience` live here first.** `STORYBOARD.md` frontmatter keeps its copies — the board and the parser read them — but when the two disagree, `BRIEF.md` holds what the user confirmed.
 - **Recipes carry its skeleton.** Freezing a recipe (`review-loop.md` § 4) captures `brief-skeleton.md` — frontmatter structure kept, run-shape and content values blanked — so the next run starts pre-filled yet still confirms its own two run-shape answers.
 

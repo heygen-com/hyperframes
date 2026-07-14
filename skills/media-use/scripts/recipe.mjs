@@ -18,7 +18,7 @@
  *
  * When recipes are offered/consumed is the review loop's and the intent
  * layer's business — see hyperframes-core/references/review-loop.md § 4 and
- * the intent layer's recipe check (hyperframes → references/intent.md).
+ * the intent layer's recipe check (hyperframes SKILL.md § 4).
  */
 import { parseArgs } from "node:util";
 import { freezeRecipe, listRecipes, useRecipe } from "./lib/recipe-store.mjs";
