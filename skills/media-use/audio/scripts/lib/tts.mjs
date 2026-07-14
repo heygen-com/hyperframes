@@ -17,11 +17,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  heygenAuthHeadersWithRefresh,
-  heygenCredential,
-  heygenJSON,
-} from "./heygen.mjs";
+import { heygenAuthHeadersWithRefresh, heygenCredential, heygenJSON } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────

@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  heygenAuthHeaders,
-  heygenAuthHeadersWithRefresh,
-  heygenAuthMethod,
-} from "./heygen.mjs";
+import { heygenAuthHeaders, heygenAuthHeadersWithRefresh, heygenAuthMethod } from "./heygen.mjs";
 
 function withCleanHeygenEnv(fn) {
   const previousApiKey = process.env.HEYGEN_API_KEY;

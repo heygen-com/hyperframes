@@ -42,11 +42,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  heygenAuthHeadersWithRefresh,
-  heygenCredential,
-  loadEnvFromDir,
-} from "./lib/heygen.mjs";
+import { heygenAuthHeadersWithRefresh, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
 import {
   ffprobeDuration,
   pickProvider,
