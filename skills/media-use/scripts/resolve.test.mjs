@@ -25,6 +25,7 @@ const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
 // The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
 // test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+const HAS_FFPROBE = spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
 // The core-conformance test imports core's TypeScript via tsx. The dependency-free
 // "Test: skills" CI job has neither tsx nor installed deps, so skip it there; it
 // runs wherever the workspace is installed (locally, the main Test job).
@@ -142,6 +143,37 @@ test("bundled SFX resolve without HeyGen on PATH", () => {
   assert.equal(parsed.provenance.provider, "bundled.sfx");
   assert.match(parsed.advisory?.message ?? "", /Install: curl -fsSL/);
   assert.ok(existsSync(join(tmp, parsed.path)));
+  cleanup();
+});
+
+test("bundled SFX resolve ends exactly at the frozen media boundary", () => {
+  if (!HAS_FFPROBE) return;
+  setup();
+  const result = spawnResolve([
+    "--type",
+    "sfx",
+    "--intent",
+    "whoosh",
+    "--project",
+    tmp,
+    "--local-only",
+    "--provider",
+    "bundled.sfx",
+    "--json",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  const frozenPath = join(tmp, parsed.path);
+  const actual = Number(
+    execFileSync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", frozenPath],
+      { encoding: "utf8" },
+    ).trim(),
+  );
+
+  assert.equal(parsed.duration, actual);
+  assert.equal(0 + parsed.duration, actual, "the following clip may start at the media boundary");
   cleanup();
 });
 

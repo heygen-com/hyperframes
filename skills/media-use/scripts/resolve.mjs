@@ -405,15 +405,19 @@ async function run() {
     process.exit(1);
   }
 
+  const resolvedDuration =
+    searchResult.metadata?.duration == null
+      ? null
+      : searchResult.metadata?.provider === "bundled.sfx"
+        ? searchResult.metadata.duration
+        : Math.round(searchResult.metadata.duration * 10) / 10;
   const record = {
     id,
     type,
     path: localPath,
     source: searchResult.source || "search",
     description: searchResult.metadata?.description || intent,
-    ...(searchResult.metadata?.duration != null && {
-      duration: Math.round(searchResult.metadata.duration * 10) / 10, // round to 0.1s like probe (voice bypassed it)
-    }),
+    ...(resolvedDuration != null && { duration: resolvedDuration }),
     ...(searchResult.metadata?.width != null && { width: searchResult.metadata.width }),
     ...(searchResult.metadata?.height != null && { height: searchResult.metadata.height }),
     ...(searchResult.metadata?.transparent != null && {
