@@ -89,6 +89,34 @@ describe("loadExternalCompositions", () => {
     expect(injectedStyles.length).toBeGreaterThan(0);
   });
 
+  it("preserves head stylesheets when an external composition uses a template", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href="./scene.css"></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.css"]',
+      ),
+    ).not.toBeNull();
+  });
+
   it("calls onDiagnostic when fetch fails", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/broken.html");
