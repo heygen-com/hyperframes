@@ -30,6 +30,7 @@ import {
   shouldDiscardProbeSessionForPageSideCompositing,
   resolveInversionRetryPlan,
   resolveParallelRouterRetryPlan,
+  createRenderJob,
   resetCaptureAttemptProgress,
   shouldRetryViaPinnedFallback,
   shouldPreferParallelDrawElement,
@@ -51,11 +52,65 @@ import {
   applyRenderModeHints,
   createCompiledFrameSrcResolver,
   materializeExtractedFramesForCompiledDir,
+  prepareCaptureCalibration,
   projectBrowserEndToCompositionTimeline,
   resolveDeviceScaleFactor,
   writeCompiledArtifacts,
 } from "./render/shared.js";
 import { formatCaptureFrameName, toExternalAssetKey } from "../utils/paths.js";
+
+describe("capture calibration progress", () => {
+  it("reports calibration when the auto-worker branch is eligible", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    job.framesRendered = 17;
+    const events: Array<{ stage: string; framesRendered: number | undefined }> = [];
+
+    const shouldCalibrate = prepareCaptureCalibration({
+      job,
+      totalFrames: 60,
+      htmlInCanvasDetected: false,
+      lowMemoryMode: false,
+      deInversionEligible: false,
+      deParallelRouterEligible: false,
+      onProgress: (current) => {
+        events.push({
+          stage: current.currentStage,
+          framesRendered: current.framesRendered,
+        });
+      },
+    });
+
+    expect(shouldCalibrate).toBe(true);
+    expect(events).toEqual([
+      {
+        stage: "Calibrating capture performance",
+        framesRendered: 0,
+      },
+    ]);
+    expect(job.progress).toBe(25);
+  });
+
+  it("leaves progress untouched when calibration is skipped", () => {
+    const job = createRenderJob({ fps: 30, quality: "high", workers: 2 });
+    job.framesRendered = 17;
+    const onProgress = vi.fn();
+
+    const shouldCalibrate = prepareCaptureCalibration({
+      job,
+      totalFrames: 60,
+      htmlInCanvasDetected: false,
+      lowMemoryMode: false,
+      deInversionEligible: false,
+      deParallelRouterEligible: false,
+      onProgress,
+    });
+
+    expect(shouldCalibrate).toBe(false);
+    expect(onProgress).not.toHaveBeenCalled();
+    expect(job.framesRendered).toBe(17);
+    expect(job.currentStage).toBe("Queued");
+  });
+});
 
 describe("extractStandaloneEntryFromIndex", () => {
   it("reuses the index wrapper and keeps only the requested composition host", () => {
