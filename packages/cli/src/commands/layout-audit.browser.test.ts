@@ -1325,7 +1325,13 @@ describe("layout-audit.browser occlusion", () => {
 
   it("still treats opaque pixels in an image as text occlusion", () => {
     const occluded = auditImageOcclusionScene(255).find((issue) => issue.code === "text_occluded");
-    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+    expect(occluded).toMatchObject({
+      selector: "#headline",
+      containerSelector: "#overlay",
+      fixHint: expect.stringContaining(
+        "Add data-layout-allow-occlusion to the covered text or one of its ancestors, not the covering element",
+      ),
+    });
   });
 
   it("does not treat object-fit letterboxing as image occlusion", () => {

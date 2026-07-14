@@ -130,6 +130,38 @@ export function parseZoomScale(value: unknown): number {
 }
 
 /**
+ * Preserve every raw `--at` occurrence before citty collapses repeated string
+ * flags to the final value. Each occurrence may still contain the documented
+ * comma-separated form.
+ */
+export function parseSnapshotAtTimestamps(
+  parsedAt: unknown,
+  argv: readonly string[],
+): number[] | undefined {
+  const rawValues: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--at") {
+      const value = argv[index + 1];
+      if (value !== undefined) {
+        rawValues.push(value);
+        index += 1;
+      }
+    } else if (arg?.startsWith("--at=")) {
+      rawValues.push(arg.slice("--at=".length));
+    }
+  }
+
+  const values = rawValues.length > 0 ? rawValues : parsedAt == null ? [] : [String(parsedAt)];
+  if (values.length === 0) return undefined;
+
+  return values
+    .flatMap((value) => value.split(","))
+    .map((value) => parseFloat(value.trim()))
+    .filter((value) => !isNaN(value));
+}
+
+/**
  * Seeking the timeline to EXACTLY `data-duration` renders blank — the runtime
  * treats t >= clip-end as past-end and unmounts the clip (verified on a V4 3D
  * artifact: t=8.0 of an 8s clip was pure white, t=7.76 showed the final hero).
@@ -529,7 +561,8 @@ export default defineCommand({
     },
     at: {
       type: "string",
-      description: "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0)",
+      description:
+        "Timestamps in seconds; repeat --at or use commas (e.g., --at 3.0 --at 10.5,18.0)",
     },
     timeout: {
       type: "string",
@@ -567,12 +600,7 @@ export default defineCommand({
     const project = resolveProject(args.dir);
     const frames = parseInt(args.frames as string, 10) || 5;
     const timeout = parseInt(args.timeout as string, 10) || 5000;
-    const atTimestamps = args.at
-      ? String(args.at)
-          .split(",")
-          .map((s) => parseFloat(s.trim()))
-          .filter((n) => !isNaN(n))
-      : undefined;
+    const atTimestamps = parseSnapshotAtTimestamps(args.at, process.argv);
     // Gemini frame analysis runs by default (silently skipped if
     // GEMINI_API_KEY is not set). `--describe "custom question"` overrides
     // the default prompt with a targeted question. `--describe false` opts

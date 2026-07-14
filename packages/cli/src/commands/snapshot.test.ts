@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   computeSnapshotTimes,
+  parseSnapshotAtTimestamps,
   parseZoomScale,
   requireSnapshotFfmpeg,
   tailFrameTime,
@@ -86,6 +87,34 @@ describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {
       includeEnd: false,
     });
     expect(times).toEqual([exactTransition]);
+  });
+});
+
+describe("parseSnapshotAtTimestamps", () => {
+  it("preserves every repeated --at value", () => {
+    expect(
+      parseSnapshotAtTimestamps("0.8", [
+        "node",
+        "hyperframes",
+        "snapshot",
+        "--at",
+        "0.2",
+        "--at",
+        "0.8",
+      ]),
+    ).toEqual([0.2, 0.8]);
+  });
+
+  it("flattens comma-separated timestamps mixed with repeated --at flags", () => {
+    expect(
+      parseSnapshotAtTimestamps("0.8,1.0", ["snapshot", "--at=0.2,0.4", "--at", "0.8,1.0"]),
+    ).toEqual([0.2, 0.4, 0.8, 1]);
+  });
+
+  it("keeps the existing comma-only behavior", () => {
+    expect(parseSnapshotAtTimestamps("0.2,0.8", ["snapshot", "--at", "0.2,0.8"])).toEqual([
+      0.2, 0.8,
+    ]);
   });
 });
 
