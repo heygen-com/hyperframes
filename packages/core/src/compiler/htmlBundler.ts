@@ -310,6 +310,16 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   return appendSuffixToUrl(dataUrl, suffix);
 }
 
+function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): boolean {
+  if (el.tagName.toLowerCase() !== "use") return false;
+  if (attr !== "href" && attr !== "xlink:href") return false;
+  if (!isRelativeUrl(urlValue)) return false;
+  const hashIdx = urlValue.indexOf("#");
+  if (hashIdx <= 0) return false;
+  const pathBeforeFragment = urlValue.slice(0, hashIdx).split("?", 1)[0] ?? "";
+  return pathBeforeFragment.toLowerCase().endsWith(".svg");
+}
+
 function warnColorGradingLutNotInlined(lutSrc: string): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
@@ -1074,6 +1084,11 @@ export async function bundleToSingleHtml(
     for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
       const value = el.getAttribute(attr);
       if (!value) continue;
+      // Chromium requires external SVG <use> fragments to be same-origin with
+      // the document. Converting the sprite to a data: URL makes it an opaque
+      // origin and triggers "Unsafe attempt to load URL ... from frame".
+      // Keep the project-relative URL; render/check servers already expose it.
+      if (isExternalSvgFragmentUse(el, attr, value)) continue;
       const inlined = maybeInlineRelativeAssetUrl(value, projectDir);
       if (inlined) el.setAttribute(attr, inlined);
     }
