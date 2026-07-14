@@ -12,7 +12,7 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
 
 let _browser: import("puppeteer-core").Browser | null = null;
-let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
+let _browserLaunchPromise: Promise<import("puppeteer-core").Browser | null> | null = null;
 
 const CHROME_PATHS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -24,24 +24,33 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
   if (_browser?.connected) return _browser;
   if (_browserLaunchPromise) return _browserLaunchPromise;
   _browserLaunchPromise = (async () => {
-    const puppeteer = await import("puppeteer-core");
-    const executablePath = CHROME_PATHS.find((p) => existsSync(p));
-    if (!executablePath) return null;
-    _browser = await puppeteer.default.launch({
-      headless: true,
-      executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--ignore-gpu-blocklist",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-        "--enable-unsafe-swiftshader",
-      ],
-    });
-    _browserLaunchPromise = null;
-    return _browser;
+    try {
+      const puppeteer = await import("puppeteer-core");
+      const executablePath = CHROME_PATHS.find((p) => existsSync(p));
+      if (!executablePath) return null;
+      _browser = await puppeteer.default.launch({
+        headless: true,
+        executablePath,
+        args: [
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--enable-webgl",
+          "--ignore-gpu-blocklist",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          "--enable-unsafe-swiftshader",
+        ],
+      });
+      return _browser;
+    } catch (err) {
+      console.warn(
+        "[Studio] Thumbnail browser unavailable:",
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    } finally {
+      _browserLaunchPromise = null;
+    }
   })();
   return _browserLaunchPromise;
 }
@@ -196,7 +205,10 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
       }
     })();
     _thumbnailInflight.set(cacheKey, bufferPromise);
-    bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
+    void bufferPromise.then(
+      () => _thumbnailInflight.delete(cacheKey),
+      () => _thumbnailInflight.delete(cacheKey),
+    );
   }
   return bufferPromise;
 }

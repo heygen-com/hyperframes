@@ -206,6 +206,7 @@ export function FlatMediaSection({
             value={playbackRate * 100}
             min={25}
             max={300}
+            step={5}
             tier={playbackRate === 1 ? "default" : "explicitCustom"}
             displayValue={`${formatNumericValue(playbackRate)}x`}
             onCommit={(next) =>
@@ -217,6 +218,7 @@ export function FlatMediaSection({
             value={Math.round(mediaStart * 100)}
             min={0}
             max={mediaStartMax * 100}
+            step={10}
             tier={mediaStart === 0 ? "default" : "explicitCustom"}
             displayValue={formatTimingValue(mediaStart)}
             onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}

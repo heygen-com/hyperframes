@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HF_COLOR_GRADING_PRESETS,
   isHfColorGradingActive,
@@ -32,6 +32,11 @@ export function FlatColorGradingAccessory({
 }) {
   const { grading, compareEnabled, runtimeStatus, commitCompare, resetGrading } = state;
   const gradingActive = isHfColorGradingActive(grading);
+  const releaseCompareRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => releaseCompareRef.current?.();
+  }, []);
 
   return (
     <span className="flex items-center gap-2.5">
@@ -44,19 +49,27 @@ export function FlatColorGradingAccessory({
           if (!gradingActive) return;
           e.preventDefault();
           e.stopPropagation();
+          releaseCompareRef.current?.();
           commitCompare(true);
           const release = () => {
+            if (releaseCompareRef.current !== release) return;
             commitCompare(false);
             window.removeEventListener("pointerup", release);
             window.removeEventListener("pointercancel", release);
             window.removeEventListener("blur", release);
+            releaseCompareRef.current = null;
           };
+          releaseCompareRef.current = release;
           window.addEventListener("pointerup", release);
           window.addEventListener("pointercancel", release);
           window.addEventListener("blur", release);
         }}
         onBlur={() => {
-          if (compareEnabled) commitCompare(false);
+          if (releaseCompareRef.current) {
+            releaseCompareRef.current();
+          } else if (compareEnabled) {
+            commitCompare(false);
+          }
         }}
         onKeyDown={(e) => {
           if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;

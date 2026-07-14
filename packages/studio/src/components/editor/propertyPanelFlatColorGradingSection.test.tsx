@@ -208,6 +208,31 @@ describe("FlatColorGradingAccessory", () => {
     expect(commitCompare).toHaveBeenNthCalledWith(2, false);
     act(() => root.unmount());
   });
+
+  it("releases an active hold and removes global listeners when unmounted", () => {
+    const commitCompare = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingAccessory
+        state={{
+          grading: activeGrading(),
+          compareEnabled: false,
+          runtimeStatus: { state: "active", message: "Shader active" },
+          commitCompare,
+          resetGrading: vi.fn(),
+        }}
+      />,
+    );
+    const compareButton = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Hold to show original"]',
+    );
+    if (!compareButton) throw new Error("expected a compare button");
+    act(() => compareButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    act(() => root.unmount());
+    expect(commitCompare).toHaveBeenLastCalledWith(false);
+    const callsAfterUnmount = commitCompare.mock.calls.length;
+    act(() => window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    expect(commitCompare).toHaveBeenCalledTimes(callsAfterUnmount);
+  });
 });
 
 function neutralPropsBase() {

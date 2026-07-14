@@ -15,6 +15,7 @@ import {
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = "";
 });
 
@@ -270,6 +271,7 @@ describe("FlatSlider", () => {
     );
     const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
     if (!track) throw new Error("expected a track element");
+    expect(track.className).toContain("touch-none");
     Object.defineProperty(track, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
     });
@@ -551,6 +553,100 @@ describe("FlatSlider — Grade extensions", () => {
       );
     });
     expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("does not reset or commit from a disabled slider reset button", () => {
+    const onCommit = vi.fn();
+    const onReset = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Contrast"
+        value={12}
+        min={-100}
+        max={100}
+        tier="explicitCustom"
+        displayValue="+12%"
+        disabled
+        onCommit={onCommit}
+        onReset={onReset}
+      />,
+    );
+    const reset = host.querySelector<HTMLButtonElement>('[data-flat-slider-reset="true"]');
+    expect(reset?.disabled).toBe(true);
+    act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onReset).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("commits the latest draft when pointer capture is cancelled", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={0}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="0%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+      );
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
+      );
+      track.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 1 }));
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(80);
+    act(() => root.unmount());
+  });
+
+  it("cancels a queued drag commit before resetting", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_000));
+    const onCommit = vi.fn();
+    const onReset = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={0}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="0%"
+        onCommit={onCommit}
+        onReset={onReset}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+      );
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
+      );
+      host
+        .querySelector<HTMLButtonElement>('[data-flat-slider-reset="true"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      vi.advanceTimersByTime(100);
+    });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onReset).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 

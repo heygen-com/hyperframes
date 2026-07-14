@@ -210,7 +210,7 @@ describe("FlatTextFieldEditor controls", () => {
     act(() => root.unmount());
   });
 
-  it("lights up 'right' for text-align: end and commits the concrete 'right' value on click", () => {
+  it("preserves text-align: end instead of coercing it to right", () => {
     const onSetTextFieldStyle = vi.fn();
     const { host, root } = renderInto(
       <FlatTextSection
@@ -224,11 +224,11 @@ describe("FlatTextFieldEditor controls", () => {
       />,
     );
     const alignButtons = segmentedRowButtons(host, "Align");
-    const rightButton = alignButtons.find((button) => button.textContent === "R");
-    expect(rightButton).not.toBeUndefined();
-    expect(rightButton?.className).toContain("border-panel-accent");
-    act(() => rightButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "text-align", "right");
+    const endButton = alignButtons.find((button) => button.textContent === "E");
+    expect(endButton).not.toBeUndefined();
+    expect(endButton?.className).toContain("border-panel-accent");
+    act(() => endButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "text-align", "end");
     act(() => root.unmount());
   });
 
