@@ -18,6 +18,11 @@
       "type": "hyperframes:composition"
     },
     {
+      "path": "lib/liquid-glass.iife.js",
+      "target": "compositions/lib/liquid-glass.iife.js",
+      "type": "registry:asset"
+    },
+    {
       "path": "assets/hyperframes-logo-dark.svg",
       "target": "compositions/assets/hyperframes-logo-dark.svg",
       "type": "registry:asset"

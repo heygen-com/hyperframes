@@ -16,6 +16,11 @@
       "path": "liquid-glass-media-controls.html",
       "target": "compositions/liquid-glass-media-controls.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/liquid-glass.iife.js",
+      "target": "compositions/lib/liquid-glass.iife.js",
+      "type": "registry:asset"
     }
   ],
   "preview": {
