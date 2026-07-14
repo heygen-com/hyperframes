@@ -710,9 +710,9 @@ describe("installWithCorruptArchiveRecovery", () => {
 //
 // `@puppeteer/browsers` 3.0.2 dropped `extract-zip` as a dependency and now
 // extracts with `modern-tar` by default (`yauzl` lingers only as an optional
-// peer fallback — no longer a runtime dependency), which is the fix. This test
-// fails if a dependency change ever drags the pin back below 3.x — i.e.
-// reintroduces the broken extractor as a hard dependency.
+// peer fallback), which avoids the old hard dependency. HyperFrames supplies a
+// safe yauzl 3.x directly so ZIP extraction still works on Linux hosts without
+// a system `unzip`. These tests keep both sides of that contract intact.
 describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", () => {
   it("stays on the major (>= 3) that dropped extract-zip and no longer depends on yauzl", async () => {
     const { createRequire } = await import("node:module");
@@ -730,5 +730,17 @@ describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", ()
     const deps = pkg.dependencies ?? {};
     expect(deps["extract-zip"]).toBeUndefined();
     expect(deps["yauzl"]).toBeUndefined();
+  });
+
+  it("bundles a safe yauzl fallback for hosts without a system unzip", async () => {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const cliPkg = require("../../package.json") as {
+      dependencies?: Record<string, string>;
+    };
+    const yauzlPkg = require("yauzl/package.json") as { version: string };
+
+    expect(cliPkg.dependencies?.["yauzl"]).toBeDefined();
+    expect(Number.parseInt(yauzlPkg.version.split(".")[0] ?? "0", 10)).toBeGreaterThanOrEqual(3);
   });
 });
