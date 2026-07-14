@@ -1484,9 +1484,13 @@ export async function renderLocal(
     let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
     try {
       encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
-    } catch {
+    } catch (error) {
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
+      if (!options.quiet) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+      }
     }
     if (encoderMode === "gpu") {
       console.warn(

@@ -381,6 +381,7 @@ describe("renderLocal browser GPU config", () => {
 
   it("lets the encoder surface its own error when capability detection fails", async () => {
     ffmpegEncoderState.error = new Error("encoder probe timed out");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -393,6 +394,25 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.useGpu).toBe(false);
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("encoder probe timed out"));
+  });
+
+  it("diagnoses advisory encoder probe failures unless quiet", async () => {
+    ffmpegEncoderState.error = new Error("encoder probe timed out");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: false,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("encoder probe timed out"));
   });
 
   it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {

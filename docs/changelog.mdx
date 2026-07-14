@@ -23,6 +23,7 @@ HyperFrames now uses a 0–10 recommendation scale for feedback, keeps canvas z-
 
 ## Fixes
 
+- **Render:** Limit automatic missing-libx264 fallback to macOS VideoToolbox; other hardware encoders now require explicit GPU configuration and surface their native FFmpeg error.
 - **CLI:** Resolve color-mix() colors in contrast audit instead of false-failing ([6c2513d5c](https://github.com/heygen-com/hyperframes/commit/6c2513d5c80fea57d6686ccddf560e2e8c213afb), [#2445](https://github.com/heygen-com/hyperframes/pull/2445))
 - **Producer:** Probe variable-bound media sources ([d2c8c2d80](https://github.com/heygen-com/hyperframes/commit/d2c8c2d8087814f35a3059069efc8c3a7a91cad8), [#2444](https://github.com/heygen-com/hyperframes/pull/2444))
 - **Pr To Video:** Use display names, not GitHub logins, in credits narration ([4cba58f5a](https://github.com/heygen-com/hyperframes/commit/4cba58f5a3a269b438d88aa9be406f7961c2fa25), [#2385](https://github.com/heygen-com/hyperframes/pull/2385))
