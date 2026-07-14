@@ -46,6 +46,26 @@ const FIELDS = [
 ];
 
 describe("FlatTextLayerList", () => {
+  it("falls back to a numbered label per index for empty fields, not a bare 'Text'", () => {
+    const emptyFields = [
+      { ...FIELDS[0], value: "" },
+      { ...FIELDS[1], value: "" },
+    ];
+    const { host, root } = renderInto(
+      <FlatTextLayerList
+        fields={emptyFields as never}
+        activeFieldKey="a"
+        styles={{}}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(host.textContent).toContain("Text 1");
+    expect(host.textContent).toContain("Text 2");
+    act(() => root.unmount());
+  });
+
   it("lists every field, highlights the active one, and fires onSelect/onAdd/onRemove", () => {
     const onSelect = vi.fn();
     const onAdd = vi.fn();
@@ -138,6 +158,114 @@ function makeMultiFieldElement(): DomEditSelection {
     },
   } as DomEditSelection;
 }
+
+function makeSingleFieldElement(overrides: Partial<DomEditTextField> = {}): DomEditSelection {
+  const base = makeMultiFieldElement();
+  return {
+    ...base,
+    textFields: [
+      {
+        key: "a",
+        label: "Text",
+        value: "Headline",
+        tagName: "div",
+        attributes: [],
+        inlineStyles: {},
+        computedStyles: {},
+        source: "self",
+        ...overrides,
+      },
+    ],
+  } as DomEditSelection;
+}
+
+function segmentedRowButtons(host: HTMLElement, label: string): HTMLButtonElement[] {
+  const labelSpan = Array.from(host.querySelectorAll("span")).find(
+    (el) => el.textContent === label,
+  );
+  const row = labelSpan?.parentElement;
+  return Array.from(row?.querySelectorAll<HTMLButtonElement>('[data-flat-segment="true"]') ?? []);
+}
+
+describe("FlatTextFieldEditor controls", () => {
+  it("commits text-transform: capitalize when the new 'Ag' case button is clicked", () => {
+    const onSetTextFieldStyle = vi.fn();
+    const { host, root } = renderInto(
+      <FlatTextSection
+        element={makeSingleFieldElement()}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={onSetTextFieldStyle}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
+    const capitalizeButton = segmentedRowButtons(host, "Case · Style").find(
+      (button) => button.textContent === "Ag",
+    );
+    expect(capitalizeButton).not.toBeUndefined();
+    act(() => capitalizeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "text-transform", "capitalize");
+    act(() => root.unmount());
+  });
+
+  it("lights up 'right' for text-align: end and commits the concrete 'right' value on click", () => {
+    const onSetTextFieldStyle = vi.fn();
+    const { host, root } = renderInto(
+      <FlatTextSection
+        element={makeSingleFieldElement({ computedStyles: { "text-align": "end" } })}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={onSetTextFieldStyle}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
+    const alignButtons = segmentedRowButtons(host, "Align");
+    const rightButton = alignButtons.find((button) => button.textContent === "R");
+    expect(rightButton).not.toBeUndefined();
+    expect(rightButton?.className).toContain("border-panel-accent");
+    act(() => rightButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "text-align", "right");
+    act(() => root.unmount());
+  });
+
+  it("live-commits the Size field on input, without requiring blur/Enter", async () => {
+    const onSetTextFieldStyle = vi.fn();
+    const { host, root } = renderInto(
+      <FlatTextSection
+        element={makeSingleFieldElement()}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={onSetTextFieldStyle}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
+    const sizeLabel = Array.from(host.querySelectorAll("span")).find(
+      (el) => el.textContent === "Size",
+    );
+    const input = sizeLabel?.parentElement?.querySelector<HTMLInputElement>("input");
+    if (!input) throw new Error("expected the Size row's input");
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(input, "24px");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // liveCommit debounces on a 120ms timer — no blur/Enter dispatched here.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 160));
+    });
+    expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "font-size", "24px");
+    act(() => root.unmount());
+  });
+});
 
 describe("FlatTextSection — multi-field", () => {
   it("shows the layer list, switches the active field's rows on selection, and has no doubled heading (this component never renders its own heading — the parent FlatGroup does)", () => {
@@ -246,6 +374,67 @@ describe("FlatTextSection — multi-field", () => {
     rows = host.querySelectorAll('[data-flat-text-layer-row="true"]');
     expect(rows).toHaveLength(2);
     expect((rows[0] as HTMLElement).getAttribute("data-active")).toBe("true");
+
+    act(() => root.unmount());
+  });
+
+  it("auto-focuses the Content textarea when a new text field is added", async () => {
+    let addResolved = false;
+
+    function Harness() {
+      const [fields, setFields] = useState<DomEditTextField[]>(makeMultiFieldElement().textFields);
+      const element: DomEditSelection = { ...makeMultiFieldElement(), textFields: fields };
+      return (
+        <FlatTextSection
+          element={element}
+          styles={{}}
+          fontAssets={[]}
+          onSetText={vi.fn()}
+          onSetTextFieldStyle={vi.fn()}
+          onAddTextField={() =>
+            Promise.resolve().then(() => {
+              addResolved = true;
+              setFields((prev) => [
+                ...prev,
+                {
+                  key: "c",
+                  label: "Text",
+                  value: "",
+                  tagName: "div",
+                  attributes: [],
+                  inlineStyles: {},
+                  computedStyles: {},
+                  source: "self",
+                },
+              ]);
+              return "c";
+            })
+          }
+          onRemoveTextField={vi.fn()}
+        />
+      );
+    }
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(<Harness />);
+    });
+
+    const addButton = host.querySelector<HTMLButtonElement>('[data-flat-text-layer-add="true"]');
+    // Wait for onAddTextField's promise to resolve (adds field "c" and makes it
+    // active) before checking focus, mirroring the async add-field pattern above.
+    await act(async () => {
+      addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(addResolved).toBe(true);
+
+    const contentTextarea = host.querySelector("textarea");
+    expect(contentTextarea).not.toBeNull();
+    expect(document.activeElement).toBe(contentTextarea);
 
     act(() => root.unmount());
   });
