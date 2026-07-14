@@ -3,6 +3,7 @@
  * Extracted from App.tsx to keep file sizes under the 600-line limit.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
+import i18n from "../i18n";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
@@ -89,11 +90,11 @@ export function useBlockHandlers({
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
       if (installingBlockRef.current) {
-        blockCtx.showToast("A block is already installing — one moment…", "info");
+        blockCtx.showToast(i18n.t("hooks.blockHandlers.alreadyInstalling"), "info");
         return null;
       }
       installingBlockRef.current = true;
-      blockCtx.showToast(`Adding ${blockName}…`, "info");
+      blockCtx.showToast(i18n.t("hooks.blockHandlers.addingBlock", { blockName }), "info");
       try {
         return await install();
       } finally {

@@ -58,6 +58,7 @@
   "assetsTab": {
     "importMedia": "导入媒体",
     "dropMediaHere": "拖放媒体文件到此",
+    "addAtPlayhead": "添加到播放头",
     "copyPath": "复制路径",
     "rename": "重命名",
     "delete": "删除",
@@ -187,6 +188,7 @@
     "maskInset": "遮罩内缩",
     "mode": "模式",
     "fillColor": "填充颜色",
+    "content": "内容",
     "textColor": "文字颜色",
     "textLayers": "文本图层",
     "addText": "添加文本",
@@ -408,6 +410,29 @@
     "addKeyframe": "在播放头处添加关键帧",
     "enableKeyframes": "启用关键帧",
     "splitClip": "在播放头处分割片段 (S)",
+    "splitAtPlayhead": "在播放头处分割",
+    "noElementToSplit": "选择一个片段进行分割",
+    "movePlayheadInside": "将播放头移到片段内以分割",
+    "addBeatAtPlayhead": "在播放头处添加节拍",
+    "beatAlreadyExists": "播放头处已存在节拍",
+    "addMusicTrackForBeats": "添加带节拍分析的音乐轨道以放置节拍",
+    "selectionTool": "选择工具 (V)",
+    "selectionToolAria": "选择工具",
+    "razorTool": "剃刀工具 (B) — Shift+点击分割所有轨道",
+    "razorToolAria": "剃刀工具",
+    "toggleSnappingAria": "切换时间线吸附",
+    "autoRecordOn": "自动将手动编辑记录为关键帧（点击关闭）",
+    "autoRecordOff": "手动编辑不会记录为关键帧（点击开启）",
+    "autoRecordAria": "自动记录手动编辑为关键帧",
+    "selectElementForKeyframes": "选择一个已动画化的元素以添加关键帧",
+    "removeKeyframeK": "删除播放头处的关键帧 (K)",
+    "addKeyframeExtend": "在播放头处添加关键帧，扩展动画 (K)",
+    "addKeyframeK": "在播放头处添加关键帧 (K)",
+    "addKeyframeShortcut": "添加关键帧 (K)",
+    "removeKeyframeAria": "删除播放头处的关键帧",
+    "addKeyframeAria": "在播放头处添加关键帧",
+    "timelineZoom": "时间线缩放",
+    "timelineZoomLevel": "时间线缩放级别",
     "fitTimeline": "适合时间线宽度",
     "zoomOut": "缩小",
     "zoomIn": "放大",
@@ -501,6 +526,8 @@
     "backTooltip": "返回 (Esc，或双击空白时间线)",
     "backToParentAria": "返回父级合成",
     "master": "主合成",
+    "assetPreview": "预览：{{name}}",
+    "closePreview": "关闭预览",
     "resizeTimelineAria": "调整时间线大小（方向键）"
   },
   "errorBoundary": {
@@ -824,6 +851,13 @@
       "rotate": "旋转",
       "rotateSelection": "旋转选区",
       "moveAnimationPath": "移动动画路径"
+    },
+    "cropHandles": {
+      "reposition": "重新定位裁剪",
+      "crop": "裁剪"
+    },
+    "promotable": {
+      "makeVariable": "将此设为变量"
     }
   },
   "language": {
@@ -879,6 +913,7 @@
     },
     "domEdit": {
       "invalidLayoutValues": "无法保存编辑，因为包含无效的布局值",
+      "reorderFailed": "重新排序图层失败",
       "couldntSaveEdit": "无法保存编辑",
       "couldntSaveEditWithDetail": "无法保存编辑：{{detail}}{{fieldsSuffix}}",
       "savedButUpdateFailed": "已保存，但无法完成更新 {{path}}：{{detail}}",
@@ -909,6 +944,10 @@
       "clipNotMovable": "此片段尚无法从时间线移动或调整大小。",
       "toggleTrackVisibilityFailed": "切换轨道可见性失败",
       "toggleElementVisibilityFailed": "切换元素可见性失败"
+    },
+    "blockHandlers": {
+      "alreadyInstalling": "正在安装另一个模块 — 请稍候…",
+      "addingBlock": "正在添加 {{blockName}}…"
     },
     "element": {
       "deleteFailed": "删除元素失败"
@@ -953,5 +992,31 @@
       "loadingFile": "正在加载 {{path}}…",
       "resizeSidebar": "调整侧边栏大小"
     }
+  },
+  "variablesPanel": {
+    "noScriptReads": "没有脚本读取此变量",
+    "setDefault": "设为默认值",
+    "persistDefault": "将此值持久化为声明的默认值",
+    "edit": "编辑",
+    "editDeclaration": "编辑声明",
+    "removeDeclaration": "移除声明",
+    "readByScripts": "被脚本读取，未声明",
+    "declare": "声明",
+    "declareAsString": "声明为字符串变量",
+    "title": "变量",
+    "copyRenderCommand": "复制渲染命令",
+    "cliCommandHint": "渲染与预览完全一致的 CLI 命令",
+    "copyValuesJson": "复制值 JSON",
+    "effectiveValuesHint": "有效值（默认值与预览覆盖合并）"
+  },
+  "variablesForm": {
+    "id": "标识符",
+    "idPlaceholder": "标题",
+    "label": "标签",
+    "labelPlaceholder": "标题",
+    "type": "类型",
+    "default": "默认值",
+    "optionsHint": "选项（每行一个，格式：值:标签）",
+    "descriptionOptional": "描述（可选）"
   }
 }

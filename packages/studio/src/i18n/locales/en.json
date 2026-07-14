@@ -58,6 +58,7 @@
   "assetsTab": {
     "importMedia": "Import media",
     "dropMediaHere": "Drop media files here",
+    "addAtPlayhead": "Add at playhead",
     "copyPath": "Copy path",
     "rename": "Rename",
     "delete": "Delete",
@@ -187,6 +188,7 @@
     "maskInset": "Mask inset",
     "mode": "Mode",
     "fillColor": "Fill color",
+    "content": "Content",
     "textColor": "Text color",
     "textLayers": "Text layers",
     "addText": "Add text",
@@ -408,6 +410,29 @@
     "addKeyframe": "Add keyframe at playhead",
     "enableKeyframes": "Enable keyframes",
     "splitClip": "Split clip at playhead (S)",
+    "splitAtPlayhead": "Split at playhead",
+    "noElementToSplit": "Select a clip to split",
+    "movePlayheadInside": "Move the playhead inside the clip to split",
+    "addBeatAtPlayhead": "Add beat at playhead",
+    "beatAlreadyExists": "A beat already exists at the playhead",
+    "addMusicTrackForBeats": "Add a music track with beat analysis to place beats",
+    "selectionTool": "Selection tool (V)",
+    "selectionToolAria": "Selection tool",
+    "razorTool": "Razor tool (B) — Shift+click splits all tracks",
+    "razorToolAria": "Razor tool",
+    "toggleSnappingAria": "Toggle timeline snapping",
+    "autoRecordOn": "Auto-record manual edits as keyframes (click to turn off)",
+    "autoRecordOff": "Manual edits will not be recorded as keyframes (click to turn on)",
+    "autoRecordAria": "Auto-record manual edits as keyframes",
+    "selectElementForKeyframes": "Select an animated element to add keyframes",
+    "removeKeyframeK": "Remove keyframe at playhead (K)",
+    "addKeyframeExtend": "Add keyframe at playhead, extends animation (K)",
+    "addKeyframeK": "Add keyframe at playhead (K)",
+    "addKeyframeShortcut": "Add keyframe (K)",
+    "removeKeyframeAria": "Remove keyframe at playhead",
+    "addKeyframeAria": "Add keyframe at playhead",
+    "timelineZoom": "Timeline zoom",
+    "timelineZoomLevel": "Timeline zoom level",
     "fitTimeline": "Fit timeline to width",
     "zoomOut": "Zoom out",
     "zoomIn": "Zoom in",
@@ -501,6 +526,8 @@
     "backTooltip": "Back (Esc, or double-click empty timeline)",
     "backToParentAria": "Back to parent composition",
     "master": "Master",
+    "assetPreview": "Preview: {{name}}",
+    "closePreview": "Close preview",
     "resizeTimelineAria": "Resize timeline (arrow keys)"
   },
   "errorBoundary": {
@@ -824,6 +851,13 @@
       "rotate": "Rotate",
       "rotateSelection": "Rotate selection",
       "moveAnimationPath": "Move animation path"
+    },
+    "cropHandles": {
+      "reposition": "Reposition crop",
+      "crop": "Crop"
+    },
+    "promotable": {
+      "makeVariable": "Make this a variable"
     }
   },
   "language": {
@@ -879,6 +913,7 @@
     },
     "domEdit": {
       "invalidLayoutValues": "Couldn't save edit because it contains invalid layout values",
+      "reorderFailed": "Failed to reorder layers",
       "couldntSaveEdit": "Couldn't save edit",
       "couldntSaveEditWithDetail": "Couldn't save edit: {{detail}}{{fieldsSuffix}}",
       "savedButUpdateFailed": "Saved, but couldn't finish updating {{path}}: {{detail}}",
@@ -909,6 +944,10 @@
       "clipNotMovable": "This clip can't be moved or resized from the timeline yet.",
       "toggleTrackVisibilityFailed": "Failed to toggle track visibility",
       "toggleElementVisibilityFailed": "Failed to toggle element visibility"
+    },
+    "blockHandlers": {
+      "alreadyInstalling": "A block is already installing — one moment…",
+      "addingBlock": "Adding {{blockName}}…"
     },
     "element": {
       "deleteFailed": "Failed to delete element"
@@ -953,5 +992,31 @@
       "loadingFile": "Loading {{path}}…",
       "resizeSidebar": "Resize sidebar"
     }
+  },
+  "variablesPanel": {
+    "noScriptReads": "No script reads this variable",
+    "setDefault": "Set default",
+    "persistDefault": "Persist this value as the declared default",
+    "edit": "Edit",
+    "editDeclaration": "Edit declaration",
+    "removeDeclaration": "Remove declaration",
+    "readByScripts": "Read by scripts, not declared",
+    "declare": "Declare",
+    "declareAsString": "Declare as a string variable",
+    "title": "Variables",
+    "copyRenderCommand": "Copy render command",
+    "cliCommandHint": "CLI command rendering exactly what the preview shows",
+    "copyValuesJson": "Copy values JSON",
+    "effectiveValuesHint": "Effective values (defaults merged with preview overrides)"
+  },
+  "variablesForm": {
+    "id": "ID",
+    "idPlaceholder": "title",
+    "label": "Label",
+    "labelPlaceholder": "Title",
+    "type": "Type",
+    "default": "Default",
+    "optionsHint": "Options (one per line, value:Label)",
+    "descriptionOptional": "Description (optional)"
   }
 }

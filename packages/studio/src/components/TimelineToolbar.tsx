@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
@@ -88,6 +89,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const elements = usePlayerStore((s) => s.elements);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
+  const { t } = useTranslation();
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const {
     state: keyframeState,
@@ -135,11 +137,11 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
         <div className="flex items-center gap-0.5">
           {STUDIO_RAZOR_TOOL_ENABLED && (
             <>
-              <Tooltip label="Selection tool (V)">
+              <Tooltip label={t("timelineToolbar.selectionTool")}>
                 <button
                   type="button"
                   onClick={() => setActiveTool("select")}
-                  aria-label="Selection tool"
+                  aria-label={t("timelineToolbar.selectionToolAria")}
                   aria-pressed={activeTool === "select"}
                   className={activeTool === "select" ? flatActive : flatIdle}
                 >
@@ -148,11 +150,11 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   </svg>
                 </button>
               </Tooltip>
-              <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
+              <Tooltip label={t("timelineToolbar.razorTool")}>
                 <button
                   type="button"
                   onClick={() => setActiveTool("razor")}
-                  aria-label="Razor tool"
+                  aria-label={t("timelineToolbar.razorToolAria")}
                   aria-pressed={activeTool === "razor"}
                   className={activeTool === "razor" ? flatActive : flatIdle}
                 >
@@ -163,11 +165,17 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
             </>
           )}
-          <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
+          <Tooltip
+            label={
+              timelineSnapEnabled
+                ? t("timelineToolbar.snapEnabled")
+                : t("timelineToolbar.snapDisabled")
+            }
+          >
             <button
               type="button"
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
-              aria-label="Toggle timeline snapping"
+              aria-label={t("timelineToolbar.toggleSnappingAria")}
               aria-pressed={timelineSnapEnabled}
               className={timelineSnapEnabled ? flatActive : flatIdle}
             >
@@ -181,14 +189,14 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             <Tooltip
               label={
                 !onToggleKeyframe
-                  ? "Select an animated element to add keyframes"
+                  ? t("timelineToolbar.selectElementForKeyframes")
                   : keyframeState === "active"
-                    ? "Remove keyframe at playhead (K)"
+                    ? t("timelineToolbar.removeKeyframeK")
                     : keyframeState === "inactive"
                       ? keyframeWillExtend
-                        ? "Add keyframe at playhead, extends animation (K)"
-                        : "Add keyframe at playhead (K)"
-                      : "Add keyframe (K)"
+                        ? t("timelineToolbar.addKeyframeExtend")
+                        : t("timelineToolbar.addKeyframeK")
+                      : t("timelineToolbar.addKeyframeShortcut")
               }
             >
               <button
@@ -197,8 +205,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 onClick={onToggleKeyframe}
                 aria-label={
                   keyframeState === "active"
-                    ? "Remove keyframe at playhead"
-                    : "Add keyframe at playhead"
+                    ? t("timelineToolbar.removeKeyframeAria")
+                    : t("timelineToolbar.addKeyframeAria")
                 }
                 className={
                   !onToggleKeyframe
@@ -231,14 +239,14 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             <Tooltip
               label={
                 autoKeyframeEnabled
-                  ? "Auto-record manual edits as keyframes (click to turn off)"
-                  : "Manual edits will not be recorded as keyframes (click to turn on)"
+                  ? t("timelineToolbar.autoRecordOn")
+                  : t("timelineToolbar.autoRecordOff")
               }
             >
               <button
                 type="button"
                 onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-                aria-label="Auto-record manual edits as keyframes"
+                aria-label={t("timelineToolbar.autoRecordAria")}
                 aria-pressed={autoKeyframeEnabled}
                 className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
                   autoKeyframeEnabled
@@ -278,16 +286,16 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 <Tooltip
                   label={
                     canSplit
-                      ? "Split at playhead (S)"
+                      ? t("timelineToolbar.splitClip")
                       : splittable
-                        ? "Move the playhead inside the clip to split"
-                        : "Select a clip to split"
+                        ? t("timelineToolbar.movePlayheadInside")
+                        : t("timelineToolbar.noElementToSplit")
                   }
                 >
                   <button
                     type="button"
                     disabled={!canSplit}
-                    aria-label="Split at playhead"
+                    aria-label={t("timelineToolbar.splitAtPlayhead")}
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
@@ -323,16 +331,16 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <Tooltip
                 label={
                   !beatAnalysisReady
-                    ? "Add a music track with beat analysis to place beats"
+                    ? t("timelineToolbar.addMusicTrackForBeats")
                     : canAdd
-                      ? "Add beat at playhead"
-                      : "A beat already exists at the playhead"
+                      ? t("timelineToolbar.addBeatAtPlayhead")
+                      : t("timelineToolbar.beatAlreadyExists")
                 }
               >
                 <button
                   type="button"
                   disabled={!canAdd}
-                  aria-label="Add beat at playhead"
+                  aria-label={t("timelineToolbar.addBeatAtPlayhead")}
                   onClick={() => {
                     if (canAdd) addBeatAtCompositionTime(currentTime);
                   }}
@@ -357,7 +365,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
           })()}
         </div>
         <div className="flex items-center gap-0.5">
-          <Tooltip label="Fit timeline to width">
+          <Tooltip label={t("timelineToolbar.fitTimeline")}>
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
@@ -370,10 +378,10 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               Fit
             </button>
           </Tooltip>
-          <Tooltip label="Zoom out">
+          <Tooltip label={t("timelineToolbar.zoomOut")}>
             <button
               type="button"
-              aria-label="Zoom out"
+              aria-label={t("timelineToolbar.zoomOut")}
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(
@@ -391,17 +399,17 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             max="100"
             value={timelineZoomPercentToSlider(displayedTimelineZoomPercent)}
             title={`${displayedTimelineZoomPercent}%`}
-            aria-label="Timeline zoom"
+            aria-label={t("timelineToolbar.timelineZoom")}
             onChange={(e) => {
               setZoomMode("manual");
               setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
             }}
             className="mx-1 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
           />
-          <Tooltip label="Zoom in">
+          <Tooltip label={t("timelineToolbar.zoomIn")}>
             <button
               type="button"
-              aria-label="Zoom in"
+              aria-label={t("timelineToolbar.zoomIn")}
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
@@ -414,7 +422,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
           {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
           <span
             className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
-            aria-label="Timeline zoom level"
+            aria-label={t("timelineToolbar.timelineZoomLevel")}
           >
             {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
           </span>

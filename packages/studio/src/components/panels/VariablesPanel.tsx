@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   Composition,
   CompositionVariable,
@@ -89,6 +90,7 @@ function VariableRow({
   onSaveEdit: (decl: CompositionVariable) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1.5 rounded-lg border border-neutral-800/70 p-2">
       <div className="flex items-center gap-1.5">
@@ -99,7 +101,7 @@ function VariableRow({
         {unused && (
           <span
             className="rounded bg-amber-900/40 px-1 py-px text-[8px] text-amber-400"
-            title="No script reads this variable"
+            title={t("variablesPanel.noScriptReads")}
           >
             unused
           </span>
@@ -108,13 +110,13 @@ function VariableRow({
         <span className="ml-auto flex items-center gap-1">
           {overridden && isScalar(value) && (
             <RowAction
-              label="Set default"
-              title="Persist this value as the declared default"
+              label={t("variablesPanel.setDefault")}
+              title={t("variablesPanel.persistDefault")}
               onClick={() => onSetDefault(value)}
             />
           )}
-          <RowAction label="Edit" title="Edit declaration" onClick={onToggleEdit} />
-          <RowAction label="✕" title="Remove declaration" danger onClick={onRemove} />
+          <RowAction label={t("variablesPanel.edit")} title={t("variablesPanel.editDeclaration")} onClick={onToggleEdit} />
+          <RowAction label="✕" title={t("variablesPanel.removeDeclaration")} danger onClick={onRemove} />
         </span>
       </div>
       {decl.description && <p className="text-[9px] text-neutral-500">{decl.description}</p>}
@@ -139,18 +141,19 @@ function UndeclaredReads({
   usage: VariableUsageReport | null;
   onDeclare: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (!usage || usage.undeclaredReads.length === 0) return null;
   return (
     <div className="space-y-1 rounded-lg border border-neutral-800/70 bg-neutral-900/40 p-2">
       <p className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
-        Read by scripts, not declared
+        {t("variablesPanel.readByScripts")}
       </p>
       {usage.undeclaredReads.map((id) => (
         <div key={id} className="flex items-center gap-2">
           <code className="font-mono text-[10px] text-neutral-400">{id}</code>
           <RowAction
-            label="Declare"
-            title="Declare as a string variable"
+            label={t("variablesPanel.declare")}
+            title={t("variablesPanel.declareAsString")}
             onClick={() => onDeclare(id)}
           />
         </div>
@@ -167,11 +170,12 @@ function PreviewModeHeader({
   overrideCount: number;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const hasOverrides = overrideCount > 0;
   return (
     <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold text-neutral-200">Variables</span>
+        <span className="text-[11px] font-semibold text-neutral-200">{t("variablesPanel.title")}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
             hasOverrides
@@ -208,6 +212,7 @@ function HandoffFooter({
   compPath: string;
   onCopy: (text: string, what: string) => void;
 }) {
+  const { t } = useTranslation();
   const json = JSON.stringify(effectiveValues);
   const command = `npx hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
   return (
@@ -220,13 +225,13 @@ function HandoffFooter({
       </code>
       <div className="flex items-center gap-2">
         <RowAction
-          label="Copy render command"
-          title="CLI command rendering exactly what the preview shows"
+          label={t("variablesPanel.copyRenderCommand")}
+          title={t("variablesPanel.cliCommandHint")}
           onClick={() => onCopy(command, "Render command")}
         />
         <RowAction
-          label="Copy values JSON"
-          title="Effective values (defaults merged with preview overrides)"
+          label={t("variablesPanel.copyValuesJson")}
+          title={t("variablesPanel.effectiveValuesHint")}
           onClick={() => onCopy(json, "Values JSON")}
         />
       </div>
@@ -251,6 +256,7 @@ export const VariablesPanel = memo(function VariablesPanel({
   domEditSaveTimestampRef,
   recordEdit,
 }: VariablesPanelProps) {
+  const { t } = useTranslation();
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
   const { readProjectFile, writeProjectFile, fileTree } = useFileManagerContext();

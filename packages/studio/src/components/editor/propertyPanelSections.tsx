@@ -286,7 +286,7 @@ function TextFieldEditor({
         {({ value, onCommit }) => (
           <TextAreaField
             key={field.key}
-            label="Content"
+            label={t("propertyPanel.content")}
             value={value ?? field.value}
             disabled={false}
             autoFocus={showRemove}
@@ -300,7 +300,7 @@ function TextFieldEditor({
       >
         {({ value, onCommit }) => (
           <ColorField
-            label="Text color"
+            label={t("propertyPanel.textColor")}
             value={value ?? getTextFieldColor(field, styles)}
             disabled={false}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}

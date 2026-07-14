@@ -12,6 +12,7 @@
  * Switching to another not-added asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -78,6 +79,7 @@ function AssetPreviewMedia({
 }
 
 export function AssetPreviewOverlay() {
+  const { t } = useTranslation();
   const previewAsset = useAssetPreviewStore((s) => s.previewAsset);
   const previewProjectId = useAssetPreviewStore((s) => s.previewProjectId);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
@@ -129,7 +131,7 @@ export function AssetPreviewOverlay() {
       className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/20"
       onClick={clearPreviewAsset}
       role="dialog"
-      aria-label={`Preview: ${name}`}
+      aria-label={t("nle.assetPreview", { name })}
     >
       {/* Floating preview card — compact, canvas stays visible around it */}
       <div
@@ -143,7 +145,7 @@ export function AssetPreviewOverlay() {
             e.stopPropagation();
             clearPreviewAsset();
           }}
-          aria-label="Close preview"
+          aria-label={t("nle.closePreview")}
         >
           <svg
             width="12"

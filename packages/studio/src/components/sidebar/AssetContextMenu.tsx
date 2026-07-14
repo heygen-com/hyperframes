@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 export function ContextMenu({
   x,
   y,
@@ -17,6 +19,7 @@ export function ContextMenu({
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAtPlayhead?: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-[200]"
@@ -40,7 +43,7 @@ export function ContextMenu({
             }}
             className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
           >
-            Add at playhead
+            {t("assetsTab.addAtPlayhead")}
           </button>
         )}
         <button
@@ -51,7 +54,7 @@ export function ContextMenu({
           }}
           className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
         >
-          Copy path
+          {t("assetsTab.copyPath")}
         </button>
         {onRename && (
           <button
@@ -61,7 +64,7 @@ export function ContextMenu({
             }}
             className="w-full text-left px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 transition-colors"
           >
-            Rename
+            {t("assetsTab.rename")}
           </button>
         )}
         {onDelete && (
@@ -73,9 +76,42 @@ export function ContextMenu({
             }}
             className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-neutral-800 transition-colors"
           >
-            Delete
+            {t("assetsTab.delete")}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+export function DeleteConfirm({
+  name,
+  onConfirm,
+  onCancel,
+}: {
+  name: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
+      <span className="text-[10px] text-red-400 truncate">
+        {t("assetsTab.deleteConfirm", { name })}
+      </span>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={onConfirm}
+          className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 transition-colors"
+        >
+          {t("assetsTab.delete")}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+        >
+          {t("assetsTab.cancel")}
+        </button>
       </div>
     </div>
   );

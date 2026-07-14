@@ -1,4 +1,5 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
+import i18n from "../i18n";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
 import { sdkTimingBatchPersist } from "../utils/sdkCutover";
@@ -112,7 +113,7 @@ export function useTimelineGroupEditing({
   const enqueueGroupOperation = useCallback(
     (label: string, operation: (projectId: string) => Promise<void>): Promise<void> => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return Promise.reject(new Error(`${label}: blocked while recording`));
       }
       const projectId = projectIdRef.current;

@@ -10,6 +10,7 @@
  */
 
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useVariablePromoteChannel,
   type PromoteChannel,
@@ -37,6 +38,7 @@ export function PromotableControl({
   enabled?: boolean;
   children: (args: RenderArgs) => React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const promote = useVariablePromoteChannel(channel);
 
   // A binding attribute (`data-var-*` / `var(--id)`) pointing at a declaration
@@ -90,7 +92,7 @@ export function PromotableControl({
       {canPromote && (
         <button
           type="button"
-          title="Make this a variable"
+          title={t("editor.promotable.makeVariable")}
           onClick={(e) => {
             e.stopPropagation();
             promote.promote();
