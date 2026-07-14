@@ -118,12 +118,15 @@ interface SpawnCall {
 interface FakeProc extends EventEmitter {
   stdout: EventEmitter;
   stderr: EventEmitter;
+  kill: ReturnType<typeof vi.fn>;
 }
 
 type SpawnOutcome =
   | { kind: "missing" }
   | { kind: "error"; message: string; code?: string }
-  | { kind: "exit"; code: number; stdout?: string; stderr?: string };
+  | { kind: "exit"; code: number; stdout?: string; stderr?: string }
+  // never settles on its own — only kill() ends it (simulates a hung probe)
+  | { kind: "hang" };
 
 function createSpawnSpy(outcomes: SpawnOutcome[]): {
   spawn: (command: string, args: readonly string[]) => FakeProc;
@@ -139,9 +142,16 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
     const proc = new EventEmitter() as FakeProc;
     proc.stdout = new EventEmitter();
     proc.stderr = new EventEmitter();
+    // A real SIGTERM ends the process, firing 'close' with a null code; mirror
+    // that so the runner settles after a timeout kill.
+    proc.kill = vi.fn((_signal?: string) => {
+      process.nextTick(() => proc.emit("close", null));
+      return true;
+    });
 
     process.nextTick(() => {
       if (!outcome) return;
+      if (outcome.kind === "hang") return; // never settles until kill()
       if (outcome.kind === "missing") {
         const err = new Error("spawn ffprobe ENOENT") as NodeJS.ErrnoException;
         err.code = "ENOENT";
@@ -173,12 +183,27 @@ describe("ffprobe missing-binary fallback", () => {
   }
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetModules();
     vi.doUnmock("child_process");
     if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
     else process.env.HYPERFRAMES_FFPROBE_PATH = originalFfprobePath;
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
+  });
+
+  it("kills and rejects a hung ffprobe after the timeout instead of leaking it", async () => {
+    vi.useFakeTimers();
+    const { spawn } = createSpawnSpy([{ kind: "hang" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    const probe = extractMediaMetadata("/tmp/hangs-forever.mp4");
+    const assertion = expect(probe).rejects.toThrow(/timed out/i);
+    // Before the timeout fires nothing settles; advancing past it kills + rejects.
+    await vi.advanceTimersByTimeAsync(120_000);
+    await assertion;
   });
 
   it("spawns the configured absolute FFprobe path when HYPERFRAMES_FFPROBE_PATH is set", async () => {

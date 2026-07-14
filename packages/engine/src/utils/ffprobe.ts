@@ -3,14 +3,31 @@ import { spawn } from "child_process";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
+import { trackChildProcess } from "./processTracker.js";
+
+/**
+ * Upper bound for any single ffprobe invocation. ffprobe metadata returns in
+ * milliseconds; the keyframe-interval probe is the slowest but still seconds.
+ * A hung probe (malformed container, stalled network FS, fifo) would otherwise
+ * never settle, so cap it generously and reject.
+ */
+const FFPROBE_TIMEOUT_MS = 120_000;
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 function runFfprobe(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const command = getFfprobeBinary();
     const proc = spawn(command, args);
+    // Track the child so render abort/teardown can reap it (every other engine
+    // spawn does this); without it killTrackedProcesses() can't kill a hung probe.
+    trackChildProcess(proc);
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+    }, FFPROBE_TIMEOUT_MS);
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
     });
@@ -18,13 +35,17 @@ function runFfprobe(args: string[]): Promise<string> {
       stderr += data.toString();
     });
     proc.on("close", (code) => {
-      if (code !== 0) {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`[FFmpeg] ffprobe timed out after ${FFPROBE_TIMEOUT_MS}ms`));
+      } else if (code !== 0) {
         reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
       } else {
         resolve(stdout);
       }
     });
     proc.on("error", (err) => {
+      clearTimeout(timer);
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         const configured = process.env[FFPROBE_PATH_ENV]?.trim();
         reject(
