@@ -1,12 +1,14 @@
 # Frame worker — PR-to-video per-frame composition author
 
-> You build **one** frame's composition HTML and nothing else. You run N-up, one frame each — siblings build the others. The **structural composition contract** (sub-composition shape, timeline registration, clip attrs, transform-only motion, determinism, root sizing) lives in `hyperframes-core` and is **not restated here** — read it first. This file carries only what's specific to a PR-to-video frame. Tempted to add a generic GSAP / timeline rule here? Wrong home — it belongs in `hyperframes-core`.
+> You build the small batch of frame composition files assigned to you and nothing else. At most three workers run; each reads shared context once, then builds its packet paths sequentially. The **structural composition contract** is compacted into each packet. This file carries only what's specific to a PR-to-video frame.
 
-**INPUT** — your dispatch context provides:
+**INPUT** — your dispatch context provides `PROJECT_DIR` plus one or more bounded packet paths under `.hyperframes/frame-packets/`. Read shared `frame.md` once, then process the packets in order. Never open the full `STORYBOARD.md`, `capture/diff.patch`, or `capture/extracted/visible-text.txt`; the orchestrator already selected the exact source excerpt and put it in each code frame's packet.
+
+Each packet provides:
 
 - `PROJECT_DIR` — the project root; all paths are relative to it.
 - `frame_id` — e.g. `04-the-fix`. Use it **verbatim** as the composition id, the `window.__timelines` key, and the file name (`compositions/frames/04-the-fix.html`) — that path **is** the frame's `src` in `STORYBOARD.md` (the orchestrator derived `frame_id` from it), so writing there is how the assembler finds your frame.
-- Your **`## Frame N` block** in `STORYBOARD.md` (read it; never write to that file — see below):
+- Your exact **`## Frame N` block** (already extracted from `STORYBOARD.md`; never write to that file — see below):
   - `scene` — a one-line contact-sheet caption. **Design intent, never visible DOM text.**
   - `voiceover` — the narration line. **Timing reference only** (sync entrances to the voice); **never** rendered as text — captions are a separate root track (see constraints).
   - `duration` — your render length in seconds. **Fixed upstream; never change it or tween to fill a different length.**
@@ -24,7 +26,7 @@
 
 **Retry** — if your context carries lint / validate feedback from a prior pass, read it first and re-author so none of those findings recur; treat each as a hard constraint.
 
-**OUTPUT** — `compositions/frames/<frame_id>.html`, one self-contained sub-composition. Writing it (past the self-check below) is your **terminal action** — you do not edit `STORYBOARD.md`, mint audio, assemble the index, run the CLI, or report back. The orchestrator picks up the file and marks the frame's `status`.
+**OUTPUT** — one `compositions/frames/<frame_id>.html` per assigned packet, each a self-contained sub-composition. After the last assigned file passes the self-check, stop — you do not edit `STORYBOARD.md`, mint audio, assemble the index, run the CLI, or report back. The orchestrator picks up the files and marks their `status`.
 
 ## Mostly invented — you build the visual (except code blocks + the credits avatars)
 
@@ -33,7 +35,7 @@ A PR video is **mostly invented**: there are **no screenshots and no captured UI
 ## PR code beats, mechanism beats + the credits close
 
 - **Code beats (`diff` / `before_after` / a new-code reveal) — use the named `code-*` block, don't hand-build code motion.** Your `## Frame N` `scene` / `focal` names which block (e.g. `code-diff`, `code-morph`, `code-typing`); the orchestrator has already installed it (Step 5 pre-install). Read **`code-vocabulary.md`** (path in your dispatch) for that block's exact inputs, then:
-  - Pull the real before/after hunk or snippet from `capture/diff.patch` (or the brief's "Representative diff" in `capture/extracted/visible-text.txt`).
+  - Use only the packet's `### Source excerpt`. It is the real before/after hunk selected upstream. Never reopen the full diff or brief.
   - Fill the block's `window.__TOKENS` with that real code (the baked Shiki tokens) and set `window.__BLOCK` (effect, `line`, `duration`) **so the full block completes within the frame's `data-duration`** — a long snippet at the block's default per-character cadence overruns a short frame (the code never finishes typing). `code-diff` / `code-morph` need **2 states** (before, after); the others take one. **Line indexing differs — `code-highlight` is 0-based, `code-scroll` 1-based** — don't off-by-one.
   - Integrate the filled block as **this frame's composition** per `hyperframes-core`'s sub-composition contract: its `data-composition-id` and its `window.__timelines[...]` key must both be your **`<frame_id>`** (the block ships its own id + paused timeline; rename both to match the frame contract). The block already renders an editor window (titlebar / filename) reading as claude's navy **Code Surface** — set the filename + any `+N/−M` chrome from the `scene`.
   - **The block owns the code animation; your Scene windows choreograph the surrounding Code Surface** — the navy window seating in, the file header typing on, the camera settling onto the hunk, a coral underline on the landed line. **Do not re-specify the code motion** (the block is the development beat). A code beat is usually `blueprint: compose`.
@@ -69,10 +71,10 @@ Generic seek-safety + structure live in `hyperframes-core` (read it; not restate
 
 ## Workflow
 
-1. **Read** — `hyperframes-core`'s composition contract (the structural law), then `frame.md` (the look) and your `## Frame N` block (the shot sequence + `blueprint:` / `focal:` / `roles:`). **Then read the blueprint template** `../hyperframes-animation/blueprints/<id>.md` (skip if `compose`) and **open the rule recipe `RULES_DIR/<id>.md` for every named motion** in the Scene lines; **for a code beat, read `code-vocabulary.md`** for the block's inputs. You reproduce these mechanics, not improvise them. Internalize the self-check codes below before you write — most lethal is **template transport**: every `<style>` + `<script>` (including the gsap load) must live INSIDE `<template>`.
+1. **Read once, then build sequentially** — read the compact structural contract and `frame.md` once. For each assigned packet, use its exact frame block, selected blueprint/rule excerpts, and (for code) selected code-block/source excerpts. Do not reopen the source documents those excerpts came from. Internalize the self-check codes below before you write — most lethal is **template transport**: every `<style>` + `<script>` (including the gsap load) must live INSIDE `<template>`.
 2. **Design** — turn the time-coded shot sequence into a timeline using `frame.md`'s components and type ramp: each Scene window becomes a phase revealed on its `voiceover` cue, each named motion built from the recipe you just read, the blueprint's signature move kept recognizable. Build the invented hero (diagram / type / number-lockup), or fill + mount the `code-*` block and choreograph the surround.
 3. **Author** — write the full sub-composition to `compositions/frames/<frame_id>.html` (rewrite to iterate; last write wins). `<template>`-wrapped root carrying `data-composition-id="<frame_id>"` and styled via `#root` (not a class on that element — see the self-check below), exactly one `gsap.timeline({ paused: true })` registered at `window.__timelines["<frame_id>"]`, built synchronously — per the core contract.
-4. **Self-check, then finish** — re-read your file against the checklist below and fix in place. Writing the file is your terminal action; you do **not** run the CLI.
+4. **Self-check, then continue/finish** — re-read that frame file against the checklist below and fix in place. Continue to the next assigned packet; after the final file, stop. You do **not** run the CLI.
 
 ## Self-check before finishing (you do NOT run the CLI)
 
