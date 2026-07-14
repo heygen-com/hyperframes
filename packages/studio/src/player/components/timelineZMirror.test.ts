@@ -583,3 +583,85 @@ describe("resolveRepositionLaneMove (Layers-panel equal jump)", () => {
     expect(first.elements).toEqual(snapshot);
   });
 });
+
+describe("paint scope (source file + stacking context)", () => {
+  it("forward never references a same-file clip in a DIFFERENT stacking context", () => {
+    // b overlaps t and sits above, but lives in a nested stacking context —
+    // leaf z is not comparable, so the mirror must not treat it as a neighbor.
+    const b = el("b", 0, 0, 10, { stackingContextId: "ctx-nested" });
+    const t = el("t", 1, 0, 10);
+    expect(resolve("bring-forward", t, [b, t])).toBeNull();
+  });
+
+  it("cross-file clips with matching null root contexts never compare (expanded view)", () => {
+    const foreign = el("f", 0, 0, 10, { sourceFile: "scenes/intro.html" });
+    const t = el("t", 1, 0, 10);
+    expect(resolve("bring-forward", t, [foreign, t])).toBeNull();
+    expect(resolve("bring-to-front", t, [foreign, t])).toBeNull();
+  });
+
+  it("reposition skips neighbors outside the paint scope when resolving lanes", () => {
+    // t (lane 0) dragged below a in paint order; o sits between them in the
+    // DESIRED order but lives in a nested stacking context, so it must be
+    // skipped: the above-neighbor is a (lane 1). Lane 2 is occupied by o over
+    // the span (freeness is scope-agnostic) → insert below a (row 2).
+    const t = el("t", 0, 0, 10);
+    const a = el("a", 1, 0, 10);
+    const other = el("o", 2, 0, 10, { stackingContextId: "ctx-a" });
+    expect(
+      resolveRepositionLaneMove({
+        element: t,
+        elements: [t, a, other],
+        desiredOrderKeys: ["t", "o", "a"],
+      }),
+    ).toEqual({ kind: "insert", insertRow: 2 });
+  });
+});
+
+describe("expanded sub-comp children — lane scoping", () => {
+  const child = (id: string, track: number, start: number, duration: number) =>
+    el(id, track, start, duration, {
+      sourceFile: "scene.html",
+      expandedParentStart: 5,
+    });
+
+  it("a child mirrors onto a SIBLING's lane and persists the sibling's AUTHORED track", () => {
+    // Sibling c1 owns fractional display lane 0.25 (authored track 2 in its own
+    // file) but sits elsewhere in time → its lane is free over t's span.
+    const c1 = el("c1", 0.25, 20, 3, {
+      sourceFile: "scene.html",
+      expandedParentStart: 5,
+      authoredTrack: 2,
+    });
+    const c2 = child("c2", 0.5, 5, 5);
+    const t = child("t", 0.75, 5, 5);
+    expect(resolve("bring-forward", t, [c1, c2, t], "c2")).toEqual({
+      kind: "move",
+      displayTrack: 0.25,
+      persistTrack: 2,
+    });
+  });
+
+  it("a child NEVER lands on a host-space lane with no same-file occupant", () => {
+    // Free integer host lane 0 above the crossed sibling — out of scope for a
+    // child; with no sibling lane free either, the mirror refuses (null), it
+    // does not insert.
+    const host = el("h", 0, 20, 3); // host-space lane, free over the span
+    const c2 = child("c2", 0.5, 5, 5);
+    const t = child("t", 0.75, 5, 5);
+    expect(resolve("bring-forward", t, [host, c2, t], "c2")).toBeNull();
+  });
+
+  it("reposition of a child refuses instead of inserting a host lane", () => {
+    const c2 = child("c2", 0.5, 5, 5);
+    const t = child("t", 0.75, 5, 5);
+    // t dragged above c2 in the layers order; no free sibling lane → null.
+    expect(
+      resolveRepositionLaneMove({
+        element: t,
+        elements: [c2, t],
+        desiredOrderKeys: ["c2", "t"],
+      }),
+    ).toBeNull();
+  });
+});

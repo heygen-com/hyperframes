@@ -12,7 +12,8 @@ import {
 import type { TimelineElement } from "../../player/store/playerStore";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
-import { buildStableSelector } from "../editor/domEditingDom";
+import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { forwardRebasedTimelineMoveElements } from "./TimelinePane";
 
 export interface MirrorZOrderInput {
@@ -60,23 +61,35 @@ export interface MirrorZOrderInput {
  */
 export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => Promise<boolean> {
   const commitMirrorMove = useMirrorLaneMoveCommit();
+  const activeCompPath = useStudioShellContextOptional()?.activeCompPath ?? null;
 
   return useCallback(
     (input: MirrorZOrderInput) =>
       commitMirrorMove(input.selectionKey, input.coalesceKey, (element, els) => {
         // Map the crossed neighbor to its timeline key the same way z-reorder
-        // entries get theirs (siblingZIndexEntry): DOM id, else stable selector,
-        // scoped to the selection's source file.
+        // entries get theirs (siblingZIndexEntry): DOM id, else stable selector
+        // WITH its selector index, scoped to the selection's source file. The
+        // index matters: class selectors are duplicated across clips (.sub),
+        // and a key derived without it resolves to occurrence 0 — a DIFFERENT
+        // clip — silently mirroring against the wrong neighbor.
+        const crossedSelector = input.crossed ? buildStableSelector(input.crossed) : undefined;
         const crossedKey = input.crossed
           ? deriveTimelineStoreKey({
               domId: input.crossed.id || undefined,
-              selector: buildStableSelector(input.crossed),
+              selector: crossedSelector,
+              selectorIndex: getSelectorIndex(
+                input.crossed.ownerDocument,
+                input.crossed,
+                crossedSelector,
+                input.sourceFile,
+                activeCompPath,
+              ),
               sourceFile: input.sourceFile,
             })
           : null;
         return resolveZMirrorLaneMove({ action: input.action, element, elements: els, crossedKey });
       }),
-    [commitMirrorMove],
+    [commitMirrorMove, activeCompPath],
   );
 }
 

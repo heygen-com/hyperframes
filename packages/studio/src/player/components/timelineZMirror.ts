@@ -13,10 +13,8 @@ import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
  * maintains z ↔ track consistency at EDIT time: a deliberate vertical lane move
  * syncs z (timelineStackingSync), and a z-order menu action calls THIS resolver
  * to compute the accompanying lane move. When the user authors z that diverges
- * from track order, the divergence is surfaced by a badge (computeZOverrideKeys
- * in timelineZOverride.ts, rendered by TimelineClip);
- * the mirror never fights an authored override, it only keeps the default in
- * step.
+ * from track order, the mirror never fights the authored override — it only
+ * keeps the default in step.
  *
  * ── Locked rules (agreed design — do not re-litigate here) ───────────────────
  * - The mirror computes a lane move to ACCOMPANY a z action on a timeline clip;
@@ -30,7 +28,7 @@ import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
  *   back-to-back case) → CREATE one at the boundary immediately beyond the
  *   reference neighbor (commitTrackInsert semantics) — never scan past the
  *   second element to a farther free lane, which would overshoot the paint
- *   order and trip our own zOverride badge. With no second overlapping element
+ *   order. With no second overlapping element
  *   beyond the reference, the bound is the zone edge: closest free lane beyond
  *   the neighbor, else insert immediately beyond it.
  * - bring-to-front / send-to-back move past the WHOLE overlap set: closest free
@@ -40,10 +38,10 @@ import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
  *   send-backward/back = toward HIGHER lanes, but only within the visual zone —
  *   the audio zone is untouched and never crossed (a bottom-of-zone insert lands
  *   AT the visual/audio boundary, i.e. still a visual lane).
- * - Reference scope: same stacking context = same source file = same timeline
- *   lane space (matches the menu's sibling scoping). The comparison set for
- *   "which track is above/below me" is same-file clips; lane FREENESS is
- *   file-agnostic (any clip in the zone occupies its lane for everyone).
+ * - Reference scope: same source file AND same stacking context (see
+ *   samePaintScope — a file can contain several stacking contexts, and leaf z
+ *   is only comparable within one). Lane FREENESS stays file-agnostic (any
+ *   clip in the zone occupies its lane for everyone).
  * - Non-clip decorations (no timeline presence) are out of scope — callers keep
  *   z-only behavior for them. Audio elements never mirror (z on audio is
  *   meaningless); the resolver returns null.
@@ -92,6 +90,39 @@ export type ZMirrorLaneMove =
 
 const keyOf = (el: TimelineElement): string => el.key ?? el.id;
 
+/**
+ * Paint-comparability scope for the mirror's reference sets: same source file
+ * AND same CSS stacking context. A single file can hold several stacking
+ * contexts (any transformed / z-indexed container starts one), and leaf z is
+ * only comparable within one context — sameSourceFile alone would let the
+ * mirror reason across contexts it can't actually reorder. The context id is
+ * only unique within its document, so the file check also stops null root
+ * contexts of DIFFERENT files from comparing equal in the expanded view.
+ */
+/**
+ * Lane candidates for an EXPANDED sub-comp child: only its own siblings' lanes
+ * (same file). An expanded child's display row is synthetic host-space — landing
+ * it on an arbitrary host lane has no same-file occupant to translate the
+ * authored track from, and a track INSERT would renumber host space from a
+ * child origin. Ordinary top-level clips return null (no restriction).
+ */
+function expandedChildAllowedLanes(
+  element: TimelineElement,
+  elements: TimelineElement[],
+): ReadonlySet<number> | null {
+  if (element.expandedParentStart == null) return null;
+  const selfKey = keyOf(element);
+  return new Set(
+    elements
+      .filter((el) => keyOf(el) !== selfKey && sameSourceFile(el, element))
+      .map((el) => el.track),
+  );
+}
+
+function samePaintScope(a: TimelineElement, b: TimelineElement): boolean {
+  return sameSourceFile(a, b) && (a.stackingContextId ?? null) === (b.stackingContextId ?? null);
+}
+
 /** Ascending unique display lanes of `elements` — identical to how Timeline.tsx
  *  builds `trackOrder`, so `insertRow` indexes the same boundary space. Exported
  *  so the mirror wiring can hand commitZMirrorLaneMove the matching trackOrder. */
@@ -115,12 +146,12 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
   const end = element.start + element.duration;
   const up = action === "bring-forward" || action === "bring-to-front";
 
-  // Same stacking context (= same source file), visual, temporally overlapping.
+  // Same paint scope (source file + stacking context), visual, temporally overlapping.
   const overlapSet = elements.filter(
     (el) =>
       keyOf(el) !== selfKey &&
       classifyZone(el) === "visual" &&
-      sameSourceFile(el, element) &&
+      samePaintScope(el, element) &&
       timeRangesOverlap(start, end, el.start, el.start + el.duration),
   );
 
@@ -133,6 +164,7 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
   if (refIdx === -1) return null; // reference is not a visual lane — no mirror
 
   const boundLane = stepBoundLane(action, overlapSet, referenceLane, up);
+  const allowedLanes = expandedChildAllowedLanes(element, elements);
   const lane = closestFreeLane({
     elements,
     visualLanes,
@@ -142,6 +174,7 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
     start,
     end,
     selfKey,
+    allowedLanes,
   });
   if (lane != null) {
     // The closest free lane is the clip's OWN lane (possible only when z and
@@ -154,6 +187,9 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
     };
   }
 
+  // Expanded children never INSERT: a new lane is a host-lane-space renumber,
+  // meaningless in the child's own file (buildTrackInsertEdits refuses too).
+  if (allowedLanes) return null;
   // No free lane before the bound (or the zone edge) → create one adjacent to
   // the reference: the boundary between its lane and the next in direction.
   return { kind: "insert", insertRow: order.indexOf(referenceLane) + (up ? 0 : 1) };
@@ -210,7 +246,7 @@ export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneM
     return el &&
       classifyZone(el) === "visual" &&
       el.duration > 0 &&
-      sameSourceFile(el, element) &&
+      samePaintScope(el, element) &&
       keyOf(el) !== selfKey
       ? el.track
       : null;
@@ -229,12 +265,14 @@ export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneM
 
   const order = displayTrackOrder(elements);
   const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const allowedLanes = expandedChildAllowedLanes(element, elements);
   const args = {
     elements,
     visualLanes,
     start: element.start,
     end: element.start + element.duration,
     selfKey,
+    allowedLanes,
   };
 
   let lane: number | null;
@@ -264,6 +302,9 @@ export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneM
       persistTrack: authoredTrackForLane(lane, elements, element),
     };
   }
+  // Expanded children never INSERT (host-lane-space renumber from a child
+  // origin) — see expandedChildAllowedLanes.
+  if (allowedLanes) return null;
   return { kind: "insert", insertRow };
 }
 
@@ -304,15 +345,24 @@ function closestFreeLane(args: {
   start: number;
   end: number;
   selfKey: string;
+  /** When set, only these lanes are candidates (expanded-child scoping). */
+  allowedLanes?: ReadonlySet<number> | null;
 }): number | null {
-  const { elements, visualLanes, refIdx, up, boundLane, start, end, selfKey } = args;
+  const { elements, visualLanes, refIdx, up, boundLane, start, end, selfKey, allowedLanes } = args;
   const step = up ? -1 : 1;
   for (let i = refIdx + step; i >= 0 && i < visualLanes.length; i += step) {
     const lane = visualLanes[i];
-    if (boundLane != null && (up ? lane <= boundLane : lane >= boundLane)) break;
+    if (pastSearchBound(lane, boundLane, up)) break;
+    if (allowedLanes && !allowedLanes.has(lane)) continue;
     if (isLaneFree(elements, lane, start, end, selfKey)) return lane;
   }
   return null;
+}
+
+/** The exclusive one-element-step bound: stop at (never on/past) `boundLane`. */
+function pastSearchBound(lane: number, boundLane: number | null, up: boolean): boolean {
+  if (boundLane == null) return false;
+  return up ? lane <= boundLane : lane >= boundLane;
 }
 
 /**

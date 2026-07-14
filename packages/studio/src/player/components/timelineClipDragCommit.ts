@@ -228,7 +228,10 @@ export function authoredTrackForLane(
     if (!nearest || Math.abs(p.track - lane) < Math.abs(nearest.track - lane)) nearest = p;
   }
   if (!nearest) return lane;
-  return (nearest.authoredTrack ?? nearest.track) + (lane - nearest.track);
+  // Rounded: expanded children live on FRACTIONAL synthetic display rows (see
+  // buildChildElements), so a lane distance measured against one can carry a
+  // fraction — an authored data-track-index must stay an integer.
+  return Math.round((nearest.authoredTrack ?? nearest.track) + (lane - nearest.track));
 }
 
 function insertTrackValue(trackOrder: number[], insertRow: number): number {
@@ -398,6 +401,10 @@ function buildTrackInsertEdits(
 ): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
   const { elements, trackOrder } = deps;
   const editKey = keyOf(element);
+  // An expanded sub-comp child's display lane is a synthetic row in the HOST's
+  // lane space; a track insert renumbers that space, which has no meaning in
+  // the child's own file. Refuse rather than persist host numbers there.
+  if (element.expandedParentStart != null) return null;
   const targetTrack = insertTrackValue(trackOrder, insertRow);
   // Drop-intent set: edited clip at the fractional insert lane (so it sorts
   // between its neighbours), selection members time-shifted, others as-is.
@@ -410,13 +417,22 @@ function buildTrackInsertEdits(
   // shifts the at/below clips down by one — the sanctioned +1 index renumber.
   const normalized = normalizeToZones(candidate);
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // The renumber is only correct as a WHOLE-SET write: skipping an unwritable
-  // clip whose lane shifts leaves its track colliding with a renumbered
-  // neighbour, and the next normalize merges the two lanes. If any shifted clip
-  // can't be written, refuse the insert instead of persisting a broken layout.
+  // The renumber WRITE set is the edited element's OWN source file: the
+  // sanctioned multi-clip write "converges the whole FILE to lane space", and a
+  // display set can mix files (expanded sub-comp children). Writing a foreign
+  // file's data-track-index in the host's lane numbering would corrupt that
+  // file's coordinate space — foreign clips keep their authored tracks and
+  // simply re-derive display lanes on the next normalize.
+  const writable = (src: TimelineElement): boolean =>
+    sameSourceFile(src, element) && src.expandedParentStart == null;
+  // The renumber is only correct as a whole-FILE write: skipping an unwritable
+  // same-file clip whose lane shifts leaves its track colliding with a
+  // renumbered neighbour, and the next normalize merges the two lanes. If any
+  // shifted same-file clip can't be written, refuse the insert instead of
+  // persisting a broken layout.
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
-    if (src && !canMoveElement(src) && norm.track !== src.track) {
+    if (src && writable(src) && !canMoveElement(src) && norm.track !== src.track) {
       console.warn(
         `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
       );
@@ -427,9 +443,9 @@ function buildTrackInsertEdits(
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src) continue;
-    // Capabilities gate (unchanged-lane clips only reach here now): never write
-    // a locked/implicit clip.
-    if (!canMoveElement(src)) continue;
+    // File scope + capabilities gate: never write a foreign-file, expanded, or
+    // locked/implicit clip.
+    if (!writable(src) || !canMoveElement(src)) continue;
     const start =
       keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
         ? (multi?.movedStart(src) ?? previewStart)
