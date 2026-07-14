@@ -49,10 +49,18 @@ import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loa
 
 // Use the producer's file server — it auto-injects the HyperFrames runtime
 // and render-seek bridge, so raw authoring HTML works without a build step.
-const packages = await importPackagesOrBootstrap(["@hyperframes/producer", "sharp"], {
-  npmPackages: [hyperframesPackageSpec("@hyperframes/producer"), "sharp@0.34.5"],
-});
+const packages = await importPackagesOrBootstrap(
+  ["@hyperframes/producer", "@hyperframes/core", "sharp"],
+  {
+    npmPackages: [
+      hyperframesPackageSpec("@hyperframes/producer"),
+      hyperframesPackageSpec("@hyperframes/core"),
+      "sharp@0.34.5",
+    ],
+  },
+);
 const sharp = packages.sharp.default;
+const { parseFps } = packages["@hyperframes/core"];
 const {
   createFileServer,
   createCaptureSession,
@@ -71,7 +79,9 @@ const SAMPLES = Number(args.samples ?? 10);
 const OUT_DIR = resolve(args.out ?? ".hyperframes/contrast");
 const WIDTH = Number(args.width ?? 1920);
 const HEIGHT = Number(args.height ?? 1080);
-const FPS = Number(args.fps ?? 30);
+const parsedFps = parseFps(args.fps ?? 30);
+if (!parsedFps.ok) die(`Invalid --fps "${args.fps ?? ""}": ${parsedFps.reason}`);
+const FPS = parsedFps.value;
 const COMP_DIR = resolve(args.composition);
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -82,7 +92,7 @@ const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
 const session = await createCaptureSession(
   server.url,
   OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: { num: FPS, den: 1 }, format: "png" },
+  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
   null,
 );
 await initializeSession(session);

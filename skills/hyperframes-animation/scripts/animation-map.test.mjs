@@ -14,12 +14,14 @@ const HELPERS = [
 
 describe("HyperFrames skill helpers", () => {
   for (const helper of HELPERS)
-    it(`${helper.split("/").at(-1)} passes a rational frame rate`, () => {
+    it(`${helper.split("/").at(-1)} uses canonical rational frame-rate parsing`, () => {
       const root = mkdtempSync(join(tmpdir(), "hyperframes-skill-helper-test-"));
       const packageDir = join(root, "node_modules", "@hyperframes", "producer");
+      const corePackageDir = join(root, "node_modules", "@hyperframes", "core");
       const sharpPackageDir = join(root, "node_modules", "sharp");
       const compositionDir = join(root, "composition");
       mkdirSync(packageDir, { recursive: true });
+      mkdirSync(corePackageDir, { recursive: true });
       mkdirSync(sharpPackageDir, { recursive: true });
       mkdirSync(compositionDir, { recursive: true });
       writeFileSync(
@@ -39,6 +41,20 @@ describe("HyperFrames skill helpers", () => {
         ].join("\n"),
       );
       writeFileSync(
+        join(corePackageDir, "package.json"),
+        JSON.stringify({ name: "@hyperframes/core", type: "module", exports: "./index.mjs" }),
+      );
+      writeFileSync(
+        join(corePackageDir, "index.mjs"),
+        [
+          "export function parseFps(input) {",
+          "  if (input === '30000/1001') return { ok: true, value: { num: 30000, den: 1001 } };",
+          "  if (input === '29.97') return { ok: false, reason: 'ambiguous-decimal' };",
+          "  return { ok: true, value: { num: Number(input), den: 1 } };",
+          "}",
+        ].join("\n"),
+      );
+      writeFileSync(
         join(sharpPackageDir, "package.json"),
         JSON.stringify({ name: "sharp", type: "module", exports: "./index.mjs" }),
       );
@@ -47,7 +63,7 @@ describe("HyperFrames skill helpers", () => {
       try {
         const result = spawnSync(
           process.execPath,
-          [helper, compositionDir, "--fps", "24", "--out", join(root, "output")],
+          [helper, compositionDir, "--fps", "30000/1001", "--out", join(root, "output")],
           {
             encoding: "utf8",
             env: {
@@ -58,7 +74,23 @@ describe("HyperFrames skill helpers", () => {
         );
         const output = `${result.stdout}\n${result.stderr}`;
         assert.notEqual(result.status, 0);
-        assert.match(output, /CAPTURE_OPTIONS=.*"fps":\{"num":24,"den":1\}/);
+        assert.match(output, /CAPTURE_OPTIONS=.*"fps":\{"num":30000,"den":1001\}/);
+
+        const invalid = spawnSync(
+          process.execPath,
+          [helper, compositionDir, "--fps", "29.97", "--out", join(root, "invalid-output")],
+          {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              HYPERFRAMES_SKILL_NODE_MODULES: join(root, "node_modules"),
+            },
+          },
+        );
+        const invalidOutput = `${invalid.stdout}\n${invalid.stderr}`;
+        assert.notEqual(invalid.status, 0);
+        assert.match(invalidOutput, /Invalid --fps "29\.97": ambiguous-decimal/);
+        assert.doesNotMatch(invalidOutput, /CAPTURE_OPTIONS=/);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

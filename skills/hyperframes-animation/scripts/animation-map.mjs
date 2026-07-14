@@ -19,17 +19,20 @@ import { resolve, join } from "node:path";
 import { sampleTweenBboxes } from "./animation-map-sampling.mjs";
 import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loader.mjs";
 
+const packages = await importPackagesOrBootstrap(["@hyperframes/producer", "@hyperframes/core"], {
+  npmPackages: [
+    hyperframesPackageSpec("@hyperframes/producer"),
+    hyperframesPackageSpec("@hyperframes/core"),
+  ],
+});
 const {
   createFileServer,
   createCaptureSession,
   initializeSession,
   closeCaptureSession,
   getCompositionDuration,
-} = (
-  await importPackagesOrBootstrap(["@hyperframes/producer"], {
-    npmPackages: [hyperframesPackageSpec("@hyperframes/producer")],
-  })
-)["@hyperframes/producer"];
+} = packages["@hyperframes/producer"];
+const { parseFps } = packages["@hyperframes/core"];
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +44,9 @@ const OUT_DIR = resolve(args.out ?? ".hyperframes/anim-map");
 const MIN_DUR = Number(args["min-duration"] ?? 0.15);
 const WIDTH = Number(args.width ?? 1920);
 const HEIGHT = Number(args.height ?? 1080);
-const FPS = Number(args.fps ?? 30);
+const parsedFps = parseFps(args.fps ?? 30);
+if (!parsedFps.ok) die(`Invalid --fps "${args.fps ?? ""}": ${parsedFps.reason}`);
+const FPS = parsedFps.value;
 const COMP_DIR = resolve(args.composition);
 
 await mkdir(OUT_DIR, { recursive: true });
@@ -52,7 +57,7 @@ const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
 const session = await createCaptureSession(
   server.url,
   OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: { num: FPS, den: 1 }, format: "png" },
+  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
   null,
 );
 await initializeSession(session);
