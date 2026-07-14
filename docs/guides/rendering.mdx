@@ -157,6 +157,19 @@ npx hyperframes render --video-bitrate 10M --output controlled.mp4
 
 **Tip**: The default `standard` preset (CRF 18) is visually lossless at 1080p — most people cannot distinguish it from the source. Use `--quality draft` for faster iteration, or `--quality high` / `--crf 10` when file size is no concern.
 
+## Input Video Codecs
+
+Video assets referenced by a composition (a `<video src="...">` clip) are decoded by FFmpeg, not by the browser: the pipeline pre-extracts every input video into frame images and injects them during capture, so the render never depends on what the capture browser can play. Any codec your FFmpeg build decodes works as an input, including:
+
+- H.264 / AVC
+- **HEVC / H.265, 8-bit and 10-bit** (`hvc1` and `hev1`): common for storage-optimized asset libraries; renders identically on macOS and Linux, no hardware decoder required
+- VP8 / VP9 and ProRes 4444 (with alpha; see [Transparent Video](#transparent-video))
+- HDR sources (HLG / PQ) are tone-mapped for SDR renders; see the [HDR guide](/guides/hdr)
+
+The one caveat is **live preview**: `preview`, `play`, Studio, and published player pages play the file in a real browser, so playback there depends on that browser's codec support. Chrome (107+), Edge, and Safari hardware-decode HEVC on most modern machines; Firefox does not. If an HEVC asset shows a black frame in preview while rendering fine, generate an H.264 proxy for authoring (for example with `ffmpeg -i asset.mp4 -c:v libx264 -crf 18 proxy.mp4`, or via the media-use skill) and swap the original back in for the final render, or just keep the HEVC source, since the rendered output is unaffected.
+
+`hyperframes lint` emits an info-level `hevc_preview_codec` note when a composition references an HEVC video, as a reminder of this preview-only limitation.
+
 ## Animated GIF
 
 Use GIF when the output needs to autoplay inline in GitHub PRs, READMEs, issue reports, and docs pages:

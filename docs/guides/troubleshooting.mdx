@@ -135,6 +135,18 @@ If your issue is about a specific coding mistake (animations not working, video 
 
     See [Rendering: Options](/guides/rendering#options) for all available flags.
   </Accordion>
+
+  <Accordion title="Video asset plays black in preview but renders fine (HEVC/H.265)">
+    Rendering decodes video assets with FFmpeg, so HEVC (H.265) inputs render correctly on every platform. Live preview is different: `preview`, `play`, Studio, and published player pages play the file in your browser, and not every browser decodes HEVC (Chrome 107+, Edge, and Safari do on most modern hardware; Firefox does not).
+
+    If an HEVC asset shows a black or frozen frame in preview:
+
+    1. Confirm the render itself is fine: `npx hyperframes render` output will contain the video.
+    2. For authoring, generate an H.264 proxy (`ffmpeg -i asset.mp4 -c:v libx264 -crf 18 proxy.mp4`) and point the composition at it while you iterate.
+    3. Swap the HEVC original back before the final render, or keep the proxy; both render correctly.
+
+    `npx hyperframes lint` flags HEVC assets with an info-level `hevc_preview_codec` note. See [Rendering: Input Video Codecs](/guides/rendering#input-video-codecs).
+  </Accordion>
 </AccordionGroup>
 
 ## System Diagnostics
