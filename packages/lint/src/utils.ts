@@ -180,7 +180,7 @@ export function readDecodedAttr(tagSource: string, attr: string): string | null 
   const parser = new Parser(
     {
       onattribute(name, decodedValue) {
-        if (name.toLowerCase() === attr.toLowerCase()) value = decodedValue;
+        if (value === null && name.toLowerCase() === attr.toLowerCase()) value = decodedValue;
       },
     },
     { decodeEntities: true, lowerCaseAttributeNames: false, lowerCaseTags: true },
