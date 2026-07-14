@@ -2,11 +2,61 @@ import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
+import { isChromiumUnsafePort } from "./chromiumUnsafePorts.js";
 
 export interface StaticProjectServer {
   url: string;
   port: number;
   close: () => Promise<void>;
+}
+
+interface EphemeralPortServer {
+  once(event: "error", listener: (error: Error) => void): unknown;
+  removeListener(event: "error", listener: (error: Error) => void): unknown;
+  listen(port: number, host: string, callback: () => void): unknown;
+  address(): string | { port: number } | null;
+  close(callback: (error?: Error) => void): unknown;
+}
+
+const MAX_SAFE_PORT_BIND_ATTEMPTS = 10;
+
+function listenOnce(server: EphemeralPortServer, bindErrorMessage: string): Promise<number> {
+  return new Promise<number>((resolvePort, rejectPort) => {
+    const onError = (error: Error) => {
+      server.removeListener("error", onError);
+      rejectPort(error);
+    };
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", onError);
+      const addr = server.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      if (!port) rejectPort(new Error(bindErrorMessage));
+      else resolvePort(port);
+    });
+  });
+}
+
+function closeServer(server: EphemeralPortServer): Promise<void> {
+  return new Promise<void>((resolveClose, rejectClose) => {
+    server.close((error) => {
+      if (error) rejectClose(error);
+      else resolveClose();
+    });
+  });
+}
+
+export async function listenOnChromiumSafeEphemeralPort(
+  server: EphemeralPortServer,
+  bindErrorMessage: string,
+  maxAttempts = MAX_SAFE_PORT_BIND_ATTEMPTS,
+): Promise<number> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const port = await listenOnce(server, bindErrorMessage);
+    if (!isChromiumUnsafePort(port)) return port;
+    await closeServer(server);
+  }
+  throw new Error(`${bindErrorMessage}: no Chromium-safe port after ${maxAttempts} attempts`);
 }
 
 /**
@@ -99,18 +149,10 @@ export async function serveStaticProjectHtml(
     res.end();
   });
 
-  const port = await new Promise<number>((resolvePort, rejectPort) => {
-    server.on("error", rejectPort);
-    // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
-    // which an IDE's port auto-forward surfaces as a transient "preview". The
-    // snapshot browser is co-located (url below is already 127.0.0.1).
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      const resolvedPort = typeof addr === "object" && addr ? addr.port : 0;
-      if (!resolvedPort) rejectPort(new Error(bindErrorMessage));
-      else resolvePort(resolvedPort);
-    });
-  });
+  // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
+  // which an IDE's port auto-forward surfaces as a transient "preview". The
+  // snapshot browser is co-located (url below is already 127.0.0.1).
+  const port = await listenOnChromiumSafeEphemeralPort(server, bindErrorMessage);
 
   return {
     url: `http://127.0.0.1:${port}/`,
