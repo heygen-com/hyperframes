@@ -158,10 +158,14 @@ export default defineCommand({
         console.log(
           `  ${c.dim("Status")}     ${c.accent(updatedInPlace ? "Updated existing project" : "Created new project")}`,
         );
-        if (updateTarget && !updatedInPlace) {
+        // Warn whenever we aimed at a KNOWN existing project (an explicit --update target or
+        // a committed team id) but the server created a fresh one instead — so a teammate
+        // whose space doesn't own the committed project doesn't silently lose the shared link.
+        if ((updateTarget || committedTeam) && !updatedInPlace) {
+          const targetDesc = updateTarget ? "The requested project" : "The committed team project";
           console.log();
           console.log(
-            `  ${c.dim("The requested project was not updated (not found or not in your space); a new one was created.")}`,
+            `  ${c.dim(`${targetDesc} was not updated (not found, or your space can't access it); a new project was created above instead.`)}`,
           );
         }
         // Persist a committable descriptor so a team converges on this link. This is a
