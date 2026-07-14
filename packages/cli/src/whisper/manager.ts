@@ -67,10 +67,9 @@ function findFromEnv(): WhisperResult | undefined {
 }
 
 function findFromSystem(): WhisperResult | undefined {
-  for (const name of ["whisper-cli", "whisper"]) {
-    const path = whichBinary(name);
-    if (path) return { executablePath: path, source: "system" };
-  }
+  // `whisper` is the OpenAI Python CLI; only whisper.cpp's binary accepts our flags.
+  const path = whichBinary("whisper-cli");
+  if (path) return { executablePath: path, source: "system" };
 
   // Check brew paths directly on macOS
   if (platform() === "darwin") {
