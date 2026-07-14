@@ -14,6 +14,19 @@ import type { ExtractionResult, HdrTransfer, VideoColorSpace } from "@hyperframe
 import type { ProducerLogger } from "../../logger.js";
 import type { RenderConfig } from "../renderOrchestrator.js";
 
+export function resolveHdrEncodingMode(
+  effectiveHdr: { transfer: HdrTransfer } | undefined,
+  nativeHdrResourceCount: number,
+): {
+  hasNativeHdrContent: boolean;
+  encoderHdr: { transfer: HdrTransfer } | undefined;
+} {
+  return {
+    hasNativeHdrContent: Boolean(effectiveHdr && nativeHdrResourceCount > 0),
+    encoderHdr: effectiveHdr,
+  };
+}
+
 export function resolveEffectiveHdrMode(input: {
   hdrMode: RenderConfig["hdrMode"];
   outputFormat: NonNullable<RenderConfig["format"]>;

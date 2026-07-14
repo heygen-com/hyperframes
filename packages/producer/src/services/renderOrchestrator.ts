@@ -97,7 +97,7 @@ import {
 } from "./render/renderEventPublisher.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
-import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
+import { resolveEffectiveHdrMode, resolveHdrEncodingMode } from "./render/hdrMode.js";
 import {
   buildRenderPerfSummary,
   pushWorkerDedupPerfs,
@@ -2094,7 +2094,10 @@ export async function executeRenderJob(
     // worker resolution, because the DE inversion below must not fire for
     // comps that route to the layered/HDR paths.)
     const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
-    const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
+    const { hasNativeHdrContent: hasHdrContent, encoderHdr } = resolveHdrEncodingMode(
+      effectiveHdr,
+      nativeHdrIds.size,
+    );
     // DE priority inversion eligibility — evaluated BEFORE capture calibration
     // because when every multi-worker resolution would be inverted to 1 anyway,
     // the calibration stage (a throwaway Chrome launch + timeline-spread sample
@@ -2532,7 +2535,6 @@ export async function executeRenderJob(
       hasShaderTransitions: compiled.hasShaderTransitions,
       isPngSequence,
     });
-    const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for
     // unrelated bookkeeping. Fall back to the mp4 preset shape — its values

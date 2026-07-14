@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { ExtractionResult, VideoColorSpace } from "@hyperframes/engine";
-import { resolveEffectiveHdrMode } from "./hdrMode.js";
+import { resolveEffectiveHdrMode, resolveHdrEncodingMode } from "./hdrMode.js";
 
 function makeLog() {
   return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -143,5 +143,14 @@ describe("resolveEffectiveHdrMode", () => {
       2,
       expect.stringContaining("HDR forced by --hdr flag, but no HDR sources were detected"),
     );
+  });
+});
+
+describe("resolveHdrEncodingMode", () => {
+  it("keeps forced HDR encoding enabled for an SDR-only composition", () => {
+    expect(resolveHdrEncodingMode({ transfer: "hlg" }, 0)).toEqual({
+      hasNativeHdrContent: false,
+      encoderHdr: { transfer: "hlg" },
+    });
   });
 });
