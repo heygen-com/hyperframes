@@ -114,6 +114,45 @@ function stopProcess(pid: number): void {
 
 const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
+function spawnDetachedPreview(
+  projectDir: string,
+  stateHome: string,
+  dependencies: LifecycleDependencies,
+): { pid: number; logPath: string } {
+  const logPath = previewLogPath(projectDir, stateHome);
+  mkdirSync(dirname(logPath), { recursive: true });
+  const logFd = openSync(logPath, "a", 0o600);
+  const spawn = dependencies.spawn ?? (nodeSpawn as unknown as SpawnPreview);
+  let child: SpawnResult;
+  try {
+    child = spawn(
+      dependencies.execPath ?? process.execPath,
+      buildBackgroundPreviewArgs(dependencies.argv ?? process.argv.slice(1)),
+      {
+        detached: true,
+        stdio: ["ignore", logFd, logFd],
+        env: process.env,
+      },
+    );
+  } finally {
+    closeSync(logFd);
+  }
+  if (!child.pid) throw new Error("background preview child did not report a PID");
+  child.unref();
+  return { pid: child.pid, logPath };
+}
+
+function startedServer(
+  servers: ActiveServer[],
+  projectDir: string,
+  existing: ActiveServer | null,
+  forceNew: boolean,
+): ActiveServer | null {
+  const candidates =
+    forceNew && existing ? servers.filter((server) => server.port !== existing.port) : servers;
+  return matchingServer(candidates, projectDir);
+}
+
 export function buildBackgroundPreviewArgs(argv: string[]): string[] {
   const filtered = argv.filter(
     (arg) =>
@@ -170,38 +209,19 @@ export async function startBackgroundPreview(
   }
 
   const stateHome = dependencies.stateHome ?? defaultStateHome();
-  const logPath = previewLogPath(projectDir, stateHome);
-  mkdirSync(dirname(logPath), { recursive: true });
-  const logFd = openSync(logPath, "a", 0o600);
-  const spawn = dependencies.spawn ?? (nodeSpawn as unknown as SpawnPreview);
-  let child: SpawnResult;
-  try {
-    child = spawn(
-      dependencies.execPath ?? process.execPath,
-      buildBackgroundPreviewArgs(dependencies.argv ?? process.argv.slice(1)),
-      {
-        detached: true,
-        stdio: ["ignore", logFd, logFd],
-        env: process.env,
-      },
-    );
-  } finally {
-    closeSync(logFd);
-  }
-  if (!child.pid) throw new Error("background preview child did not report a PID");
-  child.unref();
+  const { pid, logPath } = spawnDetachedPreview(projectDir, stateHome, dependencies);
 
   const sleep = dependencies.sleep ?? delay;
   for (let attempt = 0; attempt < 50; attempt++) {
-    const servers = await scan(startPort);
-    const candidates =
-      dependencies.forceNew && existing
-        ? servers.filter((server) => server.port !== existing.port)
-        : servers;
-    const server = matchingServer(candidates, projectDir);
+    const server = startedServer(
+      await scan(startPort),
+      projectDir,
+      existing,
+      dependencies.forceNew === true,
+    );
     if (server) {
       const session = {
-        pid: child.pid,
+        pid,
         port: server.port,
         projectDir: resolve(projectDir),
         logPath,
@@ -212,7 +232,7 @@ export async function startBackgroundPreview(
     await sleep(200);
   }
 
-  (dependencies.kill ?? stopProcess)(child.pid);
+  (dependencies.kill ?? stopProcess)(pid);
   throw new Error(`background preview did not become ready; see ${logPath}`);
 }
 

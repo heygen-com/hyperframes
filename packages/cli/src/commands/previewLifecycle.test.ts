@@ -21,6 +21,23 @@ const server: ActiveServer = {
   pid: "4321",
 };
 
+function savePreviewSession(stateHome: string): void {
+  writePreviewSession(
+    { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
+    stateHome,
+  );
+}
+
+async function expectStaleSessionRemoved(stateHome: string): Promise<void> {
+  const status = await readBackgroundPreviewStatus(projectDir, 3002, {
+    scan: async () => [],
+    stateHome,
+  });
+
+  expect(status).toBeNull();
+  expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+}
+
 describe("background preview lifecycle", () => {
   it("keeps case-distinct project paths separate on case-sensitive platforms", () => {
     if (process.platform === "win32") return;
@@ -105,37 +122,19 @@ describe("background preview lifecycle", () => {
       stateHome,
     );
 
-    const status = await readBackgroundPreviewStatus(projectDir, 3002, {
-      scan: async () => [],
-      stateHome,
-    });
-
-    expect(status).toBeNull();
-    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+    await expectStaleSessionRemoved(stateHome);
   });
 
   it("removes stale session metadata when its PID is alive but no server proves ownership", async () => {
     const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
-    writePreviewSession(
-      { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
-      stateHome,
-    );
+    savePreviewSession(stateHome);
 
-    const status = await readBackgroundPreviewStatus(projectDir, 3002, {
-      scan: async () => [],
-      stateHome,
-    });
-
-    expect(status).toBeNull();
-    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+    await expectStaleSessionRemoved(stateHome);
   });
 
   it("uses the recorded custom port when status is called without repeating --port", async () => {
     const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
-    writePreviewSession(
-      { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
-      stateHome,
-    );
+    savePreviewSession(stateHome);
     const scan = vi.fn(async () => [server]);
 
     const status = await readBackgroundPreviewStatus(projectDir, 3002, { scan, stateHome });
@@ -165,10 +164,7 @@ describe("background preview lifecycle", () => {
 
   it("does not kill an unmatched saved PID that may have been reused", async () => {
     const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
-    writePreviewSession(
-      { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
-      stateHome,
-    );
+    savePreviewSession(stateHome);
     const kill = vi.fn();
 
     const result = await stopBackgroundPreview(projectDir, 3002, {

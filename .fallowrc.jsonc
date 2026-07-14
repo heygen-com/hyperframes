@@ -469,6 +469,10 @@
       // pre-existing per-rule scaffold; adding a clip-path case shifts lines and
       // re-flags it. Collapsing the per-rule installers would obscure each case.
       "packages/cli/src/commands/layout-audit.browser.test.ts",
+      // portUtils.ts contains two pre-existing bounded HTTP probe implementations;
+      // this PR only teaches the server scan to prefer its reported PID, but that
+      // line shift makes fallow re-flag the inherited probe clones.
+      "packages/cli/src/server/portUtils.ts",
       // gsapParserAcorn.motionEval.test.ts: parallel arrange/act/assert cases for
       // the staggered-collection honesty pass (.from reveal vs .to landing on the
       // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
@@ -565,6 +569,10 @@
       // is pre-existing; the line-shift fingerprint problem makes fallow treat
       // the violations as new even though no logic changed.
       "packages/cli/src/server/studioServer.ts",
+      // findPortAndServe's existing port-selection flow predates this PR. The
+      // preview-lifecycle change only adds PID metadata to the config response,
+      // which shifts the inherited complexity fingerprint in portUtils.ts.
+      "packages/cli/src/server/portUtils.ts",
       "packages/core/src/core.types.ts",
       "packages/core/src/generators/hyperframes.ts",
       "packages/producer/src/services/htmlCompiler.ts",
