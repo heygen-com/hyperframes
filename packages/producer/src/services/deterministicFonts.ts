@@ -857,7 +857,11 @@ export interface InjectDeterministicFontFacesOptions {
 const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
 
 function extractGoogleFontsText(html: string): string | undefined {
-  const uniqueCharacters = [...new Set(Array.from(html))].join("");
+  const { document } = parseHTML(html);
+  const decodedBodyText = document.body?.textContent ?? "";
+  const uniqueCharacters = [...new Set([...Array.from(html), ...Array.from(decodedBodyText)])].join(
+    "",
+  );
   return encodeURIComponent(uniqueCharacters).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
     ? uniqueCharacters
     : undefined;

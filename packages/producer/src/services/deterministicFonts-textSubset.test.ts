@@ -22,4 +22,21 @@ describe("Google Fonts text subsetting", () => {
       expect(text).toContain(character);
     }
   });
+
+  it("includes decoded HTML entities from visible composition text", async () => {
+    let requestedUrl = "";
+    const fetchImpl = (async (input: unknown) => {
+      requestedUrl = String(input);
+      return new Response("", { status: 400 });
+    }) as unknown as typeof fetch;
+
+    await injectDeterministicFontFaces(
+      `<!doctype html><html><head><style>
+        h1 { font-family: "Noto Performance Test", sans-serif; }
+      </style></head><body><h1>&#x65C5;&#34892;</h1></body></html>`,
+      { fetchImpl, allowSystemFontCapture: false },
+    );
+
+    expect(new URL(requestedUrl).searchParams.get("text")).toContain("旅行");
+  });
 });
