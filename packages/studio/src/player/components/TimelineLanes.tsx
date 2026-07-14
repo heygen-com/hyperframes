@@ -177,21 +177,14 @@ export function TimelineLanes({
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
           return (
-            <div
-              key={trackNum}
-              className="relative flex"
-              style={{
-                height: TRACK_H,
-                background: rowBackground,
-                borderBottom: `1px solid ${theme.rowBorder}`,
-              }}
-            >
+            <div key={trackNum} className="relative flex" style={{ height: TRACK_H }}>
               <div
                 className="sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
                 style={{
                   width: GUTTER,
                   background: theme.gutterBackground,
                   borderRight: `1px solid ${theme.gutterBorder}`,
+                  borderBottom: `1px solid ${theme.rowBorder}`,
                 }}
               >
                 {isAudioTrack && (
@@ -233,6 +226,8 @@ export function TimelineLanes({
               <div
                 style={{
                   width: trackContentWidth,
+                  background: rowBackground,
+                  borderBottom: `1px solid ${theme.rowBorder}`,
                   opacity: isTrackHidden ? 0.35 : 1,
                   transition: "opacity 120ms ease",
                 }}

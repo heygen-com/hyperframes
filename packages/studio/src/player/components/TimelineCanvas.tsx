@@ -185,8 +185,8 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             top: getTimelineRowTop(draggedClip.insertRow) - 0.5,
-            left: GUTTER,
-            width: TRACKS_LEFT_PAD + props.trackContentWidth,
+            left: GUTTER + TRACKS_LEFT_PAD,
+            width: props.trackContentWidth,
             height: 1,
             background: "#3CE6AC",
             boxShadow: "0 0 3px rgba(60,230,172,0.5)",
