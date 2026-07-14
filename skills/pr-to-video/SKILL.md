@@ -104,13 +104,14 @@ PR="<url | owner/repo#N | N>"
   --pr-json ./capture/pr.json --diff ./capture/diff.patch --out-dir ./capture/extracted)
 
 # The people front's one network step — download each contributor's GitHub avatar to
-# assets/<login>.png for the credits close, and resolve a display `name` for anyone
-# ingest.mjs couldn't name (reviewers/commenters/assignees). Best-effort; always exits 0.
+# assets/<login>.png for the credits close. Best-effort; always exits 0.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-people-avatars.mjs \
   --people ./capture/extracted/people.json)
 ```
 
-If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and stop — **do not fabricate PR contents**. If `ingest.mjs` exits 1, read its stderr (usually a malformed `pr.json`), fix, and rerun (deterministic). `fetch-people-avatars.mjs` always exits 0; missing avatars just mean no credits close to author, and a missing `name` just means the credits close falls back to the login for that one person (see story-design.md's credits section — the voiceover must still say names, never raw handles).
+If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and stop — **do not fabricate PR contents**. If `ingest.mjs` exits 1, read its stderr (usually a malformed `pr.json`), fix, and rerun (deterministic). `fetch-people-avatars.mjs` always exits 0; missing avatars just mean no credits close to author.
+
+`people.json` carries a `name` for whichever contributors `gh` already named (the PR author, commit authors, `mergedBy`) — `null` for the rest (reviewers/commenters/assignees, which `gh pr view` only ever gives a bare `login`). Before writing the credits close in Step 3, resolve any `null` name yourself for the 1-6 people who'll actually appear on that frame: `gh api users/<login> --jq .name` (you already have `gh` — no need to script this). If GitHub has no public name for that user either, fall back to the login on-screen and drop that person from the spoken line (see story-design.md's credits section — the voiceover must still say names, never raw handles).
 
 **Gate:** `capture/pr.json`, `capture/diff.patch`, `capture/extracted/tokens.json`, `capture/extracted/visible-text.txt`, and `capture/extracted/people.json` exist; you can state the PR's change in one clear sentence. `assets/<login>.png` is best-effort — its absence is not a failure.
 
