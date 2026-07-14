@@ -928,6 +928,26 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT report overlapping_gsap_tweens for same-named constants in separate IIFEs", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="x"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    (() => { const T = 0; tl.to("#x", { opacity: 1, duration: 1 }, T + 0); })();
+    (() => { const T = 10; tl.to("#x", { opacity: 0, duration: 1 }, T + 0); })();
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
   it("detects overlapping_gsap_tweens between variable-target tweens", async () => {
     // Both tweens target the same element via a querySelector variable and their
     // windows overlap on `opacity`. The structure-driven window builder must see
