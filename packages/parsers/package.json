@@ -87,6 +87,12 @@
       "node": "./dist/subCompositionValidity.js",
       "import": "./src/subCompositionValidity.ts",
       "types": "./src/subCompositionValidity.ts"
+    },
+    "./ff-binaries": {
+      "bun": "./src/ffBinaries.ts",
+      "node": "./dist/ffBinaries.js",
+      "import": "./src/ffBinaries.ts",
+      "types": "./src/ffBinaries.ts"
     }
   },
   "publishConfig": {
@@ -140,6 +146,10 @@
       "./sub-composition-validity": {
         "import": "./dist/subCompositionValidity.js",
         "types": "./dist/subCompositionValidity.d.ts"
+      },
+      "./ff-binaries": {
+        "import": "./dist/ffBinaries.js",
+        "types": "./dist/ffBinaries.d.ts"
       }
     },
     "main": "./dist/index.js",

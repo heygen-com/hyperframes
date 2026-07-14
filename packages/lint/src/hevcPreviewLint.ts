@@ -1,8 +1,6 @@
-// fallow-ignore-file code-duplication
-import { execFile, execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
@@ -19,65 +17,9 @@ interface HtmlSourceLike {
   compSrcPath?: string;
 }
 
-const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
 const PROBE_TIMEOUT_MS = 4000;
 // Bounds concurrent ffprobe child processes for compositions referencing many videos.
 const PROBE_CONCURRENCY = 8;
-
-// Minimal PATH/env-based ffprobe resolution, duplicated from
-// packages/cli/src/browser/ffmpeg.ts (findFFprobe). packages/lint must not
-// depend on packages/cli (the CLI depends on @hyperframes/lint, which would
-// create an import cycle) or packages/engine (too heavy for a lint check),
-// so only the ffprobe-lookup half is re-implemented here — no ffmpeg lookup,
-// no install-hint text, no Linux-distro detection.
-
-function chooseBestFfprobeCandidate(candidates: string[]): string | undefined {
-  const normalized = candidates.map((s) => s.trim()).filter(Boolean);
-  if (normalized.length === 0) return undefined;
-  const preferredExe = normalized.find((c) => c.toLowerCase().endsWith("ffprobe.exe"));
-  if (preferredExe) return preferredExe;
-  const exact = normalized.find((c) => c.toLowerCase().endsWith("ffprobe"));
-  if (exact) return exact;
-  const nonShellShim = normalized.find((c) => {
-    const lower = c.toLowerCase();
-    return !lower.endsWith(".cmd") && !lower.endsWith(".bat");
-  });
-  return nonShellShim ?? normalized[0];
-}
-
-function findFFprobeOnPath(): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? "where ffprobe" : "which ffprobe";
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    const candidate = chooseBestFfprobeCandidate(output.split(/\r?\n/));
-    return candidate ? resolve(candidate) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const COMMON_BIN_DIRS =
-  process.platform === "win32"
-    ? []
-    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
-
-function findFFprobeInCommonDirs(): string | undefined {
-  for (const dir of COMMON_BIN_DIRS) {
-    const candidate = `${dir}/ffprobe`;
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
-function findFFprobe(): string | undefined {
-  const configured = process.env[FFPROBE_PATH_ENV]?.trim();
-  if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findFFprobeOnPath() ?? findFFprobeInCommonDirs();
-}
 
 function execFileAsync(file: string, args: string[]): Promise<string> {
   return new Promise((resolvePromise, reject) => {
@@ -174,7 +116,7 @@ export async function lintHevcPreviewCodec(
 ): Promise<HyperframeLintFinding[]> {
   if (candidates.size === 0) return [];
 
-  const ffprobePath = findFFprobe();
+  const ffprobePath = findFfBinary("ffprobe", { configuredMustExist: true });
   if (!ffprobePath) return [];
 
   const entries = [...candidates.entries()];

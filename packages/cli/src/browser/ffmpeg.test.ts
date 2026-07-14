@@ -1,55 +1,29 @@
-import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { afterEach, describe, expect, it } from "vitest";
+import { findFFmpeg, findFFprobe } from "./ffmpeg.js";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
-vi.mock("node:fs", () => ({ existsSync: vi.fn() }));
-
-const mockExec = vi.mocked(execSync);
-const mockExists = vi.mocked(existsSync);
-
-// The common-dir fallback list is platform-gated (empty on win32), so pin the
-// platform to a POSIX value to keep the test deterministic on Windows CI.
-const originalPlatform = process.platform;
-beforeEach(() => {
-  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
-  vi.resetModules();
-});
-
-afterEach(() => {
-  Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
-  vi.clearAllMocks();
-  delete process.env.HYPERFRAMES_FFMPEG_PATH;
-});
-
-describe("findFFmpeg", () => {
-  it("prefers the real Windows exe when where lists a cmd shim first", async () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    mockExec.mockReturnValue("C:\\tools\\ffmpeg.cmd\r\nC:\\tools\\ffmpeg.exe\r\n");
-
-    const { findFFmpeg } = await import("./ffmpeg.js");
-    expect(findFFmpeg()).toBe(resolve("C:\\tools\\ffmpeg.exe"));
+// Lookup mechanics (PATH scan, common-dir fallback, Windows shim preference)
+// are covered by @hyperframes/parsers ffBinaries.test.ts. These tests pin the
+// CLI wrapper's contract: a configured-but-missing override means "not found"
+// so callers surface the install hint instead of a spawn error.
+describe("findFFmpeg / findFFprobe", () => {
+  afterEach(() => {
+    delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    delete process.env.HYPERFRAMES_FFPROBE_PATH;
   });
 
-  it("falls back to a common install dir when `which` fails (GUI-launched PATH)", async () => {
-    // Simulate a process whose PATH lacks /opt/homebrew/bin: `which ffmpeg` throws.
-    mockExec.mockImplementation(() => {
-      throw new Error("which: no ffmpeg in PATH");
-    });
-    mockExists.mockImplementation((p) => p === "/opt/homebrew/bin/ffmpeg");
+  it("returns undefined when the env override points at a missing file", () => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = join(tmpdir(), "missing-ffmpeg");
+    process.env.HYPERFRAMES_FFPROBE_PATH = join(tmpdir(), "missing-ffprobe");
 
-    const { findFFmpeg } = await import("./ffmpeg.js");
-    expect(findFFmpeg()).toBe("/opt/homebrew/bin/ffmpeg");
-  });
-
-  it("returns undefined when ffmpeg is on neither PATH nor a common dir", async () => {
-    mockExec.mockImplementation(() => {
-      throw new Error("not found");
-    });
-    mockExists.mockReturnValue(false);
-
-    const { findFFmpeg } = await import("./ffmpeg.js");
     expect(findFFmpeg()).toBeUndefined();
+    expect(findFFprobe()).toBeUndefined();
+  });
+
+  it("returns the configured path when the env override exists", () => {
+    process.env.HYPERFRAMES_FFMPEG_PATH = process.execPath;
+
+    expect(findFFmpeg()).toBe(process.execPath);
   });
 });
