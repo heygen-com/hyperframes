@@ -1133,6 +1133,50 @@ describe("contrast-audit.browser background sampling", () => {
     expect(result[0]).toMatchObject({ selector: "#label", wcagAA: true, bg: "rgb(10,10,10)" });
   });
 
+  it("resolves color-mix() foregrounds before computing contrast", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <span id="label">Mixed color</span>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "color-mix(in srgb, rgb(37, 99, 235) 20%, rgb(255, 255, 255) 80%)",
+          fontSize: "20px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("label")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 120, height: 30 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript(
+      pixelsWithRegion(
+        rect({ left: 0, top: 0, width: 640, height: 360 }),
+        [10, 10, 10],
+        [10, 10, 10],
+      ),
+    );
+
+    const result = await runContrastAudit();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      selector: "#label",
+      fg: "rgb(211,224,251)",
+      bg: "rgb(10,10,10)",
+      ratio: 14.92,
+      wcagAA: true,
+    });
+  });
+
   it("accepts outlined text when its stroke has adequate background contrast", async () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
