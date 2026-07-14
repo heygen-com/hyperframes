@@ -25,6 +25,18 @@ describe("withEvenDimensionPad", () => {
     expect(withEvenDimensionPad("", "yuv420p")).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
   });
 
+  it("omits the pad when known dimensions are already even", () => {
+    expect(withEvenDimensionPad("", "yuv420p", 1920, 1080)).toBe("");
+    expect(withEvenDimensionPad("scale=in_range=pc:out_range=tv", "yuv420p", 1920, 1080)).toBe(
+      "scale=in_range=pc:out_range=tv",
+    );
+  });
+
+  it("keeps the pad when either known dimension is odd", () => {
+    expect(withEvenDimensionPad("", "yuv420p", 1921, 1080)).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(withEvenDimensionPad("", "yuv420p", 1920, 1081)).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+  });
+
   it("leaves the filter chain unchanged for alpha output (even in, unchanged)", () => {
     const vf = "scale=in_range=pc:out_range=tv";
     expect(withEvenDimensionPad(vf, "yuva444p10le")).toBe(vf);

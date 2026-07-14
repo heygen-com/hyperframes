@@ -36,10 +36,20 @@ export function requiresEvenDimensions(pixelFormat: string): boolean {
 
 /**
  * Append the even-dimension pad to an FFmpeg `-vf` chain when the target pixel
- * format requires it. Returns the chain unchanged for formats that accept odd
- * dimensions, and returns just the pad when there is no existing chain.
+ * format requires it. When both dimensions are known and already even, omit
+ * the filter entirely so minimal FFmpeg builds do not need to provide `pad`.
+ * Returns the chain unchanged for formats that accept odd dimensions, and
+ * returns just the pad when there is no existing chain.
  */
-export function withEvenDimensionPad(vfChain: string, pixelFormat: string): string {
+export function withEvenDimensionPad(
+  vfChain: string,
+  pixelFormat: string,
+  width?: number,
+  height?: number,
+): string {
   if (!requiresEvenDimensions(pixelFormat)) return vfChain;
+  if (width !== undefined && height !== undefined && width % 2 === 0 && height % 2 === 0) {
+    return vfChain;
+  }
   return vfChain ? `${vfChain},${EVEN_DIMENSION_PAD}` : EVEN_DIMENSION_PAD;
 }
