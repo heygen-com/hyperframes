@@ -46,6 +46,7 @@ import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
+import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
@@ -491,6 +492,9 @@ export function useTimelinePlayer() {
       const ourIframe = iframeRef.current;
       if (e.source && ourIframe && e.source !== ourIframe.contentWindow) {
         return;
+      }
+      if (data?.source === "hf-preview") {
+        if (!acceptStudioRuntimeMessage(data)) return;
       }
       if (data?.source === "hf-preview" && data?.type === "state") {
         try {

@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/verify-runtime-pin.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests/perf/tsconfig.json",
     "test": "vitest run",
     "perf": "bun run tests/perf/index.ts"

@@ -26,6 +26,7 @@ import {
   autoHealMissingCompositionIds,
   buildMissingCompositionElements,
 } from "../lib/timelineIframeHelpers";
+import { acceptedRuntimeMessageFps, inspectStudioRuntimeMessage } from "../lib/runtimeProtocol";
 
 interface UseTimelineSyncCallbacksParams {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -132,6 +133,9 @@ export function useTimelineSyncCallbacks({
       clips: ClipManifestClip[];
       durationInFrames: number;
       scenes?: Array<{ id: string; label: string; start: number; duration: number }>;
+      protocolVersion?: unknown;
+      capabilities?: unknown;
+      fps?: unknown;
     }) => {
       if (!data.clips || data.clips.length === 0) {
         return;
@@ -222,7 +226,7 @@ export function useTimelineSyncCallbacks({
           hostEl,
         });
       });
-      const rawDuration = data.durationInFrames / 30;
+      const rawDuration = data.durationInFrames / acceptedRuntimeMessageFps(data);
       // Clamp non-finite or absurdly large durations — the runtime can emit
       // Infinity when it detects a loop-inflated GSAP timeline without an
       // explicit data-duration on the root composition. Floor the manifest total
@@ -418,6 +422,10 @@ export function useTimelineSyncCallbacks({
       if (e.source && iframe && e.source !== iframe.contentWindow) return;
       const data = e.data;
       if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
+        // The main message handler owns protocol-error diagnostics. This readiness-only
+        // listener mirrors its acceptance gate without dispatching a duplicate event:
+        // an unsupported runtime must not make the iframe appear successfully settled.
+        if (inspectStudioRuntimeMessage(data).status === "unsupported") return;
         trySettle();
       }
     };

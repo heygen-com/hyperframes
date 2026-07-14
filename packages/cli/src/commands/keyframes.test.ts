@@ -160,3 +160,115 @@ describe("keyframes runtime surfacing", () => {
     expect(selectors).toEqual(expect.arrayContaining([".dot", ".chip"]));
   });
 });
+
+describe("keyframes template-wrapped sub-compositions", () => {
+  // Sub-compositions are REQUIRED to put markup + script + style inside <template>.
+  // Template content is an inert DocumentFragment that document-level
+  // querySelectorAll does not traverse, so extraction must walk template.content
+  // too — otherwise every spec-conformant sub-composition surfaces zero motion.
+  const templateWrapped = `<template>
+    <style>
+      #hero { opacity: 0; }
+      @keyframes rise {
+        0% { transform: translateY(40px); }
+        100% { transform: translateY(0); }
+      }
+    </style>
+    <div id="root" data-composition-id="beat" data-duration="4">
+      <div id="hero" class="clip"></div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#hero", { y: 34, opacity: 0 }, { y: 0, opacity: 1, duration: 0.75 }, 0.5);
+      window.__timelines = { beat: tl };
+    </script>
+  </template>`;
+
+  it("surfaces GSAP tweens from a script inside <template>", () => {
+    const { tweens } = surfaceComposition(templateWrapped, "beat.html", "beat.html");
+    expect(tweens).toHaveLength(1);
+    expect(tweens[0]!.target).toBe("#hero");
+  });
+
+  it("surfaces @keyframes from a style inside <template>", () => {
+    const { cssKeyframes } = surfaceComposition(templateWrapped, "beat.html", "beat.html");
+    expect(cssKeyframes.map((k) => k.name)).toContain("rise");
+  });
+
+  it("aggregates extraction across multiple <template> blocks in one document", () => {
+    // Pins the every-template-fragment walk: styles from BOTH templates must
+    // surface, and a script in a NON-FIRST template must surface. (Two GSAP
+    // timelines in one file is a separate parser limitation — the static parser
+    // follows a single __timelines registration — so scripts are split so that
+    // the tween lives in the second template.)
+    const twoTemplates = `<template>
+      <style>
+        @keyframes rise { 0% { opacity: 0; } 100% { opacity: 1; } }
+      </style>
+      <div id="a" class="clip"></div>
+    </template>
+    <template>
+      <style>
+        @keyframes spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+      </style>
+      <div id="b" class="clip"></div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#b", { y: 50, duration: 1 });
+        window.__timelines = { multi: tl };
+      </script>
+    </template>`;
+    const { tweens, cssKeyframes } = surfaceComposition(twoTemplates, "multi.html", "multi.html");
+    expect(cssKeyframes.map((k) => k.name)).toEqual(expect.arrayContaining(["rise", "spin"]));
+    expect(tweens.map((t) => t.target)).toContain("#b");
+  });
+
+  it("reaches a <template> nested inside another template's fragment", () => {
+    const nested = `<template>
+      <div id="outer" class="clip"></div>
+      <template>
+        <style>
+          @keyframes inner-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+        </style>
+        <div id="inner" class="clip"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to("#inner", { rotation: 360, duration: 1 });
+          window.__timelines = { nested: tl };
+        </script>
+      </template>
+    </template>`;
+    const { tweens, cssKeyframes } = surfaceComposition(nested, "nested.html", "nested.html");
+    expect(tweens.map((t) => t.target)).toContain("#inner");
+    expect(cssKeyframes.map((k) => k.name)).toContain("inner-spin");
+  });
+
+  it("parses mixed top-level + template scripts (join is not source order)", () => {
+    // A top-level script precedes the template script in the joined text even
+    // though extraction order differs from source order — the join must still
+    // parse and the template timeline must still surface.
+    const mixed = `<!doctype html><html><body>
+    <script>const themeUtil = { accent: "#7c3aed" };</script>
+    <template>
+      <div id="hero" class="clip"></div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#hero", { x: 120, duration: 1 });
+        window.__timelines = { mixed: tl };
+      </script>
+    </template>
+    </body></html>`;
+    const { tweens } = surfaceComposition(mixed, "mixed.html", "mixed.html");
+    expect(tweens.map((t) => t.target)).toContain("#hero");
+  });
+
+  it("still surfaces top-level scripts outside any template", () => {
+    const topLevel = `<!doctype html><html><body><div id="dot" class="clip"></div><script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { x: 100, duration: 1 });
+      window.__timelines = [tl];
+    </script></body></html>`;
+    const { tweens } = surfaceComposition(topLevel, "index.html", "index.html");
+    expect(tweens.length).toBeGreaterThan(0);
+  });
+});

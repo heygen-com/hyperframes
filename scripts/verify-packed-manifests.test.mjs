@@ -8,9 +8,24 @@ import {
   listPackedExportContracts,
   listPackedJavaScriptImportIssues,
   packageExportSpecifier,
+  verifyCliLicense,
 } from "./verify-packed-manifests.mjs";
 
 describe("packed manifest verifier", () => {
+  it("requires the CLI package and tarball to declare Apache-2.0", () => {
+    assert.throws(
+      () => verifyCliLicense("packages/cli", {}, {}),
+      /packages\/cli must declare license Apache-2\.0/,
+    );
+    assert.throws(
+      () => verifyCliLicense("packages/cli", { license: "Apache-2.0" }, { license: "UNLICENSED" }),
+      /packages\/cli packed manifest must preserve license Apache-2\.0/,
+    );
+    assert.doesNotThrow(() =>
+      verifyCliLicense("packages/cli", { license: "Apache-2.0" }, { license: "Apache-2.0" }),
+    );
+  });
+
   it("derives consumer specifiers from the packed export map", () => {
     assert.equal(packageExportSpecifier("@hyperframes/sdk", "."), "@hyperframes/sdk");
     assert.equal(

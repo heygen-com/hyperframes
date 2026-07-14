@@ -111,6 +111,8 @@ export class ParentMediaManager {
     this._entries = [];
     this._urlAudioEntry = null;
     this._urlAudioSrc = null;
+    this._audioOwner = "runtime";
+    this._playbackErrorPosted = false;
   }
 
   updateMuted(muted: boolean): void {

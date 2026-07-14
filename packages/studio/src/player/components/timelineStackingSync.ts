@@ -44,6 +44,13 @@ export interface StackingElement {
   /** Audio clips have no visual stacking and are excluded from the computation. */
   isAudio: boolean;
   /**
+   * CSS stacking context the clip's node lives in (TimelineElement.stackingContextId).
+   * Leaf z-indexes are only comparable WITHIN one context — across contexts the
+   * ancestors' z decides paint order — so the sync partitions by this key and
+   * never patches across contexts. Null/undefined ⇒ the root context.
+   */
+  stackingContextId?: string | null;
+  /**
    * Discovery / DOM document position (optional). Two clips with EQUAL z paint by
    * DOM order — the one LATER in the DOM paints ON TOP. When supplied, "is A above
    * B" uses (zIndex, domIndex); without it equal-z is ambiguous and the sync can
@@ -61,6 +68,14 @@ export interface StackingPatch {
 }
 
 const EPS = 1e-6;
+
+/**
+ * Canonical stacking-context key: null/undefined both mean the root context.
+ * The ONLY place the normalization lives — context partitioning, membership
+ * checks, and pairwise equality must all go through it.
+ */
+const contextKey = (el: { stackingContextId?: string | null }): string | null =>
+  el.stackingContextId ?? null;
 
 /**
  * Two clips overlap in time when their half-open [start, end) intervals intersect.
@@ -284,7 +299,14 @@ export function computeStackingPatches(
   // z=0 would enter the boundary math as a phantom neighbour at the z-floor. An
   // unresolved clip is neither a neighbour nor resolvable as an edit, so it is
   // excluded outright (item 13).
-  const resolved = elements.filter((e) => Number.isFinite(e.zIndex));
+  const allResolved = elements.filter((e) => Number.isFinite(e.zIndex));
+
+  // Leaf z is only meaningful within ONE stacking context: across contexts the
+  // ancestor contexts' z decides paint order, so comparing (or patching) leaf
+  // values across contexts is nonsense. Restrict the computation to the edited
+  // clips' own context(s); cross-context lane relations are out of scope.
+  const editedContexts = new Set(allResolved.filter((e) => editedSet.has(e.key)).map(contextKey));
+  const resolved = allResolved.filter((e) => editedContexts.has(contextKey(e)));
 
   // Mutable z snapshot so edits + cascaded bumps see each other's applied z.
   const byKey = new Map<string, MutZ>(resolved.map((e) => [e.key, { ...e }]));
@@ -304,8 +326,11 @@ export function computeStackingPatches(
   // The full live set, so the transitive cascade can reach clips that overlap a
   // LIFTED neighbour without overlapping the edited clip itself (#2198).
   const all = [...byKey.values()];
+  const sameContext = (a: MutZ, b: MutZ) => contextKey(a) === contextKey(b);
   const overlappersOf = (clip: MutZ): MutZ[] =>
-    all.filter((o) => o.key !== clip.key && !o.isAudio && overlapsInTime(clip, o));
+    all.filter(
+      (o) => o.key !== clip.key && !o.isAudio && sameContext(clip, o) && overlapsInTime(clip, o),
+    );
 
   for (const clip of edited) {
     resolveEditedZ(clip, overlappersOf(clip), overlappersOf, patchZ);

@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { installRuntimeControlBridge, postRuntimeMessage } from "./bridge";
+import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
@@ -22,7 +22,7 @@ import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
-import { createRuntimePlayer } from "./player";
+import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
@@ -93,6 +93,7 @@ export function initSandboxRuntimeModular(): void {
   applyVariableBindings(document);
   const exportRenderFps = resolveExportRenderFps();
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
+  setRuntimeProtocolFps(state.canonicalFps);
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
     console.info("[hyperframes] render runtime fps", {
       canonicalFps: state.canonicalFps,
@@ -116,6 +117,16 @@ export function initSandboxRuntimeModular(): void {
       swallow("runtime.init.site1", err);
     }
   }
+  // Transport resources are initialized before any player or media closures.
+  // This removes the old temporal-dead-zone fallback and lets the public player
+  // be constructed once with its final clock-backed behavior.
+  const clock = new TransportClock();
+  state.transportClock = clock;
+  const webAudio = new WebAudioTransport();
+  let webAudioReady = false;
+  void webAudio.init().then((ok) => {
+    webAudioReady = ok;
+  });
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -2100,6 +2111,117 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  const transport: RuntimePlayerTransport = {
+    play: () => {
+      const tl = state.capturedTimeline;
+      if (clock.isPlaying()) return;
+      const dur = getSafeTimelineDurationSeconds(tl, 0);
+      if (dur > 0) {
+        clock.setDuration(dur);
+        if (clock.reachedEnd()) {
+          clock.seek(0);
+          state.currentTime = 0;
+          seekTimelineAndAdapters(0);
+        }
+      } else {
+        const rootEl = resolveRootCompositionElement();
+        const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
+        if (declaredDur > 0) clock.setDuration(declaredDur);
+      }
+      if (tl) tl.pause();
+      if (!clock.play()) return;
+      state.isPlaying = true;
+      state.mediaForceSyncNextTick = true;
+      hardSyncAllMedia(clock.now());
+      // Schedule audio through WebAudio for sample-accurate timing.
+      // Falls back to HTMLMediaElement playback if WebAudio isn't ready
+      // or decoding fails (the syncRuntimeMedia path handles that).
+      if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+        scheduleWebAudioForActiveClips();
+      }
+      runAdapters("play");
+      syncMediaForCurrentState();
+      colorGrading.redraw();
+      postState(true);
+    },
+    pause: () => {
+      if (!clock.isPlaying()) return;
+      webAudio.stopAll();
+      clock.detachAudioSource();
+      clock.pause();
+      state.isPlaying = false;
+      state.currentTime = clock.now();
+      state.mediaForceSyncNextTick = true;
+      hardSyncAllMedia(state.currentTime);
+      const tl = state.capturedTimeline;
+      if (tl) tl.pause();
+      runAdapters("pause");
+      syncMediaForCurrentState();
+      colorGrading.redraw();
+      postState(true);
+    },
+    seek: (timeSeconds, options) => {
+      const quantized = quantizeTimeToFrame(
+        Math.max(0, Number(timeSeconds) || 0),
+        state.canonicalFps,
+      );
+      webAudio.stopAll();
+      clock.detachAudioSource();
+      const wasPlaying = clock.isPlaying();
+      if (wasPlaying) clock.pause();
+      clock.seek(quantized);
+      state.currentTime = clock.now();
+      state.isPlaying = false;
+      state.mediaForceSyncNextTick = true;
+      const tl = state.capturedTimeline;
+      if (tl) tl.pause();
+      seekTimelineAndAdapters(state.currentTime);
+      runAdapters("pause");
+      if (options?.keepPlaying && wasPlaying) {
+        transport.play();
+        return;
+      }
+      syncMediaForCurrentState();
+      colorGrading.redraw();
+      postState(true);
+    },
+    renderSeek: (timeSeconds, options) => {
+      const quantized = quantizeTimeToFrame(
+        Math.max(0, Number(timeSeconds) || 0),
+        state.canonicalFps,
+      );
+      webAudio.stopAll();
+      clock.detachAudioSource();
+      if (clock.isPlaying()) clock.pause();
+      clock.seek(quantized);
+      state.currentTime = clock.now();
+      state.isPlaying = false;
+      state.mediaForceSyncNextTick = true;
+      seekTimelineAndAdapters(state.currentTime, {
+        activateChildren: true,
+        suppressEvents: options?.suppressEvents,
+      });
+      syncMediaForCurrentState();
+      colorGrading.redraw();
+      postState(true);
+    },
+    getTime: () => clock.now(),
+    getDuration: () => {
+      const dur = clock.getDuration();
+      return Number.isFinite(dur) ? dur : 0;
+    },
+    isPlaying: () => clock.isPlaying(),
+    setPlaybackRate: (rate) => {
+      applyPlaybackRate(rate);
+      clock.setRate(state.playbackRate);
+      applyWebAudioRate();
+    },
+    getPlaybackRate: () => state.playbackRate,
+  };
+
+  const initialDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+  if (initialDuration > 0) clock.setDuration(initialDuration);
+
   const player = createRuntimePlayer({
     getTimeline: () => state.capturedTimeline,
     setTimeline: (timeline) => {
@@ -2143,6 +2265,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onShowNativeVideos: () => {},
     getSafeDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+    transport,
   });
 
   window.__player = createPlayerApiCompat(player);
@@ -2172,10 +2295,9 @@ export function initSandboxRuntimeModular(): void {
         if (el instanceof HTMLMediaElement && !el.paused) el.pause();
       }
     },
-    onSeek: (frame, _seekMode) => {
-      const time = Math.max(0, frame) / state.canonicalFps;
-      player.seek(time);
-      emitAnalyticsEvent("composition_seeked", { time });
+    onSeek: (timeSeconds, _seekMode) => {
+      player.seek(timeSeconds);
+      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
     },
     onSetMuted: (muted) => {
       state.bridgeMuted = muted;
@@ -2266,6 +2388,7 @@ export function initSandboxRuntimeModular(): void {
     },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),
+    getCanonicalFps: () => state.canonicalFps,
   });
 
   state.deterministicAdapters = [
@@ -2297,19 +2420,6 @@ export function initSandboxRuntimeModular(): void {
   installRuntimeErrorDiagnostics();
   bindMediaMetadataListeners();
   runAdapters("discover");
-  // ── Single-clock transport ──
-  //
-  // TransportClock is the sole time authority. GSAP is always paused —
-  // seeked to clock.now() on each rAF tick. This eliminates the
-  // two-clock drift problem from issue #668: one clock, zero drift.
-  const clock = new TransportClock();
-  state.transportClock = clock;
-  const webAudio = new WebAudioTransport();
-  let webAudioReady = false;
-  void webAudio.init().then((ok) => {
-    webAudioReady = ok;
-  });
-
   const publishRenderReadyAfterTimelineBinding = () => {
     const prevTimeline = state.capturedTimeline;
     const rebound = bindRootTimelineIfAvailable();
@@ -2861,140 +2971,11 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  player.play = () => {
-    const tl = state.capturedTimeline;
-    if (clock.isPlaying()) return;
-    const dur = getSafeTimelineDurationSeconds(tl, 0);
-    if (dur > 0) {
-      clock.setDuration(dur);
-      if (clock.reachedEnd()) {
-        clock.seek(0);
-        state.currentTime = 0;
-        seekTimelineAndAdapters(0);
-      }
-    } else {
-      const rootEl = resolveRootCompositionElement();
-      const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
-      if (declaredDur > 0) clock.setDuration(declaredDur);
-    }
-    if (tl) tl.pause();
-    if (!clock.play()) return;
-    state.isPlaying = true;
-    state.mediaForceSyncNextTick = true;
-    hardSyncAllMedia(clock.now());
-    // Schedule audio through WebAudio for sample-accurate timing.
-    // Falls back to HTMLMediaElement playback if WebAudio isn't ready
-    // or decoding fails (the syncRuntimeMedia path handles that).
-    if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
-      scheduleWebAudioForActiveClips();
-    }
-    runAdapters("play");
-    syncMediaForCurrentState();
-    colorGrading.redraw();
-    postState(true);
-  };
-
-  player.pause = () => {
-    if (!clock.isPlaying()) return;
-    webAudio.stopAll();
-    clock.detachAudioSource();
-    clock.pause();
-    state.isPlaying = false;
-    state.currentTime = clock.now();
-    state.mediaForceSyncNextTick = true;
-    hardSyncAllMedia(state.currentTime);
-    const tl = state.capturedTimeline;
-    if (tl) tl.pause();
-    runAdapters("pause");
-    syncMediaForCurrentState();
-    colorGrading.redraw();
-    postState(true);
-  };
-
-  player.seek = (timeSeconds: number) => {
-    const quantized = quantizeTimeToFrame(
-      Math.max(0, Number(timeSeconds) || 0),
-      state.canonicalFps,
-    );
-    webAudio.stopAll();
-    clock.detachAudioSource();
-    const wasPlaying = clock.isPlaying();
-    if (wasPlaying) clock.pause();
-    clock.seek(quantized);
-    state.currentTime = clock.now();
-    state.isPlaying = false;
-    state.mediaForceSyncNextTick = true;
-    const tl = state.capturedTimeline;
-    if (tl) tl.pause();
-    seekTimelineAndAdapters(state.currentTime);
-    runAdapters("pause");
-    syncMediaForCurrentState();
-    colorGrading.redraw();
-    postState(true);
-  };
-
-  player.renderSeek = (timeSeconds: number, options?: RuntimeSeekOptions) => {
-    const quantized = quantizeTimeToFrame(
-      Math.max(0, Number(timeSeconds) || 0),
-      state.canonicalFps,
-    );
-    if (clock.isPlaying()) clock.pause();
-    clock.seek(quantized);
-    state.currentTime = clock.now();
-    state.isPlaying = false;
-    state.mediaForceSyncNextTick = true;
-    seekTimelineAndAdapters(state.currentTime, {
-      activateChildren: true,
-      suppressEvents: options?.suppressEvents,
-    });
-    syncMediaForCurrentState();
-    colorGrading.redraw();
-    postState(true);
-  };
-
-  player.getTime = () => clock.now();
-  player.getDuration = () => {
-    const dur = clock.getDuration();
-    return Number.isFinite(dur) ? dur : 0;
-  };
-  player.isPlaying = () => clock.isPlaying();
-  player.setPlaybackRate = (rate: number) => {
-    applyPlaybackRate(rate);
-    clock.setRate(state.playbackRate);
-    applyWebAudioRate();
-  };
-
   // Sync clock duration from any captured timeline
   if (state.capturedTimeline) {
     const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (dur > 0) clock.setDuration(dur);
     state.capturedTimeline.pause();
-  }
-
-  // Re-delegate __player methods through the live `player` object so
-  // transport clock overrides are visible to iframe consumers reading
-  // window.__player. Uses property delegation so future methods added
-  // to createPlayerApiCompat are forwarded automatically.
-  const playerApi = window.__player;
-  if (playerApi) {
-    const delegated = [
-      "play",
-      "pause",
-      "seek",
-      "renderSeek",
-      "getTime",
-      "getDuration",
-      "isPlaying",
-    ] as const;
-    for (const key of delegated) {
-      Object.defineProperty(playerApi, key, {
-        get: () => player[key],
-        set: (v: unknown) => {
-          (player as Record<string, unknown>)[key] = v;
-        },
-        configurable: true,
-      });
-    }
   }
 
   installPositionEditsSeekReapply(window as Window & typeof globalThis);

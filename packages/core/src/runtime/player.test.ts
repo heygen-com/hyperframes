@@ -134,6 +134,34 @@ function createNestedTimelineHarness() {
 }
 
 describe("createRuntimePlayer", () => {
+  describe("dedicated transport", () => {
+    it("keeps factory-owned methods stable and forwards the complete seek contract", () => {
+      const timeline = createMockTimeline();
+      const deps = createMockDeps(timeline);
+      const transport = {
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: vi.fn(),
+        renderSeek: vi.fn(),
+        getTime: vi.fn(() => 4),
+        getDuration: vi.fn(() => 10),
+        isPlaying: vi.fn(() => true),
+        setPlaybackRate: vi.fn(),
+        getPlaybackRate: vi.fn(() => 1.5),
+      };
+      const player = createRuntimePlayer({ ...deps, transport });
+      const seek = player.seek;
+
+      player.seek(2.5, { keepPlaying: true });
+
+      expect(player.seek).toBe(seek);
+      expect(transport.seek).toHaveBeenCalledWith(2.5, { keepPlaying: true });
+      expect(player.getTime()).toBe(4);
+      expect(player.getPlaybackRate()).toBe(1.5);
+      expect(deps.onDeterministicSeek).not.toHaveBeenCalled();
+    });
+  });
+
   describe("play", () => {
     it("does nothing without a timeline", () => {
       const deps = createMockDeps(null);

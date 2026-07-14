@@ -7,10 +7,13 @@
  * useContextMenuDismiss.
  *
  * ── Wiring (z-order persistence) ─────────────────────────────────────────────
- * Z-index changes are applied optimistically to the live iframe element(s) via
+ * Z-index changes are resolved against the live iframe DOM via
  * `resolveZOrderChange`, which returns a MULTI-element patch list (tie-aware:
  * moving a target past an equal-z sibling can require renumbering the affected
- * set). The patches are surfaced through the `onApplyZIndex` prop.
+ * set). The patches are surfaced through the `onApplyZIndex` prop; the menu
+ * itself never mutates element styles — handleDomZIndexReorderCommit applies
+ * the live z-index (and injects position when needed) in the same synchronous
+ * flow, and captures the TRUE prior styles for its failure rollback.
  *
  * The prop MUST be wired at the call site to route through the full persist
  * path. PreviewOverlays.tsx builds the per-patch PatchTargets (the selected
@@ -26,7 +29,9 @@ import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import {
   isZOrderActionEnabled,
+  resolveCrossedNeighbor,
   resolveZOrderChange,
+  type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
 
@@ -38,12 +43,22 @@ interface CanvasContextMenuProps {
   selection: DomEditSelection;
   onClose: () => void;
   /**
-   * Called with the resolved z-order patch list after an optimistic DOM update.
-   * Each patch is an { element, zIndex } pair (the target and, when a renumber
-   * is needed, affected siblings). Wire to handleDomZIndexReorderCommit (see
-   * module-level wiring comment).
+   * Called with the resolved z-order patch list and the menu action that
+   * produced it (the action feeds the undo coalesce key, so two DIFFERENT
+   * actions never merge into one undo step). Each patch is an
+   * { element, zIndex } pair (the target and, when a renumber is needed,
+   * affected siblings). The menu does NOT touch the live DOM — wire to
+   * handleDomZIndexReorderCommit, which applies the live styles itself
+   * (see module-level wiring comment).
    */
-  onApplyZIndex?: (patches: ZOrderPatch[]) => void;
+  onApplyZIndex?: (patches: ZOrderPatch[], action: ZOrderAction) => void;
+  /**
+   * Called after a successful bring-forward / send-backward with the sibling
+   * the target stepped over (resolved from the SAME pre-mutation state as the
+   * patches), so the host can flash a highlight on it in the studio overlay.
+   * Never called for front/back or no-op actions.
+   */
+  onZOrderCrossed?: (crossed: HTMLElement, action: ZOrderAction) => void;
   /**
    * Delete the selected element. Wire to handleDomEditElementDelete from
    * useDomEditActionsContext — same path as the Delete/Backspace hotkey.
@@ -68,6 +83,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   selection,
   onClose,
   onApplyZIndex,
+  onZOrderCrossed,
   onDelete,
 }: CanvasContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
@@ -93,20 +109,19 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   const el = selection.element;
 
   function handleZAction(action: ZAction) {
-    // No persist handler → do NOT touch the live iframe DOM. An optimistic
-    // write with nothing to persist just reverts on the next reload.
     if (!onApplyZIndex) return;
     const patches = resolveZOrderChange(el, action);
     if (patches === null) return;
-    // Optimistic update — visible immediately even before persist completes.
-    for (const patch of patches) {
-      patch.element.style.zIndex = String(patch.zIndex);
-      const view = patch.element.ownerDocument?.defaultView;
-      if (view && view.getComputedStyle(patch.element).position === "static") {
-        patch.element.style.position = "relative";
-      }
-    }
-    onApplyZIndex(patches);
+    // Resolve the crossed neighbor BEFORE the commit path mutates live styles —
+    // both resolvers must read the same pre-change render order.
+    const crossed = onZOrderCrossed ? resolveCrossedNeighbor(el, action) : null;
+    // Do NOT pre-apply styles here: handleDomZIndexReorderCommit writes the
+    // live z-index (and injects position:relative for static elements) in the
+    // same synchronous flow, so feedback is still instant — and it must read
+    // the PRE-change styles itself, both to capture true rollback values and
+    // to detect a static position that needs persisting.
+    onApplyZIndex(patches, action);
+    if (crossed && onZOrderCrossed) onZOrderCrossed(crossed, action);
     onClose();
   }
 

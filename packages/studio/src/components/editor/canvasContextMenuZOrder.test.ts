@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
+  isElementVisibleForZOrder,
   isZOrderActionEnabled,
   parseZIndex,
+  resolveCrossedNeighbor,
   resolveZOrderChange,
   type ZOrderAction,
   type ZOrderPatch,
@@ -48,8 +50,12 @@ function makeFamily(
 }
 
 /** Resolve a z-order change and assert it produced patches (fails otherwise). */
-function resolveZOrderPatches(target: HTMLElement, action: ZOrderAction): ZOrderPatch[] {
-  const patches = resolveZOrderChange(target, action);
+function resolveZOrderPatches(
+  target: HTMLElement,
+  action: ZOrderAction,
+  options?: { isVisible?: (el: HTMLElement) => boolean },
+): ZOrderPatch[] {
+  const patches = resolveZOrderChange(target, action, options);
   expect(patches).not.toBeNull();
   if (!patches) throw new Error("expected z-order patches");
   return patches;
@@ -375,6 +381,27 @@ describe("resolveZOrderChange – excludes non-painting siblings", () => {
     expect(order.indexOf("target")).toBeLessThan(order.indexOf("a"));
   });
 
+  it("ignores <template>/<noscript> siblings in the family", () => {
+    // A renumber fallback once wrote z-index/position into <template> source
+    // markup because templates entered the sibling family. They never paint —
+    // exclude them like audio/script/style.
+    const parent = document.createElement("div");
+    const a = makeEl("a", "0");
+    const template = document.createElement("template");
+    template.style.zIndex = "2";
+    const noscript = document.createElement("noscript");
+    const target = makeEl("target", "0");
+    parent.append(a, template, noscript, target);
+
+    const patches = resolveZOrderPatches(target, "send-to-back");
+    for (const p of patches) {
+      expect(p.element).not.toBe(template);
+      expect(p.element).not.toBe(noscript);
+    }
+    const order = renderOrderIds(parent, { a, target }, patches);
+    expect(order.indexOf("target")).toBeLessThan(order.indexOf("a"));
+  });
+
   it("a lone painting element beside only non-painting siblings has no family → null", () => {
     const parent = document.createElement("div");
     const target = makeEl("target", "1");
@@ -389,6 +416,163 @@ describe("resolveZOrderChange – excludes non-painting siblings", () => {
     ] as ZOrderAction[]) {
       expect(resolveZOrderChange(target, action)).toBeNull();
     }
+  });
+});
+
+// ── visibility scoping (forward/backward step over VISIBLE siblings only) ──────
+//
+// The visibility probe is injectable (ZOrderResolveOptions.isVisible) exactly
+// like rect reading is stubbable — these tests drive the scoping logic with a
+// stub, without a real style engine.
+
+describe("resolveZOrderChange – visibility scoping (injectable stub)", () => {
+  /** Probe that hides exactly the given elements. */
+  function hiding(...hidden: HTMLElement[]) {
+    return { isVisible: (el: HTMLElement) => !hidden.includes(el) };
+  }
+
+  it("bring-forward steps over the next VISIBLE sibling, ignoring an invisible z-neighbor", () => {
+    // Render order: target(1), hidden(2), vis(3). The nearest z-neighbor above
+    // is invisible at the current frame — forward must land the target above
+    // `vis` (the next VISIBLE overlapping sibling), leaving `hidden` untouched.
+    const { target, byId } = makeFamily("1", [
+      ["hidden", "2"],
+      ["vis", "3"],
+    ]);
+    const patches = resolveZOrderPatches(target, "bring-forward", hiding(byId.hidden!));
+    expect(patches).toHaveLength(1);
+    expect(patchFor(patches, byId, "target")?.zIndex).toBe(4);
+    expect(patchFor(patches, byId, "hidden")).toBeUndefined();
+  });
+
+  it("send-backward steps below the next VISIBLE sibling, ignoring an invisible z-neighbor", () => {
+    // Render order: vis(1), hidden(2), target(3). Backward must drop the target
+    // below `vis`, not merely below the invisible `hidden`.
+    const { target, byId } = makeFamily("3", [
+      ["vis", "1"],
+      ["hidden", "2"],
+    ]);
+    const patches = resolveZOrderPatches(target, "send-backward", hiding(byId.hidden!));
+    expect(patches).toHaveLength(1);
+    expect(patchFor(patches, byId, "target")?.zIndex).toBe(0);
+    expect(patchFor(patches, byId, "hidden")).toBeUndefined();
+  });
+
+  it("forward/backward are no-ops when every overlapping sibling is invisible", () => {
+    const { target, byId } = makeFamily("1", [["hidden", "2"]]);
+    const opts = hiding(byId.hidden!);
+    expect(resolveZOrderChange(target, "bring-forward", opts)).toBeNull();
+    expect(resolveZOrderChange(target, "send-backward", opts)).toBeNull();
+  });
+
+  it("bring-to-front / send-to-back keep the FULL painting family (invisible siblings included)", () => {
+    // Unchanged semantics: front/back operate across all siblings, so an
+    // invisible sibling still counts and the actions stay meaningful.
+    const { target, byId } = makeFamily("1", [["hidden", "2"]]);
+    const opts = hiding(byId.hidden!);
+    const patches = resolveZOrderPatches(target, "bring-to-front", opts);
+    expect(patchFor(patches, byId, "target")?.zIndex).toBe(3);
+    expect(resolveZOrderChange(target, "send-to-back", opts)).toBeNull(); // already bottom
+  });
+
+  it("the target itself is retained even when the probe reports it invisible", () => {
+    const { target, byId } = makeFamily("1", [["vis", "2"]]);
+    const patches = resolveZOrderPatches(target, "bring-forward", hiding(target));
+    expect(patchFor(patches, byId, "target")?.zIndex).toBe(3);
+  });
+
+  it("isZOrderActionEnabled matches the resolver under the same visibility scope", () => {
+    const { target, byId } = makeFamily("1", [["hidden", "2"]]);
+    const opts = hiding(byId.hidden!);
+    // Forward/backward: scoped set collapses to the target alone → disabled.
+    expect(isZOrderActionEnabled(target, "bring-forward", opts)).toBe(false);
+    expect(isZOrderActionEnabled(target, "send-backward", opts)).toBe(false);
+    // Front/back: full family → enabled exactly where the resolver acts.
+    expect(isZOrderActionEnabled(target, "bring-to-front", opts)).toBe(true);
+    expect(isZOrderActionEnabled(target, "send-to-back", opts)).toBe(false);
+  });
+});
+
+// ── default visibility probe (element-level computed style) ───────────────────
+
+describe("isElementVisibleForZOrder – default probe", () => {
+  function attachedEl(style: Partial<CSSStyleDeclaration> = {}): HTMLElement {
+    const el = document.createElement("div");
+    Object.assign(el.style, style);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("treats display:none / visibility:hidden / opacity≈0 as invisible", () => {
+    expect(isElementVisibleForZOrder(attachedEl({ display: "none" }))).toBe(false);
+    expect(isElementVisibleForZOrder(attachedEl({ visibility: "hidden" }))).toBe(false);
+    expect(isElementVisibleForZOrder(attachedEl({ opacity: "0" }))).toBe(false);
+    expect(isElementVisibleForZOrder(attachedEl({ opacity: "0.005" }))).toBe(false);
+  });
+
+  it("treats normal, translucent, and unstyled elements as visible", () => {
+    expect(isElementVisibleForZOrder(attachedEl())).toBe(true);
+    expect(isElementVisibleForZOrder(attachedEl({ opacity: "0.5" }))).toBe(true);
+    expect(isElementVisibleForZOrder(attachedEl({ visibility: "visible" }))).toBe(true);
+  });
+
+  it("exempts a hidden color-grading source (its canvas paints in its place)", () => {
+    const el = attachedEl({ opacity: "0" });
+    el.setAttribute("data-hf-color-grading-source-hidden", "");
+    expect(isElementVisibleForZOrder(el)).toBe(true);
+  });
+
+  it("is the default probe: the runtime's inline visibility:hidden on a time-inactive clip is skipped", () => {
+    // End-to-end through resolveZOrderChange with NO injected probe: the
+    // runtime hides inactive clips with inline `visibility:hidden` (see core
+    // runtime syncTimedElementVisibility) — computed style picks that up.
+    const parent = document.createElement("div");
+    const target = makeEl("target", "1");
+    const hidden = makeEl("hidden", "2");
+    hidden.style.visibility = "hidden";
+    const vis = makeEl("vis", "3");
+    parent.append(target, hidden, vis);
+    document.body.appendChild(parent);
+    const patches = resolveZOrderPatches(target, "bring-forward");
+    expect(patchFor(patches, { target, hidden, vis }, "target")?.zIndex).toBe(4);
+    expect(patchFor(patches, { target, hidden, vis }, "hidden")).toBeUndefined();
+  });
+});
+
+// ── resolveCrossedNeighbor (the "show your work" flash target) ────────────────
+
+describe("resolveCrossedNeighbor", () => {
+  it("returns the visible sibling directly above for bring-forward", () => {
+    const { target, byId } = makeFamily("1", [
+      ["hidden", "2"],
+      ["vis", "3"],
+    ]);
+    const opts = { isVisible: (el: HTMLElement) => el !== byId.hidden };
+    expect(resolveCrossedNeighbor(target, "bring-forward", opts)).toBe(byId.vis);
+  });
+
+  it("returns the visible sibling directly below for send-backward", () => {
+    const { target, byId } = makeFamily("3", [
+      ["vis", "1"],
+      ["hidden", "2"],
+    ]);
+    const opts = { isVisible: (el: HTMLElement) => el !== byId.hidden };
+    expect(resolveCrossedNeighbor(target, "send-backward", opts)).toBe(byId.vis);
+  });
+
+  it("returns null for front/back actions and for no-op steps", () => {
+    const { target } = makeFamily("1", [["a", "2"]]);
+    expect(resolveCrossedNeighbor(target, "bring-to-front")).toBeNull();
+    expect(resolveCrossedNeighbor(target, "send-to-back")).toBeNull();
+    expect(resolveCrossedNeighbor(target, "send-backward")).toBeNull(); // already bottom
+    const { target: top } = makeFamily("5", [["a", "2"]]);
+    expect(resolveCrossedNeighbor(top, "bring-forward")).toBeNull(); // already top
+  });
+
+  it("returns null when there are no siblings", () => {
+    const solo = makeEl("solo", "1");
+    document.createElement("div").appendChild(solo);
+    expect(resolveCrossedNeighbor(solo, "bring-forward")).toBeNull();
   });
 });
 

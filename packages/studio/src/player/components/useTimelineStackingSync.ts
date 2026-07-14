@@ -45,10 +45,16 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
     [zSyncPreviewIframeRef, zSyncActiveCompPath],
   );
 
+  // NaN (NOT 0) when the element can't be resolved in the preview iframe — a
+  // nested / unmounted sub-comp node, or one outside the active file. Fabricating
+  // z=0 would enter computeStackingPatches as a real overlapping neighbour at the
+  // z-floor and skew the boundary math; a non-finite value tells it to EXCLUDE this
+  // clip instead. NaN (rather than null) keeps the return assignable to the
+  // `(el) => number` reader contract the drag hook / commit deps declare.
   const readClipZIndex = useCallback(
     (el: TimelineElement): number => {
       const node = resolveIframeElement(el);
-      return node ? readEffectiveZIndex(node) : 0;
+      return node ? readEffectiveZIndex(node) : Number.NaN;
     },
     [resolveIframeElement],
   );
@@ -68,10 +74,15 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
             selector: el.selector,
             selectorIndex: el.selectorIndex,
             sourceFile: el.sourceFile ?? zSyncActiveCompPath ?? "index.html",
+            // The store key: lets the commit update the store's zIndex
+            // synchronously (and roll it back on failure).
+            key: p.key,
           },
         ];
       });
-      if (entries.length) return handleDomZIndexReorderCommit(entries, coalesceKey);
+      // Forward the drag-commit's shared coalesce key so the z-reorder history
+      // entry merges with the lane change's move entry into one undo step.
+      if (entries.length) handleDomZIndexReorderCommit(entries, coalesceKey);
     },
     [handleDomZIndexReorderCommit, resolveIframeElement, zSyncActiveCompPath, expandedElementsRef],
   );

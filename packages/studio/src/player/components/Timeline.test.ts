@@ -19,8 +19,10 @@ import {
   shouldAutoScrollTimeline,
 } from "./Timeline";
 import {
+  FIT_ZOOM_HEADROOM,
   GUTTER,
   MIN_TIMELINE_EXTENT_S,
+  PLAYHEAD_HEAD_W,
   RULER_H,
   TRACK_H,
   getTimelineDisplayContentWidth,
@@ -327,6 +329,60 @@ describe("generateTicks", () => {
     const { major } = generateTicks(180, 80);
     expect(major[1] - major[0]).toBe(2);
   });
+
+  it("picks 'nice' NLE steps across zoom levels (no 7s-style intervals)", () => {
+    // step = first nice interval whose px spacing >= 88 at that pps.
+    const cases: Array<[number, number]> = [
+      [2, 60], // 60s * 2pps = 120px
+      [10, 10], // 10s * 10pps = 100px
+      [20, 5], // 5s * 20pps = 100px
+      [50, 2], // 2s * 50pps = 100px
+      [100, 1], // 1s * 100pps = 100px
+    ];
+    for (const [pps, expected] of cases) {
+      const { major } = generateTicks(600, pps);
+      expect(major[1] - major[0]).toBe(expected);
+    }
+  });
+
+  it("uses minute/hour steps when zoomed far out instead of colliding 10m labels", () => {
+    // 0.05 pps → 600s step would be 30px apart (labels collide); 1800s = 90px.
+    const { major } = generateTicks(7200, 0.05);
+    expect(major[1] - major[0]).toBe(1800);
+    expect(major).toContain(3600);
+  });
+
+  it("does not drift on long rulers (ticks are exact multiples of the step)", () => {
+    const { major } = generateTicks(600, 100); // 1s step, 601 ticks
+    expect(major[599]).toBe(599);
+  });
+
+  describe("frame display mode (frameRate provided)", () => {
+    it("snaps sub-frame steps up to one whole frame (no duplicate frame labels)", () => {
+      // 4400 pps would pick a 0.02s step = 0.6 frames at 30fps → snapped to 1 frame.
+      const { major } = generateTicks(2, 4400, 30);
+      const frames = major.map((t) => Math.round(t * 30));
+      // Frame labels are consecutive integers — no duplicates, no gaps.
+      frames.forEach((f, i) => expect(f).toBe(i));
+    });
+
+    it("keeps major AND minor ticks on whole frames", () => {
+      // 200 pps → 0.5s step (15 frames); quarters (3.75f) are rejected in
+      // frame mode in favour of fifths (3f).
+      const { major, minor } = generateTicks(20, 200, 30);
+      expect(major[1]).toBeCloseTo(0.5);
+      expect(minor).toContain(0.1); // 3 frames
+      for (const t of [...major, ...minor]) {
+        const frames = t * 30;
+        expect(Math.abs(frames - Math.round(frames))).toBeLessThan(1e-3);
+      }
+    });
+
+    it("leaves whole-second steps unchanged", () => {
+      const { major } = generateTicks(60, 100, 30);
+      expect(major[1] - major[0]).toBe(1);
+    });
+  });
 });
 
 describe("formatTime", () => {
@@ -397,19 +453,33 @@ describe("shouldAutoScrollTimeline", () => {
   });
 });
 
-describe("getTimelineFitPps (min 60s extent)", () => {
+describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   const viewport = 632; // usable width = 632 - GUTTER - 2 = 598
 
   it("computes fit pps against the 60s floor for short compositions", () => {
     // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
+    // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
     const pps = getTimelineFitPps(viewport, 10);
     expect(pps).toBeCloseTo((viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S);
     expect(10 * pps).toBeCloseTo((viewport - GUTTER - 2) / 6);
   });
 
-  it("keeps filling the viewport with the composition when it is 60s or longer", () => {
-    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo((viewport - GUTTER - 2) / 60);
-    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo((viewport - GUTTER - 2) / 120);
+  it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
+    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo(
+      (viewport - GUTTER - 2) / (60 * FIT_ZOOM_HEADROOM),
+    );
+    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo(
+      (viewport - GUTTER - 2) / (120 * FIT_ZOOM_HEADROOM),
+    );
+  });
+
+  it("leaves CapCut-style trailing headroom: the comp ends at 1/1.2 of the usable width", () => {
+    const usable = viewport - GUTTER - 2;
+    const pps = getTimelineFitPps(viewport, 120);
+    // Composition content occupies usable/1.2 px; the remaining ~17% is empty
+    // droppable ruler/lane surface past the end.
+    expect(120 * pps).toBeCloseTo(usable / FIT_ZOOM_HEADROOM);
+    expect(120 * pps).toBeLessThan(usable);
   });
 
   it("falls back to 100 pps before the viewport is measured", () => {
@@ -529,13 +599,20 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
 });
 
 describe("getTimelinePlayheadLeft", () => {
-  it("converts time to a pixel offset from the gutter", () => {
-    expect(getTimelinePlayheadLeft(4, 20)).toBe(112);
+  it("offsets the wrapper by half the head width so the line CENTER = GUTTER + t*pps", () => {
+    // Wrapper left + PLAYHEAD_HEAD_W/2 (where the 1px line is centered) must
+    // equal GUTTER + t*pps at any zoom.
+    expect(getTimelinePlayheadLeft(4, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 4 * 20);
+    expect(getTimelinePlayheadLeft(10, 7.5) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 75);
+  });
+
+  it("centers the line exactly on the gutter (the 00:00 tick) at t = 0", () => {
+    expect(getTimelinePlayheadLeft(0, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER);
   });
 
   it("guards invalid input", () => {
-    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(32);
-    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(32);
+    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
+    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
   });
 });
 

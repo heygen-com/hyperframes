@@ -431,6 +431,21 @@ describe("trackCliError", () => {
     expect(props.error_message).toContain("[path]");
     expect(props.stack_trace).not.toContain("/Users/alice");
   });
+
+  it("forwards the figma endpoint label when supplied", () => {
+    trackCliError({
+      error_name: "RATE_LIMITED",
+      error_message: "figma rate limit hit (429)",
+      command: "figma asset",
+      kind: "command_error",
+      endpoint: "images",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ endpoint: "images" }),
+    );
+  });
 });
 
 describe("trackCommandFailure", () => {

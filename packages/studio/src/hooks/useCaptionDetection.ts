@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useCaptionStore } from "../captions/store";
+import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
 import { useCaptionSync } from "../captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "../captions/parser";
 
@@ -111,6 +112,7 @@ export function useCaptionDetection({
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
+        if (!acceptStudioRuntimeMessage(data)) return;
         tryActivateCaptions();
       }
     };

@@ -107,6 +107,12 @@
       "import": "./src/runtime/startExpression.ts",
       "types": "./src/runtime/startExpression.ts"
     },
+    "./runtime/protocol": {
+      "bun": "./src/runtime/protocol.ts",
+      "node": "./dist/runtime/protocol.js",
+      "import": "./src/runtime/protocol.ts",
+      "types": "./src/runtime/protocol.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
@@ -306,6 +312,10 @@
       "./runtime/start-expression": {
         "import": "./dist/runtime/startExpression.js",
         "types": "./dist/runtime/startExpression.d.ts"
+      },
+      "./runtime/protocol": {
+        "import": "./dist/runtime/protocol.js",
+        "types": "./dist/runtime/protocol.d.ts"
       },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",

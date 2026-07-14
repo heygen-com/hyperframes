@@ -546,7 +546,9 @@
   }
 
   function alphaFromParts(parts, index) {
-    return parts.length > index ? parsePx(parts[index]) : 1;
+    if (parts.length <= index) return 1;
+    const raw = parts[index].trim();
+    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
   }
 
   // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
@@ -659,9 +661,71 @@
   }
 
   function hasOpaqueBackground(style) {
-    if (style.backgroundImage && style.backgroundImage !== "none") return true;
-    if (isTransparentColor(style.backgroundColor)) return false;
-    return colorAlpha(style.backgroundColor) > 0.6;
+    let imageAlpha = 0;
+    if (style.backgroundImage && style.backgroundImage !== "none") {
+      if (style.backgroundImage.includes("url(")) return true;
+      // A gradient only occludes as much as its colours — a 4%-alpha grid/scrim must not count.
+      imageAlpha = gradientLayersAlpha(style.backgroundImage);
+    }
+    const colorValue = isTransparentColor(style.backgroundColor)
+      ? 0
+      : colorAlpha(style.backgroundColor);
+    // Layers composite: a 0.5 gradient over a 0.5 background colour paints at ~0.75.
+    return 1 - (1 - imageAlpha) * (1 - colorValue) > 0.6;
+  }
+
+  // background-image layers stack: two 0.5-alpha gradients paint at 1-(1-.5)^2 = .75.
+  function gradientLayersAlpha(backgroundImage) {
+    let combined = 0;
+    for (const layer of splitTopLevelCommas(backgroundImage)) {
+      combined = 1 - (1 - combined) * (1 - gradientMaxAlpha(layer));
+    }
+    return combined;
+  }
+
+  function splitTopLevelCommas(value) {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      else if (ch === "," && depth === 0) {
+        parts.push(value.slice(start, i));
+        start = i + 1;
+      }
+    }
+    parts.push(value.slice(start));
+    return parts;
+  }
+
+  function gradientMaxAlpha(backgroundImage) {
+    // Any colour we cannot score (oklch/lab/named-colour fns/...) counts as opaque so real panels keep flagging.
+    const known = backgroundImage
+      .replace(/(?:repeating-)?(?:linear|radial|conic)-gradient\(/gi, "(")
+      .replace(/rgba?\([^)]*\)/gi, "");
+    if (/[a-z][a-z-]+\(/i.test(known)) return 1;
+    const colors = backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b/g);
+    if (!colors) return 1;
+    let max = 0;
+    for (const color of colors) {
+      if (color === "transparent") continue;
+      if (color.startsWith("#")) {
+        const hex = color.slice(1);
+        max = Math.max(
+          max,
+          hex.length === 4
+            ? parseInt(hex[3] + hex[3], 16) / 255
+            : hex.length === 8
+              ? parseInt(hex.slice(6), 16) / 255
+              : 1,
+        );
+      } else {
+        max = Math.max(max, colorAlpha(color));
+      }
+    }
+    return max;
   }
 
   const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
@@ -722,13 +786,21 @@
   // part of a transient crossfade overlap.
   // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
-    if (typeof document.elementFromPoint !== "function") return null;
-    const hit = document.elementFromPoint(x, y);
-    if (!isForeignElement(element, hit)) return null;
-    if (sharedPreserve3d(element, hit)) return null;
-    if (!isOpaqueOccluder(hit)) return null;
-    if (isCrossSceneTransitionOverlap(element, hit)) return null;
-    return hit;
+    // Walk the paint-ordered stack: a transparent layer on top must not mask an opaque one below it.
+    const stack =
+      typeof document.elementsFromPoint === "function"
+        ? document.elementsFromPoint(x, y)
+        : typeof document.elementFromPoint === "function"
+          ? [document.elementFromPoint(x, y)].filter(Boolean)
+          : [];
+    for (const hit of stack) {
+      if (!isForeignElement(element, hit)) return null;
+      // Pair-specific exemptions excuse this hit only; keep walking for deeper occluders.
+      if (sharedPreserve3d(element, hit)) continue;
+      if (isCrossSceneTransitionOverlap(element, hit)) continue;
+      if (isOpaqueOccluder(hit)) return hit;
+    }
+    return null;
   }
 
   const OCCLUSION_PROBE_Y_FRACTIONS = [0.25, 0.5, 0.75];
@@ -768,6 +840,32 @@
     return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
   }
 
+  // pointer-events:none hides elements from elementFromPoint — both probed text AND occluders.
+  function restoreHitTesting(root) {
+    const restores = [];
+    for (const node of [root, ...root.querySelectorAll("*")]) {
+      if (getComputedStyle(node).pointerEvents !== "none") continue;
+      const previous = node.style.getPropertyValue("pointer-events");
+      const priority = node.style.getPropertyPriority("pointer-events");
+      node.style.setProperty("pointer-events", "auto", "important");
+      restores.push(() => {
+        if (previous) node.style.setProperty("pointer-events", previous, priority);
+        else node.style.removeProperty("pointer-events");
+      });
+    }
+    return () => restores.forEach((restore) => restore());
+  }
+
+  // No text ink is on screen while every non-whitespace text node sits at ~0 opacity (entrance not started).
+  function hasVisibleTextInk(element) {
+    const nodes = [element, ...element.querySelectorAll("*")];
+    for (const node of nodes) {
+      if (!directTextNodes(node).some((textNode) => textNode.textContent.trim())) continue;
+      if (opacityChain(node) >= 0.05) return true;
+    }
+    return false;
+  }
+
   // Catches the blind spot the overflow checks miss: text that fits its box
   // perfectly but is covered by a later sibling/overlay. An atomic label
   // (short, no whitespace) flags at any coverage; ordinary prose only flags
@@ -775,6 +873,7 @@
   // cover on a paragraph is usually a styling artifact, not a reading defect.
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
+    if (!hasVisibleTextInk(element)) return null;
     const textRect = textRectFor(element);
     if (!textRect) return null;
     const text = textContentFor(element);
@@ -839,6 +938,255 @@
       fixHint:
         "Set an explicit, opaque `color` on the text — and an explicit `-webkit-text-fill-color` if an ancestor makes the fill transparent. If the transparency is intentional gradient text, add `background-clip: text`.",
     };
+  }
+
+  // Attachment allowance: callouts/tooltips legitimately hang near (not inside) their anchor.
+  const ESCAPE_INTERSECTION_FRACTION = 0.3;
+  const ESCAPE_MIN_CHILD_AREA = 2500;
+
+  function edgeGap(child, parent) {
+    const dx = Math.max(parent.left - child.right, 0, child.left - parent.right);
+    const dy = Math.max(parent.top - child.bottom, 0, child.top - parent.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // An absolute element rendering far outside its offset parent was positioned in the wrong frame.
+  function escapedContainerIssues(root, time) {
+    const issues = [];
+    const flagged = new Set();
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
+      if (getComputedStyle(element).position !== "absolute") continue;
+      const parent = element.offsetParent;
+      if (!parent || parent === document.body || parent === root || !isVisibleElement(parent)) {
+        continue;
+      }
+      const childRect = toRect(element.getBoundingClientRect());
+      if (rectArea(childRect) < ESCAPE_MIN_CHILD_AREA) continue;
+      const parentRect = toRect(parent.getBoundingClientRect());
+      const visible = intersectionArea(childRect, parentRect);
+      if (visible >= rectArea(childRect) * ESCAPE_INTERSECTION_FRACTION) continue;
+      // Fully detached but hugging the parent = a callout/tooltip; touching yet mostly outside = drift.
+      const allowance = Math.max(48, Math.min(childRect.width, childRect.height) / 2);
+      if (visible <= 0 && edgeGap(childRect, parentRect) <= allowance) continue;
+      flagged.add(element);
+      issues.push({
+        code: "escaped_container",
+        severity: "warning",
+        time,
+        selector: selectorFor(element),
+        containerSelector: selectorFor(parent),
+        text: textContentFor(element),
+        message:
+          "Positioned element renders far outside its offset parent — its coordinates were likely computed in a different frame (canvas/viewport pixels).",
+        rect: childRect,
+        containerRect: parentRect,
+        fixHint:
+          "Compute left/top in the offset parent's frame (subtract its rect), or mark intentional placement with data-layout-allow-overflow.",
+      });
+    }
+    return { issues, flagged };
+  }
+
+  // A gradient reads as content when any stop is solid; all-translucent stops are glows/vignettes.
+  function gradientHasOpaqueStop(image) {
+    const colors = image.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|\btransparent\b/gi) || [];
+    return colors.some((color) => !/^transparent$/i.test(color) && colorAlpha(color) >= 0.6);
+  }
+
+  function isPaintedPanel(element) {
+    if (FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) return false;
+    const style = getComputedStyle(element);
+    const image = style.backgroundImage || "none";
+    if (image.includes("url(")) return true;
+    if (image !== "none" && gradientHasOpaqueStop(image)) return true;
+    if (!isTransparentColor(style.backgroundColor) && colorAlpha(style.backgroundColor) > 0.05) {
+      return true;
+    }
+    return (
+      parsePx(style.borderTopWidth) +
+        parsePx(style.borderRightWidth) +
+        parsePx(style.borderBottomWidth) +
+        parsePx(style.borderLeftWidth) >
+      0
+    );
+  }
+
+  // Canvas-breach floor: entrance nudges stay quiet; matches the connector threshold scale.
+  const PANEL_BREACH_FLOOR_PX = 24;
+  const PANEL_BREACH_FLOOR_FRACTION = 0.025;
+  // A hero-sized panel stuck on the edge is drift; a small painted bleed is usually decoration.
+  const PANEL_HERO_AREA_FRACTION = 0.1;
+
+  // Painted panels breaching the canvas: text is canvas_overflow's, media is frame_out_of_frame's, panels were nobody's.
+  function panelOutOfCanvasIssues(root, rootRect, time, tolerance, escapedElements) {
+    const issues = [];
+    const floor = Math.max(
+      PANEL_BREACH_FLOOR_PX,
+      Math.min(rootRect.width, rootRect.height) * PANEL_BREACH_FLOOR_FRACTION,
+    );
+    const rootArea = rectArea(rootRect);
+    const flagged = new Set();
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
+      if (escapedElements.has(element)) continue;
+      // Ownership is geometric and strict-mutex: any text breach past canvas_overflow's own
+      // tolerance cedes the element to canvas_overflow; in-bounds text leaves the panel finding.
+      if (hasOwnTextCandidate(element)) {
+        const textRect = textRectFor(element);
+        if (textRect && overflowFor(textRect, rootRect, tolerance)) continue;
+      }
+      const rect = toRect(element.getBoundingClientRect());
+      if (rectArea(rect) >= rootArea * 0.95) continue;
+      // Fully off-canvas paints nothing — that is a parked entrance, not drift.
+      if (intersectionArea(rect, rootRect) <= 0) continue;
+      const overflow = overflowFor(rect, rootRect, floor);
+      if (!overflow || !isPaintedPanel(element)) continue;
+      if (element.parentElement && flagged.has(element.parentElement)) {
+        flagged.add(element);
+        continue;
+      }
+      flagged.add(element);
+      issues.push({
+        code: "panel_out_of_canvas",
+        severity: rectArea(rect) >= rootArea * PANEL_HERO_AREA_FRACTION ? "warning" : "info",
+        time,
+        selector: selectorFor(element),
+        containerSelector: selectorFor(root),
+        text: textContentFor(element).slice(0, 48),
+        message: "Painted panel extends outside the composition canvas.",
+        rect,
+        containerRect: rootRect,
+        overflow,
+        fixHint:
+          "Move the panel inward, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+      });
+    }
+    return issues;
+  }
+
+  const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
+  const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
+
+  function connectorNameFor(element) {
+    const className =
+      typeof element.className === "string" ? element.className : element.className.baseVal || "";
+    return `${element.id || ""} ${className}`;
+  }
+
+  // Screen-space endpoints via the browser: getScreenCTM covers viewBox, preserveAspectRatio and group transforms.
+  function pathScreenEndpoints(svg, path) {
+    if (
+      typeof path.getTotalLength !== "function" ||
+      typeof path.getPointAtLength !== "function" ||
+      typeof path.getScreenCTM !== "function" ||
+      typeof svg.createSVGPoint !== "function"
+    ) {
+      return null;
+    }
+    let total;
+    try {
+      total = path.getTotalLength();
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(total) || total <= 0) return null;
+    const matrix = path.getScreenCTM();
+    if (!matrix) return null;
+    const toScreen = (local) => {
+      const point = svg.createSVGPoint();
+      point.x = local.x;
+      point.y = local.y;
+      const mapped = point.matrixTransform(matrix);
+      return { x: mapped.x, y: mapped.y };
+    };
+    return {
+      start: toScreen(path.getPointAtLength(0)),
+      end: toScreen(path.getPointAtLength(total)),
+    };
+  }
+
+  function distanceToRect(point, rect) {
+    const dx = Math.max(rect.left - point.x, 0, point.x - rect.right);
+    const dy = Math.max(rect.top - point.y, 0, point.y - rect.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Solid, compact elements a connector could plausibly anchor to.
+  function connectorAnchorRects(root, rootRect) {
+    const compact = [];
+    const painted = [];
+    const rootArea = rectArea(rootRect);
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      // Known blind spot: anchors living inside an SVG (<image>, foreignObject) are not counted.
+      if (element.closest("svg") || !isVisibleElement(element)) continue;
+      const opaque =
+        RASTER_TAGS.has(element.tagName) || hasOpaqueBackground(getComputedStyle(element));
+      if (!opaque && !textContentFor(element)) continue;
+      const rect = toRect(element.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < 400) continue;
+      // Containment tier: large opaque targets only — a text-bearing wrapper contains its own diagram's endpoints.
+      if (opaque && area <= rootArea * 0.6) painted.push({ rect, element });
+      if (area <= rootArea * 0.15) compact.push(rect);
+    }
+    return { compact, painted };
+  }
+
+  function isConnectorPath(svg, path) {
+    if (path.hasAttribute("marker-start") || path.hasAttribute("marker-end")) return true;
+    return (
+      CONNECTOR_NAME.test(connectorNameFor(svg)) || CONNECTOR_NAME.test(connectorNameFor(path))
+    );
+  }
+
+  // A connector whose BOTH endpoints land far from every anchorable element was drawn in the wrong frame.
+  // min over the two endpoints is intentional: a half-attached connector is a design choice, not frame drift.
+  function connectorDetachmentIssues(root, rootRect, time) {
+    const issues = [];
+    let anchors = null;
+    const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
+    for (const svg of Array.from(root.querySelectorAll("svg"))) {
+      if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
+      for (const path of Array.from(svg.querySelectorAll("path"))) {
+        if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
+        if (!isConnectorPath(svg, path)) continue;
+        const endpoints = pathScreenEndpoints(svg, path);
+        if (!endpoints) continue;
+        if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
+        if (anchors.compact.length < 2) return issues;
+        const attached = (point) =>
+          anchors.painted.some(
+            (anchor) => !anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0,
+          ) || anchors.compact.some((rect) => distanceToRect(point, rect) <= threshold);
+        if (attached(endpoints.start) || attached(endpoints.end)) continue;
+        const gap = Math.round(
+          Math.min(
+            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.start, rect))),
+            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.end, rect))),
+          ),
+        );
+        issues.push({
+          code: "connector_detached",
+          severity: "warning",
+          time,
+          selector: selectorFor(path),
+          containerSelector: selectorFor(svg),
+          message: `Connector path endpoints are ${gap}px from the nearest anchorable element — measured coordinates were likely drawn into an SVG with a different origin.`,
+          rect: toRect({
+            left: Math.min(endpoints.start.x, endpoints.end.x),
+            top: Math.min(endpoints.start.y, endpoints.end.y),
+            right: Math.max(endpoints.start.x, endpoints.end.x),
+            bottom: Math.max(endpoints.start.y, endpoints.end.y),
+            width: Math.abs(endpoints.end.x - endpoints.start.x),
+            height: Math.abs(endpoints.end.y - endpoints.start.y),
+          }),
+          fixHint:
+            "Subtract the SVG's own rect when converting measured coordinates, and keep the SVG a direct child of the stage.",
+        });
+      }
+    }
+    return issues;
   }
 
   function candidateAnchor(element) {
@@ -919,19 +1267,28 @@
     );
     const issues = [];
 
-    for (const element of elements) {
-      if (!hasOwnTextCandidate(element)) continue;
-      const clipped = clippedTextIssue(element, time, tolerance);
-      if (clipped) issues.push(clipped);
-      issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
-      const occluded = occludedTextIssue(element, time);
-      if (occluded) issues.push(occluded);
-      const invisible = invisibleTextIssue(element, time);
-      if (invisible) issues.push(invisible);
+    const restoreHits = restoreHitTesting(root);
+    try {
+      for (const element of elements) {
+        if (!hasOwnTextCandidate(element)) continue;
+        const clipped = clippedTextIssue(element, time, tolerance);
+        if (clipped) issues.push(clipped);
+        issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
+        const occluded = occludedTextIssue(element, time);
+        if (occluded) issues.push(occluded);
+        const invisible = invisibleTextIssue(element, time);
+        if (invisible) issues.push(invisible);
+      }
+    } finally {
+      restoreHits();
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));
+    const escaped = escapedContainerIssues(root, time);
+    issues.push(...escaped.issues);
+    issues.push(...panelOutOfCanvasIssues(root, rootRect, time, tolerance, escaped.flagged));
+    issues.push(...connectorDetachmentIssues(root, rootRect, time));
     return issues;
   };
 

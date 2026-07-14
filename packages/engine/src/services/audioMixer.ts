@@ -32,6 +32,13 @@ function escapeExpressionCommas(expression: string): string {
   return expression.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
 }
 
+function legacyFilterScriptOptionIsUnsupported(stderr: string): boolean {
+  return (
+    /filter_complex_script/i.test(stderr) &&
+    /(?:unrecognized option|option (?:was )?not found)/i.test(stderr)
+  );
+}
+
 /**
  * Upper bound on volume-automation keyframes folded into the FFmpeg `volume`
  * expression. The expression nests one `if(lt(...))` per keyframe, and
@@ -406,10 +413,14 @@ async function mixAudioTracks(
   // argument scale linearly with track count until it exceeds the OS
   // command-line length limit — spawn ENAMETOOLONG, seen in practice at 146
   // tracks — even though every individual filter segment is short. FFmpeg's
-  // own `-filter_complex_script <file>` reads the same graph from disk
-  // instead, sidestepping the argv limit for the one component of this
-  // command line that actually grows with the composition.
-  const runMix = (ignoreAutomation: boolean) => {
+  // file-valued filter options read the same graph from disk instead,
+  // sidestepping the argv limit for the one component of this command line
+  // that actually grows with the composition. FFmpeg deprecated
+  // `-filter_complex_script` in favour of `-/filter_complex`, then removed the
+  // alias from nightly builds; older stable builds do not understand the new
+  // spelling. Prefer the legacy spelling for broad compatibility and retry
+  // only when FFmpeg explicitly says that option is unavailable.
+  const runMix = async (ignoreAutomation: boolean) => {
     const inputs: string[] = [];
     tracks.forEach((track) => inputs.push("-i", track.srcPath));
     const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
@@ -435,9 +446,17 @@ async function mixAudioTracks(
       "-y",
       outputPath,
     ];
-    return runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout }).finally(() =>
-      rmSync(scriptDir, { recursive: true, force: true }),
-    );
+    try {
+      const legacyResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+      if (legacyResult.success || !legacyFilterScriptOptionIsUnsupported(legacyResult.stderr)) {
+        return legacyResult;
+      }
+      const currentArgs = [...args];
+      currentArgs[currentArgs.indexOf("-filter_complex_script")] = "-/filter_complex";
+      return await runFfmpeg(currentArgs, { signal, timeout: ffmpegProcessTimeout });
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+    }
   };
 
   let result = await runMix(false);

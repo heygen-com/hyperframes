@@ -24,18 +24,20 @@ function withCleanHeygenEnv(fn) {
   }
 }
 
-test("heygenAuthHeaders does not tag API-key requests as CLI traffic", () => {
+test("heygenAuthHeaders does not tag API-key requests as CLI traffic, but still carries the media-use tool tag", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";
     // API-key requests use normal billing; the backend ignores the cli-source
-    // header for them, so it's not sent.
+    // header for them, so it's not sent. The tool-attribution header IS sent on
+    // every media-use call (any auth type) so the backend can isolate media-use.
     assert.deepEqual(heygenAuthHeaders(), {
       "X-Api-Key": "hg_test",
+      "X-HeyGen-Client-Source": "media-use",
     });
   });
 });
 
-test("heygenAuthHeaders tags OAuth requests as CLI traffic", () => {
+test("heygenAuthHeaders tags OAuth requests as CLI traffic and with the media-use tool tag", () => {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     try {
@@ -52,6 +54,7 @@ test("heygenAuthHeaders tags OAuth requests as CLI traffic", () => {
       assert.deepEqual(heygenAuthHeaders(), {
         Authorization: "Bearer at_test",
         "X-HeyGen-Source": "cli",
+        "X-HeyGen-Client-Source": "media-use",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

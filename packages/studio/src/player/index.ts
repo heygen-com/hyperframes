@@ -11,7 +11,9 @@ export { resolveIframe } from "./lib/timelineDOM";
 
 // Store
 export { usePlayerStore, liveTime } from "./store/playerStore";
-export type { SelectElementOptions, TimelineElement } from "./store/playerStore";
+// Public library surface; external consumers are invisible to the workspace analyzer.
+// fallow-ignore-next-line unused-exports
+export type { SelectElementOptions, TimelineElement, ZoomMode } from "./store/playerStore";
 
 // Utils
 export { formatTime } from "./lib/time";

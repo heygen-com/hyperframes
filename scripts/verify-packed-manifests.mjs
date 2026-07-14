@@ -262,6 +262,18 @@ function readPackedPackage(filename) {
   return JSON.parse(packedPackageJson);
 }
 
+export function verifyCliLicense(workspace, sourcePackage, packedPackage) {
+  if (workspace !== "packages/cli") return;
+
+  const expectedLicense = "Apache-2.0";
+  if (sourcePackage.license !== expectedLicense) {
+    throw new Error(`${workspace} must declare license ${expectedLicense}`);
+  }
+  if (packedPackage.license !== sourcePackage.license) {
+    throw new Error(`${workspace} packed manifest must preserve license ${expectedLicense}`);
+  }
+}
+
 function assertNoWorkspaceRefs(workspace, packedPackage) {
   const packedRefs = listWorkspaceRefs(packedPackage);
   if (packedRefs.length === 0) return;
@@ -271,10 +283,11 @@ function assertNoWorkspaceRefs(workspace, packedPackage) {
   );
 }
 
-function verifyPackedWorkspace(workspace, filename) {
+function verifyPackedWorkspace(workspace, sourcePackage, filename) {
   const packedPackage = readPackedPackage(filename);
   const packedFiles = listPackedFiles(filename);
 
+  verifyCliLicense(workspace, sourcePackage, packedPackage);
   assertNoWorkspaceRefs(workspace, packedPackage);
   verifyPackedEntrypoints(workspace, packedPackage, packedFiles);
   verifyPackedJavaScriptImports(workspace, filename, packedFiles);
@@ -395,7 +408,7 @@ function packAndVerifyWorkspace(workspace, packDir) {
 
   assertPublishedExportsMatchSource(workspace, sourcePackageJson);
   const filename = packWorkspace(workspace, packDir);
-  verifyPackedWorkspace(workspace, filename);
+  verifyPackedWorkspace(workspace, sourcePackageJson, filename);
   const packedPackage = readPackedPackage(filename);
   console.log(`Verified ${workspace}: packed manifest is publish-safe.`);
   return { workspace, filename, packedPackage };
