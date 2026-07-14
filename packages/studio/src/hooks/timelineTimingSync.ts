@@ -25,6 +25,25 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
   return data.content;
 }
 
+/** Raw file write (same endpoint shape as useFileManager.writeProjectFile) —
+ *  used only by the batch-mutation rollback below. */
+async function writeFileContent(
+  projectId: string,
+  targetPath: string,
+  content: string,
+): Promise<void> {
+  if (targetPath.includes("\0") || targetPath.includes("..")) {
+    throw new Error(`Unsafe path: ${targetPath}`);
+  }
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(targetPath)}`,
+    { method: "PUT", headers: { "Content-Type": "text/plain" }, body: content },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to restore ${targetPath}`);
+  }
+}
+
 /** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
 function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
   try {
@@ -225,6 +244,30 @@ const GSAP_HISTORY_COALESCE_MS = 10_000;
  * the mutation status is still returned — the server rewrite already landed on disk, so
  * the caller must still sync the preview or it shows stale GSAP positions.
  */
+/**
+ * Restore every snapshotted path whose disk content changed. A multi-clip
+ * batch mutates files SEQUENTIALLY; a late per-clip failure would otherwise
+ * leave the earlier rewrites on disk with no aggregate history entry
+ * (unreachable by undo) — the batch must be all-or-nothing. Restore errors are
+ * reported via onError but never mask the original failure.
+ */
+async function rollbackMutatedFiles(
+  projectId: string,
+  before: ReadonlyMap<string, string>,
+  onError: (error: unknown) => void,
+): Promise<void> {
+  for (const [path, priorContent] of before) {
+    try {
+      const current = await readFileContent(projectId, path);
+      if (current !== priorContent) {
+        await writeFileContent(projectId, path, priorContent);
+      }
+    } catch (rollbackError) {
+      onError(rollbackError);
+    }
+  }
+}
+
 async function foldGsapMutationIntoHistory(input: {
   projectId: string;
   paths: string[];
@@ -241,7 +284,13 @@ async function foldGsapMutationIntoHistory(input: {
   for (const path of uniquePaths) {
     before.set(path, await readFileContent(input.projectId, path));
   }
-  const status = await input.gsapMutation();
+  let status: GsapMutationStatus;
+  try {
+    status = await input.gsapMutation();
+  } catch (error) {
+    await rollbackMutatedFiles(input.projectId, before, input.onFoldError);
+    throw error;
+  }
   if (status.mutated) {
     try {
       const files: Record<string, { before: string; after: string }> = {};

@@ -377,3 +377,57 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
     expect(appendedScripts).toHaveLength(0);
   });
 });
+
+describe("foldGsapMutationIntoHistory — batch rollback (via finishGroupTimingGsapFallback)", () => {
+  it("a late per-clip failure restores every touched file to its snapshot", async () => {
+    // Custom fetch: reads return per-path CURRENT content (mutated after clip 1
+    // "succeeds"), and the rollback PUT is captured.
+    const contents = new Map<string, string>([["index.html", "ORIGINAL"]]);
+    const puts: Array<{ path: string; body: string }> = [];
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = requestUrl(input);
+      const path = decodeURIComponent(url.split("/files/")[1] ?? "");
+      if (url.includes("/files/") && init?.method === "PUT") {
+        puts.push({ path, body: String(init.body) });
+        contents.set(path, String(init.body));
+        return new Response(null, { status: 200 });
+      }
+      if (url.includes("/files/")) {
+        return jsonResponse({ content: contents.get(path) ?? "" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { iframe } = buildLivePreviewIframe();
+    const reloadPreview = vi.fn();
+    const element = { sourceFile: "index.html" } as TimelineElement;
+    const boom = new Error("clip 2 rewrite failed");
+
+    let clipIndex = 0;
+    await finishGroupTimingGsapFallback({
+      projectId: "p1",
+      iframe,
+      reloadPreview,
+      label: "Move timeline clips",
+      errorLabel: "Failed to shift GSAP positions",
+      recordEdit: vi.fn(async () => {}) as never,
+      activeCompPath: "index.html",
+      changes: [{ element }, { element }],
+      resolveChangePath: () => "index.html",
+      mutateChange: async () => {
+        clipIndex += 1;
+        if (clipIndex === 1) {
+          // Clip 1 "succeeded": its rewrite landed on disk.
+          contents.set("index.html", "MUTATED-BY-CLIP-1");
+          return { mutated: true, scriptText: null };
+        }
+        throw boom; // clip 2 fails AFTER clip 1's write
+      },
+    });
+
+    // The batch rolled the file back to the pre-batch snapshot.
+    expect(puts).toEqual([{ path: "index.html", body: "ORIGINAL" }]);
+    expect(contents.get("index.html")).toBe("ORIGINAL");
+  });
+});
