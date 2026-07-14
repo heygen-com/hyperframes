@@ -62,7 +62,7 @@ Every finding carries a selector, the element's `data-*` identity, the compositi
 
 - `data-layout-allow-overflow` — overflow is intentional (entrance/exit travel).
 - `data-layout-allow-overlap` — deliberate text layering (e.g. a demo cursor label over a heading).
-- `data-layout-allow-occlusion` — an element is meant to cover text.
+- `data-layout-allow-occlusion` — place on covered text (or one of its ancestors) when the occlusion is intentional; do not place it on the covering element.
 - `data-layout-ignore` — decorative element that should never be audited.
 
 **Opt-in pipeline gates** (used by orchestrators; off by default):
