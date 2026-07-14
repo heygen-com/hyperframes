@@ -436,9 +436,9 @@
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return [];
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     const selector = selectorFor(element);
     const issues = [];
 
@@ -571,7 +571,7 @@
   // (low colour alpha) is decorative and exempt, as are elements opted out with
   // data-layout-allow-overlap.
   function isSolidTextBlock(element) {
-    if (!isVisibleElement(element) || !hasOwnTextCandidate(element)) return false;
+    if (!isVisibleElement(element) || !hasOwnTextCandidate(element, true)) return false;
     if (hasAllowOverlapFlag(element)) return false;
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
@@ -580,7 +580,7 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
-      const rect = textRectFor(element);
+      const rect = textRectFor(element, true);
       if (rect) blocks.push({ element, rect });
     }
     return blocks;
@@ -1016,9 +1016,9 @@
   // paints the glyphs; a `background-clip: text` with no gradient/image and no
   // opaque background-color paints nothing, so it stays reportable.
   function invisibleTextIssue(element, time) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     if (!text) return null;
     const cs = getComputedStyle(element);
     // Vendor computed-style props are read by property (camelCase), matching
@@ -1141,8 +1141,8 @@
       if (escapedElements.has(element)) continue;
       // Ownership is geometric and strict-mutex: any text breach past canvas_overflow's own
       // tolerance cedes the element to canvas_overflow; in-bounds text leaves the panel finding.
-      if (hasOwnTextCandidate(element)) {
-        const textRect = textRectFor(element);
+      if (hasOwnTextCandidate(element, true)) {
+        const textRect = textRectFor(element, true);
         if (textRect && overflowFor(textRect, rootRect, tolerance)) continue;
       }
       const rect = toRect(element.getBoundingClientRect());

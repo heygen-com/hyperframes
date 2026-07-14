@@ -242,6 +242,31 @@ describe("layout-audit.browser", () => {
       ]),
     );
   });
+
+  it("does not expand a parent's overflow geometry to a positioned descendant", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline">Visible copy<span id="positioned-copy">Positioned copy</span></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 60, width: 200, height: 40 }),
+        "positioned-copy": rect({ left: 700, top: 60, width: 160, height: 40 }),
+        headlineText: rect({ left: 40, top: 60, width: 120, height: 40 }),
+        "positioned-copyText": rect({ left: 700, top: 60, width: 160, height: 40 }),
+        text: rect({ left: 40, top: 60, width: 820, height: 40 }),
+      },
+      { "positioned-copy": { position: "absolute" } },
+    );
+    installAuditScript();
+
+    const parentOverflow = runAudit().find(
+      (issue) => issue.code === "canvas_overflow" && issue.selector === "#headline",
+    );
+    expect(parentOverflow).toBeUndefined();
+  });
 });
 
 it("is inert unless text or media candidates are explicitly requested", () => {
@@ -1265,7 +1290,11 @@ function auditOverlapScene(options: {
         selected = node;
       },
       getClientRects() {
-        const id = (selected as Element | null)?.id ?? "";
+        const element =
+          selected?.nodeType === Node.TEXT_NODE
+            ? selected.parentElement
+            : (selected as Element | null);
+        const id = element?.id ?? "";
         return textRects[id]
           ? ([textRects[id]] as unknown as DOMRectList)
           : ([] as unknown as DOMRectList);
@@ -1906,6 +1935,20 @@ function runAudit(): AuditIssue[] {
   return audit({ time: 1, tolerance: 2 });
 }
 
+function selectedRangeElement(selected: Node | null): Element | null {
+  return selected?.nodeType === Node.TEXT_NODE
+    ? (selected.parentElement as Element | null)
+    : (selected as Element | null);
+}
+
+function rangeTextRect(selected: Node | null, rects: Record<string, DOMRect>): DOMRect | undefined {
+  const element = selectedRangeElement(selected);
+  if (element?.id === "ignored") return rects.ignored;
+  if (selected?.nodeType === Node.TEXT_NODE && element?.id)
+    return rects[`${element.id}Text`] ?? rects.text;
+  return rects.text;
+}
+
 function installGeometry(
   rects: Record<string, DOMRect>,
   styleOverrides: Record<string, Partial<CSSStyleDeclaration>> = {},
@@ -1960,8 +2003,7 @@ function installGeometry(
         selected = node;
       },
       getClientRects() {
-        const element = selected as Element | null;
-        const textRect = element?.id === "ignored" ? rects.ignored : rects.text;
+        const textRect = rangeTextRect(selected, rects);
         return textRect ? ([textRect] as unknown as DOMRectList) : ([] as unknown as DOMRectList);
       },
       detach() {},
