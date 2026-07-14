@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { brandRolesFromStats, ICON_FONT_PATTERN, isIconFont } from "./tokens.mjs";
+import { brandRolesFromStats as facelessBrandRolesFromStats } from "../../../faceless-explainer/scripts/lib/tokens.mjs";
+import { brandRolesFromStats as prBrandRolesFromStats } from "../../../pr-to-video/scripts/lib/tokens.mjs";
 
 const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -48,4 +50,8 @@ test("preserves a prominent second accent used outside interactive backgrounds",
     accent: "#F3E62B",
     accent2: "#2D1238",
   });
+
+  for (const sibling of [facelessBrandRolesFromStats, prBrandRolesFromStats]) {
+    assert.deepEqual(sibling(stats, colors), brandRolesFromStats(stats, colors));
+  }
 });
