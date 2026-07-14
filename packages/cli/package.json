@@ -9,9 +9,10 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "hyperframes": "./dist/cli.js"
+    "hyperframes": "./bin/hyperframes.mjs"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "type": "module",
