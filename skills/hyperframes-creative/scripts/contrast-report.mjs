@@ -157,23 +157,44 @@ async function prepareTextElements(session) {
     // leaking hidden indefinitely.
     window.__contrastReportRestores = restores;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-    const parseColor = (c) => {
-      const m = c.match(/rgba?\(([^)]+)\)/);
-      if (!m) return [0, 0, 0, 1];
-      const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
-      return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+    const tryParseCssColor = (c) => {
+      const rgb = c.match(/^rgba?\(([^)]+)\)$/i);
+      if (rgb) {
+        const values = rgb[1]
+          .trim()
+          .split(/[\s,/]+/)
+          .map((part, index) => {
+            const value = parseFloat(part);
+            if (Number.isNaN(value)) return NaN;
+            if (part.endsWith("%")) return index < 3 ? value * 2.55 : value / 100;
+            return value;
+          });
+        if (values.length < 3 || values.some(Number.isNaN)) return null;
+        return [values[0], values[1], values[2], values[3] ?? 1];
+      }
+
+      const srgb = c.match(/^color\(srgb\s+([^)]*)\)$/i);
+      if (!srgb) return null;
+      const values = srgb[1]
+        .trim()
+        .split(/[\s/]+/)
+        .map((part, index) => {
+          const value = parseFloat(part);
+          if (Number.isNaN(value)) return NaN;
+          if (part.endsWith("%")) return index < 3 ? value * 2.55 : value / 100;
+          return index < 3 ? value * 255 : value;
+        });
+      if (values.length < 3 || values.some(Number.isNaN)) return null;
+      return [values[0], values[1], values[2], values[3] ?? 1];
     };
+    const parseColor = (c) => tryParseCssColor(c) || [0, 0, 0, 1];
     // Like parseColor, but returns null instead of defaulting to black when
     // the value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords
     // such as "none"/"context-fill", or a gradient/pattern reference like
     // 'url("#grad")'. Callers should fall back to another source of truth
     // rather than trust a fabricated black.
     const tryParseSolidColor = (c) => {
-      const m = c.match(/rgba?\(([^)]+)\)/);
-      if (!m) return null;
-      const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
-      if (parts.some((v) => Number.isNaN(v))) return null;
-      return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+      return tryParseCssColor(c);
     };
     // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
     // property, not `color` — the two are independent CSS properties in
@@ -193,6 +214,7 @@ async function prepareTextElements(session) {
         (n) => n.nodeType === 3 && n.textContent.trim().length,
       );
       if (!direct) continue;
+      if (el.closest?.("[data-layout-ignore]")) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.display === "none") continue;
       if (parseFloat(cs.opacity) <= 0.01) continue;

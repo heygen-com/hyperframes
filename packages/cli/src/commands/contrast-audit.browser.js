@@ -57,13 +57,39 @@ window.__contrastAuditPrepare = function () {
     return !!el.ownerSVGElement;
   }
 
-  function parseColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return [0, 0, 0, 1];
-    var p = m[1].split(",").map(function (s) {
-      return parseFloat(s.trim());
+  function tryParseCssColor(c) {
+    var rgb = c.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgb) {
+      var rgbParts = rgb[1].trim().split(/[\s,\/]+/);
+      if (rgbParts.length < 3) return null;
+      var rgbValues = rgbParts.map(function (part, index) {
+        var value = parseFloat(part);
+        if (isNaN(value)) return NaN;
+        if (part.endsWith("%")) return index < 3 ? value * 2.55 : value / 100;
+        return value;
+      });
+      if (rgbValues.some(isNaN)) return null;
+      return [rgbValues[0], rgbValues[1], rgbValues[2], rgbValues[3] ?? 1];
+    }
+
+    // Chromium preserves modern color-mix() results as color(srgb ...)
+    // instead of serializing them back to rgb()/rgba().
+    var srgb = c.match(/^color\(srgb\s+([^)]*)\)$/i);
+    if (!srgb) return null;
+    var srgbParts = srgb[1].trim().split(/[\s\/]+/);
+    if (srgbParts.length < 3) return null;
+    var srgbValues = srgbParts.map(function (part, index) {
+      var value = parseFloat(part);
+      if (isNaN(value)) return NaN;
+      if (part.endsWith("%")) return index < 3 ? value * 2.55 : value / 100;
+      return index < 3 ? value * 255 : value;
     });
-    return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
+    if (srgbValues.some(isNaN)) return null;
+    return [srgbValues[0], srgbValues[1], srgbValues[2], srgbValues[3] ?? 1];
+  }
+
+  function parseColor(c) {
+    return tryParseCssColor(c) || [0, 0, 0, 1];
   }
 
   // Like parseColor, but returns null instead of defaulting to black when the
@@ -72,18 +98,7 @@ window.__contrastAuditPrepare = function () {
   // 'url("#grad")'. Callers should fall back to another source of truth
   // rather than trust a fabricated black.
   function tryParseSolidColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
-    var p = m[1].split(",").map(function (s) {
-      return parseFloat(s.trim());
-    });
-    if (
-      p.some(function (v) {
-        return isNaN(v);
-      })
-    )
-      return null;
-    return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
+    return tryParseCssColor(c);
   }
 
   function selectorOf(el) {
