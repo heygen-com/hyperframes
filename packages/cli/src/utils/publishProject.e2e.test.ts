@@ -74,4 +74,36 @@ describeE2E("publish stable-URL round trip (live server)", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it("two identities in a shared team space converge on one URL, and other spaces can't hijack it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-e2e-team-"));
+    const originalKey = process.env["HYPERFRAMES_API_KEY"];
+    try {
+      // Member A publishes into the shared team space.
+      writeFileSync(join(dir, "index.html"), "<html>team v1</html>", "utf-8");
+      process.env["HYPERFRAMES_API_KEY"] = "e2e-team-member-a";
+      const a = await publishProjectArchive(dir, { spaceId: "team-e2e" });
+      expect(a.claimed).toBe(true);
+
+      // A DIFFERENT member (different credential) re-publishes the same project id in the
+      // same space → converges on the same URL.
+      writeFileSync(join(dir, "index.html"), "<html>team v2</html>", "utf-8");
+      process.env["HYPERFRAMES_API_KEY"] = "e2e-team-member-b";
+      const b = await publishProjectArchive(dir, { projectId: a.projectId, spaceId: "team-e2e" });
+      expect(b.projectId).toBe(a.projectId);
+      expect(b.url).toBe(a.url);
+
+      // A member of a DIFFERENT space cannot overwrite it → gets a fresh project.
+      process.env["HYPERFRAMES_API_KEY"] = "e2e-outsider";
+      const c = await publishProjectArchive(dir, {
+        projectId: a.projectId,
+        spaceId: "other-space",
+      });
+      expect(c.projectId).not.toBe(a.projectId);
+    } finally {
+      if (originalKey === undefined) delete process.env["HYPERFRAMES_API_KEY"];
+      else process.env["HYPERFRAMES_API_KEY"] = originalKey;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
