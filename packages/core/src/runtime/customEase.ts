@@ -3,8 +3,11 @@ import { resolveWiggleEase } from "./wiggleEase";
 
 type RuntimeEase = (progress: number) => number;
 
+type ConfigurableEase = RuntimeEase & { config?: (...params: unknown[]) => RuntimeEase };
+
 type GsapEaseApi = {
   parseEase?: (ease: string | RuntimeEase, ...args: unknown[]) => RuntimeEase | null;
+  registerEase?: (name: string, ease: RuntimeEase) => void;
 };
 
 const BISECTION_STEPS = 24;
@@ -84,17 +87,45 @@ export function installStudioCustomEase(gsap: GsapEaseApi): boolean {
 
   const customEaseCache = new Map<string, RuntimeEase>();
   const springEaseCache = new Map<number, RuntimeEase>();
-  gsap.parseEase = function parseHyperframesEase(ease, ...args) {
-    if (typeof ease === "string") {
-      if (ease === "hold") return HOLD_EASE;
-      const wiggleEase = resolveWiggleEase(ease);
-      if (wiggleEase) return wiggleEase;
-      const springEase = resolveSpringEase(ease, springEaseCache);
-      if (springEase) return springEase;
-      const customEase = resolveCustomEase(ease, customEaseCache);
-      if (customEase) return customEase;
-    }
-    return originalParseEase.call(this, ease, ...args);
+
+  // Single source of truth for "hyperframes ease string -> function". Both the
+  // public parseEase override and the internal registerEase configs below route
+  // through this, so the resolution rules live in exactly one place.
+  const resolveHyperframesEase = (ease: string | RuntimeEase): RuntimeEase | null => {
+    if (typeof ease !== "string") return null;
+    if (ease === "hold") return HOLD_EASE;
+    return (
+      resolveWiggleEase(ease) ??
+      resolveSpringEase(ease, springEaseCache) ??
+      resolveCustomEase(ease, customEaseCache)
+    );
   };
+
+  // Public parseEase: direct callers (studio ease UI, adapters) resolve
+  // synchronously; anything else falls through to GSAP's own parser.
+  gsap.parseEase = function parseHyperframesEase(ease, ...args) {
+    return resolveHyperframesEase(ease) ?? originalParseEase.call(this, ease, ...args);
+  };
+
+  // GSAP resolves a keyframe SEGMENT's ease through its INTERNAL _parseEase /
+  // _easeMap, never the public parseEase above — so a custom ease used inside
+  // `keyframes:{...}` resolves to undefined and throws "_ease is not a function"
+  // on the first render. Register the eases in the internal map too. GSAP calls
+  // a configurable ease's `.config(...params)` with the parenthesized string
+  // comma-split, so `params.join(",")` losslessly reconstructs the original
+  // (including custom() bezier paths, whose commas survive the round-trip).
+  const registerEase = gsap.registerEase;
+  if (typeof registerEase === "function") {
+    registerEase("hold", HOLD_EASE);
+    const registerConfigurable = (name: string): void => {
+      const base: ConfigurableEase = (progress) => progress;
+      base.config = (...params) =>
+        resolveHyperframesEase(`${name}(${params.join(",")})`) ?? ((progress) => progress);
+      registerEase(name, base);
+    };
+    registerConfigurable("spring");
+    registerConfigurable("wiggle");
+    registerConfigurable("custom");
+  }
   return true;
 }
