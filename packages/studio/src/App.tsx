@@ -69,7 +69,7 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
-  const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
+  const [initialUrlState] = useState(readStudioUrlStateFromWindow);
   const viewModeValue = useViewModeState();
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export function StudioApp() {
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
-    () => initialUrlStateRef.current.activeCompPath == null,
+    () => initialUrlState.activeCompPath == null,
   );
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
@@ -114,8 +114,8 @@ export function StudioApp() {
   }, [timelineDuration, timelineElements]);
   const { toasts, showToast, dismissToast } = useToast();
   const panelLayout = usePanelLayout({
-    rightCollapsed: initialUrlStateRef.current.rightCollapsed,
-    rightPanelTab: initialUrlStateRef.current.rightPanelTab,
+    rightCollapsed: initialUrlState.rightCollapsed,
+    rightPanelTab: initialUrlState.rightPanelTab,
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
@@ -144,12 +144,12 @@ export function StudioApp() {
     if (activeCompPathHydrated) return;
     if (!fileManager.fileTreeLoaded) return;
     const nextCompPath = normalizeStudioCompositionPath(
-      initialUrlStateRef.current.activeCompPath,
+      initialUrlState.activeCompPath,
       fileManager.fileTree,
     );
     setActiveCompPath((current) => (current === nextCompPath ? current : nextCompPath));
     setActiveCompPathHydrated(true);
-  }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded]);
+  }, [activeCompPathHydrated, fileManager.fileTree, fileManager.fileTreeLoaded, initialUrlState]);
   const previewPersistence = usePreviewPersistence({
     projectId,
     showToast,
@@ -430,7 +430,7 @@ export function StudioApp() {
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
     applyDomSelection: domEditSession.applyDomSelection,
     setRightPanelTab: panelLayout.setRightPanelTab,
-    initialState: initialUrlStateRef.current,
+    initialState: initialUrlState,
   });
   const studioCtxValue = buildStudioContextValue({
     projectId: projectId!,
