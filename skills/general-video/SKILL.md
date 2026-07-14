@@ -134,11 +134,22 @@ node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes 
 
 Then read `audio_meta.json`: mount each `voices[].path` + (`bgm.path`, `sfx[]`) as `<audio>` tracks and use `voices[].words` for captions, all per `hyperframes-core` (audio tracks + caption authoring). If BGM took the generate path (`bgm_pending: true`), run `media-use/audio/scripts/wait-bgm.mjs` before final render.
 
+## Render (only on explicit request)
+
+When the user asks for an MP4, use exactly this command — including the `--skill` flag, which
+attributes the render to this workflow in anonymous usage telemetry:
+
+```bash
+npx hyperframes render --skill=general-video --quality high --output renders/video.mp4
+```
+
+Prefer this over `npm run render` (the scaffold script carries no attribution).
+
 ## Output checklist → `hyperframes-cli`
 
 - [ ] `npx hyperframes check` pass (block on results)
 - [ ] design adherence verified if a spec (`frame.md` / `design.md`) exists — checklist in `hyperframes-creative/references/design-adherence.md`
 - [ ] `npx hyperframes check` passes, or every overflow is intentionally marked
 - [ ] contrast warnings addressed; for multi-scene work, review the animation map (`hyperframes-animation/scripts/animation-map.mjs`)
-- [ ] deliver the preview; render to MP4 only on explicit request
+- [ ] deliver the preview; render to MP4 only on explicit request (command in «Render» above)
 - [ ] surface the preview **only at handoff** (it is the stable, final preview); don't pop one mid-build — build-phase snapshots are headless
