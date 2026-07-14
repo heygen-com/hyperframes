@@ -15,12 +15,10 @@ export type HdrTransfer = "hlg" | "pq";
  */
 export function isHdrColorSpace(cs: VideoColorSpace | null): boolean {
   if (!cs) return false;
-  return (
-    cs.colorPrimaries.includes("bt2020") ||
-    cs.colorSpace.includes("bt2020") ||
-    cs.colorTransfer === "smpte2084" ||
-    cs.colorTransfer === "arib-std-b67"
-  );
+  // BT.2020 describes a color gamut/matrix, not a dynamic range. SDR media
+  // can legitimately carry BT.2020 primaries with a BT.709 transfer. Only
+  // the transfer function distinguishes HDR here: PQ (SMPTE 2084) or HLG.
+  return cs.colorTransfer === "smpte2084" || cs.colorTransfer === "arib-std-b67";
 }
 
 /**
