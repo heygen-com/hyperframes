@@ -149,6 +149,24 @@ function makeHistory() {
   };
 }
 
+function mountMirrorOnlyHarness(
+  onMoveElements: TimelineEditCallbacks["onMoveElements"],
+): Pick<HarnessApi, "mirror"> {
+  const api: Partial<HarnessApi> = {};
+  function Harness() {
+    api.mirror = useCanvasZOrderTimelineMirror();
+    return null;
+  }
+  mountReactHarness(
+    <TimelineEditProvider value={{ onMoveElements }}>
+      <Harness />
+    </TimelineEditProvider>,
+  );
+  const mirror = api.mirror;
+  if (!mirror) throw new Error("mirror harness failed to mount");
+  return { mirror };
+}
+
 function domTarget(id: string): HTMLElement {
   const el = document.createElement("div");
   el.id = id;
@@ -332,19 +350,10 @@ describe("useCanvasZOrderTimelineMirror", () => {
     const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (batch) => {
       edits.push(...batch);
     };
-    const api: Partial<HarnessApi> = {};
-    function Harness() {
-      api.mirror = useCanvasZOrderTimelineMirror();
-      return null;
-    }
-    mountReactHarness(
-      <TimelineEditProvider value={{ onMoveElements }}>
-        <Harness />
-      </TimelineEditProvider>,
-    );
+    const { mirror } = mountMirrorOnlyHarness(onMoveElements);
 
     const mirrored = await act(async () =>
-      api.mirror!({
+      mirror({
         selectionKey: "sub.html#t",
         action: "bring-forward",
         // The crossed sibling maps to sub.html#b via its DOM id + sourceFile —
@@ -359,5 +368,58 @@ describe("useCanvasZOrderTimelineMirror", () => {
     // Rebased to sub-comp local coords: absolute 5 − parent start 5 = 0.
     expect(edits[0].element.start).toBe(0);
     expect(edits[0].updates).toMatchObject({ start: 0, track: 0 });
+  });
+
+  it("maps a duplicate class selector to the crossed occurrence instead of occurrence zero", async () => {
+    setStoreElements([
+      {
+        id: "index.html:.sub:0",
+        key: "index.html:.sub:0",
+        tag: "div",
+        start: 20,
+        duration: 5,
+        track: 0,
+        selector: ".sub",
+        selectorIndex: 0,
+      },
+      {
+        id: "index.html:.sub:1",
+        key: "index.html:.sub:1",
+        tag: "div",
+        start: 0,
+        duration: 10,
+        track: 1,
+        selector: ".sub",
+        selectorIndex: 1,
+      },
+      storeEl("t", 2, 0, 10),
+    ]);
+    const edits: Array<{ element: TimelineElement; updates: { start: number; track: number } }> =
+      [];
+    const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (batch) => {
+      edits.push(...batch);
+    };
+    const { mirror } = mountMirrorOnlyHarness(onMoveElements);
+
+    const first = document.createElement("div");
+    first.className = "sub";
+    document.body.appendChild(first);
+    const crossed = document.createElement("div");
+    crossed.className = "sub";
+    document.body.appendChild(crossed);
+
+    const mirrored = await act(async () =>
+      mirror({
+        selectionKey: "index.html#t",
+        action: "bring-forward",
+        crossed,
+        sourceFile: "index.html",
+        coalesceKey: "z-reorder:bring-forward:t",
+      }),
+    );
+
+    expect(mirrored).toBe(true);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].updates.track).toBe(0);
   });
 });

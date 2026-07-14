@@ -417,19 +417,20 @@ function buildTrackInsertEdits(
   // shifts the at/below clips down by one — the sanctioned +1 index renumber.
   const normalized = normalizeToZones(candidate);
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // The renumber WRITE set is the edited element's OWN source file: the
-  // sanctioned multi-clip write "converges the whole FILE to lane space", and a
-  // display set can mix files (expanded sub-comp children). Writing a foreign
-  // file's data-track-index in the host's lane numbering would corrupt that
-  // file's coordinate space — foreign clips keep their authored tracks and
-  // simply re-derive display lanes on the next normalize.
+  // The renumber WRITE set is the edited element's OWN source-file zone: the
+  // sanctioned multi-clip write converges that zone to lane space, and a display
+  // set can mix files and visual/audio zones. Writing another file's numbering
+  // corrupts its coordinate space; writing the other zone would make a visual
+  // insert renumber audio (or vice versa).
+  const writableZone = classifyZone(element);
   const writable = (src: TimelineElement): boolean =>
-    sameSourceFile(src, element) && src.expandedParentStart == null;
-  // The renumber is only correct as a whole-FILE write: skipping an unwritable
-  // same-file clip whose lane shifts leaves its track colliding with a
-  // renumbered neighbour, and the next normalize merges the two lanes. If any
-  // shifted same-file clip can't be written, refuse the insert instead of
-  // persisting a broken layout.
+    sameSourceFile(src, element) &&
+    classifyZone(src) === writableZone &&
+    src.expandedParentStart == null;
+  // The renumber is only correct as a whole-ZONE write: skipping an unwritable
+  // same-file, same-zone clip whose lane shifts leaves its track colliding with
+  // a renumbered neighbour, and the next normalize merges the two lanes. If any
+  // shifted clip in that zone can't be written, refuse the insert.
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (src && writable(src) && !canMoveElement(src) && norm.track !== src.track) {
@@ -443,8 +444,8 @@ function buildTrackInsertEdits(
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src) continue;
-    // File scope + capabilities gate: never write a foreign-file, expanded, or
-    // locked/implicit clip.
+    // File/zone scope + capabilities gate: never write a foreign-file,
+    // other-zone, expanded, or locked/implicit clip.
     if (!writable(src) || !canMoveElement(src)) continue;
     const start =
       keyOf(norm) === editKey || multi?.keys.has(keyOf(norm))
