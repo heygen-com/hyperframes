@@ -21,27 +21,25 @@ metadata:
 
 > **Confirm the route before you build.** This is the **fallback** for custom composition authoring — and the **home of companion mode**: when `BRIEF.md` says `flow: companion`, this skill is the destination, not the fallback — stay here even when the input resembles a specialized workflow's. Otherwise, if the input clearly fits a specialized workflow, prefer it: any website input — promo or site tour → `/product-launch-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/talking-head-recut`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
 
-**Build exactly what was asked.** A title card is a title card — not a title card + three supporting scenes + ambient music + captions. If extra scenes or elements would genuinely improve the piece, _propose_ them; don't add them silently. For small edits (fix a color, adjust one duration, add one element), skip the planning steps and go straight to the build.
-
-## Approach
-
-### Setup — the brief, the project, and the mode
+## Setup — the brief, the project, and the mode
 
 The brief comes from the intent layer, not from questions asked here. Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — its `flow`/`storyboard` derive the mode (`hyperframes-core/references/brief-contract.md` § 1), and `flow: companion` runs the companion section below. **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from what's on disk and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither, and the request is a fresh creation → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`; its /general-video entry carries the former discovery questions — audience, platform, priority, variations). For specific requests ("add a title card", "fix the timing on scene 3") and small edits, skip all of this and go straight to the build. An ongoing autonomous signal ("surprise me", "just build it") means one best shot, no board, your calls stated with one-line receipts as you make them.
 
 In an empty directory, scaffold first — `npx hyperframes init "videos/<project>" --non-interactive --example=blank`, project named from the brief in kebab-case — then **write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory), shape per `hyperframes-core/references/brief-format.md`, and record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset). Inside an already-scaffolded project, the root is wherever `hyperframes.json` lives — `BRIEF.md` goes there. An adopted recipe lands now too: `media-use` → `scripts/recipe.mjs use` copies its frame.md in and hands back the skeletons (the adoption was confirmed at the intent layer — don't re-ask).
 
-### Companion mode — the whole toolbox, conversationally
+## The route is yours
 
-`flow: companion` runs this workflow as a co-creation session: the user and the model shape the video together, and **every HyperFrames capability is reachable**. The map is `../hyperframes/references/capability-menu.md` — what each capability is, which skill owns it, and the one rule for reaching across: a capability living in another workflow's directory needs `npx hyperframes skills update <that-workflow>` first (workflow skills install lazily). Work from `BRIEF.md`'s body — its Assets, Customizations, and Notes are the user's own material and asks, already confirmed. Companion changes who drives, not what quality requires: the steps below still order the work (design system before layout, layout before animation), the quality gates hold, and when `storyboard: yes` the board opens and the review loop runs exactly as in any run (`hyperframes-core/references/review-loop.md`).
+Setup done and the brief read, how to get to a finished video is your call — there is no fixed pipeline here. Three postures: an **automation brief** → design the route yourself and state it in one line in the heads-up; **companion** → propose the route as the first conversation move; an **edit** → no route, go touch the thing. When the piece resembles a shipped workflow's genre, skim that workflow's SKILL.md as a worked example (`npx hyperframes skills update <name>` first) and read its genre references (`../hyperframes/references/capability-menu.md` § Genre lenses) — **borrow the shape and the taste, never the machinery**: their scripts and directory rules belong to their pipelines.
 
-### Step 1 — Design system → `hyperframes-creative`
+Whatever the route, a plan is worth one thought per axis before any HTML: the viewer arc (`hyperframes-creative/references/story-spine.md` for narrated stories), structure (`hyperframes-core/references/composition-patterns.md` § Two Architectures — ≥3 hard scene cuts or any reused scene → modularize; a short single-scene piece stays one file), rhythm (name the pattern before implementing, e.g. `fast-fast-SLOW-SHADER-hold` — `hyperframes-creative/references/beat-direction.md`), and what drives duration. A multi-scene request benefits from grounding first: `hyperframes-creative/references/prompt-expansion.md`. Once a plan exists, the back half — audio, frames, assembly, transitions, captions, verify, deliver — is `hyperframes-core/references/production-loop.md`; the laws below hold on every route.
 
-Establish the visual identity first. If the project has a design spec, read it (precedence `frame.md` → `design.md` → `DESIGN.md`; treat it as brand truth — exact colors, fonts, constraints).
+## The laws — what holds on every route
 
-**If no spec exists, you MUST read BOTH `hyperframes-creative/references/house-style.md` AND `hyperframes-creative/references/video-composition.md` before choosing any color or font.** `house-style.md` gives the "interpret the prompt / generate real content" opener, lazy-default list, and layer recipe; `video-composition.md` gives the video-medium density / scale / **foreground detailing** (data bars, registration marks, monospace metadata, "8-10 elements, two the user didn't ask for") that separates "produced" from "generated." Reading only one is the most common miss — `video-composition.md` is the one agents skip, and it is exactly the one that prevents flat, centered, web-page-looking output. Do not self-invent a palette and skip these; crossing into `hyperframes-creative` is mandatory here, not an optional branch. From there, also pull a named style/mood → `references/visual-styles.md`, or the interactive picker → `references/design-picker.md`, as needed. The spec/style defines the **brand**, not the composition rules.
+A law earns its place here by naming the **action it guards** and the **bad render that follows without it** — taste lives in the design references, not here. Four laws, two pointers.
 
-**Find the angle (vague brief, no spec):** before picking colors, write ONE sentence — what does this name/word/topic evoke, and what visual _world_ (metaphor, setting, instrument, motif) expresses it? E.g. a cybersecurity tool → vault doors / perimeter scan lines / lock tumblers; a meditation app → tide, breath, slow light bloom. Read the _meaning_ of the subject, not just its letters; pick a concrete angle over a literal restyle. This is the cheap substitute for prompt expansion (Step 2) on single-scene pieces, where expansion is correctly skipped — and it is the difference between a designed concept and a generic logo-on-a-gradient.
+**1 · Build exactly what was asked.** A title card is a title card — not a title card + three supporting scenes + ambient music + captions. If extra scenes or elements would genuinely improve the piece, _propose_ them; don't add them silently.
+
+**2 · A visual identity exists before any composition HTML.** If the project has a design spec, read it (precedence `frame.md` → `design.md` → `DESIGN.md`; treat it as brand truth — exact colors, fonts, constraints). If no spec exists, **you MUST read BOTH `hyperframes-creative/references/house-style.md` AND `hyperframes-creative/references/video-composition.md` before choosing any color or font** — `house-style.md` gives the "interpret the prompt / generate real content" opener, lazy-default list, and layer recipe; `video-composition.md` gives the video-medium density / scale / **foreground detailing** (data bars, registration marks, monospace metadata, "8-10 elements, two the user didn't ask for") that separates "produced" from "generated." Reading only one is the most common miss — `video-composition.md` is the one agents skip, and it is exactly the one that prevents flat, centered, web-page-looking output. From there, a named style/mood → `references/visual-styles.md`; the interactive picker → `references/design-picker.md`. And **find the angle** (vague brief, no spec): before picking colors, write ONE sentence — what does this name/word/topic evoke, and what visual _world_ (metaphor, setting, instrument, motif) expresses it? A cybersecurity tool → vault doors / perimeter scan lines / lock tumblers; a meditation app → tide, breath, slow light bloom. Read the _meaning_ of the subject, not just its letters — the difference between a designed concept and a generic logo-on-a-gradient.
 
 <HARD-GATE>
 Before writing ANY composition HTML, verify you have ALL FOUR:
@@ -51,28 +49,7 @@ Before writing ANY composition HTML, verify you have ALL FOUR:
 4. **A foreground/density plan from `video-composition.md`** — the anchor-to-edges, 8-10-elements, foreground-metadata, background-texture rules. (Centered stack on a flat color with fewer than ~6 elements and no edge-anchored detail? You skipped it — that is the generic tell.)
 </HARD-GATE>
 
-### Step 2 — Prompt expansion → `hyperframes-creative`
-
-Run for every multi-scene composition (skip for single-scene pieces and trivial edits). Ground the request against the design spec + house style into a consistent intermediate that downstream work reads the same way. See `hyperframes-creative/references/prompt-expansion.md`.
-
-### Step 3 — Plan
-
-Before writing HTML, think at a high level:
-
-1. **What** — the viewer experience: narrative arc, key moments, emotional beats. For a narrated story piece, follow `hyperframes-creative/references/story-spine.md` — hook in viewer-outcome language, the message landing by beat 2, evidence after.
-2. **Structure** — how many compositions, sub-comp vs inline, which tracks carry video / audio / overlays / captions. For the monolithic-single-file vs modular-sub-comp call, see `hyperframes-core/references/composition-patterns.md` § Two Architectures (rule of thumb: ≥3 hard scene cuts, or any reused scene → modularize; a short single-scene piece stays one file).
-3. **Rhythm** — name the pattern before implementing (e.g. `fast-fast-SLOW-SHADER-hold`); see `hyperframes-creative/references/beat-direction.md`.
-4. **Timing** — which clips drive duration, where transitions land, the pacing.
-5. **Layout** — build the end state first (see below).
-6. **Animate** — then add motion via `hyperframes-animation`.
-
-**Plan on a board when there's a story to review.** For a multi-scene narrative piece when `BRIEF.md` says `storyboard: yes` — or the user asks for one mid-run — don't keep the plan in your head: write it as `STORYBOARD.md` (`hyperframes-core/references/storyboard-format.md`; one `## Frame N` per scene, `status: outline`, a declared `src`) and run the review loop (`hyperframes-core/references/review-loop.md`): the board opens itself, the plan is presented as a proposal, wireframe sketches are offered before the full build, and each scene is marked `built` as its sketch lands and `animated` as you finish it. The sketch pass is this skill's layout-before-animation with the user watching — the confirmed wireframe **is** the end state you then animate. Single-scene pieces, trivial edits, and autonomous runs skip the board and plan inline as above.
-
-## Layout Before Animation
-
-Position every element where it sits at its **most visible moment** — fully entered, correctly placed, not yet exiting. Write that as static HTML + CSS first. **No GSAP yet.**
-
-**Why:** if you position elements at their animated start state (offscreen, scaled to 0, opacity 0) and tween to where you _think_ they land, you are guessing the final layout — overlaps stay invisible until render. Build the end state first and you see and fix layout problems before adding motion.
+**3 · The end state exists as static CSS before any tween.** Position every element where it sits at its **most visible moment** — fully entered, correctly placed, not yet exiting. Write that as static HTML + CSS first. **No GSAP yet.** Why: if you position elements at their animated start state (offscreen, scaled to 0, opacity 0) and tween to where you _think_ they land, you are guessing the final layout — overlaps stay invisible until render. Build the end state first and you see and fix layout problems before adding motion.
 
 1. **Identify the hero frame** for each scene — the moment the most elements are simultaneously visible. That is the layout you build.
 2. **Write static CSS** for that frame. The content container must fill the scene with padding, not absolute offsets:
@@ -99,13 +76,19 @@ Never use `position: absolute; top: Npx` on a content container — it overflows
 
 **Shared space across time:** if element A exits before element B enters in the same area, both still need correct CSS positions for their respective hero frames — timeline ordering keeps them from coexisting, and the layout step catches accidental overlap. Layered glows/shadows and z-stacked depth are _intentional_ overlap; the step is about catching _unintentional_ collisions (two headlines on top of each other, content bleeding off-frame).
 
-## Build — delegate to the domain skills
+**4 · The run shape is a contract.** `BRIEF.md` `storyboard: yes` means the plan is reviewed on the live board before the full build spends — wherever your route puts the plan. Write it as `STORYBOARD.md` (`hyperframes-core/references/storyboard-format.md`; one `## Frame N` per scene, `status: outline`, a declared `src`) and run the review loop (`hyperframes-core/references/review-loop.md`): the board opens itself, the plan is presented as a proposal, wireframe sketches are offered before the full build, and each scene is marked `built` as its sketch lands and `animated` as you finish it — the confirmed wireframe **is** the end state you then animate (law 3, with the user watching). `storyboard: no` skips the board, never the laws.
 
-This maps the skill's full surface (see the `description`) to its references — non-exhaustive; when an intent isn't listed, route through `hyperframes-creative` (look/concept), `hyperframes-animation` (motion), `hyperframes-core` (contract), `media-use` (audio/captions). **The first row is ADDITIVE — read it AND your intent row, not one or the other.**
+**5 · The composition contract holds** — `class="clip"` on timed elements, exactly one paused timeline registered at `window.__timelines`, a sized root, the determinism bans: `hyperframes-core` (SKILL.md + `references/determinism-rules.md`).
+
+**6 · Media goes through `media-use`; audio through the one engine** (§ Audio below) — never hand-rolled TTS calls, never a vendored copy of the engine.
+
+## Reading map — build by intent
+
+This maps intent to reading — non-exhaustive; when an intent isn't listed, route through `hyperframes-creative` (look/concept), `hyperframes-animation` (motion), `hyperframes-core` (contract), `media-use` (audio/captions). **The first row is ADDITIVE — read it AND your intent row, not one or the other.** The full toolbox beyond scene-building — capture, beat grids, generative video, maps, publish — is the capability menu (`../hyperframes/references/capability-menu.md`).
 
 | Building…                                                             | Read first (in order)                                                                                                                                                                        |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ALWAYS — every non-trivial piece, on top of your intent row below** | `hyperframes-creative/references/house-style.md` + `references/video-composition.md` (also gated in Step 1 / HARD-GATE; the "produced, not generated" foreground detailing)                  |
+| **ALWAYS — every non-trivial piece, on top of your intent row below** | `hyperframes-creative/references/house-style.md` + `references/video-composition.md` (also gated in law 2 / HARD-GATE; the "produced, not generated" foreground detailing)                   |
 | **Kinetic typography / text-forward**                                 | `hyperframes-animation/techniques.md` (kinetic type) + `adapters/gsap-easing-and-stagger.md` + `rules/kinetic-beat-slam.md`                                                                  |
 | **Title card / lower-third / overlay / PiP / text-behind-subject**    | `hyperframes-creative/references/composition-patterns.md` + (for the centered/sized frame) `hyperframes-core` → "Root must be sized"                                                         |
 | **Logo / brand-mark reveal**                                          | `hyperframes-animation/rules/svg-path-draw.md` (draw-on) + `rules/3d-text-depth-layers.md` + `rules/scale-swap-transition.md`                                                                |
@@ -118,7 +101,7 @@ This maps the skill's full surface (see the `description`) to its references —
 
 ### Audio: one engine (TTS · BGM · SFX)
 
-Only when the piece calls for it (per "build exactly what was asked" — no ambient music on a title card). Don't hand-roll TTS or vendor a copy: write a neutral `audio_request.json` and call the shared engine in `media-use`. It auto-degrades on one switch — HeyGen credential present → HeyGen TTS + music/SFX **retrieval**; absent → ElevenLabs/Kokoro TTS, Lyria/MusicGen BGM **generation**, and the bundled SFX library. Full flag list + request/meta schema: the header comment of `media-use/audio/scripts/audio.mjs`.
+Only when the piece calls for it (per law 1 — no ambient music on a title card). Don't hand-roll TTS or vendor a copy: write a neutral `audio_request.json` and call the shared engine in `media-use`. It auto-degrades on one switch — HeyGen credential present → HeyGen TTS + music/SFX **retrieval**; absent → ElevenLabs/Kokoro TTS, Lyria/MusicGen BGM **generation**, and the bundled SFX library. Full flag list + request/meta schema: the header comment of `media-use/audio/scripts/audio.mjs`.
 
 ```jsonc
 // audio_request.json — one line per narrated segment; `id` is yours (joins audio_meta back)
@@ -138,11 +121,20 @@ node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes 
 
 Then read `audio_meta.json`: mount each `voices[].path` + (`bgm.path`, `sfx[]`) as `<audio>` tracks and use `voices[].words` for captions, all per `hyperframes-core` (audio tracks + caption authoring). If BGM took the generate path (`bgm_pending: true`), run `media-use/audio/scripts/wait-bgm.mjs` before final render.
 
-## Output checklist → `hyperframes-cli`
+## Companion — the conversation
 
-- [ ] `npx hyperframes check` pass (block on results)
+`flow: companion` runs this workflow as a co-creation session: the user and the model shape the video together, and **every HyperFrames capability is reachable**. The map is `../hyperframes/references/capability-menu.md` — the inventory, where each capability lives, the borrowing rule, and the genre lenses. `BRIEF.md`'s body seeds the first moves: its Assets and Customizations are offers the user already accepted — act on them before offering anything new.
+
+**The menu is also the trigger list.** Offer a capability at the moment the conversation touches what its row does, in the row's own plain-language line — never the table wholesale. Two kinds of moments: the **user** touches it (they mention a song → the beat row; they paste a URL → capture; they share a clip → staging, overlays, transcript-cut) and the **work** touches it (about to build a stats scene → data-in-motion; a journey comes up → map scenes). One capability per moment; offer, then do it and show the result — the artifact is the pitch.
+
+**The conversation is the gate.** The review loop's formal passes run only when `storyboard: yes`; the final-look question — preview open, "render now, or what changes?" (`review-loop.md` § 4) — is asked either way before any render. The laws hold regardless of who drives; companion changes who steers, never what quality requires.
+
+**Write decisions back.** `BRIEF.md` stays the run's truth (`brief-format.md` § Lifecycle): an accepted offer, adopted material, or bespoke ask lands as one line in the matching body section as it happens; an explicit change to a frontmatter field ("make it 9:16 after all") rewrites the field and re-records the preference. A dead session resumes from that file — a decision that lives only in chat is a decision resume never sees.
+
+## Done means → `hyperframes-cli`
+
+- [ ] `npx hyperframes lint` + `npx hyperframes check` pass (block on results; any remaining overflow is intentionally marked)
 - [ ] design adherence verified if a spec (`frame.md` / `design.md`) exists — checklist in `hyperframes-creative/references/design-adherence.md`
-- [ ] `npx hyperframes check` passes, or every overflow is intentionally marked
 - [ ] contrast warnings addressed; for multi-scene work, review the animation map (`hyperframes-animation/scripts/animation-map.mjs`)
-- [ ] deliver the preview; render to MP4 only on explicit request
+- [ ] the final-look question was asked (`review-loop.md` § 4) — deliver the preview; render to MP4 only on approval
 - [ ] surface the preview **only at handoff** (it is the stable, final preview); don't pop one mid-build — build-phase snapshots are headless
