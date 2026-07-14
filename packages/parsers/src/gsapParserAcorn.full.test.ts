@@ -84,6 +84,24 @@ const REAL_WORLD_SCRIPT = `(function () {
 // ── parseGsapScript ───────────────────────────────────────────────────────────
 
 describe("parseGsapScript", () => {
+  it("excludes per-step `duration` from %-keyed keyframe properties (segment timing is not a lane)", () => {
+    // A %-keyed object keyframe carrying a stray per-step `duration` — the shape
+    // a buggy array->object conversion produces. `duration` is GSAP segment
+    // timing, not an animatable property; it must not surface as a keyframe lane
+    // or round-trip as a property (which corrupts the tween on the next edit).
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { keyframes: { "0%": { x: 0, duration: 0 }, "50%": { x: 100, duration: 6, ease: "power2.out" }, "100%": { x: 200, duration: 6 } } }, 0);
+    `;
+    const anim = parseGsapScript(script).animations[0]!;
+    const kfs = expectKeyframesFormat(anim, "percentage", 3);
+    for (const kf of kfs) {
+      expect(kf.properties).not.toHaveProperty("duration"); // the fix
+      expect(kf.properties).toHaveProperty("x"); // real animatable prop preserved
+    }
+    expect(kfs[1]!.ease).toBe("power2.out"); // per-keyframe ease still parsed
+  });
+
   it("parses a basic timeline with .to()", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
