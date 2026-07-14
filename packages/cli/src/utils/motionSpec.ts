@@ -18,6 +18,24 @@ export interface MotionSpec {
   assertions: MotionAssertion[];
 }
 
+const MOTION_FPS = 20;
+const MOTION_MAX_SAMPLES = 300;
+
+export function buildMotionSampleTimes(
+  duration: number,
+  assertions: MotionAssertion[] = [],
+): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const count = Math.min(MOTION_MAX_SAMPLES, Math.max(2, Math.ceil(duration * MOTION_FPS) + 1));
+  const step = duration / (count - 1);
+  const grid = Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000);
+  const deadlines = assertions.flatMap((assertion) => {
+    if (assertion.kind !== "appearsBy") return [];
+    return assertion.bySec <= duration ? [assertion.bySec] : [];
+  });
+  return [...new Set([...grid, ...deadlines])].sort((a, b) => a - b);
+}
+
 export type MotionSpecParse = { ok: true; spec: MotionSpec } | { ok: false; errors: string[] };
 
 function isObject(value: unknown): value is Record<string, unknown> {

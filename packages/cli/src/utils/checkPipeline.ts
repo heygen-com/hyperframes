@@ -20,7 +20,7 @@ import {
   type Canvas,
   type MotionFrame,
 } from "./motionAudit.js";
-import { findMotionSpec, readMotionSpec } from "./motionSpec.js";
+import { buildMotionSampleTimes, findMotionSpec, readMotionSpec } from "./motionSpec.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -65,8 +65,6 @@ export type {
   MotionSpecResolution,
 } from "./checkTypes.js";
 
-const MOTION_FPS = 20;
-const MOTION_MAX_SAMPLES = 300;
 const ZERO_BBOX: CheckBbox = { x: 0, y: 0, width: 0, height: 0 };
 // Ignore normal in/out slide travel; only substantive frame breaches are actionable.
 const FRAME_BREACH_FLOOR_PX = 120;
@@ -91,13 +89,6 @@ export function selectContrastTimes(grid: number[]): number[] {
     const selected = Math.floor((index * (grid.length - 1)) / 4);
     return grid[selected] ?? grid[0] ?? 0;
   });
-}
-
-function buildMotionSampleTimes(duration: number): number[] {
-  if (!Number.isFinite(duration) || duration <= 0) return [];
-  const count = Math.min(MOTION_MAX_SAMPLES, Math.max(2, Math.ceil(duration * MOTION_FPS) + 1));
-  const step = duration / (count - 1);
-  return Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000);
 }
 
 interface SampleGrid {
@@ -177,7 +168,9 @@ async function planMotionSampling(
   const targets = collectSamplingTargets(motion.spec.assertions);
   const preflightIssues = await driver.findAmbiguousSelectors(targets.selectors);
   const times =
-    preflightIssues.length === 0 ? buildMotionSampleTimes(motion.spec.duration ?? duration) : [];
+    preflightIssues.length === 0
+      ? buildMotionSampleTimes(motion.spec.duration ?? duration, motion.spec.assertions)
+      : [];
   return { times, ...targets, preflightIssues };
 }
 
