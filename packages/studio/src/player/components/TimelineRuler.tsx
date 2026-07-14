@@ -84,9 +84,11 @@ export const TimelineRuler = memo(function TimelineRuler({
           className="sticky left-0 z-[12] flex-shrink-0"
           style={{
             width: GUTTER,
-            // Ruler corner uses the panel surface — same as the ruler strip itself.
+            // Ruler corner uses the panel surface — same as the ruler strip
+            // itself, and NO right border: the ruler band stays completely
+            // clean until 00:00 (the header-boundary line belongs to the track
+            // rows below, not the ruler).
             background: theme.shellBackground,
-            borderRight: `1px solid ${theme.gutterBorder}`,
           }}
         />
         {/* Left breathing pad — scrolls with the content, so 00:00 starts a
