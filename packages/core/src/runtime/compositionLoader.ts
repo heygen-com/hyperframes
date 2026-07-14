@@ -390,9 +390,18 @@ async function mountCompositionContent(params: {
 
   if (params.headLinks) {
     for (const link of params.headLinks) {
-      const rawHref = link.getAttribute("href") || "";
+      const rawHref = (link.getAttribute("href") || "").trim();
       if (!rawHref) continue;
       const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
+      if (params.compositionUrl) {
+        const linkedUrl = new URL(href);
+        const compositionDocumentUrl = new URL(params.compositionUrl);
+        linkedUrl.search = "";
+        linkedUrl.hash = "";
+        compositionDocumentUrl.search = "";
+        compositionDocumentUrl.hash = "";
+        if (linkedUrl.href === compositionDocumentUrl.href) continue;
+      }
       if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
       const clonedLink = link.cloneNode(true) as HTMLLinkElement;
       clonedLink.href = href;

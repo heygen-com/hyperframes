@@ -14,7 +14,7 @@ beforeAll(() => {
 describe("loadExternalCompositions", () => {
   afterEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("style").forEach((s) => s.remove());
+    document.head.querySelectorAll("style, link").forEach((node) => node.remove());
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).gsap;
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).__selectedTitle;
     delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
@@ -143,6 +143,39 @@ describe("loadExternalCompositions", () => {
         'link[rel="stylesheet"][href="https://example.com/compositions/scene.html"]',
       ),
     ).toBeNull();
+  });
+
+  it("does not inject stylesheet href variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <link rel="stylesheet" href=" ">
+          <link rel="stylesheet" href="#theme">
+          <link rel="stylesheet" href="?v=1">
+          <link rel="stylesheet" href="./scene.html?v=2#theme">
+          <link rel="stylesheet" href="./scene.css?v=1">
+        </head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    const injectedHrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map(
+      (link) => (link as HTMLLinkElement).href,
+    );
+    expect(injectedHrefs).toEqual(["https://example.com/compositions/scene.css?v=1"]);
   });
 
   it("calls onDiagnostic when fetch fails", async () => {
