@@ -153,6 +153,9 @@ function startedServer(
   return matchingServer(candidates, projectDir);
 }
 
+/** Idle default for `--background` children: an hour with no requests. */
+export const BACKGROUND_IDLE_TIMEOUT_DEFAULT_MINUTES = 60;
+
 export function buildBackgroundPreviewArgs(argv: string[]): string[] {
   const filtered = argv.filter(
     (arg) =>
@@ -161,7 +164,47 @@ export function buildBackgroundPreviewArgs(argv: string[]): string[] {
       arg !== "--open" &&
       arg !== "--no-open",
   );
-  return [...filtered, "--no-open"];
+  // Background servers must not outlive their usefulness: default the child to
+  // the idle timeout unless the caller pinned one (`--idle-timeout 0` opts out).
+  const hasIdleTimeout = filtered.some(
+    (arg) => arg === "--idle-timeout" || arg.startsWith("--idle-timeout="),
+  );
+  const idleDefault = hasIdleTimeout
+    ? []
+    : ["--idle-timeout", String(BACKGROUND_IDLE_TIMEOUT_DEFAULT_MINUTES)];
+  return [...filtered, "--no-open", ...idleDefault];
+}
+
+export function processAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM means the process exists but belongs to someone else.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Decide whether a preview server should shut itself down. Returns the
+ * human-readable reason, or null to keep serving. An open Studio tab counts as
+ * activity (the storyboard polls the signature endpoint), so "idle" really
+ * means nobody — human or agent — is looking.
+ */
+export function lifecycleShutdownReason(opts: {
+  ownerPid: number | null;
+  ownerAlive: (pid: number) => boolean;
+  idleMs: number;
+  idleLimitMs: number;
+}): string | null {
+  if (opts.ownerPid !== null && !opts.ownerAlive(opts.ownerPid)) {
+    return `owner process ${opts.ownerPid} exited`;
+  }
+  if (opts.idleLimitMs > 0 && opts.idleMs >= opts.idleLimitMs) {
+    return `idle for ${Math.round(opts.idleMs / 60_000)} minutes`;
+  }
+  return null;
 }
 
 export async function readBackgroundPreviewStatus(

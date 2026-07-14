@@ -9,7 +9,12 @@ npx hyperframes preview                   # serve current directory
 npx hyperframes preview --port 4567       # custom port (default 3002)
 npx hyperframes preview --selection --json # print the current Studio selection and exit
 npx hyperframes preview --context --json  # print compact agent context from Studio
+npx hyperframes preview --background      # keep the server running after the command exits
+npx hyperframes preview --status          # show the background server for this project
+npx hyperframes preview --stop            # stop the background server for this project
 ```
+
+Background servers shut themselves down after 60 minutes without a request — an open Studio tab counts as activity (it polls the project signature), so "idle" means nobody is looking. Tune with `--idle-timeout <minutes>` (`0` disables), or pass `--owner-pid <pid>` to tie the server to your session so it exits when your process does.
 
 Hot-reloads on file changes. Opens Studio in the browser automatically — the full timeline editor, where the user can play the video and edit anything by hand before rendering. This is the review surface, not just a viewer.
 

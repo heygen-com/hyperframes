@@ -4,8 +4,11 @@ import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
 import {
+  BACKGROUND_IDLE_TIMEOUT_DEFAULT_MINUTES,
   buildBackgroundPreviewArgs,
+  lifecycleShutdownReason,
   previewSessionPath,
+  processAlive,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
   stopBackgroundPreview,
@@ -57,7 +60,42 @@ describe("background preview lifecycle", () => {
         "--background",
         "--open",
       ]),
-    ).toEqual(["/opt/hyperframes/cli.js", "preview", projectDir, "--no-open"]);
+    ).toEqual([
+      "/opt/hyperframes/cli.js",
+      "preview",
+      projectDir,
+      "--no-open",
+      "--idle-timeout",
+      String(BACKGROUND_IDLE_TIMEOUT_DEFAULT_MINUTES),
+    ]);
+  });
+
+  it("keeps an explicit --idle-timeout instead of stacking the default", () => {
+    const explicit = buildBackgroundPreviewArgs([
+      "/opt/hyperframes/cli.js",
+      "preview",
+      projectDir,
+      "--background",
+      "--idle-timeout",
+      "0",
+    ]);
+    expect(explicit).toEqual([
+      "/opt/hyperframes/cli.js",
+      "preview",
+      projectDir,
+      "--idle-timeout",
+      "0",
+      "--no-open",
+    ]);
+
+    const equalsForm = buildBackgroundPreviewArgs(["preview", projectDir, "--idle-timeout=15"]);
+    expect(equalsForm.filter((arg) => arg.includes("idle-timeout"))).toEqual(["--idle-timeout=15"]);
+  });
+
+  it("forwards --owner-pid to the detached child untouched", () => {
+    expect(
+      buildBackgroundPreviewArgs(["preview", projectDir, "--background", "--owner-pid", "812"]),
+    ).toContain("--owner-pid");
   });
 
   it("reuses an already-running server for the same project", async () => {
@@ -217,5 +255,47 @@ describe("background preview lifecycle", () => {
       }),
     ).rejects.toThrow(/did not stop/i);
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
+  });
+});
+
+describe("lifecycleShutdownReason", () => {
+  const HOUR = 60 * 60 * 1000;
+
+  it("keeps serving while active and owned", () => {
+    expect(
+      lifecycleShutdownReason({
+        ownerPid: 42,
+        ownerAlive: () => true,
+        idleMs: 5 * 60 * 1000,
+        idleLimitMs: HOUR,
+      }),
+    ).toBeNull();
+  });
+
+  it("shuts down when the owner is gone", () => {
+    expect(
+      lifecycleShutdownReason({
+        ownerPid: 42,
+        ownerAlive: () => false,
+        idleMs: 0,
+        idleLimitMs: HOUR,
+      }),
+    ).toContain("owner process 42");
+  });
+
+  it("shuts down past the idle limit, but never with the limit disabled", () => {
+    const base = { ownerPid: null, ownerAlive: () => true };
+    expect(lifecycleShutdownReason({ ...base, idleMs: HOUR, idleLimitMs: HOUR })).toContain("idle");
+    expect(lifecycleShutdownReason({ ...base, idleMs: 10 * HOUR, idleLimitMs: 0 })).toBeNull();
+  });
+});
+
+describe("processAlive", () => {
+  it("sees this process, rejects sentinels and absent pids", () => {
+    expect(processAlive(process.pid)).toBe(true);
+    expect(processAlive(0)).toBe(false);
+    expect(processAlive(1)).toBe(false);
+    expect(processAlive(-5)).toBe(false);
+    expect(processAlive(2 ** 30)).toBe(false);
   });
 });

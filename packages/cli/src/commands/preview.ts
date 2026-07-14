@@ -11,6 +11,11 @@ export const examples: Example[] = [
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
   ["Keep preview running after this command exits", "hyperframes preview --background"],
+  [
+    "Background server that dies with your agent session",
+    "hyperframes preview --background --owner-pid $$",
+  ],
+  ["Background server that never idles out", "hyperframes preview --background --idle-timeout 0"],
   ["Show the background preview for this project", "hyperframes preview --status"],
   ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
@@ -48,6 +53,8 @@ import {
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
 import {
+  lifecycleShutdownReason,
+  processAlive,
   readBackgroundPreviewStatus,
   startBackgroundPreview,
   stopBackgroundPreview,
@@ -67,6 +74,8 @@ interface StudioLaunchOptions extends BrowserLaunchOptions {
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
   forceNew?: boolean;
+  /** Self-shutdown conditions for the server process (idle / owner exit). */
+  lifecycle?: { ownerPid: number | null; idleLimitMs: number };
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -112,6 +121,16 @@ export default defineCommand({
       type: "boolean",
       description: "Stop the background preview for this project and exit",
       default: false,
+    },
+    "idle-timeout": {
+      type: "string",
+      description:
+        "Shut the server down after this many minutes without a request; 0 disables (--background defaults to 60)",
+    },
+    "owner-pid": {
+      type: "string",
+      description:
+        "Shut the server down when this process exits — with --background, ties the server to your agent session",
     },
     list: {
       type: "boolean",
@@ -313,11 +332,41 @@ export default defineCommand({
       return;
     }
 
+    // Lifecycle flags parse up front: a `--background` parent forwards them to
+    // its child through argv (see buildBackgroundPreviewArgs), so bad values
+    // must fail loudly here, not inside a detached process's log file.
+    const rawOwnerPid = args["owner-pid"] as string | undefined;
+    const ownerPid = rawOwnerPid === undefined ? null : Number.parseInt(rawOwnerPid, 10);
+    if (
+      rawOwnerPid !== undefined &&
+      (ownerPid === null || !Number.isInteger(ownerPid) || ownerPid <= 1)
+    ) {
+      clack.log.error("--owner-pid must be an integer greater than 1");
+      process.exitCode = 1;
+      return;
+    }
+    const rawIdleTimeout = args["idle-timeout"] as string | undefined;
+    const idleTimeoutMinutes = rawIdleTimeout === undefined ? 0 : Number(rawIdleTimeout);
+    if (
+      rawIdleTimeout !== undefined &&
+      (!Number.isFinite(idleTimeoutMinutes) || idleTimeoutMinutes < 0)
+    ) {
+      clack.log.error("--idle-timeout must be a number of minutes ≥ 0 (0 disables)");
+      process.exitCode = 1;
+      return;
+    }
+    const lifecycle = { ownerPid, idleLimitMs: Math.round(idleTimeoutMinutes * 60_000) };
+
     if (isDevMode()) {
       if (args.background) {
         clack.log.error("--background currently supports the embedded preview server only");
         process.exitCode = 1;
         return;
+      }
+      if (rawOwnerPid !== undefined || rawIdleTimeout !== undefined) {
+        clack.log.warn(
+          "--idle-timeout/--owner-pid apply to the embedded preview server only — ignored here.",
+        );
       }
       return runDevMode(dir, {
         projectName,
@@ -335,6 +384,11 @@ export default defineCommand({
         clack.log.error("--background currently supports the embedded preview server only");
         process.exitCode = 1;
         return;
+      }
+      if (rawOwnerPid !== undefined || rawIdleTimeout !== undefined) {
+        clack.log.warn(
+          "--idle-timeout/--owner-pid apply to the embedded preview server only — ignored here.",
+        );
       }
       return runLocalStudioMode(dir, {
         projectName,
@@ -387,6 +441,7 @@ export default defineCommand({
       userDataDir,
       remoteDebuggingPort,
       browserNoGpu,
+      lifecycle,
     });
   },
 });
@@ -974,10 +1029,23 @@ async function runEmbeddedMode(
   const { app } = createStudioServer({ projectDir: dir, projectName: pName });
   const serverBuildSignature = await loadPreviewServerBuildSignature();
 
+  // Lifecycle-managed servers track request activity: an open Studio tab polls
+  // the project signature, so "idle" only starts once nobody is looking.
+  const lifecycle = options?.lifecycle;
+  const watchLifecycle =
+    lifecycle !== undefined && (lifecycle.idleLimitMs > 0 || lifecycle.ownerPid !== null);
+  let lastActivityMs = Date.now();
+  const fetchHandler: typeof app.fetch = watchLifecycle
+    ? (...fetchArgs: Parameters<typeof app.fetch>) => {
+        lastActivityMs = Date.now();
+        return app.fetch(...fetchArgs);
+      }
+    : app.fetch;
+
   let result: FindPortResult;
   try {
     result = await findPortAndServe(
-      app.fetch,
+      fetchHandler,
       startPort,
       dir,
       !!options?.forceNew,
@@ -1017,6 +1085,24 @@ async function runEmbeddedMode(
     footer: "Press Ctrl+C to stop",
   });
   openStudioBrowser(url, pName, options);
+
+  if (watchLifecycle && lifecycle) {
+    // Self-shutdown watcher: SIGTERM to self reuses the exact shutdown path
+    // Ctrl+C takes below, so cleanup and the hard deadline stay in one place.
+    const watcher = setInterval(() => {
+      const reason = lifecycleShutdownReason({
+        ownerPid: lifecycle.ownerPid,
+        ownerAlive: processAlive,
+        idleMs: Date.now() - lastActivityMs,
+        idleLimitMs: lifecycle.idleLimitMs,
+      });
+      if (!reason) return;
+      clearInterval(watcher);
+      console.log(`  Preview server shutting down: ${reason}.`);
+      process.kill(process.pid, "SIGTERM");
+    }, 30_000);
+    watcher.unref();
+  }
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
