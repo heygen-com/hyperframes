@@ -65,6 +65,17 @@ describe("resolveH264EncoderMode", () => {
     expect(resolveH264EncoderMode(encoders, false)).toBe("gpu");
   });
 
+  it("does not treat a compiled Linux hardware encoder as usable", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const encoders = `
+ V....D h264_vaapi    H.264/AVC (VAAPI)
+`;
+
+    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(
+      "neither libx264 nor VideoToolbox",
+    );
+  });
+
   it("inspects the configured FFmpeg binary", async () => {
     mockExecFile.mockReturnValue(
       " V....D h264_videotoolbox    VideoToolbox H.264 Encoder\n" as never,

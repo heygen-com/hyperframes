@@ -22,8 +22,8 @@ export function resolveH264EncoderMode(
 ): H264EncoderMode {
   if (gpuRequested) return "gpu";
   if (/\blibx264\b/.test(ffmpegEncodersOutput)) return "software";
-  if (/\bh264_(?:videotoolbox|nvenc|vaapi|qsv|amf)\b/.test(ffmpegEncodersOutput)) return "gpu";
-  throw new Error("This FFmpeg build has neither libx264 nor a supported H.264 hardware encoder.");
+  if (/\bh264_videotoolbox\b/.test(ffmpegEncodersOutput)) return "gpu";
+  throw new Error("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
 }
 
 export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean): H264EncoderMode {

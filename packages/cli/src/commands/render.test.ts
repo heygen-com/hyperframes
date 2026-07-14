@@ -72,7 +72,10 @@ const preflightState = vi.hoisted(() => ({
   },
 }));
 
-const ffmpegEncoderState = vi.hoisted(() => ({ mode: "software" as "software" | "gpu" }));
+const ffmpegEncoderState = vi.hoisted(() => ({
+  mode: "software" as "software" | "gpu",
+  error: null as Error | null,
+}));
 const orphanCleanupState = vi.hoisted(() => ({
   calls: 0,
   killed: 0,
@@ -126,7 +129,10 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 vi.mock("../browser/ffmpeg.js", () => ({
-  detectH264EncoderMode: vi.fn(() => ffmpegEncoderState.mode),
+  detectH264EncoderMode: vi.fn(() => {
+    if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
+    return ffmpegEncoderState.mode;
+  }),
   findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
   getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
 }));
@@ -188,6 +194,7 @@ describe("renderLocal browser GPU config", () => {
     trackingState.shouldTrack = true;
     trackingState.renderObservations = [];
     ffmpegEncoderState.mode = "software";
+    ffmpegEncoderState.error = null;
     orphanCleanupState.calls = 0;
     orphanCleanupState.killed = 0;
     resetTrialState();
@@ -370,6 +377,22 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.useGpu).toBe(true);
+  });
+
+  it("lets the encoder surface its own error when capability detection fails", async () => {
+    ffmpegEncoderState.error = new Error("encoder probe timed out");
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(false);
   });
 
   it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {

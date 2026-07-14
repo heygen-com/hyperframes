@@ -1481,12 +1481,16 @@ export async function renderLocal(
   }
 
   if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
-    const encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+    let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
+    try {
+      encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+    } catch {
+      // Capability probing is advisory. Let the real encode surface the
+      // authoritative FFmpeg error instead of failing here with a bare stack.
+    }
     if (encoderMode === "gpu") {
       console.warn(
-        c.warn(
-          "  FFmpeg does not include libx264; falling back to the available H.264 hardware encoder.",
-        ),
+        c.warn("  FFmpeg does not include libx264; falling back to VideoToolbox H.264 encoding."),
       );
       options = { ...options, gpu: true };
     }
