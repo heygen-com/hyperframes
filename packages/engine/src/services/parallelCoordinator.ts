@@ -160,6 +160,10 @@ export function calculateOptimalWorkers(
   requested?: number,
   config?: WorkerSizingConfig,
 ): number {
+  if (requested !== undefined) {
+    return Math.max(MIN_WORKERS, Math.min(ABSOLUTE_MAX_WORKERS, requested));
+  }
+
   // Resolve effective values: config overrides → DEFAULT_CONFIG fallback.
   const effectiveMaxWorkers = (() => {
     const concurrency = config?.concurrency ?? DEFAULT_CONFIG.concurrency;
@@ -173,10 +177,6 @@ export function calculateOptimalWorkers(
   const effectiveLargeRenderThreshold =
     config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
   const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);
-
-  if (requested !== undefined) {
-    return Math.max(MIN_WORKERS, Math.min(effectiveMaxWorkers, requested));
-  }
 
   if (totalFrames < MIN_FRAMES_PER_WORKER * 2) return 1;
 
