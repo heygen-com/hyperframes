@@ -63,6 +63,49 @@ describe("layout-audit.browser", () => {
     expect(after).not.toBe(before);
   });
 
+  // Opacity-reveal fixture (CLI feedback digest 2026-07-14): code-typing style
+  // scenes reveal pre-laid-out characters via opacity only — no geometry ever
+  // moves. The sweep fingerprint must treat that as motion, both while a glyph
+  // fades (opacity value changes) and when it crosses the 0.2 visibility floor
+  // (element enters the signature); otherwise `check` misfires `sweep_static`
+  // and authors reach for geometry hacks (a slow host y-drift) to pass.
+  it("changes the sweep fingerprint when text reveals via opacity alone", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="code"><span id="char">c</span></div>
+      </div>
+    `;
+
+    let charOpacity = "0";
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        code: rect({ left: 40, top: 40, width: 560, height: 48 }),
+        char: rect({ left: 40, top: 40, width: 18, height: 48 }),
+      },
+      {
+        char: {
+          get opacity() {
+            return charOpacity;
+          },
+        } as Partial<CSSStyleDeclaration>,
+      },
+    );
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+
+    const hidden = collect(); // below the 0.2 visibility floor — not in the signature
+    charOpacity = "0.5";
+    const fading = collect(); // mid-fade — present, opacity part of the signature
+    charOpacity = "1";
+    const revealed = collect(); // settled
+
+    expect(fading).not.toBe(hidden);
+    expect(revealed).not.toBe(fading);
+  });
+
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
