@@ -349,7 +349,9 @@ export default defineCommand({
     if (args.background) {
       let background;
       try {
-        background = await startBackgroundPreview(dir, startPort);
+        background = await startBackgroundPreview(dir, startPort, {
+          forceNew: Boolean(args["force-new"]),
+        });
       } catch (error) {
         clack.log.error(errorMessage(error));
         process.exitCode = 1;

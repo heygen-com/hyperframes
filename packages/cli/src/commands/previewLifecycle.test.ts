@@ -22,6 +22,15 @@ const server: ActiveServer = {
 };
 
 describe("background preview lifecycle", () => {
+  it("keeps case-distinct project paths separate on case-sensitive platforms", () => {
+    if (process.platform === "win32") return;
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+
+    expect(previewSessionPath("/tmp/Project", stateHome)).not.toBe(
+      previewSessionPath("/tmp/project", stateHome),
+    );
+  });
+
   it("builds a detached child invocation without recursively preserving --background", () => {
     expect(
       buildBackgroundPreviewArgs([
@@ -48,6 +57,24 @@ describe("background preview lifecycle", () => {
 
     expect(result).toMatchObject({ type: "reused", port: 3210 });
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("force-new waits for a different server instead of reusing the existing one", async () => {
+    const replacement = { ...server, port: 3211, pid: "5432" };
+    let scans = 0;
+    const scan = vi.fn(async () => (++scans < 3 ? [server] : [server, replacement]));
+    const spawn = vi.fn(() => ({ pid: 5432, unref: vi.fn() }));
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      forceNew: true,
+      scan,
+      spawn,
+      sleep: async () => {},
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+    });
+
+    expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
+    expect(spawn).toHaveBeenCalledOnce();
   });
 
   it("returns after a detached child becomes reachable and records its session", async () => {
@@ -80,7 +107,22 @@ describe("background preview lifecycle", () => {
 
     const status = await readBackgroundPreviewStatus(projectDir, 3002, {
       scan: async () => [],
-      pidAlive: () => false,
+      stateHome,
+    });
+
+    expect(status).toBeNull();
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("removes stale session metadata when its PID is alive but no server proves ownership", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    writePreviewSession(
+      { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+
+    const status = await readBackgroundPreviewStatus(projectDir, 3002, {
+      scan: async () => [],
       stateHome,
     });
 
@@ -161,5 +203,23 @@ describe("background preview lifecycle", () => {
 
     expect(result).toBe(true);
     expect(kill).toHaveBeenCalledWith(4321);
+  });
+
+  it("fails loudly when the server remains reachable after stop", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    writePreviewSession(
+      { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
+      stateHome,
+    );
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        scan: async () => [server],
+        kill: vi.fn(),
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/did not stop/i);
+    expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(true);
   });
 });

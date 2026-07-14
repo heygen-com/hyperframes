@@ -14,8 +14,6 @@ import { dirname, join, resolve } from "node:path";
 import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
 import { killProcessTree } from "../utils/orphanCleanup.js";
 
-const BACKGROUND_PREVIEW_CHILD_ENV = "HYPERFRAMES_BACKGROUND_PREVIEW_CHILD";
-
 export interface PreviewSession {
   pid: number;
   port: number;
@@ -40,9 +38,9 @@ interface LifecycleDependencies {
   scan?: (startPort?: number) => Promise<ActiveServer[]>;
   spawn?: SpawnPreview;
   sleep?: (ms: number) => Promise<void>;
-  pidAlive?: (pid: number) => boolean;
   kill?: (pid: number) => void;
   stateHome?: string;
+  forceNew?: boolean;
 }
 
 function defaultStateHome(): string {
@@ -50,7 +48,8 @@ function defaultStateHome(): string {
 }
 
 function normalized(path: string): string {
-  return resolve(path).replace(/\\/g, "/").toLowerCase();
+  const resolved = resolve(path).replace(/\\/g, "/");
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function sessionDirectory(stateHome = defaultStateHome()): string {
@@ -102,15 +101,6 @@ function matchingServer(servers: ActiveServer[], projectDir: string): ActiveServ
   return servers.find((server) => normalized(server.projectDir) === normalized(projectDir)) ?? null;
 }
 
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function stopProcess(pid: number): void {
   killProcessTree(pid);
   if (process.platform === "win32") {
@@ -156,8 +146,7 @@ export async function readBackgroundPreviewStatus(
     }
   }
 
-  const pidAlive = dependencies.pidAlive ?? processIsAlive;
-  if (!saved || !pidAlive(saved.pid)) removePreviewSession(projectDir, stateHome);
+  removePreviewSession(projectDir, stateHome);
   return null;
 }
 
@@ -171,7 +160,7 @@ export async function startBackgroundPreview(
 > {
   const scan = dependencies.scan ?? scanActiveServers;
   const existing = matchingServer(await scan(startPort), projectDir);
-  if (existing) {
+  if (existing && !dependencies.forceNew) {
     return {
       type: "reused",
       port: existing.port,
@@ -193,7 +182,7 @@ export async function startBackgroundPreview(
       {
         detached: true,
         stdio: ["ignore", logFd, logFd],
-        env: { ...process.env, [BACKGROUND_PREVIEW_CHILD_ENV]: "1" },
+        env: process.env,
       },
     );
   } finally {
@@ -204,7 +193,12 @@ export async function startBackgroundPreview(
 
   const sleep = dependencies.sleep ?? delay;
   for (let attempt = 0; attempt < 50; attempt++) {
-    const server = matchingServer(await scan(startPort), projectDir);
+    const servers = await scan(startPort);
+    const candidates =
+      dependencies.forceNew && existing
+        ? servers.filter((server) => server.port !== existing.port)
+        : servers;
+    const server = matchingServer(candidates, projectDir);
     if (server) {
       const session = {
         pid: child.pid,
@@ -249,5 +243,5 @@ export async function stopBackgroundPreview(
     }
     await sleep(100);
   }
-  return false;
+  throw new Error(`background preview did not stop for ${resolve(projectDir)}`);
 }
