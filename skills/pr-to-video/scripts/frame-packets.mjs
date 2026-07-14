@@ -18,7 +18,10 @@ function splitFrames(storyboard) {
   return matches.map((match, index) => {
     const start = match.index;
     const end = matches[index + 1]?.index ?? storyboard.length;
-    return { heading: match[1].trim(), block: storyboard.slice(start, end).trim() };
+    return {
+      heading: match[1].trim(),
+      block: storyboard.slice(start, end).trim(),
+    };
   });
 }
 
@@ -29,7 +32,9 @@ function frameId(frame) {
 }
 
 function sourceExcerpt(block) {
-  const match = block.match(/^### Source excerpt\s*\n+(```[^\n]*\n[\s\S]*?\n```)/im);
+  const match = block.match(
+    /^### Source excerpt\s*\n+(```[^\n]*\n[\s\S]*?\n```)/im,
+  );
   return match?.[1] ?? null;
 }
 
@@ -43,16 +48,19 @@ function codeVocabularySection(block) {
   const codeId = focal.match(/\b(code-[a-z0-9-]+)\b/i)?.[1];
   if (!codeId) return "";
   const vocabPath = join(SKILL_DIR, "references", "code-vocabulary.md");
+  if (!existsSync(vocabPath)) {
+    return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
+  }
   const vocab = readFileSync(vocabPath, "utf8");
   const lines = vocab.split("\n");
-  const indexes = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => line.toLowerCase().includes(codeId.toLowerCase()))
-    .map(({ index }) => index);
-  if (indexes.length === 0) return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
-  const start = Math.max(0, indexes[0] - 3);
-  const end = Math.min(lines.length, indexes[indexes.length - 1] + 10);
-  return `\n## Code block excerpt (${codeId})\n\n${lines.slice(start, end).join("\n").trim()}\n`;
+  const exactToken = `\`${codeId.toLowerCase()}\``;
+  const matchingLines = lines.filter((line) =>
+    line.toLowerCase().includes(exactToken),
+  );
+  if (matchingLines.length === 0) {
+    return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
+  }
+  return `\n## Code block excerpt (${codeId})\n\n${matchingLines.join("\n").trim()}\n`;
 }
 
 function resourceSections(block) {
@@ -91,35 +99,31 @@ export function buildFramePackets({
   const storyboard = readFileSync(storyboardPath, "utf8");
   const frames = splitFrames(storyboard);
   if (frames.length === 0) throw new Error("STORYBOARD.md has no frame blocks");
-  mkdirSync(outDir, { recursive: true });
 
-  return frames.map((frame) => {
+  const packets = frames.map((frame) => {
     const id = frameId(frame);
-    const codeFrame = /\bcode-[a-z0-9-]+\b/i.test(field(frame.block, "focal") ?? "");
+    const codeFrame = /\bcode-[a-z0-9-]+\b/i.test(
+      field(frame.block, "focal") ?? "",
+    );
     const excerpt = sourceExcerpt(frame.block);
     if (codeFrame && !excerpt) {
-      throw new Error(`${frame.heading}: code frame requires an upstream-selected Source excerpt`);
+      throw new Error(
+        `${frame.heading}: code frame requires an upstream-selected Source excerpt`,
+      );
     }
     const packet = `# Frame packet: ${id}\n\n## Structural contract\n\n${COMPACT_CONTRACT}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n- Design tokens: ${join(resolve(projectDir), "frame.md")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block)}${codeVocabularySection(frame.block)}`;
     const bytes = Buffer.byteLength(packet);
     if (bytes > maxPacketBytes) {
-      throw new Error(`${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`);
+      throw new Error(
+        `${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`,
+      );
     }
-    const path = join(outDir, `${id}.md`);
-    writeFileSync(path, packet);
-    return { frameId: id, path, bytes };
+    return { frameId: id, path: join(outDir, `${id}.md`), bytes, packet };
   });
-}
 
-export function buildWorkerBatches(packets, { maxWorkers = 2 } = {}) {
-  const workerCount = Math.min(Math.max(1, Math.floor(maxWorkers)), packets.length);
-  const batches = Array.from({ length: workerCount }, () => []);
-  packets.forEach((packet, index) => batches[index % workerCount].push(packet));
-  return batches;
-}
-
-export function canRetryFrame(priorAttempts) {
-  return priorAttempts === 0;
+  mkdirSync(outDir, { recursive: true });
+  for (const { path, packet } of packets) writeFileSync(path, packet);
+  return packets.map(({ packet: _packet, ...result }) => result);
 }
 
 function flag(argv, name, fallback) {
@@ -133,12 +137,22 @@ function main() {
   try {
     const packets = buildFramePackets({
       projectDir,
-      storyboardPath: resolve(flag(argv, "storyboard", join(projectDir, "STORYBOARD.md"))),
-      outDir: resolve(flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets"))),
+      storyboardPath: resolve(
+        flag(argv, "storyboard", join(projectDir, "STORYBOARD.md")),
+      ),
+      outDir: resolve(
+        flag(
+          argv,
+          "out-dir",
+          join(projectDir, ".hyperframes", "frame-packets"),
+        ),
+      ),
     });
     console.log(`✓ frame packets: ${packets.length} bounded packet(s)`);
     for (const packet of packets)
-      console.log(`  ${packet.frameId}: ${packet.bytes} bytes → ${packet.path}`);
+      console.log(
+        `  ${packet.frameId}: ${packet.bytes} bytes → ${packet.path}`,
+      );
   } catch (error) {
     console.error(`✗ frame packets: ${error.message}`);
     process.exit(1);

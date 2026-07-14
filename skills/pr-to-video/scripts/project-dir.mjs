@@ -11,15 +11,20 @@ function safeSegment(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   if (!normalized || normalized === "." || normalized === "..") {
-    throw new Error("Invalid GitHub PR reference: owner/repository is empty after sanitization");
+    throw new Error(
+      "Invalid GitHub PR reference: owner/repository is empty after sanitization",
+    );
   }
   return normalized;
 }
 
 export function parsePrReference(raw) {
   const input = String(raw ?? "").trim();
-  let match = input.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i);
-  if (!match) match = input.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)#(\d+)$/);
+  let match = input.match(
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i,
+  );
+  if (!match)
+    match = input.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)#(\d+)$/);
   if (!match) {
     throw new Error(`Invalid GitHub PR reference: ${JSON.stringify(input)}`);
   }
@@ -41,7 +46,14 @@ export function resolvePrToVideoProjectDir({
   const cacheRoot = env.XDG_CACHE_HOME?.trim()
     ? resolve(env.XDG_CACHE_HOME)
     : join(env.HOME?.trim() ? resolve(env.HOME) : homedir(), ".cache");
-  return join(cacheRoot, "hyperframes", "pr-to-video", `${ref.owner}-${ref.repo}-pr-${ref.number}`);
+  return join(
+    cacheRoot,
+    "hyperframes",
+    "pr-to-video",
+    ref.owner,
+    ref.repo,
+    `${ref.repo}-pr-${ref.number}`,
+  );
 }
 
 function flag(argv, name) {
@@ -53,14 +65,17 @@ function main() {
   const argv = process.argv.slice(2);
   const pr = flag(argv, "pr");
   if (!pr) {
-    console.error('usage: node project-dir.mjs --pr "<github PR>" [--project-dir <path>]');
+    console.error(
+      'usage: node project-dir.mjs --pr "<github PR>" [--project-dir <path>]',
+    );
     process.exit(2);
   }
   try {
     console.log(
       resolvePrToVideoProjectDir({
         pr,
-        explicitDir: flag(argv, "project-dir") ?? process.env.PR_TO_VIDEO_PROJECT_DIR,
+        explicitDir:
+          flag(argv, "project-dir") ?? process.env.PR_TO_VIDEO_PROJECT_DIR,
       }),
     );
   } catch (error) {

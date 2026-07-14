@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import test from "node:test";
 
-import { parsePrReference, resolvePrToVideoProjectDir } from "./project-dir.mjs";
-import { buildFramePackets, buildWorkerBatches, canRetryFrame } from "./frame-packets.mjs";
+import {
+  parsePrReference,
+  resolvePrToVideoProjectDir,
+} from "./project-dir.mjs";
+import { buildFramePackets } from "./frame-packets.mjs";
 import { hasCliCommand } from "./preflight.mjs";
 
 function write(path, contents) {
@@ -24,7 +33,14 @@ test("default project directory is durable and outside the caller repository", (
 
   assert.equal(
     result,
-    join(cache, "hyperframes", "pr-to-video", "everyinc-compound-engineering-plugin-pr-1092"),
+    join(
+      cache,
+      "hyperframes",
+      "pr-to-video",
+      "everyinc",
+      "compound-engineering-plugin",
+      "compound-engineering-plugin-pr-1092",
+    ),
   );
   assert.ok(isAbsolute(result));
   assert.ok(relative(caller, result).startsWith(".."));
@@ -43,16 +59,35 @@ test("explicit project directory is preserved exactly after absolute resolution"
   );
 });
 
+test("distinct owner and repository segments cannot collide in the durable cache", () => {
+  const cache = mkdtempSync(join(tmpdir(), "p2v-cache-collision-"));
+  const first = resolvePrToVideoProjectDir({
+    pr: "foo-bar/baz#1",
+    env: { XDG_CACHE_HOME: cache },
+  });
+  const second = resolvePrToVideoProjectDir({
+    pr: "foo/bar-baz#1",
+    env: { XDG_CACHE_HOME: cache },
+  });
+
+  assert.notEqual(first, second);
+});
+
 test("PR parsing sanitizes owner and repository path traversal", () => {
   assert.deepEqual(
-    parsePrReference("https://github.com/EveryInc/compound-engineering-plugin/pull/1092"),
+    parsePrReference(
+      "https://github.com/EveryInc/compound-engineering-plugin/pull/1092",
+    ),
     {
       owner: "everyinc",
       repo: "compound-engineering-plugin",
       number: 1092,
     },
   );
-  assert.throws(() => parsePrReference("../../outside#1092"), /valid GitHub PR reference/i);
+  assert.throws(
+    () => parsePrReference("../../outside#1092"),
+    /valid GitHub PR reference/i,
+  );
 });
 
 test("#1092 packets contain selected excerpts but never the full diff", () => {
@@ -62,7 +97,7 @@ test("#1092 packets contain selected excerpts but never the full diff", () => {
   write(join(project, "frame.md"), "# compact frame tokens\n");
   write(
     join(project, "STORYBOARD.md"),
-    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Diff\n\n- duration: 4s\n- src: compositions/frames/01-diff.html\n- blueprint: compose\n- rules: text-reveal\n\n### Source excerpt\n\n\`\`\`diff\n-oldCall()\n+newCall({ attested: true })\n\`\`\`\n\n## Frame 2 — Impact\n\n- duration: 3s\n- src: compositions/frames/02-impact.html\n- blueprint: number-lockup\n- rules: counting-dynamic-scale\n`,
+    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Diff\n\n- duration: 4s\n- src: compositions/frames/01-diff.html\n- focal: code-diff\n- blueprint: compose\n- rules: text-reveal\n\n### Source excerpt\n\n\`\`\`diff\n-oldCall()\n+newCall({ attested: true })\n\`\`\`\n\n## Frame 2 — Impact\n\n- duration: 3s\n- src: compositions/frames/02-impact.html\n- blueprint: number-lockup\n- rules: counting-dynamic-scale\n`,
   );
 
   const result = buildFramePackets({
@@ -76,8 +111,26 @@ test("#1092 packets contain selected excerpts but never the full diff", () => {
   const codePacket = readFileSync(result[0].path, "utf8");
   assert.match(codePacket, /newCall\(\{ attested: true \}\)/);
   assert.doesNotMatch(codePacket, /unselected noise/);
+  assert.doesNotMatch(codePacket, /code-scroll/);
   assert.ok(Buffer.byteLength(codePacket) < 32_000);
   assert.ok(result.every((packet) => packet.path.endsWith(".md")));
+});
+
+test("packet validation is atomic and leaves no partial output on overflow", () => {
+  const project = mkdtempSync(join(tmpdir(), "p2v-packets-atomic-"));
+  const outDir = join(project, ".hyperframes", "frame-packets");
+  write(join(project, "frame.md"), "# frame\n");
+  write(
+    join(project, "STORYBOARD.md"),
+    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Intro\n\n- duration: 2s\n- src: compositions/frames/01-intro.html\n\n## Frame 2 — Diff\n\n- duration: 4s\n- src: compositions/frames/02-diff.html\n- focal: code-diff\n\n### Source excerpt\n\n\`\`\`diff\n${"+oversized line\n".repeat(300)}\`\`\`\n`,
+  );
+
+  assert.throws(
+    () =>
+      buildFramePackets({ projectDir: project, outDir, maxPacketBytes: 2_000 }),
+    /limit 2000/,
+  );
+  assert.equal(existsSync(outDir), false);
 });
 
 test("code frames without an upstream-selected excerpt fail before dispatch", () => {
@@ -99,23 +152,9 @@ test("code frames without an upstream-selected excerpt fail before dispatch", ()
   );
 });
 
-test("worker batches are bounded and a frame gets at most one targeted retry", () => {
-  const packets = Array.from({ length: 8 }, (_, index) => ({ frameId: `0${index + 1}` }));
-  const batches = buildWorkerBatches(packets, { maxWorkers: 3 });
-
-  assert.equal(batches.length, 3);
-  assert.deepEqual(
-    batches.map((batch) => batch.length),
-    [3, 3, 2],
-  );
-  assert.equal(canRetryFrame(0), true);
-  assert.equal(canRetryFrame(1), false);
-  assert.equal(canRetryFrame(2), false);
-});
-
 test("CLI capability detection rejects skills newer than the available command surface", () => {
   const stableHelp = `Project:\n  lint  Validate a composition\n  snapshot  Capture frames\n\nUnknown command check`;
-  const currentHelp = `Project:\n  lint  Validate a composition\n  check  Run the full project validation gate\n  snapshot  Capture frames`;
+  const currentHelp = `Project:\n  lint  Validate a composition\n  check Run the full project validation gate\n  snapshot  Capture frames`;
 
   assert.equal(hasCliCommand(stableHelp, "check"), false);
   assert.equal(hasCliCommand(currentHelp, "check"), true);

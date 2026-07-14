@@ -17,7 +17,8 @@ import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
 
-// CDK synth is slow on cold start (~5-8s on the slowest CI runner). The
+// CDK synth is slow on cold start and reached 32s under full-workspace CI
+// contention. The
 // default bun:test 5s timeout trips the first `it()` that calls it. Cache
 // the default-args synth in `beforeAll` so each test is pure assertions.
 // Tests that need non-default props still synth on demand and bump their
@@ -129,9 +130,11 @@ describe("HyperframesRenderStack — contract", () => {
       projectName: "demo",
     });
     const t = Template.fromStack(stack);
-    t.hasResourceProperties("AWS::Lambda::Function", { FunctionName: "demo-render" });
+    t.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "demo-render",
+    });
     t.hasResourceProperties("AWS::StepFunctions::StateMachine", {
       StateMachineName: "demo-render",
     });
-  }, 30000);
+  }, 60000);
 });
