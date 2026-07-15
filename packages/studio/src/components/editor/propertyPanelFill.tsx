@@ -16,6 +16,7 @@ import {
   SliderControl,
 } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 /* ------------------------------------------------------------------ */
 /*  Asset path helpers                                                 */
@@ -87,6 +88,7 @@ export function ImageFillField({
   onCommit: (nextValue: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
+  const track = useTrackDesignInput();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const imageAssets = useMemo(() => assets.filter((a) => IMAGE_EXT.test(a)), [assets]);
@@ -102,7 +104,10 @@ export function ImageFillField({
     try {
       const uploaded = await onImportAssets(files);
       const nextImage = uploaded.find((a) => IMAGE_EXT.test(a));
-      if (nextImage) onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+      if (nextImage) {
+        track("button", "Upload image");
+        onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+      }
     } finally {
       setUploading(false);
     }
@@ -156,6 +161,7 @@ export function ImageFillField({
                 disabled={disabled}
                 onChange={(e) => {
                   const next = e.target.value;
+                  track("select", "Project asset");
                   if (!next) {
                     onCommit("none");
                     return;
@@ -205,6 +211,7 @@ export function GradientField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
 
@@ -226,11 +233,13 @@ export function GradientField({
               ? Math.min(100, (parsed.stops.at(-1)?.position ?? 90) + 10)
               : 100,
           );
+    track("button", "Add gradient stop");
     commit(nextGradient);
   };
 
   const removeStop = (index: number) => {
     if (parsed.stops.length <= 2) return;
+    track("button", `Remove gradient stop ${index + 1}`);
     commit({ ...parsed, stops: parsed.stops.filter((_, i) => i !== index) });
   };
 
@@ -263,6 +272,7 @@ export function GradientField({
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SegmentedControl
+            trackName="Gradient type"
             disabled={disabled}
             value={parsed.kind}
             onChange={(next) => patch({ kind: next as GradientModel["kind"] })}
@@ -277,7 +287,10 @@ export function GradientField({
               type="checkbox"
               checked={parsed.repeating}
               disabled={disabled}
-              onChange={(e) => patch({ repeating: e.target.checked })}
+              onChange={(e) => {
+                track("toggle", "Repeat gradient");
+                patch({ repeating: e.target.checked });
+              }}
               className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
             />
             Repeat
@@ -285,15 +298,16 @@ export function GradientField({
           <button
             type="button"
             disabled={disabled}
-            onClick={() =>
+            onClick={() => {
+              track("button", "Reverse gradient");
               commit({
                 ...parsed,
                 stops: [...parsed.stops].reverse().map((stop) => ({
                   ...stop,
                   position: 100 - stop.position,
                 })),
-              })
-            }
+              });
+            }}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <RotateCcw size={12} />
@@ -306,6 +320,7 @@ export function GradientField({
         <div className="grid gap-1.5">
           <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
           <SliderControl
+            trackName={parsed.kind === "linear" ? "Angle" : "Start angle"}
             value={parsed.angle}
             min={0}
             max={360}
@@ -342,6 +357,7 @@ export function GradientField({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Center X</span>
             <SliderControl
+              trackName="Center X"
               value={parsed.centerX}
               min={0}
               max={100}
@@ -355,6 +371,7 @@ export function GradientField({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Center Y</span>
             <SliderControl
+              trackName="Center Y"
               value={parsed.centerY}
               min={0}
               max={100}

@@ -38,6 +38,7 @@ import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
+import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 
 // Re-export helpers that external consumers import from this module
 export {
@@ -303,7 +304,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     );
   }
 
-  return (
+  const classicPanel = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-4">
@@ -593,4 +594,5 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       </div>
     </div>
   );
+  return <DesignPanelInputProvider ui="classic">{classicPanel}</DesignPanelInputProvider>;
 });

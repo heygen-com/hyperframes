@@ -11,6 +11,7 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
@@ -130,6 +131,7 @@ export function ColorField({
   flat?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -203,7 +205,9 @@ export function ColorField({
   const commitColor = (nextColor: ParsedColor) => {
     setDraftColor(nextColor);
     setHexDraft(toHexColor(nextColor).toUpperCase());
-    onCommit(formatCssColor(nextColor));
+    const nextValue = formatCssColor(nextColor);
+    if (!flat && nextValue !== value) track("color", label);
+    onCommit(nextValue);
   };
 
   const commitHsv = (nextHsv: { hue?: number; saturation?: number; value?: number }) => {

@@ -1,0 +1,263 @@
+// @vitest-environment happy-dom
+
+import React, { act, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+import { __resetDesignInputThrottle } from "../../utils/designInputTracking";
+import type { PropertyPanelProps } from "./propertyPanelHelpers";
+import {
+  DetailField,
+  MetricField,
+  Section,
+  SegmentedControl,
+  SelectField,
+  SliderControl,
+} from "./propertyPanelPrimitives";
+
+const trackStudioEvent = vi.hoisted(() => vi.fn());
+
+vi.mock("../../utils/studioTelemetry", () => ({
+  trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
+}));
+
+vi.mock("../../contexts/StudioContext", async () => {
+  const actual = await vi.importActual<typeof import("../../contexts/StudioContext")>(
+    "../../contexts/StudioContext",
+  );
+  return { ...actual, useStudioShellContext: () => ({ showToast: vi.fn() }) };
+});
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let roots: Root[] = [];
+
+beforeEach(() => {
+  trackStudioEvent.mockReset();
+  __resetDesignInputThrottle();
+});
+
+afterEach(() => {
+  for (const root of roots) act(() => root.unmount());
+  roots = [];
+  document.body.innerHTML = "";
+  vi.useRealTimers();
+});
+
+function render(ui: ReactElement): HTMLElement {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  roots.push(root);
+  act(() => root.render(ui));
+  return host;
+}
+
+function changeInput(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("expected native input value setter");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function blurInput(input: HTMLInputElement) {
+  input.focus();
+  input.blur();
+}
+
+function expectTracked(control: string, name: string, section = "style") {
+  expect(trackStudioEvent).toHaveBeenLastCalledWith("design_input", {
+    ui: "classic",
+    section,
+    control,
+    name,
+  });
+}
+
+function classicSection(children: ReactElement) {
+  return (
+    <DesignPanelInputProvider ui="classic">
+      <Section title="Style" icon={null}>
+        {children}
+      </Section>
+    </DesignPanelInputProvider>
+  );
+}
+
+describe("classic property-panel primitive telemetry", () => {
+  it("tracks MetricField only when a changed value commits", () => {
+    const onCommit = vi.fn();
+    const host = render(
+      classicSection(<MetricField label="Opacity" value="20" onCommit={onCommit} />),
+    );
+    const input = host.querySelector("input");
+    if (!input) throw new Error("expected metric input");
+
+    act(() => blurInput(input));
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+
+    act(() => {
+      changeInput(input, "40");
+    });
+    act(() => blurInput(input));
+
+    expect(onCommit).toHaveBeenCalledWith("40");
+    expectTracked("metric", "opacity");
+  });
+
+  it("tracks SliderControl on settle, not on its scheduled commit tick", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(
+      classicSection(
+        <SliderControl
+          trackName="Opacity"
+          value={20}
+          min={0}
+          max={100}
+          step={1}
+          displayValue="20%"
+          onCommit={onCommit}
+        />,
+      ),
+    );
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("expected slider input");
+
+    act(() => {
+      changeInput(input, "40");
+    });
+    act(() => vi.advanceTimersByTime(40));
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+
+    act(() => input.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    expectTracked("slider", "opacity");
+  });
+
+  it("tracks SelectField with its label", () => {
+    const host = render(
+      classicSection(
+        <SelectField
+          label="Blend mode"
+          value="normal"
+          options={["normal", "multiply"]}
+          onChange={vi.fn()}
+        />,
+      ),
+    );
+    const select = host.querySelector("select");
+    if (!select) throw new Error("expected select");
+    act(() => {
+      select.value = "multiply";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expectTracked("select", "blend-mode");
+  });
+
+  it("tracks DetailField with its label", () => {
+    const host = render(
+      classicSection(<DetailField label="External URL" value="old.png" onCommit={vi.fn()} />),
+    );
+    const input = host.querySelector("input");
+    if (!input) throw new Error("expected detail input");
+    act(() => changeInput(input, "new.png"));
+    act(() => blurInput(input));
+    expectTracked("text", "external-url");
+  });
+
+  it("tracks SegmentedControl with its explicit name", () => {
+    const host = render(
+      classicSection(
+        <SegmentedControl
+          trackName="Fill type"
+          value="solid"
+          options={[
+            { label: "Solid", value: "solid" },
+            { label: "Gradient", value: "gradient" },
+          ]}
+          onChange={vi.fn()}
+        />,
+      ),
+    );
+    const gradient = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Gradient",
+    );
+    if (!gradient) throw new Error("expected Gradient segment");
+    act(() => gradient.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expectTracked("segmented", "fill-type");
+  });
+});
+
+function representativeElement() {
+  return {
+    element: document.createElement("div"),
+    id: "panel-target",
+    selector: "#panel-target",
+    label: "Panel Target",
+    tagName: "div",
+    sourceFile: "index.html",
+    compositionPath: "index.html",
+    isCompositionHost: false,
+    isInsideLockedComposition: false,
+    boundingBox: { x: 0, y: 0, width: 320, height: 180 },
+    textContent: "",
+    dataAttributes: {},
+    inlineStyles: {},
+    computedStyles: {},
+    textFields: [],
+    capabilities: {
+      canSelect: true,
+      canEditStyles: false,
+      canCrop: true,
+      canMove: true,
+      canResize: true,
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
+    },
+  };
+}
+
+describe("classic PropertyPanel input coverage", () => {
+  it("emits only named classic events from a known section for every layout input", async () => {
+    const { PropertyPanel } = await import("./PropertyPanel");
+    const host = render(
+      <PropertyPanel
+        {...({
+          element: representativeElement(),
+          assets: [],
+          onSetStyle: vi.fn(),
+          onSetText: vi.fn(),
+          onSetAttributeLive: vi.fn(),
+          onSetManualOffset: vi.fn(),
+          onSetManualSize: vi.fn(),
+          onSetManualRotation: vi.fn(),
+        } as unknown as PropertyPanelProps)}
+      />,
+    );
+    const layout = host.querySelector('[data-panel-section="layout"]');
+    if (!layout) throw new Error("expected classic Layout section");
+    const inputs = Array.from(layout.querySelectorAll<HTMLInputElement>('input[type="text"]'));
+    expect(inputs.length).toBeGreaterThan(0);
+
+    for (const [index, input] of inputs.entries()) {
+      act(() => {
+        changeInput(input, String(100 + index));
+      });
+      act(() => blurInput(input));
+    }
+
+    expect(trackStudioEvent).toHaveBeenCalledTimes(inputs.length);
+    for (const [, payload] of trackStudioEvent.mock.calls) {
+      expect(payload).toEqual(
+        expect.objectContaining({
+          ui: "classic",
+          section: "layout",
+        }),
+      );
+      expect(payload.name).not.toBe("");
+      expect(payload.name).not.toBe("unnamed");
+      expect(payload.section).not.toBe("unknown");
+    }
+  });
+});

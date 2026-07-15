@@ -7,6 +7,7 @@ import { MetricField, Section, SelectField } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 /* ------------------------------------------------------------------ */
 /*  Text helpers (used only by text section components)                */
@@ -74,9 +75,11 @@ export function TextAreaField({
   flat?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionChangedRef = useRef(false);
   const focusedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
@@ -98,12 +101,22 @@ export function TextAreaField({
 
   const commitDraft = (d: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    if (!flat && interactionChangedRef.current) {
+      interactionChangedRef.current = false;
+      track("text", label);
+    }
     if (d !== valueRef.current) onCommit(d);
   };
   const scheduleCommit = (d: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     commitTimerRef.current = setTimeout(() => {
-      if (d !== valueRef.current) onCommit(d);
+      if (d !== valueRef.current) {
+        if (!flat && interactionChangedRef.current) {
+          interactionChangedRef.current = false;
+          track("text", label);
+        }
+        onCommit(d);
+      }
     }, 120);
   };
 
@@ -112,6 +125,7 @@ export function TextAreaField({
   };
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(e.target.value);
+    interactionChangedRef.current = true;
     scheduleCommit(e.target.value);
   };
   const handleBlur = () => {
@@ -169,6 +183,7 @@ function FontWeightField({
   fontFamily?: string;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const options = fontFamily ? detectAvailableWeights(fontFamily) : ALL_WEIGHTS;
   const displayOptions = value && !options.includes(value) ? [value, ...options] : options;
   return (
@@ -178,7 +193,10 @@ function FontWeightField({
         <select
           value={value}
           disabled={disabled}
-          onChange={(e) => onCommit(e.target.value)}
+          onChange={(e) => {
+            track("select", "Weight");
+            onCommit(e.target.value);
+          }}
           className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         >
           {displayOptions.map((o) => (
@@ -288,6 +306,7 @@ function TextFieldEditor({
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div className="space-y-3">
       <div className={showRemove ? "flex min-w-0 items-center justify-between gap-2" : "min-w-0"}>
@@ -300,7 +319,10 @@ function TextFieldEditor({
         {showRemove && (
           <button
             type="button"
-            onClick={() => onRemoveTextField(field.key)}
+            onClick={() => {
+              track("button", "Remove text field");
+              onRemoveTextField(field.key);
+            }}
             className="inline-flex h-7 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
           >
             Remove
@@ -398,6 +420,7 @@ export function TextSection({
    *  false so the legacy (non-flat) call site is unaffected. */
   hideOwnHeading?: boolean;
 }) {
+  const track = useTrackDesignInput();
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -446,6 +469,7 @@ export function TextSection({
           <button
             type="button"
             onClick={() => {
+              track("button", "Add text field");
               void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
                 if (nextKey) setActiveTextFieldKey(nextKey);
               });

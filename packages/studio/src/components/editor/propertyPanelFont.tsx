@@ -18,6 +18,7 @@ import {
   type FontOption,
   type LocalFontData,
 } from "./propertyPanelHelpers";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -135,6 +136,7 @@ export function FontFamilyField({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const currentFamily = primaryFontFamily(value);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -150,6 +152,10 @@ export function FontFamilyField({
   const [fontNotice, setFontNotice] = useState<string | null>(null);
   const canQueryLocalFonts =
     typeof window !== "undefined" && typeof window.queryLocalFonts === "function";
+  const commitFontFamily = (nextValue: string) => {
+    if (!flat && nextValue !== value) track("select", "Font family");
+    onCommit(nextValue);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -247,7 +253,7 @@ export function FontFamilyField({
       for (const font of imported) loadImportedFontStylesheet(font);
       const first = imported[0];
       if (first) {
-        onCommit(buildFontFamilyValue(first.family));
+        commitFontFamily(buildFontFamilyValue(first.family));
         setQuery("");
         setOpen(false);
       } else {
@@ -349,7 +355,7 @@ export function FontFamilyField({
             : await importSystemFont(option.family);
         if (imported) {
           loadImportedFontStylesheet(imported);
-          onCommit(buildFontFamilyValue(imported.family));
+          commitFontFamily(buildFontFamilyValue(imported.family));
           setQuery("");
           setOpen(false);
           return;
@@ -363,7 +369,7 @@ export function FontFamilyField({
       (f) => f.family.toLowerCase() === option.family.toLowerCase(),
     );
     if (imported) loadImportedFontStylesheet(imported);
-    onCommit(buildFontFamilyValue(option.family));
+    commitFontFamily(buildFontFamilyValue(option.family));
     setQuery("");
     setOpen(false);
   };
