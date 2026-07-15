@@ -9,9 +9,12 @@
  */
 
 import { defineCommand } from "citty";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
 import { type CanvasResolution } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
+import { parseAudioElements } from "@hyperframes/engine";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
@@ -303,6 +306,29 @@ export default defineCommand({
           console.error(`[lambda render] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
           process.exit(1);
         }
+
+        // Guard: reject compositions with VST audio chains (plugins can't run in Lambda)
+        const compositionHtmlPath = join(projectDir, "index.html");
+        let compositionHtml: string;
+        try {
+          compositionHtml = readFileSync(compositionHtmlPath, "utf-8");
+        } catch {
+          // Composition file missing or unreadable; let runRender handle the error
+          compositionHtml = "";
+        }
+        if (compositionHtml) {
+          const audioElements = parseAudioElements(compositionHtml);
+          const vstTracks = audioElements.filter((el) => el.vstChain);
+          if (vstTracks.length > 0) {
+            console.error(
+              `Lambda rendering does not support VST audio chains (plugins cannot run in Lambda).\n` +
+                `Tracks with VST chains: ${vstTracks.map((t) => t.id).join(", ")}.\n` +
+                `Render locally with: hyperframes render`,
+            );
+            process.exit(1);
+          }
+        }
+
         const { runRender } = await import("./lambda/render.js");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
         await runRender({
