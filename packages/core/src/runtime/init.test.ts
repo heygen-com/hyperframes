@@ -325,6 +325,27 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("hidden");
   });
 
+  it("hides a timed element at its exact end boundary", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "2.5");
+    root.appendChild(clip);
+
+    window.__timelines = { main: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(2.5);
+    expect(clip.style.visibility).toBe("hidden");
+  });
+
   it("keeps external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

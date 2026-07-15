@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyResolutionPreset, injectTailwindBrowserScript } from "./init.js";
+import { findFFmpeg } from "../browser/ffmpeg.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
 const tailwindScript =
@@ -172,6 +173,54 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("Video file not found: missing.mp4");
       expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the video stream duration when audio outlasts the final video frame", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    const source = join(dir, "source.mp4");
+    try {
+      const ffmpeg = findFFmpeg();
+      expect(ffmpeg).toBeDefined();
+      execFileSync(
+        ffmpeg as string,
+        [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=c=black:s=320x240:r=30:d=1",
+          "-f",
+          "lavfi",
+          "-i",
+          "sine=frequency=440:duration=1.2",
+          "-c:v",
+          "libx264",
+          "-c:a",
+          "aac",
+          source,
+        ],
+        { stdio: "ignore" },
+      );
+
+      const res = runInit([
+        target,
+        "--example",
+        "blank",
+        "--non-interactive",
+        "--skip-skills",
+        "--skip-transcribe",
+        "--video",
+        source,
+      ]);
+
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain('data-duration="1"');
+      expect(html).not.toContain('data-duration="1.2"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

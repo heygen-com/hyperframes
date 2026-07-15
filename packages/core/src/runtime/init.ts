@@ -583,7 +583,7 @@ export function initSandboxRuntimeModular(): void {
     const computedEnd =
       duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
     return (
-      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime <= computedEnd : true)
+      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime < computedEnd : true)
     );
   };
 
@@ -2813,7 +2813,7 @@ export function initSandboxRuntimeModular(): void {
             const mediaStart =
               Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
               0;
-            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime <= end) {
+            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
                 foundActive = true;
