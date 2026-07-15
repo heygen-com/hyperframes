@@ -602,29 +602,31 @@ echo processed > "$out"
       `echo "PLUGIN_MISSING FabFilter Pro-Q 3" >&2; exit 3`,
     );
 
-    const result = await processCompositionAudio(
-      [
-        {
-          id: "music",
-          src: "music.wav",
-          start: 0,
-          end: 2,
-          mediaStart: 0,
-          layer: 0,
-          volume: 1,
-          vstChain: "chain.json",
-          type: "audio",
-        },
-      ],
-      baseDir,
-      workDir,
-      join(baseDir, "out.m4a"),
-      2,
-    );
-
-    expect(result.tracksProcessed).toBe(0);
-    expect(result.error).toContain("music");
-    expect(result.error).toContain('plugin "FabFilter Pro-Q 3" is not installed');
+    // A hard failure must actually block a successful-looking render, not
+    // just leave an error string somewhere on an otherwise-`success: true`
+    // result — assert the call rejects (never resolves with `success: true`
+    // and the track silently dropped).
+    await expect(
+      processCompositionAudio(
+        [
+          {
+            id: "music",
+            src: "music.wav",
+            start: 0,
+            end: 2,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            vstChain: "chain.json",
+            type: "audio",
+          },
+        ],
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        2,
+      ),
+    ).rejects.toThrow('for track "music": plugin "FabFilter Pro-Q 3" is not installed');
   });
 
   it("hard-fails when the referenced VST chain file doesn't exist on disk", async () => {
@@ -634,29 +636,30 @@ echo processed > "$out"
 
     writeFileSync(join(baseDir, "music.wav"), "stub");
 
-    const result = await processCompositionAudio(
-      [
-        {
-          id: "music",
-          src: "music.wav",
-          start: 0,
-          end: 2,
-          mediaStart: 0,
-          layer: 0,
-          volume: 1,
-          vstChain: "does-not-exist.json",
-          type: "audio",
-        },
-      ],
-      baseDir,
-      workDir,
-      join(baseDir, "out.m4a"),
-      2,
-    );
-
-    expect(result.tracksProcessed).toBe(0);
-    expect(result.error).toContain("music");
-    expect(result.error).toContain("VST chain file not found");
+    // Same requirement as above: the missing chain file must reject the call
+    // (naming the track and the missing file), not degrade to a "successful"
+    // mix with the track quietly dropped.
+    await expect(
+      processCompositionAudio(
+        [
+          {
+            id: "music",
+            src: "music.wav",
+            start: 0,
+            end: 2,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            vstChain: "does-not-exist.json",
+            type: "audio",
+          },
+        ],
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        2,
+      ),
+    ).rejects.toThrow('VST chain file not found for track "music"');
   });
 });
 
