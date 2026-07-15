@@ -95,7 +95,6 @@ export function StudioRightPanel({
   const {
     domEditSelection,
     domEditGroupSelections,
-    copiedAgentPrompt,
     clearDomSelection,
     handleUngroupSelection,
     handleDomStyleCommit,
@@ -109,7 +108,6 @@ export function StudioRightPanel({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -348,7 +346,6 @@ export function StudioRightPanel({
         assets={assets}
         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
         multiSelectCount={domEditGroupSelections.length}
-        copiedAgentPrompt={copiedAgentPrompt}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
         onUngroup={handleUngroupSelection}
@@ -365,7 +362,6 @@ export function StudioRightPanel({
         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
         onAddTextField={handleDomAddTextField}
         onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
         onImportAssets={handleImportFiles}
         fontAssets={fontAssets}
         onImportFonts={handleImportFonts}

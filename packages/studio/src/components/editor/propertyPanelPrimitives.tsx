@@ -336,13 +336,11 @@ export function SelectField({
 
 export function Section({
   title,
-  icon: _icon,
   children,
   accessory,
   defaultCollapsed = false,
 }: {
   title: string;
-  icon: ReactNode;
   children: ReactNode;
   accessory?: ReactNode;
   defaultCollapsed?: boolean;

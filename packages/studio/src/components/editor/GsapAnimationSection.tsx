@@ -1,6 +1,5 @@
 import { memo, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import { AnimationCard } from "./AnimationCard";
@@ -37,7 +36,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   return (
-    <Section title="Animation" icon={<Film size={15} />}>
+    <Section title="Animation">
       {multipleTimelines && (
         <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
           This file has multiple GSAP timelines. Animation editing is disabled to prevent data loss

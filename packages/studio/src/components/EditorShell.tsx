@@ -14,7 +14,6 @@ import { useDomEditActionsContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
-import type { GestureRecordingState } from "./editor/GestureRecordControl";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -55,8 +54,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -87,8 +84,6 @@ export function EditorShell({
   setCompositionLoading,
   shouldShowSelectedDomBounds,
   isGestureRecording,
-  recordingState,
-  onToggleRecording,
   blockPreview,
   gestureOverlay,
 }: EditorShellProps) {
@@ -146,8 +141,6 @@ export function EditorShell({
                 shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                 blockPreview={blockPreview}
                 isGestureRecording={isGestureRecording}
-                recordingState={recordingState}
-                onToggleRecording={onToggleRecording}
                 gestureOverlay={gestureOverlay}
               />
             }

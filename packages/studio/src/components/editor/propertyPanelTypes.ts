@@ -25,7 +25,6 @@ export interface PropertyPanelProps {
   assets: string[];
   element: DomEditSelection | null;
   multiSelectCount?: number;
-  copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
@@ -51,7 +50,6 @@ export interface PropertyPanelProps {
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
-  onAskAgent: () => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];

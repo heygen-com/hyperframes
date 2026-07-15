@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Type } from "../../icons/SystemIcons";
+import { Plus } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -387,7 +387,7 @@ export function TextSection({
 
   if (textFields.length === 1) {
     return (
-      <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
+      <Section title="Text" defaultCollapsed>
         <TextFieldEditor
           field={activeField}
           styles={styles}
@@ -403,7 +403,7 @@ export function TextSection({
   }
 
   return (
-    <Section title="Text" icon={<Type size={15} />}>
+    <Section title="Text">
       <div className="space-y-4">
         <div className="grid gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
