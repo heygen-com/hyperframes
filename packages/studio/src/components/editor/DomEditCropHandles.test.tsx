@@ -54,11 +54,32 @@ function render(
   return { root, rerender: draw };
 }
 
-// Regression: the deselect restore used a ref recomputed from RENDER state — on
+// Regression: the deselect restore used a ref recomputed from RENDER state. On
 // a direct A→B selection switch, state re-syncs to B before A's effect cleanup
 // runs, so A used to get B's crop string (or lose its crop entirely). The
 // restore value must be owned by A's own lift effect / crop gesture.
 describe("DomEditCropHandles clip lift/restore", () => {
+  it("uses a distinct grab cursor for the crop reposition handle", () => {
+    const a = makeEl("a", "inset(10px)");
+    const { root } = render(a);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Reposition crop"]');
+
+    expect(handle?.style.cursor).toBe("grab");
+    expect(handle?.className).toContain("ring-2");
+
+    act(() => {
+      handle?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 }));
+    });
+    expect(handle?.style.cursor).toBe("grabbing");
+
+    act(() => {
+      handle?.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 1 }));
+    });
+    expect(handle?.style.cursor).toBe("grab");
+
+    act(() => root.unmount());
+  });
+
   it("lifts on select and restores the inline clip verbatim on unmount", () => {
     const a = makeEl("a", "inset(16px round 12px)");
     const { root } = render(a);

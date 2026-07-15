@@ -78,6 +78,26 @@ function renderToolbarWithAppHotkeys(onSnapChange = vi.fn()) {
 }
 
 describe("SnapToolbar keyboard shortcuts", () => {
+  it("names snap controls and exposes drag and grid option hints", () => {
+    const { root } = renderToolbar();
+    const snap = document.querySelector<HTMLButtonElement>('[aria-label="Disable snapping"]');
+    const grid = document.querySelector<HTMLButtonElement>('[aria-label="Show grid"]');
+
+    expect(snap?.title).toContain("Hold Alt while dragging to bypass snapping");
+    expect(snap?.getAttribute("aria-pressed")).toBe("true");
+    expect(grid?.title).toContain("Right-click for grid snap options");
+    expect(grid?.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => snap?.click());
+    const disabledSnap = document.querySelector<HTMLButtonElement>(
+      '[aria-label="Enable snapping"]',
+    );
+    expect(disabledSnap?.title).toContain("Snap disabled");
+    expect(disabledSnap?.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => root.unmount());
+  });
+
   it("toggles snap on an unclaimed S keypress", () => {
     const { root, onSnapChange } = renderToolbar();
 

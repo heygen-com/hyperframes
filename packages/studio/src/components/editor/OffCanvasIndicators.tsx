@@ -22,6 +22,8 @@ interface OffCanvasIndicatorsProps {
   >;
 }
 
+const GLYPH_SIZE = 20;
+
 function clipOutsideCanvas(
   rect: OffCanvasRect,
   compRect: { left: number; top: number; width: number; height: number },
@@ -63,7 +65,7 @@ function clipOutsideCanvas(
 /**
  * Dashed teal indicators for elements whose bounds extend past the composition
  * (the "gray zone"). The in-canvas portion is clipped away so only the
- * protruding sliver is dashed — the on-canvas part gets no outline, since a
+ * protruding sliver is dashed. The on-canvas part gets no outline, since a
  * solid selection-style border on an unselected element reads as "selected".
  * Extracted from DomEditOverlay to keep that file under the 600-LOC cap.
  */
@@ -81,7 +83,7 @@ export function OffCanvasIndicators({
       {rects
         .filter((r) => {
           // Suppress the indicator for any currently-selected element (primary
-          // OR a marquee group member) — those already render a selection box.
+          // OR a marquee group member), those already render a selection box.
           const el = elements.current.get(r.key);
           if (!el) return true;
           if (selection?.element === el) return false;
@@ -115,19 +117,23 @@ export function OffCanvasIndicators({
           };
           return (
             <div key={`offcanvas-${r.key}`} className="pointer-events-none absolute" style={pos}>
-              {/* Dashed layer — clipped to exclude canvas area.
-                  Note: clip-path is visual only — hit-testing still covers the
-                  full bounding rect, so clicking the in-canvas portion selects
-                  via this handler. That's acceptable: it resolves the same
-                  element the normal canvas path would, just with
-                  skipSourceProbe (the element is already known here). */}
+              <div
+                aria-hidden="true"
+                data-off-canvas-indicator-outline="true"
+                className="pointer-events-none absolute inset-0 rounded-md border-2 border-dashed border-studio-accent/10"
+                style={clipOutside ? { clipPath: clipOutside } : undefined}
+              />
               <div
                 role="button"
                 tabIndex={0}
                 aria-label={`Select off-canvas element ${r.key}`}
-                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/10 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
-                style={clipOutside ? { clipPath: clipOutside } : undefined}
-                title={`Off-canvas: ${r.key} — click to select`}
+                data-off-canvas-indicator-glyph="true"
+                className="pointer-events-auto absolute flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-studio-accent bg-neutral-900 text-[11px] leading-none text-studio-accent shadow-md transition-colors hover:bg-studio-accent hover:text-neutral-950"
+                style={{
+                  left: r.left < compRect.left ? 0 : Math.max(0, r.width - GLYPH_SIZE),
+                  top: r.top < compRect.top ? 0 : Math.max(0, r.height - GLYPH_SIZE),
+                }}
+                title={`Off-canvas: ${r.key}, click to select`}
                 onClick={handleClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -136,7 +142,9 @@ export function OffCanvasIndicators({
                     void selectOffCanvas();
                   }
                 }}
-              />
+              >
+                <span aria-hidden="true">↗</span>
+              </div>
             </div>
           );
         })}
