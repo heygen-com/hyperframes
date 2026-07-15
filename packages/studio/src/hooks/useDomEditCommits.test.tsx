@@ -34,7 +34,7 @@ interface RenderedDomEditCommits {
 
 interface RenderDomEditCommitsOptions {
   importedFontAssets?: ImportedFontAsset[];
-  writeProjectFile?: (path: string, content: string) => Promise<void>;
+  writeProjectFile?: (path: string, content: string, expectedContent?: string) => Promise<void>;
 }
 
 type FetchHandler = (
@@ -1046,6 +1046,46 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
     } finally {
       warnSpy.mockRestore();
+      rendered.cleanup();
+    }
+  });
+
+  it("uses the patched server content as the custom-font write precondition", async () => {
+    const patchedContent =
+      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
+    stubPatchFetch(
+      { ok: true, changed: true, matched: true, content: patchedContent },
+      patchedContent,
+    );
+    const { iframe, element } = createPreviewElement();
+    const selection = createSelection(element, {
+      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+    });
+    const writeProjectFile = vi.fn(async () => {});
+    const rendered = renderDomEditCommits(selection, iframe, { writeProjectFile });
+
+    try {
+      await act(async () => {
+        await rendered.hook.commitDomTextFields(
+          selection,
+          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+          {
+            importedFont: {
+              family: "Imported",
+              path: "fonts/Imported.woff2",
+              url: "/api/projects/p1/preview/fonts/Imported.woff2",
+            },
+          },
+        );
+      });
+
+      expect(writeProjectFile).toHaveBeenCalledWith(
+        "index.html",
+        expect.stringContaining("@font-face"),
+        patchedContent,
+      );
+      expect(rendered.showToast).not.toHaveBeenCalled();
+    } finally {
       rendered.cleanup();
     }
   });

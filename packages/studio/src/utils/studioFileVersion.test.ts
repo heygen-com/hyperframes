@@ -8,12 +8,29 @@ describe("studioFileContentVersion", () => {
     );
   });
 
-  it("keeps a known-missing version distinct from known empty content", async () => {
+  it("keeps an explicit content precondition authoritative over cached state", async () => {
+    const versions = new Map<string, string | null>([
+      ["stale.html", await studioFileContentVersion("stale")],
+      ["newer.html", await studioFileContentVersion("newer")],
+      ["missing.html", null],
+    ]);
+    const expectedVersion = await studioFileContentVersion("expected");
+
+    expect(await studioExpectedFileVersion(versions, "stale.html", "expected")).toBe(
+      expectedVersion,
+    );
+    expect(await studioExpectedFileVersion(versions, "newer.html", "expected")).toBe(
+      expectedVersion,
+    );
+    expect(await studioExpectedFileVersion(versions, "missing.html", "expected")).toBe(
+      expectedVersion,
+    );
+  });
+
+  it("keeps known-missing and untracked files distinct without explicit content", async () => {
     const versions = new Map<string, string | null>([["missing.html", null]]);
 
-    expect(await studioExpectedFileVersion(versions, "missing.html", "")).toBeNull();
-    expect(await studioExpectedFileVersion(versions, "empty.html", "")).toBe(
-      await studioFileContentVersion(""),
-    );
+    expect(await studioExpectedFileVersion(versions, "missing.html")).toBeNull();
+    expect(await studioExpectedFileVersion(versions, "untracked.html")).toBeUndefined();
   });
 });

@@ -8,14 +8,14 @@ export async function studioFileContentVersion(content: string): Promise<string>
   return `"sha256:${hex}"`;
 }
 
-/** Prefer the version observed during the read, including a known-missing file. */
+/** Prefer an explicit content precondition, then the version observed during the read. */
 export async function studioExpectedFileVersion(
   versions: ReadonlyMap<string, string | null>,
   path: string,
   expectedContent?: string,
 ): Promise<string | null | undefined> {
-  if (versions.has(path)) return versions.get(path);
-  return expectedContent === undefined ? undefined : studioFileContentVersion(expectedContent);
+  if (expectedContent !== undefined) return studioFileContentVersion(expectedContent);
+  return versions.get(path);
 }
 
 export function createStudioWriteToken(): string {
