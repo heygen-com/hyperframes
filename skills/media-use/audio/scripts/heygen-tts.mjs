@@ -17,7 +17,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import { heygenAuthHeadersWithRefresh, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
 import { ffprobeDuration, resolveVoiceId, synthesizeOne, withWordIds } from "./lib/tts.mjs";
 
 const argv = process.argv.slice(2);
@@ -66,7 +66,7 @@ const listOnly = flag("list") === true;
 loadEnvFromDir(process.cwd());
 let authHeaders;
 try {
-  authHeaders = heygenAuthHeaders();
+  authHeaders = await heygenAuthHeadersWithRefresh();
 } catch (e) {
   die(e.message);
 }
@@ -94,7 +94,7 @@ const voiceId = await resolveVoiceId({ provider: "heygen", userVoice, lang });
 if (!userVoice) console.error(`· using voice ${voiceId}`);
 
 // ---------- synthesize (shared engine code) ----------
-const { ok, words } = await synthesizeOne({
+const { ok, words, error } = await synthesizeOne({
   provider: "heygen",
   text,
   voiceId,
@@ -103,7 +103,9 @@ const { ok, words } = await synthesizeOne({
   wavAbs: output,
   hyperframesDir: process.cwd(),
 });
-if (!ok) die("synthesis failed (HeyGen request/transcode error)");
+if (!ok) {
+  die(error ? `synthesis failed: ${error}` : "synthesis failed (HeyGen request/transcode error)");
+}
 
 let wordCount = 0;
 if (wordsPath) {

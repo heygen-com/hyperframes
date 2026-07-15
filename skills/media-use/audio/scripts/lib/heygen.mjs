@@ -4,11 +4,29 @@
 // credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
 // overrides the dir). Vendored so the skill ships standalone. Pure node.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
+const HEYGEN_OAUTH_TOKEN_URL =
+  process.env.HYPERFRAMES_OAUTH_TOKEN_URL || "https://api2.heygen.com/v1/oauth/token";
+const HEYGEN_OAUTH_CLIENT_ID =
+  process.env.HYPERFRAMES_OAUTH_CLIENT_ID || "q2A2QRSke2LrFTPJhoDbHtXh";
+const REFRESH_LOCK_RETRY_MS = 25;
+const REFRESH_LOCK_TIMEOUT_MS = 10_000;
+const REFRESH_LOCK_STALE_MS = 30_000;
 export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // Tool-attribution sent on EVERY media-use HeyGen call regardless of auth type, so
 // the backend can isolate media-use consumption from other free TTS / avatar video.
@@ -45,7 +63,7 @@ export function loadEnvFromDir(startDir) {
   }
 }
 
-// → { headers } | { expired: true } | null. Never throws.
+// → { headers } | { expired: true } | { refreshable: true, ... } | null. Never throws.
 export function heygenCredential() {
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
   if (envKey) return { headers: { "X-Api-Key": envKey } };
@@ -68,8 +86,9 @@ export function heygenCredential() {
   if (oauth?.access_token) {
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();
     if (!expired) return { headers: { Authorization: `Bearer ${oauth.access_token}` } };
-    if (!cred.api_key) return { expired: true };
+    if (!oauth.refresh_token && !cred.api_key) return { expired: true };
   }
+  if (oauth?.refresh_token) return { expired: true, refreshable: true, file, credentials: cred };
   if (cred.api_key) return { headers: { "X-Api-Key": cred.api_key } };
   return null;
 }
@@ -81,6 +100,7 @@ export function heygenCredential() {
 // with nothing to tag.
 export function heygenAuthMethod() {
   const cred = heygenCredential();
+  if (cred?.refreshable) return "oauth";
   if (!cred?.headers) return null;
   return "Authorization" in cred.headers ? "oauth" : "api_key";
 }
@@ -104,6 +124,133 @@ export function heygenAuthHeaders() {
   throw new Error(
     "no HeyGen credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.heygen/credentials)",
   );
+}
+
+// Resolve auth for a network request, silently renewing an expired OAuth token
+// when the persisted credential includes a refresh token. Access tokens remain
+// short-lived; the refresh token provides the no-prompt UX without weakening
+// OAuth's revocation and expiry guarantees.
+function oauthHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    ...HEYGEN_CLI_SOURCE_HEADERS,
+    ...HEYGEN_CLIENT_SOURCE_HEADERS,
+  };
+}
+
+function writeCredentialsAtomically(file, credentials) {
+  const temporary = `${file}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(credentials, null, 2)}\n`, {
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(temporary, file);
+    chmodSync(file, 0o600);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+async function acquireRefreshLock(credentialsFile) {
+  const lockFile = `${credentialsFile}.refresh.lock`;
+  const deadline = Date.now() + REFRESH_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      const descriptor = openSync(lockFile, "wx", 0o600);
+      return () => {
+        closeSync(descriptor);
+        rmSync(lockFile, { force: true });
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - statSync(lockFile).mtimeMs > REFRESH_LOCK_STALE_MS) {
+          rmSync(lockFile, { force: true });
+          continue;
+        }
+      } catch (statError) {
+        if (statError?.code !== "ENOENT") throw statError;
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error("timed out waiting for another HeyGen OAuth refresh to finish");
+      }
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_LOCK_RETRY_MS));
+    }
+  }
+}
+
+async function refreshCredential(cred, fetchImpl) {
+  const oauth = cred.credentials.oauth;
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: oauth.refresh_token,
+    client_id: HEYGEN_OAUTH_CLIENT_ID,
+  });
+  const res = await fetchImpl(HEYGEN_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `HeyGen OAuth refresh failed (HTTP ${res.status}) — run \`npx hyperframes auth login\``,
+    );
+  }
+  const payload = await res.json().catch(() => null);
+  const accessToken = payload?.access_token;
+  const invalidAccessToken =
+    typeof accessToken !== "string" ||
+    !accessToken ||
+    accessToken.includes("\r") ||
+    accessToken.includes("\n") ||
+    accessToken.includes(String.fromCharCode(0));
+  if (invalidAccessToken) {
+    throw new Error(
+      "HeyGen OAuth refresh returned an invalid access token — run `npx hyperframes auth login`",
+    );
+  }
+
+  const expiresIn = Number(payload.expires_in);
+  const renewed = {
+    ...oauth,
+    access_token: accessToken,
+    refresh_token: payload.refresh_token || oauth.refresh_token,
+  };
+  if (typeof payload.token_type === "string" && payload.token_type) {
+    renewed.token_type = payload.token_type;
+  }
+  if (typeof payload.scope === "string" && payload.scope) renewed.scope = payload.scope;
+  if (Number.isFinite(expiresIn)) {
+    renewed.expires_at = new Date(Date.now() + Math.max(expiresIn, 30) * 1000).toISOString();
+  } else {
+    delete renewed.expires_at;
+  }
+  const saved = { ...cred.credentials, oauth: renewed };
+  writeCredentialsAtomically(cred.file, saved);
+  return oauthHeaders(accessToken);
+}
+
+export async function heygenAuthHeadersWithRefresh(fetchImpl = fetch) {
+  const cred = heygenCredential();
+  if (!cred?.refreshable) return heygenAuthHeaders();
+
+  const release = await acquireRefreshLock(cred.file);
+  try {
+    const current = heygenCredential();
+    if (current?.headers?.Authorization) {
+      return oauthHeaders(current.headers.Authorization.slice("Bearer ".length));
+    }
+    if (!current?.refreshable) return heygenAuthHeaders();
+    return await refreshCredential(current, fetchImpl);
+  } finally {
+    release();
+  }
 }
 
 // Authed JSON request against the v3 API; throws on a non-OK status.

@@ -42,7 +42,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
+import { heygenAuthHeadersWithRefresh, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
 import {
   ffprobeDuration,
   pickProvider,
@@ -111,8 +111,21 @@ const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
 
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
-const heygenOK = heygenCredential() !== null;
-const headers = heygenOK ? heygenAuthHeaders() : null;
+let headers = null;
+let heygenOK = false;
+let heygenAuthResolved = false;
+async function resolveHeygenAuth() {
+  if (heygenAuthResolved) return;
+  heygenAuthResolved = true;
+  const heygenCred = heygenCredential();
+  try {
+    headers =
+      heygenCred?.headers || heygenCred?.refreshable ? await heygenAuthHeadersWithRefresh() : null;
+  } catch (error) {
+    console.error(`· heygen auth: ${error.message} — proceeding without HeyGen`);
+  }
+  heygenOK = headers !== null;
+}
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
 const prev = existsSync(outPath) ? JSON.parse(readFileSync(outPath, "utf8")) : {};
@@ -196,6 +209,7 @@ if (only.has("bgm")) {
   // a pending job it can't await). Only the UNSET/auto default picks generate
   // when HeyGen is absent.
   const explicitMode = bgmModeOverride || request.bgm?.mode || null;
+  if (!noBgm && (!explicitMode || explicitMode === "retrieve")) await resolveHeygenAuth();
   let mode = noBgm ? "none" : explicitMode || (heygenOK ? "retrieve" : "generate");
   if (mode === "retrieve" && !heygenOK) {
     anomalies.push(
@@ -260,6 +274,7 @@ if (only.has("sfx")) {
       .map((name) => ({ id: String(l.id), name: String(name).trim() }))
       .filter((c) => c.name),
   );
+  if (cues.length) await resolveHeygenAuth();
   const res = await resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxLibDir });
   sfx = res.sfx;
   anomalies.push(...res.anomalies);

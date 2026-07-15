@@ -32,7 +32,13 @@
 // Grouping mirrors the proven heuristics (frame boundary · sentence-end punct ·
 // silence gap · density-aware word cap); word timings come inline from audio_meta.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
@@ -64,26 +70,42 @@ function runBuild(argv) {
   };
 
   const hyperframesDir = resolve(flag(argv, "hyperframes", "."));
-  const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
-  const audioMetaPath = resolve(flag(argv, "audio-meta", join(hyperframesDir, "audio_meta.json")));
-  const outPath = resolve(flag(argv, "out", join(hyperframesDir, "caption_groups.json")));
+  const storyboardPath = resolve(
+    flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")),
+  );
+  const audioMetaPath = resolve(
+    flag(argv, "audio-meta", join(hyperframesDir, "audio_meta.json")),
+  );
+  const outPath = resolve(
+    flag(argv, "out", join(hyperframesDir, "caption_groups.json")),
+  );
   const htmlPath = join(hyperframesDir, "compositions/captions.html");
   const overridesPath = join(hyperframesDir, "caption-overrides.json");
   const skinArg = flag(argv, "skin", null);
-  const hiddenSkinPath = join(hyperframesDir, ".hyperframes", "caption-skin.html");
+  const hiddenSkinPath = join(
+    hyperframesDir,
+    ".hyperframes",
+    "caption-skin.html",
+  );
   const legacySkinPath = join(hyperframesDir, "caption-skin.html");
   const skinPath = resolve(
     skinArg ?? (existsSync(hiddenSkinPath) ? hiddenSkinPath : legacySkinPath),
   );
-  const framePath = resolve(flag(argv, "frame", join(hyperframesDir, "frame.md")));
+  const framePath = resolve(
+    flag(argv, "frame", join(hyperframesDir, "frame.md")),
+  );
 
-  if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
+  if (!existsSync(storyboardPath))
+    die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
   const { width: W, height: H } = parseFormat(manifest.globals.format);
+  const language = String(manifest.globals.extra?.language ?? "").toLowerCase();
+  const compactWordSpacing = /^(?:zh|ja)(?:[-_]|$)/.test(language);
 
   if (!existsSync(audioMetaPath)) skip("no audio_meta.json (silent film)");
   const meta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-  if (!Array.isArray(meta.voices) || meta.voices.length === 0) skip("no narration");
+  if (!Array.isArray(meta.voices) || meta.voices.length === 0)
+    skip("no narration");
 
   // cumulative frame starts (by frame number) + total duration, from STORYBOARD.
   const startByFrame = new Map();
@@ -103,7 +125,12 @@ function runBuild(argv) {
       const text = String(w.text ?? "").trim();
       if (!text || /^[.?!,;:—–-]+$/.test(text)) continue; // drop empties + bare punctuation
       if (!isFinite(w.start) || !isFinite(w.end)) continue;
-      words.push({ text, start: r3(base + w.start), end: r3(base + w.end), frame: v.frame });
+      words.push({
+        text,
+        start: r3(base + w.start),
+        end: r3(base + w.end),
+        frame: v.frame,
+      });
     }
   }
   words.sort((a, b) => a.start - b.start);
@@ -113,7 +140,12 @@ function runBuild(argv) {
   const densityAt = (i) => {
     const t0 = words[i].start;
     let n = 0;
-    for (let j = i; j < words.length && words[j].start < t0 + DENSITY_WINDOW; j++) n++;
+    for (
+      let j = i;
+      j < words.length && words[j].start < t0 + DENSITY_WINDOW;
+      j++
+    )
+      n++;
     return n / DENSITY_WINDOW;
   };
 
@@ -151,7 +183,7 @@ function runBuild(argv) {
       frame: g.frame,
       start: r3(first.start),
       end,
-      text: g.words.map((w) => w.text).join(" "),
+      text: g.words.map((w) => w.text).join(compactWordSpacing ? "" : " "),
       words: g.words.map((w, wi) => ({
         id: `caption-word-${gi}-${wi}`,
         text: w.text,
@@ -165,7 +197,11 @@ function runBuild(argv) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(
     outPath,
-    JSON.stringify({ total_duration_s: total, width: W, height: H, groups: finalized }, null, 2),
+    JSON.stringify(
+      { total_duration_s: total, width: W, height: H, groups: finalized },
+      null,
+      2,
+    ),
   );
 
   // ── write compositions/captions.html (preset skin if present, else default) ──
@@ -174,7 +210,9 @@ function runBuild(argv) {
   if (existsSync(skinPath)) {
     const tokens = frameTokensCss(framePath, H);
     const faces = brandFontFaces(framePath, hyperframesDir);
-    const fonts = existsSync(framePath) ? parseFonts(readFileSync(framePath, "utf8")) : {};
+    const fonts = existsSync(framePath)
+      ? parseFonts(readFileSync(framePath, "utf8"))
+      : {};
     writeFileSync(
       htmlPath,
       buildFromSkin(
@@ -187,11 +225,15 @@ function runBuild(argv) {
         die,
         faces,
         fonts,
+        compactWordSpacing,
       ),
     );
     source = `preset skin (${skinPath.replace(hyperframesDir + "/", "")})`;
   } else {
-    writeFileSync(htmlPath, buildCaptionsHtml(finalized, total, W, H));
+    writeFileSync(
+      htmlPath,
+      buildCaptionsHtml(finalized, total, W, H, compactWordSpacing),
+    );
     source = "default (built-in pill)";
   }
 
@@ -225,10 +267,22 @@ function runBuild(argv) {
 //     so the active-word highlight clips — a line-height floor + word padding fixes it
 //   · data-composition-id + dimensions on the <template> root (skins lead with
 //     <script>/<style>, so the root element must carry the id, not the first child)
-function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts = {}) {
+function buildFromSkin(
+  skin,
+  groups,
+  total,
+  W,
+  H,
+  tokens,
+  die,
+  faces = "",
+  fonts = {},
+  compactWordSpacing = false,
+) {
   const fillOnce = (src, re, repl, label) => {
     const n = (src.match(re) || []).length;
-    if (n !== 1) die(`caption-skin.html: expected exactly one ${label}, found ${n}`);
+    if (n !== 1)
+      die(`caption-skin.html: expected exactly one ${label}, found ${n}`);
     return src.replace(re, () => repl);
   };
   let out = skin;
@@ -239,7 +293,7 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // Strip in a fixpoint loop, not a single global pass: removing one comment can
   // re-form a marker from a nested/partial pair (e.g. <!--<!---->-->), which one
   // pass misses — CodeQL flags the single replace as incomplete sanitization.
-  for (let prev = ""; prev !== out; ) {
+  for (let prev = ""; prev !== out;) {
     prev = out;
     out = out.replace(/<!--[\s\S]*?-->/g, "");
   }
@@ -257,31 +311,67 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   //  (2) it drops the preset's own fallback name (Barlow / IBM Plex Mono / …), which has
   //      no @font-face in this project. The :root token stays for any other consumer.
   if (fonts.display)
-    out = out.replace(/var\(\s*--font-display\s*(?:,\s*"[^"]*"\s*)?\)/g, fonts.display);
-  if (fonts.body) out = out.replace(/var\(\s*--font-body\s*(?:,\s*"[^"]*"\s*)?\)/g, fonts.body);
+    out = out.replace(
+      /var\(\s*--font-display\s*(?:,\s*"[^"]*"\s*)?\)/g,
+      fonts.display,
+    );
+  if (fonts.body)
+    out = out.replace(
+      /var\(\s*--font-body\s*(?:,\s*"[^"]*"\s*)?\)/g,
+      fonts.body,
+    );
   out = fillOnce(
     out,
     /var GROUPS = \[\];/,
     `var GROUPS = ${JSON.stringify(groups)};`,
     "`var GROUPS = [];` hole",
   );
-  out = fillOnce(out, /var DURATION = 0;/, `var DURATION = ${total};`, "`var DURATION = 0;` hole");
-  out = fillOnce(out, /data-duration="0"/, `data-duration="${total}"`, '`data-duration="0"` hole');
-  out = fillOnce(out, /data-width="0"/, `data-width="${W}"`, '`data-width="0"` hole');
-  out = fillOnce(out, /data-height="0"/, `data-height="${H}"`, '`data-height="0"` hole');
+  out = fillOnce(
+    out,
+    /var DURATION = 0;/,
+    `var DURATION = ${total};`,
+    "`var DURATION = 0;` hole",
+  );
+  out = fillOnce(
+    out,
+    /data-duration="0"/,
+    `data-duration="${total}"`,
+    '`data-duration="0"` hole',
+  );
+  out = fillOnce(
+    out,
+    /data-width="0"/,
+    `data-width="${W}"`,
+    '`data-width="0"` hole',
+  );
+  out = fillOnce(
+    out,
+    /data-height="0"/,
+    `data-height="${H}"`,
+    '`data-height="0"` hole',
+  );
   // font-robust safety net — appended last so it wins the cascade over the skin's own
   // (preset-font-tuned) line-height. Kept SNUG (1.1) so the plate hugs the text. NO extra
   // word/pill padding: inspect's `text_box_overflow` on the highlight words is a cosmetic
   // false-positive here (heavy-glyph ink slightly exceeds the line box, but there's no
   // overflow:hidden — nothing is clipped); zeroing it would need an airy line-height that
   // balloons the pill, which is worse. Override only if a brand font genuinely clips.
-  out += "\n<style>\n  .caption-line { line-height: 1.1 !important; }\n</style>";
+  out +=
+    "\n<style>\n  .caption-line { line-height: 1.1 !important; }\n</style>";
+  if (compactWordSpacing) {
+    out +=
+      "\n<style>\n" +
+      "  .caption-line { column-gap: 0 !important; letter-spacing: 0 !important; }\n" +
+      "  .caption-word { padding-inline: 0 !important; }\n" +
+      "</style>";
+  }
   // dark-ground caption contrast (auto). The preset caption skins are tuned for a LIGHT
   // pill (cream); on a dark brand ground the pill goes near-black, so the skin's faint
   // upcoming-word mix and light highlight block turn unreadable. When the resolved caption
   // canvas is dark, override the three word states: a brighter muted upcoming color + an
   // on-brand ACCENT highlight block with light text. Light grounds are left untouched.
-  const capCanvas = (tokens.match(/--cap-canvas:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+  const capCanvas = (tokens.match(/--cap-canvas:\s*(#[0-9a-fA-F]{6})/) ||
+    [])[1];
   if (capCanvas && (lum(capCanvas) ?? 255) < 90) {
     out +=
       "\n<style>\n" +
@@ -301,7 +391,9 @@ function brandFontFaces(framePath, hyperframesDir) {
   if (!existsSync(framePath)) return "";
   const { display, body } = parseFonts(readFileSync(framePath, "utf8"));
   const families = [
-    ...new Set([display, body].filter(Boolean).map((f) => f.replace(/^"|"$/g, ""))),
+    ...new Set(
+      [display, body].filter(Boolean).map((f) => f.replace(/^"|"$/g, "")),
+    ),
   ];
   if (!families.length) return "";
   const dirs = [
@@ -309,7 +401,10 @@ function brandFontFaces(framePath, hyperframesDir) {
     // "../" prefix escapes the root (lint: invalid_parent_traversal_in_asset_path) and 404s in
     // Studio/preview. Mirror what the frame workers use for images.
     { abs: join(hyperframesDir, "assets/fonts"), rel: "assets/fonts" },
-    { abs: join(hyperframesDir, "capture/assets/fonts"), rel: "capture/assets/fonts" },
+    {
+      abs: join(hyperframesDir, "capture/assets/fonts"),
+      rel: "capture/assets/fonts",
+    },
   ].filter((d) => existsSync(d.abs));
   const weightOf = (n) => {
     const s = n.toLowerCase();
@@ -354,7 +449,8 @@ function brandFontFaces(framePath, hyperframesDir) {
       for (const f of files.sort()) {
         if (!/\.(woff2|woff|ttf|otf)$/i.test(f)) continue;
         if (claimed.has(f)) continue; // a more specific family already took this file
-        if (!norm(f.replace(/\.(woff2|woff|ttf|otf)$/i, "")).startsWith(key)) continue;
+        if (!norm(f.replace(/\.(woff2|woff|ttf|otf)$/i, "")).startsWith(key))
+          continue;
         const w = weightOf(f);
         const dedup = `${fam}-${w}`;
         if (seen.has(dedup)) continue; // one src per weight; assets/fonts wins over capture
@@ -401,7 +497,8 @@ function frameTokensCss(framePath, H) {
     if (sem.accent) out.push(`      --cap-accent: ${sem.accent};`);
     if (sem.accent2) out.push(`      --cap-accent-2: ${sem.accent2};`);
     const { display, body } = parseFonts(md);
-    if (display) out.push(`      --font-display: ${display}, system-ui, serif;`);
+    if (display)
+      out.push(`      --font-display: ${display}, system-ui, serif;`);
     if (body) out.push(`      --font-body: ${body}, system-ui, sans-serif;`);
   }
   out.push(`      --cap-band-top: ${band.bandTopY}px;`);
@@ -418,7 +515,7 @@ function frameTokensCss(framePath, H) {
 // per word for the karaoke highlight — no className flips, no JS state) and ends each
 // group with a hard tl.set kill so an exit can't get stuck. gsap is loaded via CDN
 // inside the template (matching the frame compositions). Band = captionBand(H).
-function buildCaptionsHtml(groups, total, W, H) {
+function buildCaptionsHtml(groups, total, W, H, compactWordSpacing = false) {
   const band = captionBand(H);
   const fs = Math.round(H * 0.038);
   const pad = Math.round(fs * 0.4);
@@ -478,7 +575,7 @@ function buildCaptionsHtml(groups, total, W, H) {
         g.words.forEach(function (w) {
           var s = document.createElement("span");
           s.className = "caption-word";
-          s.textContent = w.text + " ";
+          s.textContent = w.text + ${JSON.stringify(compactWordSpacing ? "" : " ")};
           el.appendChild(s);
         });
         cap.appendChild(el);
@@ -499,7 +596,8 @@ function buildCaptionsHtml(groups, total, W, H) {
 }
 
 const sub = process.argv[2];
-if (sub === "build" || sub === undefined) runBuild(process.argv.slice(sub === "build" ? 3 : 2));
+if (sub === "build" || sub === undefined)
+  runBuild(process.argv.slice(sub === "build" ? 3 : 2));
 else {
   console.error(
     "usage: node captions.mjs build [--storyboard …] [--audio-meta …] [--hyperframes .]",

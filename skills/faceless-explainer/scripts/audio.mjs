@@ -125,12 +125,14 @@ function runGenerate(argv) {
   const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
   const scriptPath = resolve(flag(argv, "script", join(hyperframesDir, "SCRIPT.md")));
   const outPath = resolve(flag(argv, "out", join(hyperframesDir, "audio_meta.json")));
+  const provider = flag(argv, "provider", process.env.HF_TTS_PROVIDER || "auto");
   const userVoice = flag(argv, "voice", null);
   const speed = Number(flag(argv, "speed", "1.0")) || 1.0;
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
   const g = manifest.globals;
+  const lang = flag(argv, "lang", g.extra?.language || "en");
 
   const lines = existsSync(scriptPath)
     ? parseScript(readFileSync(scriptPath, "utf8")).map((l) => ({
@@ -144,7 +146,8 @@ function runGenerate(argv) {
   // strict here (no wait-bgm step downstream).
   const query = (g.extra && g.extra.music) || g.message || g.arc || "calm cinematic underscore";
   const request = {
-    provider: "auto",
+    provider,
+    lang,
     speed,
     lines,
     bgm: { mode: "retrieve", query, blob: g.message || "", arc: g.arc || "" },
@@ -173,6 +176,14 @@ function runFetchSfx(argv) {
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
+  let currentMeta = null;
+  if (existsSync(outPath)) {
+    try {
+      currentMeta = JSON.parse(readFileSync(outPath, "utf8"));
+    } catch (e) {
+      die(`audio_meta.json parse: ${e.message}`);
+    }
+  }
 
   // Per-frame `sfx:` cues (comma-separated) → engine lines carrying only sfx.
   const lines = [];
@@ -191,7 +202,12 @@ function runFetchSfx(argv) {
   // voices/bgm written by the earlier generate (--only tts,bgm) pass are preserved.
   runEngine({ request, hyperframesDir, neutral, only: "sfx" }, die);
 
-  const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const generated = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  // fetch-sfx is a subset update. audio_meta.json is the workflow-facing
+  // source of truth and may contain duration corrections or a manually staged
+  // BGM newer than the engine's neutral sidecar. Preserve it field-for-field and
+  // replace only the SFX section this command was asked to recompute.
+  const meta = currentMeta ? { ...currentMeta, sfx: generated.sfx } : generated;
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(`✓ audio fetch-sfx: ${meta.sfx.length} SFX cue(s) → ${outPath}`);
 }
