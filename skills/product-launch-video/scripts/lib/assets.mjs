@@ -2,18 +2,30 @@
 // Shared by stage-assets.mjs (Step 4 close, BEFORE the frame workers run) and
 // assemble-index.mjs (Step 5, idempotent backstop). Only assets a frame names
 // in `asset_candidates` are staged; unnamed assets never reach the project.
-// asset_candidates value form: "assets/<basename> — desc; assets/… — …".
+// asset_candidates value form: "assets/<relative-path> — desc; assets/… — …".
 
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 
-export function basenamesFromCandidates(value) {
+export function assetPathsFromCandidates(value) {
   if (typeof value !== "string") return [];
   return value
     .split(";")
     .map((seg) => seg.split(/\s+[—–-]\s+/)[0].trim()) // strip the " — description"
     .filter(Boolean)
-    .map((p) => basename(p.replace(/^assets\//, "")));
+    .map((path) => path.replaceAll("\\", "/").replace(/^assets\//, ""))
+    .map((path) => posix.normalize(path))
+    .filter(
+      (path) =>
+        path !== "." &&
+        !path.startsWith("../") &&
+        !posix.isAbsolute(path) &&
+        !/^[A-Za-z]:\//.test(path),
+    );
+}
+
+export function basenamesFromCandidates(value) {
+  return assetPathsFromCandidates(value).map((path) => basename(path));
 }
 
 // Copy each frame's asset_candidates from capture/{assets,assets/videos,
@@ -22,7 +34,7 @@ export function basenamesFromCandidates(value) {
 export function stageAssets({ hyperframesDir, frames }) {
   const wanted = new Set();
   for (const f of frames) {
-    for (const b of basenamesFromCandidates(f.extra?.asset_candidates)) wanted.add(b);
+    for (const path of assetPathsFromCandidates(f.extra?.asset_candidates)) wanted.add(path);
   }
   const captureDirs = [
     join(hyperframesDir, "capture/assets"),
@@ -34,19 +46,22 @@ export function stageAssets({ hyperframesDir, frames }) {
   let staged = 0;
   if (wanted.size > 0) {
     mkdirSync(assetsDir, { recursive: true });
-    for (const b of wanted) {
-      const dest = join(assetsDir, b);
+    for (const assetPath of wanted) {
+      const dest = join(assetsDir, assetPath);
       if (existsSync(dest)) {
         staged++;
         continue;
       } // first-wins / already staged
-      const src = captureDirs.map((d) => join(d, b)).find((p) => existsSync(p));
+      const src = captureDirs
+        .flatMap((dir) => [join(dir, assetPath), join(dir, basename(assetPath))])
+        .find((path) => existsSync(path));
       if (src) {
+        mkdirSync(dirname(dest), { recursive: true });
         copyFileSync(src, dest);
         staged++;
       } else {
         anomalies.push(
-          `asset "${b}" named by a frame but not found under capture/ — frame will 404 it`,
+          `asset "${assetPath}" named by a frame but not found under capture/ — frame will 404 it`,
         );
       }
     }
