@@ -21,6 +21,7 @@ import {
   bundleCompositionForCapture,
   hyperframesPackageSpec,
   importPackagesOrBootstrap,
+  initializeSessionWithRetry,
 } from "./package-loader.mjs";
 
 const packages = await importPackagesOrBootstrap(
@@ -32,13 +33,8 @@ const packages = await importPackagesOrBootstrap(
     ],
   },
 );
-const {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
-  closeCaptureSession,
-  getCompositionDuration,
-} = packages["@hyperframes/producer"];
+const { createFileServer, createCaptureSession, closeCaptureSession, getCompositionDuration } =
+  packages["@hyperframes/producer"];
 const { parseFps } = packages["@hyperframes/core"];
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -71,13 +67,22 @@ try {
     compiledDir: bundle.compiledDir,
     port: 0,
   });
-  session = await createCaptureSession(
-    server.url,
-    OUT_DIR,
-    { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
-    null,
+  // Canonical transient-init retry/cleanup (mirrors the render pipeline's
+  // probeStage): a valid modular project's sub-composition timelines register
+  // asynchronously, so the first attempt can time out as transient
+  // "zero duration / Runtime ready: false" — retry once with a fresh browser
+  // instead of false-failing the project.
+  session = await initializeSessionWithRetry(
+    packages["@hyperframes/producer"],
+    () =>
+      createCaptureSession(
+        server.url,
+        OUT_DIR,
+        { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+        null,
+      ),
+    { log: (message) => console.error(`animation-map: ${message}`) },
   );
-  await initializeSession(session);
 
   const duration = await getCompositionDuration(session);
   const tweens = await enumerateTweens(session);

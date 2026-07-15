@@ -73,6 +73,71 @@ export async function bundleCompositionForCapture(compiler, projectDir) {
   }
 }
 
+// ── Transient-init retry ─────────────────────────────────────────────────────
+// Frozen snapshot of the engine's TRANSIENT_BROWSER_ERROR_PATTERNS (see
+// packages/engine frameCapture.ts), used only when the imported
+// @hyperframes/producer predates the isTransientBrowserError re-export. The
+// last pattern is the load-bearing one for modular projects: sub-composition
+// timelines register asynchronously, so a first init attempt can time out as
+// "zero duration / Runtime ready: false" on a valid project.
+const FALLBACK_TRANSIENT_PATTERNS = [
+  /Navigating frame was detached/i,
+  /Target closed/i,
+  /Session closed/i,
+  /browser has disconnected/i,
+  /Page crashed/i,
+  /Execution context was destroyed/i,
+  /Cannot find context with specified id/i,
+  /Failed to launch the browser process/i,
+  /Navigation timeout of \d+ ms exceeded/i,
+  /ECONNREFUSED/i,
+  /net::ERR_NETWORK_CHANGED/i,
+  /Composition has zero duration[\s\S]*Runtime ready: false/,
+];
+
+/**
+ * Create + initialize a capture session with the canonical transient-init
+ * retry/cleanup the render pipeline uses (see probeStage in
+ * @hyperframes/producer): on a transient failure, close the crashed session
+ * and retry ONCE with a fresh browser. Without this, a standalone helper
+ * false-fails valid modular projects whose sub-composition timelines land a
+ * beat after the first readiness deadline ("zero duration" with
+ * "Runtime ready: false").
+ *
+ * `producer` is the imported @hyperframes/producer namespace;
+ * `createSession` is a factory returning a fresh (uninitialized) session.
+ * Non-transient init failures (e.g. the "Runtime ready: true" zero-duration
+ * fast-fail — a genuine authoring bug) still throw on the first attempt.
+ */
+export async function initializeSessionWithRetry(producer, createSession, options = {}) {
+  const maxAttempts = options.maxAttempts ?? 2;
+  const log = options.log ?? ((message) => console.error(message));
+  const isTransient =
+    typeof producer.isTransientBrowserError === "function"
+      ? producer.isTransientBrowserError
+      : (err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          return FALLBACK_TRANSIENT_PATTERNS.some((pattern) => pattern.test(message));
+        };
+
+  for (let attempt = 1; ; attempt++) {
+    const session = await createSession();
+    try {
+      await producer.initializeSession(session);
+      return session;
+    } catch (error) {
+      await producer.closeCaptureSession(session).catch(() => {});
+      if (attempt >= maxAttempts || !isTransient(error)) throw error;
+      log(
+        `transient browser-init failure (attempt ${attempt}/${maxAttempts}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      log("retrying with a fresh browser session...");
+    }
+  }
+}
+
 export function hyperframesPackageSpec(packageName) {
   const override = process.env[VERSION_OVERRIDE_ENV]?.trim();
   if (override) return `${packageName}@${override}`;

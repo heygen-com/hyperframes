@@ -49,6 +49,7 @@ import {
   bundleCompositionForCapture,
   hyperframesPackageSpec,
   importPackagesOrBootstrap,
+  initializeSessionWithRetry,
 } from "./package-loader.mjs";
 
 // Bundle first so mounted sub-compositions are inlined before the producer's
@@ -68,7 +69,6 @@ const { parseFps } = packages["@hyperframes/core"];
 const {
   createFileServer,
   createCaptureSession,
-  initializeSession,
   closeCaptureSession,
   captureFrameToBuffer,
   getCompositionDuration,
@@ -101,13 +101,20 @@ try {
     compiledDir: bundle.compiledDir,
     port: 0,
   });
-  session = await createCaptureSession(
-    server.url,
-    OUT_DIR,
-    { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
-    null,
+  // Canonical transient-init retry/cleanup (mirrors the render pipeline's
+  // probeStage) — same reasoning as animation-map.mjs: don't false-fail a
+  // valid modular project whose sub-composition timelines land a beat late.
+  session = await initializeSessionWithRetry(
+    packages["@hyperframes/producer"],
+    () =>
+      createCaptureSession(
+        server.url,
+        OUT_DIR,
+        { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+        null,
+      ),
+    { log: (message) => console.error(`contrast-report: ${message}`) },
   );
-  await initializeSession(session);
 
   const duration = await getCompositionDuration(session);
   const times = Array.from(
