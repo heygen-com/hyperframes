@@ -1426,7 +1426,8 @@
   };
 
   // Frozen-sweep guard (#U10, checkPipeline.ts): a compact per-sample
-  // fingerprint of every visible element's box + opacity, in DOM order. Node
+  // fingerprint of every visible element's identity + box + opacity, in DOM
+  // order. Node
   // calls this once per seeked grid point and compares the strings across the
   // whole run — if every sample produces the identical string, the seek never
   // actually moved anything and the whole audit run is unreliable. Deliberately
@@ -1472,7 +1473,7 @@
     const parts = elements.map((element) => {
       const rect = toRect(element.getBoundingClientRect());
       const opacity = round(opacityChain(element));
-      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
+      return `${selectorFor(element)},${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
     });
     for (const media of root.querySelectorAll("canvas, video")) {
       if (!isVisibleElement(media)) continue;
