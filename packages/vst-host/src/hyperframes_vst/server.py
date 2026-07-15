@@ -1,8 +1,28 @@
-"""WebSocket sidecar server: JSON control lane + binary PCM lane on one socket."""
+"""WebSocket sidecar server: JSON control lane + binary PCM lane on one socket.
+
+pedalboard enforces a single-thread affinity for ALL native VST3/AU work in
+a process, not just editor windows: whichever thread first loads a plugin
+becomes "the" thread for every later load, and showing a native editor
+window additionally requires that thread to be the true OS main thread (a
+hard Cocoa/AppKit constraint on macOS — windows can only be created there).
+Loading a plugin from a second, different thread raises
+`RuntimeError('... must be reloaded on the main thread ...')`; showing an
+editor from a non-main thread raises `RuntimeError('Plugin UI windows can
+only be shown from the main thread.')` or a JUCE-side ObjC exception,
+depending on which check trips first.
+
+So every pedalboard-native call in this process — both `build_chain`
+(loading plugins) and `show_editor` (opening a window) — is funneled
+through `VstServer.run_pedalboard_thread`, one dedicated loop that runs on
+the process's real main thread (`serve()`, bottom of this file) and
+processes requests from a thread-safe queue, one at a time. The asyncio
+WebSocket server itself runs on a background thread instead.
+"""
 from __future__ import annotations
 
 import asyncio
 import json
+import queue
 import secrets
 import threading
 from urllib.parse import parse_qs, urlsplit
@@ -33,6 +53,15 @@ class VstServer:
         # `/vst/start`, itself only reachable by the studio's own trusted
         # HTTP server) can open a connection.
         self._token = secrets.token_urlsafe(32)
+        # All pedalboard-native work (plugin loading + editor windows) hands
+        # off to the main thread through this queue (see module docstring).
+        # Each item is (fn, args, kwargs, future, loop); the main-thread loop
+        # calls fn(*args, **kwargs) and posts the result/exception back onto
+        # the asyncio loop that's awaiting it via call_soon_threadsafe.
+        self._pedalboard_queue: "queue.Queue[tuple | None]" = queue.Queue()
+        # Keyed by (trackId, pluginIndex) so a later `close-editor` can find
+        # and signal the right window before it's opened/while it's open.
+        self._editor_close_events: dict[tuple[str, int], threading.Event] = {}
 
     @property
     def token(self) -> str:
@@ -76,6 +105,24 @@ class VstServer:
             if self._play_task and self._play_owner is ws:
                 self._play_task.cancel()
 
+    async def _run_on_pedalboard_thread(self, fn, *args):
+        """Runs fn(*args) on the dedicated pedalboard thread (see module
+        docstring) and awaits its result without blocking the event loop or
+        this connection's other message handling."""
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+
+        def _call():
+            try:
+                result = fn(*args)
+            except Exception as exc:
+                loop.call_soon_threadsafe(future.set_exception, exc)
+            else:
+                loop.call_soon_threadsafe(future.set_result, result)
+
+        self._pedalboard_queue.put(_call)
+        return await future
+
     async def _dispatch(self, ws, msg: dict) -> None:
         cmd = msg.get("cmd")
         try:
@@ -85,7 +132,15 @@ class VstServer:
             elif cmd == "load-chain":
                 track_id = msg["trackId"]
                 spec = load_chain_spec(json.dumps(msg["chainJson"]))
-                plugins = await asyncio.to_thread(build_chain, spec)
+                # Only chains with an external VST3/AU plugin need the
+                # dedicated pedalboard thread (see module docstring):
+                # builtins never touch JUCE's native plugin-loading
+                # machinery, so they're free to load off any thread pool
+                # worker, same as before this thread-affinity fix existed.
+                if any(p.format != "builtin" for p in spec.plugins):
+                    plugins = await self._run_on_pedalboard_thread(build_chain, spec)
+                else:
+                    plugins = await asyncio.to_thread(build_chain, spec)
                 old = self._tracks.pop(track_id, None)
                 if old:
                     old.close()
@@ -106,10 +161,26 @@ class VstServer:
                 plugin = self._plugins[msg["trackId"]][msg["pluginIndex"]]
                 setattr(plugin, msg["param"], msg["value"])
             elif cmd == "open-editor":
-                plugin = self._plugins[msg["trackId"]][msg["pluginIndex"]]
-                threading.Thread(target=plugin.show_editor, daemon=True).start()
+                track_id, plugin_index = msg["trackId"], msg["pluginIndex"]
+                plugin = self._plugins[track_id][plugin_index]
+                close_event = threading.Event()
+                self._editor_close_events[(track_id, plugin_index)] = close_event
+
+                def _open(plugin=plugin, close_event=close_event):
+                    try:
+                        plugin.show_editor(close_event)
+                    finally:
+                        self._editor_close_events.pop((track_id, plugin_index), None)
+
+                # Fire-and-forget: don't await, so this connection's other
+                # messages (e.g. close-editor) keep being handled while the
+                # window is open (show_editor blocks the pedalboard thread,
+                # not this coroutine).
+                asyncio.create_task(self._run_on_pedalboard_thread(_open))
             elif cmd == "close-editor":
-                pass  # pedalboard editors close from their own window chrome
+                close_event = self._editor_close_events.get((msg["trackId"], msg["pluginIndex"]))
+                if close_event:
+                    close_event.set()
             elif cmd == "get-state":
                 states = serialize_states(self._plugins[msg["trackId"]])
                 await ws.send(json.dumps({"event": "state", "trackId": msg["trackId"], "plugins": states}))
@@ -147,6 +218,24 @@ class VstServer:
                 self._play_task = None
                 self._play_owner = None
 
+    def run_pedalboard_thread(self) -> None:
+        """Must run on the process's real main thread (see module
+        docstring). Blocks, processing one pedalboard-native call at a
+        time — a `show_editor` call itself blocks this loop until its
+        window is closed (by the user or `close-editor`), which is exactly
+        why plugin loading and editor windows must serialize through this
+        one thread rather than pedalboard's calls being split across
+        `asyncio.to_thread`'s pool. Returns when `stop_pedalboard_thread()`
+        enqueues the shutdown sentinel."""
+        while True:
+            call = self._pedalboard_queue.get()
+            if call is None:
+                return
+            call()
+
+    def stop_pedalboard_thread(self) -> None:
+        self._pedalboard_queue.put(None)
+
     async def _pump(self, ws) -> None:
         while True:
             sent_any = False
@@ -164,9 +253,21 @@ class VstServer:
 
 
 def serve(port: int = 0) -> None:
-    async def _run() -> None:
-        server = VstServer()
-        await server.start(port)
-        await asyncio.Future()
+    server = VstServer()
+    started = threading.Event()
 
-    asyncio.run(_run())
+    def _run_asyncio_server() -> None:
+        async def _run() -> None:
+            await server.start(port)
+            started.set()
+            await asyncio.Future()
+
+        asyncio.run(_run())
+
+    thread = threading.Thread(target=_run_asyncio_server, daemon=True)
+    thread.start()
+    started.wait()
+    try:
+        server.run_pedalboard_thread()
+    except KeyboardInterrupt:
+        server.stop_pedalboard_thread()
