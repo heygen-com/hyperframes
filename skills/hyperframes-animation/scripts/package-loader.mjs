@@ -9,7 +9,7 @@
 // The `installLine` strings below are DISPLAY ONLY (shown in the prompt / error
 // text); they are never handed to a shell or executed.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, parse, resolve } from "node:path";
@@ -56,6 +56,23 @@ export async function importPackagesOrBootstrap(packageNames, options = {}) {
   return modules;
 }
 
+export async function bundleCompositionForCapture(compiler, projectDir) {
+  const compiledDir = mkdtempSync(join(tmpdir(), "hyperframes-skill-bundle-"));
+  try {
+    const html = await compiler.bundleToSingleHtml(projectDir);
+    writeFileSync(join(compiledDir, "index.html"), html);
+    return {
+      compiledDir,
+      cleanup() {
+        rmSync(compiledDir, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    rmSync(compiledDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export function hyperframesPackageSpec(packageName) {
   const override = process.env[VERSION_OVERRIDE_ENV]?.trim();
   if (override) return `${packageName}@${override}`;
@@ -79,6 +96,7 @@ export function hyperframesPackageSpec(packageName) {
 
 function resolvePackageEntry(packageName) {
   const bases = [process.cwd(), HERE, ...envNodeModulesDirs(), ...nodeModulesDirsFromPath()];
+  const { rootName, subpath } = splitPackageSpecifier(packageName);
 
   const seen = new Set();
   for (const base of bases) {
@@ -91,13 +109,22 @@ function resolvePackageEntry(packageName) {
         packageName,
       );
     } catch {
-      const packageDir = findPackageDir(normalized, packageName);
-      const packageEntry = packageDir ? readPackageEntry(packageDir) : null;
+      const packageDir = findPackageDir(normalized, rootName);
+      const packageEntry = packageDir ? readPackageEntry(packageDir, subpath) : null;
       if (packageEntry) return packageEntry;
     }
   }
 
   return null;
+}
+
+function splitPackageSpecifier(packageName) {
+  const segments = packageName.split("/");
+  const rootLength = packageName.startsWith("@") ? 2 : 1;
+  return {
+    rootName: segments.slice(0, rootLength).join("/"),
+    subpath: segments.slice(rootLength).join("/"),
+  };
 }
 
 function readBundledHyperframesVersion() {
@@ -152,10 +179,14 @@ function findPackageDir(base, packageName) {
   return null;
 }
 
-function readPackageEntry(packageDir) {
+function readPackageEntry(packageDir, subpath = "") {
   try {
     const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-    const entry = exportEntry(manifest.exports) ?? manifest.module ?? manifest.main ?? "index.js";
+    const requestedExport = subpath ? manifest.exports?.[`./${subpath}`] : manifest.exports;
+    const entry =
+      exportEntry(requestedExport) ??
+      (!subpath ? (manifest.module ?? manifest.main ?? "index.js") : null);
+    if (!entry) return null;
     const entryPath = join(packageDir, entry);
     return existsSync(entryPath) ? entryPath : null;
   } catch {

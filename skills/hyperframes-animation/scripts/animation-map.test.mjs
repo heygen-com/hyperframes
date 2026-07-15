@@ -14,7 +14,7 @@ const HELPERS = [
 
 describe("HyperFrames skill helpers", () => {
   for (const helper of HELPERS)
-    it(`${helper.split("/").at(-1)} uses canonical rational frame-rate parsing`, () => {
+    it(`${helper.split("/").at(-1)} bundles modular input and uses rational fps`, () => {
       const root = mkdtempSync(join(tmpdir(), "hyperframes-skill-helper-test-"));
       const packageDir = join(root, "node_modules", "@hyperframes", "producer");
       const corePackageDir = join(root, "node_modules", "@hyperframes", "core");
@@ -31,7 +31,15 @@ describe("HyperFrames skill helpers", () => {
       writeFileSync(
         join(packageDir, "index.mjs"),
         [
-          'export async function createFileServer() { return { url: "http://test", close() {} }; }',
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "export async function createFileServer(options) {",
+          '  const bundled = readFileSync(join(options.compiledDir, "index.html"), "utf8");',
+          '  if (bundled !== "<!doctype html><main>bundled modular composition</main>") {',
+          "    throw new Error(`UNEXPECTED_BUNDLE=${bundled}`);",
+          "  }",
+          '  return { url: "http://test", close() {} };',
+          "}",
           "export async function createCaptureSession(_url, _out, options) {",
           "  throw new Error(`CAPTURE_OPTIONS=${JSON.stringify(options)}`);",
           "}",
@@ -42,7 +50,11 @@ describe("HyperFrames skill helpers", () => {
       );
       writeFileSync(
         join(corePackageDir, "package.json"),
-        JSON.stringify({ name: "@hyperframes/core", type: "module", exports: "./index.mjs" }),
+        JSON.stringify({
+          name: "@hyperframes/core",
+          type: "module",
+          exports: { ".": "./index.mjs", "./compiler": "./compiler.mjs" },
+        }),
       );
       writeFileSync(
         join(corePackageDir, "index.mjs"),
@@ -51,6 +63,14 @@ describe("HyperFrames skill helpers", () => {
           "  if (input === '30000/1001') return { ok: true, value: { num: 30000, den: 1001 } };",
           "  if (input === '29.97') return { ok: false, reason: 'ambiguous-decimal' };",
           "  return { ok: true, value: { num: Number(input), den: 1 } };",
+          "}",
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(corePackageDir, "compiler.mjs"),
+        [
+          "export async function bundleToSingleHtml() {",
+          '  return "<!doctype html><main>bundled modular composition</main>";',
           "}",
         ].join("\n"),
       );

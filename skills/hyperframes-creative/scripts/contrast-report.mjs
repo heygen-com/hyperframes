@@ -45,12 +45,16 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loader.mjs";
+import {
+  bundleCompositionForCapture,
+  hyperframesPackageSpec,
+  importPackagesOrBootstrap,
+} from "./package-loader.mjs";
 
-// Use the producer's file server — it auto-injects the HyperFrames runtime
-// and render-seek bridge, so raw authoring HTML works without a build step.
+// Bundle first so mounted sub-compositions are inlined before the producer's
+// file server injects the HyperFrames runtime and render-seek bridge.
 const packages = await importPackagesOrBootstrap(
-  ["@hyperframes/producer", "@hyperframes/core", "sharp"],
+  ["@hyperframes/producer", "@hyperframes/core", "@hyperframes/core/compiler", "sharp"],
   {
     npmPackages: [
       hyperframesPackageSpec("@hyperframes/producer"),
@@ -88,16 +92,23 @@ const COMP_DIR = resolve(args.composition);
 
 await mkdir(OUT_DIR, { recursive: true });
 
-const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
-const session = await createCaptureSession(
-  server.url,
-  OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
-  null,
-);
-await initializeSession(session);
-
+const bundle = await bundleCompositionForCapture(packages["@hyperframes/core/compiler"], COMP_DIR);
+let server;
+let session;
 try {
+  server = await createFileServer({
+    projectDir: COMP_DIR,
+    compiledDir: bundle.compiledDir,
+    port: 0,
+  });
+  session = await createCaptureSession(
+    server.url,
+    OUT_DIR,
+    { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+    null,
+  );
+  await initializeSession(session);
+
   const duration = await getCompositionDuration(session);
   const times = Array.from(
     { length: SAMPLES },
@@ -145,8 +156,9 @@ try {
   printSummary(report);
   process.exitCode = report.summary.failAA > 0 ? 1 : 0;
 } finally {
-  await closeCaptureSession(session).catch(() => {});
-  server.close();
+  if (session) await closeCaptureSession(session).catch(() => {});
+  server?.close();
+  bundle.cleanup();
 }
 
 // ─── DOM probe + text-hide (runs in the page) ────────────────────────────────

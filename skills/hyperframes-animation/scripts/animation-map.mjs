@@ -17,14 +17,21 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { sampleTweenBboxes } from "./animation-map-sampling.mjs";
-import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loader.mjs";
+import {
+  bundleCompositionForCapture,
+  hyperframesPackageSpec,
+  importPackagesOrBootstrap,
+} from "./package-loader.mjs";
 
-const packages = await importPackagesOrBootstrap(["@hyperframes/producer", "@hyperframes/core"], {
-  npmPackages: [
-    hyperframesPackageSpec("@hyperframes/producer"),
-    hyperframesPackageSpec("@hyperframes/core"),
-  ],
-});
+const packages = await importPackagesOrBootstrap(
+  ["@hyperframes/producer", "@hyperframes/core", "@hyperframes/core/compiler"],
+  {
+    npmPackages: [
+      hyperframesPackageSpec("@hyperframes/producer"),
+      hyperframesPackageSpec("@hyperframes/core"),
+    ],
+  },
+);
 const {
   createFileServer,
   createCaptureSession,
@@ -53,16 +60,25 @@ await mkdir(OUT_DIR, { recursive: true });
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
-const session = await createCaptureSession(
-  server.url,
-  OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
-  null,
-);
-await initializeSession(session);
-
+// Raw modular hosts do not mount child compositions in the capture helper.
+// Bundle first so duration/timeline discovery sees the same DOM as render/check.
+const bundle = await bundleCompositionForCapture(packages["@hyperframes/core/compiler"], COMP_DIR);
+let server;
+let session;
 try {
+  server = await createFileServer({
+    projectDir: COMP_DIR,
+    compiledDir: bundle.compiledDir,
+    port: 0,
+  });
+  session = await createCaptureSession(
+    server.url,
+    OUT_DIR,
+    { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+    null,
+  );
+  await initializeSession(session);
+
   const duration = await getCompositionDuration(session);
   const tweens = await enumerateTweens(session);
   const kept = tweens.filter((tw) => tw.end - tw.start >= MIN_DUR);
@@ -126,8 +142,9 @@ try {
 
   printSummary(report);
 } finally {
-  await closeCaptureSession(session).catch(() => {});
-  server.close();
+  if (session) await closeCaptureSession(session).catch(() => {});
+  server?.close();
+  bundle.cleanup();
 }
 
 // ─── Seek helper ────────────────────────────────────────────────────────────
