@@ -2476,9 +2476,31 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  let timelinesBuiltListener: (() => void) | null = null;
+  const waitForTimelinesBuilt = () => {
+    if (timelinesBuiltListener) return;
+    const onTimelinesBuilt = () => {
+      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
+      timelinesBuiltListener = null;
+      maybePublishRenderReady();
+    };
+    timelinesBuiltListener = onTimelinesBuilt;
+    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
+  };
+  registerRuntimeCleanup(() => {
+    if (!timelinesBuiltListener) return;
+    window.removeEventListener("hf-timelines-built", timelinesBuiltListener);
+    timelinesBuiltListener = null;
+  });
+
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+    if (!externalCompositionsReady) {
       window.__renderReady = false;
+      return;
+    }
+    if (window.__hfTimelinesBuilding) {
+      window.__renderReady = false;
+      waitForTimelinesBuilt();
       return;
     }
     // Re-run discover so adapters can refresh their state from the current
@@ -2499,14 +2521,6 @@ export function initSandboxRuntimeModular(): void {
   // synchronously. Wait for the "hf-timelines-built" event before the first
   // binding attempt so the transport clock receives the finished timeline
   // duration instead of permanently publishing duration=0.
-  if (window.__hfTimelinesBuilding) {
-    window.__renderReady = false;
-    const onTimelinesBuilt = () => {
-      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
-      maybePublishRenderReady();
-    };
-    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
-  }
   maybePublishRenderReady();
 
   // When the bundler inlines compositions, data-composition-src is removed so

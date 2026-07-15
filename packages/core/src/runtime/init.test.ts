@@ -1415,6 +1415,36 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(10);
   });
 
+  it("resumes readiness when GSAP batching starts after runtime initialization", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    let timelineDuration = 0;
+    const timeline = createMockTimeline(0);
+    timeline.duration = () => timelineDuration;
+    window.__timelines = { main: timeline };
+    window.__hfTimelinesBuilding = false;
+
+    initSandboxRuntimeModular();
+    expect(window.__renderReady).toBe(true);
+
+    window.__hfTimelinesBuilding = true;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(window.__renderReady).toBe(false);
+
+    timelineDuration = 10;
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(10);
+  });
+
   it("waits for THREE.DefaultLoadingManager to drain before publishing render readiness", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
