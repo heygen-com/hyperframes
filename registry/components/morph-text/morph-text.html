@@ -24,7 +24,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #fff;
+        background: var(--bg, #fff);
       }
 
       #morph-text {
@@ -172,12 +172,12 @@
           var wB = words[(stepIdx + 1) % words.length];
 
           elA.textContent = wA.text;
-          elA.style.fontFamily = wA.font;
-          elA.style.color = wA.color;
+          elA.style.fontFamily = "var(--font-display, " + wA.font + ")";
+          elA.style.color = "var(--fg, " + wA.color + ")";
 
           elB.textContent = wB.text;
-          elB.style.fontFamily = wB.font;
-          elB.style.color = wB.color;
+          elB.style.fontFamily = "var(--font-display, " + wB.font + ")";
+          elB.style.color = "var(--fg, " + wB.color + ")";
 
           if (frac <= 0) {
             display.style.filter = "none";
@@ -204,8 +204,8 @@
 
         if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
           elA.textContent = words[0].text;
-          elA.style.fontFamily = words[0].font;
-          elA.style.color = words[0].color;
+          elA.style.fontFamily = "var(--font-display, " + words[0].font + ")";
+          elA.style.color = "var(--fg, " + words[0].color + ")";
           elA.style.opacity = "1";
           display.style.filter = "none";
           return;

@@ -126,8 +126,12 @@
 
             var text = vars.text == null ? "Effortless" : String(vars.text);
             var accent = vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
-            var accentColor =
-              accent === "blue" ? "#38bdf8" : accent === "violet" ? "#a78bfa" : "#22c55e";
+            var accentTokens = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
+            };
+            var accentColor = accentTokens[accent];
             var sweepAtValue = vars.sweep_at;
             var sweepAt =
               typeof sweepAtValue === "number" && Number.isFinite(sweepAtValue)

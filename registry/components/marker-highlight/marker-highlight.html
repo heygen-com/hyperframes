@@ -9,23 +9,23 @@
 
 <style>
   .hf-remocn-marker-highlight {
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    color: var(--fg, #18181b);
+    font-family: var(--font-display, Inter, system-ui, sans-serif);
     font-weight: 900;
     letter-spacing: -0.04em;
   }
   .hf-remocn-marker-highlight {
     position: relative;
     display: inline-grid;
-    padding: 8px 12px;
+    padding: var(--space-1, 8px) var(--space-2, 12px);
     font-size: 64px;
   }
   .hf-remocn-marker-highlight mark {
     position: absolute;
-    inset: auto 0 9px;
+    inset: auto 0 var(--space-1, 9px);
     height: 24px;
-    border-radius: 4px;
-    background: #fde047;
+    border-radius: var(--radius, 4px);
+    background: var(--accent, #fde047);
     transform: scaleX(var(--hf-marker-progress, 1));
     transform-origin: left center;
   }
@@ -36,5 +36,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { color: '#71717a' }, { color: '#18181b', duration: 0.28 }, startTime + 0.16);
+  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { color: 'var(--muted, #71717a)' }, { color: 'var(--fg, #18181b)', duration: 0.28 }, startTime + 0.16);
 -->

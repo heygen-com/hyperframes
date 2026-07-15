@@ -22,14 +22,14 @@
 
 <style>
   .hf-advanced-arc-motion-path {
-    color: #111827;
-    font-family: Inter, system-ui, sans-serif;
+    color: var(--fg, #111827);
+    font-family: var(--font-body, Inter, system-ui, sans-serif);
   }
   .hf-advanced-arc-motion-path {
     position: relative;
     width: 760px;
     height: 430px;
-    border-radius: 30px;
+    border-radius: var(--radius, 30px);
     overflow: hidden;
     background: radial-gradient(circle at 50% 20%, #dbeafe, #f8fafc 54%, #e0e7ff);
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
@@ -43,7 +43,7 @@
   }
   .hf-advanced-arc-motion-path .path {
     fill: none;
-    stroke: rgba(37, 99, 235, 0.28);
+    stroke: color-mix(in srgb, var(--accent, #2563eb) 28%, transparent);
     stroke-width: 3;
     stroke-dasharray: 10 12;
   }
@@ -70,10 +70,10 @@
     top: 0;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-1, 8px);
     height: 42px;
-    padding: 0 16px;
-    border-radius: 999px;
+    padding: 0 var(--space-2, 16px);
+    border-radius: var(--radius, 999px);
     background: #fff;
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
     font-weight: 800;
@@ -82,8 +82,8 @@
   .hf-advanced-arc-motion-path .dot {
     width: 10px;
     height: 10px;
-    border-radius: 999px;
-    background: #2563eb;
+    border-radius: var(--radius, 999px);
+    background: var(--accent, #2563eb);
   }
 </style>
 

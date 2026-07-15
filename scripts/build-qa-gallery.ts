@@ -292,7 +292,7 @@ function playerCard(candidate: Candidate, knobs: Knob[]): string {
     knobs.length > 0 ? ` data-knobs='${escapeHtml(JSON.stringify(knobs))}'` : "";
   const note = candidate.status === "PARTIAL" ? ` - differs: ${escapeHtml(candidate.note)}` : "";
   return `
-        <article class="card">
+        <article class="card" data-candidate="${escapeHtml(candidate.candidate)}">
           <div data-hf-player="true" data-src="/public/qa/${encodeURIComponent(candidate.candidate)}.html" data-width="1920" data-height="1080"${knobsAttribute} style="aspect-ratio: 16/9; background: #0b0c0e;"></div>
           <div class="label">${escapeHtml(candidate.candidate)} - ${escapeHtml(groupName(candidate.job))} - ${candidate.status}${note}</div>
         </article>`;
@@ -302,7 +302,7 @@ function placeholderCard(candidate: Candidate, failed: boolean): string {
   const status = failed ? `${candidate.status} (staging failed)` : "GAP (to build)";
   const note = candidate.status === "PARTIAL" ? ` - differs: ${escapeHtml(candidate.note)}` : "";
   return `
-        <article class="card placeholder">
+        <article class="card placeholder" data-candidate="${escapeHtml(candidate.candidate)}">
           <div class="empty"><span>${failed ? "Preview unavailable" : "Primitive to build"}</span></div>
           <div class="label">${escapeHtml(candidate.candidate)} - ${escapeHtml(groupName(candidate.job))} - ${status}${note}</div>
         </article>`;
@@ -377,6 +377,7 @@ ${trimmedList}
     <script src="/hyperframes-player.global.js"></script>
     <script src="/hyperframes-player-embed.js"></script>
     <script src="/qa-autoplay.js"></script>
+    <script src="/qa-rate.js"></script>
   </body>
 </html>
 `;

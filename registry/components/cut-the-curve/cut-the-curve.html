@@ -177,7 +177,7 @@
             border: var(--ctc-pulse-border, 0.25cqw) solid
               color-mix(
                 in srgb,
-                var(--ctc-secondary, #38bdf8) var(--ctc-pulse-strength, 58%),
+                var(--ctc-secondary, var(--accent, #38bdf8)) var(--ctc-pulse-strength, 58%),
                 var(--transparent, transparent)
               );
             border-radius: var(--ctc-round, 50%);
@@ -186,7 +186,8 @@
           .ctc-card {
             width: var(--ctc-card-width, 42cqw);
             min-height: var(--ctc-card-height, 34cqh);
-            padding: var(--ctc-card-padding-y, 4.5cqh) var(--ctc-card-padding-x, 4cqw);
+            padding: var(--ctc-card-padding-y, var(--space-3, 4.5cqh))
+              var(--ctc-card-padding-x, var(--space-3, 4cqw));
             border: var(--ctc-border-width, 0.22cqw) solid var(--border, #334155);
             border-radius: var(--radius, 2cqw);
             background: var(--surface, #1e293b);
@@ -204,7 +205,7 @@
             height: var(--ctc-chip-height, 2.2cqh);
             border-radius: var(--ctc-pill-radius, 99cqw);
             background: var(--ctc-primary, var(--brand, #8b5cf6));
-            margin-bottom: var(--ctc-card-gap, 3.2cqh);
+            margin-bottom: var(--ctc-card-gap, var(--space-3, 3.2cqh));
           }
 
           .ctc-card-line,
@@ -215,7 +216,7 @@
           }
 
           .ctc-card-line + .ctc-card-line {
-            margin-top: var(--ctc-line-gap, 2.2cqh);
+            margin-top: var(--ctc-line-gap, var(--space-2, 2.2cqh));
           }
 
           .ctc-card-line:first-of-type {
@@ -246,9 +247,9 @@
           .ctc-scene-bar {
             display: flex;
             align-items: center;
-            gap: var(--ctc-dot-gap, 1cqw);
+            gap: var(--ctc-dot-gap, var(--space-1, 1cqw));
             height: var(--ctc-scene-bar-height, 8cqh);
-            padding-inline: var(--ctc-scene-pad, 2cqw);
+            padding-inline: var(--ctc-scene-pad, var(--space-2, 2cqw));
             border-bottom: var(--ctc-border-width, 0.22cqw) solid var(--border, #334155);
           }
 
@@ -262,26 +263,27 @@
           .ctc-scene-body {
             display: grid;
             grid-template-columns: var(--ctc-scene-columns, 1fr 2fr);
-            gap: var(--ctc-scene-gap, 3cqw);
-            padding: var(--ctc-scene-body-pad, 5cqh) var(--ctc-scene-pad, 3cqw);
+            gap: var(--ctc-scene-gap, var(--space-3, 3cqw));
+            padding: var(--ctc-scene-body-pad, var(--space-3, 5cqh))
+              var(--ctc-scene-pad, var(--space-3, 3cqw));
           }
 
           .ctc-scene-panel {
             min-height: var(--ctc-panel-height, 34cqh);
-            border-radius: var(--ctc-panel-radius, 1.2cqw);
+            border-radius: var(--ctc-panel-radius, var(--radius, 1.2cqw));
             background: color-mix(
               in srgb,
-              var(--ctc-primary, #8b5cf6) var(--ctc-panel-strength, 24%),
+              var(--ctc-primary, var(--brand, #8b5cf6)) var(--ctc-panel-strength, 24%),
               var(--surface, #1e293b)
             );
           }
 
           .ctc-scene-copy {
-            padding-top: var(--ctc-copy-top, 2cqh);
+            padding-top: var(--ctc-copy-top, var(--space-2, 2cqh));
           }
 
           .ctc-scene-line + .ctc-scene-line {
-            margin-top: var(--ctc-scene-line-gap, 3cqh);
+            margin-top: var(--ctc-scene-line-gap, var(--space-3, 3cqh));
           }
 
           .ctc-scene-line:nth-child(1) {

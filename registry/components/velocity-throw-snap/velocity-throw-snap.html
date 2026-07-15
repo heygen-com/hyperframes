@@ -106,7 +106,7 @@
             height: 62cqh;
             overflow: hidden;
             border: 0.16cqmin solid color-mix(in srgb, var(--border, #475569) 76%, transparent);
-            border-radius: 3.2cqmin;
+            border-radius: var(--radius, 3.2cqmin);
             background: linear-gradient(150deg, #f8fafc 0%, #dbe5f1 100%);
             color: #101827;
             box-shadow: 0 3.6cqh 8cqh color-mix(in srgb, #000 46%, transparent);
@@ -151,7 +151,7 @@
 
           .vts-index {
             color: var(--vts-accent-dark);
-            font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: 1.45cqw;
             font-weight: 760;
             letter-spacing: 0.12em;

@@ -54,8 +54,8 @@
             overflow: hidden;
             container-type: size;
             isolation: isolate;
-            background: linear-gradient(180deg, #171b23 0%, #0f1218 100%);
-            color: #d8dee9;
+            background: linear-gradient(180deg, var(--bg, #171b23) 0%, var(--bg, #0f1218) 100%);
+            color: var(--fg, #d8dee9);
             font-family: var(--font-body, Inter, system-ui, sans-serif);
             pointer-events: none;
           }
@@ -84,20 +84,24 @@
             width: 76cqw;
             height: var(--sf-card-h);
             margin-bottom: var(--sf-gap);
-            padding: 2.3cqh 2.4cqw;
+            padding: var(--space-2, 2.3cqh) var(--space-2, 2.4cqw);
             overflow: hidden;
-            border: 0.12cqw solid rgba(160, 174, 192, 0.2);
-            border-radius: 2.2cqw;
-            background: linear-gradient(145deg, #29303b 0%, #202630 100%);
+            border: 0.12cqw solid var(--border, rgba(160, 174, 192, 0.2));
+            border-radius: var(--radius, 2.2cqw);
+            background: linear-gradient(
+              145deg,
+              var(--surface, #29303b) 0%,
+              var(--surface, #202630) 100%
+            );
             box-shadow: 0 1.8cqh 4cqh rgba(0, 0, 0, 0.28);
           }
 
           .sf-card-header {
             display: flex;
             align-items: center;
-            gap: 1.4cqw;
+            gap: var(--space-1, 1.4cqw);
             height: 4.4cqh;
-            margin-bottom: 1.5cqh;
+            margin-bottom: var(--space-1, 1.5cqh);
           }
 
           .sf-avatar {
@@ -105,7 +109,7 @@
             width: var(--sf-avatar);
             height: var(--sf-avatar);
             border-radius: 50%;
-            background: #758094;
+            background: var(--muted, #758094);
           }
 
           .sf-identity {
@@ -113,7 +117,7 @@
             flex: 1 1 auto;
             min-width: 0;
             flex-direction: column;
-            gap: 0.65cqh;
+            gap: var(--space-1, 0.65cqh);
           }
 
           .sf-line,
@@ -125,7 +129,7 @@
 
           .sf-line {
             height: 0.85cqh;
-            background: #7d8798;
+            background: var(--muted, #7d8798);
           }
 
           .sf-line-primary {
@@ -141,7 +145,7 @@
             flex: 0 0 auto;
             width: var(--sf-meta-w);
             height: 0.75cqh;
-            background: #667184;
+            background: var(--muted, #667184);
             opacity: 0.72;
           }
 
@@ -150,8 +154,12 @@
             height: calc(var(--sf-card-h) - 12.2cqh);
             min-height: 6cqh;
             overflow: hidden;
-            border-radius: 1.4cqw;
-            background: linear-gradient(135deg, #374151 0%, #252c37 100%);
+            border-radius: var(--radius, 1.4cqw);
+            background: linear-gradient(
+              135deg,
+              var(--surface, #374151) 0%,
+              var(--surface, #252c37) 100%
+            );
           }
 
           .sf-media::before {
@@ -161,22 +169,22 @@
             width: 18cqw;
             height: 18cqw;
             border-radius: 50%;
-            background: rgba(130, 143, 160, 0.16);
+            background: var(--muted, rgba(130, 143, 160, 0.16));
             content: "";
           }
 
           .sf-card-footer {
             display: flex;
             align-items: center;
-            gap: 2.4cqw;
+            gap: var(--space-2, 2.4cqw);
             height: 2cqh;
-            margin-top: 1.35cqh;
+            margin-top: var(--space-1, 1.35cqh);
           }
 
           .sf-action {
             width: var(--sf-action-w);
             height: 0.8cqh;
-            background: #717c8e;
+            background: var(--muted, #717c8e);
             opacity: 0.72;
           }
 

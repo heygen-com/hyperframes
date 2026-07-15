@@ -12,15 +12,15 @@
 
 <style>
   .hf-advanced-svg-line-draw-loader {
-    color: #111827;
-    font-family: Inter, system-ui, sans-serif;
+    color: var(--fg, #111827);
+    font-family: var(--font-body, Inter, system-ui, sans-serif);
   }
   .hf-advanced-svg-line-draw-loader {
     width: 720px;
     min-height: 420px;
-    border-radius: 30px;
-    padding: 36px;
-    background: #fff;
+    border-radius: var(--radius, 30px);
+    padding: var(--space-3, 36px);
+    background: var(--surface, #fff);
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
     display: grid;
     place-items: center;
@@ -28,13 +28,13 @@
   .hf-advanced-svg-line-draw-loader .grid {
     display: grid;
     grid-template-columns: repeat(8, 46px);
-    gap: 10px;
+    gap: var(--space-1, 10px);
   }
   .hf-advanced-svg-line-draw-loader .cell {
     width: 46px;
     height: 46px;
     border-radius: 14px;
-    background: linear-gradient(135deg, #60a5fa, #7c3aed);
+    background: linear-gradient(135deg, var(--accent, #60a5fa), var(--accent-2, #7c3aed));
     transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
     opacity: var(--hf-cell-opacity, 1);
   }
@@ -45,7 +45,7 @@
   }
   .hf-advanced-svg-line-draw-loader path {
     fill: none;
-    stroke: #2563eb;
+    stroke: var(--accent, #2563eb);
     stroke-width: 14;
     stroke-linecap: round;
     stroke-dasharray: 900;

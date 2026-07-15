@@ -83,11 +83,11 @@
             justify-content: center;
             width: 100%;
             min-height: 34cqh;
-            padding: 5cqh 5cqw;
+            padding: var(--space-3, 5cqh) var(--space-3, 5cqw);
             overflow: hidden;
-            border: 0.16cqmin solid color-mix(in srgb, var(--sr-accent) 58%, #475569);
-            border-radius: 2.4cqmin;
-            background: color-mix(in srgb, #0b1016 92%, var(--sr-accent));
+            border: 0.16cqmin solid color-mix(in srgb, var(--sr-accent) 58%, var(--border, #475569));
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #0b1016) 92%, var(--sr-accent));
             box-shadow:
               0 3.5cqh 10cqh rgba(0, 0, 0, 0.42),
               inset 0 0 4cqh color-mix(in srgb, var(--sr-accent) 7%, transparent);
@@ -95,8 +95,8 @@
 
           .sr-prefix {
             flex: 0 0 auto;
-            margin-right: 1.8cqw;
-            color: color-mix(in srgb, var(--sr-accent) 78%, #ffffff);
+            margin-right: var(--space-1, 1.8cqw);
+            color: color-mix(in srgb, var(--sr-accent) 78%, var(--fg, #ffffff));
             font-size: calc(var(--sr-font-size) * 0.74);
             font-weight: 700;
             line-height: 1;
@@ -119,7 +119,7 @@
 
           .sr-stage.sr-clean .sr-shell {
             min-height: 26cqh;
-            padding: 3cqh 2cqw;
+            padding: var(--space-2, 3cqh) var(--space-2, 2cqw);
             border-color: transparent;
             background: transparent;
             box-shadow: none;
@@ -159,10 +159,13 @@
                 : {};
 
             var text = vars.text == null ? "HYPERFRAMES" : String(vars.text);
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme (green/blue/violet must
+            // not collapse into one themed accent).
             var accentColors = {
-              green: "#71f5a7",
-              blue: "#61a8ff",
-              violet: "#c5a3ff",
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
             };
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
