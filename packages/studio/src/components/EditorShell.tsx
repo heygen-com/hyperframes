@@ -55,6 +55,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
   gestureOverlay?: ReactNode;
+  onExitCaptionMode: () => void;
 }
 
 // The CapCut-style shell: [left | preview | right] in a top row, with a
@@ -86,6 +87,7 @@ export function EditorShell({
   isGestureRecording,
   blockPreview,
   gestureOverlay,
+  onExitCaptionMode,
 }: EditorShellProps) {
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
     useStudioShellContext();
@@ -128,6 +130,7 @@ export function EditorShell({
             left={left}
             right={right}
             captionEditMode={captionEditMode}
+            onExitCaptionMode={onExitCaptionMode}
             onSelectTimelineElement={handleTimelineElementSelect}
             onPreviewBlockDrop={handlePreviewBlockDrop}
             timelineToolbar={timelineToolbar}
@@ -156,6 +159,7 @@ interface EditorShellBodyProps {
   left: ReactNode;
   right: ReactNode;
   captionEditMode: boolean;
+  onExitCaptionMode: () => void;
   previewOverlay: ReactNode;
   onSelectTimelineElement: (element: TimelineElement | null) => void;
   onPreviewBlockDrop?: (
@@ -174,6 +178,7 @@ function EditorShellBody({
   left,
   right,
   captionEditMode,
+  onExitCaptionMode,
   previewOverlay,
   onSelectTimelineElement,
   onPreviewBlockDrop,
@@ -231,10 +236,18 @@ function EditorShellBody({
         timelineFooter={
           captionEditMode ? (
             <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
-              <div className="flex items-center gap-1.5 px-2 py-0.5">
+              <div className="flex items-center justify-between gap-1.5 px-2 py-0.5">
                 <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
                   Captions
                 </span>
+                <button
+                  type="button"
+                  onClick={onExitCaptionMode}
+                  aria-label="Exit caption mode"
+                  className="text-[9px] font-medium text-neutral-500 transition-colors hover:text-neutral-200"
+                >
+                  Exit caption mode
+                </button>
               </div>
               <CaptionTimeline pixelsPerSecond={100} />
             </div>

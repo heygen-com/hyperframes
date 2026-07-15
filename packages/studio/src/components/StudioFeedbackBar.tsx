@@ -89,8 +89,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
     return () => clearTimeout(showTimer);
   }, []);
 
-  // Animate height in on entrance — appearing 3s after load, an instant 32px
-  // bar shoves the whole preview stack up mid-task.
+  // Animate height and opacity on entrance.
   useEffect(() => {
     if (!visible) return;
     const raf = requestAnimationFrame(() => setEntered(true));
@@ -150,7 +149,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
   return (
     <div
       className={[
-        "flex items-center gap-3 px-4 overflow-hidden border-t border-neutral-800/50 bg-neutral-900/80 text-[11px] transition-all duration-300 motion-reduce:transition-none",
+        "fixed inset-x-0 bottom-0 z-50 flex items-center gap-3 px-4 overflow-hidden border-t border-neutral-800/50 bg-neutral-900/80 text-[11px] transition-all duration-300 motion-reduce:transition-none",
         entered && !exiting ? "h-8 opacity-100" : "h-0 opacity-0 border-t-transparent",
       ].join(" ")}
     >

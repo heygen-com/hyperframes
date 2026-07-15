@@ -324,7 +324,7 @@ export function StudioApp() {
     domEditSession.domEditGroupSelections,
   );
 
-  useCaptionDetection({
+  const exitCaptionMode = useCaptionDetection({
     projectId,
     activeCompPath,
     compIdToSrc,
@@ -499,6 +499,7 @@ export function StudioApp() {
                   )}
                   <EditorShell
                     hidden={viewModeValue.viewMode === "storyboard"}
+                    onExitCaptionMode={exitCaptionMode}
                     left={
                       <StudioLeftSidebar
                         leftSidebarRef={leftSidebarRef}
