@@ -1,6 +1,8 @@
 // Shared Puppeteer browser management and thumbnail generation for Studio dev server.
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   createStudioDevRenderBodyScripts,
@@ -14,18 +16,66 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 let _browser: import("puppeteer-core").Browser | null = null;
 let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
 
-const CHROME_PATHS = [
+// Installed system browsers (Chrome/Chromium-family), macOS + Linux.
+const CHROME_APP_PATHS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
   "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
   "/usr/bin/chromium-browser",
 ];
+
+// Chrome-for-Testing downloaded by Puppeteer (or `npx puppeteer browsers install`).
+// Layout: <cacheDir>/chrome/<platform>-<version>/chrome-<platform>/<executable>.
+// Prefer the highest version so a stale early build doesn't win.
+// fallow-ignore-next-line complexity
+function findPuppeteerCacheChrome(): string | undefined {
+  const cacheRoot = process.env.PUPPETEER_CACHE_DIR || join(homedir(), ".cache", "puppeteer");
+  const chromeRoot = join(cacheRoot, "chrome");
+  let versionDirs: string[];
+  try {
+    versionDirs = readdirSync(chromeRoot);
+  } catch {
+    return undefined; // no cache dir
+  }
+  const buildOrder = (dir: string): number => {
+    const parts = (dir.split("-").pop() ?? "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+    return parts.reduce((acc, n) => acc * 100000 + n, 0);
+  };
+  const relCandidates = [
+    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "chrome-linux64/chrome",
+  ];
+  for (const dir of versionDirs.sort((a, b) => buildOrder(b) - buildOrder(a))) {
+    for (const rel of relCandidates) {
+      const exe = join(chromeRoot, dir, rel);
+      if (existsSync(exe)) return exe;
+    }
+  }
+  return undefined;
+}
+
+/** Resolve a Chrome/Chromium executable: env override → system install → Puppeteer cache. */
+function resolveChromeExecutable(): string | undefined {
+  const envOverride = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_PATH,
+    process.env.CHROME_BIN,
+  ].find((p): p is string => !!p && existsSync(p));
+  return envOverride ?? CHROME_APP_PATHS.find((p) => existsSync(p)) ?? findPuppeteerCacheChrome();
+}
 
 async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {
   if (_browser?.connected) return _browser;
   if (_browserLaunchPromise) return _browserLaunchPromise;
   _browserLaunchPromise = (async () => {
     const puppeteer = await import("puppeteer-core");
-    const executablePath = CHROME_PATHS.find((p) => existsSync(p));
+    const executablePath = resolveChromeExecutable();
     if (!executablePath) return null;
     _browser = await puppeteer.default.launch({
       headless: true,
@@ -46,9 +96,9 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
   return _browserLaunchPromise;
 }
 
-/** The system Chrome executable path (undefined if not found). */
+/** The Chrome/Chromium executable path (undefined if none found). */
 export function findSystemChrome(): string | undefined {
-  return CHROME_PATHS.find((p) => existsSync(p));
+  return resolveChromeExecutable();
 }
 
 // In-flight thumbnail dedup
