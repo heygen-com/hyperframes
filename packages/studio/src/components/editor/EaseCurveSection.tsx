@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { evaluateSpringEase, parseSpringBounce } from "@hyperframes/core/spring-ease";
 import {
   evaluateWiggleEase,
@@ -251,6 +251,15 @@ export function EaseCurveSection({
   const draggingRef = useRef<"p1" | "p2" | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  // Keep the local draft displayed until the committed `ease` prop round-trips
+  // back (write → reparse → re-render), then drop it. Clearing on pointer-up
+  // instead would fall back to the STALE prop for a frame — the curve snaps to
+  // the old value and jumps to the new one (the commit flicker). By the time
+  // `ease` changes, `curve` already equals the draft, so the handoff is seamless.
+  useEffect(() => {
+    setDraft(null);
+  }, [ease]);
+
   const activeTuple = draft ?? curve;
   const displayTuple = activeTuple ?? DEFAULT_CURVE;
   const [x1, y1, x2, y2] = displayTuple;
@@ -297,8 +306,9 @@ export function EaseCurveSection({
     if (!draggingRef.current || !draft) return;
     draggingRef.current = null;
     const path = `M0,0 C${draft[0]},${draft[1]} ${draft[2]},${draft[3]} 1,1`;
+    // Commit only — the draft stays on screen and is cleared by the effect above
+    // once the committed `ease` prop comes back, so the curve never flickers.
     onCustomEaseCommit(`custom(${path})`);
-    setDraft(null);
   };
 
   const top = yToSvg(1);
