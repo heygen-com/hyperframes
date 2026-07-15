@@ -36,6 +36,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onUpdateSegmentEase,
   onSetAllKeyframeEases,
   onUnroll,
 }: GsapAnimationSectionProps) {
@@ -158,6 +159,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                     }
                   : undefined
               }
+              onUpdateSegmentEase={onUpdateSegmentEase}
               onSetAllKeyframeEases={
                 onSetAllKeyframeEases
                   ? (animationId, ease) => {

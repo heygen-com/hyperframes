@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { shouldUseSdkCutover } from "../utils/sdkCutover";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { Composition } from "@hyperframes/sdk";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
@@ -56,6 +57,8 @@ const recordResolverParity = vi.fn<(...args: unknown[]) => Promise<void>>(async 
 const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined } = {
   fn: undefined,
 };
+const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
+const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
 
 vi.mock("../utils/sdkResolverShadow", () => ({
   runResolverShadow: vi.fn(),
@@ -83,11 +86,11 @@ vi.mock("./useDomEditCommits", () => ({
 }));
 vi.mock("./useDomSelection", () => ({
   useDomSelection: () => ({
-    domEditSelection: null,
+    domEditSelection: domEditSelectionRef.current,
     domEditGroupSelections: [],
     domEditHoverSelection: null,
     activeGroupElement: null,
-    domEditSelectionRef: { current: null },
+    domEditSelectionRef,
     domEditGroupSelectionsRef: { current: [] },
     setActiveGroupElement: vi.fn(),
     applyDomSelection: vi.fn(),
@@ -123,7 +126,7 @@ vi.mock("./useGsapTweenCache", () => ({
 }));
 vi.mock("./useGsapScriptCommits", () => ({
   useGsapScriptCommits: () => ({
-    commitMutation: vi.fn(),
+    commitMutation: gsapCommitMutation,
     updateGsapProperty: vi.fn(),
     updateGsapMeta: vi.fn(),
     deleteGsapAnimation: vi.fn(),
@@ -273,6 +276,134 @@ describe("onReorderShadow source filter", () => {
         expect.any(Function),
       );
     } finally {
+      act(() => root.unmount());
+    }
+  });
+});
+
+describe("bulk segment ease commits", () => {
+  it("uses one ordered batch for many ids and sane paths for one or no ids", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    const selection: DomEditSelection = {
+      id: "hero",
+      element: document.createElement("div"),
+      label: "Hero",
+      tagName: "DIV",
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+      isCompositionHost: false,
+      isInsideLockedComposition: false,
+      boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+      textContent: null,
+      dataAttributes: {},
+      inlineStyles: {},
+      computedStyles: {},
+      textFields: [],
+      capabilities: {
+        canSelect: true,
+        canEditStyles: true,
+        canCrop: true,
+        canMove: true,
+        canResize: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    };
+    domEditSelectionRef.current = selection;
+    gsapCommitMutation.mockClear();
+    gsapCommitMutation.batch.mockClear();
+    let updateSegmentEase:
+      | ((animationIds: string[], tweenPct: number, ease: string) => void)
+      | undefined;
+
+    function Probe() {
+      const params: UseDomEditSessionParams = {
+        projectId: "proj-1",
+        activeCompPath: "index.html",
+        isMasterView: false,
+        compIdToSrc: new Map(),
+        captionEditMode: false,
+        compositionLoading: false,
+        previewIframeRef: { current: null },
+        timelineElements: [],
+        setSelectedTimelineElementId: vi.fn(),
+        setRightCollapsed: vi.fn(),
+        setRightPanelTab: vi.fn(),
+        showToast: vi.fn(),
+        refreshPreviewDocumentVersion: vi.fn(),
+        queueDomEditSave: async <T,>(save: () => Promise<T>) => save(),
+        readProjectFile: async () => "",
+        writeProjectFile: async () => {},
+        updateEditingFileContent: vi.fn(),
+        domEditSaveTimestampRef: { current: 0 },
+        editHistory: { recordEdit: async () => {} },
+        fileTree: [],
+        importedFontAssetsRef: { current: [] },
+        projectDir: null,
+        projectIdRef: { current: "proj-1" },
+        previewIframe: null,
+        refreshKey: 0,
+        previewDocumentVersion: 0,
+        rightPanelTab: "design",
+        applyStudioManualEditsToPreviewRef: { current: async () => {} },
+        syncPreviewHistoryHotkey: vi.fn(),
+        reloadPreview: vi.fn(),
+        setRefreshKey: vi.fn(),
+      };
+      updateSegmentEase = useDomEditSession(params).handleUpdateSegmentEase;
+      return null;
+    }
+
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    act(() => root.render(<Probe />));
+    try {
+      expect(updateSegmentEase).toBeTypeOf("function");
+      if (!updateSegmentEase) return;
+      const options = { label: "Update segment ease", softReload: true };
+      updateSegmentEase(["move-x", "move-y", "fade"], 100, "power2.inOut");
+
+      expect(gsapCommitMutation).not.toHaveBeenCalled();
+      expect(gsapCommitMutation.batch).toHaveBeenCalledTimes(1);
+      expect(gsapCommitMutation.batch).toHaveBeenCalledWith(
+        ["move-x", "move-y", "fade"].map((animationId) => ({
+          selection,
+          mutation: {
+            type: "update-keyframe",
+            animationId,
+            percentage: 100,
+            properties: {},
+            ease: "power2.inOut",
+          },
+          options,
+        })),
+        options,
+      );
+
+      gsapCommitMutation.mockClear();
+      gsapCommitMutation.batch.mockClear();
+      updateSegmentEase(["fade"], 25, "none");
+      expect(gsapCommitMutation).toHaveBeenCalledTimes(1);
+      expect(gsapCommitMutation).toHaveBeenCalledWith(
+        selection,
+        {
+          type: "update-keyframe",
+          animationId: "fade",
+          percentage: 25,
+          properties: {},
+          ease: "none",
+        },
+        { label: "Update keyframe ease", softReload: true },
+      );
+      expect(gsapCommitMutation.batch).not.toHaveBeenCalled();
+
+      gsapCommitMutation.mockClear();
+      updateSegmentEase([], 50, "linear");
+      expect(gsapCommitMutation).not.toHaveBeenCalled();
+      expect(gsapCommitMutation.batch).not.toHaveBeenCalled();
+    } finally {
+      domEditSelectionRef.current = null;
       act(() => root.unmount());
     }
   });

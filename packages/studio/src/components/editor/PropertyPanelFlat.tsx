@@ -138,6 +138,7 @@ export function PropertyPanelFlat({
   onUpdateArcSegment,
   onUnroll,
   onUpdateKeyframeEase,
+  onUpdateSegmentEase,
   onSetAllKeyframeEases,
 }: Pick<
   PropertyPanelProps,
@@ -179,6 +180,7 @@ export function PropertyPanelFlat({
   | "onUpdateArcSegment"
   | "onUnroll"
   | "onUpdateKeyframeEase"
+  | "onUpdateSegmentEase"
   | "onSetAllKeyframeEases"
   | "recordingState"
   | "recordingDuration"
@@ -355,6 +357,7 @@ export function PropertyPanelFlat({
           onUpdateArcSegment,
           onUnroll,
           onUpdateKeyframeEase,
+          onUpdateSegmentEase,
           onSetAllKeyframeEases,
         }
       : null;
