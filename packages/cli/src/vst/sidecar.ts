@@ -23,6 +23,7 @@ interface RunningSidecar {
 }
 
 let running: RunningSidecar | null = null;
+let pending: Promise<{ port: number; stop: () => void }> | null = null;
 
 /**
  * Resolves the command used to invoke the VST host sidecar.
@@ -78,6 +79,7 @@ export function __resetForTests(): void {
     running.child.kill();
   }
   running = null;
+  pending = null;
 }
 
 /**
@@ -85,11 +87,24 @@ export function __resetForTests(): void {
  * once it announces its bound port on stdout. Only one sidecar runs per CLI
  * process — a second call while one is already running returns the same
  * instance.
+ *
+ * Concurrent calls made before the FIRST call's child becomes ready share
+ * that same in-flight attempt via the module-level `pending` promise, rather
+ * than each spawning their own child: `running` is only assigned once the
+ * ready handshake arrives (inside `child.stdout`'s `data` handler), so
+ * without `pending` a second call arriving before that point would see
+ * `running === null` and spawn a second, orphaned child (TOCTOU race).
+ * `pending` is set synchronously — before any `await` or callback-based work
+ * — so every concurrent caller observes either `running` (already ready) or
+ * `pending` (in flight) and never falls through to a fresh `spawn()` call.
  */
 export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
   if (running) {
     const current = running;
     return Promise.resolve({ port: current.port, stop: () => stopSidecar(current.child) });
+  }
+  if (pending) {
+    return pending;
   }
 
   const [cmd, ...baseArgs] = resolveVstHostCommand();
@@ -97,7 +112,7 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
     return Promise.reject(new Error(`VST sidecar could not be started. ${INSTALL_HINT}`));
   }
 
-  return new Promise((resolvePromise, reject) => {
+  pending = new Promise<{ port: number; stop: () => void }>((resolvePromise, reject) => {
     const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -138,7 +153,11 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
       clearTimeout(timer);
       reject(new Error(`VST sidecar exited before becoming ready. ${INSTALL_HINT}`));
     });
+  }).finally(() => {
+    pending = null;
   });
+
+  return pending;
 }
 
 function stopSidecar(child: ChildProcess): void {
