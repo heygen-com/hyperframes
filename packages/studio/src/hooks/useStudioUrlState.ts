@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../player";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { clampNumber, type RightPanelTab } from "../utils/studioHelpers";
+import type { StudioViewMode } from "../contexts/ViewModeContext";
 import { parseProjectIdFromHash } from "../utils/projectRouting";
 import {
   buildStudioHash,
@@ -20,6 +21,8 @@ interface UseStudioUrlStateParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   rightPanelTab: RightPanelTab;
   rightCollapsed: boolean;
+  viewMode: StudioViewMode;
+  setViewMode: (mode: StudioViewMode) => void;
   activeCompPathHydrated: boolean;
   domEditSelection: DomEditSelection | null;
   buildDomSelectionFromTarget: (
@@ -65,6 +68,8 @@ export function useStudioUrlState({
   previewIframeRef,
   rightPanelTab,
   rightCollapsed,
+  viewMode,
+  setViewMode,
   activeCompPathHydrated,
   domEditSelection,
   buildDomSelectionFromTarget,
@@ -90,11 +95,12 @@ export function useStudioUrlState({
       rightPanelTab,
       rightCollapsed,
       timelineVisible: null,
+      viewMode,
       selection: hydratedSelectionRef.current
         ? toPersistedSelection(domEditSelection)
         : pendingSelectionRef.current,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab],
+    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab, viewMode],
   );
 
   // Resolve a URL selection to a live element and apply it. Shared by the initial
@@ -239,8 +245,9 @@ export function useStudioUrlState({
       }
       applyUrlSelection(parsed.selection);
       if (parsed.rightPanelTab) setRightPanelTab(parsed.rightPanelTab);
+      setViewMode(parsed.viewMode ?? "timeline");
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [projectId, duration, applyUrlSelection, setRightPanelTab]);
+  }, [projectId, duration, applyUrlSelection, setRightPanelTab, setViewMode]);
 }

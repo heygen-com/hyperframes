@@ -1,4 +1,5 @@
 import type { RightPanelTab } from "./studioHelpers";
+import type { StudioViewMode } from "../contexts/ViewModeContext";
 import { buildProjectHash, parseProjectHashRoute } from "./projectRouting";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { roundTo3 } from "./rounding";
@@ -16,6 +17,7 @@ export interface StudioUrlState {
   rightPanelTab: RightPanelTab | null;
   rightCollapsed: boolean | null;
   timelineVisible: boolean | null;
+  viewMode: StudioViewMode | null;
   selection: StudioUrlSelectionState | null;
 }
 
@@ -72,6 +74,10 @@ function parseTab(value: string | null): RightPanelTab | null {
   return VALID_TABS.includes(value as RightPanelTab) ? (value as RightPanelTab) : null;
 }
 
+function parseViewMode(value: string | null): StudioViewMode | null {
+  return value === "storyboard" ? "storyboard" : null;
+}
+
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {
   const sourceFile = params.get("selFile") || undefined;
   const id = params.get("selId") || undefined;
@@ -95,6 +101,7 @@ function defaultStudioUrlState(): StudioUrlState {
     rightPanelTab: null,
     rightCollapsed: null,
     timelineVisible: null,
+    viewMode: null,
     selection: null,
   };
 }
@@ -110,6 +117,7 @@ export function parseStudioUrlStateFromHash(hash: string): StudioUrlState {
     rightPanelTab: normalizeStudioUrlPanelTab(parseTab(params.get("tab"))),
     rightCollapsed: parseBoolean(params.get("rc")),
     timelineVisible: parseBoolean(params.get("tv")),
+    viewMode: parseViewMode(params.get("view")),
     selection: normalizeSelection(params),
   };
 }
@@ -119,7 +127,13 @@ export function readStudioUrlStateFromWindow(): StudioUrlState {
   return parseStudioUrlStateFromHash(window.location.hash);
 }
 
-// Pre-existing param-assembly complexity — surfaced by this PR's line shifts.
+/**
+ * View mode used to serialize in a top-level `?view=` query param from
+ * `ViewModeContext.tsx`. It now uses this hash's `view` param as the single
+ * URL-state authority. The legacy query is read once on initial load for
+ * back-compat and is never written.
+ */
+// Pre-existing param-assembly complexity, surfaced by this PR's line shifts.
 // fallow-ignore-next-line complexity
 export function buildStudioHash(projectId: string, state: StudioUrlState): string {
   const params = new URLSearchParams();
@@ -132,6 +146,7 @@ export function buildStudioHash(projectId: string, state: StudioUrlState): strin
   if (state.rightPanelTab) params.set("tab", state.rightPanelTab);
   if (state.rightCollapsed != null) params.set("rc", state.rightCollapsed ? "1" : "0");
   if (state.timelineVisible != null) params.set("tv", state.timelineVisible ? "1" : "0");
+  if (state.viewMode === "storyboard") params.set("view", "storyboard");
   if (state.selection) {
     if (state.selection.sourceFile) params.set("selFile", state.selection.sourceFile);
     if (state.selection.id) params.set("selId", state.selection.id);

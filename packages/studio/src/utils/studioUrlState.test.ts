@@ -79,6 +79,8 @@ function renderStudioUrlStateHarness(
     previewIframeRef: { current: null },
     rightPanelTab: "renders",
     rightCollapsed: true,
+    viewMode: "timeline",
+    setViewMode: () => {},
     activeCompPathHydrated: true,
     domEditSelection: null,
     buildDomSelectionFromTarget: () => Promise.resolve(null),
@@ -89,6 +91,7 @@ function renderStudioUrlStateHarness(
       rightPanelTab: null,
       rightCollapsed: null,
       timelineVisible: null,
+      viewMode: null,
       selection: null,
     },
   };
@@ -121,6 +124,35 @@ function StudioUrlStateHarness(props: Parameters<typeof useStudioUrlState>[0]) {
 }
 
 describe("studio url state", () => {
+  it("round-trips storyboard view mode through the project hash", () => {
+    const hash = buildStudioHash("demo", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      viewMode: "storyboard",
+      selection: null,
+    });
+
+    expect(parseStudioUrlStateFromHash(hash).viewMode).toBe("storyboard");
+  });
+
+  it("omits the default view mode from the project hash", () => {
+    const hash = buildStudioHash("demo", {
+      activeCompPath: null,
+      currentTime: null,
+      rightPanelTab: null,
+      rightCollapsed: null,
+      timelineVisible: null,
+      viewMode: null,
+      selection: null,
+    });
+
+    expect(hash).not.toContain("view=");
+    expect(parseStudioUrlStateFromHash(hash).viewMode).toBeNull();
+  });
+
   it("parses persisted studio state from project hash", () => {
     const state = parseStudioUrlStateFromHash(
       "#project/demo?v=1&comp=compositions%2Ftitle.html&t=4.25&tab=design&rc=0&tv=1&selFile=index.html&selId=hero",
@@ -147,6 +179,7 @@ describe("studio url state", () => {
         rightPanelTab: "layers",
         rightCollapsed: true,
         timelineVisible: false,
+        viewMode: null,
         selection: {
           sourceFile: "index.html",
           selector: ".card",
@@ -159,13 +192,14 @@ describe("studio url state", () => {
   });
 
   it("falls back cleanly on invalid values", () => {
-    const state = parseStudioUrlStateFromHash("#project/demo?tab=nope&t=abc&rc=9&tv=7");
+    const state = parseStudioUrlStateFromHash("#project/demo?tab=nope&t=abc&rc=9&tv=7&view=nope");
 
     expect(state.activeCompPath).toBeNull();
     expect(state.currentTime).toBeNull();
     expect(state.rightPanelTab).toBeNull();
     expect(state.rightCollapsed).toBeNull();
     expect(state.timelineVisible).toBeNull();
+    expect(state.viewMode).toBeNull();
     expect(state.selection).toBeNull();
   });
 
@@ -187,6 +221,26 @@ describe("studio url state", () => {
   it("normalizes url tabs against feature flags", () => {
     expect(normalizeStudioUrlPanelTab("renders")).toBe("renders");
     expect(normalizeStudioUrlPanelTab("layers", { inspectorPanelsEnabled: false })).toBe("renders");
+  });
+
+  it("restores view mode from external hash navigation", () => {
+    const setViewMode = vi.fn();
+    const harness = renderStudioUrlStateHarness({ setViewMode });
+
+    act(() => {
+      window.history.replaceState(null, "", "#project/demo?v=1&view=storyboard");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    expect(setViewMode).toHaveBeenCalledWith("storyboard");
+
+    act(() => {
+      window.history.replaceState(null, "", "#project/demo?v=1");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    expect(setViewMode).toHaveBeenLastCalledWith("timeline");
+    harness.unmount();
   });
 
   it("hydrates seek first, preserves the initial url state, then restores selection", async () => {
@@ -243,6 +297,7 @@ describe("studio url state", () => {
         rightPanelTab: "design",
         rightCollapsed: false,
         timelineVisible: true,
+        viewMode: null,
         selection: { id: "hero" },
       },
     });
