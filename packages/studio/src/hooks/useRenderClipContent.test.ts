@@ -5,13 +5,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
-import type { TimelineElement } from "../player/store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  usePlayerStore.setState({ thumbnailsEnabled: false });
   document.body.innerHTML = "";
 });
 
@@ -106,6 +107,8 @@ describe("useRenderClipContent", () => {
   });
 
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
+    usePlayerStore.setState({ thumbnailsEnabled: true });
+
     const cases: Array<{ content: ReactNode; type: unknown }> = [
       {
         content: renderClipContent({
