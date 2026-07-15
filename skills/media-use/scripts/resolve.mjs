@@ -35,10 +35,7 @@ import {
   flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
-import {
-  BundledSfxAssetsError,
-  inspectBundledSfxAssets,
-} from "./lib/bundled-sfx-provider.mjs";
+import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
 
 const INGEST_TYPES = [...listTypes(), "video"];
 
@@ -387,10 +384,10 @@ async function run() {
       providerFailure instanceof BundledSfxAssetsError
         ? providerFailure.message
         : type === "brand"
-        ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
-        : args.provider
-          ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
-          : `no provider could resolve ${type}: "${intent}"`;
+          ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
+          : args.provider
+            ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
+            : `no provider could resolve ${type}: "${intent}"`;
     if (args.json) {
       console.log(
         JSON.stringify({
