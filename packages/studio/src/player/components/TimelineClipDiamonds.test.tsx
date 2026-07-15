@@ -358,7 +358,13 @@ describe("TimelineClipDiamonds", () => {
         <TimelineDiamondLane
           keyframesData={{
             format: "percentage",
-            keyframes: [kf(0), kf(50), kf(100, { easeAmbiguous: lastAmbiguous })],
+            keyframes: [
+              kf(0),
+              kf(50),
+              kf(100, {
+                collidingAnimationIds: lastAmbiguous ? ["anim-1", "anim-2"] : undefined,
+              }),
+            ],
           }}
           clipWidthPx={200}
           clipHeightPx={48}

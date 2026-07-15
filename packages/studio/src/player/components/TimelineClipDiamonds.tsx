@@ -21,9 +21,8 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
-  /** Set when 2+ source animations collide at this percentage (a single inline
-   *  ease button can't target one): the collapsed row hides the button here. */
-  easeAmbiguous?: boolean;
+  /** Source animation ids that collide at this percentage, in first-seen order. */
+  collidingAnimationIds?: string[];
 }
 
 interface KeyframeCacheEntry {
@@ -215,12 +214,12 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         if (x2 - x1 < 1) return null;
         // Group-aware target for the ease button: the segment ease is
         // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
-        // On a merged inline row the button is hidden where the segment is
-        // ambiguous (two source animations collide at this % with different
-        // eases; see easeAmbiguous) or the keyframe has no source animation id
-        // (runtime-scanned) so there is no tween to target.
+        // On a merged inline row, the button is hidden when multiple source
+        // animations collide at this percentage or the keyframe has no source
+        // animation id (runtime-scanned), so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
+        const hasCollidingAnimations = (kf.collidingAnimationIds?.length ?? 0) > 1;
         return (
           <Fragment key={`line-${i}-${prev.percentage}-${kf.percentage}`}>
             <div
@@ -237,7 +236,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && !kf.easeAmbiguous && kf.animationId !== undefined && (
+            {onSelectSegment && !hasCollidingAnimations && kf.animationId !== undefined && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""

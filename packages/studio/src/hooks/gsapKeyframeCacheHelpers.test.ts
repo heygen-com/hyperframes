@@ -98,6 +98,37 @@ describe("clearKeyframeCacheForFile", () => {
 });
 
 describe("updateKeyframeCacheFromParsed", () => {
+  it("records colliding animation ids in first-seen order", () => {
+    const animation = (
+      id: string,
+      propertyGroup: string,
+      properties: Record<string, number>,
+    ): GsapAnimation => ({
+      ...animWithKeyframes(id),
+      targetSelector: "#hero",
+      propertyGroup,
+      keyframes: { format: "percentage", keyframes: [{ percentage: 50, properties }] },
+    });
+
+    updateKeyframeCacheFromParsed(
+      [
+        animation("hero-position", "position", { x: 100 }),
+        animation("hero-visual", "visual", { opacity: 1 }),
+        animation("hero-position", "position", { y: 50 }),
+        animation("hero-scale", "scale", { scale: 2 }),
+      ],
+      "scene.html",
+      "hero",
+      {},
+    );
+
+    expect(cache().get("scene.html#hero")?.keyframes[0]?.collidingAnimationIds).toEqual([
+      "hero-position",
+      "hero-visual",
+      "hero-scale",
+    ]);
+  });
+
   it("serializes a multi-keyframe tween with a stable shape and animation identity", () => {
     const animation: GsapAnimation = {
       ...animWithKeyframes("hero"),

@@ -14,9 +14,8 @@ export interface KeyframeCacheEntry {
     animationId?: string;
     properties: Record<string, number | string>;
     ease?: string;
-    /** Set when 2+ source animations collide at this percentage (a single inline
-     *  ease button can't target one): the collapsed row hides the button here. */
-    easeAmbiguous?: boolean;
+    /** Source animation ids that collide at this percentage, in first-seen order. */
+    collidingAnimationIds?: string[];
   }>;
   ease?: string;
   easeEach?: string;
