@@ -338,11 +338,13 @@ export function Section({
   title,
   children,
   accessory,
+  disabledReason,
   defaultCollapsed = false,
 }: {
   title: string;
   children: ReactNode;
   accessory?: ReactNode;
+  disabledReason?: string;
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -384,7 +386,19 @@ export function Section({
         </button>
         {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
       </div>
-      {!collapsed && <div className="px-4 pb-3">{children}</div>}
+      {!collapsed && (
+        <div className="px-4 pb-3">
+          {disabledReason && (
+            <p
+              data-disabled-reason
+              className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400"
+            >
+              {disabledReason}
+            </p>
+          )}
+          {children}
+        </div>
+      )}
     </section>
   );
 }

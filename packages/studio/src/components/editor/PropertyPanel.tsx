@@ -378,7 +378,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
-        <Section title="Layout">
+        <Section title="Layout" disabledReason={element.capabilities.reasonIfDisabled}>
           <div className={RESPONSIVE_GRID}>
             <div className="flex items-center gap-1">
               <div className="flex-1">

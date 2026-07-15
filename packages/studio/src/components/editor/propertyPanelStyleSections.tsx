@@ -145,7 +145,11 @@ export function StyleSections({
   return (
     <>
       {isFlex && (
-        <Section title="Flex" defaultCollapsed>
+        <Section
+          title="Flex"
+          disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+          defaultCollapsed
+        >
           <div className="space-y-4">
             <SegmentedControl
               disabled={styleEditingDisabled}
@@ -190,7 +194,11 @@ export function StyleSections({
       )}
 
       {hasVisualBackground && (
-        <Section title="Radius" defaultCollapsed>
+        <Section
+          title="Radius"
+          disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+          defaultCollapsed
+        >
           <BorderRadiusEditor
             tl={radiusTL}
             tr={radiusTR}
@@ -215,7 +223,11 @@ export function StyleSections({
         </Section>
       )}
 
-      <Section title="Stroke" defaultCollapsed>
+      <Section
+        title="Stroke"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <MetricField
@@ -273,7 +285,11 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Effects" defaultCollapsed>
+      <Section
+        title="Effects"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <SelectField
             label="Shadow"
@@ -326,7 +342,11 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Clip" defaultCollapsed>
+      <Section
+        title="Clip"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <SelectField
@@ -402,7 +422,11 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Transparency" defaultCollapsed>
+      <Section
+        title="Transparency"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <SliderControl
             value={opacityValue}
@@ -424,7 +448,10 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Fill">
+      <Section
+        title="Fill"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+      >
         <div className="space-y-4">
           <SegmentedControl
             disabled={styleEditingDisabled}
