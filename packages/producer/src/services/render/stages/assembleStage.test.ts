@@ -21,9 +21,7 @@ vi.mock("../shared.js", () => ({
 
 import { runAssembleStage } from "./assembleStage.js";
 
-function makeInput(
-  overrides: Partial<AssembleStageInput> = {},
-): AssembleStageInput {
+function makeInput(overrides: Partial<AssembleStageInput> = {}): AssembleStageInput {
   return {
     job: {
       id: "aac-duration-parity",
