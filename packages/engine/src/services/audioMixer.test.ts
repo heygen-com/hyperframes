@@ -143,6 +143,61 @@ describe("processCompositionAudio", () => {
     expect(filter).toContain("[mixed]volume=3[out]");
   });
 
+  it("fails the audio result instead of silently mixing after one track preparation fails", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "working.wav"), "stub");
+    writeFileSync(join(baseDir, "missing-cue.wav"), "stub");
+
+    const defaultImplementation = runFfmpegMock.getMockImplementation()!;
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      const isMissingCuePrepare = args.includes(join(baseDir, "missing-cue.wav"));
+      return {
+        success: !isMissingCuePrepare,
+        durationMs: 1,
+        stderr: isMissingCuePrepare ? "Invalid data found when processing input" : "",
+        exitCode: isMissingCuePrepare ? 1 : 0,
+      };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "working",
+          src: "working.wav",
+          start: 0,
+          end: 0.5,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+        {
+          id: "missing-cue",
+          src: "missing-cue.wav",
+          start: 3.859,
+          end: 4.359,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      5,
+    );
+    runFfmpegMock.mockImplementation(defaultImplementation);
+
+    expect(result.success).toBe(false);
+    expect(result.tracksProcessed).toBe(1);
+    expect(result.error).toMatch(/Prepare failed: missing-cue/);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(2);
+  });
+
   it("uses frame-evaluated volume automation when keyframes are present", async () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
