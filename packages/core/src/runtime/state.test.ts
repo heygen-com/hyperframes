@@ -40,6 +40,7 @@ describe("createRuntimeState", () => {
     expect(state.cachedVideoClips).toEqual([]);
     expect(state.injectedCompStyles).toEqual([]);
     expect(state.injectedCompScripts).toEqual([]);
+    expect(state.injectedCompLinks).toEqual([]);
     expect(state.deterministicAdapters).toEqual([]);
   });
 

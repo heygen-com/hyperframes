@@ -26,6 +26,7 @@ describe("loadExternalCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 
@@ -176,6 +177,39 @@ describe("loadExternalCompositions", () => {
       (link) => (link as HTMLLinkElement).href,
     );
     expect(injectedHrefs).toEqual(["https://example.com/compositions/scene.css?v=1"]);
+  });
+
+  it("does not execute head script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <script src="#theme"></script>
+          <script src="?v=1"></script>
+          <script src="./scene.html?v=2#theme"></script>
+        </head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
   });
 
   it("calls onDiagnostic when fetch fails", async () => {
@@ -1110,6 +1144,7 @@ describe("loadInlineTemplateCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 

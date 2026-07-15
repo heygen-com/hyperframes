@@ -2042,6 +2042,7 @@ export function initSandboxRuntimeModular(): void {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
       injectedScripts: state.injectedCompScripts,
+      injectedLinks: state.injectedCompLinks,
       parseDimensionPx,
       onDiagnostic: ({
         code,
@@ -3047,12 +3048,21 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     state.injectedCompStyles = [];
+    for (const linkEl of state.injectedCompLinks) {
+      try {
+        linkEl.remove();
+      } catch (err) {
+        // ignore cleanup failures
+        swallow("runtime.init.site15", err);
+      }
+    }
+    state.injectedCompLinks = [];
     for (const scriptEl of state.injectedCompScripts) {
       try {
         scriptEl.remove();
       } catch (err) {
         // ignore cleanup failures
-        swallow("runtime.init.site15", err);
+        swallow("runtime.init.site16", err);
       }
     }
     state.injectedCompScripts = [];

@@ -11,6 +11,7 @@ import {
 type LoadExternalCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
+  injectedLinks: HTMLLinkElement[];
   parseDimensionPx: (value: string | null) => string | null;
   onDiagnostic?: (payload: {
     code: string;
@@ -193,7 +194,11 @@ function resolveScriptSourceUrl(scriptSrc: string, compositionUrl: URL | null): 
   const trimmedSrc = scriptSrc.trim();
   if (!trimmedSrc) return scriptSrc;
   try {
-    if (BARE_RELATIVE_PATH_RE.test(trimmedSrc)) {
+    if (
+      BARE_RELATIVE_PATH_RE.test(trimmedSrc) &&
+      !trimmedSrc.startsWith("#") &&
+      !trimmedSrc.startsWith("?")
+    ) {
       // Composition payloads may use root-relative semantics without a leading slash.
       return new URL(trimmedSrc, document.baseURI).toString();
     }
@@ -204,6 +209,16 @@ function resolveScriptSourceUrl(scriptSrc: string, compositionUrl: URL | null): 
   } catch {
     return scriptSrc;
   }
+}
+
+function isSameDocumentUrl(candidate: string | URL, compositionUrl: URL): boolean {
+  const candidateDocumentUrl = new URL(candidate);
+  const compositionDocumentUrl = new URL(compositionUrl);
+  candidateDocumentUrl.search = "";
+  candidateDocumentUrl.hash = "";
+  compositionDocumentUrl.search = "";
+  compositionDocumentUrl.hash = "";
+  return candidateDocumentUrl.href === compositionDocumentUrl.href;
 }
 
 type HostCompositionIdentity = {
@@ -345,6 +360,7 @@ async function mountCompositionContent(params: {
   compositionUrl: URL | null;
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
+  injectedLinks: HTMLLinkElement[];
   parseDimensionPx: (value: string | null) => string | null;
   /** Extra <style> elements from the parsed document <head> (non-template sub-compositions). */
   headStyles?: HTMLStyleElement[];
@@ -393,19 +409,12 @@ async function mountCompositionContent(params: {
       const rawHref = (link.getAttribute("href") || "").trim();
       if (!rawHref) continue;
       const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
-      if (params.compositionUrl) {
-        const linkedUrl = new URL(href);
-        const compositionDocumentUrl = new URL(params.compositionUrl);
-        linkedUrl.search = "";
-        linkedUrl.hash = "";
-        compositionDocumentUrl.search = "";
-        compositionDocumentUrl.hash = "";
-        if (linkedUrl.href === compositionDocumentUrl.href) continue;
-      }
+      if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
       if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
       const clonedLink = link.cloneNode(true) as HTMLLinkElement;
       clonedLink.href = href;
       document.head.appendChild(clonedLink);
+      params.injectedLinks.push(clonedLink);
     }
   }
 
@@ -445,6 +454,9 @@ async function mountCompositionContent(params: {
       const scriptSrc = script.getAttribute("src")?.trim() ?? "";
       if (scriptSrc) {
         const resolvedSrc = resolveScriptSourceUrl(scriptSrc, params.compositionUrl);
+        if (params.compositionUrl && isSameDocumentUrl(resolvedSrc, params.compositionUrl)) {
+          continue;
+        }
         headScriptPayloads.push({ kind: "external", src: resolvedSrc, type: scriptType });
       } else {
         const scriptText = script.textContent?.trim() ?? "";
@@ -598,6 +610,7 @@ export async function loadInlineTemplateCompositions(
       compositionUrl: null,
       injectedStyles: params.injectedStyles,
       injectedScripts: params.injectedScripts,
+      injectedLinks: params.injectedLinks,
       parseDimensionPx: params.parseDimensionPx,
       onDiagnostic: params.onDiagnostic,
     });
@@ -648,6 +661,7 @@ export async function loadExternalCompositions(
             compositionUrl,
             injectedStyles: params.injectedStyles,
             injectedScripts: params.injectedScripts,
+            injectedLinks: params.injectedLinks,
             parseDimensionPx: params.parseDimensionPx,
             onDiagnostic: params.onDiagnostic,
           });
@@ -705,6 +719,7 @@ export async function loadExternalCompositions(
           compositionUrl,
           injectedStyles: params.injectedStyles,
           injectedScripts: params.injectedScripts,
+          injectedLinks: params.injectedLinks,
           parseDimensionPx: params.parseDimensionPx,
           headStyles,
           headScripts,
