@@ -245,7 +245,7 @@ export function useFileManager({
   const handleCreateFile = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return "No active project";
       let content = "";
       if (path.endsWith(".html")) {
         content =
@@ -259,10 +259,13 @@ export function useFileManager({
       if (res.ok) {
         await refreshFileTree();
         handleFileSelect(path);
+        return null;
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create file failed: ${err.error}`);
-        showToast(`Couldn't create ${path}: ${err.error}`, "error");
+        const message = `Couldn't create ${path}: ${err.error}`;
+        showToast(message, "error");
+        return message;
       }
     },
     [refreshFileTree, handleFileSelect, showToast],
@@ -271,7 +274,7 @@ export function useFileManager({
   const handleCreateFolder = useCallback(
     async (path: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return "No active project";
       const res = await fetch(
         `/api/projects/${pid}/files/${encodeURIComponent(path + "/.gitkeep")}`,
         {
@@ -282,10 +285,13 @@ export function useFileManager({
       );
       if (res.ok) {
         await refreshFileTree();
+        return null;
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create folder failed: ${err.error}`);
-        showToast(`Couldn't create folder ${path}: ${err.error}`, "error");
+        const message = `Couldn't create folder ${path}: ${err.error}`;
+        showToast(message, "error");
+        return message;
       }
     },
     [refreshFileTree, showToast],
@@ -313,7 +319,7 @@ export function useFileManager({
   const handleRenameFile = useCallback(
     async (oldPath: string, newPath: string) => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return "No active project";
       const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(oldPath)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -325,10 +331,13 @@ export function useFileManager({
         }
         await refreshFileTree();
         setRefreshKey((k) => k + 1);
+        return null;
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Rename failed: ${err.error}`);
-        showToast(`Couldn't rename ${oldPath}: ${err.error}`, "error");
+        const message = `Couldn't rename ${oldPath}: ${err.error}`;
+        showToast(message, "error");
+        return message;
       }
     },
     [refreshFileTree, handleFileSelect, setRefreshKey, showToast],

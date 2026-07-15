@@ -76,8 +76,8 @@ export interface InlineInputState {
   originalPath?: string;
   /** For rename mode, the original name */
   originalName?: string;
-  onCommit?: (name: string) => void;
-  onCancel?: () => void;
+  onCommit: (name: string) => Promise<string | null>;
+  onCancel: () => void;
 }
 
 // ── Tree Helpers ──

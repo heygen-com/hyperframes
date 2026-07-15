@@ -625,6 +625,9 @@
       "packages/studio/src/components/AskAgentModal.tsx",
       "packages/studio/src/components/editor/DomEditOverlay.tsx",
       "packages/studio/src/components/editor/FileTree.tsx",
+      // FileTreeIcons.tsx: FileIcon's HIGH complexity pre-dates U12; this change
+      // only tightens InlineInputState callback types and leaves FileIcon unchanged.
+      "packages/studio/src/components/editor/FileTreeIcons.tsx",
       "packages/studio/src/components/editor/FileTreeNodes.tsx",
       "packages/studio/src/components/editor/LayersPanel.tsx",
       "packages/studio/src/components/editor/MotionPathNode.tsx",
@@ -636,6 +639,9 @@
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
+      // AssetsTab.tsx: AssetsTab's HIGH complexity pre-dates U12; this change
+      // adds only ~16 lines for the no-matches state.
+      "packages/studio/src/components/sidebar/AssetsTab.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",

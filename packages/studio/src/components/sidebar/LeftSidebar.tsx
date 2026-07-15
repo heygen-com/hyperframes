@@ -11,7 +11,7 @@ import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
-import { FileTree } from "../editor/FileTree";
+import { FileTree, type FileOperation } from "../editor/FileTree";
 import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability";
 import { Tooltip } from "../ui";
 
@@ -43,10 +43,10 @@ interface LeftSidebarProps {
   fileTree?: string[];
   editingFile?: { path: string; content: string | null } | null;
   onSelectFile?: (path: string) => void;
-  onCreateFile?: (path: string) => void;
-  onCreateFolder?: (path: string) => void;
+  onCreateFile?: (path: string) => FileOperation;
+  onCreateFolder?: (path: string) => FileOperation;
   onDeleteFile?: (path: string) => void;
-  onRenameFile?: (oldPath: string, newPath: string) => void;
+  onRenameFile?: (oldPath: string, newPath: string) => FileOperation;
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
   codeChildren?: ReactNode;
