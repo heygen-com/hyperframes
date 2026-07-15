@@ -390,8 +390,8 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
     },
 
     startVstSidecar: async () => {
-      const { port } = await startVstSidecar();
-      return { port };
+      const { port, token } = await startVstSidecar();
+      return { port, token };
     },
 
     getVstSidecarStatus: () => {
