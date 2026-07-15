@@ -20,6 +20,7 @@ import {
 import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
+import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
@@ -1610,10 +1611,29 @@ export function initSandboxRuntimeModular(): void {
     }, METADATA_REBIND_DEBOUNCE_MS);
   };
 
+  // Reactive/tertiary undecodable-media triggers (see mediaProxy.ts). Wrapped
+  // as event listeners here — rather than exported directly — because
+  // `addEventListener` hands the listener an `Event`, not the element;
+  // `event.currentTarget` recovers it. Bound/unbound alongside the metadata
+  // listeners below, reusing `metadataBoundMedia` as the once-per-element
+  // dedupe (no separate tracking set needed).
+  const onMediaLoadedMetadataForProxy = (event: Event) => {
+    if (event.currentTarget instanceof HTMLMediaElement) {
+      handleMetadataForProxy(event.currentTarget);
+    }
+  };
+  const onMediaErrorForProxy = (event: Event) => {
+    if (event.currentTarget instanceof HTMLMediaElement) {
+      handleErrorForProxy(event.currentTarget);
+    }
+  };
+
   const unbindMediaMetadataListeners = () => {
     for (const mediaEl of metadataBoundMedia) {
       mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
+      mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+      mediaEl.removeEventListener("error", onMediaErrorForProxy);
     }
     metadataBoundMedia.clear();
   };
@@ -1630,6 +1650,17 @@ export function initSandboxRuntimeModular(): void {
       }
       mediaEl.addEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.addEventListener("durationchange", scheduleMetadataDurationHydration);
+      // Reactive (zero-videoWidth) + tertiary (error event) proxy-fallback
+      // triggers. Inert in render mode / when the codec map is absent /
+      // for <audio> — all guarded inside mediaProxy.ts itself.
+      mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
+      mediaEl.addEventListener("error", onMediaErrorForProxy);
+
+      // Proactive proxy-fallback trigger: consult the codec map and swap
+      // BEFORE the eager load() below, so a known-hostile asset never even
+      // attempts to load (and error-flash) the original. No-op in render
+      // mode, for <audio>, or when the codec map is absent.
+      maybeProxyProactively(mediaEl);
 
       // Eagerly preload media data so audio/video is buffered before the user
       // clicks play. Without this, the first play() call fires on un-fetched

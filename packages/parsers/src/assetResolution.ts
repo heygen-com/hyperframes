@@ -1,13 +1,12 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, posix, relative, resolve } from "node:path";
-import { decodeUrlPathVariants } from "@hyperframes/parsers/composition";
+import { decodeUrlPathVariants } from "./composition.js";
 
 /**
- * Shared local-asset resolution helpers used by both the project-level lint
- * rules (`project.ts`) and the HEVC preview-codec check
- * (`hevcPreviewLint.ts`). Split out so the latter doesn't need to import from
- * `project.ts` (which imports it back to run the rule) — that would be a
- * circular import within the package.
+ * Shared local-asset resolution helpers for every package that maps
+ * composition asset URLs to files on disk (lint project rules, the HEVC
+ * preview check, studio-server's media codec scan). Import via the
+ * `@hyperframes/parsers/asset-resolution` subpath.
  */
 
 export function isRemoteOrInlineUrl(url: string): boolean {

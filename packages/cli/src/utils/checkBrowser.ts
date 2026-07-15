@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
@@ -18,6 +18,11 @@ import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
+import { resolveAutoProxy } from "./projectConfig.js";
+// Cross-package relative import — see the note in compositionServer.ts: no
+// `@hyperframes/studio-server` subpath export exists yet for these helpers.
+import { scanProjectMediaCodecMap } from "@hyperframes/studio-server/media-codec-map";
+import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -82,6 +87,44 @@ interface FinishedContrast {
   bg: string;
 }
 
+/**
+ * Awaits the H.264 authoring proxy for every browser-hostile local video
+ * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
+ * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
+ * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
+ * cannot fit inside that window — without this, a project's first
+ * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
+ * instead of paying a bounded one-time transcode cost
+ * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
+ * Best-effort: a probe or transcode failure is swallowed here — `check` must
+ * not fail because a proxy was attempted; the real error (if any) surfaces
+ * later when the runtime itself requests the proxy over HTTP.
+ */
+export async function preResolveHostileMediaProxies(
+  projectDir: string,
+  html: string,
+): Promise<void> {
+  if (!resolveAutoProxy(projectDir, undefined)) return;
+  let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
+  try {
+    codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
+  } catch {
+    return;
+  }
+  const hostilePathnames = Object.entries(codecMap)
+    .filter(([, facts]) => facts.browserHostile)
+    .map(([pathname]) => pathname);
+  if (hostilePathnames.length === 0) return;
+
+  await Promise.all(
+    hostilePathnames.map((pathname) =>
+      resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))).catch(
+        () => undefined,
+      ),
+    ),
+  );
+}
+
 export async function runBrowserCheck(
   project: ProjectDir,
   options: CheckOptions,
@@ -90,6 +133,7 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
+  await preResolveHostileMediaProxies(project.dir, html);
   const server = await serveStaticProjectHtml(project.dir, html, "Failed to bind check server");
   const drafts: RuntimeDraft[] = [];
   let currentTime = 0;

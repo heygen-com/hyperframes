@@ -1,7 +1,8 @@
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { extname } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
-type FfprobeRunner = (
+export type FfprobeRunner = (
   command: string,
   args: string[],
   options?: SpawnSyncOptions,
@@ -127,8 +128,16 @@ export function probeMediaMetadata(
     return { kind, color: classifyMediaColor(null) };
   }
 
+  // Best-effort, like the hevc_preview_codec lint rule: an env override
+  // pointing at a missing file, or no ffprobe on PATH at all, degrades to
+  // "unavailable" rather than spawning a doomed-to-ENOENT child process.
+  const ffprobePath = findFfBinary("ffprobe", { configuredMustExist: true });
+  if (!ffprobePath) {
+    return { kind, color: classifyMediaColor(null), probeError: "ffprobe unavailable" };
+  }
+
   const result = runner(
-    "ffprobe",
+    ffprobePath,
     [
       "-v",
       "error",

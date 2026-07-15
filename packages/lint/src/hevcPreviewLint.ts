@@ -6,7 +6,7 @@ import {
   isRemoteOrInlineUrl,
   maskNonScannableRanges,
   resolveExistingLocalAsset,
-} from "./assetResolution.js";
+} from "@hyperframes/parsers/asset-resolution";
 import type { HyperframeLintFinding } from "./types.js";
 
 /** Structurally compatible with `project.ts`'s (unexported) `HtmlSource` —

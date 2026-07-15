@@ -15,6 +15,7 @@ export default defineConfig({
     composition: "src/composition.ts",
     subCompositionValidity: "src/subCompositionValidity.ts",
     ffBinaries: "src/ffBinaries.ts",
+    assetResolution: "src/assetResolution.ts",
   },
   format: ["esm"],
   outDir: "dist",

@@ -4,6 +4,8 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "helpers/screenshotClip": "src/helpers/screenshotClip.ts",
+    "helpers/mediaCodecMap": "src/helpers/mediaCodecMap.ts",
+    "helpers/proxyTranscoder": "src/helpers/proxyTranscoder.ts",
     "helpers/manualEditsRenderScript": "src/helpers/manualEditsRenderScript.ts",
     "helpers/studioMotionRenderScript": "src/helpers/studioMotionRenderScript.ts",
     "helpers/draftMarkers": "src/helpers/draftMarkers.ts",

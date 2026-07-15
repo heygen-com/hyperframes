@@ -11,7 +11,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
-} from "./assetResolution.js";
+} from "@hyperframes/parsers/asset-resolution";
 import { collectLocalVideoCandidates, lintHevcPreviewCodec } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";

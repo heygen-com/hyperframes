@@ -2,6 +2,11 @@ import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
+import { resolveAutoProxy } from "./projectConfig.js";
+import { injectMediaCodecMap } from "./compositionServer.js";
+// Cross-package relative import — see the note in compositionServer.ts: no
+// `@hyperframes/studio-server` subpath export exists yet for this helper.
+import { resolveProxy, ProxyTranscodeError } from "@hyperframes/studio-server/proxy-transcoder";
 
 export interface StaticProjectServer {
   url: string;
@@ -67,6 +72,42 @@ function serveFileWithRange(
   });
 }
 
+/**
+ * Serves `?hf-proxy=h264` for a media request: 404s (no transcode attempted)
+ * when auto-proxying is off or the asset isn't a video, resolves+serves the
+ * cached H.264 proxy with Range support on success, and answers 502 on a
+ * transcode failure (never a silent black frame). Shared by every one of
+ * `serveStaticProjectHtml`'s seven callers (check/snapshot/validate/compare/
+ * grade-compare/motionShot/layout) — see the KTD in
+ * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md.
+ */
+async function serveProxyRequest(
+  projectDir: string,
+  filePath: string,
+  autoProxy: boolean,
+  rangeHeader: string | undefined,
+  res: ServerResponse,
+): Promise<void> {
+  const contentType = getMimeType(filePath);
+  if (!autoProxy || !contentType.startsWith("video/")) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  try {
+    const proxyPath = await resolveProxy(projectDir, filePath);
+    serveFileWithRange(proxyPath, rangeHeader, res);
+  } catch (err) {
+    if (err instanceof ProxyTranscodeError) {
+      res.writeHead(502, { "Content-Type": "text/plain" });
+      res.end(`Proxy transcode failed: ${err.message}`);
+      return;
+    }
+    res.writeHead(500);
+    res.end();
+  }
+}
+
 export async function serveStaticProjectHtml(
   projectDir: string,
   html: string,
@@ -76,22 +117,38 @@ export async function serveStaticProjectHtml(
   assetRoots: readonly string[] = [],
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
+  // Codec-map injection lives here (not per-caller) so all seven callers of
+  // this function inherit it in one place; computed once since `html` is
+  // static for the lifetime of this server, not re-scanned per request.
+  const autoProxy = resolveAutoProxy(projectDir, undefined);
+  const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
+
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
+      res.end(servedHtml);
       return;
     }
 
-    const requestPath = decodeURIComponent(url).replace(/^\//, "");
+    const queryIndex = url.indexOf("?");
+    const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
+    const wantsProxy =
+      queryIndex !== -1 &&
+      new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy") === "h264";
+
+    const requestPath = decodeURIComponent(pathOnly).replace(/^\//, "");
     for (const root of roots) {
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
       if (existsSync(filePath)) {
-        serveFileWithRange(filePath, req.headers.range, res);
+        if (wantsProxy) {
+          void serveProxyRequest(projectDir, filePath, autoProxy, req.headers.range, res);
+        } else {
+          serveFileWithRange(filePath, req.headers.range, res);
+        }
         return;
       }
     }
