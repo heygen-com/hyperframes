@@ -161,13 +161,20 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
-  it("deletes a non-selected element flat boundary through its animation delete path", () => {
+  it("deletes a non-selected element flat boundary through the clicked element's selection", async () => {
+    const circle: TimelineElement = {
+      ...element,
+      id: "circle",
+      key: "scenes/main.html#circle",
+      domId: "circle",
+    };
     usePlayerStore.setState({
+      elements: [element, circle],
       gsapAnimations: new Map([["scenes/main.html#circle", [otherFlatAnimation]]]),
     });
     const view = renderCallbacks();
 
-    act(() => {
+    await act(async () => {
       view.callbacks.onDeleteKeyframe?.(
         "scenes/main.html#circle",
         0,
@@ -175,20 +182,33 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
         0,
         otherFlatAnimation.id,
       );
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
-    expect(mocks.actions.handleGsapDeleteAnimation).toHaveBeenCalledWith(otherFlatAnimation.id);
+    // Persisted through the CLICKED element's own selection, not the current one.
+    expect(mocks.actions.handleGsapDeleteAnimation).toHaveBeenCalledWith(
+      otherFlatAnimation.id,
+      mocks.selection,
+    );
     expect(mocks.actions.handleGsapRemoveKeyframe).not.toHaveBeenCalled();
     view.unmount();
   });
 
-  it("removes a non-selected element authored endpoint as a keyframe", () => {
+  it("removes a non-selected element authored endpoint through the clicked element's selection", async () => {
+    const circle: TimelineElement = {
+      ...element,
+      id: "circle",
+      key: "scenes/main.html#circle",
+      domId: "circle",
+    };
     usePlayerStore.setState({
+      elements: [element, circle],
       gsapAnimations: new Map([["index.html#circle", [otherKeyframedAnimation]]]),
     });
     const view = renderCallbacks();
 
-    act(() => {
+    await act(async () => {
       view.callbacks.onDeleteKeyframe?.(
         "scenes/main.html#circle",
         100,
@@ -196,11 +216,15 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
         100,
         otherKeyframedAnimation.id,
       );
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(mocks.actions.handleGsapRemoveKeyframe).toHaveBeenCalledWith(
       otherKeyframedAnimation.id,
       100,
+      undefined,
+      mocks.selection,
     );
     expect(mocks.actions.handleGsapDeleteAnimation).not.toHaveBeenCalled();
     view.unmount();

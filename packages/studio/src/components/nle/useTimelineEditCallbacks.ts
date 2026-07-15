@@ -159,7 +159,18 @@ export function useTimelineEditCallbacks({
       onDeleteKeyframe: (elId, pct, group, tweenPct, animationId) => {
         const animations = resolveElementAnimations(elId);
         const target = resolveKeyframeTarget(pct, group, tweenPct, animationId, animations);
-        if (target) removeKeyframeTarget(target.animId, target.tweenPct, animations);
+        if (!target) return;
+        const element = usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === elId);
+        if (!element) {
+          removeKeyframeTarget(target.animId, target.tweenPct, animations);
+          return;
+        }
+        // Persist through the CLICKED element's own selection so a deletion on a
+        // non-selected element (especially one in a different source file) commits
+        // against the right element instead of the current domEditSelection.
+        void buildDomSelectionForTimelineElement(element).then((selection) => {
+          removeKeyframeTarget(target.animId, target.tweenPct, animations, selection);
+        });
       },
       // Retime the keyframe to the playhead, preserving its value + ease.
       onMoveKeyframeToPlayhead: (_elId, pct, group, tweenPct, animationId) => {
