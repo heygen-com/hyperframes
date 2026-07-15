@@ -10,6 +10,10 @@ import {
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
 const MAX_COMPOSITION_LINES = 300;
@@ -176,6 +180,98 @@ function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean 
       tag.index > candidate.index &&
       tag.index < candidate.closeIndex,
   );
+}
+
+// A DOM call that injects content into an element: appendChild/append/
+// insertAdjacentHTML/insertAdjacentElement, or an innerHTML/textContent/
+// innerText assignment (the negative lookahead keeps `===` from matching).
+const RUNTIME_INJECTION_CALL_PATTERN =
+  "(?:\\.(?:appendChild|append|insertAdjacentHTML|insertAdjacentElement)\\s*\\(|\\.(?:innerHTML|textContent|innerText)\\s*=(?!=))";
+
+// Element ids referenced via `document.getElementById("x")` or a bare `#x`
+// querySelector, immediately chained into an injection call — e.g.
+// `document.getElementById("x").appendChild(...)`. A multi-part selector
+// isn't resolved to a single id, so it's left alone rather than guessed at.
+function findDirectlyInjectedIds(scriptContent: string): Set<string> {
+  const ids = new Set<string>();
+  const patterns = [
+    new RegExp(
+      `(?:document|window\\.document)\\.getElementById\\(\\s*["']([^"']+)["']\\s*\\)\\s*${RUNTIME_INJECTION_CALL_PATTERN}`,
+      "g",
+    ),
+    new RegExp(
+      `(?:document|window\\.document)\\.querySelector\\(\\s*["']#([\\w-]+)["']\\s*\\)\\s*${RUNTIME_INJECTION_CALL_PATTERN}`,
+      "g",
+    ),
+  ];
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(scriptContent)) !== null) {
+      if (match[1]) ids.add(match[1]);
+    }
+  }
+  return ids;
+}
+
+// Element ids captured into a variable (`const host = document.getElementById(...)`
+// or the `#x` querySelector form) that the variable is later used to inject
+// content into, anywhere else in the same script.
+function findIndirectlyInjectedIds(scriptContent: string): Set<string> {
+  const idsByVariable = new Map<string, string>();
+  const assignmentPatterns = [
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|window\.document)\.getElementById\(\s*["']([^"']+)["']\s*\)/g,
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|window\.document)\.querySelector\(\s*["']#([\w-]+)["']\s*\)/g,
+  ];
+  for (const pattern of assignmentPatterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(scriptContent)) !== null) {
+      const [, variableName, targetId] = match;
+      if (variableName && targetId) idsByVariable.set(variableName, targetId);
+    }
+  }
+
+  const ids = new Set<string>();
+  for (const [variableName, targetId] of idsByVariable) {
+    const usagePattern = new RegExp(
+      `\\b${escapeRegExp(variableName)}\\s*${RUNTIME_INJECTION_CALL_PATTERN}`,
+    );
+    if (usagePattern.test(scriptContent)) ids.add(targetId);
+  }
+  return ids;
+}
+
+// Whether `targetId` is a legitimate finding: it resolves to a real element
+// with no static text/markup already in source, and isn't a caption-cue
+// element (transcript-driven word spans are an intentional instance of this
+// same shape, not a bug — see isCaptionCue).
+function buildRuntimeTextFinding(
+  targetId: string,
+  tags: readonly OpenTag[],
+  source: string,
+): HyperframeLintFinding | null {
+  const targetTag = tags.find((tag) => readAttr(tag.raw, "id") === targetId);
+  if (!targetTag || targetTag.closeIndex == null) return null;
+  if (isCaptionCue(targetTag)) return null;
+
+  const innerContent = source.slice(targetTag.index + targetTag.raw.length, targetTag.closeIndex);
+  if (innerContent.trim().length > 0) return null; // already has static fallback content
+
+  return {
+    code: "manual_edit_unsupported_runtime_text",
+    severity: "warning",
+    elementId: targetId,
+    message:
+      `#${targetId} has no static text/markup in source — its visible content is built entirely ` +
+      "at runtime by a script. HyperFrames Studio's manual-edit save locates text fields by " +
+      "matching existing source content, so a manual edit to this element in Studio will fail to " +
+      'save with "Couldn\'t find this element in the source file".',
+    fixHint:
+      "Author the element's expected content as static markup (even placeholder text) so Studio's " +
+      "manual-edit save has something to patch, and have the script update/replace it rather than " +
+      "build it from nothing. If this element is intentionally not meant to be manually edited " +
+      "(e.g. transcript-driven captions), this warning can be ignored.",
+    snippet: truncateSnippet(targetTag.raw),
+  };
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
@@ -1078,5 +1174,47 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // duration from these at render time (see resolveAdapterDurationFloorSeconds
     // in runtime/init.ts). Not an error; data-duration is optional here.
     return [];
+  },
+
+  // manual_edit_unsupported_runtime_text
+  //
+  // Studio's manual-edit save path patches text fields back into the static
+  // HTML source by locating the element's existing text content. When an
+  // element's visible text is built entirely at runtime — a script grabbing
+  // it via getElementById/querySelector and then appendChild/innerHTML/
+  // textContent — there is no static counterpart in the source for the save
+  // path to locate, and a manual text edit made to that element in Studio
+  // silently fails to save ("Couldn't find this element in the source
+  // file"). This is a real failure mode hit while authoring a Studio QA
+  // fixture: a <div> whose word-spans were only ever created by a load-time
+  // script had nothing for the save path to patch.
+  //
+  // Caption/subtitle word-by-word spans generated from a transcript are a
+  // deliberate, expected instance of this same shape — per-word manual
+  // editing isn't the intended workflow there — so elements matching the
+  // existing caption-cue id/class convention (see isCaptionCue above) are
+  // exempted. This is advisory (warning): the pattern is often intentional;
+  // the point is to surface the save-time limitation, not to forbid it.
+  ({ tags, scripts, source }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const flaggedIds = new Set<string>();
+
+    for (const script of scripts) {
+      const content = stripJsComments(script.content);
+      const candidateIds = new Set([
+        ...findDirectlyInjectedIds(content),
+        ...findIndirectlyInjectedIds(content),
+      ]);
+
+      for (const targetId of candidateIds) {
+        if (flaggedIds.has(targetId)) continue;
+        const finding = buildRuntimeTextFinding(targetId, tags, source);
+        if (!finding) continue;
+        flaggedIds.add(targetId);
+        findings.push(finding);
+      }
+    }
+
+    return findings;
   },
 ];

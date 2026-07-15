@@ -1688,4 +1688,111 @@ describe("composition rules", () => {
       expect(find(result.findings)).toBeUndefined();
     });
   });
+
+  describe("manual_edit_unsupported_runtime_text", () => {
+    const CODE = "manual_edit_unsupported_runtime_text";
+    const find = (findings: { code: string }[]) => findings.find((f) => f.code === CODE);
+
+    it("warns when a script builds an empty element's content via getElementById + appendChild", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="qa-caption-host"></div>
+        </div>
+        <script>
+          const host = document.getElementById("qa-caption-host");
+          for (const word of ["Generated", "caption", "words", "here"]) {
+            const span = document.createElement("span");
+            span.textContent = word;
+            host.appendChild(span);
+          }
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.elementId).toBe("qa-caption-host");
+    });
+
+    it("warns for a direct getElementById(...).innerHTML assignment with no static content", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="stat-value"></div>
+        </div>
+        <script>
+          document.getElementById("stat-value").innerHTML = "<b>42</b>";
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = find(result.findings);
+      expect(finding).toBeDefined();
+      expect(finding?.elementId).toBe("stat-value");
+    });
+
+    it("warns when the element is targeted via a bare #id querySelector", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="qa-list"></div>
+        </div>
+        <script>
+          const host = document.querySelector("#qa-list");
+          host.textContent = "built at runtime";
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeDefined();
+    });
+
+    it("does not warn when the element already has static fallback content", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="qa-caption-host"><span>Generated</span></div>
+        </div>
+        <script>
+          const host = document.getElementById("qa-caption-host");
+          host.appendChild(document.createElement("span"));
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not warn for a caption-cue id even with no static content", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="caption-word"></div>
+        </div>
+        <script>
+          const host = document.getElementById("caption-word");
+          host.appendChild(document.createElement("span"));
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not warn when the script only reads the element, never injects content", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="qa-readonly"></div>
+        </div>
+        <script>
+          const el = document.getElementById("qa-readonly");
+          console.log(el.getBoundingClientRect());
+        </script>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("does not warn when there are no scripts at all", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+          <div id="qa-empty"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+    });
+  });
 });
