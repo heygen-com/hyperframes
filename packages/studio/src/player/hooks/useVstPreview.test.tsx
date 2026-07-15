@@ -584,33 +584,41 @@ describe("useVstPreview — crash fallback", () => {
   });
 });
 
-// ── Reconnect must not blindly re-stream previously loaded tracks ───────────
+// ── Global suspend: ANY disconnect permanently stops ALL future streaming ───
 //
-// Task 13b bug: a WS disconnect does NOT imply the sidecar process (and its
-// server-side `_tracks` dict) was torn down — `startVstSidecar` reuses the
-// SAME running process in the common case (see useVstHost's
-// handleDisconnect doc-comment). The crash-fallback effect above already
-// reverts loaded tracks to dry immediately and clears its own bookkeeping,
-// then auto-reconnects ~2s later; before this fix, the "Load chains" effect
-// then treated every previously-streamed track as never-attempted and
-// silently reloaded it — which the still-stateful server could reassign a
-// colliding trackIndex to, with nothing left client-side to detect it. This
-// models the scenario end-to-end: the fake socket that reconnects still
-// represents the SAME stateful sidecar (nothing in this test resets any
-// server-side state), so any `load-chain` message sent for track-1/track-2
-// after reconnect would itself prove the client is blindly re-streaming a
-// track whose post-reconnect index can't be verified safe.
+// Task 13b (round 3) bug history: a WS disconnect does NOT imply the sidecar
+// process (and its server-side `_tracks` dict) was torn down —
+// `startVstSidecar` reuses the SAME running process in the common case (see
+// useVstHost's handleDisconnect doc-comment). Round 1 mirrored the sidecar's
+// index assignment client-side and detected collisions after the fact; round
+// 2 snapshotted `loadedTracksRef`'s keys into an `unsafeAfterDisconnectRef`
+// set right before a disconnect cleared it, to stop those SPECIFIC tracks
+// from being silently reloaded. Round 2's review found a real gap: a track
+// that was in `trackOrderRef` (i.e. had already reserved a server-side
+// trackIndex via a successful `loadChain`) but not yet in `loadedTracksRef`
+// (its local AudioContext/AudioWorkletNode wiring hadn't finished, or had
+// thrown) was wiped from `trackOrderRef` on disconnect WITHOUT being marked
+// unsafe — so it got blindly reloaded post-reconnect with zero collision
+// detection. Enumerating every such in-flight state correctly has now failed
+// twice, so this hook replaces all per-track tracking with one permanent,
+// whole-hook `suspendedRef`: once ANY disconnect fires, NOTHING streams
+// through this hook instance again — not a previously-loaded track, not a
+// previously-attempted one, and not a track that only appears in the DOM
+// for the first time after the disconnect. The test below specifically
+// covers that last case (a track never seen by ANY tracker before the
+// disconnect), since that's exactly what round 2's narrower mechanism missed.
 
-describe("useVstPreview — reconnect does not blindly re-stream previously loaded tracks", () => {
-  it("keeps previously loaded tracks in dry fallback after a reconnect instead of re-issuing load-chain for them", async () => {
+describe("useVstPreview — global suspend after any disconnect", () => {
+  it("never streams again after a disconnect — not even a track that never appeared in the DOM until after reconnect", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { root, audioEl1, audioEl2, showToast, socket } = await setupTwoLoadedTracks();
 
     expect(audioEl1.muted).toBe(true);
     expect(audioEl2.muted).toBe(true);
 
-    // Disconnect — the existing crash-fallback effect immediately reverts
-    // both tracks to dry and schedules one auto-reconnect.
+    // Disconnect — the crash-fallback effect immediately reverts both
+    // tracks to dry, latches `suspendedRef` permanently, and schedules one
+    // auto-reconnect.
     await act(async () => {
       socket.close();
       await flushAsyncWork();
@@ -619,6 +627,18 @@ describe("useVstPreview — reconnect does not blindly re-stream previously load
     expect(audioEl1.muted).toBe(false);
     expect(audioEl2.muted).toBe(false);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("disconnected"), "error");
+
+    // A brand-new track appears in the DOM AFTER the disconnect — one this
+    // hook never attempted to load and that was never held by
+    // loadedTracksRef, trackOrderRef, OR round 2's (now-removed)
+    // unsafeAfterDisconnectRef. Under round 2's narrower per-track tracking
+    // this track wouldn't be excluded by anything and would have been
+    // blindly loaded once the sidecar reconnected.
+    const audioEl3 = document.createElement("audio");
+    audioEl3.id = "track-3";
+    audioEl3.setAttribute("data-vst-chain", "fx/track-3.vstchain.json");
+    audioEl3.setAttribute("src", "dry3.wav");
+    document.body.append(audioEl3);
 
     // Advance past the 2s auto-restart delay so the reconnect attempt opens
     // a new socket — representing the SAME still-running, stateful sidecar
@@ -641,14 +661,80 @@ describe("useVstPreview — reconnect does not blindly re-stream previously load
       );
     }
 
-    // The fix: a previously-streamed track must never be silently reloaded
-    // on the new connection with a client-recomputed index — it stays in
-    // dry fallback until something outside this effect (e.g. the user
-    // manually retriggering a load) explicitly asks for it again.
+    // The fix: NOTHING gets (re)loaded on the new connection post-disconnect
+    // — previously-streamed tracks stay in dry fallback, and so does a track
+    // that only showed up in the DOM after the disconnect.
     expect(loadChainCallsFor("track-1")).toHaveLength(0);
     expect(loadChainCallsFor("track-2")).toHaveLength(0);
+    expect(loadChainCallsFor("track-3")).toHaveLength(0);
     expect(audioEl1.muted).toBe(false);
     expect(audioEl2.muted).toBe(false);
+    expect(audioEl3.muted).toBe(false);
+
+    act(() => root.unmount());
+  });
+
+  it("tears down a track whose local wiring was still in flight when the disconnect fired, instead of leaving it muted with no audio ever routed to it", async () => {
+    // Controls the timing of `audioContext.audioWorklet.addModule()` so the
+    // test can land the disconnect exactly between the sidecar's successful
+    // `chain-loaded` reply (which resolves `api.loadChain`) and the local
+    // AudioContext/AudioWorkletNode wiring finishing — the exact gap round
+    // 2's per-track "unsafe" snapshot missed, because at that moment this
+    // track is in neither `loadedTracksRef` nor `trackOrderRef` yet.
+    let releaseAddModule: (() => void) | null = null;
+    class GatedAudioContext extends FakeAudioContext {
+      constructor(options?: { sampleRate?: number }) {
+        super(options);
+        this.audioWorklet = {
+          addModule: vi.fn(
+            () =>
+              new Promise<void>((resolve) => {
+                releaseAddModule = resolve;
+              }),
+          ),
+        };
+      }
+    }
+    vi.stubGlobal("AudioContext", GatedAudioContext);
+
+    const { root, audioEl, showToast } = mountHarness("proj-1", { version: 1, plugins: [] });
+
+    await act(async () => {
+      await flushAsyncWork();
+      required(FakeSocket.instances[0], "socket").open();
+      await flushAsyncWork();
+    });
+    const socket = required(FakeSocket.instances[0], "socket");
+
+    await act(async () => {
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      await flushAsyncWork();
+    });
+
+    // Server-side load-chain succeeded, but local wiring is stuck awaiting
+    // our gated `addModule()` — the track isn't muted yet and isn't loaded.
+    expect(audioEl.muted).toBe(false);
+    expect(releaseAddModule).not.toBeNull();
+
+    await act(async () => {
+      socket.close();
+      await flushAsyncWork();
+    });
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("disconnected"), "error");
+
+    // Now let the in-flight local wiring finish — AFTER the disconnect
+    // already fired and latched suspendedRef.
+    await act(async () => {
+      required(releaseAddModule, "releaseAddModule")();
+      await flushAsyncWork();
+    });
+
+    // Must be torn down to its original dry state, not left muted with a
+    // worklet that will never receive another PCM frame.
+    expect(audioEl.muted).toBe(false);
+    expect(required(FakeAudioContext.instances[0], "gated audio context").close).toHaveBeenCalled();
 
     act(() => root.unmount());
   });

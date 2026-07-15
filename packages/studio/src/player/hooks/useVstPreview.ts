@@ -104,6 +104,20 @@ function removeFromTrackOrder(order: string[], ids: readonly string[]): void {
   }
 }
 
+/** True once EITHER this specific effect run was cancelled (re-render/unmount) OR the whole hook has been permanently suspended by a disconnect (see `suspendedRef`). */
+function isLoadAborted(cancelled: boolean, suspended: boolean): boolean {
+  return cancelled || suspended;
+}
+
+/** A track is already spoken for this session if it's fully loaded, or has already reserved a server-side trackIndex via a prior `loadChain` success (see `loadVstTrack` — a local-wiring failure AFTER that point is never safe to retry, or the two indices would desync). */
+function isTrackAlreadyHandled(
+  trackId: string,
+  loadedTracks: ReadonlyMap<string, LoadedVstTrack>,
+  trackOrder: readonly string[],
+): boolean {
+  return loadedTracks.has(trackId) || trackOrder.includes(trackId);
+}
+
 /** Creates the AudioContext + vst-stream worklet node for one loaded track. */
 async function createTrackPlaybackNode(
   el: HTMLAudioElement,
@@ -182,8 +196,15 @@ async function loadVstTrack(
  * mutes the dry element, and plays the sidecar's processed PCM through a
  * `vst-stream` AudioWorklet instead — kept in sync with the transport
  * (play/pause/seek) and a periodic drift check. On a sidecar crash/
- * disconnect, falls back to the original dry audio and surfaces a toast,
- * attempting one automatic sidecar restart.
+ * disconnect, falls back to the original dry audio, surfaces a toast, and
+ * attempts one automatic sidecar reconnect for the shared connection's sake
+ * — but VST STREAMING ITSELF STAYS PERMANENTLY SUSPENDED for the rest of
+ * this hook instance's lifetime after the FIRST disconnect for ANY reason
+ * (see `suspendedRef` below): the sidecar's own track-index assignment can
+ * silently misroute or drop audio across a reconnect in ways this client
+ * cannot fully predict (see `useVstHost`'s doc-comments), so this hook
+ * intentionally never resumes streaming on its own — only a fresh mount
+ * (i.e. reloading the composition preview) does.
  *
  * Takes its `useVstHost()` instance as a parameter rather than calling the
  * hook itself: the FX property panel (`propertyPanelVstSection.tsx`) also
@@ -205,16 +226,36 @@ export function useVstPreview(
   const loadedTracksRef = useRef<Map<string, LoadedVstTrack>>(new Map());
   const trackOrderRef = useRef<string[]>([]);
   const restartAttemptedRef = useRef(false);
-  // trackIds that were streaming through the sidecar at the moment of a
-  // disconnect. A reconnect does NOT prove the sidecar's server-side
-  // `_tracks` dict was reset (see useVstHost's handleDisconnect doc-comment)
-  // — it usually wasn't — so a client-recomputed trackIndex for one of these
-  // can't be trusted. Once a trackId lands here it's excluded from the "Load
-  // chains" effect below for the rest of this hook's lifetime; re-streaming
-  // it requires an explicit, separate reload trigger (e.g. the user
-  // reopening the FX panel), not an automatic retry that would blindly
-  // guess at a possibly-colliding index.
-  const unsafeAfterDisconnectRef = useRef<Set<string>>(new Set());
+  // Set permanently the FIRST time this hook instance observes a disconnect
+  // (via `onDisconnect`, below) — never reset back to `false` for the rest of
+  // this hook instance's lifetime, even once the sidecar reconnects.
+  //
+  // Earlier attempts (see git history) tried to track, per track, whether
+  // reloading that SPECIFIC trackId post-reconnect was safe:
+  // round 1 mirrored the sidecar's index assignment and detected collisions
+  // after the fact; round 2 added a `Set` of trackIds snapshotted as "unsafe"
+  // from `loadedTracksRef` right before a disconnect clears it. Both rounds
+  // of review found a real gap: there is no complete way to enumerate "every
+  // track whose state might be compromised" from outside the sidecar, because
+  // the sidecar's own index-assignment rule (`self._tracks.pop(track_id,
+  // None)` then `TrackStream(len(self._tracks), ...)` in server.py) can
+  // reassign colliding indices on ANY reload, and a WS disconnect does not
+  // reliably tell the client whether the sidecar process (and its `_tracks`
+  // dict) is the same one from before or a fresh restart (see useVstHost's
+  // `handleDisconnect` doc-comment) — so a track that was never in
+  // `loadedTracksRef` (e.g. one whose local wiring was still in flight, or
+  // one that doesn't exist in the DOM yet) is just as unsafe to load as one
+  // that was.
+  //
+  // Rather than trying a third time to enumerate every in-flight state
+  // correctly, this flag makes the rule deliberately blunt and provably
+  // complete: once ANY disconnect has been observed, NOTHING streams through
+  // this hook instance again, ever — not a previously-loaded track, not a
+  // previously-attempted-but-failed one, and not a track that only appears in
+  // the DOM after the disconnect. See the "Load chains" effect below, which
+  // checks this flag before doing anything, and the crash-fallback effect,
+  // which sets it.
+  const suspendedRef = useRef(false);
 
   // Re-run the DOM scans whenever the timeline's elements change — the
   // reliable existing signal that the preview DOM was reloaded/edited.
@@ -237,7 +278,11 @@ export function useVstPreview(
 
   // ── Load chains + mute dry elements + spin up worklets ───────────────────
   useEffect(() => {
-    if (!projectId || status !== "ready" || !api) return;
+    // `suspendedRef` is the blunt, permanent gate: once ANY disconnect has
+    // been observed by this hook instance, refuse to load ANY track — not
+    // just ones this effect has already seen — for the rest of this hook's
+    // lifetime (see suspendedRef's doc-comment above).
+    if (!projectId || status !== "ready" || !api || suspendedRef.current) return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
     const audioEls = collectVstChainAudioEls(doc);
@@ -248,20 +293,12 @@ export function useVstPreview(
 
     void (async () => {
       for (const el of audioEls) {
-        if (cancelled) return;
+        // Re-check on every iteration (not just once, above): a disconnect
+        // can land while this loop is mid-flight awaiting a previous
+        // track's `loadVstTrack` call.
+        if (isLoadAborted(cancelled, suspendedRef.current)) return;
         const trackId = resolveVstTrackId(el);
-        // Skip a track that's either fully loaded already, already reserved
-        // a server-side trackIndex from a prior loadChain success this
-        // session (see loadVstTrack — a local-wiring failure AFTER that
-        // point is never safe to retry, or the two indices would desync),
-        // or was streaming at the moment of a since-recovered disconnect
-        // (see unsafeAfterDisconnectRef above — reloading it here would
-        // blindly trust a post-reconnect index that can't be verified safe).
-        if (
-          loadedTracksRef.current.has(trackId) ||
-          trackOrderRef.current.includes(trackId) ||
-          unsafeAfterDisconnectRef.current.has(trackId)
-        ) {
+        if (isTrackAlreadyHandled(trackId, loadedTracksRef.current, trackOrderRef.current)) {
           continue;
         }
         const loaded = await loadVstTrack(
@@ -272,8 +309,16 @@ export function useVstPreview(
           trackOrderRef.current,
           workletModuleUrl,
         );
-        if (cancelled) {
-          void loaded?.audioContext.close();
+        // A disconnect can land while `loadVstTrack` above was in flight —
+        // including AFTER its server-side `load-chain` succeeded and its
+        // local AudioContext/AudioWorkletNode wiring finished (which mutes
+        // `el` as a side effect, see createTrackPlaybackNode). Tear down
+        // fully via `teardownTrack` (not just close the AudioContext) so a
+        // track resolved mid-disconnect doesn't get left muted with no
+        // processed audio ever routed to it — a "half-loaded", permanently
+        // silent state.
+        if (isLoadAborted(cancelled, suspendedRef.current)) {
+          if (loaded) void teardownTrack(loaded);
           return;
         }
         if (loaded) loadedTracksRef.current.set(trackId, loaded);
@@ -402,30 +447,59 @@ export function useVstPreview(
   // ── Crash fallback ──────────────────────────────────────────────────────────
   useEffect(() => {
     return onDisconnect(() => {
-      if (loadedTracksRef.current.size === 0) return;
-      // Mark every track that was actually streaming as unsafe to
-      // auto-reload post-reconnect (see unsafeAfterDisconnectRef's
-      // doc-comment) BEFORE clearing loadedTracksRef/trackOrderRef below —
-      // otherwise the "Load chains" effect would treat them as never
-      // attempted and silently re-stream them once the sidecar reconnects.
-      for (const trackId of loadedTracksRef.current.keys()) {
-        unsafeAfterDisconnectRef.current.add(trackId);
-      }
+      const wasAlreadySuspended = suspendedRef.current;
+      // Permanent, one-way: the very first disconnect this hook instance
+      // ever observes suspends VST streaming for the rest of its lifetime
+      // (see suspendedRef's doc-comment above) — set BEFORE tearing anything
+      // down so the "Load chains" effect's in-flight re-checks (above) see it
+      // as soon as possible, and regardless of whether any track happened to
+      // be loaded at this exact moment.
+      suspendedRef.current = true;
+
+      // Tear down anything actually loaded right now (if this is the first
+      // disconnect) down to dry playback. On a later disconnect this is a
+      // no-op in practice — nothing gets loaded once suspended, so
+      // `loadedTracksRef` stays empty — but running it unconditionally costs
+      // nothing and needs no extra branch.
       const tracks = Array.from(loadedTracksRef.current.values());
       loadedTracksRef.current.clear();
       trackOrderRef.current.length = 0;
       for (const track of tracks) {
         void teardownTrack(track);
       }
-      showToast?.("VST plugin host disconnected — reverted to unprocessed audio.", "error");
+
+      // Only the transition into suspension is newsworthy — a later
+      // disconnect (which can only happen after suspension already latched)
+      // doesn't need a second toast or another restart attempt.
+      if (wasAlreadySuspended) return;
+
+      // NOTE: there is currently no "reopen the FX panel" (or any other)
+      // trigger that calls `ensureStarted()` again for this hook — this
+      // suspension is NOT recoverable within the lifetime of this mounted
+      // hook instance. The only way to stream VST audio again is a fresh
+      // mount of `useVstPreview` (i.e. reloading/remounting the composition
+      // preview), which gets its own fresh `suspendedRef`. An earlier version
+      // of this comment claimed reopening the FX panel would re-trigger
+      // `ensureStarted()` "once wired" — grepping propertyPanelVstSection.tsx
+      // shows no such call exists, and NLEProvider (which mounts both
+      // `useVstHost` and this hook exactly once per studio session, not keyed
+      // by projectId or refreshKey — see NLEContext.tsx) never remounts on
+      // its own, so that recovery path was aspirational, not real.
+      showToast?.(
+        "VST plugin host disconnected — reverted to unprocessed audio. " +
+          "VST preview is now disabled for the rest of this session; reload the preview to re-enable it.",
+        "error",
+      );
 
       if (restartAttemptedRef.current) return;
       restartAttemptedRef.current = true;
       setTimeout(() => {
         void ensureStartedRef.current().catch(() => {
-          // Second attempt also failed — stay dry until the user reopens the
-          // FX panel (a fresh ensureStarted() call from that surface, once
-          // wired, re-enters the "idle" gate above).
+          // Second attempt also failed. Regardless of outcome, THIS hook's
+          // streaming stays suspended (see suspendedRef) — but the
+          // underlying `useVstHost` connection is shared with the FX panel
+          // (see the module doc-comment), so still worth one retry for that
+          // other consumer's sake even though it can't unstick this hook.
         });
       }, RESTART_DELAY_MS);
     });

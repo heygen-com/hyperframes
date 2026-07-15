@@ -368,10 +368,17 @@ export function useVstHost(): UseVstHostResult {
     // keeps it accurate in that common case; on the rarer path where the
     // process really was restarted (e.g. it crashed and exited), the mirror
     // can still end up stale either way, so this alone is not a full
-    // guarantee. That's why `useVstPreview` additionally refuses to blindly
-    // re-issue `load-chain` for any track it had already streamed before
-    // this disconnect (see its crash-fallback effect) rather than trusting
-    // any index recomputed for it post-reconnect.
+    // guarantee.
+    //
+    // `useVstPreview` (a separate consumer of this hook, alongside the FX
+    // property panel) does not rely on this mirror staying correct at all
+    // post-disconnect: rather than trying to keep recomputing a trustworthy
+    // index for tracks it already streamed, it permanently stops issuing
+    // `load-chain` for ANYTHING — old or new — the first time it observes
+    // any disconnect (see its `suspendedRef`). This mirror is kept as-is
+    // here purely for the FX property panel's own direct `loadChain` calls,
+    // which are unaffected by `useVstPreview`'s suspension and may still
+    // legitimately reload a chain after a reconnect.
 
     disconnectListenersRef.current.forEach((cb) => cb());
   }, []);
