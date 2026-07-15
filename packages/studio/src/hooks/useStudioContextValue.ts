@@ -20,6 +20,7 @@ interface StudioContextInput {
   editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
   handleUndo: StudioContextValue["handleUndo"];
   handleRedo: StudioContextValue["handleRedo"];
+  startRender: StudioContextValue["startRender"];
   renderQueue: StudioContextValue["renderQueue"];
   compositionDimensions: { width: number; height: number } | null;
   waitForPendingDomEditSaves: () => Promise<void>;
@@ -45,6 +46,7 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     editHistory: input.editHistory,
     handleUndo: input.handleUndo,
     handleRedo: input.handleRedo,
+    startRender: input.startRender,
     renderQueue: input.renderQueue,
     compositionDimensions: input.compositionDimensions,
     waitForPendingDomEditSaves: input.waitForPendingDomEditSaves,

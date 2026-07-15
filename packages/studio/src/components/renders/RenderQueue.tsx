@@ -3,19 +3,13 @@ import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
-import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { useStudioShellContext } from "../../contexts/StudioContext";
+import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
 
 export interface CompositionDimensions {
   width: number;
   height: number;
 }
-
-type StartRenderHandler = (
-  format: "mp4" | "webm" | "mov",
-  quality: "draft" | "standard" | "high",
-  resolution: ResolutionPreset | "auto",
-  fps: 24 | 30 | 60,
-) => void | Promise<void>;
 
 interface RenderQueueProps {
   jobs: RenderJob[];
@@ -23,7 +17,6 @@ interface RenderQueueProps {
   onDelete: (jobId: string) => void;
   onCancel?: (jobId: string) => void;
   onClearCompleted: () => void;
-  onStartRender: StartRenderHandler;
   isRendering: boolean;
   /** History fetch failure (null when the last load succeeded). */
   loadError?: string | null;
@@ -241,16 +234,15 @@ function formatEta(ms: number): string {
 }
 
 function FormatExportButton({
-  onStartRender,
   isRendering,
   compositionDimensions,
   lastRenderDurationMs,
 }: {
-  onStartRender: StartRenderHandler;
   isRendering: boolean;
   compositionDimensions?: CompositionDimensions | null;
   lastRenderDurationMs?: number;
 }) {
+  const { activeCompPath, startRender } = useStudioShellContext();
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
@@ -349,11 +341,15 @@ function FormatExportButton({
         size="md"
         loading={isRendering}
         onClick={() => {
-          // loading already disables the button; this guard also stops a
-          // double-click in the same frame from enqueueing two renders.
-          if (isRendering) return;
-          trackStudioEvent("render_start", { format, quality, resolution, fps });
-          void onStartRender(format, quality, resolution, fps);
+          const composition =
+            activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
+          void startRender(composition, {
+            format,
+            quality,
+            resolution,
+            fps,
+            variables: usePreviewVariablesStore.getState().values ?? undefined,
+          });
         }}
         className="w-full text-[11px] font-semibold"
       >
@@ -374,7 +370,6 @@ export const RenderQueue = memo(function RenderQueue({
   onDelete,
   onCancel,
   onClearCompleted,
-  onStartRender,
   isRendering,
   loadError,
   onRetryLoad,
@@ -401,7 +396,6 @@ export const RenderQueue = memo(function RenderQueue({
     <div className="flex flex-col h-full">
       <div className="px-3 py-3 border-b border-panel-border flex-shrink-0">
         <FormatExportButton
-          onStartRender={onStartRender}
           isRendering={isRendering}
           compositionDimensions={compositionDimensions}
           lastRenderDurationMs={lastRenderDurationMs}

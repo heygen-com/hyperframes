@@ -19,7 +19,6 @@ export interface StudioHeaderProps {
   capturing?: boolean;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
-  onExport?: () => void;
 }
 
 const TERMINAL_RENDER_STATUS_MS = 5000;
@@ -212,9 +211,9 @@ export function StudioHeader({
   capturing,
   inspectorButtonActive,
   inspectorPanelActive,
-  onExport,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
+  const { projectId, editHistory, handleUndo, handleRedo, renderQueue, startRender } =
+    useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
   const activeRenderIdRef = useRef<string | null>(null);
@@ -430,11 +429,10 @@ export function StudioHeader({
             type="button"
             disabled={isRendering}
             onClick={() => {
-              if (isRendering) return;
               setRightPanelTab("renders");
               setRightCollapsed(false);
               if (terminalStatus) return;
-              onExport?.();
+              void startRender(undefined);
             }}
             className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >

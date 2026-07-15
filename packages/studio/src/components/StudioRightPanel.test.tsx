@@ -35,7 +35,6 @@ vi.mock("../contexts/StudioContext", () => ({
       reloadRenders: vi.fn(),
       dismissActionError: vi.fn(),
       clearCompleted: vi.fn(),
-      startRender: vi.fn(),
       isRendering: false,
     },
   }),

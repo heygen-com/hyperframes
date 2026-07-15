@@ -33,6 +33,7 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
+import { useStartRender } from "./hooks/useStartRender";
 import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
@@ -161,6 +162,12 @@ export function StudioApp() {
     domEditSaveTimestampRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
     pendingTimelineEditPathRef,
+  });
+  const startRender = useStartRender({
+    enqueueRender: renderQueue.enqueueRender,
+    isRendering: renderQueue.isRendering,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
+    showToast,
   });
   const timelineEditing = useTimelineEditing({
     projectId,
@@ -439,6 +446,7 @@ export function StudioApp() {
     editHistory,
     handleUndo: appHotkeys.handleUndo,
     handleRedo: appHotkeys.handleRedo,
+    startRender,
     renderQueue,
     compositionDimensions,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
@@ -478,12 +486,6 @@ export function StudioApp() {
                     capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
-                    onExport={() => {
-                      void (async () => {
-                        await previewPersistence.waitForPendingDomEditSaves();
-                        await renderQueue.startRender(undefined);
-                      })();
-                    }}
                   />
                   {previewPersistence.domEditSaveQueuePaused && (
                     <SaveQueuePausedBanner
