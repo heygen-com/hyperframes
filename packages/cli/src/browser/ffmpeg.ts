@@ -87,13 +87,19 @@ function findInCommonDirs(name: "ffmpeg" | "ffprobe"): string | undefined {
   return undefined;
 }
 
+function findInProjectLocalBin(name: "ffmpeg" | "ffprobe"): string | undefined {
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const candidate = resolve(".hyperframes", "bin", `${name}${extension}`);
+  return existsSync(candidate) ? candidate : undefined;
+}
+
 function findConfiguredBinary(
   envName: string,
   binaryName: "ffmpeg" | "ffprobe",
 ): string | undefined {
   const configured = process.env[envName]?.trim();
   if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findOnPath(binaryName) ?? findInCommonDirs(binaryName);
+  return findOnPath(binaryName) ?? findInProjectLocalBin(binaryName) ?? findInCommonDirs(binaryName);
 }
 
 export function findFFmpeg(): string | undefined {

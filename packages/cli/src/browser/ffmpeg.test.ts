@@ -22,6 +22,7 @@ afterEach(() => {
   Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   vi.clearAllMocks();
   delete process.env.HYPERFRAMES_FFMPEG_PATH;
+  delete process.env.HYPERFRAMES_FFPROBE_PATH;
 });
 
 describe("findFFmpeg", () => {
@@ -52,6 +53,19 @@ describe("findFFmpeg", () => {
 
     const { findFFmpeg } = await import("./ffmpeg.js");
     expect(findFFmpeg()).toBeUndefined();
+  });
+
+  it("finds project-local FFmpeg binaries when they are not on PATH", async () => {
+    mockExec.mockImplementation(() => {
+      throw new Error("not found");
+    });
+    const localFFmpeg = resolve(".hyperframes", "bin", "ffmpeg");
+    const localFFprobe = resolve(".hyperframes", "bin", "ffprobe");
+    mockExists.mockImplementation((path) => path === localFFmpeg || path === localFFprobe);
+
+    const { findFFmpeg, findFFprobe } = await import("./ffmpeg.js");
+    expect(findFFmpeg()).toBe(localFFmpeg);
+    expect(findFFprobe()).toBe(localFFprobe);
   });
 });
 
