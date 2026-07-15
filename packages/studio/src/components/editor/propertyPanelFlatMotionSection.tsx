@@ -12,6 +12,7 @@ import {
   type GsapAnimationEditCallbacks,
 } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import { usePlayerStore } from "../../player";
 
 export function FlatTimingRow({
   element,
@@ -144,6 +145,8 @@ export function FlatMotionSection({
           : "metric";
     track(control, property);
   };
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
 
   return (
     <div className="space-y-3">
@@ -176,6 +179,10 @@ export function FlatMotionSection({
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
+                  focusedSegment={
+                    focusedEaseSegment?.animationId === anim.id ? focusedEaseSegment : null
+                  }
+                  onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
                   onUpdateProperty={(animationId, property, value) => {
                     trackProperty(property);
                     callbacks.onUpdateProperty(animationId, property, value);
