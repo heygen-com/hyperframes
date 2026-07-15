@@ -9,6 +9,7 @@ export default defineConfig({
     "helpers/draftMarkers": "src/helpers/draftMarkers.ts",
     "helpers/finiteMutation": "src/helpers/finiteMutation.ts",
     "helpers/sourceMutation": "src/helpers/sourceMutation.ts",
+    vstSidecar: "src/vstSidecar.ts",
   },
   format: ["esm"],
   outDir: "dist",

@@ -56,6 +56,12 @@
       "node": "./dist/helpers/sourceMutation.js",
       "import": "./src/helpers/sourceMutation.ts",
       "types": "./src/helpers/sourceMutation.ts"
+    },
+    "./vst-sidecar": {
+      "bun": "./src/vstSidecar.ts",
+      "node": "./dist/vstSidecar.js",
+      "import": "./src/vstSidecar.ts",
+      "types": "./src/vstSidecar.ts"
     }
   },
   "publishConfig": {
@@ -89,6 +95,10 @@
       "./source-mutation": {
         "import": "./dist/helpers/sourceMutation.js",
         "types": "./dist/helpers/sourceMutation.d.ts"
+      },
+      "./vst-sidecar": {
+        "import": "./dist/vstSidecar.js",
+        "types": "./dist/vstSidecar.d.ts"
       }
     },
     "main": "./dist/index.js",

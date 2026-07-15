@@ -33,6 +33,10 @@ import {
 } from "@hyperframes/studio-server";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
+import {
+  getVstSidecar as getVstSidecarSync,
+  startVstSidecar,
+} from "@hyperframes/studio-server/vst-sidecar";
 import type { RenderJob } from "@hyperframes/producer";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
@@ -589,6 +593,16 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return rel;
       });
       return { written: relativePaths, block: item };
+    },
+
+    startVstSidecar: async () => {
+      const { port } = await startVstSidecar();
+      return { port };
+    },
+
+    getVstSidecarStatus: () => {
+      const running = getVstSidecarSync();
+      return running ? { running: true, port: running.port } : { running: false, port: null };
     },
   };
 

@@ -203,4 +203,15 @@ export interface StudioApiAdapter {
     project: ResolvedProject;
     blockName: string;
   }): Promise<{ written: string[]; block: RegistryItem }>;
+
+  /**
+   * Optional: start the VST host sidecar and return its bound port. Absent
+   * means VST plugin hosting isn't supported in this studio mode. The
+   * browser connects directly to `ws://localhost:<port>` — the port is
+   * simply relayed back to the client, not proxied.
+   */
+  startVstSidecar?: () => Promise<{ port: number }>;
+
+  /** Optional: current VST sidecar status. Absent implies not running. */
+  getVstSidecarStatus?: () => { running: boolean; port: number | null };
 }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getVstSidecar, startVstSidecar, stopVstSidecar, __resetForTests } from "./sidecar";
+import { getVstSidecar, startVstSidecar, stopVstSidecar, __resetForTests } from "./vstSidecar";
 
 afterEach(() => {
   __resetForTests();
