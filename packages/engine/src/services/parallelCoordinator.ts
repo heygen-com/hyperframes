@@ -419,7 +419,7 @@ async function executeWorkerTask(
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
-    await discardWarmupCapture(session);
+    await settleFirstScreenshotFrame(session, task, captureOptions);
     if (process.env.HF_DE_PAR_DEBUG === "1") {
       console.log(
         `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
@@ -459,6 +459,26 @@ async function executeWorkerTask(
   } finally {
     if (session) await closeCaptureSession(session).catch(() => {});
   }
+}
+
+async function settleFirstScreenshotFrame(
+  session: CaptureSession,
+  task: WorkerTask,
+  captureOptions: CaptureOptions,
+): Promise<void> {
+  // Screenshot capture is driven by Page.captureScreenshot rather than
+  // HeadlessExperimental.beginFrame. On a fresh non-zero worker, the first
+  // screenshot can race the paint scheduled by __hf.seek(startTime); issue
+  // one throwaway screenshot at that exact frame so the real capture sees
+  // the settled state. Worker 0 already starts from the initially-painted
+  // frame, and BeginFrame/drawElement sessions must never be double-captured
+  // at the same compositor tick (Chrome stalls on duplicate timestamps).
+  if (session.captureMode !== "screenshot" || task.startFrame === 0) return;
+
+  const outputOffset = task.outputFrameOffset ?? 0;
+  const firstFrameIndex = task.startFrame - outputOffset;
+  const firstTime = (task.startFrame * captureOptions.fps.den) / captureOptions.fps.num;
+  await discardWarmupCapture(session, firstFrameIndex, firstTime);
 }
 
 export const __testing = { executeWorkerTask };

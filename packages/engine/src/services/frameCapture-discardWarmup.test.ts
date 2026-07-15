@@ -1,6 +1,6 @@
 /**
- * Tests for `discardWarmupCapture` — the helper distributed chunk workers
- * run before their first real capture to prime `lastFrameCache`.
+ * Tests for `discardWarmupCapture` — the helper screenshot-mode parallel
+ * workers run before their first real capture to settle their first seek.
  *
  * The helper is a thin wrapper around the inner `captureFrameCore`
  * machinery, so its testable contract is post-conditional rather than
@@ -45,7 +45,7 @@ function makeFakeSession(): CaptureSession {
       screenshotMs: 200,
       totalMs: 350,
     },
-    captureMode: "beginframe",
+    captureMode: "screenshot",
     beginFrameTimeTicks: 0,
     beginFrameIntervalMs: 33,
     beginFrameHasDamageCount: 4,
@@ -53,7 +53,28 @@ function makeFakeSession(): CaptureSession {
   } as unknown as CaptureSession;
 }
 
+function cleanupSession(session: CaptureSession): void {
+  rmSync(session.outputDir, { recursive: true, force: true });
+}
+
 describe("discardWarmupCapture", () => {
+  it("rejects BeginFrame sessions before issuing a duplicate compositor tick", async () => {
+    const session = makeFakeSession();
+    session.captureMode = "beginframe";
+    let called = false;
+    try {
+      await expect(
+        discardWarmupCapture(session, 36, 1.2, async () => {
+          called = true;
+          return { buffer: Buffer.alloc(0), quantizedTime: 1.2, captureTimeMs: 0 };
+        }),
+      ).rejects.toThrow("screenshot capture mode");
+      expect(called).toBe(false);
+    } finally {
+      cleanupSession(session);
+    }
+  });
+
   it("calls the inner capture exactly once with (frameIndex=0, time=0) by default", async () => {
     const session = makeFakeSession();
     try {
@@ -70,7 +91,7 @@ describe("discardWarmupCapture", () => {
       expect(receivedFrameIndex).toBe(0);
       expect(receivedTime).toBe(0);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -84,7 +105,7 @@ describe("discardWarmupCapture", () => {
       });
       expect(received).toEqual({ fi: 240, t: 8 });
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -102,7 +123,7 @@ describe("discardWarmupCapture", () => {
       });
       expect(session.capturePerf).toEqual(before);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -119,7 +140,7 @@ describe("discardWarmupCapture", () => {
       expect(session.beginFrameHasDamageCount).toBe(hasBefore);
       expect(session.beginFrameNoDamageCount).toBe(noBefore);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -146,7 +167,7 @@ describe("discardWarmupCapture", () => {
       expect(session.beginFrameHasDamageCount).toBe(hasBefore);
       expect(session.beginFrameNoDamageCount).toBe(noBefore);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -163,7 +184,7 @@ describe("discardWarmupCapture", () => {
       const after = readdirSync(session.outputDir);
       expect(after).toEqual(before);
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 
@@ -177,7 +198,7 @@ describe("discardWarmupCapture", () => {
       }));
       expect(result).toBeUndefined();
     } finally {
-      rmSync(session.outputDir, { recursive: true, force: true });
+      cleanupSession(session);
     }
   });
 });

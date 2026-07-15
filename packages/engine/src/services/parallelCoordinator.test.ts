@@ -27,10 +27,12 @@ import type { EngineConfig } from "../config.js";
 
 const { executeWorkerTask } = __testing;
 
-function makeWorkerSession() {
+function makeWorkerSession(
+  captureMode: "screenshot" | "beginframe" | "drawelement" = "screenshot",
+) {
   return {
     browserConsoleBuffer: [],
-    captureMode: "screenshot",
+    captureMode,
     workerEncodeEnabled: false,
   };
 }
@@ -61,7 +63,7 @@ beforeEach(() => {
 });
 
 describe("executeWorkerTask", () => {
-  it("warms a non-zero worker after initialization and before its first frame", async () => {
+  it("settles a non-zero screenshot worker at its first absolute frame", async () => {
     const callOrder: string[] = [];
     frameCaptureMocks.initializeSession.mockImplementation(async () => {
       callOrder.push("initialize");
@@ -76,17 +78,30 @@ describe("executeWorkerTask", () => {
     const result = await runWorker(1, 36);
 
     expect(result.error).toBeUndefined();
-    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledOnce();
+    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledWith(expect.anything(), 36, 1.2);
     expect(callOrder).toEqual(["initialize", "warmup", "capture:36", "capture:37"]);
   });
 
-  it("warms every worker without changing its reported frame count", async () => {
+  it("does not warm worker zero because its initial state is already painted", async () => {
     const results = await Promise.all([runWorker(0, 0), runWorker(1, 36)]);
 
-    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledTimes(2);
+    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledTimes(1);
     expect(results.map((result) => result.framesCaptured)).toEqual([2, 2]);
     expect(frameCaptureMocks.captureFrame).toHaveBeenCalledTimes(4);
   });
+
+  it.each(["beginframe", "drawelement"] as const)(
+    "does not issue a duplicate warmup capture in %s mode",
+    async (captureMode) => {
+      frameCaptureMocks.createCaptureSession.mockResolvedValue(makeWorkerSession(captureMode));
+
+      const result = await runWorker(1, 36);
+
+      expect(result.error).toBeUndefined();
+      expect(frameCaptureMocks.discardWarmupCapture).not.toHaveBeenCalled();
+      expect(frameCaptureMocks.captureFrame).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("returns a worker error and closes the session when warmup fails", async () => {
     const session = makeWorkerSession();
@@ -108,7 +123,7 @@ describe("executeWorkerTask", () => {
       controller.abort();
     });
 
-    const result = await runWorker(0, 0, controller.signal);
+    const result = await runWorker(1, 36, controller.signal);
 
     expect(result).toMatchObject({ error: "Parallel worker cancelled", framesCaptured: 0 });
     expect(frameCaptureMocks.captureFrame).not.toHaveBeenCalled();
