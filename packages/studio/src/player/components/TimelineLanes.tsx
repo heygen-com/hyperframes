@@ -412,14 +412,11 @@ export function TimelineLanes({
                               }
                               return;
                             }
-                            // Plain click single-selects: drop any marquee multi-selection.
-                            // Only a click on the PRIMARY selection toggles it off — a click
-                            // on a marquee-selected clip narrows the selection to that clip.
-                            const hadMultiSelection = selectedElementIds.size > 0;
+                            // Plain click always selects this clip and drops any marquee
+                            // multi-selection, narrowing it to the clicked clip.
                             usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement =
-                              selectedElementId === elementKey && !hadMultiSelection ? null : el;
-                            setSelectedElementId(nextElement ? elementKey : null);
+                            const nextElement = el;
+                            setSelectedElementId(elementKey);
                             onSelectElement?.(nextElement);
                           }
                         }

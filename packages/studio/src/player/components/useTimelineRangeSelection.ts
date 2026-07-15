@@ -396,7 +396,7 @@ export function useTimelineRangeSelection({
   }, [isDragging, dragScrollRaf, seekFromX, finishRangeSelection, finishMarquee]);
 
   // Escape: cancel an in-flight marquee (restores the pre-drag selection);
-  // otherwise clear any lingering multi-selection.
+  // otherwise clear all element and keyframe selection.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -414,10 +414,15 @@ export function useTimelineRangeSelection({
         }
         return;
       }
-      // Escape with no marquee clears the whole selection — primary AND set.
+      // Escape with no marquee clears the whole selection: primary, set, and keyframes.
       // setSelectedElementId(null) also collapses the multi-select set.
-      if (store.selectedElementId || store.selectedElementIds.size > 0) {
+      if (
+        store.selectedElementId ||
+        store.selectedElementIds.size > 0 ||
+        store.selectedKeyframes.size > 0
+      ) {
         store.setSelectedElementId(null);
+        store.clearSelectedKeyframes();
       }
     };
     window.addEventListener("keydown", onKeyDown);
