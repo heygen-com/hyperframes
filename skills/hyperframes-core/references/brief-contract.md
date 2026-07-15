@@ -95,11 +95,14 @@ Follow these invariants:
 
 1. Ask only unanswered fields that materially affect the output.
 2. Ask one field per message and wait for its answer before asking the next field.
-3. Put the recommended option first and attach a short reason. A numbered choice list is allowed, but every option in that list must answer the same field.
+3. Put the recommended option first and attach a short reason. A numbered choice list is allowed, but every option in that list must answer the same field. Option lists fit factual fields (destination, length, language), where they scaffold recall; a creative field (message, angle, tone) the request has not already shaped takes an anchored open question — a list there steers the answer instead of collecting it.
 4. Skip a question when the current request already answers it. Inference alone is not an answer.
 5. Ask `storyboard` and then `flow` last, only for routes that support them.
 6. Announce deferred questions before hand-off; do not surprise the user later.
 7. When an autonomous signal appears, ask no remaining preference or checkpoint questions. State the completed brief and the reasons for decisions, then build.
 8. Use native question UI when available. Otherwise send one plain-text question with one numbered option list; never place several fields in the same list.
+9. Before the hand-off summary, run one integration check: look for a consequence the combined answers create that no single answer showed, and surface it with a proposed adjustment.
+10. The hand-off summary separates fields the user stated from fields that were inferred or defaulted, with receipts on both.
+11. Revision is not confirmation: after any correction to the summary, present the updated summary and confirm before executing.
 
 At a checkpoint, “go” accepts that checkpoint's displayed recommendation. If a message explicitly presents a complete brief and says that “go” will accept every displayed default, then “go” may confirm that whole displayed brief; do not assume broader acceptance without that sentence.
