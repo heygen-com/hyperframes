@@ -312,3 +312,157 @@ tests/test_stream.py::test_eof_returns_none PASSED
   handling with a catch-all after the existing `PluginMissingError` clause)
 - Modified: `packages/vst-host/tests/test_server.py` (added the two
   regression tests above)
+
+## Addendum 2: `pause` transport action ignored ownership (same class of bug)
+
+A follow-up review found the same class of bug still present in the
+`pause` transport action in `_transport` (`packages/vst-host/src/hyperframes_vst/server.py`).
+Unlike the `disconnect` path and the `play`-takeover path (both fixed in the
+prior commit via `self._play_owner`), `pause` unconditionally cancelled
+`self._play_task` regardless of which connection sent the command:
+
+```python
+elif action == "pause":
+    if self._play_task:
+        self._play_task.cancel()
+        self._play_task = None
+        self._play_owner = None
+```
+
+Any connected client — including one that never called `play` — could send
+`{"cmd":"transport","action":"pause"}` and kill an unrelated connection's
+active playback stream.
+
+### Fix
+
+Made `pause` respect ownership the same way the disconnect/play-takeover
+paths already do — only cancel/clear the play task if the connection
+sending `pause` is the one that owns it:
+
+```python
+elif action == "pause":
+    if self._play_task and self._play_owner is ws:
+        self._play_task.cancel()
+        self._play_task = None
+        self._play_owner = None
+```
+
+If a different connection sends `pause`, it is now a silent no-op (matches
+the existing convention for unrelated-client actions; no error is sent,
+consistent with how a stray `pause` with nothing playing already behaved
+before this fix).
+
+### New regression test (TDD)
+
+Added to `packages/vst-host/tests/test_server.py`, following the same style
+as `test_unrelated_client_disconnect_does_not_kill_other_clients_playback`:
+
+```python
+@pytest.mark.asyncio
+async def test_unrelated_client_pause_does_not_kill_other_clients_playback(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_a:
+        await ws_a.send(
+            json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav})
+        )
+        loaded = await recv_json(ws_a)
+        assert loaded["event"] == "chain-loaded"
+
+        await ws_a.send(json.dumps({"cmd": "transport", "action": "play", "timeSec": 0.0, "rate": 1.0}))
+        frame = await recv_binary(ws_a)
+        idx, _pos, _pcm = decode_frame(frame)
+        assert idx == 0
+
+        # Client B connects and sends pause without ever having loaded or played anything itself.
+        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_b:
+            await ws_b.send(json.dumps({"cmd": "transport", "action": "pause"}))
+
+            # Client A's playback must still be alive: another frame should arrive.
+            frame2 = await recv_binary(ws_a)
+            idx2, _pos2, _pcm2 = decode_frame(frame2)
+            assert idx2 == 0
+
+        await ws_a.send(json.dumps({"cmd": "transport", "action": "pause"}))
+    await server.stop()
+```
+
+### Test output
+
+Pre-fix run confirming the new test fails for the expected reason (client
+A's stream goes silent because client B's `pause` cancelled the shared
+`_play_task`):
+
+```
+$ uv run pytest tests/test_server.py -v -k "unrelated_client_pause"
+...
+tests/test_server.py:143: in test_unrelated_client_pause_does_not_kill_other_clients_playback
+    frame2 = await recv_binary(ws_a)
+tests/test_server.py:39: in recv_binary
+    msg = await asyncio.wait_for(ws.recv(), timeout=5)
+...
+E                   TimeoutError
+=========================== short test summary info ============================
+FAILED tests/test_server.py::test_unrelated_client_pause_does_not_kill_other_clients_playback
+======================= 1 failed, 5 deselected in 5.12s ========================
+```
+
+Post-fix, `tests/test_server.py` (6 tests, up from 5):
+
+```
+$ uv run pytest tests/test_server.py -v
+============================= test session starts ==============================
+collected 6 items
+
+tests/test_server.py::test_load_chain_and_stream PASSED                  [ 16%]
+tests/test_server.py::test_missing_plugin_reports_error PASSED           [ 33%]
+tests/test_server.py::test_get_state_roundtrip PASSED                    [ 50%]
+tests/test_server.py::test_unrelated_client_disconnect_does_not_kill_other_clients_playback PASSED [ 66%]
+tests/test_server.py::test_unrelated_client_pause_does_not_kill_other_clients_playback PASSED [ 83%]
+tests/test_server.py::test_command_for_unknown_track_id_replies_bad_command_instead_of_closing PASSED [100%]
+
+============================== 6 passed in 0.16s ===============================
+```
+
+Full package suite after the fix (22 tests, up from 21 — the one new
+regression test, no regressions):
+
+```
+$ uv run pytest -v
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.1.1, pluggy-1.6.0
+collecting ... collected 22 items
+
+tests/test_bounce.py::test_bounce_changes_audio_and_preserves_length PASSED
+tests/test_bounce.py::test_bounce_deterministic_for_builtin PASSED
+tests/test_bounce.py::test_cli_bounce_exit_codes PASSED
+tests/test_chain.py::test_load_chain_spec_roundtrip PASSED
+tests/test_chain.py::test_load_chain_spec_rejects_bad_version PASSED
+tests/test_chain.py::test_load_chain_spec_rejects_unknown_format PASSED
+tests/test_chain.py::test_build_chain_builtin_applies_state PASSED
+tests/test_chain.py::test_build_chain_missing_vst3_raises_named_error PASSED
+tests/test_chain.py::test_serialize_states_builtin_roundtrip PASSED
+tests/test_scan.py::test_scan_collects_names_from_probe PASSED
+tests/test_scan.py::test_scan_survives_crashing_probe PASSED
+tests/test_scan.py::test_scan_ignores_missing_dirs PASSED
+tests/test_server.py::test_load_chain_and_stream PASSED
+tests/test_server.py::test_missing_plugin_reports_error PASSED
+tests/test_server.py::test_get_state_roundtrip PASSED
+tests/test_server.py::test_unrelated_client_disconnect_does_not_kill_other_clients_playback PASSED
+tests/test_server.py::test_unrelated_client_pause_does_not_kill_other_clients_playback PASSED
+tests/test_server.py::test_command_for_unknown_track_id_replies_bad_command_instead_of_closing PASSED
+tests/test_stream.py::test_frame_encode_decode_roundtrip PASSED
+tests/test_stream.py::test_stream_produces_sequential_blocks PASSED
+tests/test_stream.py::test_seek_jumps_sample_cursor PASSED
+tests/test_stream.py::test_eof_returns_none PASSED
+
+============================== 22 passed in 0.39s ==============================
+```
+
+### Files changed in this addendum
+
+- Modified: `packages/vst-host/src/hyperframes_vst/server.py` (`pause`
+  transport action now checks `self._play_owner is ws` before cancelling
+  `self._play_task`)
+- Modified: `packages/vst-host/tests/test_server.py` (added the regression
+  test above)

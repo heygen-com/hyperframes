@@ -111,7 +111,7 @@ class VstServer:
             self._play_task = asyncio.create_task(self._pump(ws))
             self._play_owner = ws
         elif action == "pause":
-            if self._play_task:
+            if self._play_task and self._play_owner is ws:
                 self._play_task.cancel()
                 self._play_task = None
                 self._play_owner = None
