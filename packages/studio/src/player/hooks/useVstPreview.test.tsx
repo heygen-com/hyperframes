@@ -583,3 +583,73 @@ describe("useVstPreview — crash fallback", () => {
     act(() => root.unmount());
   });
 });
+
+// ── Reconnect must not blindly re-stream previously loaded tracks ───────────
+//
+// Task 13b bug: a WS disconnect does NOT imply the sidecar process (and its
+// server-side `_tracks` dict) was torn down — `startVstSidecar` reuses the
+// SAME running process in the common case (see useVstHost's
+// handleDisconnect doc-comment). The crash-fallback effect above already
+// reverts loaded tracks to dry immediately and clears its own bookkeeping,
+// then auto-reconnects ~2s later; before this fix, the "Load chains" effect
+// then treated every previously-streamed track as never-attempted and
+// silently reloaded it — which the still-stateful server could reassign a
+// colliding trackIndex to, with nothing left client-side to detect it. This
+// models the scenario end-to-end: the fake socket that reconnects still
+// represents the SAME stateful sidecar (nothing in this test resets any
+// server-side state), so any `load-chain` message sent for track-1/track-2
+// after reconnect would itself prove the client is blindly re-streaming a
+// track whose post-reconnect index can't be verified safe.
+
+describe("useVstPreview — reconnect does not blindly re-stream previously loaded tracks", () => {
+  it("keeps previously loaded tracks in dry fallback after a reconnect instead of re-issuing load-chain for them", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { root, audioEl1, audioEl2, showToast, socket } = await setupTwoLoadedTracks();
+
+    expect(audioEl1.muted).toBe(true);
+    expect(audioEl2.muted).toBe(true);
+
+    // Disconnect — the existing crash-fallback effect immediately reverts
+    // both tracks to dry and schedules one auto-reconnect.
+    await act(async () => {
+      socket.close();
+      await flushAsyncWork();
+    });
+
+    expect(audioEl1.muted).toBe(false);
+    expect(audioEl2.muted).toBe(false);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("disconnected"), "error");
+
+    // Advance past the 2s auto-restart delay so the reconnect attempt opens
+    // a new socket — representing the SAME still-running, stateful sidecar
+    // (server-side `_tracks` for track-1/track-2 were never torn down by
+    // this disconnect).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushAsyncWork();
+    });
+
+    const newSocket = required(FakeSocket.instances[1], "reconnected socket");
+    await act(async () => {
+      newSocket.open();
+      await flushAsyncWork();
+    });
+
+    function loadChainCallsFor(trackId: string): string[] {
+      return newSocket.sent.filter(
+        (raw) => raw.includes('"cmd":"load-chain"') && raw.includes(`"trackId":"${trackId}"`),
+      );
+    }
+
+    // The fix: a previously-streamed track must never be silently reloaded
+    // on the new connection with a client-recomputed index — it stays in
+    // dry fallback until something outside this effect (e.g. the user
+    // manually retriggering a load) explicitly asks for it again.
+    expect(loadChainCallsFor("track-1")).toHaveLength(0);
+    expect(loadChainCallsFor("track-2")).toHaveLength(0);
+    expect(audioEl1.muted).toBe(false);
+    expect(audioEl2.muted).toBe(false);
+
+    act(() => root.unmount());
+  });
+});

@@ -349,11 +349,29 @@ export function useVstHost(): UseVstHostResult {
     }
     pendingTrackRef.current.clear();
 
-    // A reconnect starts a fresh sidecar process with an empty `_tracks`
-    // dict (see `ensureStarted`'s `/api/vst/start` re-POST) — the mirrored
-    // index map must reset with it, or a track loaded before the crash would
-    // wrongly appear to already hold an index on the new connection.
-    trackIndexRef.current.clear();
+    // A WebSocket close/error does NOT imply the sidecar process (and its
+    // server-side `_tracks` dict) was torn down. `startVstSidecar`
+    // (packages/studio-server/src/vstSidecar.ts) is a singleton — "Only one
+    // sidecar runs per host process... a second call while one is already
+    // running returns the same instance" — and it's only ever killed by an
+    // explicit `stopVstSidecar()` tied to CLI shutdown, never by an
+    // individual socket closing. A plain WS disconnect (network blip,
+    // dev-server hiccup) leaves that process, and every track it already
+    // holds in `_tracks`, running and untouched in the common case.
+    //
+    // So `trackIndexRef` is deliberately left as-is here instead of reset to
+    // an assumed-empty map: clearing it would make this client recompute
+    // indices from a false "fresh sidecar" premise while the server (in that
+    // common same-process-reconnect case) is still working from its real,
+    // non-empty dict — exactly the mismatch that let two tracks silently
+    // collide on the wire after a reconnect. Leaving the mirror untouched
+    // keeps it accurate in that common case; on the rarer path where the
+    // process really was restarted (e.g. it crashed and exited), the mirror
+    // can still end up stale either way, so this alone is not a full
+    // guarantee. That's why `useVstPreview` additionally refuses to blindly
+    // re-issue `load-chain` for any track it had already streamed before
+    // this disconnect (see its crash-fallback effect) rather than trusting
+    // any index recomputed for it post-reconnect.
 
     disconnectListenersRef.current.forEach((cb) => cb());
   }, []);

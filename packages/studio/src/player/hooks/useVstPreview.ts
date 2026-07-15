@@ -205,6 +205,16 @@ export function useVstPreview(
   const loadedTracksRef = useRef<Map<string, LoadedVstTrack>>(new Map());
   const trackOrderRef = useRef<string[]>([]);
   const restartAttemptedRef = useRef(false);
+  // trackIds that were streaming through the sidecar at the moment of a
+  // disconnect. A reconnect does NOT prove the sidecar's server-side
+  // `_tracks` dict was reset (see useVstHost's handleDisconnect doc-comment)
+  // — it usually wasn't — so a client-recomputed trackIndex for one of these
+  // can't be trusted. Once a trackId lands here it's excluded from the "Load
+  // chains" effect below for the rest of this hook's lifetime; re-streaming
+  // it requires an explicit, separate reload trigger (e.g. the user
+  // reopening the FX panel), not an automatic retry that would blindly
+  // guess at a possibly-colliding index.
+  const unsafeAfterDisconnectRef = useRef<Set<string>>(new Set());
 
   // Re-run the DOM scans whenever the timeline's elements change — the
   // reliable existing signal that the preview DOM was reloaded/edited.
@@ -240,11 +250,18 @@ export function useVstPreview(
       for (const el of audioEls) {
         if (cancelled) return;
         const trackId = resolveVstTrackId(el);
-        // Skip a track that's either fully loaded already, or already
-        // reserved a server-side trackIndex from a prior loadChain success
-        // this session (see loadVstTrack — a local-wiring failure AFTER that
-        // point is never safe to retry, or the two indices would desync).
-        if (loadedTracksRef.current.has(trackId) || trackOrderRef.current.includes(trackId)) {
+        // Skip a track that's either fully loaded already, already reserved
+        // a server-side trackIndex from a prior loadChain success this
+        // session (see loadVstTrack — a local-wiring failure AFTER that
+        // point is never safe to retry, or the two indices would desync),
+        // or was streaming at the moment of a since-recovered disconnect
+        // (see unsafeAfterDisconnectRef above — reloading it here would
+        // blindly trust a post-reconnect index that can't be verified safe).
+        if (
+          loadedTracksRef.current.has(trackId) ||
+          trackOrderRef.current.includes(trackId) ||
+          unsafeAfterDisconnectRef.current.has(trackId)
+        ) {
           continue;
         }
         const loaded = await loadVstTrack(
@@ -386,6 +403,14 @@ export function useVstPreview(
   useEffect(() => {
     return onDisconnect(() => {
       if (loadedTracksRef.current.size === 0) return;
+      // Mark every track that was actually streaming as unsafe to
+      // auto-reload post-reconnect (see unsafeAfterDisconnectRef's
+      // doc-comment) BEFORE clearing loadedTracksRef/trackOrderRef below —
+      // otherwise the "Load chains" effect would treat them as never
+      // attempted and silently re-stream them once the sidecar reconnects.
+      for (const trackId of loadedTracksRef.current.keys()) {
+        unsafeAfterDisconnectRef.current.add(trackId);
+      }
       const tracks = Array.from(loadedTracksRef.current.values());
       loadedTracksRef.current.clear();
       trackOrderRef.current.length = 0;
