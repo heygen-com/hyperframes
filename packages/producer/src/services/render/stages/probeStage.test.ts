@@ -286,6 +286,37 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs.length).toBeGreaterThan(0);
   });
 
+  it("launches a probe when a static-duration composition inserts audio at runtime", async () => {
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<script>
+      const audio = document.createElement("audio");
+      audio.src = "music.mp3";
+      document.body.appendChild(audio);
+    </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+  });
+
+  it("launches a probe when a static-duration composition uses the Audio constructor", async () => {
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<script>
+      const audio = new Audio("music.mp3");
+      document.body.appendChild(audio);
+    </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+  });
+
   it("launches a probe when script-inserted markup contains timed video", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");

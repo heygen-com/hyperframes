@@ -176,7 +176,8 @@ function hasRuntimeInsertedMedia(html: string): boolean {
     .join("\n");
   return (
     /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(scriptBodies) ||
-    /<(?:video|audio)\b/i.test(scriptBodies)
+    /\bnew\s+Audio\s*\(/.test(scriptBodies) ||
+    /<(?:video|audio)\b[^>]*>/i.test(scriptBodies)
   );
 }
 
