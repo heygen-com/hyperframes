@@ -75,8 +75,10 @@ function renderVstHost(onReady: (result: HookResult) => void): Root {
   return mountReactHarness(<Harness />);
 }
 
-function okStartResponse(port: number): Response {
-  return new Response(JSON.stringify({ port }), {
+const TEST_TOKEN = "test-token-abc123";
+
+function okStartResponse(port: number, token: string = TEST_TOKEN): Response {
+  return new Response(JSON.stringify({ port, token }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
@@ -139,6 +141,48 @@ describe("useVstHost — ensureStarted", () => {
       await getState().ensureStarted();
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    act(() => root.unmount());
+  });
+
+  // Finding 2 (final whole-branch review): the sidecar requires a
+  // shared-secret token (see server.py's `_authenticate`) on every
+  // connection — `/vst/start` relays it, and the client must thread it into
+  // the WS URL as a `?token=` query param or the sidecar's handshake hook
+  // rejects the upgrade before any command can be sent.
+  it("connects with the token from /api/vst/start as a ?token= query param", async () => {
+    const { socket, root } = await setupReadyHost();
+
+    expect(socket.url).toContain(`token=${TEST_TOKEN}`);
+
+    act(() => root.unmount());
+  });
+
+  it("fails to start when the response is missing a token", async () => {
+    // A response body missing `token` entirely (not just empty) — simulates
+    // a studio-server build that hasn't relayed it yet.
+    const missingTokenResponse = new Response(JSON.stringify({ port: 4321 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    const fetchMock = vi.fn(async () => missingTokenResponse);
+    vi.stubGlobal("fetch", fetchMock);
+
+    let latest: HookResult | null = null;
+    const root = renderVstHost((r) => {
+      latest = r;
+    });
+
+    await act(async () => {
+      await required<HookResult>(latest, "hook result")
+        .ensureStarted()
+        .catch(() => {});
+    });
+
+    expect(required<HookResult>(latest, "hook result").status).toBe("failed");
+    expect(required<HookResult>(latest, "hook result").api).toBeNull();
+    // No socket should ever have been opened without a valid token.
+    expect(FakeSocket.instances).toHaveLength(0);
 
     act(() => root.unmount());
   });

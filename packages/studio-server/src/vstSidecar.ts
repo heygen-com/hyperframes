@@ -14,17 +14,22 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 
-const READY_RE = /VST-HOST-LISTENING port=(\d+)/;
+// Captures the shared-secret token the sidecar prints alongside its port
+// (see server.py's `_authenticate`/`start`) — required by every WS command,
+// so it must be relayed to the browser (via `/vst/start`'s response) rather
+// than just the port.
+const READY_RE = /VST-HOST-LISTENING port=(\d+) token=(\S+)/;
 const READY_TIMEOUT_MS = 30_000;
 const INSTALL_HINT = "Install the VST host: uv tool install hyperframes-vst-host (requires uv)";
 
 interface RunningSidecar {
   port: number;
+  token: string;
   child: ChildProcess;
 }
 
 let running: RunningSidecar | null = null;
-let pending: Promise<{ port: number; stop: () => void }> | null = null;
+let pending: Promise<{ port: number; token: string; stop: () => void }> | null = null;
 /**
  * The child process of an in-flight `startVstSidecar()` attempt, tracked from
  * the moment `spawn()` returns until either the ready handshake arrives (at
@@ -120,10 +125,14 @@ export function __resetForTests(): void {
  * — so every concurrent caller observes either `running` (already ready) or
  * `pending` (in flight) and never falls through to a fresh `spawn()` call.
  */
-export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
+export function startVstSidecar(): Promise<{ port: number; token: string; stop: () => void }> {
   if (running) {
     const current = running;
-    return Promise.resolve({ port: current.port, stop: () => stopSidecar(current.child) });
+    return Promise.resolve({
+      port: current.port,
+      token: current.token,
+      stop: () => stopSidecar(current.child),
+    });
   }
   if (pending) {
     return pending;
@@ -134,53 +143,56 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
     return Promise.reject(new Error(`VST sidecar could not be started. ${INSTALL_HINT}`));
   }
 
-  pending = new Promise<{ port: number; stop: () => void }>((resolvePromise, reject) => {
-    const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    spawningChild = child;
-    let settled = false;
+  pending = new Promise<{ port: number; token: string; stop: () => void }>(
+    (resolvePromise, reject) => {
+      const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      spawningChild = child;
+      let settled = false;
 
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      if (spawningChild === child) spawningChild = null;
-      child.kill();
-      reject(new Error(`VST sidecar did not become ready in 30s. ${INSTALL_HINT}`));
-    }, READY_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (spawningChild === child) spawningChild = null;
+        child.kill();
+        reject(new Error(`VST sidecar did not become ready in 30s. ${INSTALL_HINT}`));
+      }, READY_TIMEOUT_MS);
 
-    child.stdout?.on("data", (buf: Buffer) => {
-      if (settled) return;
-      const match = buf.toString().match(READY_RE);
-      const portGroup = match?.[1];
-      if (!portGroup) return;
-      settled = true;
-      clearTimeout(timer);
-      const port = Number(portGroup);
-      running = { port, child };
-      if (spawningChild === child) spawningChild = null;
-      resolvePromise({ port, stop: () => stopSidecar(child) });
-    });
+      child.stdout?.on("data", (buf: Buffer) => {
+        if (settled) return;
+        const match = buf.toString().match(READY_RE);
+        const portGroup = match?.[1];
+        const tokenGroup = match?.[2];
+        if (!portGroup || !tokenGroup) return;
+        settled = true;
+        clearTimeout(timer);
+        const port = Number(portGroup);
+        running = { port, token: tokenGroup, child };
+        if (spawningChild === child) spawningChild = null;
+        resolvePromise({ port, token: tokenGroup, stop: () => stopSidecar(child) });
+      });
 
-    child.on("error", () => {
-      if (settled) return;
-      settled = true;
-      if (spawningChild === child) spawningChild = null;
-      clearTimeout(timer);
-      reject(new Error(`VST sidecar could not be started. ${INSTALL_HINT}`));
-    });
+      child.on("error", () => {
+        if (settled) return;
+        settled = true;
+        if (spawningChild === child) spawningChild = null;
+        clearTimeout(timer);
+        reject(new Error(`VST sidecar could not be started. ${INSTALL_HINT}`));
+      });
 
-    child.on("exit", () => {
-      if (running && running.child === child) {
-        running = null;
-      }
-      if (spawningChild === child) spawningChild = null;
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`VST sidecar exited before becoming ready. ${INSTALL_HINT}`));
-    });
-  }).finally(() => {
+      child.on("exit", () => {
+        if (running && running.child === child) {
+          running = null;
+        }
+        if (spawningChild === child) spawningChild = null;
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(`VST sidecar exited before becoming ready. ${INSTALL_HINT}`));
+      });
+    },
+  ).finally(() => {
     pending = null;
   });
 

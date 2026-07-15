@@ -242,10 +242,32 @@ function applyStateEvent(
 // ── Start + connect (module-level so each stays a small, single-purpose unit) ──
 
 type StartOutcome =
-  | { ok: true; port: number }
+  | { ok: true; port: number; token: string }
   | { ok: false; installHint: string | null; message: string };
 
-/** Parses `/api/vst/start`'s response body (see routes/vst.ts) into a `StartOutcome`. */
+interface StartResponseBody {
+  port: number;
+  token: string;
+}
+
+/** Type guard for `/api/vst/start`'s success-path body shape (see routes/vst.ts). */
+function isStartResponseBody(body: unknown): body is StartResponseBody {
+  return isRecord(body) && typeof body.port === "number" && typeof body.token === "string";
+}
+
+/** Names which field `isStartResponseBody` rejected on, for a specific error message. */
+function missingStartField(body: unknown): "port" | "token" {
+  return isRecord(body) && typeof body.port === "number" ? "token" : "port";
+}
+
+/**
+ * Parses `/api/vst/start`'s response body (see routes/vst.ts) into a
+ * `StartOutcome`. The sidecar requires every WebSocket connection to present
+ * a shared-secret `token` (see server.py's `_authenticate`) before any
+ * command is processed — `/vst/start` relays it alongside the port, so a
+ * response missing it is treated the same as one missing the port: a
+ * connection couldn't be safely established from it.
+ */
 function parseStartResponse(response: Response, body: unknown): StartOutcome {
   if (!response.ok) {
     const hint = isRecord(body) && typeof body.installHint === "string" ? body.installHint : null;
@@ -253,11 +275,14 @@ function parseStartResponse(response: Response, body: unknown): StartOutcome {
       isRecord(body) && typeof body.error === "string" ? body.error : "VST sidecar failed to start";
     return { ok: false, installHint: hint, message };
   }
-  const port = isRecord(body) && typeof body.port === "number" ? body.port : null;
-  if (port === null) {
-    return { ok: false, installHint: null, message: "VST sidecar start response missing port" };
+  if (!isStartResponseBody(body)) {
+    return {
+      ok: false,
+      installHint: null,
+      message: `VST sidecar start response missing ${missingStartField(body)}`,
+    };
   }
-  return { ok: true, port };
+  return { ok: true, port: body.port, token: body.token };
 }
 
 async function requestVstStart(): Promise<StartOutcome> {
@@ -281,11 +306,20 @@ interface SocketHandlers {
   onDisconnect: () => void;
 }
 
-/** Opens the sidecar WS and resolves once it's open (or rejects if it closes first). */
-function connectVstSocket(port: number, handlers: SocketHandlers): Promise<VstSocketLike> {
+/**
+ * Opens the sidecar WS and resolves once it's open (or rejects if it closes
+ * first). `token` is sent as a `?token=` query param — the sidecar's
+ * `process_request` handshake hook (server.py's `_authenticate`) rejects the
+ * HTTP upgrade before any command can be sent if it's missing or wrong.
+ */
+function connectVstSocket(
+  port: number,
+  token: string,
+  handlers: SocketHandlers,
+): Promise<VstSocketLike> {
   return new Promise<VstSocketLike>((resolve, reject) => {
     const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
-    const socket = createSocket(`ws://${host}:${port}`);
+    const socket = createSocket(`ws://${host}:${port}/?token=${encodeURIComponent(token)}`);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
       handlers.onReady();
@@ -376,9 +410,16 @@ export function useVstHost(): UseVstHostResult {
     // index for tracks it already streamed, it permanently stops issuing
     // `load-chain` for ANYTHING — old or new — the first time it observes
     // any disconnect (see its `suspendedRef`). This mirror is kept as-is
-    // here purely for the FX property panel's own direct `loadChain` calls,
-    // which are unaffected by `useVstPreview`'s suspension and may still
-    // legitimately reload a chain after a reconnect.
+    // here as forward-defensive infrastructure, not because some other
+    // active caller depends on it: grepping propertyPanelVstSection.tsx (the
+    // FX property panel) shows it never calls `loadChain` — only
+    // `useVstPreview` does — and that hook's doc-comment already notes the
+    // "FX panel calls loadChain post-reconnect" scenario this comment used to
+    // describe was aspirational, not real (see useVstPreview.ts's crash-
+    // fallback doc-comment). If a future caller of this shared `useVstHost()`
+    // connection ever does call `loadChain` directly (not through
+    // `useVstPreview`), this mirror staying accurate across a same-process
+    // reconnect is what makes that safe.
 
     disconnectListenersRef.current.forEach((cb) => cb());
   }, []);
@@ -423,7 +464,7 @@ export function useVstHost(): UseVstHostResult {
         throw new Error(outcome.message);
       }
 
-      const socket = await connectVstSocket(outcome.port, {
+      const socket = await connectVstSocket(outcome.port, outcome.token, {
         onMessage: handleMessage,
         onReady: () => setStatus("ready"),
         onDisconnect: handleDisconnect,

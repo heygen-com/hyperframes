@@ -9,14 +9,14 @@ function makeApi(adapter: Record<string, unknown>): Hono {
 }
 
 describe("vst routes", () => {
-  it("POST /vst/start returns the sidecar port", async () => {
+  it("POST /vst/start returns the sidecar port and token", async () => {
     const api = makeApi({
-      startVstSidecar: () => Promise.resolve({ port: 9555 }),
+      startVstSidecar: () => Promise.resolve({ port: 9555, token: "secret-token" }),
       getVstSidecarStatus: () => ({ running: true, port: 9555 }),
     });
     const res = await api.request("/vst/start", { method: "POST" });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ port: 9555 });
+    expect(await res.json()).toEqual({ port: 9555, token: "secret-token" });
   });
 
   it("POST /vst/start returns 503 with install hint when unsupported", async () => {

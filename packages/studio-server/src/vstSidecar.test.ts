@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getVstSidecar, startVstSidecar, stopVstSidecar, __resetForTests } from "./vstSidecar";
@@ -16,22 +16,56 @@ function fakeServe(dir: string, lines: string): string {
   return script;
 }
 
+/**
+ * Polls for `path` to exist instead of a single fixed sleep — under CI
+ * contention a fixed wait (the previous approach here) can fire before a
+ * slow-to-schedule child process has actually written its PID file, flaking
+ * the test. Polls quickly (10ms) since the common case resolves almost
+ * immediately; `timeoutMs` is a generous ceiling, not the expected wait.
+ */
+async function waitForFile(path: string, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(path)) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error(`Timed out waiting for ${path} to appear`);
+}
+
 describe("startVstSidecar", () => {
   it("resolves the announced port", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(dir, `echo "VST-HOST-LISTENING port=9555"; sleep 60`);
+    process.env.HF_VST_HOST_CMD = fakeServe(
+      dir,
+      `echo "VST-HOST-LISTENING port=9555 token=tok-9555"; sleep 60`,
+    );
     const { port, stop } = await startVstSidecar();
     expect(port).toBe(9555);
     expect(getVstSidecar()?.port).toBe(9555);
     stop();
   });
 
+  it("resolves the announced token alongside the port", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
+    process.env.HF_VST_HOST_CMD = fakeServe(
+      dir,
+      `echo "VST-HOST-LISTENING port=9560 token=tok-9560"; sleep 60`,
+    );
+    const { token, stop } = await startVstSidecar();
+    expect(token).toBe("tok-9560");
+    stop();
+  });
+
   it("is a singleton while running", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(dir, `echo "VST-HOST-LISTENING port=9556"; sleep 60`);
+    process.env.HF_VST_HOST_CMD = fakeServe(
+      dir,
+      `echo "VST-HOST-LISTENING port=9556 token=tok-9556"; sleep 60`,
+    );
     const a = await startVstSidecar();
     const b = await startVstSidecar();
     expect(b.port).toBe(a.port);
+    expect(b.token).toBe(a.token);
     a.stop();
   });
 
@@ -45,7 +79,7 @@ describe("startVstSidecar", () => {
     const spawnLog = join(dir, "spawns.log");
     process.env.HF_VST_HOST_CMD = fakeServe(
       dir,
-      `echo spawned >> "${spawnLog}"\nsleep 0.2\necho "VST-HOST-LISTENING port=9557"\nsleep 60`,
+      `echo spawned >> "${spawnLog}"\nsleep 0.2\necho "VST-HOST-LISTENING port=9557 token=tok-9557"\nsleep 60`,
     );
 
     const p1 = startVstSidecar();
@@ -66,7 +100,10 @@ describe("startVstSidecar", () => {
     await expect(startVstSidecar()).rejects.toThrow(/uv tool install hyperframes-vst-host/);
 
     const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(dir, `echo "VST-HOST-LISTENING port=9559"; sleep 60`);
+    process.env.HF_VST_HOST_CMD = fakeServe(
+      dir,
+      `echo "VST-HOST-LISTENING port=9559 token=tok-9559"; sleep 60`,
+    );
     const { port, stop } = await startVstSidecar();
     expect(port).toBe(9559);
     stop();
@@ -82,7 +119,7 @@ describe("stopVstSidecar", () => {
     // before ever printing the ready line.
     process.env.HF_VST_HOST_CMD = fakeServe(
       dir,
-      `echo $$ > "${pidFile}"\nsleep 1\necho "VST-HOST-LISTENING port=9558"\nsleep 60`,
+      `echo $$ > "${pidFile}"\nsleep 1\necho "VST-HOST-LISTENING port=9558 token=tok-9558"\nsleep 60`,
     );
 
     const startPromise = startVstSidecar();
@@ -91,10 +128,12 @@ describe("stopVstSidecar", () => {
     // assert on it below.
     startPromise.catch(() => {});
 
-    // Give the child time to spawn and record its PID, well inside the fake
-    // sidecar's 1s boot delay — so stopVstSidecar() genuinely races the
-    // ready handshake rather than the test's own timing.
-    await new Promise((r) => setTimeout(r, 300));
+    // Wait for the child to actually spawn and record its PID (rather than a
+    // fixed sleep, which flakes under CI contention if scheduling the child
+    // process takes longer than expected) — well inside the fake sidecar's
+    // 1s boot delay, so stopVstSidecar() genuinely races the ready handshake
+    // rather than the test's own timing.
+    await waitForFile(pidFile);
     const pid = Number(readFileSync(pidFile, "utf8").trim());
     expect(() => process.kill(pid, 0)).not.toThrow();
 

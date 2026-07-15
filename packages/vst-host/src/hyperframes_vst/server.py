@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import threading
+from urllib.parse import parse_qs, urlsplit
 
 import websockets
+from websockets.datastructures import Headers
+from websockets.http11 import Request, Response
 
 from .chain import PluginMissingError, build_chain, load_chain_spec, serialize_states
 from .scan import default_plugin_dirs, scan_paths
@@ -20,12 +24,39 @@ class VstServer:
         self._play_owner: object | None = None
         self._server: websockets.WebSocketServer | None = None
         self._rate = 1.0
+        # Shared-secret handshake (see `_authenticate`): the sidecar accepts
+        # native-plugin-loading and arbitrary-file-read commands over a plain
+        # loopback WebSocket, so without this any local process — or a
+        # webpage that guesses/scans the ephemeral port — could drive it.
+        # Generated once per process and printed alongside the ready line;
+        # only a client that already has it (relayed by studio-server's
+        # `/vst/start`, itself only reachable by the studio's own trusted
+        # HTTP server) can open a connection.
+        self._token = secrets.token_urlsafe(32)
+
+    @property
+    def token(self) -> str:
+        return self._token
 
     async def start(self, port: int = 0) -> int:
-        self._server = await websockets.serve(self._handle, "127.0.0.1", port)
+        self._server = await websockets.serve(
+            self._handle, "127.0.0.1", port, process_request=self._authenticate,
+        )
         bound = self._server.sockets[0].getsockname()[1]
-        print(f"VST-HOST-LISTENING port={bound}", flush=True)
+        print(f"VST-HOST-LISTENING port={bound} token={self._token}", flush=True)
         return bound
+
+    async def _authenticate(self, connection, request: Request) -> Response | None:
+        """`process_request` hook: rejects the HTTP upgrade (before any
+        WebSocket connection — and so before `_handle`/`_dispatch` ever see a
+        message) unless the request carries the correct `?token=` query
+        param. Returning `None` lets the handshake proceed normally."""
+        query = parse_qs(urlsplit(request.path).query)
+        supplied = query.get("token", [None])[0]
+        if supplied != self._token:
+            body = b"Unauthorized: missing or invalid token\n"
+            return Response(401, "Unauthorized", Headers(), body)
+        return None
 
     async def stop(self) -> None:
         if self._play_task:

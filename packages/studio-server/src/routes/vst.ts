@@ -12,8 +12,8 @@ export function registerVstRoutes(api: Hono, adapter: StudioApiAdapter): void {
       );
     }
     try {
-      const { port } = await adapter.startVstSidecar();
-      return c.json({ port });
+      const { port, token } = await adapter.startVstSidecar();
+      return c.json({ port, token });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message, installHint: INSTALL_HINT }, 503);

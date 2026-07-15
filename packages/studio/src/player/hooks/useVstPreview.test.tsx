@@ -111,7 +111,7 @@ function okJsonResponse(body: unknown): Response {
 function buildFetchMock(chainJson: unknown): ReturnType<typeof vi.fn> {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url === "/api/vst/start") return okJsonResponse({ port: 4321 });
+    if (url === "/api/vst/start") return okJsonResponse({ port: 4321, token: "test-token" });
     if (url.includes("/files/")) return okJsonResponse({ content: JSON.stringify(chainJson) });
     throw new Error(`unexpected fetch: ${url}`);
   });

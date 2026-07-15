@@ -596,8 +596,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     startVstSidecar: async () => {
-      const { port } = await startVstSidecar();
-      return { port };
+      const { port, token } = await startVstSidecar();
+      return { port, token };
     },
 
     getVstSidecarStatus: () => {

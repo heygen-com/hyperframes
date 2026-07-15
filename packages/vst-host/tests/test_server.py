@@ -27,6 +27,20 @@ CHAIN = {
 }
 
 
+_USE_REAL_TOKEN = object()
+
+
+def ws_uri(server: VstServer, port: int, token: object = _USE_REAL_TOKEN) -> str:
+    """Builds the sidecar's WS URI with the shared-secret `?token=` query
+    param (see server.py's `_authenticate`). Defaults to the server's real
+    token; pass `token=None` for no query param at all, or any other string
+    to test rejection with a wrong token."""
+    used_token = server.token if token is _USE_REAL_TOKEN else token
+    if used_token is None:
+        return f"ws://127.0.0.1:{port}"
+    return f"ws://127.0.0.1:{port}/?token={used_token}"
+
+
 async def recv_json(ws):
     while True:
         msg = await asyncio.wait_for(ws.recv(), timeout=5)
@@ -45,7 +59,7 @@ async def recv_binary(ws):
 async def test_load_chain_and_stream(dry_wav):
     server = VstServer()
     port = await server.start(0)
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+    async with websockets.connect(ws_uri(server, port)) as ws:
         await ws.send(json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav}))
         loaded = await recv_json(ws)
         assert loaded["event"] == "chain-loaded"
@@ -65,7 +79,7 @@ async def test_missing_plugin_reports_error(dry_wav):
     server = VstServer()
     port = await server.start(0)
     bad = {"version": 1, "plugins": [{"format": "vst3", "path": "/no/Gone.vst3", "pluginName": None, "name": "Gone", "stateB64": None}]}
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+    async with websockets.connect(ws_uri(server, port)) as ws:
         await ws.send(json.dumps({"cmd": "load-chain", "trackId": "t", "chainJson": bad, "wavPath": dry_wav}))
         err = await recv_json(ws)
         assert err["event"] == "error"
@@ -78,7 +92,7 @@ async def test_missing_plugin_reports_error(dry_wav):
 async def test_get_state_roundtrip(dry_wav):
     server = VstServer()
     port = await server.start(0)
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+    async with websockets.connect(ws_uri(server, port)) as ws:
         await ws.send(json.dumps({"cmd": "load-chain", "trackId": "m", "chainJson": CHAIN, "wavPath": dry_wav}))
         await recv_json(ws)
         await ws.send(json.dumps({"cmd": "set-param", "trackId": "m", "pluginIndex": 0, "param": "gain_db", "value": -6.0}))
@@ -94,7 +108,7 @@ async def test_get_state_roundtrip(dry_wav):
 async def test_unrelated_client_disconnect_does_not_kill_other_clients_playback(dry_wav):
     server = VstServer()
     port = await server.start(0)
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_a:
+    async with websockets.connect(ws_uri(server, port)) as ws_a:
         await ws_a.send(
             json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav})
         )
@@ -107,7 +121,7 @@ async def test_unrelated_client_disconnect_does_not_kill_other_clients_playback(
         assert idx == 0
 
         # Client B connects and disconnects without ever calling play.
-        ws_b = await websockets.connect(f"ws://127.0.0.1:{port}")
+        ws_b = await websockets.connect(ws_uri(server, port))
         await ws_b.close()
 
         # Client A's playback must still be alive: another frame should arrive.
@@ -123,7 +137,7 @@ async def test_unrelated_client_disconnect_does_not_kill_other_clients_playback(
 async def test_unrelated_client_pause_does_not_kill_other_clients_playback(dry_wav):
     server = VstServer()
     port = await server.start(0)
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_a:
+    async with websockets.connect(ws_uri(server, port)) as ws_a:
         await ws_a.send(
             json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav})
         )
@@ -136,7 +150,7 @@ async def test_unrelated_client_pause_does_not_kill_other_clients_playback(dry_w
         assert idx == 0
 
         # Client B connects and sends pause without ever having loaded or played anything itself.
-        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_b:
+        async with websockets.connect(ws_uri(server, port)) as ws_b:
             await ws_b.send(json.dumps({"cmd": "transport", "action": "pause"}))
 
             # Client A's playback must still be alive: another frame should arrive.
@@ -152,7 +166,7 @@ async def test_unrelated_client_pause_does_not_kill_other_clients_playback(dry_w
 async def test_command_for_unknown_track_id_replies_bad_command_instead_of_closing(dry_wav):
     server = VstServer()
     port = await server.start(0)
-    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+    async with websockets.connect(ws_uri(server, port)) as ws:
         await ws.send(json.dumps({"cmd": "get-state", "trackId": "never-loaded"}))
         err = await recv_json(ws)
         assert err["event"] == "error"
@@ -164,4 +178,36 @@ async def test_command_for_unknown_track_id_replies_bad_command_instead_of_closi
         )
         loaded = await recv_json(ws)
         assert loaded["event"] == "chain-loaded"
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_correct_token_succeeds(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(ws_uri(server, port, server.token)) as ws:
+        await ws.send(json.dumps({"cmd": "get-state", "trackId": "never-loaded"}))
+        err = await recv_json(ws)
+        assert err["event"] == "error"
+        assert err["code"] == "bad_command"
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_missing_token_is_rejected(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    with pytest.raises(websockets.exceptions.InvalidStatus):
+        async with websockets.connect(ws_uri(server, port, token=None)):
+            pass
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_wrong_token_is_rejected(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    with pytest.raises(websockets.exceptions.InvalidStatus):
+        async with websockets.connect(ws_uri(server, port, token="not-the-real-token")):
+            pass
     await server.stop()
