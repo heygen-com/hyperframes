@@ -184,11 +184,19 @@ describe("hyperframes skills", () => {
     vi.resetModules();
     // vi.resetModules re-imports skills.js but the manifest mock's vi.fn
     // instances persist — restore their default behavior for each test.
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    // pruneOrphanedLockEntries is reset explicitly too: relying on afterEach's
+    // vi.restoreAllMocks() to clear vi.fn() call state is vitest-3-specific
+    // (vitest 4 restores spies only), and call-count assertions like the
+    // twice-in-a-row convergence test would then see counts accumulated from
+    // earlier tests.
+    const { checkSkills, presentSkills, pruneOrphanedLockEntries } =
+      await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
     vi.mocked(presentSkills).mockImplementation((names: readonly string[]) => [...names]);
+    vi.mocked(pruneOrphanedLockEntries).mockReset();
+    vi.mocked(pruneOrphanedLockEntries).mockImplementation(() => []);
     // Each test asserts on process.exitCode; isolate it from the runner's own.
     prevExitCode = process.exitCode;
     process.exitCode = 0;
@@ -653,11 +661,16 @@ describe("hyperframes skills update <names>", () => {
     state.spawnExitCode = 0;
     state.gitMissing = false;
     vi.resetModules();
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    // Same explicit resets as the describe above (incl. the vitest-4-proofing
+    // note on pruneOrphanedLockEntries).
+    const { checkSkills, presentSkills, pruneOrphanedLockEntries } =
+      await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
     vi.mocked(presentSkills).mockImplementation((names: readonly string[]) => [...names]);
+    vi.mocked(pruneOrphanedLockEntries).mockReset();
+    vi.mocked(pruneOrphanedLockEntries).mockImplementation(() => []);
     prevExitCode = process.exitCode;
     process.exitCode = 0;
   });
