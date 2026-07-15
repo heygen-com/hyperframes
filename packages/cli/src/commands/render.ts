@@ -76,7 +76,7 @@ import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { formatRenderOutputTimestamp } from "../utils/renderOutputTimestamp.js";
+import { formatRenderOutputTimestamp } from "@hyperframes/core";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
@@ -611,7 +611,6 @@ export default defineCommand({
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = FORMAT_EXT[format] ?? ".mp4";
-    // fallow-ignore-next-line code-duplication
     const now = new Date();
     const timestamp = formatRenderOutputTimestamp(now);
     const batchOutputTemplate = args.output

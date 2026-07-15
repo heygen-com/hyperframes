@@ -231,6 +231,7 @@ export { createGSAPFrameAdapter } from "./adapters/gsap";
 // Text measurement
 export { fitTextFontSize } from "./text/index.js";
 export type { FitTextOptions, FitTextResult } from "./text/index.js";
+export { formatRenderOutputTimestamp } from "./utils/renderOutputTimestamp.js";
 
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
