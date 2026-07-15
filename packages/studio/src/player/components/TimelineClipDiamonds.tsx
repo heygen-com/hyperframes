@@ -21,8 +21,8 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
-  /** Set when 2+ source animations collide at this percentage with different
-   *  eases — the collapsed row hides the inline ease button on this segment. */
+  /** Set when 2+ source animations collide at this percentage (a single inline
+   *  ease button can't target one): the collapsed row hides the button here. */
   easeAmbiguous?: boolean;
 }
 
@@ -133,11 +133,18 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
 }: TimelineDiamondLaneProps) {
   // Hooks must run before the early return below.
   const dragRef = useRef<DragState | null>(null);
-  const pendingClipPctsRef = useRef(new Map<string, number>());
+  // Pending retime destination (clip + tween %) per keyframe key, so a rapid
+  // second drag composes from where the first move left the keyframe (whose
+  // cache entry has not rebuilt yet) instead of the stale rendered value.
+  const pendingRetimeRef = useRef(new Map<string, { clipPct: number; tweenPct: number }>());
   useEffect(() => {
-    const cachedClipPcts = new Set(keyframesData.keyframes.map((keyframe) => keyframe.percentage));
-    for (const [kfKey, clipPct] of pendingClipPctsRef.current) {
-      if (cachedClipPcts.has(clipPct)) pendingClipPctsRef.current.delete(kfKey);
+    // Clear a pending entry once the authoritative cache reflects a keyframe at
+    // ~its destination. Match by tolerance, not equality: cache writers round
+    // clip %s, so an exact check would leak an entry after every successful retime.
+    for (const [key, pending] of pendingRetimeRef.current) {
+      if (keyframesData.keyframes.some((k) => Math.abs(k.percentage - pending.clipPct) < 0.2)) {
+        pendingRetimeRef.current.delete(key);
+      }
     }
   }, [keyframesData.keyframes]);
   // Visual-only preview of the dragged diamond's clip-% — no runtime/GSAP hold
@@ -210,7 +217,8 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
         // On a merged inline row the button is hidden where the segment is
         // ambiguous (two source animations collide at this % with different
-        // eases) — see easeAmbiguous below; the user edits those per-lane.
+        // eases; see easeAmbiguous) or the keyframe has no source animation id
+        // (runtime-scanned) so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
         return (
@@ -229,7 +237,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && !kf.easeAmbiguous && (
+            {onSelectSegment && !kf.easeAmbiguous && kf.animationId !== undefined && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""
@@ -303,7 +311,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             dragRef.current = {
               kfKey,
               startX: e.clientX,
-              fromClipPct: pendingClipPctsRef.current.get(kfKey) ?? kf.percentage,
+              fromClipPct: pendingRetimeRef.current.get(kfKey)?.clipPct ?? kf.percentage,
               moved: false,
             };
           }
@@ -360,22 +368,42 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             if (e.shiftKey) onShiftClickKeyframe?.(target);
             else onClickKeyframe?.(target);
           } else if (res.kind === "move" && res.toClipPct != null) {
-            pendingClipPctsRef.current.set(kfKey, res.toClipPct);
-            onMoveKeyframe?.(target, res.toClipPct);
+            const animKfs =
+              target.animationId === undefined
+                ? keyframesData.keyframes
+                : keyframesData.keyframes.filter((k) => k.animationId === target.animationId);
+            // Clamp to the mapped tween range: clipToTweenPercentage extrapolates
+            // linearly, so a boundary drag past the range would otherwise reselect
+            // an out-of-range tween % (e.g. 150%) even though the mutation clamps
+            // the moved endpoint back to the boundary.
+            const tweenPcts = animKfs
+              .map((k) => k.tweenPercentage)
+              .filter((v): v is number => typeof v === "number");
+            const clampTween = (v: number) =>
+              tweenPcts.length
+                ? Math.max(Math.min(...tweenPcts), Math.min(Math.max(...tweenPcts), v))
+                : v;
+            const newTweenPct = clampTween(clipToTweenPercentage(animKfs, res.toClipPct));
+            // For a rapid second retime the diamond still renders the stale cache
+            // position, so identify the FROM keyframe by the pending (already-moved)
+            // position; the mutation locates the source keyframe by this identity.
+            const pendingBefore = pendingRetimeRef.current.get(kfKey);
+            const fromTarget = pendingBefore
+              ? {
+                  ...target,
+                  percentage: pendingBefore.clipPct,
+                  tweenPercentage: pendingBefore.tweenPct,
+                }
+              : target;
+            pendingRetimeRef.current.set(kfKey, { clipPct: res.toClipPct, tweenPct: newTweenPct });
+            onMoveKeyframe?.(fromTarget, res.toClipPct);
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
             // something looks identical to one that silently did nothing.
             onClickKeyframe?.({
               ...target,
               percentage: res.toClipPct,
-              tweenPercentage: clipToTweenPercentage(
-                target.animationId === undefined
-                  ? keyframesData.keyframes
-                  : keyframesData.keyframes.filter(
-                      (keyframe) => keyframe.animationId === target.animationId,
-                    ),
-                res.toClipPct,
-              ),
+              tweenPercentage: newTweenPct,
             });
           }
         };

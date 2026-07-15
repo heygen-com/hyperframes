@@ -283,11 +283,14 @@ describe("TimelineClipDiamonds", () => {
       diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 170 }));
     });
 
+    // The second move must identify the FROM keyframe by the pending (already-
+    // moved) position 75%, not the stale rendered 50%; otherwise the serialized
+    // mutation can't locate the keyframe the first move relocated.
     expect(onMoveKeyframe).toHaveBeenNthCalledWith(
       2,
       {
-        percentage: 50,
-        tweenPercentage: 50,
+        percentage: 75,
+        tweenPercentage: 75,
         propertyGroup: "position",
         animationId: "anim-1",
       },
@@ -383,6 +386,42 @@ describe("TimelineClipDiamonds", () => {
   it("keeps the inline ease button on unambiguous merged segments", () => {
     const { host, root } = renderSegmentLane(false);
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
+    act(() => root.unmount());
+  });
+
+  it("hides the inline ease button on a segment with no source animation id", () => {
+    // A runtime-scanned keyframe has no animationId, so there is no tween to
+    // target; the segment ending on it must not render a (dead) ease button.
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const kf = (percentage: number, animationId?: string) => ({
+      percentage,
+      tweenPercentage: percentage,
+      propertyGroup: "position",
+      ...(animationId ? { animationId } : {}),
+      properties: { x: percentage },
+    });
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [kf(0, "anim-1"), kf(50, "anim-1"), kf(100)],
+          }}
+          clipWidthPx={200}
+          clipHeightPx={48}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={0}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          onSelectSegment={vi.fn()}
+          groupAware
+        />,
+      );
+    });
+    expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(1);
     act(() => root.unmount());
   });
 });
