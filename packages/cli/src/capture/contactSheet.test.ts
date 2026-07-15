@@ -39,6 +39,7 @@ describe("createContactSheet", () => {
 
       await createContactSheet([a, b], out, {
         cols: 2,
+        cellWidth: 16,
         labelMode: "custom",
         labels: ["A", "B"],
         maxImages: 2,
