@@ -240,7 +240,7 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // Strip in a fixpoint loop, not a single global pass: removing one comment can
   // re-form a marker from a nested/partial pair (e.g. <!--<!---->-->), which one
   // pass misses — CodeQL flags the single replace as incomplete sanitization.
-  for (let prev = ""; prev !== out;) {
+  for (let prev = ""; prev !== out; ) {
     prev = out;
     out = out.replace(/<!--[\s\S]*?-->/g, "");
   }
