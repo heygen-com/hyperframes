@@ -325,7 +325,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("hidden");
   });
 
-  it("hides a timed element at its exact end boundary", () => {
+  it("uses a half-open interval around a timed element's end boundary", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -342,7 +342,13 @@ describe("initSandboxRuntimeModular", () => {
     window.__timelines = { main: createMockTimeline(5) };
     initSandboxRuntimeModular();
 
+    window.__player?.renderSeek(2.5 - 1e-9);
+    expect(clip.style.visibility).toBe("visible");
+
     window.__player?.renderSeek(2.5);
+    expect(clip.style.visibility).toBe("hidden");
+
+    window.__player?.renderSeek(2.5 + 1e-9);
     expect(clip.style.visibility).toBe("hidden");
   });
 
