@@ -31,8 +31,8 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import { runGestureTransaction } from "./gestureTransaction";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 
-// Distinct coalesceKey per group drag so consecutive group drags don't fold
-// into one another's undo entry (module-local counter, not Date.now()).
+// Distinct coalesce keys keep consecutive move gestures in separate undo entries.
+let pathOffsetCommitCounter = 0;
 let groupDragCommitCounter = 0;
 
 export interface UseGsapAwareEditingParams {
@@ -110,21 +110,27 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: { altKey?: boolean },
     ) => {
-      if (gsapCommitMutation) {
-        try {
-          await tryGsapDragIntercept(
-            selection,
-            next,
-            selectedGsapAnimations,
-            previewIframeRef.current,
-            gsapCommitMutation,
-            makeFetchFallback(selection),
-            modifiers,
-          );
-        } catch (error) {
-          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
-          throw error;
-        }
+      if (!gsapCommitMutation) return;
+      const coalesceKey = `layer-move:${++pathOffsetCommitCounter}`;
+      const coalescedCommit: typeof gsapCommitMutation = (current, mutation, options) =>
+        gsapCommitMutation(current, mutation, {
+          ...options,
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+        });
+      try {
+        await tryGsapDragIntercept(
+          selection,
+          next,
+          selectedGsapAnimations,
+          previewIframeRef.current,
+          coalescedCommit,
+          makeFetchFallback(selection),
+          modifiers,
+        );
+      } catch (error) {
+        trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
+        throw error;
       }
     },
     [

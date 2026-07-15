@@ -31,8 +31,9 @@ import {
 } from "./manualOffsetDrag";
 import { isStudioManualEditGestureCurrent, restoreStudioPathOffset } from "./manualEdits";
 import {
-  CANVAS_NUDGE_COMMIT_DEBOUNCE_MS,
+  CANVAS_NUDGE_SAFETY_TIMEOUT_MS,
   canCanvasNudgeTargets,
+  isCanvasNudgeKey,
   resolveCanvasNudgeDelta,
 } from "./domEditNudge";
 
@@ -41,6 +42,7 @@ interface NudgeSession {
   isGroup: boolean;
   /** Accumulated delta of the burst, in composition px. */
   accum: { x: number; y: number };
+  pressedKeys: Set<string>;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -190,7 +192,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (members.length === 0) return null;
     // Same side effect a drag start has (pauses preview playback).
     p.onManualDragStartRef.current?.();
-    return { members, isGroup, accum: { x: 0, y: 0 }, timer: null };
+    return { members, isGroup, accum: { x: 0, y: 0 }, pressedKeys: new Set(), timer: null };
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -202,21 +204,36 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (!session) return;
     sessionRef.current = session;
     event.preventDefault();
+    session.pressedKeys.add(event.key);
     session.accum = { x: session.accum.x + delta.dx, y: session.accum.y + delta.dy };
     for (const member of session.members) applyManualOffsetNudgeDraft(member, session.accum);
     if (session.timer) clearTimeout(session.timer);
-    session.timer = setTimeout(() => commitSessionRef.current(), CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
+    session.timer = setTimeout(() => commitSessionRef.current(), CANVAS_NUDGE_SAFETY_TIMEOUT_MS);
   };
   const handleKeyDownRef = useRef(handleKeyDown);
   handleKeyDownRef.current = handleKeyDown;
 
+  const handleKeyUp = (event: KeyboardEvent) => {
+    const session = sessionRef.current;
+    if (!session || !isCanvasNudgeKey(event.key) || !session.pressedKeys.delete(event.key)) return;
+    if (session.pressedKeys.size === 0) commitSessionRef.current();
+  };
+  const handleKeyUpRef = useRef(handleKeyUp);
+  handleKeyUpRef.current = handleKeyUp;
+
   useMountEffect(() => {
-    const listener = (event: KeyboardEvent) => handleKeyDownRef.current(event);
+    const keyDownListener = (event: KeyboardEvent) => handleKeyDownRef.current(event);
+    const keyUpListener = (event: KeyboardEvent) => handleKeyUpRef.current(event);
+    const blurListener = () => commitSessionRef.current();
     // Capture, like the other app-level key handlers, so a focused panel
     // can't swallow the nudge before it reaches us.
-    window.addEventListener("keydown", listener, true);
+    window.addEventListener("keydown", keyDownListener, true);
+    window.addEventListener("keyup", keyUpListener, true);
+    window.addEventListener("blur", blurListener);
     return () => {
-      window.removeEventListener("keydown", listener, true);
+      window.removeEventListener("keydown", keyDownListener, true);
+      window.removeEventListener("keyup", keyUpListener, true);
+      window.removeEventListener("blur", blurListener);
       commitSessionRef.current();
     };
   });
