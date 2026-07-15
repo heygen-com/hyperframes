@@ -428,8 +428,15 @@ export const RenderQueue = memo(function RenderQueue({
 
       {/* Job list */}
       <div ref={listRef} className="flex-1 overflow-y-auto">
-        {loadError && jobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 gap-2" role="alert">
+        {loadError && (
+          <div
+            className={
+              jobs.length === 0
+                ? "flex flex-col items-center justify-center h-full px-4 gap-2"
+                : "flex items-center justify-between gap-2 px-3 py-2 border-b border-panel-border bg-red-500/10"
+            }
+            role="alert"
+          >
             <p className="text-[10px] text-red-400 text-center">{loadError}</p>
             {onRetryLoad && (
               <Button size="sm" variant="secondary" onClick={onRetryLoad}>
@@ -437,7 +444,8 @@ export const RenderQueue = memo(function RenderQueue({
               </Button>
             )}
           </div>
-        ) : jobs.length === 0 ? (
+        )}
+        {!loadError && jobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
               width="20"
@@ -466,7 +474,7 @@ export const RenderQueue = memo(function RenderQueue({
             </svg>
             <p className="text-[10px] text-panel-text-5 text-center">No renders yet</p>
           </div>
-        ) : (
+        ) : jobs.length > 0 ? (
           <div>
             {completedCount > 0 && (
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-panel-border">
@@ -494,7 +502,7 @@ export const RenderQueue = memo(function RenderQueue({
               />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
