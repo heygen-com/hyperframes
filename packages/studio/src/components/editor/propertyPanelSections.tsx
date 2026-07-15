@@ -387,7 +387,7 @@ export function TextSection({
 
   if (textFields.length === 1) {
     return (
-      <Section title="Text" defaultCollapsed>
+      <Section title="Text">
         <TextFieldEditor
           field={activeField}
           styles={styles}

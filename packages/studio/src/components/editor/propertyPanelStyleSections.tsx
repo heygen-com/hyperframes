@@ -250,18 +250,7 @@ export function StyleSections({
                   await onSetStyle(property, value);
                 }
               }}
-              options={[
-                "none",
-                "solid",
-                "dashed",
-                "dotted",
-                "double",
-                "hidden",
-                "groove",
-                "ridge",
-                "inset",
-                "outset",
-              ]}
+              options={["none", "solid", "dashed", "dotted", "double"]}
             />
           </div>
           <ColorField
@@ -279,14 +268,14 @@ export function StyleSections({
             label="Shadow"
             value={boxShadowPreset}
             disabled={styleEditingDisabled}
+            disableUnlistedValue
             onChange={(next) => {
-              if (next === "custom") return;
               onSetStyle(
                 "box-shadow",
                 buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
               );
             }}
-            options={["custom", "none", "soft", "lift", "glow"]}
+            options={["none", "soft", "lift", "glow"]}
           />
           <div className={RESPONSIVE_GRID}>
             <div className="grid min-w-0 gap-1.5">
@@ -334,14 +323,14 @@ export function StyleSections({
               value={styles.overflow || "visible"}
               disabled={styleEditingDisabled}
               onChange={(next) => onSetStyle("overflow", next)}
-              options={["visible", "hidden", "clip", "auto", "scroll"]}
+              options={["visible", "hidden", "clip"]}
             />
             <SelectField
               label="Mask"
               value={clipPathPreset}
               disabled={styleEditingDisabled}
+              disableUnlistedValue
               onChange={(next) => {
-                if (next === "custom") return;
                 onSetStyle(
                   "clip-path",
                   buildClipPathValue(
@@ -351,7 +340,7 @@ export function StyleSections({
                   ),
                 );
               }}
-              options={["custom", "none", "inset", "circle"]}
+              options={["none", "inset", "circle"]}
             />
           </div>
           <div className="grid min-w-0 gap-1.5">

@@ -76,15 +76,8 @@ function Cube3dControl({
     rotationY: gsapRuntimeValues.rotationY ?? 0,
     rotationZ: gsapRuntimeValues.rotationZ ?? 0,
   };
-  // Comp-derived lens (see naturalDepthPerspective) applied the first time depth is
-  // set, so the scene's foreshortening scales with the canvas instead of a magic 800.
+  // Comp-derived lens for the cube widget's depth preview when the element has no perspective.
   const depthPerspective = naturalDepthPerspective(element.element);
-  // A gentle, fixed "depth pose" tilt (degrees) dropped on a flat element the first
-  // time it gets depth, so translateZ reads as 3D foreshortening instead of a plain
-  // resize — small enough to look like a premium card, not a flip.
-  const DEPTH_POSE_X = 10;
-  const DEPTH_POSE_Y = -15;
-  const isFlat = Math.round(pose.rotationX) === 0 && Math.round(pose.rotationY) === 0;
   // Commit only the rotation axes the drag actually changed (each rounded to a
   // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
   // at the playhead writes/updates a keyframe just like the numeric fields.
@@ -133,42 +126,10 @@ function Cube3dControl({
           onPoseDraft={livePreview}
           onPoseCommit={commitPose}
           onDepthDraft={(z) => {
-            // Preview WITH a lens so depth is visible while scrolling — the same
-            // default the commit applies, so the element doesn't snap on release.
-            const preview: Record<string, number> = gsapRuntimeValues.transformPerspective
-              ? { z }
-              : { z, transformPerspective: depthPerspective };
-            // Depth-pose preview: a flat element only scales under Z, so mirror the
-            // commit and preview the gentle tilt that makes the depth read as 3D.
-            if (isFlat) {
-              preview.rotationX = DEPTH_POSE_X;
-              preview.rotationY = DEPTH_POSE_Y;
-            }
-            onLivePreviewProps?.(element, preview);
+            onLivePreviewProps?.(element, { z });
           }}
           onDepthCommit={(z) => {
-            // Best-UX depth: scroll moves Z, and a 3D transform always has a lens —
-            // like an After Effects camera. translateZ is invisible without a
-            // perspective, so the FIRST time depth is added (Perspective still 0) we
-            // set a sensible comp-derived lens ONCE. Every later scroll touches Z
-            // only, and Perspective stays an independent, editable field. The cube's
-            // scroll is clamped in front of the lens, so Z can't run away past it.
-            const props: Record<string, number> = { z };
-            if (!gsapRuntimeValues.transformPerspective && depthPerspective > 0) {
-              props.transformPerspective = depthPerspective;
-            }
-            // Depth-pose: a flat element (no tilt) only scales under Z — it can't read
-            // as depth. So the first time depth lands on a flat element, also drop a
-            // gentle fixed tilt; the foreshortening makes depth read as 3D IN PLACE
-            // (no screen travel, per-element lens unchanged). Once the element has any
-            // tilt, depth scrolls touch Z only. Reset tilt to 0 to go flat again.
-            if (isFlat) {
-              props.rotationX = DEPTH_POSE_X;
-              props.rotationY = DEPTH_POSE_Y;
-            }
-            // One commit for all props so the writes can't race read-modify-write on
-            // the same script (which dropped a prop and reverted after a seek).
-            void onCommitAnimatedProperties(element, props);
+            void onCommitAnimatedProperties(element, { z });
           }}
           onRecenter={recenter}
           onKeyframe={onKeyframe}

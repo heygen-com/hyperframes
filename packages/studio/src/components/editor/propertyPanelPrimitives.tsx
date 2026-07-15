@@ -320,16 +320,19 @@ export function SelectField({
   label,
   value,
   disabled,
+  disableUnlistedValue,
   options,
   onChange,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  disableUnlistedValue?: boolean;
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
-  const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
+  const hasUnlistedValue = Boolean(value && !options.includes(value));
+  const renderedOptions = hasUnlistedValue ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
       <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
@@ -340,7 +343,11 @@ export function SelectField({
         className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
       >
         {renderedOptions.map((option) => (
-          <option key={option} value={option}>
+          <option
+            key={option}
+            value={option}
+            disabled={disableUnlistedValue && hasUnlistedValue && option === value}
+          >
             {option}
           </option>
         ))}
