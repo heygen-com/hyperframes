@@ -144,13 +144,13 @@ export async function lintHevcPreviewCodec(
       severity: "info",
       message:
         `Video file(s) use the HEVC/H.265 codec: ${unique.join(", ")}. ` +
-        "The render pipeline pre-decodes video with FFmpeg and never uses the browser's video decoder, so these render correctly. " +
-        "Live preview/player playback requires a browser with HEVC support. " +
-        "If preview playback fails, generate an H.264 proxy (e.g. via the media-use skill) and reference that instead.",
+        "The render pipeline pre-decodes video with FFmpeg and never uses the browser's video decoder, so these render correctly using the original file. " +
+        "Live preview (preview, play, Studio) auto-proxies this: it transcodes and caches an H.264 proxy automatically on first use and serves that for playback. " +
+        "Disable this with --no-proxy or by setting media.autoProxy to false in hyperframes.json.",
       fixHint:
         unique.length === 1
-          ? `Generate an H.264 proxy for "${unique[0]}" (e.g. via the media-use skill) if it fails to play in preview.`
-          : "Generate H.264 proxies for these files (e.g. via the media-use skill) if they fail to play in preview.",
+          ? `"${unique[0]}" auto-proxies for preview; no action needed. Disable with --no-proxy or media.autoProxy: false in hyperframes.json if you'd rather manage a proxy yourself.`
+          : "These files auto-proxy for preview; no action needed. Disable with --no-proxy or media.autoProxy: false in hyperframes.json if you'd rather manage proxies yourself.",
     },
   ];
 }

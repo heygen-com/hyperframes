@@ -254,18 +254,44 @@ function rewriteCssUrls(
   return { css: rewritten, modified };
 }
 
-function rewriteHtmlAttributes(
-  ctx: ExternalAssetContext,
+/** Resolves a raw attribute value (plus the referrer's absolute directory) to
+ * the archive path it should point at, or `null` to leave it untouched. */
+export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
+
+interface RewriteHtmlAttributesOptions {
+  /** Attributes to inspect (default: src + href, matching the external-asset
+   * localization use case below). */
+  attrs?: string[];
+  /** CSS selector narrowing which elements are inspected (default: derived
+   * from `attrs`, e.g. `"[src], [href]"`). Callers that only care about one
+   * tag (e.g. `<video>`) pass something like `"video[src]"`. */
+  selector?: string;
+}
+
+/**
+ * Walk every element matching `selector` (default: anything with `src`/
+ * `href`) and rewrite the given `attrs` whose value `resolveTarget` maps to an
+ * archive path. Shared by `localizeHtmlEntry` below (external-asset
+ * localization) and `publishProxyBake.ts` (proxy baking only rewrites
+ * `<video src>`), so the rewrite mechanics (attribute walk + entry-relative
+ * path rewrite) live in one place while each caller supplies its own
+ * resolution rule.
+ */
+export function rewriteHtmlAttributes(
   document: Document,
   referrerAbsDir: string,
   entryPath: string,
+  resolveTarget: HtmlAttributeResolver,
+  options: RewriteHtmlAttributesOptions = {},
 ): boolean {
+  const attrs = options.attrs ?? ["src", "href"];
+  const selector = options.selector ?? attrs.map((attr) => `[${attr}]`).join(", ");
   let modified = false;
-  for (const el of document.querySelectorAll("[src], [href]")) {
-    for (const attr of ["src", "href"]) {
+  for (const el of document.querySelectorAll(selector)) {
+    for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const archivePath = tryResolveExternal(ctx, val, referrerAbsDir);
+      const archivePath = resolveTarget(val, referrerAbsDir);
       if (!archivePath) continue;
       el.setAttribute(attr, posix.relative(posix.dirname(entryPath), archivePath));
       modified = true;
@@ -305,7 +331,9 @@ function rewriteStyleBlocks(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const attrsChanged = rewriteHtmlAttributes(ctx, document, referrerAbsDir, entryPath);
+  const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, (val, dir) =>
+    tryResolveExternal(ctx, val, dir),
+  );
   const stylesChanged = rewriteStyleBlocks(ctx, document, referrerAbsDir, entryPath);
   if (attrsChanged || stylesChanged) {
     ctx.fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
@@ -350,7 +378,14 @@ export function localizeExternalAssets(
   return ctx.externalMap.size;
 }
 
-export function createPublishArchive(projectDir: string): PublishArchiveResult {
+/**
+ * Walk the project dir, read every non-ignored file, and localize external
+ * (out-of-project) asset references. Returns the in-memory archive file map —
+ * the seam `publish.ts` hooks a proxy-baking transform into (U6) between this
+ * and `zipPublishFileMap` below. `cloud render` never sees this seam: it
+ * keeps calling `createPublishArchive` directly.
+ */
+export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
   collectProjectFiles(absProjectDir, absProjectDir, filePaths);
@@ -364,7 +399,12 @@ export function createPublishArchive(projectDir: string): PublishArchiveResult {
   }
 
   localizeExternalAssets(absProjectDir, fileContents);
+  return fileContents;
+}
 
+/** Zip an in-memory archive file map (from `buildPublishFileMap`, optionally
+ * transformed in between, e.g. by proxy baking) into the final archive buffer. */
+export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArchiveResult {
   const archive = new AdmZip();
   for (const [filePath, content] of fileContents) {
     archive.addFile(filePath, content);
@@ -374,6 +414,17 @@ export function createPublishArchive(projectDir: string): PublishArchiveResult {
     buffer: archive.toBuffer(),
     fileCount: fileContents.size,
   };
+}
+
+/**
+ * Thin composition of `buildPublishFileMap` + `zipPublishFileMap` — signature
+ * and behavior UNCHANGED from before the U6 split. `cloud render`
+ * (`commands/cloud/render.ts`, `maybeUploadProject`) calls this directly and
+ * must stay byte-identical (never see baked proxies); only `publish.ts` calls
+ * the two halves separately with a baking transform in between.
+ */
+export function createPublishArchive(projectDir: string): PublishArchiveResult {
+  return zipPublishFileMap(buildPublishFileMap(projectDir));
 }
 
 export function getPublishApiBaseUrl(): string {
@@ -513,6 +564,14 @@ export interface PublishOptions {
   projectId?: string;
   /** Shared team space id, sent as X-Space-Id so team members converge. Only when authenticated. */
   spaceId?: string;
+  /**
+   * Pre-built archive to upload instead of building one fresh from
+   * `projectDir` via `createPublishArchive`. `publish.ts` passes this so it
+   * can bake proxies into the file map between `buildPublishFileMap` and
+   * `zipPublishFileMap` (U6); callers that omit it (e.g. `feedback`'s
+   * minimal-repro publish) keep today's behavior unchanged.
+   */
+  archive?: PublishArchiveResult;
 }
 
 export async function publishProjectArchive(
@@ -521,7 +580,7 @@ export async function publishProjectArchive(
 ): Promise<PublishedProjectResponse> {
   const isPublic = opts.public === true;
   const title = basename(projectDir);
-  const archive = createPublishArchive(projectDir);
+  const archive = opts.archive ?? createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
   const credential = await tryResolveCredential();
   const authHeaders = credential ? buildAuthHeaders(credential) : {};

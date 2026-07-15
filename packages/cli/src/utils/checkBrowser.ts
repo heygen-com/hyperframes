@@ -224,6 +224,13 @@ export async function captureFindingCrops(
   }
 }
 
+// `swapToProxy` (packages/core/src/runtime/mediaProxy.ts) embeds its stable
+// diagnostic code in the console.info line precisely so this scraper can match
+// a token instead of prose. Only that runtime-emitted info line should ever
+// become a finding here: an ordinary `console.info` from a composition
+// author's own script must not.
+const MEDIA_PROXY_FALLBACK_MARKER = "runtime_media_proxy_fallback";
+
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
     const type = message.type();
@@ -243,6 +250,16 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       drafts.push({
         code: "console_warning",
         severity: "warning",
+        message: text,
+        time: currentTime(),
+        url: location.url,
+        line: location.lineNumber,
+      });
+    } else if (type === "info" && text.includes(MEDIA_PROXY_FALLBACK_MARKER)) {
+      const location = message.location();
+      drafts.push({
+        code: "media_proxy_fallback",
+        severity: "info",
         message: text,
         time: currentTime(),
         url: location.url,

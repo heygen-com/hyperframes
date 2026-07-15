@@ -106,4 +106,4 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
 
-Input codecs: render decodes video via FFmpeg (frames are pre-extracted and injected), so HEVC/H.265 assets (8/10-bit) render correctly everywhere; only live preview depends on the browser's codec support (`lint` emits an info-level `hevc_preview_codec` note; use an H.264 proxy for authoring if preview shows black).
+Input codecs: render decodes video via FFmpeg (frames are pre-extracted and injected), so HEVC/H.265 assets (8/10-bit) render correctly everywhere; live preview auto-proxies any browser-hostile asset (transcodes and caches an H.264 copy on first use, opt out with `--no-proxy` or `media.autoProxy: false`), and `lint` emits an info-level `hevc_preview_codec` note naming affected assets.

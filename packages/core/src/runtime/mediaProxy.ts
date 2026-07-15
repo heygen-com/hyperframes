@@ -193,8 +193,10 @@ export function swapToProxy(
     code: DIAGNOSTIC_FALLBACK_CODE,
     details,
   });
+  // The diagnostic code doubles as the stable token check's console scraper
+  // matches on (packages/cli/src/utils/checkBrowser.ts); keep it in the text.
   console.info(
-    `[hyperframes] preview: "${originalSrc}" uses a codec (${codecName ?? "unknown"}) this browser can't decode; ` +
+    `[hyperframes] ${DIAGNOSTIC_FALLBACK_CODE}: "${originalSrc}" uses a codec (${codecName ?? "unknown"}) this browser can't decode; ` +
       "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
   );
 }

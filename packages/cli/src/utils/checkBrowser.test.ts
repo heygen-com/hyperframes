@@ -330,6 +330,45 @@ it("carries validate's clip-duration audit into the runtime findings", async () 
   ]);
 });
 
+it("surfaces the runtime's media-proxy-fallback console.info line as an info finding, ignoring unrelated info logs", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const fallbackMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_fallback: "assets/clip.mp4" uses a codec (hevc) this browser can\'t decode; ' +
+      "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
+  );
+  const unrelatedInfo = fakeConsoleMessage("info", "[hyperframes] render runtime fps 30");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(fallbackMessage);
+        handler(unrelatedInfo);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_fallback",
+      severity: "info",
+      message: fallbackMessage.text(),
+    }),
+  );
+  expect(result.runtimeFindings.some((finding) => finding.message === unrelatedInfo.text())).toBe(
+    false,
+  );
+});
+
 describe("preResolveHostileMediaProxies", () => {
   const dirs: string[] = [];
   const mkProjectDir = (): string => {
@@ -452,6 +491,14 @@ function installRects(): void {
   if (!root || !image) throw new Error("Geometry fixture failed to mount");
   vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
   vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 80, 200, 100));
+}
+
+function fakeConsoleMessage(type: string, text: string) {
+  return {
+    type: () => type,
+    text: () => text,
+    location: () => ({ url: "http://127.0.0.1:3000/index.html", lineNumber: 1 }),
+  };
 }
 
 function fakePage() {

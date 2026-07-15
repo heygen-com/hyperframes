@@ -21,11 +21,13 @@ vi.mock("./projectLink.js", () => ({
 }));
 
 import {
+  buildPublishFileMap,
   createPublishArchive,
   getPublishApiBaseUrl,
   localizeExternalAssets,
   publishProjectArchive,
   uploadTimeoutMs,
+  zipPublishFileMap,
 } from "./publishProject.js";
 
 function makeProjectDir(): string {
@@ -202,6 +204,40 @@ describe("createPublishArchive", () => {
 
       expect(archive.fileCount).toBe(2);
       expect(archive.buffer.byteLength).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("createPublishArchive (U6 cloud-render regression guard)", () => {
+  // `cloud/render.ts` (`maybeUploadProject`) calls `createPublishArchive`
+  // directly and must never see baked proxies (R2): this pins that
+  // `createPublishArchive` is exactly the thin composition of
+  // `buildPublishFileMap` + `zipPublishFileMap` with no baking hook, and that
+  // a local video asset's original bytes/HTML pass through unmodified.
+  it("is the unbaked composition of buildPublishFileMap + zipPublishFileMap: original bytes and HTML pass through", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<html><body><video src="clip.mp4"></video></body></html>`,
+        "utf-8",
+      );
+      writeFileSync(join(dir, "clip.mp4"), "ORIGINAL_HEVC_BYTES", "utf-8");
+
+      const direct = createPublishArchive(dir);
+      const composed = zipPublishFileMap(buildPublishFileMap(dir));
+
+      expect(direct.buffer.equals(composed.buffer)).toBe(true);
+      expect(direct.fileCount).toBe(composed.fileCount);
+
+      const zip = new AdmZip(direct.buffer);
+      const entries = zip.getEntries().map((e) => e.entryName);
+      expect(entries).toEqual(expect.arrayContaining(["index.html", "clip.mp4"]));
+      expect(entries.some((e) => e.startsWith("_proxy/"))).toBe(false);
+      expect(zip.readAsText("clip.mp4")).toBe("ORIGINAL_HEVC_BYTES");
+      expect(zip.readAsText("index.html")).toContain('src="clip.mp4"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

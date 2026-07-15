@@ -7,7 +7,13 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
-import { publishProjectArchive } from "../utils/publishProject.js";
+import {
+  buildPublishFileMap,
+  publishProjectArchive,
+  zipPublishFileMap,
+} from "../utils/publishProject.js";
+import { bakeMediaProxies } from "../utils/publishProxyBake.js";
+import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { tryResolveCredential } from "../auth/index.js";
 import {
   ensureProjectId,
@@ -23,6 +29,7 @@ export const examples: Example[] = [
   ["Update an existing published project in place", "hyperframes publish --update <url|id>"],
   ["Publish to a shared team space", "hyperframes publish --space <space-id>"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
+  ["Skip baking H.264 proxies for browser-hostile video codecs", "hyperframes publish --no-proxy"],
 ];
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
@@ -66,6 +73,11 @@ export default defineCommand({
     space: {
       type: "string",
       description: "Publish into a shared team space (its id) so teammates update one link",
+    },
+    proxy: {
+      type: "boolean",
+      description:
+        "Bake H.264 proxies for browser-hostile video codecs (e.g. HEVC) into the published archive. Default: on, unless disabled via hyperframes.json media.autoProxy. Pass --no-proxy to skip.",
     },
   },
   async run({ args }) {
@@ -140,10 +152,22 @@ export default defineCommand({
     publishSpinner.start("Uploading project...");
 
     try {
+      // Resolution order (per hyperframes.json's `media.autoProxy`): an
+      // explicit --proxy/--no-proxy flag wins in either direction, else the
+      // committed config, else on by default.
+      const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
+      const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
+      const fileMap = buildPublishFileMap(dir);
+      if (autoProxy) {
+        await bakeMediaProxies(dir, fileMap);
+      }
+      const archive = zipPublishFileMap(fileMap);
+
       const published = await publishProjectArchive(dir, {
         public: args.public === true,
         projectId: requestedProjectId,
         spaceId,
+        archive,
       });
       publishSpinner.stop(c.success("Project published"));
 

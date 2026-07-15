@@ -1,0 +1,113 @@
+/**
+ * Publish-time proxy baking (U6 of
+ * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md).
+ *
+ * Published pages are static (no server), so the on-demand `?hf-proxy=h264`
+ * negotiation the preview/play surfaces use (U3/U4) isn't possible there.
+ * Instead this scans the archive's HTML entries for local `<video src>`
+ * references to browser-hostile codecs (HEVC, ProRes, ...), transcodes each
+ * one via the shared studio-server proxy transcoder, adds the proxy bytes to
+ * the archive under a `_proxy/` prefix, and rewrites ONLY the matching
+ * `<video src>` attributes in the archive's HTML copies to point at the
+ * proxy.
+ *
+ * `<audio>` elements are never rewritten: verified (per the plan's Key
+ * Technical Decisions) that AAC demuxes fine from an HEVC container in an
+ * HEVC-less browser, so an `<audio>` sharing a hostile video's src plays the
+ * original untouched. On-disk project files are never modified — only the
+ * in-memory archive file map passed in by `publish.ts` (built via
+ * `buildPublishFileMap`, baked here, then zipped via `zipPublishFileMap`).
+ * `cloud render` never calls this: it uses `createPublishArchive` directly,
+ * which has no baking hook (R2 in the plan).
+ *
+ * A transcode failure for one asset is logged and skipped — it never fails
+ * the publish, and that HTML's `<video src>` is left pointing at the
+ * original (same behavior as if auto-proxying were off for that one asset).
+ */
+
+import { readFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { parseHTML } from "linkedom";
+import { cleanAssetUrl, isRemoteOrInlineUrl } from "@hyperframes/parsers/asset-resolution";
+import {
+  scanProjectMediaCodecMap,
+  type HtmlSourceLike,
+} from "@hyperframes/studio-server/media-codec-map";
+import { ProxyTranscodeError, resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import { rewriteHtmlAttributes } from "./publishProject.js";
+
+/** Archive-path prefix for baked proxy files, mirroring `localizeExternalAssets`'s `_ext/`. */
+export const PROXY_ARCHIVE_PREFIX = "_proxy";
+
+function isHtmlEntry(path: string): boolean {
+  return path.endsWith(".html") || path.endsWith(".htm");
+}
+
+/**
+ * Mutates `fileContents` in place: adds a `_proxy/<hash>.mp4` entry for every
+ * browser-hostile local video asset referenced from the archive's HTML, and
+ * rewrites those HTML entries' matching `<video src>` attributes to point at
+ * the proxy. No-op for any asset whose transcode fails (console warning
+ * only, entry left pointing at the original).
+ */
+export async function bakeMediaProxies(
+  projectDir: string,
+  fileContents: Map<string, Buffer>,
+): Promise<void> {
+  const absProjectDir = resolve(projectDir);
+  const htmlEntries = [...fileContents.entries()].filter(([path]) => isHtmlEntry(path));
+  if (htmlEntries.length === 0) return;
+
+  const htmlSources: HtmlSourceLike[] = htmlEntries.map(([entryPath, content]) => ({
+    html: content.toString("utf-8"),
+    compSrcPath: entryPath,
+  }));
+
+  const codecMap = await scanProjectMediaCodecMap(absProjectDir, htmlSources);
+  const hostilePathnames = Object.entries(codecMap)
+    .filter(([, facts]) => facts.browserHostile)
+    .map(([pathname]) => pathname);
+  if (hostilePathnames.length === 0) return;
+
+  // Absolute source path -> archive path of its baked proxy. Built by
+  // resolving each map key back to an absolute path the same way
+  // `compositionServer.ts`'s `injectMediaCodecMap` does, since the map is
+  // keyed by project-root-relative URL pathname (per the plan's KTD), not a
+  // filesystem path.
+  const proxyByAbsolutePath = new Map<string, string>();
+
+  await Promise.all(
+    hostilePathnames.map(async (pathname) => {
+      const absoluteSourcePath = resolve(absProjectDir, pathname.replace(/^\/+/, ""));
+      try {
+        const proxyPath = await resolveProxy(absProjectDir, absoluteSourcePath);
+        const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;
+        fileContents.set(archivePath, readFileSync(proxyPath));
+        proxyByAbsolutePath.set(absoluteSourcePath, archivePath);
+      } catch (err) {
+        const reason = err instanceof ProxyTranscodeError ? err.message : String(err);
+        console.warn(`hyperframes publish: skipping proxy for "${pathname}" (${reason})`);
+      }
+    }),
+  );
+
+  if (proxyByAbsolutePath.size === 0) return;
+
+  for (const [entryPath, content] of htmlEntries) {
+    const { document } = parseHTML(content.toString("utf-8"));
+    const referrerAbsDir = resolve(absProjectDir, dirname(entryPath));
+    const modified = rewriteHtmlAttributes(
+      document,
+      referrerAbsDir,
+      entryPath,
+      (rawValue, referrerDir) => {
+        const cleaned = cleanAssetUrl(rawValue);
+        if (!cleaned || isRemoteOrInlineUrl(cleaned)) return null;
+        const absolutePath = resolve(referrerDir, cleaned);
+        return proxyByAbsolutePath.get(absolutePath) ?? null;
+      },
+      { selector: "video[src]", attrs: ["src"] },
+    );
+    if (modified) fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
+  }
+}
