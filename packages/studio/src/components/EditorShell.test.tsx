@@ -6,23 +6,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorShell } from "./EditorShell";
 
 let captionEditMode = true;
+const hookMocks = vi.hoisted(() => ({
+  useTimelineSelectionPreviewSync: vi.fn(),
+}));
+
+vi.mock("../hooks/useTimelineSelectionPreviewSync", () => hookMocks);
 
 vi.mock("../contexts/StudioContext", () => ({
   useStudioPlaybackContext: () => ({
     captionEditMode,
     refreshKey: 0,
     refreshPreviewDocumentVersion: vi.fn(),
+    timelineElements: [],
   }),
   useStudioShellContext: () => ({
     projectId: "project-1",
     activeCompPath: "index.html",
     setActiveCompPath: vi.fn(),
     handlePreviewIframeRef: vi.fn(),
+    showToast: vi.fn(),
   }),
 }));
 
 vi.mock("../contexts/DomEditContext", () => ({
-  useDomEditActionsContext: () => ({ handleTimelineElementSelect: vi.fn() }),
+  useDomEditActionsContext: () => ({
+    handleTimelineElementSelect: vi.fn(),
+    buildDomSelectionForTimelineElement: vi.fn(),
+    applyDomSelection: vi.fn(),
+    applyMarqueeSelection: vi.fn(),
+  }),
+  useDomEditSelectionContext: () => ({
+    domEditSelection: null,
+    domEditGroupSelections: [],
+  }),
 }));
 
 vi.mock("./nle/NLEContext", () => ({
@@ -55,6 +71,7 @@ let root: Root | null = null;
 
 beforeEach(() => {
   captionEditMode = true;
+  hookMocks.useTimelineSelectionPreviewSync.mockClear();
 });
 
 afterEach(() => {
@@ -101,6 +118,20 @@ function renderShell(): void {
 }
 
 describe("EditorShell caption mode", () => {
+  it("wires timeline store selection into preview selection sync", () => {
+    renderShell();
+
+    expect(hookMocks.useTimelineSelectionPreviewSync).toHaveBeenCalledOnce();
+    expect(hookMocks.useTimelineSelectionPreviewSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeCompPath: "index.html",
+        timelineElements: [],
+        domEditSelection: null,
+        domEditGroupSelections: [],
+      }),
+    );
+  });
+
   it("shows a visible exit control on the caption rail", () => {
     renderShell();
 

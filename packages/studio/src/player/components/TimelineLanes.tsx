@@ -53,7 +53,6 @@ export interface TimelineLaneBaseProps {
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDrillDown?: (element: TimelineElement) => void;
-  onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
   setRangeSelection: (v: null) => void;
@@ -114,7 +113,6 @@ export function TimelineLanes({
   renderClipContent,
   renderClipOverlay,
   onDrillDown,
-  onSelectElement,
   setHoveredClip,
   setShowPopover,
   setRangeSelection,
@@ -266,7 +264,6 @@ export function TimelineLanes({
                     const selectClip = () => {
                       usePlayerStore.getState().clearSelectedElementIds();
                       setSelectedElementId(elementKey);
-                      onSelectElement?.(el);
                     };
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT

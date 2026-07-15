@@ -10,10 +10,11 @@ import { NLEProvider, useNLEContext } from "./nle/NLEContext";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
-import { useDomEditActionsContext } from "../contexts/DomEditContext";
+import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
+import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -89,10 +90,35 @@ export function EditorShell({
   gestureOverlay,
   onExitCaptionMode,
 }: EditorShellProps) {
-  const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
+  const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef, showToast } =
     useStudioShellContext();
-  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } = useStudioPlaybackContext();
-  const { handleTimelineElementSelect } = useDomEditActionsContext();
+  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion, timelineElements } =
+    useStudioPlaybackContext();
+  const {
+    handleTimelineElementSelect,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
+  } = useDomEditActionsContext();
+  const { domEditSelection, domEditGroupSelections } = useDomEditSelectionContext();
+  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+  const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
+  const reportTimelineSelectionNotFound = useCallback(() => {
+    showToast("The selected clip is not available in the preview yet.", "info");
+  }, [showToast]);
+
+  useTimelineSelectionPreviewSync({
+    selectedElementId,
+    selectedElementIds,
+    timelineElements,
+    domEditSelection,
+    domEditGroupSelections,
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
+    onSelectionNotFound: reportTimelineSelectionNotFound,
+  });
 
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
