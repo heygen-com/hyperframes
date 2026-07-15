@@ -36,9 +36,19 @@ export interface KeyframeSlice {
 
   /** elementId scopes the request to one element so a shared (class-selector)
    * animation id can't open the ease editor on the wrong element. */
-  focusedEaseSegment: { animationId: string; tweenPercentage: number; elementId: string } | null;
+  focusedEaseSegment: {
+    animationId: string;
+    collidingAnimationIds?: string[];
+    tweenPercentage: number;
+    elementId: string;
+  } | null;
   setFocusedEaseSegment: (
-    target: { animationId: string; tweenPercentage: number; elementId: string } | null,
+    target: {
+      animationId: string;
+      collidingAnimationIds?: string[];
+      tweenPercentage: number;
+      elementId: string;
+    } | null,
   ) => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */

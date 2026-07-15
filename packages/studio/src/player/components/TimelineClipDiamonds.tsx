@@ -107,6 +107,7 @@ function keyframeTarget(
         tweenPercentage: keyframe.tweenPercentage,
         propertyGroup: keyframe.propertyGroup,
         animationId: keyframe.animationId,
+        collidingAnimationIds: keyframe.collidingAnimationIds,
       }
     : { percentage: keyframe.percentage };
 }
