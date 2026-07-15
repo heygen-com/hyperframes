@@ -214,6 +214,27 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not treat a later timed full-frame clip as visible before its window", async () => {
+    const html = `
+<html><body data-composition-id="c1" data-width="1920" data-height="1080">
+  <style>.scene { position: fixed; inset: 0; background: #123; }</style>
+  <section id="scene-1" class="scene clip" data-start="0" data-duration="8"><h1>Scene 1</h1></section>
+  <section id="scene-2" class="scene clip" data-start="8" data-duration="8"><h1>Scene 2</h1></section>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#scene-2", { opacity: 0, duration: 0.18 }, 8.00);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_fullscreen_overlay_starts_visible",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("reports one full-frame transition flash finding when multiple scripts touch it", async () => {
     const html = `
 <html><body data-composition-id="c1" data-width="1920" data-height="1080">
