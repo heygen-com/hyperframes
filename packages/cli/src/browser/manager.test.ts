@@ -171,6 +171,7 @@ describe("findBrowser — cache resolution", () => {
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     Object.defineProperty(process, "arch", { value: "x64", configurable: true });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
     installChildProcessMocks();
   });
 
@@ -593,6 +594,54 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  // Sibling env-var alias for the CLI resolver. The engine layer already
+  // honors `PRODUCER_HEADLESS_SHELL_PATH` (see
+  // `packages/engine/src/services/browserManager.ts`), and docs
+  // (skills/hyperframes-animation/adapters/typegpu.md,
+  // packages/gcp-cloud-run/Dockerfile, examples/k8s-jobs/Dockerfile.example)
+  // all instruct users to set that name. Before this alias, `hyperframes
+  // check`/`snapshot`/`compare` — which all route through `openSettledCompositionPage`
+  // → `ensureBrowser` → `findFromEnv` — silently ignored a documented escape
+  // hatch that `render` had honored, so a user with a broken pinned build
+  // (win32/x64 STATUS_STACK_BUFFER_OVERRUN 3221225595, #hyperframes-cli-feedback
+  // ts=1784095034) could render successfully but check would still crash on
+  // the cached headless-shell. The alias closes that direction of the
+  // symmetry (the engine side is being closed by #2459).
+  it("resolves via PRODUCER_HEADLESS_SHELL_PATH when HYPERFRAMES_BROWSER_PATH is unset", async () => {
+    const directShell = "/opt/chrome-headless-shell/chrome-headless-shell";
+    installFsMocks({ existing: new Set([directShell]) });
+    installPuppeteerBrowsersMock();
+    process.env["PRODUCER_HEADLESS_SHELL_PATH"] = directShell;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    const result = await findBrowser();
+
+    expect(result?.executablePath).toBe(directShell);
+    expect(result?.source).toBe("env");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("prefers HYPERFRAMES_BROWSER_PATH over PRODUCER_HEADLESS_SHELL_PATH when both are set", async () => {
+    // Tiebreak matches `render.ts` — the CLI-native name canonicalizes; the
+    // engine name is a compatibility alias. If both are set the caller almost
+    // certainly meant the CLI-native one.
+    const hfPath = "/opt/hf/chrome-headless-shell";
+    const producerPath = "/opt/producer/chrome-headless-shell";
+    installFsMocks({ existing: new Set([hfPath, producerPath]) });
+    installPuppeteerBrowsersMock();
+    process.env["HYPERFRAMES_BROWSER_PATH"] = hfPath;
+    process.env["PRODUCER_HEADLESS_SHELL_PATH"] = producerPath;
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    const result = await findBrowser();
+
+    expect(result?.executablePath).toBe(hfPath);
+    expect(result?.source).toBe("env");
+  });
+
   it("does NOT warn on macOS when falling back to system Chrome", async () => {
     // macOS Chrome still works fine for the screenshot path and the perf
     // claims around BeginFrame are Linux-only — keep the warning Linux-scoped
@@ -716,6 +765,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
   beforeEach(() => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
     installChildProcessMocks();
   });
 

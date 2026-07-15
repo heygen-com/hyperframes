@@ -250,8 +250,26 @@ function whichBinary(name: string): string | undefined {
   }
 }
 
+// Env-var aliases for a caller-supplied browser executable path. The CLI-native
+// name `HYPERFRAMES_BROWSER_PATH` is the canonical spelling (documented via the
+// download-failure hint added in #2443). `PRODUCER_HEADLESS_SHELL_PATH` is the
+// engine-side name that per-worker render launches already honor (see
+// `packages/engine/src/services/browserManager.ts` and `render.ts` which even
+// propagates the CLI-resolved executable into it). Docs in
+// `skills/hyperframes-animation/adapters/typegpu.md`,
+// `packages/gcp-cloud-run/Dockerfile`, and `examples/k8s-jobs/Dockerfile.example`
+// all instruct users to set `PRODUCER_HEADLESS_SHELL_PATH`, so field reports
+// (e.g. `#hyperframes-cli-feedback` ts=1784095034 on win32/x64) hit the case
+// where `render` completes via that env var while `check`, `snapshot`, and
+// `compare` all ignore it and crash on the cached headless-shell instead.
+// Alias them here so every consumer of `openSettledCompositionPage` (which
+// calls `ensureBrowser` → `findFromEnv`) picks up the same escape hatch.
+// Tiebreak: HYPERFRAMES_BROWSER_PATH wins when both are set, matching the
+// CLI-native canonicalization in `render.ts` (which only sets
+// `PRODUCER_HEADLESS_SHELL_PATH` if not already present).
 function findFromEnv(): BrowserResult | undefined {
-  const envPath = process.env["HYPERFRAMES_BROWSER_PATH"];
+  const envPath =
+    process.env["HYPERFRAMES_BROWSER_PATH"] ?? process.env["PRODUCER_HEADLESS_SHELL_PATH"];
   if (envPath && existsSync(envPath)) {
     return { executablePath: envPath, source: "env" };
   }
