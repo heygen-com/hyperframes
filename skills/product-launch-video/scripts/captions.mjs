@@ -34,6 +34,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { captionBand, parseFormat } from "./lib/dimensions.mjs";
 import { parseColors, parseFonts, semanticColors } from "./lib/tokens.mjs";
@@ -239,7 +240,7 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   // Strip in a fixpoint loop, not a single global pass: removing one comment can
   // re-form a marker from a nested/partial pair (e.g. <!--<!---->-->), which one
   // pass misses — CodeQL flags the single replace as incomplete sanitization.
-  for (let prev = ""; prev !== out; ) {
+  for (let prev = ""; prev !== out;) {
     prev = out;
     out = out.replace(/<!--[\s\S]*?-->/g, "");
   }
@@ -278,6 +279,8 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   out += "\n<style>\n  .caption-line { line-height: 1.1 !important; }\n</style>";
   return `<template id="captions-template" data-composition-id="captions" data-width="${W}" data-height="${H}">\n${out.trim()}\n</template>\n`;
 }
+
+export { buildFromSkin };
 
 // @font-face for the brand display/body fonts, matched from the project's font dirs
 // (staged assets/fonts first, else capture/assets/fonts) by family-name prefix, with
@@ -484,11 +487,13 @@ function buildCaptionsHtml(groups, total, W, H) {
 `;
 }
 
-const sub = process.argv[2];
-if (sub === "build" || sub === undefined) runBuild(process.argv.slice(sub === "build" ? 3 : 2));
-else {
-  console.error(
-    "usage: node captions.mjs build [--storyboard …] [--audio-meta …] [--hyperframes .]",
-  );
-  process.exit(2);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const sub = process.argv[2];
+  if (sub === "build" || sub === undefined) runBuild(process.argv.slice(sub === "build" ? 3 : 2));
+  else {
+    console.error(
+      "usage: node captions.mjs build [--storyboard …] [--audio-meta …] [--hyperframes .]",
+    );
+    process.exit(2);
+  }
 }
