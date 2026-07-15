@@ -1947,10 +1947,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     ensureDir(res.absPath);
-    const body = await c.req.text();
+    // Read raw bytes: c.req.text() decodes the body as UTF-8, which corrupts
+    // binary uploads (fonts, images) by replacing non-UTF-8 bytes. Writing the
+    // raw buffer is byte-exact for text bodies too.
+    const body = Buffer.from(await c.req.arrayBuffer());
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
-    writeFileSync(res.absPath, body, "utf-8");
+    writeFileSync(res.absPath, body);
 
     return c.json({
       ok: true,
@@ -1970,8 +1973,11 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     ensureDir(res.absPath);
-    const body = await c.req.text().catch(() => "");
-    writeFileSync(res.absPath, body, "utf-8");
+    const body = await c.req
+      .arrayBuffer()
+      .then((b) => Buffer.from(b))
+      .catch(() => Buffer.alloc(0));
+    writeFileSync(res.absPath, body);
 
     return c.json({ ok: true, path: res.filePath }, 201);
   });
