@@ -76,6 +76,7 @@ import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { formatRenderOutputTimestamp } from "../utils/renderOutputTimestamp.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
@@ -612,14 +613,13 @@ export default defineCommand({
     const ext = FORMAT_EXT[format] ?? ".mp4";
     // fallow-ignore-next-line code-duplication
     const now = new Date();
-    const datePart = now.toISOString().slice(0, 10);
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+    const timestamp = formatRenderOutputTimestamp(now);
     const batchOutputTemplate = args.output
       ? args.output
-      : join(rendersDir, `${project.name}_${datePart}_${timePart}_{index}${ext}`);
+      : join(rendersDir, `${project.name}_${timestamp}_{index}${ext}`);
     const outputPath = args.output
       ? resolve(args.output)
-      : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
+      : join(rendersDir, `${project.name}_${timestamp}${ext}`);
 
     // Ensure output directory exists
     if (!batchPath) mkdirSync(dirname(outputPath), { recursive: true });
