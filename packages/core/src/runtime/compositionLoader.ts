@@ -485,6 +485,10 @@ async function mountCompositionContent(params: {
     const scriptSrc = script.getAttribute("src")?.trim() ?? "";
     if (scriptSrc) {
       const resolvedSrc = resolveScriptSourceUrl(scriptSrc, params.compositionUrl);
+      if (params.compositionUrl && isSameDocumentUrl(resolvedSrc, params.compositionUrl)) {
+        script.parentNode?.removeChild(script);
+        continue;
+      }
       scriptPayloads.push({
         kind: "external",
         src: resolvedSrc,

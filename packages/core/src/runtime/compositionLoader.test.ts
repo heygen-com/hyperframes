@@ -212,6 +212,33 @@ describe("loadExternalCompositions", () => {
     expect(injectedScripts).toEqual([]);
   });
 
+  it("does not execute content script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <body>
+          <div data-composition-id="scene">
+            <p>Scene</p>
+            <script src="#theme"></script>
+            <script src="?v=1"></script>
+            <script src="./scene.html?v=2#theme"></script>
+          </div>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
+  });
+
   it("does not fail composition mounting when a head script src is malformed", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
