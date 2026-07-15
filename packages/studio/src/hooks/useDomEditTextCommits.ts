@@ -180,6 +180,7 @@ export function useDomEditTextCommits({
         property === "background-image" && isImageBackgroundValue(value);
       let editedElement: HTMLElement | null = null;
       let previousInlineValue: string | null = null;
+      let previousComputedValue: string | undefined;
       const operations = buildDomStyleCommitOperations(property, value, isImageBackgroundCommit);
       // Inline-style commits never full-reload the preview (that blanks the iframe
       // until it re-renders): the live element was already mutated optimistically in
@@ -194,10 +195,14 @@ export function useDomEditTextCommits({
           if (!el) return;
           editedElement = el;
           previousInlineValue = el.style.getPropertyValue(property);
+          previousComputedValue = domEditSelection.computedStyles[property];
         },
         apply: () => {
           if (!editedElement) return;
           editedElement.style.setProperty(property, normalizedValue);
+          // The panel reads this exact snapshot synchronously, so keep coupled
+          // style builders fresh while persistence is still pending.
+          domEditSelection.computedStyles[property] = normalizedValue;
           if (property === "font-family" && doc) {
             injectPreviewGoogleFont(doc, value);
             if (importedFont) injectPreviewImportedFont(doc, importedFont);
@@ -224,6 +229,11 @@ export function useDomEditTextCommits({
             editedElement.style.removeProperty(property);
           } else {
             editedElement.style.setProperty(property, previousInlineValue);
+          }
+          if (previousComputedValue === undefined) {
+            delete domEditSelection.computedStyles[property];
+          } else {
+            domEditSelection.computedStyles[property] = previousComputedValue;
           }
         },
         onError: (error) =>

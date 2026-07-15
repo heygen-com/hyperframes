@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject } from "react";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import { buildStrokeWidthStyleUpdates } from "../components/editor/propertyPanelHelpers";
 import { usePlayerStore } from "../player";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
@@ -30,12 +31,14 @@ interface RenderedDomEditCommits {
   showToast: ReturnType<typeof makeShowToast>;
   recordEdit: ReturnType<typeof vi.fn<() => Promise<void>>>;
   reloadPreview: ReturnType<typeof vi.fn>;
+  refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
   cleanup: () => void;
 }
 
 interface RenderDomEditCommitsOptions {
   importedFontAssets?: ImportedFontAsset[];
   queueDomEditSave?: (save: () => Promise<void>) => Promise<void>;
+  refreshDomEditSelectionFromPreview?: (selection: DomEditSelection) => void;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
 }
 
@@ -253,6 +256,7 @@ function renderDomEditCommits(
   const projectIdRef: MutableRefObject<string | null> = { current: "p1" };
   const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
   const reloadPreview = vi.fn();
+  const refreshDomEditSelectionFromPreview = options.refreshDomEditSelectionFromPreview ?? vi.fn();
 
   function Probe() {
     captured.current = useDomEditCommits({
@@ -271,7 +275,7 @@ function renderDomEditCommits(
       domEditSelection: selection,
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
-      refreshDomEditSelectionFromPreview: vi.fn(),
+      refreshDomEditSelectionFromPreview,
       buildDomSelectionFromTarget: vi.fn(async () => null),
     });
     return null;
@@ -289,6 +293,7 @@ function renderDomEditCommits(
     showToast,
     recordEdit,
     reloadPreview,
+    refreshDomEditSelectionFromPreview,
     cleanup: () => {
       act(() => {
         root.unmount();
@@ -527,11 +532,13 @@ function renderWithBlockedFirstSave(
     }),
   );
   const { iframe, element } = createPreviewElement(bodyHtml);
-  const rendered = renderDomEditCommits(createSelection(element, selectionOverrides), iframe, {
+  const selection = createSelection(element, selectionOverrides);
+  const rendered = renderDomEditCommits(selection, iframe, {
     queueDomEditSave: saveQueue.enqueue,
   });
   return {
     element,
+    selection,
     rendered,
     startedOperations,
     persistedState,
@@ -754,6 +761,93 @@ describe("useDomEditCommits style persist handling", () => {
       expect(harness.persistedState.get("border-style")).toBe("solid");
     } finally {
       harness.cleanup();
+    }
+  });
+
+  it("keeps a pending border style fresh for a following border width commit", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const styleCommit = harness.rendered.hook.handleDomStyleCommit("border-style", "dashed");
+      await harness.firstSaveStarted;
+
+      expect(harness.selection.computedStyles["border-style"]).toBe("dashed");
+      const widthUpdates = buildStrokeWidthStyleUpdates(
+        "4px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(widthUpdates).toEqual([["border-width", "4px"]]);
+
+      const widthCommits = widthUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+      harness.releaseFirstSave();
+      await Promise.all([styleCommit, ...widthCommits]);
+
+      expect(harness.persistedState.get("border-style")).toBe("dashed");
+      expect(harness.persistedState.get("border-width")).toBe("4px");
+      expect(harness.startedOperations.flat().map(({ property }) => property)).toEqual([
+        "border-style",
+        "border-width",
+      ]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("uses the border style produced by the previous rapid width commit", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const firstUpdates = buildStrokeWidthStyleUpdates(
+        "2px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(firstUpdates).toEqual([
+        ["border-width", "2px"],
+        ["border-style", "solid"],
+      ]);
+      const firstCommits = firstUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+      await harness.firstSaveStarted;
+
+      expect(harness.selection.computedStyles["border-style"]).toBe("solid");
+      const secondUpdates = buildStrokeWidthStyleUpdates(
+        "4px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(secondUpdates).toEqual([["border-width", "4px"]]);
+      const secondCommits = secondUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+
+      harness.releaseFirstSave();
+      await Promise.all([...firstCommits, ...secondCommits]);
+      expect(harness.persistedState.get("border-width")).toBe("4px");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("resyncs the same selection after a successful optimistic snapshot update", async () => {
+    stubPatchFetch({ ok: true, changed: true, matched: true, content: "" });
+    const refreshDomEditSelectionFromPreview = vi.fn<(selection: DomEditSelection) => void>();
+    const { iframe, element } = createPreviewElement();
+    const selection = createSelection(element);
+    const rendered = renderDomEditCommits(selection, iframe, {
+      refreshDomEditSelectionFromPreview,
+    });
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("border-style", "dashed");
+      });
+
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledOnce();
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledWith(selection);
+    } finally {
+      rendered.cleanup();
     }
   });
 
