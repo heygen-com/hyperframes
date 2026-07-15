@@ -397,11 +397,10 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "+faststart",
       "-avoid_negative_ts",
       "make_zero",
-      "-r",
-      "30",
       "-y",
       "/tmp/output.mp4",
     ]);
+    expect(calls[0]!.args).not.toContain("-r");
     expect(calls[0]!.args).not.toContain("-shortest");
     expect(calls[0]!.args).not.toContain("-use_editlist");
 
@@ -593,6 +592,39 @@ describe("muxVideoWithAudio audio codec handling", () => {
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+});
+
+describe("stream-copy remux frame preservation", () => {
+  it("does not apply an output -r while copying video during faststart", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { applyFaststart } = await import("./chunkEncoder.js");
+    const faststartPromise = applyFaststart(
+      "/tmp/video-only.mp4",
+      "/tmp/output.mp4",
+      undefined,
+      undefined,
+      { num: 30, den: 1 },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toEqual([
+      "-i",
+      "/tmp/video-only.mp4",
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      "-y",
+      "/tmp/output.mp4",
+    ]);
+    expect(calls[0]!.args).not.toContain("-r");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(faststartPromise).resolves.toMatchObject({ success: true });
   });
 });
 

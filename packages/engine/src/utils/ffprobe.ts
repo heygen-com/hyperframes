@@ -4,13 +4,39 @@ import { readFileSync } from "fs";
 import { extname } from "path";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 
+interface RunFfprobeOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
-function runFfprobe(args: string[]): Promise<string> {
+function runFfprobe(args: string[], options?: RunFfprobeOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     const command = getFfprobeBinary();
     const proc = spawn(command, args);
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      options?.signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve(stdout);
+    };
+    const onAbort = () => {
+      proc.kill("SIGTERM");
+      finish(new Error("[FFmpeg] ffprobe cancelled"));
+    };
+    const timer = options?.timeoutMs
+      ? setTimeout(() => {
+          proc.kill("SIGTERM");
+          finish(new Error(`[FFmpeg] ffprobe timed out after ${options.timeoutMs} ms`));
+        }, options.timeoutMs)
+      : undefined;
+    if (options?.signal?.aborted) onAbort();
+    else options?.signal?.addEventListener("abort", onAbort, { once: true });
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
     });
@@ -19,15 +45,15 @@ function runFfprobe(args: string[]): Promise<string> {
     });
     proc.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
+        finish(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
       } else {
-        resolve(stdout);
+        finish();
       }
     });
     proc.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         const configured = process.env[FFPROBE_PATH_ENV]?.trim();
-        reject(
+        finish(
           new Error(
             configured
               ? `[FFmpeg] ffprobe not found at ${FFPROBE_PATH_ENV}="${configured}". Please install FFmpeg.`
@@ -35,7 +61,7 @@ function runFfprobe(args: string[]): Promise<string> {
           ),
         );
       } else {
-        reject(err);
+        finish(err);
       }
     });
   });
@@ -98,6 +124,7 @@ interface FFProbeStream {
   height?: number;
   duration?: string;
   nb_frames?: string;
+  nb_read_packets?: string;
   pix_fmt?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
@@ -107,6 +134,73 @@ interface FFProbeStream {
   color_primaries?: string;
   color_space?: string;
   tags?: Record<string, string>;
+}
+
+export interface VideoStreamStats {
+  /** True video-stream duration. Undefined when the container omits it. */
+  durationSeconds?: number;
+  frameCount: number;
+}
+
+export function parseVideoStreamStatsProbe(stdout: string): VideoStreamStats {
+  const output = parseProbeJson(stdout);
+  const videoStream = output.streams.find((stream) => stream.codec_type === "video");
+  if (!videoStream) throw new Error("[FFmpeg] No video stream found");
+
+  const frameCount = Number.parseInt(
+    videoStream.nb_read_packets ?? videoStream.nb_frames ?? "",
+    10,
+  );
+  const parsedDuration = Number.parseFloat(videoStream.duration ?? "");
+  const durationSeconds =
+    Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : undefined;
+  if (!Number.isFinite(frameCount) || frameCount < 1) {
+    throw new Error("[FFmpeg] ffprobe did not report a video packet count");
+  }
+  return { durationSeconds, frameCount };
+}
+
+export async function extractVideoStreamStats(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<VideoStreamStats> {
+  const stdout = await runFfprobe(
+    [
+      "-v",
+      "quiet",
+      "-count_packets",
+      "-select_streams",
+      "v:0",
+      "-print_format",
+      "json",
+      "-show_entries",
+      "stream=codec_type,duration,nb_read_packets,nb_frames:format=duration",
+      filePath,
+    ],
+    { signal, timeoutMs: 300_000 },
+  );
+  return parseVideoStreamStatsProbe(stdout);
+}
+
+export function validateVideoStreamParity(
+  source: VideoStreamStats,
+  output: VideoStreamStats,
+): void {
+  if (source.frameCount !== output.frameCount) {
+    throw new Error(
+      `Video stream frame parity failed after mux: source=${source.frameCount}, output=${output.frameCount}`,
+    );
+  }
+  if (source.durationSeconds === undefined || output.durationSeconds === undefined) return;
+  const frameDuration = source.durationSeconds / source.frameCount;
+  const toleranceSeconds = Math.max(0.05, frameDuration * 2);
+  const durationDrift = Math.abs(source.durationSeconds - output.durationSeconds);
+  if (durationDrift > toleranceSeconds) {
+    throw new Error(
+      `Video stream duration parity failed after mux: source=${source.durationSeconds.toFixed(3)}s, ` +
+        `output=${output.durationSeconds.toFixed(3)}s, drift=${durationDrift.toFixed(3)}s`,
+    );
+  }
 }
 
 interface FFProbeFormat {

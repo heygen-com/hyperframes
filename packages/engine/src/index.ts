@@ -215,10 +215,13 @@ export {
   extractMediaMetadata,
   extractVideoMetadata,
   extractAudioMetadata,
+  extractVideoStreamStats,
+  validateVideoStreamParity,
   analyzeKeyframeIntervals,
   type VideoMetadata,
   type AudioMetadata,
   type KeyframeAnalysis,
+  type VideoStreamStats,
 } from "./utils/ffprobe.js";
 
 export { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";

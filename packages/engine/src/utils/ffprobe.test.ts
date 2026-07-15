@@ -3,7 +3,12 @@ import { EventEmitter } from "events";
 import { readFileSync } from "fs";
 import { basename, resolve } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractMediaMetadata, extractPngMetadataFromBuffer } from "./ffprobe.js";
+import {
+  extractMediaMetadata,
+  extractPngMetadataFromBuffer,
+  parseVideoStreamStatsProbe,
+  validateVideoStreamParity,
+} from "./ffprobe.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -16,6 +21,50 @@ function crc32(buf: Buffer): number {
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
+
+describe("video stream copy parity", () => {
+  it("parses packet count and stream duration from a count-packets probe", () => {
+    expect(
+      parseVideoStreamStatsProbe(
+        JSON.stringify({
+          streams: [{ codec_type: "video", duration: "1050.900000", nb_read_packets: "31527" }],
+          format: { duration: "1050.900000" },
+        }),
+      ),
+    ).toEqual({ durationSeconds: 1050.9, frameCount: 31527 });
+  });
+
+  it("rejects a mux output that silently drops copied video packets", () => {
+    expect(() =>
+      validateVideoStreamParity(
+        { durationSeconds: 1050.9, frameCount: 31527 },
+        { durationSeconds: 1050.9, frameCount: 162 },
+      ),
+    ).toThrow(/31527.*162/);
+  });
+
+  it("rejects stream-duration drift even when packet counts match", () => {
+    expect(() =>
+      validateVideoStreamParity(
+        { durationSeconds: 1050.9, frameCount: 31527 },
+        { durationSeconds: 5.4, frameCount: 31527 },
+      ),
+    ).toThrow(/duration/i);
+  });
+
+  it("does not substitute longer container audio duration when video stream duration is absent", () => {
+    const output = parseVideoStreamStatsProbe(
+      JSON.stringify({
+        streams: [{ codec_type: "video", nb_read_packets: "60" }],
+        format: { duration: "2.162000" },
+      }),
+    );
+    expect(output).toEqual({ durationSeconds: undefined, frameCount: 60 });
+    expect(() =>
+      validateVideoStreamParity({ durationSeconds: 2, frameCount: 60 }, output),
+    ).not.toThrow();
+  });
+});
 
 function pngChunk(type: string, data: number[]): Buffer {
   const chunkData = Buffer.from(data);
@@ -118,18 +167,22 @@ interface SpawnCall {
 interface FakeProc extends EventEmitter {
   stdout: EventEmitter;
   stderr: EventEmitter;
+  kill: ReturnType<typeof vi.fn>;
 }
 
 type SpawnOutcome =
   | { kind: "missing" }
+  | { kind: "hang" }
   | { kind: "error"; message: string; code?: string }
   | { kind: "exit"; code: number; stdout?: string; stderr?: string };
 
 function createSpawnSpy(outcomes: SpawnOutcome[]): {
   spawn: (command: string, args: readonly string[]) => FakeProc;
   calls: SpawnCall[];
+  procs: FakeProc[];
 } {
   const calls: SpawnCall[] = [];
+  const procs: FakeProc[] = [];
   let invocation = 0;
   const spawn = (command: string, args: readonly string[]): FakeProc => {
     calls.push({ command, args });
@@ -139,9 +192,12 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
     const proc = new EventEmitter() as FakeProc;
     proc.stdout = new EventEmitter();
     proc.stderr = new EventEmitter();
+    proc.kill = vi.fn();
+    procs.push(proc);
 
     process.nextTick(() => {
       if (!outcome) return;
+      if (outcome.kind === "hang") return;
       if (outcome.kind === "missing") {
         const err = new Error("spawn ffprobe ENOENT") as NodeJS.ErrnoException;
         err.code = "ENOENT";
@@ -161,7 +217,7 @@ function createSpawnSpy(outcomes: SpawnOutcome[]): {
 
     return proc;
   };
-  return { spawn, calls };
+  return { spawn, calls, procs };
 }
 
 describe("ffprobe missing-binary fallback", () => {
@@ -350,5 +406,19 @@ describe("ffprobe missing-binary fallback", () => {
     const { extractAudioMetadata } = await import("./ffprobe.js");
 
     await expect(extractAudioMetadata("/tmp/example.mp3")).rejects.toThrow(/install FFmpeg/i);
+  });
+
+  it("kills a full-stream packet probe when assembly is aborted", async () => {
+    const { spawn, procs } = createSpawnSpy([{ kind: "hang" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractVideoStreamStats } = await import("./ffprobe.js");
+    const controller = new AbortController();
+
+    const probe = extractVideoStreamStats("/tmp/long-video.mp4", controller.signal);
+    controller.abort();
+
+    await expect(probe).rejects.toThrow(/cancelled/i);
+    expect(procs[0]?.kill).toHaveBeenCalledWith("SIGTERM");
   });
 });
