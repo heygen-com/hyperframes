@@ -34,7 +34,7 @@ interface SnapToolbarProps {
 export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
   const [prefs, setPrefs] = useState(readSnapPrefs);
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
-  // Motion-path "set destination" toggle — shown only when the selected element
+  // Motion-path "set destination" toggle, shown only when the selected element
   // can take a path; arms a single canvas click to place it (MotionPathOverlay).
   const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
   const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
@@ -124,8 +124,9 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
         }`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
-        aria-label="Toggle snap"
+        title={`${prefs.snapEnabled ? "Snap enabled" : "Snap disabled"} (S). Hold Alt while dragging to bypass snapping.`}
+        aria-label={prefs.snapEnabled ? "Disable snapping" : "Enable snapping"}
+        aria-pressed={prefs.snapEnabled}
       >
         <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
       </button>
@@ -144,8 +145,9 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             e.preventDefault();
             setGridPopoverOpen((v) => !v);
           }}
-          title={prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)"}
-          aria-label="Toggle grid"
+          title={`${prefs.gridVisible ? "Grid visible" : "Grid hidden"} (G). Right-click for grid snap options.`}
+          aria-label={prefs.gridVisible ? "Hide grid" : "Show grid"}
+          aria-pressed={prefs.gridVisible}
         >
           <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
         </button>
