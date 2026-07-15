@@ -263,6 +263,11 @@ export function TimelineLanes({
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
+                    const selectClip = () => {
+                      usePlayerStore.getState().clearSelectedElementIds();
+                      setSelectedElementId(elementKey);
+                      onSelectElement?.(el);
+                    };
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT
                     // fold in the map index, or a splice/reorder remounts every clip
@@ -414,10 +419,7 @@ export function TimelineLanes({
                             }
                             // Plain click always selects this clip and drops any marquee
                             // multi-selection, narrowing it to the clicked clip.
-                            usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement = el;
-                            setSelectedElementId(elementKey);
-                            onSelectElement?.(nextElement);
+                            selectClip();
                           }
                         }
                         onDoubleClick={(e) => {
@@ -448,6 +450,7 @@ export function TimelineLanes({
                             }
                             elementId={elementKey}
                             selectedKeyframes={selectedKeyframes}
+                            onSelectClip={selectClip}
                             onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
                             onShiftClickKeyframe={onShiftClickKeyframe}
                             onContextMenuKeyframe={onContextMenuKeyframe}

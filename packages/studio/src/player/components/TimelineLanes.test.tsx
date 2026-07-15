@@ -3,7 +3,11 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import {
+  usePlayerStore,
+  type KeyframeCacheEntry,
+  type TimelineElement,
+} from "../store/playerStore";
 import { TimelineLanes } from "./TimelineLanes";
 import { getTrackStyle } from "./timelineIcons";
 import { defaultTimelineTheme } from "./timelineTheme";
@@ -38,10 +42,14 @@ function renderLanes({
   elements = [firstClip],
   selectedElementId,
   selectedElementIds = new Set<string>(),
+  keyframeCache,
+  onMoveKeyframe,
 }: {
   elements?: TimelineElement[];
   selectedElementId: string | null;
   selectedElementIds?: Set<string>;
+  keyframeCache?: Map<string, KeyframeCacheEntry>;
+  onMoveKeyframe?: (elementId: string, fromClipPct: number, toClipPct: number) => void;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -81,9 +89,11 @@ function renderLanes({
         shiftClickClipRef={{ current: null }}
         getPreviewElement={(element) => element}
         getTrackStyle={getTrackStyle}
+        keyframeCache={keyframeCache}
         selectedKeyframes={new Set()}
         currentTime={0}
         onSelectElement={onSelectElement}
+        onMoveKeyframe={onMoveKeyframe}
         onToggleTrackHidden={undefined}
         onResizeElement={undefined}
         onMoveElement={undefined}
@@ -94,6 +104,11 @@ function renderLanes({
   });
 
   return { host, root, setSelectedElementId, onSelectElement };
+}
+
+function pointerEvent(type: string, init: PointerEventInit): Event {
+  if (typeof PointerEvent === "function") return new PointerEvent(type, init);
+  return new MouseEvent(type, init);
 }
 
 function clickClip(host: HTMLElement, id: string): void {
@@ -131,6 +146,50 @@ describe("TimelineLanes selection", () => {
     expect(harness.setSelectedElementId).toHaveBeenCalledWith(secondClip.id);
     expect(harness.onSelectElement).toHaveBeenCalledWith(secondClip);
     expect([...usePlayerStore.getState().selectedElementIds]).toEqual([secondClip.id]);
+    act(() => harness.root.unmount());
+  });
+
+  it("selects an unselected clip and retimes its keyframe in one drag", () => {
+    usePlayerStore.getState().setSelectedElementId(secondClip.id);
+    const onMoveKeyframe = vi.fn();
+    const harness = renderLanes({
+      elements: [firstClip, secondClip],
+      selectedElementId: secondClip.id,
+      selectedElementIds: new Set([secondClip.id]),
+      keyframeCache: new Map([
+        [
+          firstClip.id,
+          {
+            format: "percentage",
+            keyframes: [
+              { percentage: 0, properties: { x: 0 } },
+              { percentage: 50, properties: { x: 100 } },
+            ],
+          },
+        ],
+      ]),
+      onMoveKeyframe,
+    });
+    const diamond = harness.host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    act(() => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 50 }),
+      );
+    });
+    expect(harness.setSelectedElementId).toHaveBeenCalledWith(firstClip.id);
+    expect(harness.setSelectedElementId).toHaveBeenCalledTimes(1);
+    expect(harness.onSelectElement).toHaveBeenCalledWith(firstClip);
+    expect(harness.onSelectElement).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 54 }));
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledWith(firstClip.id, 50, 54);
+    expect(onMoveKeyframe).toHaveBeenCalledTimes(1);
+    expect([...usePlayerStore.getState().selectedElementIds]).toEqual([firstClip.id]);
     act(() => harness.root.unmount());
   });
 });
