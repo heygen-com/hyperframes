@@ -455,7 +455,7 @@ export function EaseCurveSection({
         </>
       ) : (
         <p className="px-0.5 py-1.5 text-[10px] leading-relaxed text-neutral-500">
-          {label} preset — switch to Curve, Spring, or Wiggle above to shape it by hand.
+          {label} preset: switch to Curve, Spring, or Wiggle above to shape it by hand.
         </p>
       )}
     </div>

@@ -129,7 +129,7 @@ describe("updateKeyframeCacheFromParsed", () => {
     updateKeyframeCacheFromParsed([animation], "scene.html", "hero", {});
 
     expect(JSON.stringify(cache().get("scene.html#hero"))).toBe(
-      '{"format":"percentage","keyframes":[{"percentage":25,"properties":{"x":0},"tweenPercentage":0,"propertyGroup":"position"},{"percentage":50,"properties":{"x":100},"ease":"power1.inOut","tweenPercentage":50,"propertyGroup":"position"},{"percentage":75,"properties":{"x":200},"tweenPercentage":100,"propertyGroup":"position"}],"easeEach":"power1.inOut"}',
+      '{"format":"percentage","keyframes":[{"percentage":25,"properties":{"x":0},"tweenPercentage":0,"propertyGroup":"position","animationId":"hero"},{"percentage":50,"properties":{"x":100},"ease":"power1.inOut","tweenPercentage":50,"propertyGroup":"position","animationId":"hero"},{"percentage":75,"properties":{"x":200},"tweenPercentage":100,"propertyGroup":"position","animationId":"hero"}],"easeEach":"power1.inOut"}',
     );
   });
 
@@ -180,6 +180,7 @@ describe("updateKeyframeCacheFromParsed", () => {
           properties: { x: 0 },
           tweenPercentage: 0,
           propertyGroup: "position",
+          animationId: "flat-box",
         },
         {
           percentage: 100,
@@ -187,6 +188,7 @@ describe("updateKeyframeCacheFromParsed", () => {
           ease: "power2.out",
           tweenPercentage: 100,
           propertyGroup: "position",
+          animationId: "flat-box",
         },
       ],
     });

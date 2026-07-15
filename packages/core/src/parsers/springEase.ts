@@ -1,3 +1,8 @@
+// Preserve the legacy symbols (SpringPreset, SPRING_PRESETS, generateSpringEaseData)
+// on the still-published ./spring-ease subpath. Dropping them is a breaking change
+// for external importers; the canonical source stays @hyperframes/parsers/spring-ease.
+export * from "@hyperframes/parsers/spring-ease";
+
 const SPRING_TOKEN = /^\s*spring\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\)\s*$/;
 
 function clampBounce(bounce: number): number {

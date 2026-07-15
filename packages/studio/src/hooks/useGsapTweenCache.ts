@@ -500,9 +500,8 @@ export function usePopulateKeyframeCacheForFile(
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           const clipKeyframes = kfData.keyframes.map((kf) => {
             const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
-            // 0.001% precision (matching useGsapAnimationsForElement above) so a
-            // beat-snapped keyframe centers exactly on the beat dot and the two
-            // caches agree on a keyframe's percentage.
+            // 0.001% precision (see useGsapAnimationsForElement) so a beat-snapped
+            // keyframe centers on the beat dot and both caches agree.
             const clipPct =
               elDuration > 0
                 ? Math.round(((absTime - elStart) / elDuration) * 100000) / 1000
@@ -512,6 +511,7 @@ export function usePopulateKeyframeCacheForFile(
               percentage: clipPct,
               tweenPercentage: kf.percentage,
               propertyGroup: anim.propertyGroup,
+              animationId: anim.id, // parity with other cache writers; inline ease needs it
             };
           });
           const existing = mergedByElement.get(id);
