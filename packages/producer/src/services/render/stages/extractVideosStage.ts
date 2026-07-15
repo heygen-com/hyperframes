@@ -65,10 +65,16 @@ export interface ExtractVideosStageInput {
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /**
-   * Whether to materialize symlinks into real files when staging extracted
-   * frames inside `compiledDir`. Default `false` preserves the in-process
-   * renderer's behavior (single symlink per video). Distributed `plan()`
-   * passes `true` so the planDir is self-contained.
+   * Force an eager recursive COPY when staging extracted frames into
+   * `compiledDir`, instead of the default symlink → junction → copy ladder
+   * (see `linkOrCopyFrameDir` in `../shared.ts`).
+   *
+   * Set `true` ONLY for distributed `plan()`, whose planDir must be
+   * self-contained across machines (symlinks/junctions don't survive S3/GCS
+   * round-trips). The local in-process renderer must leave this `false` (its
+   * default) so Windows-without-Developer-Mode stages a privilege-free junction
+   * at link speed rather than copying every frame — do NOT re-couple this to
+   * `process.platform`. Default `false`.
    */
   materializeSymlinks?: boolean;
 }
@@ -94,18 +100,6 @@ export interface ExtractVideosStageResult {
   imageColorSpaces: (VideoColorSpace | null)[];
   /** Wall-clock ms for the video extraction phase. */
   videoExtractMs: number;
-}
-
-/**
- * Whether the extract stage should COPY frames into the compiled dir instead of
- * symlinking them. Windows without Developer Mode / Administrator can't create
- * symlinks (`symlinkSync` throws EPERM), which failed local video renders; copy
- * there instead. Elsewhere symlinking is cheaper, so keep it. (The distributed
- * `plan()` path already forces copying for a different reason — a self-contained
- * planDir — by passing `materializeSymlinks: true` explicitly.)
- */
-export function shouldCopyExtractedFrames(platform: NodeJS.Platform): boolean {
-  return platform === "win32";
 }
 
 export async function runExtractVideosStage(
