@@ -51,7 +51,7 @@ function makeVstHost(overrides: Partial<VstHostApi> = {}): VstHostApi {
     registry: [],
     scan: vi.fn(async () => {}),
     openEditor: vi.fn(),
-    loadChain: vi.fn(async () => {}),
+    loadChain: vi.fn(async () => 0),
     getState: vi.fn(async () => []),
     ...overrides,
   };

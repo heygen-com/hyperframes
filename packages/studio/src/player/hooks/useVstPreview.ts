@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { usePlayerStore } from "../store/playerStore";
-import { useVstHost, type TransportMsg } from "../../hooks/useVstHost";
+import type { TransportMsg, UseVstHostResult } from "../../hooks/useVstHost";
 import type { VstHostApi } from "../../components/editor/propertyPanelVstSection";
 import { isRecord, parseChainFile, type ChainFileJson } from "../../utils/vstChainFile";
 import { VstRingBuffer } from "../lib/vstRingBuffer";
@@ -97,6 +97,13 @@ function reseekLoadedTracks(tracks: Iterable<LoadedVstTrack>, timeSec: number): 
   }
 }
 
+/** Removes `ids` from `order` in place — the unmount-cleanup effect below captures the array once and relies on it never being reassigned. */
+function removeFromTrackOrder(order: string[], ids: readonly string[]): void {
+  for (let i = order.length - 1; i >= 0; i -= 1) {
+    if (ids.includes(order[i])) order.splice(i, 1);
+  }
+}
+
 /** Creates the AudioContext + vst-stream worklet node for one loaded track. */
 async function createTrackPlaybackNode(
   el: HTMLAudioElement,
@@ -138,7 +145,7 @@ async function loadVstTrack(
   trackId: string,
   projectId: string,
   api: VstHostApi,
-  trackOrder: string[],
+  attemptedTrackIds: string[],
   workletModuleUrl: string,
 ): Promise<LoadedVstTrack | null> {
   const chainPath = el.getAttribute("data-vst-chain");
@@ -147,19 +154,23 @@ async function loadVstTrack(
   if (!chain) return null; // no index consumed — safe to retry next scan
   const dryWavPath = el.currentSrc || el.src;
 
+  let trackIndex: number;
   try {
-    await api.loadChain(trackId, chain, dryWavPath);
+    // Resolves with the sidecar-assigned wire trackIndex for this load (see
+    // useVstHost's `assignNextTrackIndex`) — authoritative for THIS call, but
+    // can go stale if anyone (including this same hook, on a later scan)
+    // reloads this trackId again; the `onChainLoaded` subscription below
+    // keeps it current for the lifetime of the loaded track.
+    trackIndex = await api.loadChain(trackId, chain, dryWavPath);
   } catch {
     return null; // sidecar rejected the chain (e.g. missing plugin) — retryable
   }
 
-  // The sidecar assigns trackIndex by call-order of load-chain (see
-  // stream.py's `TrackStream(len(self._tracks), ...)`) — reserve the slot
-  // here, matching that order, regardless of whether local wiring below
-  // succeeds (a local failure must never be retried, or the two indices
-  // would desync).
-  trackOrder.push(trackId);
-  const trackIndex = trackOrder.length - 1;
+  // Marks this trackId as having reserved a server-side slot, regardless of
+  // whether local wiring below succeeds (a local failure must never be
+  // retried, or a fresh loadChain would desync from what the sidecar already
+  // holds for this trackId).
+  attemptedTrackIds.push(trackId);
   return createTrackPlaybackNode(el, trackIndex, workletModuleUrl);
 }
 
@@ -174,17 +185,22 @@ async function loadVstTrack(
  * disconnect, falls back to the original dry audio and surfaces a toast,
  * attempting one automatic sidecar restart.
  *
- * Deliberately self-contained: scans the iframe DOM for vst-chain tracks and
- * owns its own `useVstHost()` instance, so mounting it is a one-line addition
- * at the call site (see useTimelinePlayer.ts) with no restructuring of the
- * existing player.
+ * Takes its `useVstHost()` instance as a parameter rather than calling the
+ * hook itself: the FX property panel (`propertyPanelVstSection.tsx`) also
+ * needs a `VstHostApi`, and the sidecar's wire protocol can't tell two
+ * independent WebSocket connections apart safely (see `onChainLoaded`'s
+ * doc-comment) — so the whole app shares exactly one connection, mounted
+ * once in `NLEProvider` (`NLEContext.tsx`) and exposed to every consumer,
+ * including this hook, via context.
  */
 export function useVstPreview(
   iframeRef: RefObject<HTMLIFrameElement | null>,
   projectId: string | undefined,
+  vstHost: UseVstHostResult,
   showToast?: (message: string, tone?: "error" | "info") => void,
 ): void {
-  const { status, api, ensureStarted, onPcmFrame, sendTransport, onDisconnect } = useVstHost();
+  const { status, api, ensureStarted, onPcmFrame, sendTransport, onDisconnect, onChainLoaded } =
+    vstHost;
 
   const loadedTracksRef = useRef<Map<string, LoadedVstTrack>>(new Map());
   const trackOrderRef = useRef<string[]>([]);
@@ -251,6 +267,49 @@ export function useVstPreview(
       cancelled = true;
     };
   }, [projectId, status, api, elements, iframeRef]);
+
+  // ── Resync trackIndex if anyone reloads an already-loaded track's chain ──
+  // This connection is now shared with the FX property panel (see the
+  // module doc-comment): if the panel — or any other future caller sharing
+  // this `useVstHost()` instance — reloads a chain for a trackId this hook
+  // already streams, the sidecar reassigns that track's wire trackIndex
+  // (`useVstHost`'s `assignNextTrackIndex`, mirroring stream.py's
+  // `TrackStream(len(self._tracks), ...)`). A trackIndex cached from the
+  // initial load would silently misroute PCM frames from then on, so update
+  // it from the broadcast event instead of trusting that stale value.
+  useEffect(() => {
+    return onChainLoaded((trackId, trackIndex) => {
+      const track = loadedTracksRef.current.get(trackId);
+      if (!track) return; // not a track this hook streams — nothing to resync
+
+      // The sidecar's own index-assignment rule can (by design — see
+      // assignNextTrackIndex's doc-comment) hand two DIFFERENT trackIds the
+      // same numeric index right after a reload (a brief dict-shrink from
+      // popping the reloaded key). The wire frame carries only that number,
+      // so once two loaded tracks collide on it, PCM can no longer be
+      // demultiplexed correctly for either. Rather than silently misroute
+      // audio to the wrong worklet, treat both sides of the collision as
+      // unsafe: revert them to dry playback and let a later DOM scan retry.
+      const collision = Array.from(loadedTracksRef.current.entries()).find(
+        ([otherId, other]) => otherId !== trackId && other.trackIndex === trackIndex,
+      );
+      if (collision) {
+        const [otherId, otherTrack] = collision;
+        loadedTracksRef.current.delete(trackId);
+        loadedTracksRef.current.delete(otherId);
+        removeFromTrackOrder(trackOrderRef.current, [trackId, otherId]);
+        void teardownTrack(track);
+        void teardownTrack(otherTrack);
+        showToast?.(
+          "VST track routing conflict detected — reverted affected tracks to unprocessed audio.",
+          "error",
+        );
+        return;
+      }
+
+      track.trackIndex = trackIndex;
+    });
+  }, [onChainLoaded, showToast]);
 
   // ── Transport: play/pause ─────────────────────────────────────────────────
   useEffect(() => {

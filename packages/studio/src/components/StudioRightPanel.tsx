@@ -22,6 +22,7 @@ import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/us
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
+import { useNLEContext } from "./nle/NLEContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
@@ -113,6 +114,11 @@ export function StudioRightPanel({
     renderQueue,
   } = useStudioShellContext();
   const { captionEditMode, refreshKey } = useStudioPlaybackContext();
+  // Single sidecar connection for the whole shell (see NLEContext's `vstHost`
+  // doc-comment) — the FX panel consumes the SAME useVstHost() instance the
+  // live-playback path (useVstPreview, mounted in NLEProvider) streams
+  // through, never a second independent WebSocket.
+  const { vstHost } = useNLEContext();
 
   const {
     domEditSelection,
@@ -412,6 +418,7 @@ export function StudioRightPanel({
         recordingState={recordingState}
         recordingDuration={recordingDuration}
         onToggleRecording={onToggleRecording}
+        vstHost={vstHost.api}
       />
     </DesignPanelPromoteProvider>
   );

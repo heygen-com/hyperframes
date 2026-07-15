@@ -362,6 +362,106 @@ describe("useVstHost — getState", () => {
   });
 });
 
+// ── trackIndex mirroring + onChainLoaded ───────────────────────────────────────
+
+describe("useVstHost — trackIndex mirroring", () => {
+  it("resolves loadChain with the sidecar's assigned trackIndex per trackId", async () => {
+    const { getState, socket, root } = await setupReadyHost();
+    const chain: ChainFileJson = { version: 1, plugins: [] };
+
+    let indexTrack1 = -1;
+    let indexTrack2 = -1;
+    await act(async () => {
+      const api = required(getState().api, "api");
+      const p1 = api.loadChain("track-1", chain, "/abs/dry1.wav");
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      indexTrack1 = await p1;
+
+      const p2 = api.loadChain("track-2", chain, "/abs/dry2.wav");
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+      indexTrack2 = await p2;
+    });
+
+    expect(indexTrack1).toBe(0);
+    expect(indexTrack2).toBe(1);
+
+    act(() => root.unmount());
+  });
+
+  it("mirrors the server's pop-then-reinsert rule: reloading an earlier track can reuse a later track's index", async () => {
+    // Mirrors stream.py's server-side rule exactly (see assignNextTrackIndex's
+    // doc-comment): `self._tracks.pop(track_id, None)` then
+    // `TrackStream(len(self._tracks), ...)`. Two tracks loaded in order get
+    // indices 0 and 1; reloading the FIRST one pops it (leaving one entry),
+    // so it's reassigned `len == 1` — the same index track-2 already holds.
+    // This is the real collision the sidecar's own design can produce, not a
+    // client-side bug — the assertion below documents that faithfully
+    // mirroring the server surfaces the same number, so a subscriber can at
+    // least detect it (see useVstPreview's onChainLoaded handler).
+    const { getState, socket, root } = await setupReadyHost();
+    const chain: ChainFileJson = { version: 1, plugins: [] };
+
+    const seenIndexes: Record<string, number> = {};
+    await act(async () => {
+      const api = required(getState().api, "api");
+      getState().onChainLoaded((trackId, trackIndex) => {
+        seenIndexes[trackId] = trackIndex;
+      });
+
+      const p1 = api.loadChain("track-1", chain, "/abs/dry1.wav");
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      await p1;
+
+      const p2 = api.loadChain("track-2", chain, "/abs/dry2.wav");
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+      await p2;
+
+      // Reload track-1's chain (e.g. the FX panel adding/removing an effect).
+      const p3 = api.loadChain("track-1", chain, "/abs/dry1.wav");
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      await p3;
+    });
+
+    expect(seenIndexes["track-2"]).toBe(1);
+    expect(seenIndexes["track-1"]).toBe(1); // reassigned — now collides with track-2
+
+    act(() => root.unmount());
+  });
+
+  it("broadcasts a chain-loaded event to every onChainLoaded subscriber, not just the calling promise", async () => {
+    const { getState, socket, root } = await setupReadyHost();
+
+    const observed: Array<{ trackId: string; trackIndex: number }> = [];
+    let unsubscribe: (() => void) | null = null;
+
+    await act(async () => {
+      unsubscribe = getState().onChainLoaded((trackId, trackIndex) => {
+        observed.push({ trackId, trackIndex });
+      });
+
+      // Nobody is awaiting a loadChain promise here — the event still fires.
+      socket.emitJson({ event: "chain-loaded", trackId: "track-9" });
+      await flushAsyncWork();
+    });
+
+    expect(observed).toEqual([{ trackId: "track-9", trackIndex: 0 }]);
+
+    required<() => void>(unsubscribe, "unsubscribe")();
+    await act(async () => {
+      socket.emitJson({ event: "chain-loaded", trackId: "track-9" });
+      await flushAsyncWork();
+    });
+    expect(observed).toHaveLength(1); // no further notifications after unsubscribing
+
+    act(() => root.unmount());
+  });
+});
+
 // ── PCM frames ────────────────────────────────────────────────────────────────
 
 describe("useVstHost — onPcmFrame", () => {

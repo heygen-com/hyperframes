@@ -2,7 +2,11 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { shouldDisableTimelineWhileCompositionLoading, NLEProvider } from "./NLEContext";
+import {
+  shouldDisableTimelineWhileCompositionLoading,
+  NLEProvider,
+  useNLEContext,
+} from "./NLEContext";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 
@@ -85,6 +89,69 @@ describe("NLEProvider — asset preview scoping", () => {
     await renderNleProvider(root, { projectId: "project-a", refreshKey: 1 });
 
     expect(useAssetPreviewStore.getState().previewAsset).toBe("assets/photo.png");
+
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
+describe("NLEProvider — vstHost wiring", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("threads a single useVstHost() instance through context, shared by every consumer", async () => {
+    // No project API in this unit test — stub fetch so nothing this pulls in
+    // (compIdToSrc's mount effect) hits the network.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("no network in tests"))),
+    );
+
+    const seen: Array<ReturnType<typeof useNLEContext>["vstHost"]> = [];
+    function Consumer() {
+      seen.push(useNLEContext().vstHost);
+      return null;
+    }
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      // Two independent consumers in the SAME render, mirroring how
+      // useVstPreview (inside useTimelinePlayer) and StudioRightPanel both
+      // read `vstHost` from this one context value rather than each calling
+      // useVstHost() itself (which would open a second, independent
+      // WebSocket connection to the sidecar).
+      root.render(
+        React.createElement(
+          NLEProvider,
+          { projectId: "project-a" },
+          React.createElement(Consumer),
+          React.createElement(Consumer),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    // NLEProvider's own effects (e.g. the compIdToSrc fetch above rejecting)
+    // can trigger more than one commit, so more than 2 pushes is expected —
+    // what matters is that within EVERY commit, both consumers saw the exact
+    // same `vstHost` reference (proving one hook instance, threaded via
+    // context, not two independent `useVstHost()` calls).
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen.length % 2).toBe(0);
+    for (let i = 0; i < seen.length; i += 2) {
+      expect(seen[i]).toBe(seen[i + 1]);
+    }
+
+    const vstHost = seen.at(-1);
+    if (!vstHost) throw new Error("no vstHost observed");
+    expect(vstHost.status).toBe("idle");
+    expect(vstHost.api).toBeNull();
+    expect(typeof vstHost.ensureStarted).toBe("function");
+    expect(typeof vstHost.onPcmFrame).toBe("function");
+    expect(typeof vstHost.sendTransport).toBe("function");
+    expect(typeof vstHost.onDisconnect).toBe("function");
+    expect(typeof vstHost.onChainLoaded).toBe("function");
 
     act(() => root.unmount());
     host.remove();

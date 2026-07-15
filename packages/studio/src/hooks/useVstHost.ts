@@ -55,6 +55,16 @@ export interface UseVstHostResult {
   onPcmFrame: (cb: (frame: ArrayBuffer) => void) => () => void;
   sendTransport: (msg: TransportMsg) => void;
   onDisconnect: (cb: () => void) => () => void;
+  /**
+   * Broadcasts every `chain-loaded` event this connection sees, regardless of
+   * which caller's `loadChain()` triggered it — the sidecar reassigns a
+   * track's numeric wire `trackIndex` on every reload (see
+   * `assignNextTrackIndex` below), so a consumer holding an earlier index for
+   * `trackId` (e.g. `useVstPreview`, if the FX panel reloads a chain it
+   * already streamed) must resync from this, not just its own `loadChain`
+   * call's resolved value.
+   */
+  onChainLoaded: (cb: (trackId: string, trackIndex: number) => void) => () => void;
 }
 
 // ── Server → client event parsing ─────────────────────────────────────────────
@@ -113,7 +123,7 @@ function parseServerEvent(raw: string): ParsedServerEvent | null {
 // ── Pending request bookkeeping ───────────────────────────────────────────────
 
 type PendingTrackEntry =
-  | { kind: "load-chain"; resolve: () => void; reject: (err: Error) => void }
+  | { kind: "load-chain"; resolve: (trackIndex: number) => void; reject: (err: Error) => void }
   | { kind: "get-state"; resolve: (states: string[]) => void; reject: (err: Error) => void };
 
 interface PendingScanEntry {
@@ -127,6 +137,31 @@ interface EventDispatchRefs {
   registry: VstRegistryEntry[];
   pendingScan: { current: PendingScanEntry | null };
   pendingTrack: Map<string, PendingTrackEntry>;
+  trackIndex: Map<string, number>;
+  chainLoadedListeners: Set<(trackId: string, trackIndex: number) => void>;
+}
+
+/**
+ * Mirrors the sidecar's exact index-assignment rule (server.py's `_dispatch`,
+ * `cmd == "load-chain"`):
+ *
+ *   old = self._tracks.pop(track_id, None)          # drop any existing entry
+ *   self._tracks[track_id] = TrackStream(len(self._tracks), ...)  # reinsert at the end
+ *
+ * A Python dict (like a JS `Map`) preserves insertion order and moves a
+ * re-inserted key to the end, so replaying "delete-if-present, then set" with
+ * `map.size` as the new index reproduces the server's numbering exactly —
+ * including its one real flaw: reloading a track can hand it the same index
+ * another still-loaded track already holds (the pop briefly shrinks the map
+ * below that other track's assigned position). This function does not paper
+ * over that; it exists so a client can detect a collision, since it now
+ * assigns indices with the identical rule the server uses.
+ */
+function assignNextTrackIndex(map: Map<string, number>, trackId: string): number {
+  map.delete(trackId);
+  const index = map.size;
+  map.set(trackId, index);
+  return index;
 }
 
 /** Resolves/rejects the pending request a server event answers, keyed as described in the module doc. */
@@ -136,7 +171,7 @@ function applyServerEvent(parsed: ParsedServerEvent, refs: EventDispatchRefs): v
       applyRegistryEvent(parsed.plugins, refs);
       return;
     case "chain-loaded":
-      applyChainLoadedEvent(refs.pendingTrack, parsed.trackId);
+      applyChainLoadedEvent(parsed.trackId, refs);
       return;
     case "state":
       applyStateEvent(refs.pendingTrack, parsed.trackId, parsed.plugins);
@@ -174,14 +209,23 @@ function applyErrorEvent(
   }
 }
 
-function applyChainLoadedEvent(
-  pendingTrack: Map<string, PendingTrackEntry>,
-  trackId: string,
-): void {
-  const entry = pendingTrack.get(trackId);
-  if (entry?.kind !== "load-chain") return;
-  pendingTrack.delete(trackId);
-  entry.resolve();
+/**
+ * Always advances the mirrored index map and broadcasts to every
+ * `onChainLoaded` subscriber — regardless of whether THIS connection's
+ * pending map has a matching `load-chain` request — so a consumer who loaded
+ * a track earlier (and isn't the caller of the reload that produced this
+ * event) still hears about its new trackIndex.
+ */
+function applyChainLoadedEvent(trackId: string, refs: EventDispatchRefs): void {
+  const trackIndex = assignNextTrackIndex(refs.trackIndex, trackId);
+
+  const entry = refs.pendingTrack.get(trackId);
+  if (entry?.kind === "load-chain") {
+    refs.pendingTrack.delete(trackId);
+    entry.resolve(trackIndex);
+  }
+
+  refs.chainLoadedListeners.forEach((cb) => cb(trackId, trackIndex));
 }
 
 function applyStateEvent(
@@ -276,6 +320,14 @@ export function useVstHost(): UseVstHostResult {
   const pendingScanRef = useRef<PendingScanEntry | null>(null);
   const pendingTrackRef = useRef<Map<string, PendingTrackEntry>>(new Map());
 
+  // Mirrors the sidecar's `self._tracks` insertion order (see
+  // `assignNextTrackIndex`) — mutated in place, never reassigned, same
+  // rationale as `registryRef` above.
+  const trackIndexRef = useRef<Map<string, number>>(new Map());
+  const chainLoadedListenersRef = useRef<Set<(trackId: string, trackIndex: number) => void>>(
+    new Set(),
+  );
+
   const pcmListenersRef = useRef<Set<(frame: ArrayBuffer) => void>>(new Set());
   const disconnectListenersRef = useRef<Set<() => void>>(new Set());
 
@@ -297,6 +349,12 @@ export function useVstHost(): UseVstHostResult {
     }
     pendingTrackRef.current.clear();
 
+    // A reconnect starts a fresh sidecar process with an empty `_tracks`
+    // dict (see `ensureStarted`'s `/api/vst/start` re-POST) — the mirrored
+    // index map must reset with it, or a track loaded before the crash would
+    // wrongly appear to already hold an index on the new connection.
+    trackIndexRef.current.clear();
+
     disconnectListenersRef.current.forEach((cb) => cb());
   }, []);
 
@@ -317,6 +375,8 @@ export function useVstHost(): UseVstHostResult {
       registry: registryRef.current,
       pendingScan: pendingScanRef,
       pendingTrack: pendingTrackRef.current,
+      trackIndex: trackIndexRef.current,
+      chainLoadedListeners: chainLoadedListenersRef.current,
     });
   }, []);
 
@@ -372,8 +432,8 @@ export function useVstHost(): UseVstHostResult {
   );
 
   const loadChain = useCallback(
-    (trackId: string, chain: ChainFileJson, wavUrl: string): Promise<void> => {
-      return new Promise<void>((resolve, reject) => {
+    (trackId: string, chain: ChainFileJson, wavUrl: string): Promise<number> => {
+      return new Promise<number>((resolve, reject) => {
         const previous = pendingTrackRef.current.get(trackId);
         previous?.reject(
           new Error(`load-chain superseded by a new request for track "${trackId}"`),
@@ -431,6 +491,16 @@ export function useVstHost(): UseVstHostResult {
     };
   }, []);
 
+  const onChainLoaded = useCallback(
+    (cb: (trackId: string, trackIndex: number) => void): (() => void) => {
+      chainLoadedListenersRef.current.add(cb);
+      return () => {
+        chainLoadedListenersRef.current.delete(cb);
+      };
+    },
+    [],
+  );
+
   return {
     api: status === "ready" ? api : null,
     status,
@@ -439,5 +509,6 @@ export function useVstHost(): UseVstHostResult {
     onPcmFrame,
     sendTransport,
     onDisconnect,
+    onChainLoaded,
   };
 }

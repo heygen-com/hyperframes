@@ -19,7 +19,7 @@ import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
-import { __setSocketFactoryForTests, type VstSocketLike } from "../../hooks/useVstHost";
+import { __setSocketFactoryForTests, useVstHost, type VstSocketLike } from "../../hooks/useVstHost";
 import { usePlayerStore } from "../store/playerStore";
 import { decodePcmFrame, useVstPreview } from "./useVstPreview";
 
@@ -148,7 +148,8 @@ function mountHarness(
   const showToast = vi.fn();
 
   function Harness() {
-    useVstPreview(iframeRef, projectId, showToast);
+    const vstHost = useVstHost();
+    useVstPreview(iframeRef, projectId, vstHost, showToast);
     return null;
   }
 
@@ -383,6 +384,169 @@ describe("useVstPreview — PCM routing", () => {
     act(() => socket.emitBinary(buf));
 
     expect(node.port.postMessage).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+  });
+});
+
+// ── trackIndex resync on an external chain reload ────────────────────────────
+//
+// Simulates the scenario Task 13b fixes: this hook and the FX property panel
+// now share ONE useVstHost() connection (see the module doc-comment), so a
+// `chain-loaded` event can arrive for a trackId this hook already streams
+// without this hook having initiated the reload itself — e.g. the panel
+// added/removed an effect. The fake socket is driven directly with a raw
+// `chain-loaded` event (bypassing `api.loadChain`) to model exactly that:
+// "some other caller on the shared connection reloaded this track".
+
+interface TwoTrackHarness {
+  root: Root;
+  audioEl1: HTMLAudioElement;
+  audioEl2: HTMLAudioElement;
+  showToast: ReturnType<typeof vi.fn>;
+  socket: FakeSocket;
+}
+
+/** Loads two vst-chain tracks (track-1 → index 0, track-2 → index 1) through one shared connection. */
+async function setupTwoLoadedTracks(): Promise<TwoTrackHarness> {
+  const audioEl1 = document.createElement("audio");
+  audioEl1.id = "track-1";
+  audioEl1.setAttribute("data-vst-chain", "fx/track-1.vstchain.json");
+  audioEl1.setAttribute("src", "dry1.wav");
+  document.body.append(audioEl1);
+
+  const audioEl2 = document.createElement("audio");
+  audioEl2.id = "track-2";
+  audioEl2.setAttribute("data-vst-chain", "fx/track-2.vstchain.json");
+  audioEl2.setAttribute("src", "dry2.wav");
+  document.body.append(audioEl2);
+
+  const iframe = document.createElement("iframe");
+  Object.defineProperty(iframe, "contentDocument", { configurable: true, value: document });
+  const iframeRef = { current: iframe };
+
+  vi.stubGlobal("fetch", buildFetchMock({ version: 1, plugins: [] }));
+  const showToast = vi.fn();
+
+  function Harness() {
+    const vstHost = useVstHost();
+    useVstPreview(iframeRef, "proj-1", vstHost, showToast);
+    return null;
+  }
+  const root = mountReactHarness(<Harness />);
+
+  await act(async () => {
+    await flushAsyncWork();
+    required(FakeSocket.instances[0], "socket").open();
+    await flushAsyncWork();
+  });
+  const socket = required(FakeSocket.instances[0], "socket");
+
+  await act(async () => {
+    await flushAsyncWork();
+    socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+    await flushAsyncWork();
+    socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+    await flushAsyncWork();
+  });
+
+  return { root, audioEl1, audioEl2, showToast, socket };
+}
+
+describe("useVstPreview — trackIndex resync on an external chain reload", () => {
+  it("keeps routing correctly when a solo track is reloaded and its index doesn't change", async () => {
+    const { root, audioEl, socket } = await setupLoadedPreview();
+    const node = required(FakeAudioWorkletNode.instances[0], "worklet node");
+    node.port.postMessage.mockClear();
+
+    // Only one track was ever loaded, so the sidecar's pop-then-reinsert rule
+    // reassigns it the SAME index (0) — no collision, nothing to revert.
+    await act(async () => {
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      await flushAsyncWork();
+    });
+
+    expect(audioEl.muted).toBe(true); // still streaming through the worklet, not reverted to dry
+
+    const buf = new ArrayBuffer(12 + 2 * 4);
+    const view = new DataView(buf);
+    view.setUint32(0, 0, true);
+    view.setFloat64(4, 2000, true);
+    act(() => socket.emitBinary(buf));
+
+    expect(node.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "pcm", samplePos: 2000 }),
+      expect.any(Array),
+    );
+
+    act(() => root.unmount());
+  });
+
+  it("updates the local trackIndex mapping when an external reload reassigns an already-loaded track", async () => {
+    const { root, socket } = await setupTwoLoadedTracks();
+    const node1 = required(FakeAudioWorkletNode.instances[0], "track-1 worklet node");
+    node1.port.postMessage.mockClear();
+
+    // track-1 (index 0) and track-2 (index 1) are both loaded. Reload
+    // track-2 — the MOST RECENTLY loaded track — which the server's rule
+    // reassigns to the SAME index it already held (pop leaves one entry, so
+    // `len(self._tracks)` is 1 again): no collision, but this hook must
+    // still pick up the fresh index from the event rather than silently
+    // keep routing on a value it never re-derived.
+    await act(async () => {
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+      await flushAsyncWork();
+    });
+
+    const buf = new ArrayBuffer(12 + 2 * 4);
+    const view = new DataView(buf);
+    view.setUint32(0, 0, true); // track-1's index — must still route to track-1 only
+    view.setFloat64(4, 3000, true);
+    act(() => socket.emitBinary(buf));
+
+    expect(node1.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "pcm", samplePos: 3000 }),
+      expect.any(Array),
+    );
+
+    act(() => root.unmount());
+  });
+
+  it("reverts BOTH tracks to dry playback and warns instead of silently misrouting on an index collision", async () => {
+    // Reloading track-1 (NOT the most recently loaded track) pops it, leaving
+    // one entry (track-2), so the server's rule reassigns track-1 the same
+    // index track-2 already holds (1) — a genuine collision the wire
+    // protocol cannot disambiguate (see assignNextTrackIndex's doc-comment).
+    const { root, audioEl1, audioEl2, showToast, socket } = await setupTwoLoadedTracks();
+    const node1 = required(FakeAudioWorkletNode.instances[0], "track-1 worklet node");
+    const node2 = required(FakeAudioWorkletNode.instances[1], "track-2 worklet node");
+    node1.port.postMessage.mockClear();
+    node2.port.postMessage.mockClear();
+
+    expect(audioEl1.muted).toBe(true);
+    expect(audioEl2.muted).toBe(true);
+
+    await act(async () => {
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      await flushAsyncWork();
+    });
+
+    // Both tracks reverted to their original (unmuted) dry playback rather
+    // than one silently stealing the other's processed audio stream.
+    expect(audioEl1.muted).toBe(false);
+    expect(audioEl2.muted).toBe(false);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("routing conflict"), "error");
+
+    // A PCM frame at the now-ambiguous index must be dropped for both, not
+    // routed to whichever track happens to be first in iteration order.
+    const buf = new ArrayBuffer(12 + 2 * 4);
+    const view = new DataView(buf);
+    view.setUint32(0, 1, true);
+    view.setFloat64(4, 4000, true);
+    act(() => socket.emitBinary(buf));
+
+    expect(node1.port.postMessage).not.toHaveBeenCalled();
+    expect(node2.port.postMessage).not.toHaveBeenCalled();
 
     act(() => root.unmount());
   });

@@ -26,7 +26,8 @@ export interface VstHostApi {
   registry: VstRegistryEntry[];
   scan(): Promise<void>;
   openEditor(trackId: string, pluginIndex: number): void;
-  loadChain(trackId: string, chain: ChainFileJson, wavUrl: string): Promise<void>;
+  /** Resolves with the sidecar-assigned wire `trackIndex` for `trackId` (see useVstHost's `assignNextTrackIndex`). */
+  loadChain(trackId: string, chain: ChainFileJson, wavUrl: string): Promise<number>;
   getState(trackId: string): Promise<string[]>;
 }
 
