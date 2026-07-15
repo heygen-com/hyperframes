@@ -12,6 +12,8 @@ export interface AudioElement {
   layer: number;
   volume?: number;
   volumeKeyframes?: AudioVolumeKeyframe[];
+  /** Project-relative path to a .vstchain.json effect chain (data-vst-chain). */
+  vstChain?: string;
   type: "audio" | "video";
 }
 

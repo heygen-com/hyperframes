@@ -219,6 +219,7 @@ export function parseAudioElements(html: string): AudioElement[] {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
+    const vstChain = el.getAttribute("data-vst-chain");
     return {
       id,
       src: el.getAttribute("src") as string,
@@ -227,6 +228,7 @@ export function parseAudioElements(html: string): AudioElement[] {
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
+      ...(vstChain ? { vstChain } : {}),
       type,
     };
   };

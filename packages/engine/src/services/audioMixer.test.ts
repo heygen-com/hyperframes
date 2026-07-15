@@ -573,3 +573,17 @@ describe("parseAudioElements — relative data-start resolution", () => {
     expect(track!.start).toBe(4);
   });
 });
+
+describe("parseAudioElements data-vst-chain", () => {
+  it("captures the chain path when present", () => {
+    const html = `<audio id="music" src="assets/bgm.mp3" data-start="0" data-end="10" data-vst-chain="fx/music.vstchain.json"></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el.vstChain).toBe("fx/music.vstchain.json");
+  });
+
+  it("leaves vstChain undefined when absent", () => {
+    const html = `<audio id="music" src="assets/bgm.mp3" data-start="0" data-end="10"></audio>`;
+    const [el] = parseAudioElements(html);
+    expect(el.vstChain).toBeUndefined();
+  });
+});
