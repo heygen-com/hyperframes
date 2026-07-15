@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
@@ -25,6 +26,7 @@ export function FlatTimingRow({
    *  documented below) when the caller doesn't wire it up. */
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
 }) {
+  const track = useTrackDesignInput();
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
@@ -81,7 +83,13 @@ export function FlatTimingRow({
     <div className="grid gap-px">
       <span className="text-[9px] text-panel-text-4">{label}</span>
       <span className="border-b border-transparent font-mono text-[11px] text-panel-text-0 hover:border-panel-border-input">
-        <CommitField value={value} onCommit={onCommit} />
+        <CommitField
+          value={value}
+          onCommit={(next) => {
+            track("metric", label);
+            onCommit(next);
+          }}
+        />
       </span>
     </div>
   );
@@ -122,7 +130,17 @@ export function FlatMotionSection({
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
 } & GsapAnimationEditCallbacks) {
+  const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const trackProperty = (property: string) => {
+    const control =
+      property === "visibility"
+        ? "toggle"
+        : property === "filter" || property === "clipPath"
+          ? "text"
+          : "metric";
+    track(control, property);
+  };
 
   return (
     <div className="space-y-3">
@@ -155,7 +173,99 @@ export function FlatMotionSection({
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
-                  {...callbacks}
+                  onUpdateProperty={(animationId, property, value) => {
+                    trackProperty(property);
+                    callbacks.onUpdateProperty(animationId, property, value);
+                  }}
+                  onUpdateMeta={(animationId, updates) => {
+                    if (updates.duration !== undefined) track("metric", "Length");
+                    else if (updates.position !== undefined) track("metric", "Starts at");
+                    else track("select", "Speed");
+                    callbacks.onUpdateMeta(animationId, updates);
+                  }}
+                  onDeleteAnimation={(animationId) => {
+                    track("button", "Remove animation");
+                    callbacks.onDeleteAnimation(animationId);
+                  }}
+                  onAddProperty={(animationId, property) => {
+                    track("select", "Add effect property");
+                    callbacks.onAddProperty(animationId, property);
+                  }}
+                  onRemoveProperty={(animationId, property) => {
+                    track("button", `Remove ${property}`);
+                    callbacks.onRemoveProperty(animationId, property);
+                  }}
+                  onUpdateFromProperty={
+                    callbacks.onUpdateFromProperty
+                      ? (animationId, property, value) => {
+                          trackProperty(property);
+                          callbacks.onUpdateFromProperty?.(animationId, property, value);
+                        }
+                      : undefined
+                  }
+                  onAddFromProperty={
+                    callbacks.onAddFromProperty
+                      ? (animationId, property) => {
+                          track("select", "Add from property");
+                          callbacks.onAddFromProperty?.(animationId, property);
+                        }
+                      : undefined
+                  }
+                  onRemoveFromProperty={
+                    callbacks.onRemoveFromProperty
+                      ? (animationId, property) => {
+                          track("button", `Remove from ${property}`);
+                          callbacks.onRemoveFromProperty?.(animationId, property);
+                        }
+                      : undefined
+                  }
+                  onLivePreview={callbacks.onLivePreview}
+                  onLivePreviewEnd={callbacks.onLivePreviewEnd}
+                  onSetArcPath={
+                    callbacks.onSetArcPath
+                      ? (animationId, config) => {
+                          track(
+                            "toggle",
+                            config.autoRotate !== undefined ? "Auto rotate" : "Arc motion",
+                          );
+                          callbacks.onSetArcPath?.(animationId, config);
+                        }
+                      : undefined
+                  }
+                  onUpdateArcSegment={
+                    callbacks.onUpdateArcSegment
+                      ? (animationId, segmentIndex, update) => {
+                          if (update.curviness === undefined) {
+                            track("button", `Reset arc segment ${segmentIndex + 1}`);
+                          }
+                          callbacks.onUpdateArcSegment?.(animationId, segmentIndex, update);
+                        }
+                      : undefined
+                  }
+                  onUpdateKeyframeEase={
+                    callbacks.onUpdateKeyframeEase
+                      ? (animationId, percentage, ease) => {
+                          track("select", "Keyframe ease");
+                          callbacks.onUpdateKeyframeEase?.(animationId, percentage, ease);
+                        }
+                      : undefined
+                  }
+                  onSetAllKeyframeEases={
+                    callbacks.onSetAllKeyframeEases
+                      ? (animationId, ease) => {
+                          track("select", "All keyframe eases");
+                          callbacks.onSetAllKeyframeEases?.(animationId, ease);
+                        }
+                      : undefined
+                  }
+                  onUnroll={
+                    callbacks.onUnroll
+                      ? (animationId) => {
+                          track("button", "Unroll animation");
+                          callbacks.onUnroll?.(animationId);
+                        }
+                      : undefined
+                  }
                 />
               ))}
               <div className="relative pt-1">
@@ -167,6 +277,7 @@ export function FlatMotionSection({
                         type="button"
                         title={METHOD_TOOLTIPS[method]}
                         onClick={() => {
+                          track("button", `Add ${method} animation`);
                           onAddAnimation(method);
                           setAddMenuOpen(false);
                         }}

@@ -1,3 +1,5 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+
 export function PropertyPanelFlatFooter({
   onAskAgent,
   recordingState,
@@ -9,6 +11,7 @@ export function PropertyPanelFlatFooter({
   recordingDuration?: number;
   onToggleRecording?: () => void;
 }) {
+  const track = useTrackDesignInput();
   const recording = recordingState === "recording";
   const recordTitle = recording
     ? `Stop recording ${(recordingDuration ?? 0).toFixed(1)}s`
@@ -25,7 +28,10 @@ export function PropertyPanelFlatFooter({
       <button
         type="button"
         data-flat-footer-ask="true"
-        onClick={onAskAgent}
+        onClick={() => {
+          track("button", "Ask agent");
+          onAskAgent?.();
+        }}
         disabled={!onAskAgent}
         className="flex items-center gap-[7px] text-[11px] font-medium text-panel-text-2 disabled:cursor-not-allowed"
       >
@@ -47,7 +53,10 @@ export function PropertyPanelFlatFooter({
           aria-label={recordTitle}
           title={recordTitle}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={onToggleRecording}
+          onClick={() => {
+            track("button", "Gesture recording");
+            onToggleRecording();
+          }}
           className={recording ? "text-panel-danger animate-pulse" : "text-panel-danger"}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

@@ -101,7 +101,7 @@ export function TextAreaField({
 
   const commitDraft = (d: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (!flat && interactionChangedRef.current) {
+    if (interactionChangedRef.current) {
       interactionChangedRef.current = false;
       track("text", label);
     }
@@ -111,7 +111,7 @@ export function TextAreaField({
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     commitTimerRef.current = setTimeout(() => {
       if (d !== valueRef.current) {
-        if (!flat && interactionChangedRef.current) {
+        if (interactionChangedRef.current) {
           interactionChangedRef.current = false;
           track("text", label);
         }

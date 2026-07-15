@@ -153,7 +153,7 @@ export function FontFamilyField({
   const canQueryLocalFonts =
     typeof window !== "undefined" && typeof window.queryLocalFonts === "function";
   const commitFontFamily = (nextValue: string) => {
-    if (!flat && nextValue !== value) track("select", "Font family");
+    if (nextValue !== value) track("select", "Font family");
     onCommit(nextValue);
   };
 

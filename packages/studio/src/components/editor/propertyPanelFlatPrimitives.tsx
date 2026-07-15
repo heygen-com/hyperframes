@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
@@ -33,6 +34,7 @@ export function FlatRow({
   onCommit: (nextValue: string) => void;
   onReset?: () => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div className="group flex min-h-[30px] items-center justify-between gap-3">
       <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
@@ -49,7 +51,10 @@ export function FlatRow({
             value={value}
             disabled={disabled}
             liveCommit={liveCommit}
-            onCommit={onCommit}
+            onCommit={(nextValue) => {
+              track("metric", label);
+              onCommit(nextValue);
+            }}
           />
         </span>
         {suffix}
@@ -58,7 +63,10 @@ export function FlatRow({
             type="button"
             data-flat-row-reset="true"
             title="Remove — fall back to default"
-            onClick={onReset}
+            onClick={() => {
+              track("button", `Reset ${label}`);
+              onReset();
+            }}
             className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
           >
             <RotateCcw size={11} />
@@ -109,6 +117,7 @@ export function FlatSegmentedRow({
   spacerAfterIndex?: number;
   onChange: (nextKey: string) => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div className="flex min-h-[32px] items-center justify-between">
       <span className="text-[11px] text-panel-text-3">{label}</span>
@@ -121,7 +130,10 @@ export function FlatSegmentedRow({
               aria-label={option.label}
               aria-pressed={option.active}
               disabled={disabled}
-              onClick={() => onChange(option.key)}
+              onClick={() => {
+                if (!option.active) track("segmented", label);
+                onChange(option.key);
+              }}
               className={`px-1.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed ${
                 option.active
                   ? "border-b-2 border-panel-accent text-panel-text-0"
@@ -270,6 +282,7 @@ export function FlatSlider({
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
+  const track = useTrackDesignInput();
   // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
   // throttled (not debounced) to at most once per 40ms: a real drag fires
   // pointermove faster than that, and a pure debounce (reset the timer on
@@ -439,6 +452,7 @@ export function FlatSlider({
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
           setDraft(stepped);
           commitDraft(stepped);
+          if (stepped !== dragStartValueRef.current) track("slider", label);
         }}
         onPointerCancel={(e) => {
           // A native pointercancel means the platform aborted the gesture (a
@@ -481,6 +495,7 @@ export function FlatSlider({
           e.preventDefault();
           setDraft(next);
           commitDraft(next);
+          if (next !== draft) track("slider", label);
         }}
         onContextMenu={(e) => {
           // Right-click during a drag must cancel it (revert to the pre-drag
@@ -530,7 +545,10 @@ export function FlatSlider({
               data-flat-slider-reset="true"
               title="Remove — fall back to default"
               disabled={disabled}
-              onClick={onReset}
+              onClick={() => {
+                track("button", `Reset ${label}`);
+                onReset();
+              }}
               className="text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RotateCcw size={11} />

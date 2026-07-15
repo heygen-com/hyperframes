@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { resolveEditingSections } from "@hyperframes/core/editing";
+import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+import { slugifyDesignInput } from "../../utils/designInputTracking";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
@@ -502,67 +504,77 @@ export function PropertyPanelFlat({
   const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
-      <PropertyPanelFlatHeader
-        name={element.label}
-        meta={`${sourceLabel} · ${element.tagName}`}
-        elementKind={elementKind}
-        hidden={selectedElementHidden}
-        onToggleHidden={
-          selectedElementId && onToggleElementHidden
-            ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
-            : undefined
-        }
-        copied={clipboardCopied}
-        onCopy={onCopyElementInfo}
-        onClear={onClearSelection}
-        onUngroup={onUngroup}
-        showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
-      />
-      <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {beforeOpen.map((g) => (
-          <FlatGroupHeader
-            key={g.id}
-            title={g.title}
-            isOpen={false}
-            onToggleOpen={() => toggleOpen(g.id)}
-            summary={g.summary}
-            animateEntrance={justToggledIds.includes(g.id)}
+    <DesignPanelInputProvider ui="flat">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+        <DesignPanelInputProvider section="header">
+          <PropertyPanelFlatHeader
+            name={element.label}
+            meta={`${sourceLabel} · ${element.tagName}`}
+            elementKind={elementKind}
+            hidden={selectedElementHidden}
+            onToggleHidden={
+              selectedElementId && onToggleElementHidden
+                ? () => void onToggleElementHidden(selectedElementId, !selectedElementHidden)
+                : undefined
+            }
+            copied={clipboardCopied}
+            onCopy={onCopyElementInfo}
+            onClear={onClearSelection}
+            onUngroup={onUngroup}
+            showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
           />
-        ))}
-        {openGroup && (
-          <div data-flat-group-open="true" className="flex min-h-0 flex-1 flex-col">
-            <FlatGroupHeader
-              title={openGroup.title}
-              isOpen
-              onToggleOpen={() => toggleOpen(openGroup.id)}
-              accessory={openGroup.accessory}
-              animateEntrance={justToggledIds.includes(openGroup.id)}
-            />
-            <div
-              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
-            >
-              {openGroup.content}
-            </div>
-          </div>
-        )}
-        {afterOpen.map((g) => (
-          <FlatGroupHeader
-            key={g.id}
-            title={g.title}
-            isOpen={false}
-            onToggleOpen={() => toggleOpen(g.id)}
-            summary={g.summary}
-            animateEntrance={justToggledIds.includes(g.id)}
+        </DesignPanelInputProvider>
+        <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {beforeOpen.map((g) => (
+            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
+              <FlatGroupHeader
+                title={g.title}
+                isOpen={false}
+                onToggleOpen={() => toggleOpen(g.id)}
+                summary={g.summary}
+                animateEntrance={justToggledIds.includes(g.id)}
+              />
+            </DesignPanelInputProvider>
+          ))}
+          {openGroup && (
+            <DesignPanelInputProvider section={slugifyDesignInput(openGroup.title)}>
+              <div data-flat-group-open="true" className="flex min-h-0 flex-1 flex-col">
+                <FlatGroupHeader
+                  title={openGroup.title}
+                  isOpen
+                  onToggleOpen={() => toggleOpen(openGroup.id)}
+                  accessory={openGroup.accessory}
+                  animateEntrance={justToggledIds.includes(openGroup.id)}
+                />
+                <div
+                  className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
+                >
+                  {openGroup.content}
+                </div>
+              </div>
+            </DesignPanelInputProvider>
+          )}
+          {afterOpen.map((g) => (
+            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
+              <FlatGroupHeader
+                title={g.title}
+                isOpen={false}
+                onToggleOpen={() => toggleOpen(g.id)}
+                summary={g.summary}
+                animateEntrance={justToggledIds.includes(g.id)}
+              />
+            </DesignPanelInputProvider>
+          ))}
+        </div>
+        <DesignPanelInputProvider section="footer">
+          <PropertyPanelFlatFooter
+            onAskAgent={onAskAgent}
+            recordingState={recordingState}
+            recordingDuration={recordingDuration}
+            onToggleRecording={onToggleRecording}
           />
-        ))}
+        </DesignPanelInputProvider>
       </div>
-      <PropertyPanelFlatFooter
-        onAskAgent={onAskAgent}
-        recordingState={recordingState}
-        recordingDuration={recordingDuration}
-        onToggleRecording={onToggleRecording}
-      />
-    </div>
+    </DesignPanelInputProvider>
   );
 }

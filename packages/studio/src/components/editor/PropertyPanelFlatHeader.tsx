@@ -1,4 +1,5 @@
 import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { ClipboardList, Film, Square, Type, X } from "../../icons/SystemIcons";
 
 const ICON_BY_KIND = { text: Type, media: Film, other: Square } as const;
@@ -31,6 +32,7 @@ export function PropertyPanelFlatHeader({
   onUngroup?: () => void;
   showUngroup: boolean;
 }) {
+  const track = useTrackDesignInput();
   const Icon = ICON_BY_KIND[elementKind];
   const visibilityLabel = hidden ? "Show element" : "Hide element";
 
@@ -47,7 +49,15 @@ export function PropertyPanelFlatHeader({
       </div>
       <div className="flex flex-shrink-0 items-center gap-2.5 text-panel-text-3">
         {showUngroup && (
-          <button type="button" aria-label="Ungroup" title="Ungroup (⌘⇧G)" onClick={onUngroup}>
+          <button
+            type="button"
+            aria-label="Ungroup"
+            title="Ungroup (⌘⇧G)"
+            onClick={() => {
+              track("button", "Ungroup");
+              onUngroup?.();
+            }}
+          >
             <svg
               width="13"
               height="13"
@@ -66,7 +76,10 @@ export function PropertyPanelFlatHeader({
             type="button"
             aria-label={visibilityLabel}
             title={visibilityLabel}
-            onClick={onToggleHidden}
+            onClick={() => {
+              track("toggle", "Element visibility");
+              onToggleHidden();
+            }}
           >
             {hidden ? <EyeSlash size={13} weight="bold" /> : <Eye size={13} weight="bold" />}
           </button>
@@ -75,12 +88,22 @@ export function PropertyPanelFlatHeader({
           type="button"
           aria-label="Copy element info to clipboard"
           title={copied ? "Copied!" : "Copy element info for any AI agent"}
-          onClick={onCopy}
+          onClick={() => {
+            track("button", "Copy element info");
+            onCopy();
+          }}
           className={copied ? "text-panel-accent" : undefined}
         >
           <ClipboardList size={13} />
         </button>
-        <button type="button" aria-label="Clear selection" onClick={onClear}>
+        <button
+          type="button"
+          aria-label="Clear selection"
+          onClick={() => {
+            track("button", "Clear selection");
+            onClear();
+          }}
+        >
           <X size={13} />
         </button>
       </div>

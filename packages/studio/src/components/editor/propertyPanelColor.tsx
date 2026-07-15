@@ -206,7 +206,7 @@ export function ColorField({
     setDraftColor(nextColor);
     setHexDraft(toHexColor(nextColor).toUpperCase());
     const nextValue = formatCssColor(nextColor);
-    if (!flat && nextValue !== value) track("color", label);
+    if (nextValue !== value) track("color", label);
     onCommit(nextValue);
   };
 

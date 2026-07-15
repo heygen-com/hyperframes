@@ -9,6 +9,7 @@ import {
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
@@ -30,6 +31,7 @@ export function FlatColorGradingAccessory({
     "grading" | "compareEnabled" | "runtimeStatus" | "commitCompare" | "resetGrading"
   >;
 }) {
+  const track = useTrackDesignInput();
   const { grading, compareEnabled, runtimeStatus, commitCompare, resetGrading } = state;
   const gradingActive = isHfColorGradingActive(grading);
   // Tracks the active hold's cleanup so it can be torn down on unmount too —
@@ -56,6 +58,7 @@ export function FlatColorGradingAccessory({
           if (!gradingActive) return;
           e.preventDefault();
           e.stopPropagation();
+          track("button", "Compare original");
           commitCompare(true);
           const release = () => {
             commitCompare(false);
@@ -75,7 +78,10 @@ export function FlatColorGradingAccessory({
         onKeyDown={(e) => {
           if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;
           e.preventDefault();
-          if (!compareEnabled) commitCompare(true);
+          if (!compareEnabled) {
+            track("button", "Compare original");
+            commitCompare(true);
+          }
         }}
         onKeyUp={(e) => {
           if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;
@@ -106,6 +112,7 @@ export function FlatColorGradingAccessory({
         title="Reset color grading"
         onClick={(e) => {
           e.stopPropagation();
+          track("button", "Reset color grading");
           resetGrading();
         }}
         className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1"
@@ -242,6 +249,7 @@ export function FlatColorGradingSection({
   onApplyScopeAvailable: boolean;
   mediaMetadata: MediaMetadata | null;
 }) {
+  const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettingsOpen, setDetailSettingsOpen] = useState<"vignette" | "grain" | null>(null);
@@ -270,7 +278,10 @@ export function FlatColorGradingSection({
     if (!files?.length || !onImportAssets) return;
     const uploaded = await onImportAssets(files, "assets/luts");
     const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
-    if (firstLut) applyLut(firstLut, 1);
+    if (firstLut) {
+      track("button", "Import LUT");
+      applyLut(firstLut, 1);
+    }
   };
 
   const renderDetailSlider = (key: HfColorGradingDetailKey) => {
@@ -363,6 +374,7 @@ export function FlatColorGradingSection({
                 value={lut?.src ?? ""}
                 onChange={(e) => {
                   const src = e.target.value;
+                  track("select", "Custom LUT");
                   applyLut(src || null, src && lut?.src === src ? lut.intensity : 1);
                 }}
                 className="bg-transparent font-mono text-[10px] text-panel-text-3 outline-none"
@@ -528,7 +540,10 @@ export function FlatColorGradingSection({
             <select
               aria-label="Copy grade to"
               value={applyScope}
-              onChange={(e) => onSetApplyScope(e.target.value as "source-file" | "project")}
+              onChange={(e) => {
+                track("select", "Copy grade scope");
+                onSetApplyScope(e.target.value as "source-file" | "project");
+              }}
               disabled={applyBusy}
               className="bg-transparent font-mono text-[11px] text-panel-text-0 outline-none disabled:opacity-50"
             >
@@ -540,7 +555,10 @@ export function FlatColorGradingSection({
             type="button"
             data-flat-grade-apply="true"
             disabled={applyBusy}
-            onClick={onApplyToScope}
+            onClick={() => {
+              track("button", "Apply grade to scope");
+              onApplyToScope();
+            }}
             className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {applyBusy ? "Applying" : "Apply"}

@@ -4,6 +4,8 @@
 /*  600-line file-size gate)                                           */
 /* ------------------------------------------------------------------ */
 
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+
 export function FlatToggle({
   label,
   checked,
@@ -15,6 +17,7 @@ export function FlatToggle({
   disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div className="flex min-h-[30px] items-center justify-between">
       <span
@@ -30,7 +33,10 @@ export function FlatToggle({
         aria-checked={checked}
         aria-label={label}
         disabled={disabled}
-        onClick={() => onChange(!checked)}
+        onClick={() => {
+          track("toggle", label);
+          onChange(!checked);
+        }}
         className={`relative h-[14px] w-6 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked ? "bg-panel-accent/35" : "bg-panel-hover"
         }`}
