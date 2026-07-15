@@ -25,13 +25,15 @@ Probabilities never reach the user. They are a sampling constraint, not a scorec
 
 ## Presenting the round
 
-Each pitch is three lines: the concept in one sentence, its visual world, its opening hook. All five appear before any recommendation — a recommendation stated first anchors everything after it. Then recommend one, with a reason. Mixing is a first-class answer ("the framing of the second with the opening of the fourth"); silence or "you decide" accepts the recommendation. One round: the pitches are an offer, not a quiz, and there is no second batch unless the user asks for one.
+Each pitch is three lines: the concept in one sentence, its visual world, its opening hook. The visual-world line carries the machinery: name the one or two capabilities the concept rides, in the plain language of `capability-menu.md`'s middle column — "the launch number counts up on the track's beat grid," never a feature name. This is how the toolbox reaches the user: experienced inside a concept they can want, not listed in a menu they can't evaluate. Machinery earns its mention the way a recommendation earns its place — a capability that would fit all five pitches is decoration; name it only where this concept leans on it.
 
-The chosen concept **is** the brief's creative core: it answers the route's pitch-eligible fields (typically `message` and `angle`), those questions are skipped downstream with the pitch as their receipt, and the concept lands in `BRIEF.md` under `## Intent` in the wording the user accepted.
+All five appear before any recommendation — a recommendation stated first anchors everything after it. Then recommend one, with a reason. Mixing is a first-class answer ("the framing of the second with the opening of the fourth"); silence or "you decide" accepts the recommendation. One round: the pitches are an offer, not a quiz, and there is no second batch unless the user asks for one.
+
+The chosen concept **is** the brief's creative core: it answers the route's pitch-eligible fields (typically `message` and `angle`), those questions are skipped downstream with the pitch as their receipt, and the concept lands in `BRIEF.md` under `## Intent` in the wording the user accepted. The capabilities the pitch named are confirmed with it — they land under `## Customizations` and are not re-offered later as if they were new.
 
 ## The gate, alone — autonomous runs
 
-"Just build it" changes the audience, not the discipline. Walk the same gate — four questions, five concepts, tail constraint, silhouette check — pick the winner, and keep building. The heads-up then treats the pick like every other receipt-backed decision: name the direction chosen and why, and name the most typical direction deliberately left behind. An autonomous run is where the median is most dangerous — no one is present to say "this looks like every other video," so the gate has to say it.
+"Just build it" changes the audience, not the discipline. Walk the same gate — four questions, five concepts, tail constraint, silhouette check — pick the winner, and keep building. The heads-up then treats the pick like every other receipt-backed decision: name the direction chosen and why, the machinery it rides, and the most typical direction deliberately left behind. An autonomous run is where the median is most dangerous — no one is present to say "this looks like every other video," so the gate has to say it.
 
 ## The decision map — "I don't know anything about video"
 
