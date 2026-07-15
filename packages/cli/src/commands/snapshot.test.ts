@@ -2,11 +2,21 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   computeSnapshotTimes,
+  formatSnapshotTimestamp,
   parseZoomScale,
   requireSnapshotFfmpeg,
   resolveSnapshotVideoFrameTime,
   tailFrameTime,
 } from "./snapshot.js";
+
+describe("formatSnapshotTimestamp", () => {
+  it.each([
+    [1.12, "1.12s"],
+    [0.30000000000000004, "0.3s"],
+  ])("formats %s without discarding useful precision", (time, expected) => {
+    expect(formatSnapshotTimestamp(time)).toBe(expected);
+  });
+});
 
 // --zoom's crop-region math (selector bbox + padding + clamp, exact region
 // form, no-match error) is owned by and tested in

@@ -60,6 +60,11 @@ function orbitStageSource(): string {
  * `hyperframes snapshot` indefinitely. */
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
+/** Keep millisecond-level snapshot timing proof without leaking floating-point noise. */
+export function formatSnapshotTimestamp(time: number): string {
+  return `${Number(time.toFixed(3))}s`;
+}
+
 /** Keep an exact clip-end snapshot aligned with the renderer's inclusive media
  * window. This intentionally differs from the live player's exclusive-end
  * visibility so an explicit end-boundary review does not become blank. FFmpeg
@@ -503,7 +508,7 @@ async function captureSnapshots(
           }
         }
 
-        const timeLabel = `${time.toFixed(1)}s`;
+        const timeLabel = formatSnapshotTimestamp(time);
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
@@ -626,7 +631,7 @@ export default defineCommand({
     const zoomScale = parseZoomScale(args["zoom-scale"]);
 
     const label = atTimestamps
-      ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
+      ? `${atTimestamps.length} frames at [${atTimestamps.map(formatSnapshotTimestamp).join(", ")}]`
       : `${frames} frames`;
     const angleLabel =
       camera && (camera.yaw !== 0 || camera.pitch !== 0)
