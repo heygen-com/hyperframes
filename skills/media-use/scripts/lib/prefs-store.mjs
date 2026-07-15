@@ -158,6 +158,9 @@ export function recordPreference({ projectDir, key, value, workflow }) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error("a preference needs a non-empty string value");
   }
+  if (key === "style_preset" && (!workflow || !String(workflow).trim())) {
+    throw new Error("style_preset is stored per workflow — pass --workflow <w>");
+  }
   const fullKey = preferenceKeyFor(key, workflow);
   const projectName = basename(resolve(projectDir));
   const trimmed = value.trim();

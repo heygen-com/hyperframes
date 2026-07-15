@@ -159,6 +159,16 @@ test("style_preset is keyed per workflow", () => {
   });
 });
 
+test("style_preset without a workflow is rejected, never stored bare", () => {
+  withSandbox(({ projectA }) => {
+    assert.throws(
+      () => recordPreference({ projectDir: projectA, key: "style_preset", value: "pin-and-paper" }),
+      /pass --workflow/,
+    );
+    assert.deepEqual(mergedPreferences(projectA), {});
+  });
+});
+
 test("unknown keys and empty values are rejected", () => {
   withSandbox(({ projectA }) => {
     assert.throws(() => recordPreference({ projectDir: projectA, key: "vibe", value: "x" }));

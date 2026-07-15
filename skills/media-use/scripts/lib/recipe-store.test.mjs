@@ -229,6 +229,78 @@ test("freeze without a BRIEF.md degrades: no skeleton, use returns no path", () 
   });
 });
 
+test("freeze takes the workflow from BRIEF.md over a contradicting flag", () => {
+  withSandbox(({ project }) => {
+    writeFileSync(
+      join(project, "BRIEF.md"),
+      BRIEF.replace("workflow: product-launch-video", "workflow: general-video"),
+    );
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "faceless-explainer",
+    });
+    assert.equal(frozen.workflow, "general-video");
+    assert.equal(frozen.workflowOverridden, true);
+    const recipe = JSON.parse(
+      readFileSync(join(project, ".media/recipes/promo/recipe.json"), "utf8"),
+    );
+    assert.equal(recipe.workflow, "general-video");
+  });
+});
+
+test("freeze without BRIEF.md falls back to --workflow; with neither it refuses", () => {
+  withSandbox(({ project }) => {
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "product-launch-video",
+    });
+    assert.equal(frozen.workflow, "product-launch-video");
+    assert.equal(frozen.workflowOverridden, false);
+    assert.throws(() => freezeRecipe({ projectDir: project, name: "other" }), /no workflow found/);
+  });
+});
+
+test("freeze finds a legacy bare style_preset record; the scoped key wins over it", () => {
+  withSandbox(({ project }) => {
+    writeFileSync(join(project, "BRIEF.md"), BRIEF);
+    // A record made before the store required workflow scoping.
+    mkdirSync(join(project, ".media"), { recursive: true });
+    writeFileSync(
+      join(project, ".media/preferences.json"),
+      JSON.stringify({
+        version: 1,
+        preferences: {
+          style_preset: {
+            value: "source-paper-flowchart",
+            confirmed_in: ["my-launch"],
+            updated_at: "2026-07-15T00:00:00.000Z",
+          },
+        },
+        sightings: {},
+      }),
+    );
+    freezeRecipe({ projectDir: project, name: "promo" });
+    const legacy = JSON.parse(
+      readFileSync(join(project, ".media/recipes/promo/recipe.json"), "utf8"),
+    );
+    assert.equal(legacy.style_preset, "source-paper-flowchart");
+
+    recordPreference({
+      projectDir: project,
+      key: "style_preset",
+      value: "pin-and-paper",
+      workflow: "product-launch-video",
+    });
+    freezeRecipe({ projectDir: project, name: "promo" });
+    const scoped = JSON.parse(
+      readFileSync(join(project, ".media/recipes/promo/recipe.json"), "utf8"),
+    );
+    assert.equal(scoped.style_preset, "pin-and-paper");
+  });
+});
+
 test("re-freezing bumps the version and archives the old folder", () => {
   withSandbox(({ project }) => {
     freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });

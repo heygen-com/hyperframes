@@ -16,7 +16,7 @@ YAML block at the top: one key per deterministic field — the run's shape first
 | `message`                                                                 | the ONE thing the video must communicate                                                                                   | `"Ship it in an afternoon"` |
 | `destination` / `aspect` / `language` / `audience` / `length` / `angle` … | the registry fields this route confirmed                                                                                   | —                           |
 
-**Which keys are memory.** Only the preference-backed subset — `destination`, `aspect`, `language`, `flow`, `storyboard`, `voice`, `style_preset` — is recorded with `media-use` → `scripts/prefs.mjs record` (the store rejects any other key). `message`, `audience`, `length`, `angle` live in the frontmatter only: they describe this video, not the user.
+**Which keys are memory.** Only the preference-backed subset — `destination`, `aspect`, `language`, `flow`, `storyboard`, `voice`, `style_preset` — is recorded with `media-use` → `scripts/prefs.mjs record` (the store rejects any other key). `style_preset` is stored per workflow: record it with `--workflow <w>` (the store refuses it bare — a look confirmed for one genre is not a default for the others). `message`, `audience`, `length`, `angle` live in the frontmatter only: they describe this video, not the user.
 
 ## Body — the intent in prose
 

@@ -2,12 +2,14 @@
 /**
  * Recipes CLI — the heavyweight tier of HyperFrames user memory.
  *
- *   node recipe.mjs freeze --hyperframes . --name <n> --workflow <w> [--blocks a,b,c]
+ *   node recipe.mjs freeze --hyperframes . --name <n> [--workflow <w>] [--blocks a,b,c]
  *     Freeze the current approved run as a named recipe: frame.md + the
  *     storyboard skeleton (structure kept, content blanked) + the brief
  *     skeleton (when BRIEF.md exists) + the confirmed brief values.
- *     Re-freezing the same name bumps the version and archives the old
- *     folder as <name>@v<N>. Promotes to ~/.media/recipes/ immediately.
+ *     The workflow is read from BRIEF.md; --workflow only covers projects
+ *     briefed before BRIEF.md existed. Re-freezing the same name bumps the
+ *     version and archives the old folder as <name>@v<N>. Promotes to
+ *     ~/.media/recipes/ immediately.
  *
  *   node recipe.mjs list --hyperframes . [--workflow <w>] [--json]
  *     Two-tier merged listing (project wins), newest approval first.
@@ -57,7 +59,11 @@ try {
     });
     if (args.json) console.log(JSON.stringify({ ok: true, ...frozen }));
     else {
-      console.log(`froze recipe ${frozen.slug} (v${frozen.version}) → ${frozen.dir}`);
+      console.log(
+        `froze recipe ${frozen.slug} (v${frozen.version}, ${frozen.workflow}) → ${frozen.dir}`,
+      );
+      if (frozen.workflowOverridden)
+        console.log(`  (BRIEF.md says "${frozen.workflow}" — the --workflow flag was ignored)`);
       if (!frozen.briefSkeleton)
         console.log("  (no BRIEF.md in the project — brief skeleton skipped)");
     }

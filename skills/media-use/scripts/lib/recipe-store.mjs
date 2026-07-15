@@ -167,6 +167,20 @@ export function skeletonizeStoryboard(source) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
+/** The run's workflow as BRIEF.md records it — the source of truth a freeze
+ * must not contradict. Undefined when no BRIEF.md (or no `workflow:`) exists. */
+function briefWorkflow(root) {
+  const brief = join(root, "BRIEF.md");
+  if (!existsSync(brief)) return undefined;
+  const lines = readFileSync(brief, "utf8").split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return undefined;
+  for (let i = 1; i < lines.length && lines[i].trim() !== "---"; i++) {
+    const match = lines[i].match(/^workflow\s*:\s*(.+?)\s*$/);
+    if (match) return match[1].replace(/^["']|["']$/g, "") || undefined;
+  }
+  return undefined;
+}
+
 function readRecipeJson(dir) {
   try {
     const parsed = JSON.parse(readFileSync(join(dir, "recipe.json"), "utf8"));
@@ -189,9 +203,15 @@ function prefValue(prefs, key) {
  * freeze is already confirmed — it promotes immediately).
  */
 export function freezeRecipe({ projectDir, name, workflow, blocks }) {
-  if (!workflow || !String(workflow).trim()) throw new Error("freeze needs --workflow");
   const slug = slugifyRecipeName(name);
   const root = resolve(projectDir);
+  const fromBrief = briefWorkflow(root);
+  const fromFlag = workflow && String(workflow).trim() ? String(workflow).trim() : undefined;
+  // BRIEF.md decides; the flag only covers projects briefed before it existed.
+  const resolvedWorkflow = fromBrief ?? fromFlag;
+  if (!resolvedWorkflow) {
+    throw new Error("no workflow found — BRIEF.md names none and no --workflow was given");
+  }
   const frameSpec = join(root, "frame.md");
   const storyboard = join(root, "STORYBOARD.md");
   if (!existsSync(frameSpec)) throw new Error("no frame.md to freeze — run the design step first");
@@ -212,14 +232,17 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   const recipe = {
     version,
     name: slug,
-    workflow: String(workflow).trim(),
+    workflow: resolvedWorkflow,
     approved_at: new Date().toISOString(),
     source_project: basename(root),
     destination: prefValue(prefs, "destination"),
     aspect: prefValue(prefs, "aspect"),
     language: prefValue(prefs, "language"),
     voice: prefValue(prefs, "voice"),
-    style_preset: prefValue(prefs, `style_preset.${String(workflow).trim()}`),
+    // The bare-key fallback tolerates records made before the store required
+    // style_preset to be workflow-scoped.
+    style_preset:
+      prefValue(prefs, `style_preset.${resolvedWorkflow}`) ?? prefValue(prefs, "style_preset"),
     blocks: Array.isArray(blocks) && blocks.length > 0 ? blocks : undefined,
   };
 
@@ -261,7 +284,15 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     // The project-tier freeze already landed.
   }
 
-  return { id, slug, version, dir, briefSkeleton };
+  return {
+    id,
+    slug,
+    version,
+    dir,
+    briefSkeleton,
+    workflow: resolvedWorkflow,
+    workflowOverridden: Boolean(fromBrief && fromFlag && fromBrief !== fromFlag),
+  };
 }
 
 function scanRecipesDir(dir, source) {
