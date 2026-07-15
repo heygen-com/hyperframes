@@ -61,9 +61,12 @@ function orbitStageSource(): string {
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
 /** Keep an exact clip-end snapshot aligned with the renderer's inclusive media
- * window. FFmpeg cannot decode a frame at a source's exclusive duration, so
- * sample one nominal 30fps frame inside the source while retaining the
- * requested snapshot timestamp and filename. */
+ * window. This intentionally differs from the live player's exclusive-end
+ * visibility so an explicit end-boundary review does not become blank. FFmpeg
+ * cannot decode at a source's exclusive duration, so sample one nominal 30fps
+ * frame inside the source. This also clamps clips whose configured media window
+ * extends beyond the source. An infinite clip duration intentionally never
+ * enters the end-boundary branch. */
 export function resolveSnapshotVideoFrameTime(input: {
   globalTime: number;
   clipStart: number;
@@ -73,9 +76,11 @@ export function resolveSnapshotVideoFrameTime(input: {
 }): number | null {
   const { globalTime, clipStart, clipDuration, relativeTime, sourceDuration } = input;
   const clipEnd = clipStart + clipDuration;
-  if (globalTime < clipStart || globalTime > clipEnd || relativeTime < 0) return null;
+  const clipEndTolerance = 1e-9;
+  if (globalTime < clipStart || globalTime > clipEnd + clipEndTolerance || relativeTime < 0)
+    return null;
 
-  const atClipEnd = Math.abs(globalTime - clipEnd) <= 1e-9;
+  const atClipEnd = Math.abs(globalTime - clipEnd) <= clipEndTolerance;
   if (!atClipEnd) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;

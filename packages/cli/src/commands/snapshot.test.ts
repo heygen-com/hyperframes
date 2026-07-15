@@ -73,6 +73,68 @@ describe("resolveSnapshotVideoFrameTime", () => {
       }),
     ).toBeNull();
   });
+
+  it.each([
+    {
+      name: "before clip start",
+      input: {
+        globalTime: 4.9,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 0,
+        sourceDuration: 10,
+      },
+      expected: null,
+    },
+    {
+      name: "negative relative time",
+      input: {
+        globalTime: 5,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: -0.1,
+        sourceDuration: 10,
+      },
+      expected: null,
+    },
+    {
+      name: "unknown source duration",
+      input: {
+        globalTime: 15,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 0,
+      },
+      expected: 10 - 1 / 30,
+    },
+    {
+      name: "offset clip inclusive end",
+      input: {
+        globalTime: 15,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 10,
+      },
+      expected: 10 - 1 / 30,
+    },
+    {
+      name: "clip end within floating-point tolerance",
+      input: {
+        globalTime: 15 + 5e-10,
+        clipStart: 5,
+        clipDuration: 10,
+        relativeTime: 10,
+        sourceDuration: 10,
+      },
+      expected: 10 - 1 / 30,
+    },
+  ])("handles $name", ({ input, expected }) => {
+    const result = resolveSnapshotVideoFrameTime(input);
+    if (expected === null) expect(result).toBeNull();
+    else expect(result).toBeCloseTo(expected, 6);
+  });
 });
 
 describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {
