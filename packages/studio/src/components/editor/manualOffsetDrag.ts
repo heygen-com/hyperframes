@@ -556,11 +556,23 @@ export function resumeGsapTimelines(element: HTMLElement): void {
   if (!ids) return;
   const win = element.ownerDocument.defaultView as
     | (Window & {
-        __timelines?: Record<string, { pause?: () => void }>;
+        __timelines?: Record<string, { paused?: (value?: boolean) => boolean }>;
         __player?: { seek?: (t: number) => void; getTime?: () => number };
       })
     | null;
   if (!win) return;
+  // Unpause exactly the timelines the drag start paused. The player seek below
+  // repositions them, but a seek alone leaves play-state-driven sub-composition
+  // timelines paused forever — the "selecting a piece kills its animation" bug:
+  // main survives (seek-driven every frame) while every scene timeline freezes,
+  // and deselecting can't recover because nothing else ever resumes them.
+  for (const id of ids.split(",")) {
+    try {
+      win.__timelines?.[id]?.paused?.(false);
+    } catch {
+      /* cross-origin guard */
+    }
+  }
   const t = win.__player?.getTime?.() ?? 0;
   win.__player?.seek?.(t);
 }
