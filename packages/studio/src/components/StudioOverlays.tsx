@@ -66,7 +66,8 @@ export function StudioOverlays({
       )}
       {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
         <AskAgentModal
-          selectionLabel={domEditSession.domEditSelection.label}
+          title="Copy prompt to AI agent"
+          subtitle={domEditSession.domEditSelection.label}
           contextPreview={buildAgentContextPreview(domEditSession.domEditSelection, activeCompPath)}
           anchorPoint={domEditSession.agentModalAnchorPoint}
           onSubmit={domEditSession.handleAgentModalSubmit}
