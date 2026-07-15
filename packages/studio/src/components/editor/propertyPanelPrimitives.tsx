@@ -17,11 +17,14 @@ function CommitField({
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusedRef = useRef(false);
+  const dirtyRef = useRef(false);
 
   valueRef.current = value;
   draftRef.current = draft;
 
   useEffect(() => {
+    if (focusedRef.current && dirtyRef.current) return;
     setDraft(value);
   }, [value]);
 
@@ -36,6 +39,7 @@ function CommitField({
       if (!nextDraft) return;
       e.preventDefault();
       e.stopPropagation();
+      dirtyRef.current = true;
       setDraft(nextDraft);
       scheduleCommitRef.current(nextDraft);
     };
@@ -70,11 +74,21 @@ function CommitField({
       type="text"
       value={draft}
       disabled={disabled}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
       onChange={(e) => {
+        dirtyRef.current = true;
         setDraft(e.target.value);
         if (liveCommit) scheduleCommit(e.target.value);
       }}
-      onBlur={() => commitDraft(draft)}
+      onBlur={() => {
+        const wasDirty = dirtyRef.current;
+        focusedRef.current = false;
+        dirtyRef.current = false;
+        if (wasDirty) commitDraft(draft);
+        else setDraft(valueRef.current);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           (e.target as HTMLInputElement).blur();
@@ -84,6 +98,7 @@ function CommitField({
         const nextDraft = adjustNumericToken(draft, e.key === "ArrowUp" ? 1 : -1, e);
         if (!nextDraft) return;
         e.preventDefault();
+        dirtyRef.current = true;
         setDraft(nextDraft);
         scheduleCommit(nextDraft);
       }}

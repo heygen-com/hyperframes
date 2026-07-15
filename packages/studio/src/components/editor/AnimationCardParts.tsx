@@ -118,6 +118,7 @@ export function PropertyRow({
               {PROP_LABELS[prop] ?? prop}
             </span>
             <input
+              key={String(val)}
               type="text"
               defaultValue={String(val)}
               className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-none"

@@ -331,6 +331,7 @@ export function ColorField({
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexCommit(event.target.value)}
+                onBlur={() => setHexDraft(toHexColor(draftColor).toUpperCase())}
                 className={`${FIELD} h-10 w-full text-[11px] font-medium outline-none`}
                 spellCheck={false}
               />
