@@ -334,6 +334,23 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs.length).toBeGreaterThan(0);
   });
 
+  it("launches a probe when script-inserted markup contains timed audio", async () => {
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<script>
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<audio id="music" src="music.mp3" data-start="0" data-duration="5"></audio>',
+      );
+    </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+  });
+
   it("launches a probe for a static-duration composition with variable-bound audio", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");

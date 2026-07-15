@@ -167,7 +167,8 @@ export function hasVariableBoundMedia(
 /**
  * Runtime-created media does not exist when the static compiler scans the HTML.
  * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
- * extraction, even when the root duration is already known.
+ * extraction, even when the root duration is already known. External script
+ * sources have no inline text to inspect and remain a known heuristic gap.
  */
 function hasRuntimeInsertedMedia(html: string): boolean {
   const { document } = parseHTML(html);
@@ -176,7 +177,7 @@ function hasRuntimeInsertedMedia(html: string): boolean {
     .join("\n");
   return (
     /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(scriptBodies) ||
-    /\bnew\s+Audio\s*\(/.test(scriptBodies) ||
+    /\bnew\s+(?:Audio|Video)\s*\(/i.test(scriptBodies) ||
     /<(?:video|audio)\b[^>]*>/i.test(scriptBodies)
   );
 }
