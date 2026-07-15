@@ -135,7 +135,9 @@ The audio script handles narration, word timings, BGM lookup from HeyGen's music
 
 If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may still run if the storyboard has a music mood.
 
-**Gate:** audio job has started, or the project is marked silent.
+**The canonical fully-silent marker** (shared across the workflows that reuse this audio model): `music: none` in the STORYBOARD.md top YAML block **and** no `SCRIPT.md`. That combination marks the project silent — no narration, no BGM, no SFX. `audio.mjs` recognizes it and generates nothing (it removes any stale `audio_meta.json`; an absent `audio_meta.json` is what assemble treats as silent), so this step is a clean skip. `music: none` with narration keeps TTS and turns only BGM off. Use exactly this spelling — don't improvise other markers.
+
+**Gate:** audio job has started, or the project is marked silent (`music: none` + no `SCRIPT.md`).
 
 ---
 
