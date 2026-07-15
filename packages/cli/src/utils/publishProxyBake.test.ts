@@ -21,17 +21,19 @@ const mocks = vi.hoisted(() => {
   }
   return {
     resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
-    scanProjectMediaCodecMap:
-      vi.fn<
-        (
-          ...args: unknown[]
-        ) => Promise<
-          Record<
-            string,
-            { codecName: string; browserHostile: boolean; representativeMime: string | null }
-          >
+    scanProjectMediaCodecMap: vi.fn<
+      (...args: unknown[]) => Promise<
+        Record<
+          string,
+          {
+            codecName: string;
+            browserHostile: boolean;
+            representativeMime: string | null;
+            hasAlpha?: boolean;
+          }
         >
-      >(),
+      >
+    >(),
     ProxyTranscodeError: FakeProxyTranscodeError,
   };
 });
@@ -149,6 +151,65 @@ describe("bakeMediaProxies", () => {
     expect(fileContents.get("clip.mp4")?.toString("utf-8")).toBe("ORIGINAL_HEVC_BYTES");
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain("clip.mp4");
+
+    warnSpy.mockRestore();
+  });
+
+  it("bakes and rewrites a percent-encoded src through the same resolution path the scan uses", async () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/assets/my clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: "video/mp4",
+      },
+    });
+    const proxyPath = tmpProxyFile("PROXY_H264_BYTES");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+
+    const fileContents = new Map<string, Buffer>([
+      ["index.html", indexHtml(`<video src="assets/my%20clip.mp4" muted></video>`)],
+      ["assets/my clip.mp4", Buffer.from("ORIGINAL_HEVC_BYTES", "utf-8")],
+    ]);
+
+    await bakeMediaProxies(PROJECT_DIR, fileContents);
+
+    // Baked: the proxy entry landed under _proxy/.
+    const proxyEntries = [...fileContents.keys()].filter((k) =>
+      k.startsWith(`${PROXY_ARCHIVE_PREFIX}/`),
+    );
+    expect(proxyEntries).toHaveLength(1);
+
+    // Rewritten: the percent-encoded src now points at the proxy.
+    const html = fileContents.get("index.html")!.toString("utf-8");
+    expect(html).toContain(proxyEntries[0]!);
+    expect(html).not.toContain("assets/my%20clip.mp4");
+  });
+
+  it("skips an alpha-bearing hostile asset (transparency preservation) with a warning; HTML stays on the original", async () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mov": {
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: true,
+      },
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const fileContents = new Map<string, Buffer>([
+      ["index.html", indexHtml(`<video src="clip.mov" muted></video>`)],
+      ["clip.mov", Buffer.from("ORIGINAL_PRORES_4444_BYTES", "utf-8")],
+    ]);
+
+    await bakeMediaProxies(PROJECT_DIR, fileContents);
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    expect([...fileContents.keys()].some((k) => k.startsWith(`${PROXY_ARCHIVE_PREFIX}/`))).toBe(
+      false,
+    );
+    expect(fileContents.get("index.html")?.toString("utf-8")).toContain('src="clip.mov"');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain("alpha");
 
     warnSpy.mockRestore();
   });

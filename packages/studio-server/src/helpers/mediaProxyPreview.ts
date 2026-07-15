@@ -1,8 +1,10 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
   scanProjectMediaCodecMap,
+  type HtmlSourceLike,
+  type MediaCodecMap,
   type MediaCodecProbeCache,
 } from "./mediaCodecMap.js";
 import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
@@ -70,8 +72,51 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
  * responses). No second concurrency limiter here — the transcoder's own
  * global bound throttles both pre-warm and element-triggered calls.
  * Pre-warm failures are swallowed; an actual `?hf-proxy=` request surfaces
- * them as a 502. Skipped entirely (no scan, no injection) when auto-proxy is
- * off for this adapter.
+ * them as a 502. Alpha-bearing entries are never pre-warmed: the runtime
+ * never proxies them (transparency would be destroyed).
+ *
+ * The single shared implementation for every auto-proxy surface — the studio
+ * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
+ * static project servers (via the `./media-proxy-preview` subpath export).
+ * The map is injected even when empty: the runtime treats map PRESENCE as
+ * "this surface serves `?hf-proxy=`", gating its reactive/tertiary swaps.
+ */
+export async function injectMediaCodecMapIntoHtml(
+  html: string,
+  projectDir: string,
+  htmlSources: HtmlSourceLike[],
+  probeCache?: MediaCodecProbeCache,
+): Promise<string> {
+  let map: MediaCodecMap;
+  try {
+    map = await scanProjectMediaCodecMap(
+      projectDir,
+      htmlSources,
+      probeCache ? { cache: probeCache } : {},
+    );
+  } catch {
+    // Best-effort: a scan failure must never block serving the page.
+    return html;
+  }
+  for (const [rootRelativePathname, facts] of Object.entries(map)) {
+    if (!facts.browserHostile || facts.hasAlpha) continue;
+    resolveProxy(projectDir, resolve(projectDir, rootRelativePathname.replace(/^\/+/, ""))).catch(
+      () => {
+        // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
+        // for this asset re-attempts the transcode and reports failure (502).
+      },
+    );
+  }
+  // <-escape prevents a src path containing "</script>" from breaking out of
+  // the injected tag, mirroring injectPreviewVariables in routes/preview.ts.
+  const json = JSON.stringify(map).replace(/</g, "\\u003c");
+  const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
+  return injectScriptTagIntoHead(html, tag);
+}
+
+/**
+ * Adapter-aware wrapper used by the studio preview routes: skipped entirely
+ * (no scan, no injection) when auto-proxy is off for this adapter.
  */
 export async function injectMediaCodecMap(
   html: string,
@@ -81,17 +126,5 @@ export async function injectMediaCodecMap(
   probeCache: MediaCodecProbeCache,
 ): Promise<string> {
   if (!isAutoProxyEnabled(adapter)) return html;
-  const map = await scanProjectMediaCodecMap(projectDir, [{ html, compSrcPath }], {
-    cache: probeCache,
-  });
-  for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!facts.browserHostile) continue;
-    resolveProxy(projectDir, join(projectDir, rootRelativePathname)).catch(() => {
-      // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-      // for this asset re-attempts the transcode and reports failure (502).
-    });
-  }
-  const json = JSON.stringify(map).replace(/</g, "\\u003c");
-  const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return injectScriptTagIntoHead(html, tag);
+  return injectMediaCodecMapIntoHtml(html, projectDir, [{ html, compSrcPath }], probeCache);
 }

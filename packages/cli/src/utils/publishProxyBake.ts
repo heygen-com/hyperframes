@@ -28,7 +28,12 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { parseHTML } from "linkedom";
-import { cleanAssetUrl, isRemoteOrInlineUrl } from "@hyperframes/parsers/asset-resolution";
+import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import {
+  cleanAssetUrl,
+  isRemoteOrInlineUrl,
+  resolveLocalAssetCandidates,
+} from "@hyperframes/parsers/asset-resolution";
 import {
   scanProjectMediaCodecMap,
   type HtmlSourceLike,
@@ -64,9 +69,20 @@ export async function bakeMediaProxies(
   }));
 
   const codecMap = await scanProjectMediaCodecMap(absProjectDir, htmlSources);
-  const hostilePathnames = Object.entries(codecMap)
-    .filter(([, facts]) => facts.browserHostile)
-    .map(([pathname]) => pathname);
+  const hostileEntries = Object.entries(codecMap).filter(([, facts]) => facts.browserHostile);
+  const hostilePathnames: string[] = [];
+  for (const [pathname, facts] of hostileEntries) {
+    if (facts.hasAlpha) {
+      // Alpha sources are never proxied: an H.264 proxy would destroy the
+      // transparency (e.g. ProRes 4444 alpha). Keep the original in place.
+      console.warn(
+        `hyperframes publish: skipping proxy for "${pathname}" (source has an alpha channel; ` +
+          "H.264 proxying would destroy the transparency, keeping the original)",
+      );
+      continue;
+    }
+    hostilePathnames.push(pathname);
+  }
   if (hostilePathnames.length === 0) return;
 
   // Absolute source path -> archive path of its baked proxy. Built by
@@ -100,11 +116,19 @@ export async function bakeMediaProxies(
       document,
       referrerAbsDir,
       entryPath,
-      (rawValue, referrerDir) => {
+      (rawValue) => {
         const cleaned = cleanAssetUrl(rawValue);
         if (!cleaned || isRemoteOrInlineUrl(cleaned)) return null;
-        const absolutePath = resolve(referrerDir, cleaned);
-        return proxyByAbsolutePath.get(absolutePath) ?? null;
+        // Resolve the raw attribute value the same way the scan did
+        // (rewriteAssetPath to root-relative, then decodeUrlPathVariants via
+        // resolveLocalAssetCandidates) so percent-encoded and root-absolute
+        // srcs match the map keys the scan produced.
+        const rootRelativeSrc = rewriteAssetPath(entryPath, cleaned);
+        for (const candidate of resolveLocalAssetCandidates(absProjectDir, rootRelativeSrc)) {
+          const archivePath = proxyByAbsolutePath.get(candidate);
+          if (archivePath) return archivePath;
+        }
+        return null;
       },
       { selector: "video[src]", attrs: ["src"] },
     );

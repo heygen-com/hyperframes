@@ -126,7 +126,7 @@ export function registerMediaRoutes(
     if (!filePath) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(filePath)) return c.json({ error: "media not found" }, 404);
 
-    return c.json({ path: assetPath, metadata: readMediaMetadata(filePath) });
+    return c.json({ path: assetPath, metadata: await readMediaMetadata(filePath) });
   });
 
   api.post(

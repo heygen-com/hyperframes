@@ -50,8 +50,21 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   ProxyTranscodeError: mocks.ProxyTranscodeError,
 }));
 
-vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
-  scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
+// The shared injection helper ships as a self-contained dist bundle (its copy
+// of scanProjectMediaCodecMap is inlined), so it must be mocked wholesale —
+// mocking the media-codec-map subpath can't reach inside it. The fake mirrors
+// the real contract (scan → inject tag) via this file's scan mock so the
+// existing injection assertions stay meaningful.
+vi.mock("@hyperframes/studio-server/media-proxy-preview", () => ({
+  injectMediaCodecMapIntoHtml: vi.fn(
+    async (html: string, projectDir: string, htmlSources: unknown[]) => {
+      const map = await mocks.scanProjectMediaCodecMap(projectDir, htmlSources);
+      const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${JSON.stringify(map)};</script>`;
+      return html.includes("</head>")
+        ? html.replace("</head>", `${tag}\n</head>`)
+        : `${tag}\n${html}`;
+    },
+  ),
 }));
 
 const { registerCompositionRoute } = await import("./play.js");
@@ -105,6 +118,21 @@ describe("registerCompositionRoute", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
     expect(mocks.resolveProxy).toHaveBeenCalledWith(project.dir, join(project.dir, "clip.mp4"));
+  });
+
+  it("serves ?hf-proxy=h264 for a .mov hostile asset as Content-Type video/mp4 (the proxy IS mp4)", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "clip.mov"), "original-prores-bytes");
+    const proxyPath = join(project.dir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    const app = await buildApp(project, true);
+
+    const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("video/mp4");
+    expect(await res.text()).toBe("transcoded-h264-bytes");
   });
 
   it("answers 502 (not a silent failure) when the proxy transcode fails", async () => {

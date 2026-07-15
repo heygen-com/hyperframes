@@ -19,8 +19,6 @@ import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { resolveAutoProxy } from "./projectConfig.js";
-// Cross-package relative import — see the note in compositionServer.ts: no
-// `@hyperframes/studio-server` subpath export exists yet for these helpers.
 import { scanProjectMediaCodecMap } from "@hyperframes/studio-server/media-codec-map";
 import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
@@ -224,12 +222,14 @@ export async function captureFindingCrops(
   }
 }
 
-// `swapToProxy` (packages/core/src/runtime/mediaProxy.ts) embeds its stable
-// diagnostic code in the console.info line precisely so this scraper can match
-// a token instead of prose. Only that runtime-emitted info line should ever
-// become a finding here: an ordinary `console.info` from a composition
-// author's own script must not.
-const MEDIA_PROXY_FALLBACK_MARKER = "runtime_media_proxy_fallback";
+// `swapToProxy` / `emitUnavailableDiagnostic` (packages/core/src/runtime/
+// mediaProxy.ts) embed their stable diagnostic codes in the console.info line
+// precisely so this scraper can match a token instead of prose. Matching the
+// shared "runtime_media_proxy_" prefix surfaces both codes; only those
+// runtime-emitted info lines should ever become findings here — an ordinary
+// `console.info` from a composition author's own script must not.
+const MEDIA_PROXY_MARKER_PREFIX = "runtime_media_proxy_";
+const MEDIA_PROXY_UNAVAILABLE_MARKER = "runtime_media_proxy_unavailable";
 
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
@@ -255,10 +255,12 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
         url: location.url,
         line: location.lineNumber,
       });
-    } else if (type === "info" && text.includes(MEDIA_PROXY_FALLBACK_MARKER)) {
+    } else if (type === "info" && text.includes(MEDIA_PROXY_MARKER_PREFIX)) {
       const location = message.location();
       drafts.push({
-        code: "media_proxy_fallback",
+        code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
+          ? "media_proxy_unavailable"
+          : "media_proxy_fallback",
         severity: "info",
         message: text,
         time: currentTime(),

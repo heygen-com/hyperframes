@@ -37,8 +37,6 @@ import {
   buildRangeResponse,
   assetContentType,
 } from "../utils/compositionServer.js";
-// See the cross-package-import note in compositionServer.ts: no subpath
-// export exists yet for these two studio-server helpers.
 import { resolveProxy, ProxyTranscodeError } from "@hyperframes/studio-server/proxy-transcoder";
 
 export default defineCommand({
@@ -228,7 +226,9 @@ export async function registerCompositionRoute(
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
       try {
         const proxyPath = await resolveProxy(project.dir, filePath);
-        return buildRangeResponse(proxyPath, contentType, ctx.req.header("Range"));
+        // The proxy IS an mp4 regardless of the source's extension (.mov,
+        // .mkv, ...) — serve its real type, matching the preview route.
+        return buildRangeResponse(proxyPath, "video/mp4", ctx.req.header("Range"));
       } catch (err) {
         if (err instanceof ProxyTranscodeError) {
           return ctx.text(`Proxy transcode failed: ${err.message}`, 502);

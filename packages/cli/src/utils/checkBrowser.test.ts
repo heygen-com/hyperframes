@@ -369,6 +369,40 @@ it("surfaces the runtime's media-proxy-fallback console.info line as an info fin
   );
 });
 
+it("surfaces the runtime's media-proxy-unavailable console.info line as its own info finding", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const unavailableMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_unavailable: "https://cdn.example.com/video.mp4" (cross_origin): ' +
+      "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
+  );
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(unavailableMessage);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_unavailable",
+      severity: "info",
+      message: unavailableMessage.text(),
+    }),
+  );
+});
+
 describe("preResolveHostileMediaProxies", () => {
   const dirs: string[] = [];
   const mkProjectDir = (): string => {

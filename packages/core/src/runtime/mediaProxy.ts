@@ -15,6 +15,10 @@ export type MediaCodecMapEntry = {
   codecName: string;
   browserHostile: boolean;
   representativeMime: string | null;
+  /** Source carries an alpha channel — never proxy it (H.264 would destroy
+   * the transparency, e.g. ProRes 4444 alpha). Optional so pre-alpha-aware
+   * maps stay assignable; absent means "no alpha detected". */
+  hasAlpha?: boolean;
 };
 
 declare global {
@@ -128,21 +132,35 @@ function appendProxyParam(src: string): string {
   return url.href;
 }
 
+type UnavailableReason =
+  | "cross_origin"
+  | "proxy_playback_failed"
+  | "browser_safe_codec"
+  | "alpha_source";
+
+const UNAVAILABLE_NOTES: Record<UnavailableReason, string> = {
+  cross_origin:
+    "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
+  proxy_playback_failed: "the H.264 proxy itself failed to decode; render output is unaffected",
+  browser_safe_codec:
+    "the file errored but its codec is browser-decodable; an H.264 proxy cannot help (the file itself is likely corrupt)",
+  alpha_source:
+    "the source carries an alpha channel; an H.264 proxy would destroy the transparency, so it is never proxied",
+};
+
 function emitUnavailableDiagnostic(
   el: HTMLMediaElement,
-  reason: "cross_origin" | "proxy_playback_failed",
+  reason: UnavailableReason,
   asset: string,
 ): void {
   if (unavailableDiagnosedElements.has(el)) return;
   unavailableDiagnosedElements.add(el);
+  const note = UNAVAILABLE_NOTES[reason];
   const details: Record<string, RuntimeJson> = {
     asset,
     codecName: null,
     reason,
-    note:
-      reason === "cross_origin"
-        ? "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it"
-        : "the H.264 proxy itself failed to decode; render output is unaffected",
+    note,
   };
   postRuntimeMessage({
     source: "hf-preview",
@@ -150,6 +168,9 @@ function emitUnavailableDiagnostic(
     code: DIAGNOSTIC_UNAVAILABLE_CODE,
     details,
   });
+  // Mirrors swapToProxy's fallback line: the stable diagnostic code is in the
+  // text so checkBrowser.ts's console scraper can match a token, not prose.
+  console.info(`[hyperframes] ${DIAGNOSTIC_UNAVAILABLE_CODE}: "${asset}" (${reason}): ${note}`);
 }
 
 /**
@@ -218,6 +239,12 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (key === null) return;
   const entry = lookupCodecMapEntry(key, map);
   if (!entry || !entry.browserHostile) return;
+  if (entry.hasAlpha) {
+    // Alpha sources are never proxied (transparency would be destroyed);
+    // say so instead of silently leaving a possibly-undecodable element.
+    emitUnavailableDiagnostic(el, "alpha_source", currentSrcValue(el));
+    return;
+  }
   const canPlay = entry.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   if (canPlay === "probably" || canPlay === "maybe") return;
   swapToProxy(el, entry, "proactive");
@@ -230,6 +257,12 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
  * no error event because the AAC track satisfies the demuxer. Swaps once
  * per element; if the element is already on its proxy src, the proxy
  * itself is the one failing, so this only emits the failure diagnostic.
+ *
+ * No map, no swaps: the codec map global is only injected on surfaces where
+ * auto-proxying is enabled and served, so its absence means a `?hf-proxy=`
+ * request would 404 — never swap there. When the map is present but has no
+ * entry for this key, swapping stays allowed (unlisted-asset rescue). A
+ * mapped entry with alpha is never proxied.
  */
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
@@ -240,13 +273,18 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
     return;
   }
+  const map = window.__HF_MEDIA_CODEC_MAP__;
+  if (!map) return;
   const key = deriveCodecMapKey(el);
   if (key === null) {
     emitUnavailableDiagnostic(el, "cross_origin", src);
     return;
   }
-  const map = window.__HF_MEDIA_CODEC_MAP__;
-  const entry = map ? lookupCodecMapEntry(key, map) : null;
+  const entry = lookupCodecMapEntry(key, map);
+  if (entry?.hasAlpha) {
+    emitUnavailableDiagnostic(el, "alpha_source", src);
+    return;
+  }
   swapToProxy(el, entry, "reactive");
 }
 
@@ -254,7 +292,9 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
  * Tertiary trigger: the `error` event, for the rarer zero-decodable-stream
  * file (video-only hostile codec) where the demuxer has nothing to satisfy
  * it and `loadedmetadata` never fires. Same guards and once-per-element
- * behavior as the reactive path.
+ * behavior as the reactive path, plus one extra skip: an entry the scan
+ * mapped as browser-SAFE that still errors is a corrupt-but-safe file — an
+ * H.264 proxy of a broken source can't help, so only diagnose.
  */
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
@@ -264,12 +304,21 @@ export function handleErrorForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
     return;
   }
+  const map = window.__HF_MEDIA_CODEC_MAP__;
+  if (!map) return;
   const key = deriveCodecMapKey(el);
   if (key === null) {
     emitUnavailableDiagnostic(el, "cross_origin", src);
     return;
   }
-  const map = window.__HF_MEDIA_CODEC_MAP__;
-  const entry = map ? lookupCodecMapEntry(key, map) : null;
+  const entry = lookupCodecMapEntry(key, map);
+  if (entry && !entry.browserHostile) {
+    emitUnavailableDiagnostic(el, "browser_safe_codec", src);
+    return;
+  }
+  if (entry?.hasAlpha) {
+    emitUnavailableDiagnostic(el, "alpha_source", src);
+    return;
+  }
   swapToProxy(el, entry, "tertiary");
 }

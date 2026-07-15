@@ -4,11 +4,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  scanProjectMediaCodecMap,
-  type HtmlSourceLike,
-} from "@hyperframes/studio-server/media-codec-map";
-import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+
+/**
+ * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
+ * by `play`, `present`, and the static project server. Re-exported from the
+ * single shared implementation in
+ * `packages/studio-server/src/helpers/mediaProxyPreview.ts` (also used by the
+ * studio preview route) so injection behavior cannot drift between surfaces.
+ */
+export { injectMediaCodecMapIntoHtml as injectMediaCodecMap } from "@hyperframes/studio-server/media-proxy-preview";
 
 /** Minimal surface of a listening server (satisfied by @hono/node-server's ServerType). */
 interface PortBindable {
@@ -74,6 +78,9 @@ const ASSET_CONTENT_TYPES: Record<string, string> = {
   jpeg: "image/jpeg",
   svg: "image/svg+xml",
   mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
   webm: "video/webm",
   mp3: "audio/mpeg",
   wav: "audio/wav",
@@ -84,47 +91,6 @@ export function assetContentType(filePath: string): string {
   // Own-property check so an ext like "__proto__" can't resolve to Object.prototype.
   const type = Object.hasOwn(ASSET_CONTENT_TYPES, ext) ? ASSET_CONTENT_TYPES[ext] : undefined;
   return type ?? "application/octet-stream";
-}
-
-/**
- * Injects `window.__HF_MEDIA_CODEC_MAP__` (server-probed codec facts for local
- * `<video src>` references, per
- * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md) into
- * composition HTML, alongside the runtime script tag. Also fire-and-forget
- * pre-warms the H.264 proxy for every browser-hostile entry so an element's
- * first `?hf-proxy=h264` request usually hits a warm `.transcode-cache`
- * instead of holding the response open for a cold transcode (the KTD's
- * per-origin-connection-budget mitigation). Best-effort throughout: a probe
- * or transcode failure here never blocks serving the page — the request-time
- * route handler surfaces the real error (404/502) if something is genuinely
- * wrong when the runtime actually asks for the proxy.
- */
-export async function injectMediaCodecMap(
-  html: string,
-  projectDir: string,
-  htmlSources: HtmlSourceLike[],
-): Promise<string> {
-  let map: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
-  try {
-    map = await scanProjectMediaCodecMap(projectDir, htmlSources);
-  } catch {
-    return html;
-  }
-  const entries = Object.entries(map);
-  if (entries.length === 0) return html;
-
-  for (const [pathname, facts] of entries) {
-    if (!facts.browserHostile) continue;
-    const absolutePath = resolve(projectDir, pathname.replace(/^\/+/, ""));
-    void resolveProxy(projectDir, absolutePath).catch(() => undefined);
-  }
-
-  // <-escape prevents a src path containing "</script>" from breaking out of
-  // the injected tag, mirroring injectPreviewVariables in studio-server's
-  // preview route.
-  const json = JSON.stringify(map).replace(/</g, "\\u003c");
-  const tag = `<script>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return html.includes("</head>") ? html.replace("</head>", `${tag}\n</head>`) : tag + html;
 }
 
 /**

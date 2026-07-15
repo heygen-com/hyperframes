@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
+import { classifyMediaColor, pixelFormatHasAlpha, probeMediaMetadata } from "./mediaMetadata.js";
 
 describe("classifyMediaColor", () => {
   it("detects HDR PQ from BT.2020 + smpte2084 metadata", () => {
@@ -55,8 +55,8 @@ describe("classifyMediaColor", () => {
 });
 
 describe("probeMediaMetadata", () => {
-  it("reads the first video stream from ffprobe JSON", () => {
-    const metadata = probeMediaMetadata("/tmp/clip.mp4", () => ({
+  it("reads the first video stream from ffprobe JSON", async () => {
+    const metadata = await probeMediaMetadata("/tmp/clip.mp4", () => ({
       status: 0,
       stdout: JSON.stringify({
         streams: [
@@ -80,18 +80,49 @@ describe("probeMediaMetadata", () => {
     });
   });
 
-  it("returns unknown metadata when ffprobe is unavailable", () => {
-    expect(
+  it("returns unknown metadata when ffprobe is unavailable", async () => {
+    await expect(
       probeMediaMetadata("/tmp/clip.mp4", () => ({
         status: null,
         stdout: "",
         stderr: "",
         error: { code: "ENOENT" } as NodeJS.ErrnoException,
       })),
-    ).toMatchObject({
+    ).resolves.toMatchObject({
       kind: "video",
       color: { dynamicRange: "unknown", isHdr: false },
       probeError: "ffprobe unavailable",
     });
+  });
+
+  it("supports an async runner (the default execFile path is promise-based)", async () => {
+    const metadata = await probeMediaMetadata("/tmp/clip.mp4", async () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [{ codec_type: "video", codec_name: "h264", pix_fmt: "yuv420p" }],
+      }),
+      stderr: "",
+    }));
+    expect(metadata).toMatchObject({ kind: "video", color: { codecName: "h264" } });
+  });
+});
+
+describe("pixelFormatHasAlpha", () => {
+  it("detects alpha-bearing pixel formats", () => {
+    for (const pixFmt of [
+      "yuva420p",
+      "yuva444p10le",
+      "rgba",
+      "argb",
+      "bgra",
+      "abgr",
+      "gbrap12le",
+      "ya8",
+    ]) {
+      expect(pixelFormatHasAlpha(pixFmt)).toBe(true);
+    }
+    for (const pixFmt of ["yuv420p", "yuv422p10le", "rgb24", "gbrp", "gray", undefined]) {
+      expect(pixelFormatHasAlpha(pixFmt)).toBe(false);
+    }
   });
 });

@@ -7,7 +7,7 @@ import {
   maskNonScannableRanges,
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
-import { probeMediaMetadata, type FfprobeRunner } from "./mediaMetadata.js";
+import { pixelFormatHasAlpha, probeMediaMetadata, type FfprobeRunner } from "./mediaMetadata.js";
 
 /**
  * One reusable answer to "what codec is this asset, and is it browser-hostile?",
@@ -22,6 +22,10 @@ export interface AssetCodecFacts {
    * when no representative mime exists (ProRes: browsers never decode it, so
    * the runtime always proxies rather than probing `canPlayType`). */
   representativeMime: string | null;
+  /** Source carries an alpha channel (ffprobe pix_fmt). Alpha sources are
+   * never proxied — an H.264 proxy would destroy the transparency (e.g.
+   * ProRes 4444 alpha). */
+  hasAlpha: boolean;
 }
 
 /** Server-root-relative URL pathname -> that asset's codec facts. */
@@ -40,26 +44,33 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
   av1: 'video/mp4; codecs="av01.0.08M.08"',
 };
 
-function codecFactsFor(codecName: string): AssetCodecFacts {
+function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
   const isHostile = Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName);
   return {
     codecName,
     browserHostile: isHostile,
     representativeMime: isHostile ? (BROWSER_HOSTILE_CODECS[codecName] ?? null) : null,
+    hasAlpha,
   };
 }
 
 /**
  * Probe a single video asset. Best-effort: ffprobe missing, erroring, or
  * finding no video stream resolves to `null` (asset omitted by the caller),
- * never a throw.
+ * never a throw. Async so a pool of probes runs concurrently (the default
+ * runner is `execFile`-based).
  */
-export function probeAssetCodec(filePath: string, runner?: FfprobeRunner): AssetCodecFacts | null {
-  const metadata = runner ? probeMediaMetadata(filePath, runner) : probeMediaMetadata(filePath);
+export async function probeAssetCodec(
+  filePath: string,
+  runner?: FfprobeRunner,
+): Promise<AssetCodecFacts | null> {
+  const metadata = runner
+    ? await probeMediaMetadata(filePath, runner)
+    : await probeMediaMetadata(filePath);
   if (metadata.kind !== "video" || metadata.probeError) return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
-  return codecFactsFor(codecName);
+  return codecFactsFor(codecName, pixelFormatHasAlpha(metadata.color.pixelFormat));
 }
 
 interface CachedAssetProbe {
@@ -81,11 +92,11 @@ export function createMediaCodecProbeCache(): MediaCodecProbeCache {
 // and hold their own cache via `createMediaCodecProbeCache`.
 const defaultProbeCache: MediaCodecProbeCache = new Map();
 
-function probeAssetCodecCached(
+async function probeAssetCodecCached(
   filePath: string,
   cache: MediaCodecProbeCache,
   runner?: FfprobeRunner,
-): AssetCodecFacts | null {
+): Promise<AssetCodecFacts | null> {
   let mtimeMs: number;
   try {
     mtimeMs = statSync(filePath).mtimeMs;
@@ -94,7 +105,7 @@ function probeAssetCodecCached(
   }
   const cached = cache.get(filePath);
   if (cached && cached.mtimeMs === mtimeMs) return cached.facts;
-  const facts = probeAssetCodec(filePath, runner);
+  const facts = await probeAssetCodec(filePath, runner);
   cache.set(filePath, { mtimeMs, facts });
   return facts;
 }
@@ -200,7 +211,7 @@ export async function scanProjectMediaCodecMap(
         const index = nextIndex++;
         const entry = entries[index];
         if (!entry) break;
-        facts[index] = probeAssetCodecCached(entry[0], cache, options.runner);
+        facts[index] = await probeAssetCodecCached(entry[0], cache, options.runner);
       }
     }),
   );

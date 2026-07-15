@@ -1,17 +1,50 @@
-import { spawnSync, type SpawnSyncOptions } from "node:child_process";
+import { execFile } from "node:child_process";
 import { extname } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
-export type FfprobeRunner = (
-  command: string,
-  args: string[],
-  options?: SpawnSyncOptions,
-) => {
+export interface FfprobeRunResult {
   status: number | null;
   stdout: string | Buffer;
   stderr: string | Buffer;
-  error?: NodeJS.ErrnoException;
-};
+  /** Spawn-level failure (covers both `NodeJS.ErrnoException` and
+   * `ExecFileException`); only `code === "ENOENT"` is ever inspected. */
+  error?: { code?: string | number | null | undefined };
+}
+
+/** Injectable ffprobe runner. May be synchronous (tests) or async (the
+ * default `execFile`-based runner below), so cold scans can run many probes
+ * concurrently off the event loop. */
+export type FfprobeRunner = (
+  command: string,
+  args: string[],
+  options?: { timeout?: number; maxBuffer?: number },
+) => FfprobeRunResult | Promise<FfprobeRunResult>;
+
+/** Default runner: genuinely async (`execFile`), unlike the previous
+ * `spawnSync`-based one — a pool of concurrent probes actually parallelizes
+ * (mirrors `execFileAsync` in packages/lint/src/hevcPreviewLint.ts). */
+const execFileRunner: FfprobeRunner = (command, args, options) =>
+  new Promise<FfprobeRunResult>((resolvePromise) => {
+    execFile(
+      command,
+      args,
+      { timeout: options?.timeout, maxBuffer: options?.maxBuffer },
+      (error, stdout, stderr) => {
+        if (error && error.code === "ENOENT") {
+          resolvePromise({ status: null, stdout: "", stderr: "", error });
+          return;
+        }
+        if (error) {
+          // Nonzero exit / timeout / kill: report a nonzero status; callers
+          // only distinguish "ok" (0) from "failed" from "ENOENT".
+          const status = typeof error.code === "number" ? error.code : 1;
+          resolvePromise({ status, stdout: stdout ?? "", stderr: stderr ?? "" });
+          return;
+        }
+        resolvePromise({ status: 0, stdout: stdout ?? "", stderr: stderr ?? "" });
+      },
+    );
+  });
 
 export type MediaDynamicRange = "hdr" | "sdr" | "unknown";
 export type MediaHdrTransfer = "pq" | "hlg" | "unknown";
@@ -85,6 +118,17 @@ function colorLabel(input: {
   return "SDR/unknown";
 }
 
+// Conservative alpha-bearing pix_fmt list: yuva* (yuva420p, yuva444p10le...),
+// rgba/argb/bgra/abgr (packed RGB+alpha), gbrap* (planar GBR+alpha, ProRes
+// 4444 decodes to these), ya* (gray+alpha). Prefix match keeps bit-depth /
+// endianness suffixes covered.
+const ALPHA_PIX_FMT_RE = /^(?:yuva|rgba|argb|bgra|abgr|gbrap|ya)/;
+
+/** True when an ffprobe `pix_fmt` carries an alpha component. */
+export function pixelFormatHasAlpha(pixFmt: string | undefined): boolean {
+  return pixFmt !== undefined && ALPHA_PIX_FMT_RE.test(pixFmt.toLowerCase());
+}
+
 export function classifyMediaColor(stream: FfprobeStream | null | undefined): MediaColorMetadata {
   const colorPrimaries = lower(stream?.color_primaries);
   const colorSpace = lower(stream?.color_space);
@@ -119,10 +163,10 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
   };
 }
 
-export function probeMediaMetadata(
+export async function probeMediaMetadata(
   filePath: string,
-  runner: FfprobeRunner = spawnSync as unknown as FfprobeRunner,
-): MediaMetadata {
+  runner: FfprobeRunner = execFileRunner,
+): Promise<MediaMetadata> {
   const kind = inferKindFromPath(filePath);
   if (kind === "audio" || kind === "unknown") {
     return { kind, color: classifyMediaColor(null) };
@@ -136,7 +180,7 @@ export function probeMediaMetadata(
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe unavailable" };
   }
 
-  const result = runner(
+  const result = await runner(
     ffprobePath,
     [
       "-v",

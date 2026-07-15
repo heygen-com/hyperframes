@@ -16,11 +16,16 @@ import {
 // test independent of whether the host actually has ffprobe installed).
 const FAKE_FFPROBE_PATH = process.execPath;
 
-function makeRunner(codecByPath: Record<string, string>): FfprobeRunner {
+function makeRunner(
+  codecByPath: Record<string, string | { codecName: string; pixFmt?: string }>,
+): FfprobeRunner {
   return (_command, args) => {
     const filePath = args[args.length - 1] ?? "";
-    const codecName = codecByPath[filePath];
-    const streams = codecName ? [{ codec_type: "video", codec_name: codecName }] : [];
+    const entry = codecByPath[filePath];
+    const normalized = typeof entry === "string" ? { codecName: entry } : entry;
+    const streams = normalized
+      ? [{ codec_type: "video", codec_name: normalized.codecName, pix_fmt: normalized.pixFmt }]
+      : [];
     return { status: 0, stdout: JSON.stringify({ streams }), stderr: "" };
   };
 }
@@ -65,48 +70,78 @@ afterEach(() => {
 });
 
 describe("probeAssetCodec", () => {
-  it("reports an HEVC asset as browser-hostile with the pinned representative mime", () => {
+  it("reports an HEVC asset as browser-hostile with the pinned representative mime", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
 
-    const facts = probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }));
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }));
 
     expect(facts).toEqual({
       codecName: "hevc",
       browserHostile: true,
       representativeMime: BROWSER_HOSTILE_CODECS.hevc,
+      hasAlpha: false,
     });
   });
 
-  it("reports an H.264 asset as not browser-hostile", () => {
+  it("reports an H.264 asset as not browser-hostile", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
 
-    const facts = probeAssetCodec(videoPath, makeRunner({ [videoPath]: "h264" }));
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "h264" }));
 
-    expect(facts).toEqual({ codecName: "h264", browserHostile: false, representativeMime: null });
+    expect(facts).toEqual({
+      codecName: "h264",
+      browserHostile: false,
+      representativeMime: null,
+      hasAlpha: false,
+    });
   });
 
-  it("reports ProRes as browser-hostile with no representative mime", () => {
+  it("reports ProRes as browser-hostile with no representative mime", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mov");
     writeFileSync(videoPath, "fake video bytes");
 
-    const facts = probeAssetCodec(videoPath, makeRunner({ [videoPath]: "prores" }));
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "prores" }));
 
-    expect(facts).toEqual({ codecName: "prores", browserHostile: true, representativeMime: null });
+    expect(facts).toEqual({
+      codecName: "prores",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    });
   });
 
-  it("returns null (never throws) when ffprobe is unresolvable", () => {
+  it("flags an alpha-bearing pix_fmt (ProRes 4444) with hasAlpha", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mov");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(
+      videoPath,
+      makeRunner({ [videoPath]: { codecName: "prores", pixFmt: "yuva444p10le" } }),
+    );
+
+    expect(facts).toEqual({
+      codecName: "prores",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: true,
+    });
+  });
+
+  it("returns null (never throws) when ffprobe is unresolvable", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
     process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
 
-    expect(() => probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }))).not.toThrow();
-    expect(probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }))).toBeNull();
+    await expect(
+      probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" })),
+    ).resolves.toBeNull();
   });
 });
 
@@ -140,6 +175,24 @@ describe("scanProjectMediaCodecMap", () => {
     expect(Object.keys(map).sort()).toEqual(["/assets/my clip.mp4", "/assets/sub/clip.mp4"]);
     expect(map["/assets/sub/clip.mp4"]?.browserHostile).toBe(true);
     expect(map["/assets/my clip.mp4"]?.browserHostile).toBe(false);
+  });
+
+  it("rewrites a sub-composition's ../-traversing src via compSrcPath before resolving (rewriteAssetPath)", async () => {
+    const project = tmpProject();
+    mkdirSync(join(project, "assets"), { recursive: true });
+    mkdirSync(join(project, "compositions"), { recursive: true });
+    writeFileSync(join(project, "assets", "clip.mp4"), "fake video bytes");
+
+    const map = await scanProjectMediaCodecMap(
+      project,
+      [{ html: videoHtml("../assets/clip.mp4"), compSrcPath: "compositions/scene.html" }],
+      { runner: makeRunner({ [join(project, "assets", "clip.mp4")]: "hevc" }) },
+    );
+
+    // The key is root-relative (what the served DOM resolves to), not the
+    // sub-composition-relative authored src.
+    expect(Object.keys(map)).toEqual(["/assets/clip.mp4"]);
+    expect(map["/assets/clip.mp4"]?.browserHostile).toBe(true);
   });
 
   it("caches a probe per (path, mtime): a second scan of an unchanged file doesn't reprobe, touching mtime does", async () => {

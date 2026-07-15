@@ -49,8 +49,21 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   ProxyTranscodeError: mocks.ProxyTranscodeError,
 }));
 
-vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
-  scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
+// The shared injection helper ships as a self-contained dist bundle (its copy
+// of scanProjectMediaCodecMap is inlined), so it must be mocked wholesale —
+// mocking the media-codec-map subpath can't reach inside it. The fake mirrors
+// the real contract (scan → inject tag) via this file's scan mock so the
+// injection assertions stay meaningful. Mirrors commands/play.test.ts.
+vi.mock("@hyperframes/studio-server/media-proxy-preview", () => ({
+  injectMediaCodecMapIntoHtml: vi.fn(
+    async (html: string, projectDir: string, htmlSources: unknown[]) => {
+      const map = await mocks.scanProjectMediaCodecMap(projectDir, htmlSources);
+      const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${JSON.stringify(map)};</script>`;
+      return html.includes("</head>")
+        ? html.replace("</head>", `${tag}\n</head>`)
+        : `${tag}\n${html}`;
+    },
+  ),
 }));
 
 let server: StaticProjectServer | undefined;

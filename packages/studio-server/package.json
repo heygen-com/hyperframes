@@ -68,6 +68,12 @@
       "node": "./dist/helpers/proxyTranscoder.js",
       "import": "./src/helpers/proxyTranscoder.ts",
       "types": "./src/helpers/proxyTranscoder.ts"
+    },
+    "./media-proxy-preview": {
+      "bun": "./src/helpers/mediaProxyPreview.ts",
+      "node": "./dist/helpers/mediaProxyPreview.js",
+      "import": "./src/helpers/mediaProxyPreview.ts",
+      "types": "./src/helpers/mediaProxyPreview.ts"
     }
   },
   "publishConfig": {

@@ -807,6 +807,26 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
+    it("returns 404 without transcoding when the param value is not exactly h264", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      for (const value of ["vp9", "H264", ""]) {
+        const res = await app.request(
+          `http://localhost/projects/demo/preview/clip.mp4?hf-proxy=${value}`,
+        );
+        expect(res.status).toBe(404);
+      }
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
     it("maps a ProxyTranscodeError to a 502 carrying the error message", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");

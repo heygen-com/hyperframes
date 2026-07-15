@@ -513,13 +513,18 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const contentType = getMimeType(subPath);
     const isText = /\.(html|css|js|json|svg|txt|md|cube)$/i.test(subPath);
 
-    // `?hf-proxy=h264` (per the KTD's `?variables=`-style negotiation): only a
-    // video asset can be proxied, and only when auto-proxy is enabled for
-    // this adapter/project. Checked BEFORE any transcode or 304 shortcut so
-    // a bogus/disabled request never spawns ffmpeg.
+    // `?hf-proxy=h264` (per the KTD's `?variables=`-style negotiation): the
+    // param value must be exactly "h264" (matching play/staticProjectServer),
+    // only a video asset can be proxied, and only when auto-proxy is enabled
+    // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
+    // so a bogus/disabled request never spawns ffmpeg.
     const proxyParam = c.req.query("hf-proxy");
     if (proxyParam !== undefined) {
-      if (!contentType.startsWith("video/") || !isAutoProxyEnabled(adapter)) {
+      if (
+        proxyParam !== "h264" ||
+        !contentType.startsWith("video/") ||
+        !isAutoProxyEnabled(adapter)
+      ) {
         return c.text("not found", 404);
       }
     }

@@ -4,8 +4,6 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
-// Cross-package relative import — see the note in compositionServer.ts: no
-// `@hyperframes/studio-server` subpath export exists yet for this helper.
 import { resolveProxy, ProxyTranscodeError } from "@hyperframes/studio-server/proxy-transcoder";
 
 export interface StaticProjectServer {
@@ -96,6 +94,8 @@ async function serveProxyRequest(
   }
   try {
     const proxyPath = await resolveProxy(projectDir, filePath);
+    // The await above can span a whole transcode; the client may be gone.
+    if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res);
   } catch (err) {
     if (err instanceof ProxyTranscodeError) {

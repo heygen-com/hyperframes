@@ -142,6 +142,46 @@ describe("maybeProxyProactively", () => {
     expect(el.load).not.toHaveBeenCalled();
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
+
+  it("never swaps an alpha-bearing hostile entry; emits the unavailable diagnostic instead", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {
+      "/video.mov": {
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: true,
+      },
+    };
+    const el = createVideo("/video.mov");
+    stubCanPlayType(el, "");
+
+    maybeProxyProactively(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "runtime_media_proxy_unavailable",
+        details: expect.objectContaining({ reason: "alpha_source" }),
+      }),
+    );
+  });
+
+  it("is a no-op when the render-frame sibling image signals render mode", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
+    const el = createVideo("/video.mp4");
+    el.id = "clip-1";
+    const injected = document.createElement("img");
+    injected.id = "__render_frame_clip-1__";
+    document.body.appendChild(injected);
+    stubCanPlayType(el, "");
+
+    maybeProxyProactively(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("handleMetadataForProxy (reactive trigger)", () => {
@@ -149,7 +189,8 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     Object.defineProperty(el, "videoWidth", { value: 0, configurable: true });
   }
 
-  it("swaps once when videoWidth is 0 for a same-origin local video, even with no codec map", () => {
+  it("swaps once when videoWidth is 0 for a same-origin local video absent from the (present) map — unlisted-asset rescue", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {};
     const el = createVideo("/video.mp4");
     markZeroWidth(el);
 
@@ -159,7 +200,43 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 
+  it("never swaps when the codec map global is absent (opt-out surface serves no proxies)", () => {
+    const el = createVideo("/video.mp4");
+    markZeroWidth(el);
+
+    handleMetadataForProxy(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("skips a MAPPED entry with hasAlpha (alpha sources are never proxied) and diagnoses instead", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {
+      "/video.mov": {
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: true,
+      },
+    };
+    const el = createVideo("/video.mov");
+    markZeroWidth(el);
+
+    handleMetadataForProxy(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "runtime_media_proxy_unavailable",
+        details: expect.objectContaining({ reason: "alpha_source" }),
+      }),
+    );
+  });
+
   it("a second zero-width metadata event does not loop (no second swap)", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {};
     const el = createVideo("/video.mp4");
     markZeroWidth(el);
 
@@ -199,7 +276,9 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
 
-  it("cross-origin src with zero videoWidth: no swap attempted, diagnostic still emitted", () => {
+  it("cross-origin src with zero videoWidth: no swap attempted, diagnostic still emitted (with its console.info line)", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    window.__HF_MEDIA_CODEC_MAP__ = {};
     const el = createVideo("https://cdn.example.com/video.mp4");
     markZeroWidth(el);
 
@@ -212,6 +291,13 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
         details: expect.objectContaining({ reason: "cross_origin" }),
       }),
     );
+    // The console line mirrors the fallback line's shape: stable code token +
+    // reason + src, so checkBrowser.ts's scraper can surface it.
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const line = String(infoSpy.mock.calls[0]?.[0]);
+    expect(line).toContain("runtime_media_proxy_unavailable");
+    expect(line).toContain("cross_origin");
+    expect(line).toContain("https://cdn.example.com/video.mp4");
   });
 
   it("resolves a ../-traversing sub-composition src (already rewritten to an absolute, prefixed URL) via longest-suffix map matching", () => {
@@ -234,7 +320,8 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
 });
 
 describe("handleErrorForProxy (tertiary trigger)", () => {
-  it("swaps once on an error event for a zero-stream (video-only hostile) file", () => {
+  it("swaps once on an error event for a zero-stream (video-only hostile) file unlisted in the (present) map", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {};
     const el = createVideo("/video.mp4");
 
     handleErrorForProxy(el);
@@ -243,7 +330,34 @@ describe("handleErrorForProxy (tertiary trigger)", () => {
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 
+  it("never swaps when the codec map global is absent (opt-out surface serves no proxies)", () => {
+    const el = createVideo("/video.mp4");
+
+    handleErrorForProxy(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not swap a mapped browser-SAFE entry that errors (corrupt file — proxying can't help); diagnoses instead", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": H264_ENTRY };
+    const el = createVideo("/video.mp4");
+
+    handleErrorForProxy(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "runtime_media_proxy_unavailable",
+        details: expect.objectContaining({ reason: "browser_safe_codec" }),
+      }),
+    );
+  });
+
   it("never swaps <audio> on error", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {};
     const el = createAudio("/video.mp4");
 
     handleErrorForProxy(el);

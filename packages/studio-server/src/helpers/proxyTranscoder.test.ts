@@ -247,6 +247,61 @@ describe("resolveProxy", () => {
     expect(leftover).toEqual([]);
   });
 
+  it("remembers a failure per cache key: a second call rethrows without respawning ffmpeg", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxyTranscodeError, clearFailedTranscodesForTest } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "video.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const first = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(1);
+    fail(calls[0]!, 1, "ffmpeg: unsupported codec");
+    await expect(first).rejects.toBeInstanceOf(ProxyTranscodeError);
+
+    // Same key, remembered failure: rethrown instantly, no second spawn.
+    await expect(resolveProxy(projectDir, sourcePath)).rejects.toMatchObject({
+      stderrTail: expect.stringContaining("unsupported codec"),
+    });
+    expect(calls).toHaveLength(1);
+
+    // The exported clear hook forgets the failure and allows a retry.
+    clearFailedTranscodesForTest();
+    const retry = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(2);
+    succeed(calls[1]!);
+    await expect(retry).resolves.toBeTruthy();
+  });
+
+  it("retries after the source file changes (mtime in the cache key invalidates the remembered failure)", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxyTranscodeError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "video.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const past = new Date(Date.now() - 60_000);
+    utimesSync(sourcePath, past, past);
+
+    const first = resolveProxy(projectDir, sourcePath);
+    await flush();
+    fail(calls[0]!, 1, "boom");
+    await expect(first).rejects.toBeInstanceOf(ProxyTranscodeError);
+
+    // Re-exported file (new mtime) → new key → a fresh transcode attempt.
+    const future = new Date(Date.now() + 60_000);
+    utimesSync(sourcePath, future, future);
+    const retry = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(2);
+    succeed(calls[1]!);
+    await expect(retry).resolves.toBeTruthy();
+  });
+
   it("throws a typed error when ffmpeg cannot be resolved, without spawning", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, ProxyTranscodeError } = await loadModule(spawn, undefined);
