@@ -1,4 +1,4 @@
-import { useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -21,6 +21,8 @@ export interface StudioHeaderProps {
   inspectorPanelActive: boolean;
   onExport?: () => void;
 }
+
+const TERMINAL_RENDER_STATUS_MS = 5000;
 
 function HyperframesLogo() {
   // Full logo from logo-dark.svg (263×79): heygen label + gradient mark + hyperframes wordmark.
@@ -215,6 +217,43 @@ export function StudioHeader({
   const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
+  const activeRenderIdRef = useRef<string | null>(null);
+  const terminalStatusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [terminalStatus, setTerminalStatus] = useState<"complete" | "failed" | null>(null);
+
+  useEffect(() => {
+    const activeJob = renderQueue.jobs.find((job) => job.status === "rendering");
+    if (activeJob) {
+      activeRenderIdRef.current = activeJob.id;
+      clearTimeout(terminalStatusTimerRef.current);
+      setTerminalStatus(null);
+      return;
+    }
+
+    const activeRenderId = activeRenderIdRef.current;
+    if (!activeRenderId) return;
+    activeRenderIdRef.current = null;
+
+    const finishedJob = renderQueue.jobs.find((job) => job.id === activeRenderId);
+    if (finishedJob?.status !== "complete" && finishedJob?.status !== "failed") return;
+
+    setTerminalStatus(finishedJob.status);
+    clearTimeout(terminalStatusTimerRef.current);
+    terminalStatusTimerRef.current = setTimeout(
+      () => setTerminalStatus(null),
+      TERMINAL_RENDER_STATUS_MS,
+    );
+  }, [renderQueue.jobs]);
+
+  useEffect(() => () => clearTimeout(terminalStatusTimerRef.current), []);
+
+  const renderButtonLabel = isRendering
+    ? "Rendering…"
+    : terminalStatus === "complete"
+      ? "Render complete"
+      : terminalStatus === "failed"
+        ? "Render failed"
+        : "Export";
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
@@ -379,7 +418,11 @@ export function StudioHeader({
         </Tooltip>
         <Tooltip
           label={
-            isRendering ? "A render is already in progress" : "Render and export this composition"
+            isRendering
+              ? "A render is already in progress"
+              : terminalStatus
+                ? `${renderButtonLabel}. View renders`
+                : "Render and export this composition"
           }
           side="bottom"
         >
@@ -390,11 +433,12 @@ export function StudioHeader({
               if (isRendering) return;
               setRightPanelTab("renders");
               setRightCollapsed(false);
+              if (terminalStatus) return;
               onExport?.();
             }}
             className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isRendering ? "Rendering…" : "Export"}
+            {renderButtonLabel}
           </button>
         </Tooltip>
       </div>

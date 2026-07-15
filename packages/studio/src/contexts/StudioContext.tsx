@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { RenderJob } from "../components/renders/useRenderQueue";
 
 export interface StudioShellValue {
   projectId: string;
@@ -17,7 +18,7 @@ export interface StudioShellValue {
   handleUndo: () => Promise<void>;
   handleRedo: () => Promise<void>;
   renderQueue: {
-    jobs: unknown[];
+    jobs: RenderJob[];
     isRendering: boolean;
     loadError: string | null;
     actionError: string | null;

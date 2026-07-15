@@ -10,13 +10,13 @@ interface ToastItem extends AppToast {
 
 const AUTO_DISMISS_MS = 4000;
 const EXIT_MS = 160;
-const MAX_TOASTS = 3;
+const MAX_NON_ERROR_TOASTS = 3;
 
 let nextToastId = 1;
 
 /**
- * Stacked toasts (max 3). Info toasts auto-dismiss after 4s; error toasts
- * persist until explicitly dismissed so failures can't silently vanish.
+ * Stacked toasts (max 3 non-errors). Info toasts auto-dismiss after 4s;
+ * error toasts persist until explicitly dismissed so failures can't silently vanish.
  */
 export function useToast() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -54,10 +54,13 @@ export function useToast() {
       const id = nextToastId++;
       setToasts((prev) => {
         const next = [...prev, { id, message, tone }];
-        // Cap the stack; drop the oldest (and its pending timer).
-        while (next.length > MAX_TOASTS) {
-          const dropped = next.shift();
-          if (dropped) clearTimer(dropped.id);
+        const nonErrorToasts = next.filter((toast) => toast.tone !== "error");
+        if (nonErrorToasts.length > MAX_NON_ERROR_TOASTS) {
+          const dropped = nonErrorToasts[0];
+          if (dropped) {
+            clearTimer(dropped.id);
+            return next.filter((toast) => toast.id !== dropped.id);
+          }
         }
         return next;
       });
