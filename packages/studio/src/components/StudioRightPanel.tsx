@@ -10,7 +10,6 @@ import {
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
-import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
@@ -18,7 +17,6 @@ import { VariablesPanel } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
@@ -44,13 +42,6 @@ const MAX_INSPECTOR_SPLIT_PERCENT = 75;
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
-  activeBlockParams?: {
-    blockName: string;
-    blockTitle: string;
-    params: BlockParam[];
-    compositionPath: string;
-  } | null;
-  onCloseBlockParams?: () => void;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
@@ -69,8 +60,6 @@ export interface StudioRightPanelProps {
 // fallow-ignore-next-line complexity
 export function StudioRightPanel({
   designPanelActive,
-  activeBlockParams,
-  onCloseBlockParams,
   recordingState,
   recordingDuration,
   onToggleRecording,
@@ -517,15 +506,7 @@ export function StudioRightPanel({
               />
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              {rightPanelTab === "block-params" && activeBlockParams ? (
-                <BlockParamsPanel
-                  blockName={activeBlockParams.blockName}
-                  blockTitle={activeBlockParams.blockTitle}
-                  params={activeBlockParams.params}
-                  compositionPath={activeBlockParams.compositionPath}
-                  onClose={onCloseBlockParams ?? (() => {})}
-                />
-              ) : rightPanelTab === "slideshow" ? (
+              {rightPanelTab === "slideshow" ? (
                 <SlideshowPanel
                   scenes={slideshowScenes}
                   onPersist={onPersistSlideshow}

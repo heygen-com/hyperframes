@@ -204,13 +204,7 @@ export function StudioApp() {
       }),
     [timelineEditing],
   );
-  const {
-    activeBlockParams,
-    setActiveBlockParams,
-    handleAddBlock,
-    handleTimelineBlockDrop,
-    handlePreviewBlockDrop,
-  } = useBlockHandlers({
+  const { handleAddBlock, handleTimelineBlockDrop, handlePreviewBlockDrop } = useBlockHandlers({
     projectId,
     blockCtxDeps: {
       activeCompPath,
@@ -223,8 +217,6 @@ export function StudioApp() {
       showToast,
     },
     previewIframeRef,
-    setRightCollapsed: panelLayout.setRightCollapsed,
-    setRightPanelTab: panelLayout.setRightPanelTab,
   });
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
@@ -524,11 +516,6 @@ export function StudioApp() {
                       panelLayout.rightCollapsed ? null : (
                         <StudioRightPanel
                           designPanelActive={designPanelActive}
-                          activeBlockParams={activeBlockParams}
-                          onCloseBlockParams={() => {
-                            setActiveBlockParams(null);
-                            panelLayout.setRightPanelTab("design");
-                          }}
                           recordingState={gestureState}
                           recordingDuration={gestureRecording.recordingDuration}
                           onToggleRecording={recordingToggle}

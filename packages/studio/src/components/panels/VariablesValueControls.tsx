@@ -170,7 +170,7 @@ function NumberControl({
   );
 }
 
-// Per-type dispatcher — one branch per variable type, same shape as BlockParamsPanel.
+// Per-type dispatcher, with one branch per variable type.
 // fallow-ignore-next-line complexity
 export function PreviewValueControl({
   decl,

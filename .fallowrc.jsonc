@@ -617,7 +617,6 @@
       "packages/studio/src/captions/components/shared.tsx",
       "packages/studio/src/captions/hooks/useCaptionSync.ts",
       "packages/studio/src/components/AskAgentModal.tsx",
-      "packages/studio/src/components/editor/BlockParamsPanel.tsx",
       "packages/studio/src/components/editor/DomEditOverlay.tsx",
       "packages/studio/src/components/editor/FileTree.tsx",
       "packages/studio/src/components/editor/FileTreeNodes.tsx",
