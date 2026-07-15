@@ -47,6 +47,7 @@ import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
+import { useVstPreview } from "./useVstPreview";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
@@ -68,7 +69,10 @@ function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[
   });
 }
 
-export function useTimelinePlayer() {
+export function useTimelinePlayer(
+  projectId?: string,
+  showToast?: (message: string, tone?: "error" | "info") => void,
+) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
   const probeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -249,6 +253,8 @@ export function useTimelinePlayer() {
       shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
     );
   }, []);
+  useVstPreview(iframeRef, projectId, showToast); // no-op until a vst-chain track appears
+
   const play = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();

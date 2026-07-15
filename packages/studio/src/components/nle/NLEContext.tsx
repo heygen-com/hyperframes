@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { useCompositionStack } from "./useCompositionStack";
 import { MIN_TIMELINE_H, MIN_PREVIEW_H } from "./TimelineResizeDivider";
@@ -83,13 +84,17 @@ export function NLEProvider({
   onCompositionLoadingChange,
   children,
 }: NLEProviderProps) {
+  // Optional — NLEProvider is also mounted directly in tests without the
+  // shell providers; useTimelinePlayer's VST preview wiring is a no-op
+  // without a showToast callback (its crash-fallback toast is skipped).
+  const shellCtx = useStudioShellContextOptional();
   const {
     iframeRef,
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
     refreshPlayer,
-  } = useTimelinePlayer();
+  } = useTimelinePlayer(projectId, shellCtx?.showToast);
 
   // Reset timeline state when the project changes. Done in an effect, not during
   // render: reset() updates the player store, and updating another store/component
