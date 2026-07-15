@@ -377,7 +377,7 @@ export default defineCommand({
         ],
         footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
       });
-      openStudioBrowser(url, projectName, {
+      openStudioBrowser(url, projectName, dir, {
         noOpen,
         browserPath,
         userDataDir,
