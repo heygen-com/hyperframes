@@ -37,7 +37,11 @@
 #   3. Creates a fresh WORKSPACE ROOT under /tmp/skills-fresh-<timestamp>/ with a
 #      package.json (`file:` CLI dep). It does NOT init a hyperframes project here
 #      — the video workflows run `npx hyperframes init` inside their own subdirs.
-#   4. Runs npm install so `npx hyperframes` resolves to the local CLI build.
+#   4. Runs npm install (file: dep), then installs the CLI into a sandbox-private
+#      npm global prefix ($TEST_DIR/.npm-global). npx checks that prefix before its
+#      ~/.npm/_npx cache, so `npx hyperframes` resolves to the LOCAL build from any
+#      cwd — agents run it from scratchpads / home after shell resets, where the
+#      file: dep is invisible and npx would silently use the published CLI.
 #   5. Installs the full skills tree from the LOCAL repo via `npx skills add
 #      --agent <agent>`, then prunes the internal _meta/ authoring skills so the
 #      installed set matches what an end user gets.
@@ -201,6 +205,22 @@ npm install --no-audit --no-fund --silent || fail "npm install failed."
 [[ -x "node_modules/.bin/hyperframes" ]] || fail "node_modules/.bin/hyperframes missing after install."
 ok "node_modules/.bin/hyperframes → local CLI"
 
+# --------- step 4.5: sandbox-private npm global prefix (npx-leak guard) ---------
+# The file: dep only covers `npx hyperframes` run somewhere UNDER $TEST_DIR — npx
+# walks up from cwd looking for node_modules/.bin. Agents routinely run it from
+# OUTSIDE the tree (session scratchpads, home after a shell cwd reset); there the
+# walk finds nothing, npx falls back to ~/.npm/_npx, and the run silently tests
+# the PUBLISHED CLI instead of the branch (same version string, so nothing warns).
+# npx checks the npm global prefix BEFORE that cache, so installing the local CLI
+# into a sandbox-private prefix — exported at launch — closes the leak from any cwd.
+say "Installing local CLI into sandbox npm global prefix (npx-leak guard)..."
+
+NPM_GLOBAL_PREFIX="$TEST_DIR/.npm-global"
+npm install -g "file:$HF_CLI_PKG" --prefix "$NPM_GLOBAL_PREFIX" --no-audit --no-fund --silent \
+  || fail "global-prefix install failed."
+[[ -x "$NPM_GLOBAL_PREFIX/bin/hyperframes" ]] || fail "$NPM_GLOBAL_PREFIX/bin/hyperframes missing after install."
+ok "npx hyperframes now resolves to the local build from ANY directory (launch with the env below)"
+
 # --------- step 5: install skills from the local repo, then prune _meta ---------
 say "Installing skills from the local repo (--agent $AGENT) ..."
 
@@ -265,10 +285,11 @@ echo "Agent:    $AGENT  (skills in $SKILLS_DIR/)"
 echo "CLI:      file:$HF_CLI_PKG  (local build — includes your capture changes)"
 echo "Branch:   $CURRENT_BRANCH"
 echo ""
-echo "To start, run:"
+echo "To start, run (the env line is the npx-leak guard — without it, npx run outside"
+echo "the sandbox tree silently falls back to the PUBLISHED CLI in ~/.npm/_npx):"
 echo ""
 printf "  \033[1;37mcd %s\033[0m\n" "$TEST_DIR"
-printf "  \033[1;37m%s\033[0m\n" "$LAUNCH"
+printf "  \033[1;37mnpm_config_prefix=\"%s\" PATH=\"%s/bin:\$PATH\" %s\033[0m\n" "$NPM_GLOBAL_PREFIX" "$NPM_GLOBAL_PREFIX" "$LAUNCH"
 echo ""
 echo "Then type any request you want to test — the agent routes it to a workflow. e.g.:"
 echo "  • \"make a product launch video for https://your-site.com/\"      → product-launch-video (exercises capture)"
