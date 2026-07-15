@@ -99,7 +99,9 @@ function findConfiguredBinary(
 ): string | undefined {
   const configured = process.env[envName]?.trim();
   if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findOnPath(binaryName) ?? findInProjectLocalBin(binaryName) ?? findInCommonDirs(binaryName);
+  return (
+    findOnPath(binaryName) ?? findInProjectLocalBin(binaryName) ?? findInCommonDirs(binaryName)
+  );
 }
 
 export function findFFmpeg(): string | undefined {
