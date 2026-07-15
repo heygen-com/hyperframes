@@ -220,6 +220,82 @@ describe("TimelineClipDiamonds", () => {
     act(() => root.unmount());
   });
 
+  it("composes a rapid second retime from the pending position", () => {
+    const onMoveKeyframe = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [
+              {
+                percentage: 0,
+                tweenPercentage: 0,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 0 },
+              },
+              {
+                percentage: 50,
+                tweenPercentage: 50,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 100 },
+              },
+              {
+                percentage: 100,
+                tweenPercentage: 100,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 200 },
+              },
+            ],
+          }}
+          clipWidthPx={200}
+          clipHeightPx={48}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={0}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          onMoveKeyframe={onMoveKeyframe}
+          groupAware
+        />,
+      );
+    });
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    act(() => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 150 }));
+
+      // The cache still exposes 50%, but this second +10% drag starts at the
+      // pending 75% destination and must therefore land at 85%, not 60%.
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 150 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 170 }));
+    });
+
+    expect(onMoveKeyframe).toHaveBeenNthCalledWith(
+      2,
+      {
+        percentage: 50,
+        tweenPercentage: 50,
+        propertyGroup: "position",
+        animationId: "anim-1",
+      },
+      85,
+    );
+    act(() => root.unmount());
+  });
+
   // Regression: onClickKeyframe's state updates can re-render the diamond
   // button out from under the gesture before the browser auto-synthesizes the
   // "click" event that follows a button's pointerdown+pointerup. That orphaned

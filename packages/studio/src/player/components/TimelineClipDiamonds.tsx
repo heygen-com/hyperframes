@@ -1,4 +1,4 @@
-import { Fragment, memo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useRef, useState } from "react";
 import { BEAT_BAND_H } from "./BeatStrip";
 import {
   KEYFRAME_DRAG_THRESHOLD_PX,
@@ -130,6 +130,13 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
 }: TimelineDiamondLaneProps) {
   // Hooks must run before the early return below.
   const dragRef = useRef<DragState | null>(null);
+  const pendingClipPctsRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    const cachedClipPcts = new Set(keyframesData.keyframes.map((keyframe) => keyframe.percentage));
+    for (const [kfKey, clipPct] of pendingClipPctsRef.current) {
+      if (cachedClipPcts.has(clipPct)) pendingClipPctsRef.current.delete(kfKey);
+    }
+  }, [keyframesData.keyframes]);
   // Visual-only preview of the dragged diamond's clip-% — no runtime/GSAP hold
   // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
   // on drop re-keys the diamond from source.
@@ -291,7 +298,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             dragRef.current = {
               kfKey,
               startX: e.clientX,
-              fromClipPct: kf.percentage,
+              fromClipPct: pendingClipPctsRef.current.get(kfKey) ?? kf.percentage,
               moved: false,
             };
           }
@@ -348,6 +355,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             if (e.shiftKey) onShiftClickKeyframe?.(target);
             else onClickKeyframe?.(target);
           } else if (res.kind === "move" && res.toClipPct != null) {
+            pendingClipPctsRef.current.set(kfKey, res.toClipPct);
             onMoveKeyframe?.(target, res.toClipPct);
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
