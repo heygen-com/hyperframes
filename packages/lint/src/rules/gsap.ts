@@ -201,15 +201,16 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   const selectors = new Set<string>();
   const source = stripJsComments(script);
   const aliases = new Map<string, string>();
-  for (const match of source.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])([^"'`]+)\2\s*;/g)) {
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])([^"'`]+)\2\s*;/g,
+  )) {
     aliases.set(match[1] ?? "", match[3] ?? "");
   }
   const pattern = /gsap\.set\s*\(\s*([^,]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
     const target = (match[1] ?? "").trim();
-    const selector =
-      /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
+    const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
     if (!selector) continue;
     const body = match[2] ?? "";
     if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
