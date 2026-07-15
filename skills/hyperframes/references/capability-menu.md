@@ -1,6 +1,6 @@
 # Capability menu — what HyperFrames can bring to a video
 
-One list, two readers. The **intent layer** (`/hyperframes` § 4, step 6) shows a route-filtered slice of it to the user — most people don't know these exist, so the menu is how they learn what they're allowed to want. **`/general-video` in companion mode** uses the same list as its execution map — and as its **trigger list**: each row's plain-language line is also the moment to offer it, when the conversation touches what the row does.
+One list, two readers. The **intent layer** (`/hyperframes` § 4, step 7) shows a route-filtered slice of it to the user — most people don't know these exist, so the menu is how they learn what they're allowed to want. **`/general-video` in companion mode** uses the same list as its execution map — and as its **trigger list**: each row's plain-language line is also the moment to offer it, when the conversation touches what the row does.
 
 **Borrowing rule.** Capabilities marked with a home workflow live in that workflow's skill directory, and workflow skills install lazily. Before reaching across, run `npx hyperframes skills update <that-workflow>` with the bare name. Resolve the installed skill directory, invoke its script by absolute path, and pass the project root explicitly when the script accepts one. Keep the working directory at the project root. Never assume a sibling-relative path such as `../media-use` or `../music-to-video`; the project may live anywhere.
 

@@ -1,6 +1,6 @@
 # Route briefs — what the intent layer asks, per route
 
-The adaptive half of the intent layer (`/hyperframes` § 4, steps 4–5): each route's entry names the **must-haves** to ask now, the **conditional** questions its input can add, the **deferred asks** to announce (questions that stay in the workflow because their recommendations need pipeline data — a probed clip, a captured site), and whether the two **run-shape questions** (storyboard? · automation or companion?) apply. These entries live here, in the router skill, because workflow skills install lazily — at routing time the matched workflow may not be on the machine yet.
+The adaptive half of the intent layer (`/hyperframes` § 4, steps 4–6): each route's entry names the **must-haves** to ask now, the **conditional** questions its input can add, the **deferred asks** to announce (questions that stay in the workflow because their recommendations need pipeline data — a probed clip, a captured site), and whether the two **run-shape questions** (storyboard? · automation or companion?) apply. An entry that names **pitch-eligible** fields sends an unformed request through the pitch round (`pitch-round.md`) after routing; the chosen concept answers those fields. An entry without that line never enters the round. These entries live here, in the router skill, because workflow skills install lazily — at routing time the matched workflow may not be on the machine yet.
 
 Field semantics and question rules: `hyperframes-core/references/brief-contract.md` § 2–3. Every question: recommended option first, receipt attached; a remembered value becomes the recommendation with its source named. The intro text of the brief always states **message** and **language** (state, don't ask).
 
@@ -8,6 +8,7 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 - **Must-haves:** **angle** — concept / how-to / listicle / narrative, recommend the one the text's own shape suggests · **length** — inside the 30–90s sweet spot, scaled to how much the text actually teaches · **destination** — YouTube / embed → 16:9 · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
 - **Conditional:** a pasted script adds **`VO_MODE`** — use it verbatim, or restructure per scene?
+- **Pitch round:** `message` + `angle` — five tellings of the same topic are five different videos.
 - **Run-shape:** both.
 
 ## `/product-launch-video`
@@ -15,6 +16,7 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 - **First, sell or show?** One question when the request doesn't say: market the product (a promo), or show the site as-is (a tour / showcase)? A show-it answer is **intent, not a different pipeline**: write it into `BRIEF.md` (`## Intent` / `## Customizations` — "feature the site's own captured screens as the video's assets") and the workflow's normal steps carry it — the captured screens become the featured `asset_candidates`.
 - **Must-haves:** **angle** — story shapes from the site's / brief's own positioning, recommend one with its basis · **length** — 30–90s sweet spot, scaled to the material · **destination** — as above.
 - **Conditional:** a show-it-as-is ask adds **what to show** — the whole site, or specific pages/sections (into `BRIEF.md`'s body); a pasted script/brief adds **`VO_MODE`** (verbatim or restructured?); a script that only names a site adds **capture?** — crawl it for brand + assets (default), or text-only / "don't scrape" (no-capture mode, a preset supplies the design system).
+- **Pitch round:** `message` + `angle`, after sell-or-show is settled — the pitches inherit that intent.
 - **Run-shape:** both.
 
 ## `/pr-to-video`
@@ -37,18 +39,21 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
   State the basis in one phrase ("~40s — small change, +44/−13 across 12 files"). The tier is a **ceiling** on how much story the diff can support, never a floor to fill: a one-headline story recommends inside 30–90s regardless of tier (the tier's range may still appear as a non-recommended fuller-walkthrough option).
 
+- **Pitch round:** `angle` and the opening hook — the diff fixes the facts, not the telling.
 - **Run-shape:** both.
 
 ## `/general-video`
 
 - **Open-ended requests only:** first derive a one-sentence `message`. Ask `audience` only when it is unclear and would change the story or terminology. Ask `destination` only when it would change aspect or composition. Ask for a priority only when the brief contains a real trade-off. Default to one best version; ask about variations only when the user requests options or comparison.
 - **Specific requests:** a complete ask such as “a static title card with our logo for a website hero” needs no discovery questions.
+- **Pitch round:** `message` — the unformed open-ended request is this round's home case.
 - **Run-shape:** both questions apply. `/general-video` is also the companion host, so `flow: companion` stays on this route with the full toolbox.
 
 ## `/music-to-video`
 
 - **Must-haves:** the **music source** — a track file, a video to pull audio from, or generate one from a mood description · **destination → aspect**.
 - **Deferred (announce):** brand (font + palette) and the genre feel are chosen at its Step 3 by design — they emerge from the track's analysis, not from a question up front.
+- **Pitch round:** `message` — the visual concept riding the beat grid (lyric treatment, montage story, kinetic type); brand and genre feel still land at Step 3.
 - **Run-shape:** both.
 
 ## `/motion-graphics`
