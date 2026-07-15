@@ -63,40 +63,55 @@ describe("layout-audit.browser", () => {
     expect(after).not.toBe(before);
   });
 
-  it("changes the sweep fingerprint when same-sized raster slices swap visibility", () => {
-    document.body.innerHTML = `
+  it.each([
+    ["ids", 'id="slice-a"', 'id="slice-b"'],
+    ["data layout names", 'data-layout-name="slice-a"', 'data-layout-name="slice-b"'],
+    ["shared classes", 'class="raster-slice"', 'class="raster-slice"'],
+    ["structural positions", "", ""],
+  ])(
+    "changes the sweep fingerprint when same-sized raster slices with %s swap visibility",
+    (_identity, firstAttributes, secondAttributes) => {
+      document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <img id="slice-a" alt="" style="opacity: 1" />
-        <img id="slice-b" alt="" style="opacity: 0" />
+        <img ${firstAttributes} alt="" style="opacity: 1" />
+        <img ${secondAttributes} alt="" style="opacity: 0" />
       </div>
     `;
-    installGeometry({
-      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
-      "slice-a": rect({ left: 80, top: 60, width: 480, height: 240 }),
-      "slice-b": rect({ left: 80, top: 60, width: 480, height: 240 }),
-    });
-    const nativeGetComputedStyle = window.getComputedStyle.bind(window);
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const computed = nativeGetComputedStyle(element);
-      const inlineOpacity = (element as HTMLElement).style.opacity;
-      if (!inlineOpacity) return computed;
-      return new Proxy(computed, {
-        get(target, property, receiver) {
-          return property === "opacity" ? inlineOpacity : Reflect.get(target, property, receiver);
-        },
+      const [firstSlice, secondSlice] = Array.from(document.querySelectorAll("img")) as [
+        HTMLImageElement,
+        HTMLImageElement,
+      ];
+      const sliceRect = rect({ left: 80, top: 60, width: 480, height: 240 });
+      installGeometry({
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        "slice-a": sliceRect,
+        "slice-b": sliceRect,
+        headline: sliceRect,
+        "": sliceRect,
       });
-    });
+      const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+      vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+        const computed = nativeGetComputedStyle(element);
+        const inlineOpacity = (element as HTMLElement).style.opacity;
+        if (!inlineOpacity) return computed;
+        return new Proxy(computed, {
+          get(target, property, receiver) {
+            return property === "opacity" ? inlineOpacity : Reflect.get(target, property, receiver);
+          },
+        });
+      });
 
-    installAuditScript();
-    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
-      .__hyperframesLayoutGeometry;
-    const before = collect();
-    document.getElementById("slice-a")!.style.opacity = "0";
-    document.getElementById("slice-b")!.style.opacity = "1";
-    const after = collect();
+      installAuditScript();
+      const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+        .__hyperframesLayoutGeometry;
+      const before = collect();
+      firstSlice.style.opacity = "0";
+      secondSlice.style.opacity = "1";
+      const after = collect();
 
-    expect(after).not.toBe(before);
-  });
+      expect(after).not.toBe(before);
+    },
+  );
 
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `

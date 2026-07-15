@@ -1473,7 +1473,7 @@
     const parts = elements.map((element) => {
       const rect = toRect(element.getBoundingClientRect());
       const opacity = round(opacityChain(element));
-      return `${selectorFor(element)},${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
+      return `${uniqueSelectorFor(element)},${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
     });
     for (const media of root.querySelectorAll("canvas, video")) {
       if (!isVisibleElement(media)) continue;
