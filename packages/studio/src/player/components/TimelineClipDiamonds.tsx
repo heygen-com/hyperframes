@@ -213,14 +213,13 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
         const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
         if (x2 - x1 < 1) return null;
-        // Group-aware target for the ease button: the segment ease is
-        // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
-        // On a merged inline row, the button is hidden when multiple source
-        // animations collide at this percentage or the keyframe has no source
-        // animation id (runtime-scanned), so there is no tween to target.
+        // Group-aware target for the ease button. On a merged inline row the
+        // button edits the ease of every animation colliding at this percentage
+        // at once (the collapsed row is the element's unified motion). It is only
+        // hidden when the keyframe has no source animation id (runtime-scanned),
+        // so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
-        const hasCollidingAnimations = (kf.collidingAnimationIds?.length ?? 0) > 1;
         return (
           <Fragment key={`line-${i}-${prev.percentage}-${kf.percentage}`}>
             <div
@@ -237,7 +236,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && !hasCollidingAnimations && kf.animationId !== undefined && (
+            {onSelectSegment && kf.animationId !== undefined && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""
