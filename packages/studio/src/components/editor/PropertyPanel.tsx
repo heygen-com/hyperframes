@@ -19,6 +19,7 @@ import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import { MediaSection } from "./propertyPanelMediaSection";
+import { VstSection } from "./propertyPanelVstSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import { TextSection, StyleSections } from "./propertyPanelSections";
@@ -111,6 +112,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     recordingState,
     recordingDuration,
     onToggleRecording,
+    vstHost = null,
   } = props;
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
@@ -382,6 +384,15 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             onSetAttribute={onSetAttribute}
             onSetHtmlAttribute={onSetHtmlAttribute}
             onRemoveBackground={onRemoveBackground}
+          />
+        )}
+
+        {sections.vstFx && (
+          <VstSection
+            projectId={projectId}
+            element={element}
+            onSetAttribute={onSetAttribute}
+            vstHost={vstHost}
           />
         )}
 

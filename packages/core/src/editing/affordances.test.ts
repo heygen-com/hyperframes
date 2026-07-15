@@ -156,6 +156,17 @@ describe("resolveEditingAffordances — sections", () => {
     }
   });
 
+  it("audio: vstFx applies", () => {
+    const s = resolveEditingAffordances(baseFacts({ tag: "audio" })).sections;
+    expect(s.vstFx).toBe(true);
+  });
+
+  it("vstFx does not apply to video, img, or plain elements", () => {
+    expect(resolveEditingAffordances(baseFacts({ tag: "video" })).sections.vstFx).toBe(false);
+    expect(resolveEditingAffordances(baseFacts({ tag: "img" })).sections.vstFx).toBe(false);
+    expect(resolveEditingAffordances(baseFacts({ tag: "div" })).sections.vstFx).toBe(false);
+  });
+
   it("img: media + colorGrading", () => {
     const s = resolveEditingAffordances(baseFacts({ tag: "img" })).sections;
     expect(s).toMatchObject({ media: true, colorGrading: true });

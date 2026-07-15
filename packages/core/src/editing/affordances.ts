@@ -38,6 +38,8 @@ export interface EditingSectionApplicability {
    *  as `layout`, kept separate since a future tag could need one without
    *  the other. */
   style: boolean;
+  /** VST FX chain editing — audio elements only (narrower than `media`, which also covers video/img). */
+  vstFx: boolean;
 }
 
 export interface EditingAffordances {
@@ -212,6 +214,7 @@ export function resolveEditingSections(facts: EditableElementFacts): EditingSect
     animation: facts.animationCount > 0,
     layout: hasVisualBox,
     style: hasVisualBox,
+    vstFx: facts.tag === "audio",
   };
 }
 
