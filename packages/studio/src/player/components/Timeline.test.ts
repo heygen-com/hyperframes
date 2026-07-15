@@ -25,6 +25,7 @@ import {
   PLAYHEAD_HEAD_W,
   RULER_H,
   TRACK_H,
+  TRACKS_LEFT_PAD,
   getTimelineDisplayContentWidth,
   getTimelineFitPps,
 } from "./timelineLayout";
@@ -152,7 +153,8 @@ describe("Timeline provider boundary", () => {
     });
 
     const row = button.parentElement?.parentElement;
-    const trackContent = row?.children.item(1);
+    // Row children: [sticky gutter, TRACKS_LEFT_PAD spacer, time-mapped content].
+    const trackContent = row?.children.item(2);
     expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);
     expect(trackContent).toBeInstanceOf(HTMLElement);
     if (!(trackContent instanceof HTMLElement)) {
@@ -454,27 +456,27 @@ describe("shouldAutoScrollTimeline", () => {
 });
 
 describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
-  const viewport = 632; // usable width = 632 - GUTTER - 2 = 598
+  const viewport = 632; // usable width = 632 - GUTTER - TRACKS_LEFT_PAD - 2
 
   it("computes fit pps against the 60s floor for short compositions", () => {
     // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
     // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
     const pps = getTimelineFitPps(viewport, 10);
-    expect(pps).toBeCloseTo((viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S);
-    expect(10 * pps).toBeCloseTo((viewport - GUTTER - 2) / 6);
+    expect(pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / 6);
   });
 
   it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
     expect(getTimelineFitPps(viewport, 60)).toBeCloseTo(
-      (viewport - GUTTER - 2) / (60 * FIT_ZOOM_HEADROOM),
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (60 * FIT_ZOOM_HEADROOM),
     );
     expect(getTimelineFitPps(viewport, 120)).toBeCloseTo(
-      (viewport - GUTTER - 2) / (120 * FIT_ZOOM_HEADROOM),
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (120 * FIT_ZOOM_HEADROOM),
     );
   });
 
   it("leaves CapCut-style trailing headroom: the comp ends at 1/1.2 of the usable width", () => {
-    const usable = viewport - GUTTER - 2;
+    const usable = viewport - GUTTER - TRACKS_LEFT_PAD - 2;
     const pps = getTimelineFitPps(viewport, 120);
     // Composition content occupies usable/1.2 px; the remaining ~17% is empty
     // droppable ruler/lane surface past the end.
@@ -484,16 +486,16 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
 
   it("falls back to 100 pps before the viewport is measured", () => {
     expect(getTimelineFitPps(0, 10)).toBe(100);
-    expect(getTimelineFitPps(GUTTER, 10)).toBe(100);
+    expect(getTimelineFitPps(GUTTER + TRACKS_LEFT_PAD, 10)).toBe(100);
     expect(getTimelineFitPps(Number.NaN, 10)).toBe(100);
   });
 
   it("uses the floor for zero/invalid durations", () => {
     expect(getTimelineFitPps(viewport, 0)).toBeCloseTo(
-      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
     );
     expect(getTimelineFitPps(viewport, Number.NaN)).toBeCloseTo(
-      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
     );
   });
 });
@@ -509,7 +511,7 @@ describe("getTimelineDisplayContentWidth", () => {
   it("still fills the viewport when that is larger than the 60s floor", () => {
     expect(
       getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 2000, pps: 5 }),
-    ).toBe(2000 - GUTTER - 2);
+    ).toBe(2000 - GUTTER - TRACKS_LEFT_PAD - 2);
   });
 
   it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
@@ -599,20 +601,28 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
 });
 
 describe("getTimelinePlayheadLeft", () => {
-  it("offsets the wrapper by half the head width so the line CENTER = GUTTER + t*pps", () => {
+  it("offsets the wrapper by half the head width so the line CENTER = GUTTER + TRACKS_LEFT_PAD + t*pps", () => {
     // Wrapper left + PLAYHEAD_HEAD_W/2 (where the 1px line is centered) must
-    // equal GUTTER + t*pps at any zoom.
-    expect(getTimelinePlayheadLeft(4, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 4 * 20);
-    expect(getTimelinePlayheadLeft(10, 7.5) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 75);
+    // equal GUTTER + TRACKS_LEFT_PAD + t*pps at any zoom.
+    expect(getTimelinePlayheadLeft(4, 20) + PLAYHEAD_HEAD_W / 2).toBe(
+      GUTTER + TRACKS_LEFT_PAD + 4 * 20,
+    );
+    expect(getTimelinePlayheadLeft(10, 7.5) + PLAYHEAD_HEAD_W / 2).toBe(
+      GUTTER + TRACKS_LEFT_PAD + 75,
+    );
   });
 
-  it("centers the line exactly on the gutter (the 00:00 tick) at t = 0", () => {
-    expect(getTimelinePlayheadLeft(0, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER);
+  it("centers the line exactly on the left pad's end (the 00:00 tick) at t = 0", () => {
+    expect(getTimelinePlayheadLeft(0, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + TRACKS_LEFT_PAD);
   });
 
   it("guards invalid input", () => {
-    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
-    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
+    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(
+      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    );
+    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(
+      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    );
   });
 });
 
@@ -681,7 +691,7 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        432,
+        480, // rectLeft(100) + GUTTER + TRACKS_LEFT_PAD + 3s*100pps
         // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
         // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
         368,
@@ -702,7 +712,7 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        250,
+        250 + TRACKS_LEFT_PAD,
         600,
       ),
     ).toEqual({ start: 1.18, track: 8 });

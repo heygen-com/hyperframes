@@ -37,6 +37,8 @@ export interface TimelineGroupResizeChange {
 export interface TimelineGroupCommitOptions {
   beforeTiming?: Promise<void>;
   coalesceKey?: string;
+  /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
+  coalesceMs?: number;
 }
 
 interface UseTimelineGroupEditingOptions {
@@ -137,6 +139,7 @@ export function useTimelineGroupEditing({
       label: string,
       batchChanges: PersistTimelineBatchChange[],
       coalesceKey: string,
+      coalesceMs?: number,
     ) => {
       await persistTimelineBatchEdit({
         projectId,
@@ -148,6 +151,7 @@ export function useTimelineGroupEditing({
         domEditSaveTimestampRef,
         pendingTimelineEditPathRef,
         coalesceKey,
+        coalesceMs,
       });
       forceReloadSdkSession?.();
     },
@@ -176,6 +180,7 @@ export function useTimelineGroupEditing({
       needsExtension: boolean;
       label: string;
       coalesceKey: string;
+      coalesceMs?: number;
     }): Promise<boolean> => {
       const sharedPath = allChangesSharePath(input.changes, activeCompPath);
       const canUseSdk =
@@ -196,7 +201,7 @@ export function useTimelineGroupEditing({
           compositionPath: activeCompPath,
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
         },
-        { label: input.label, coalesceKey: input.coalesceKey },
+        { label: input.label, coalesceKey: input.coalesceKey, coalesceMs: input.coalesceMs },
       );
     },
     [
@@ -220,8 +225,22 @@ export function useTimelineGroupEditing({
         if (change.track != null) {
           attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
         }
-        patchIframeDomTiming(previewIframeRef.current, change.element, attrs);
+        patchIframeDomTiming(previewIframeRef.current, change.element, attrs, activeCompPath);
       }
+
+      // TRACK-ONLY batch: every change keeps its start (moves never carry a
+      // duration change), so nothing timing-related changed — the batch only
+      // rewrites data-track-index, which the renderer never reads (documented
+      // in core runtime/timeline.ts; track is a studio lane concept). The live
+      // DOM patch above + the gesture owner's optimistic store update fully
+      // cover the UI, so after the persist there is nothing to GSAP-shift and
+      // nothing for the preview to recompute: skip the fallback below entirely.
+      // Running it anyway is what made the mirrored z-order lane move blink —
+      // a zero-delta batch yields no scriptText, and finishGroupTimingGsapFallback
+      // used to full-reload the iframe when there was no script to soft-swap
+      // (it now rebinds the runtime timing in place, but a track-only batch
+      // needs NO preview sync at all, so the skip stays).
+      const trackOnly = changes.every((change) => change.start === change.element.start);
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.element.duration));
       // Snapshot the duration BEFORE the optimistic updates below so a failed
@@ -229,11 +248,15 @@ export function useTimelineGroupEditing({
       const rollbackDuration = captureDurationRollback(previewIframeRef.current);
       // needsExtension gates the SDK path (setTiming can't grow the root duration),
       // so read the store BEFORE the readout sync below optimistically updates it.
+      // Track-only batches leave every clip end unchanged, so both this and the
+      // readout sync below are provable no-ops there — kept unconditional so the
+      // duration machinery stays on one code path.
       const needsExtension = extendRootDurationIfNeeded(maxEnd);
       // Optimistic duration readout: content-driven (grow AND shrink), read from
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
+      const coalesceMs = options?.coalesceMs;
       return enqueueGroupOperation("Move timeline clips", async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
@@ -243,6 +266,7 @@ export function useTimelineGroupEditing({
           needsExtension,
           label: "Move timeline clips",
           coalesceKey,
+          coalesceMs,
         });
         if (handledBySdk) return;
 
@@ -261,7 +285,12 @@ export function useTimelineGroupEditing({
               ),
           })),
           coalesceKey,
+          coalesceMs,
         );
+        // Track-only: no timing delta → no GSAP positions to shift and no
+        // reload (see the trackOnly doc above). Mixed batches (any start
+        // change) keep the full fallback below.
+        if (trackOnly) return;
         await finishGroupTimingGsapFallback({
           projectId,
           iframe: previewIframeRef.current,
@@ -313,7 +342,7 @@ export function useTimelineGroupEditing({
               : "data-media-start";
           liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
         }
-        patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs);
+        patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.duration));
@@ -327,6 +356,7 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? resizeCoalesceKey(changes);
+      const coalesceMs = options?.coalesceMs;
       return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
@@ -339,6 +369,7 @@ export function useTimelineGroupEditing({
           needsExtension,
           label: "Resize timeline clips",
           coalesceKey,
+          coalesceMs,
         });
         if (handledBySdk) return;
 
@@ -355,6 +386,7 @@ export function useTimelineGroupEditing({
               }),
           })),
           coalesceKey,
+          coalesceMs,
         );
         await finishGroupTimingGsapFallback({
           projectId,

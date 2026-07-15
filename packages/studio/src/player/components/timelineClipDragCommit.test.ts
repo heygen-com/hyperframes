@@ -3,6 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 import {
   commitDraggedClipMove,
+  commitZMirrorLaneMove,
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
@@ -12,6 +13,7 @@ import {
   pushEditHistoryEntry,
 } from "../../utils/editHistory";
 import { normalizeToZones } from "./timelineZones";
+import { resolveZMirrorLaneMove } from "./timelineZMirror";
 import type { StackingPatch } from "./timelineStackingSync";
 
 function el(
@@ -29,9 +31,7 @@ function el(
 /** Flush the microtask chain: the z-sync now fires only after the move persist
  *  promise resolves (serialized), so tests asserting on it must await. */
 async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let step = 0; step < 8; step += 1) await Promise.resolve();
 }
 
 function drag(
@@ -368,6 +368,73 @@ describe("commitDraggedClipMove", () => {
     expect(map.a.track).toBe(0); // above the insert → unchanged
     expect(map.c.track).toBe(1); // dragged clip lands on the new lane
     expect(map.b.track).toBe(2); // at/below the insert → +1 shift
+  });
+
+  it("a selected audio passenger moves in time during a visual insert without being renumbered", () => {
+    const a = { ...el("a", 0, 0, 5), sourceFile: "scene.html" };
+    const b = { ...el("b", 1, 10, 5), sourceFile: "scene.html" };
+    const t = { ...el("t", 1, 0, 5), sourceFile: "scene.html" };
+    const audio = {
+      ...el("audio", 2, 4, 20, "audio"),
+      sourceFile: "scene.html",
+      authoredTrack: 7,
+    };
+
+    const { onMoveElements } = runClipMove(
+      drag(t, { previewStart: 5, previewTrack: 1, insertRow: 1 }),
+      {
+        elements: [a, b, t, audio],
+        trackOrder: [0, 1, 2],
+        selectedKeys: new Set(["t", "audio"]),
+      },
+    );
+
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.audio).toEqual({ start: 9, track: 7 });
+  });
+
+  it("an audio insert persists zone-local tracks without rewriting visual lanes", () => {
+    const v0 = el("v0", 0, 0, 5);
+    const v1 = el("v1", 1, 0, 5);
+    const a = { ...el("a", 2, 0, 5, "audio"), authoredTrack: 0 };
+    const b = { ...el("b", 3, 10, 5, "audio"), authoredTrack: 1 };
+    const t = { ...el("t", 3, 0, 5, "audio"), authoredTrack: 1 };
+
+    const { onMoveElements } = runClipMove(
+      drag(t, { previewStart: 0, previewTrack: 3, insertRow: 3 }),
+      { elements: [v0, v1, a, b, t], trackOrder: [0, 1, 2, 3] },
+    );
+
+    expect(editMap(onMoveElements.mock.calls[0][0])).toEqual({
+      a: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      b: { start: 10, track: 2 },
+    });
+  });
+
+  it("refuses an audio insert when it would renumber a locked authored row", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const visual = el("visual", 0, 0, 5);
+    const locked = {
+      ...el("locked", 1, 0, 5, "audio"),
+      authoredTrack: 0,
+      timelineLocked: true,
+    };
+    const target = { ...el("target", 2, 0, 5, "audio"), authoredTrack: 1 };
+
+    try {
+      const { onMoveElements } = runClipMove(
+        drag(target, { previewStart: 0, previewTrack: 2, insertRow: 1 }),
+        { elements: [visual, locked, target], trackOrder: [0, 1, 2] },
+      );
+
+      expect(onMoveElements).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("locked clip locked would need renumbering"),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   describe("lane ↔ stacking sync", () => {
@@ -1022,5 +1089,214 @@ describe("commitDraggedClipMove", () => {
       expect(onMoveElements).toHaveBeenCalledTimes(1);
       expect(onStackingPatches).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("commitZMirrorLaneMove", () => {
+  const mirrorDeps = (elements: TimelineElement[], trackOrder: number[]) => {
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn();
+    return {
+      updateElement,
+      onMoveElements,
+      deps: { elements, trackOrder, updateElement, onMoveElements } as DragCommitDeps,
+    };
+  };
+
+  it("kind:move persists start + display lane with the persistTrack override (same shape as a lane drag)", async () => {
+    // t sits at lane 2 in a sparse file (authored 7); the mirror lands it on
+    // lane 0 whose authored track is 3.
+    const t = { ...el("t", 2, 0, 10), authoredTrack: 7 };
+    const elements = [{ ...el("a", 0, 20, 5), authoredTrack: 3 }, el("b", 1, 0, 10), t];
+    const { updateElement, onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 3 },
+      deps,
+      "z-reorder:bring-forward:t",
+    );
+    expect(moved).toBe(true);
+    // Optimistic store update: DISPLAY lane + the written authoredTrack mirror.
+    expect(updateElement).toHaveBeenCalledWith("t", {
+      start: 0,
+      track: 0,
+      authoredTrack: 3,
+    });
+    // Persist: authored-space track, the z persist's coalesce key, lane-reorder op.
+    expect(onMoveElements).toHaveBeenCalledTimes(1);
+    const [persistEdits, coalesceKey, operation] = onMoveElements.mock.calls[0];
+    expect(editMap(persistEdits)).toEqual({ t: { start: 0, track: 3 } });
+    expect(coalesceKey).toBe("z-reorder:bring-forward:t");
+    expect(operation).toBe("lane-reorder");
+  });
+
+  it("kind:insert reuses the track-insert renumber core (+1 shift below the new lane)", async () => {
+    // a,b,c mutually overlapping on lanes 0/1/2. Mirror-insert c at row 1: c
+    // lands on the new lane, b (at/below) shifts down — identical to the drag
+    // insert test above, proving the shared core (no duplicated renumber logic).
+    const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      elements[2],
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:c",
+    );
+    expect(moved).toBe(true);
+    expect(onMoveElements).toHaveBeenCalledTimes(1);
+    expect(onMoveElements.mock.calls[0][1]).toBe("z-reorder:bring-forward:c");
+    expect(onMoveElements.mock.calls[0][2]).toBe("track-insert");
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a.track).toBe(0);
+    expect(map.c.track).toBe(1);
+    expect(map.b.track).toBe(2);
+  });
+
+  it("visual mirror inserts never persist or renumber same-file audio", async () => {
+    // b and t share a visual lane because they do not overlap. Inserting t between
+    // a and b creates one extra visual lane, so whole-timeline normalization moves
+    // audio from display lane 2 to 3. That display-only shift must not be written.
+    const a = { ...el("a", 0, 0, 5), sourceFile: "scene.html" };
+    const b = { ...el("b", 1, 10, 5), sourceFile: "scene.html" };
+    const t = { ...el("t", 1, 0, 5), sourceFile: "scene.html" };
+    const audio = { ...el("audio", 2, 0, 20, "audio"), sourceFile: "scene.html" };
+    const { onMoveElements, deps } = mirrorDeps([a, b, t, audio], [0, 1, 2]);
+
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:t",
+    );
+
+    expect(moved).toBe(true);
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.audio).toBeUndefined();
+    expect(map).toEqual({
+      a: { start: 0, track: 0 },
+      b: { start: 10, track: 2 },
+      t: { start: 0, track: 1 },
+    });
+  });
+
+  it("foreign expanded rows never distort the root-file insert topology", async () => {
+    const host = { ...el("host", 0, 0, 5), sourceFile: "index.html" };
+    const child1 = {
+      ...el("child-1", 0.25, 0, 5),
+      sourceFile: "scene.html",
+      expandedParentStart: 0,
+    };
+    const child2 = {
+      ...el("child-2", 0.5, 0, 5),
+      sourceFile: "scene.html",
+      expandedParentStart: 0,
+    };
+    const b = { ...el("b", 1, 0, 5), sourceFile: "index.html" };
+    const t = { ...el("t", 2, 0, 5), sourceFile: "index.html" };
+    const elements = [host, child1, child2, b, t];
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 0.25, 0.5, 1, 2]);
+
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:t",
+    );
+
+    expect(moved).toBe(true);
+    expect(editMap(onMoveElements.mock.calls[0][0])).toEqual({
+      host: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      b: { start: 0, track: 2 },
+    });
+  });
+
+  it("never triggers the lane→z stacking sync (it would fight the just-set z values)", async () => {
+    // Even with BOTH z-sync deps supplied (the drag paths would engage them for
+    // a vertical move like this), the mirror commit must not emit stacking
+    // patches — the z values were just written by the user's menu action.
+    const t = el("t", 2, 0, 10);
+    const elements = [el("a", 0, 20, 5), el("b", 1, 0, 10), t];
+    const { deps } = mirrorDeps(elements, [0, 1, 2]);
+    const onStackingPatches = vi.fn();
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 0 },
+      { ...deps, readZIndex: () => 0, onStackingPatches },
+      "z-reorder:bring-forward:t",
+    );
+    await flushMicrotasks();
+    expect(moved).toBe(true);
+    expect(onStackingPatches).not.toHaveBeenCalled();
+  });
+
+  it("resolves false and rolls the store back when the persist rejects", async () => {
+    const t = el("t", 1, 0, 10);
+    const elements = [el("a", 0, 20, 5), t];
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn().mockRejectedValue(new Error("boom"));
+    const moved = await commitZMirrorLaneMove(
+      t,
+      { kind: "move", displayTrack: 0, persistTrack: 0 },
+      { elements, trackOrder: [0, 1], updateElement, onMoveElements },
+      "z-reorder:send-backward:t",
+    );
+    expect(moved).toBe(false);
+    // Optimistic write then rollback to the original lane.
+    expect(updateElement).toHaveBeenLastCalledWith("t", {
+      start: 0,
+      track: 1,
+      authoredTrack: undefined,
+    });
+  });
+
+  it("END-TO-END one-element step: resolver insertRow renumbers the clip strictly between the two neighbors", async () => {
+    // 3 stacked back-to-back clips + a free lane beyond the far one. Send t
+    // (top) backward past b: the resolver must bound at c and produce the
+    // insert row IMMEDIATELY below b, and commitZMirrorLaneMove's renumber must
+    // land t strictly between b and c — never on the farther free lane 3.
+    const t = el("t", 0, 0, 10);
+    const b = el("b", 1, 0, 10);
+    const c = el("c", 2, 0, 10);
+    const far = el("far", 3, 20, 5); // free over t's span, beyond c
+    const elements = [t, b, c, far];
+    const move = resolveZMirrorLaneMove({
+      action: "send-backward",
+      element: t,
+      elements,
+      crossedKey: "b",
+    });
+    expect(move).toEqual({ kind: "insert", insertRow: 2 });
+    const { onMoveElements, deps } = mirrorDeps(elements, [0, 1, 2, 3]);
+    const moved = await commitZMirrorLaneMove(t, move!, deps, "z-reorder:send-backward:t");
+    expect(moved).toBe(true);
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    // The renumber compacts t's vacated top lane, so the whole set shifts up by
+    // one while t lands on the b/c boundary — strictly between the two.
+    expect(map).toEqual({
+      b: { start: 0, track: 0 },
+      t: { start: 0, track: 1 },
+      c: { start: 0, track: 2 },
+      far: { start: 20, track: 3 },
+    });
+    expect(map.b.track).toBeLessThan(map.t.track);
+    expect(map.t.track).toBeLessThan(map.c.track);
+  });
+
+  it("resolves false for a refused insert (locked clip would need renumbering)", async () => {
+    // b is locked and sits at/below the insert row, so the whole-set renumber
+    // is refused — no persist call.
+    const a = el("a", 0, 0, 5);
+    const b: TimelineElement = { ...el("b", 1, 0, 5), timelineLocked: true };
+    const c = el("c", 2, 0, 5);
+    const { onMoveElements, deps } = mirrorDeps([a, b, c], [0, 1, 2]);
+    const moved = await commitZMirrorLaneMove(
+      c,
+      { kind: "insert", insertRow: 1 },
+      deps,
+      "z-reorder:bring-forward:c",
+    );
+    expect(moved).toBe(false);
+    expect(onMoveElements).not.toHaveBeenCalled();
   });
 });

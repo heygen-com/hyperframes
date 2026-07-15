@@ -325,6 +325,28 @@
       "file": "packages/core/src/figma/manifest.ts",
       "exports": ["mediaDir", "typeDirPath", "isFigmaManifestRecord"],
     },
+    // STUDIO_FLAT_INSPECTOR_ENABLED: exported for use by downstream studio
+    // inspector redesign tasks; consumed by components in later PRs.
+    {
+      "file": "packages/studio/src/components/editor/manualEditingAvailability.ts",
+      "exports": ["STUDIO_FLAT_INSPECTOR_ENABLED"],
+    },
+    // TextAreaField: newly exported for FlatTextSection (flat inspector
+    // redesign, Task 8), which lands in a later commit on this branch.
+    {
+      "file": "packages/studio/src/components/editor/propertyPanelSections.tsx",
+      "exports": ["TextAreaField"],
+    },
+    // Link: its only consumer was FlatRadiusRow's uniform-only fallback row in
+    // propertyPanelFlatStyleSections.tsx, deleted by the Style parity fix
+    // (p8-task-style-parity) — that row was unreachable from a uniform radius
+    // and is now replaced by BorderRadiusEditor's own unlink toggle. Kept in
+    // the icon set for future reuse rather than deleted from a file outside
+    // this fix's scope.
+    {
+      "file": "packages/studio/src/icons/SystemIcons.tsx",
+      "exports": ["Link"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
@@ -499,6 +521,43 @@
       // scopeRootSelectors handling shifts lines and re-flags both.
       "packages/core/src/compiler/inlineSubCompositions.ts",
       "packages/core/src/compiler/compositionScoping.test.ts",
+      // useCanvasZOrderTimelineMirror.test.tsx: independent gesture cases repeat
+      // the minimal hook/store harness so rapid and rejected z writes cannot
+      // leak state through a shared fixture.
+      "packages/studio/src/components/nle/useCanvasZOrderTimelineMirror.test.tsx",
+      // timelineTimingSync.test.ts: ownership, rollback, transport, and preview
+      // convergence cases deliberately keep their server stubs and assertions
+      // local; extracting the repeated arrange/act/assert shape would couple
+      // otherwise independent failure-domain regressions.
+      "packages/studio/src/hooks/timelineTimingSync.test.ts",
+      // useElementLifecycleOps.test.tsx: the reveal and atomic multi-file cases
+      // repeat a small render/persist harness to keep each transaction's setup,
+      // durable outcome, and rollback assertions visible together.
+      "packages/studio/src/hooks/useElementLifecycleOps.test.tsx",
+      // timelineClipDragCommit.test.ts: drag permutations are self-contained
+      // arrange/act/assert scenarios; the repeated clip/file fixture makes each
+      // lane and timing outcome readable without shared mutable setup.
+      "packages/studio/src/player/components/timelineClipDragCommit.test.ts",
+      // timelineZMirror.test.ts: mirror acceptance/refusal cases repeat their
+      // compact lane fixture so each z-to-lane decision remains independently
+      // understandable and cannot inherit state from another case.
+      "packages/studio/src/player/components/timelineZMirror.test.ts",
+      // gsapUndoRestore.test.ts: soft/full restore cases keep the serialized and
+      // live DOM snapshots beside their assertions; sharing those short fixtures
+      // would obscure the exact script/identity difference under test.
+      "packages/studio/src/utils/gsapUndoRestore.test.ts",
+      // Studio flat-inspector redesign (Plans 2-4): each Flat*Section test file
+      // repeats the same renderInto/pointerdown-drag/reset-click scaffold as its
+      // sibling group's tests, added task-by-task across separate PRs on this
+      // branch. Pre-existing relative to Grade group (Plan 5) work; consistent
+      // with the norm above of leaving parallel arrange/act/assert test cases
+      // unabstracted where each case verifies a distinct control's behavior.
+      "packages/studio/src/components/editor/propertyPanelFlatMediaSection.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatMediaSection.tsx",
+      "packages/studio/src/components/editor/propertyPanelMediaSection.tsx",
+      "packages/studio/src/components/editor/PropertyPanel.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatStyleSections.test.tsx",
+      "packages/studio/src/components/editor/propertyPanelFlatMotionSection.test.tsx",
     ],
   },
   "health": {
@@ -680,6 +739,10 @@
       "packages/core/src/compiler/inlineSubCompositions.ts",
       "packages/core/src/compiler/htmlBundler.ts",
       "packages/core/src/runtime/compositionLoader.ts",
+      // TextFieldEditor: pre-existing complexity from earlier Text-inspector
+      // work on this same branch (commits 444639d75, b57b31beb, 6f2e9848c,
+      // eba8a0fa2), unrelated to the Grade group (Plan 5) currently landing.
+      "packages/studio/src/components/editor/propertyPanelSections.tsx",
     ],
   },
 }

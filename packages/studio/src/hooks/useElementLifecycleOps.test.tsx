@@ -3,9 +3,22 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player";
-import type { DomEditPatchBatch } from "./domEditCommitTypes";
+import {
+  LAYER_REVEAL_PRIOR_POSITION_ATTR,
+  LAYER_REVEAL_PRIOR_Z_ATTR,
+} from "../player/lib/timelineElementHelpers";
+import {
+  LAYER_REVEAL_LIFT_Z,
+  LAYER_REVEAL_PENDING_COMMIT_ATTR,
+  liftElementToTop,
+  restoreLiftedElement,
+  useLayerRevealOverride,
+} from "../components/editor/useLayerRevealOverride";
+import type { DomEditPatchBatch, DomEditPatchBatchesResult } from "./domEditCommitTypes";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
+import { makeLifecycleOpsParams } from "./elementLifecycleOpsTestUtils";
 import { mountReactHarness } from "./domSelectionTestHarness";
+import { runZLaneGesture } from "../components/nle/zLaneGesture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,11 +26,13 @@ afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().setElements([]);
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 interface BatchOptions {
   label: string;
   coalesceKey: string;
+  coalesceMs?: number;
   skipReload?: boolean;
 }
 
@@ -38,26 +53,21 @@ type ReorderCommit = (
   }>,
   coalesceKeyOverride?: string,
   actionKind?: string,
-) => Promise<void>;
+) => Promise<DomEditPatchBatchesResult | undefined | void>;
 
 function renderReorderHook(
   capturedCalls: CapturedBatchCall[],
   onReady: (commit: ReorderCommit) => void,
 ) {
   function Harness() {
-    const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-      activeCompPath: "index.html",
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(async () => {}),
-      domEditSaveTimestampRef: { current: 0 },
-      editHistory: { recordEdit: vi.fn(async () => {}) },
-      projectIdRef: { current: null },
-      reloadPreview: vi.fn(),
-      clearDomSelection: vi.fn(),
-      commitDomEditPatchBatches: async (batches, options) => {
-        capturedCalls.push({ batches, options });
-      },
-    });
+    const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+      makeLifecycleOpsParams({
+        commitDomEditPatchBatches: async (batches, options) => {
+          capturedCalls.push({ batches, options });
+          return { durable: true, allMatched: true, changed: true };
+        },
+      }),
+    );
     onReady(handleDomZIndexReorderCommit);
     return null;
   }
@@ -219,10 +229,15 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     });
 
     // Same element set, different actions — the keys must differ so the two
-    // edits never coalesce into one undo step within the coalesce window.
+    // edits never coalesce into one undo step. Each key also carries a fresh
+    // gesture sequence, which is what makes the commit's unbounded per-gesture
+    // coalesce window safe (see zReorderCoalesceKey).
     expect(captured).toHaveLength(2);
-    expect(captured[0]?.options.coalesceKey).toBe("z-reorder:bring-forward:clip-a");
-    expect(captured[1]?.options.coalesceKey).toBe("z-reorder:send-backward:clip-a");
+    expect(captured[0]?.options.coalesceKey).toMatch(/^z-reorder:bring-forward:clip-a:g\d+$/);
+    expect(captured[1]?.options.coalesceKey).toMatch(/^z-reorder:send-backward:clip-a:g\d+$/);
+    expect(captured[0]?.options.coalesceKey).not.toBe(captured[1]?.options.coalesceKey);
+    // The two-phase gesture fold rides an unbounded window on both records.
+    expect(captured[0]?.options.coalesceMs).toBe(Number.POSITIVE_INFINITY);
     act(() => root.unmount());
   });
 
@@ -245,26 +260,22 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     let resolveBatch: (() => void) | undefined;
+    const batchResult = { durable: true, allMatched: true, changed: true };
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile: vi.fn(async () => {}),
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit: vi.fn(async () => {}) },
-        projectIdRef: { current: null },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        // Persist stays pending so the assertion below can only be satisfied
-        // by the SYNCHRONOUS store update (the lane-sync path's requirement).
-        commitDomEditPatchBatches: () => new Promise((resolve) => (resolveBatch = resolve)),
-      });
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          // Persist stays pending so the assertion below can only be satisfied
+          // by the SYNCHRONOUS store update (the lane-sync path's requirement).
+          commitDomEditPatchBatches: () =>
+            new Promise((resolve) => (resolveBatch = () => resolve(batchResult))),
+        }),
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }
     const root = mountReactHarness(<Harness />);
 
-    let pending: Promise<void> | undefined;
+    let pending: Promise<unknown> | undefined;
     act(() => {
       pending = commit!([
         {
@@ -301,22 +312,16 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile: vi.fn(async () => {}),
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit: vi.fn(async () => {}) },
-        projectIdRef: { current: null },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        commitDomEditPatchBatches: vi.fn(async () => {
-          // The live styles were applied by the hook before persist ran.
-          expect(el.style.zIndex).toBe("2");
-          expect(el.style.position).toBe("relative");
-          throw failure;
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          commitDomEditPatchBatches: vi.fn(async () => {
+            // The live styles were applied by the hook before persist ran.
+            expect(el.style.zIndex).toBe("2");
+            expect(el.style.position).toBe("relative");
+            throw failure;
+          }),
         }),
-      });
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }
@@ -340,6 +345,370 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     expect(el.style.position).toBe("static");
     act(() => root.unmount());
   });
+
+  it("returns an active reveal lift and its original styles to their owner on failure", async () => {
+    const el = document.createElement("div");
+    el.id = "clip-a";
+    el.style.zIndex = "4";
+    el.style.position = "static";
+    document.body.appendChild(el);
+    const lift = liftElementToTop(el)!;
+    const failure = new Error("persist failed");
+
+    expect(el.style.zIndex).toBe(LAYER_REVEAL_LIFT_Z);
+    expect(el.style.position).toBe("relative");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe("4");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR)).toBe("static");
+    expect(el.hasAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR)).toBe(false);
+
+    let commit: ReorderCommit | undefined;
+    function Harness() {
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          commitDomEditPatchBatches: vi.fn(async () => {
+            expect(el.style.zIndex).toBe("8");
+            expect(el.hasAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe(false);
+            expect(el.hasAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR)).toBe(false);
+            throw failure;
+          }),
+        }),
+      );
+      commit = handleDomZIndexReorderCommit;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    let rejection: unknown;
+    await act(async () => {
+      try {
+        await commit!([{ element: el, zIndex: 8, id: "clip-a", sourceFile: "index.html" }]);
+      } catch (error) {
+        rejection = error;
+      }
+    });
+    expect(rejection).toBe(failure);
+
+    // The failed optimistic commit must put the still-active lift back exactly
+    // as it found it, including the metadata that lets reveal cleanup restore
+    // the authored z/position rather than abandoning the temporary lift.
+    expect(el.style.zIndex).toBe(LAYER_REVEAL_LIFT_Z);
+    expect(el.style.position).toBe("relative");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe("4");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR)).toBe("static");
+    expect(el.hasAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR)).toBe(false);
+
+    restoreLiftedElement(el, lift);
+    expect(el.style.zIndex).toBe("4");
+    expect(el.style.position).toBe("static");
+    act(() => root.unmount());
+  });
+
+  it("reconciles live, store, and reveal state when no patch target matched", async () => {
+    const el = document.createElement("div");
+    el.id = "clip-a";
+    el.style.zIndex = "4";
+    el.style.position = "static";
+    document.body.appendChild(el);
+    usePlayerStore.getState().setElements([
+      {
+        id: "clip-a",
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: 0,
+        zIndex: 4,
+        hasExplicitZIndex: true,
+      },
+    ]);
+    const lift = liftElementToTop(el)!;
+    const unmatched = { durable: false, allMatched: false, changed: false };
+    let commit: ReorderCommit | undefined;
+
+    function Harness() {
+      ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          commitDomEditPatchBatches: vi.fn(async () => unmatched),
+        }),
+      ));
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    let result: unknown;
+    await act(async () => {
+      result = await commit!([
+        {
+          element: el,
+          zIndex: 8,
+          id: "clip-a",
+          sourceFile: "index.html",
+          key: "clip-a",
+        },
+      ]);
+    });
+
+    expect(result).toEqual(unmatched);
+    expect(el.style.zIndex).toBe(LAYER_REVEAL_LIFT_Z);
+    expect(el.style.position).toBe("relative");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe("4");
+    expect(el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR)).toBe("static");
+    expect(el.hasAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR)).toBe(false);
+    expect(usePlayerStore.getState().elements[0]).toMatchObject({
+      zIndex: 4,
+      hasExplicitZIndex: true,
+    });
+
+    restoreLiftedElement(el, lift);
+    expect(el.style.zIndex).toBe("4");
+    expect(el.style.position).toBe("static");
+    act(() => root.unmount());
+  });
+
+  it.each(["rejection", "unmatched"] as const)(
+    "defers a delayed reveal until a pending z commit finishes with %s",
+    async (outcome) => {
+      vi.useFakeTimers();
+      const el = document.createElement("div");
+      el.id = "clip-a";
+      el.style.zIndex = "4";
+      el.style.position = "absolute";
+      document.body.appendChild(el);
+      usePlayerStore.getState().setElements([
+        {
+          id: "clip-a",
+          tag: "div",
+          start: 0,
+          duration: 1,
+          track: 0,
+          zIndex: 4,
+          hasExplicitZIndex: true,
+        },
+      ]);
+      let resolvePersist: ((result: DomEditPatchBatchesResult) => void) | undefined;
+      let rejectPersist: ((error: Error) => void) | undefined;
+      const persist = vi.fn(
+        () =>
+          new Promise<DomEditPatchBatchesResult>((resolve, reject) => {
+            resolvePersist = resolve;
+            rejectPersist = reject;
+          }),
+      );
+      let commit: ReorderCommit | undefined;
+      let scheduleReveal: ((element: HTMLElement, delayMs: number) => void) | undefined;
+
+      function Harness() {
+        ({ scheduleReveal } = useLayerRevealOverride({
+          isPlaying: false,
+          selectedElement: el,
+        }));
+        ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps(
+          makeLifecycleOpsParams({ commitDomEditPatchBatches: persist }),
+        ));
+        return null;
+      }
+      const root = mountReactHarness(<Harness />);
+
+      let pending: Promise<unknown> | undefined;
+      act(() => {
+        scheduleReveal!(el, 10);
+        pending = commit!([
+          { element: el, zIndex: 8, id: "clip-a", sourceFile: "index.html", key: "clip-a" },
+        ]);
+        vi.advanceTimersByTime(10);
+      });
+
+      // The timer elapsed, but it must not capture optimistic z=8 as authored.
+      expect(el.style.zIndex).toBe("8");
+      expect(el.hasAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe(false);
+
+      let rejection: unknown;
+      await act(async () => {
+        if (outcome === "rejection") rejectPersist!(new Error("save failed"));
+        else resolvePersist!({ durable: false, allMatched: false, changed: false });
+        try {
+          await pending;
+        } catch (error) {
+          rejection = error;
+        }
+      });
+      if (outcome === "rejection") expect(rejection).toBeInstanceOf(Error);
+
+      act(() => vi.advanceTimersByTime(16));
+      expect(el.style.zIndex).toBe(LAYER_REVEAL_LIFT_Z);
+      expect(el.getAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe("4");
+      expect(usePlayerStore.getState().elements[0]?.zIndex).toBe(4);
+      act(() => root.unmount());
+    },
+  );
+
+  it("serializes overlapping commits through the shared gesture owner", async () => {
+    const el = document.createElement("div");
+    el.id = "clip-a";
+    el.style.zIndex = "1";
+    document.body.appendChild(el);
+    usePlayerStore.getState().setElements([
+      {
+        id: "clip-a",
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: 0,
+        zIndex: 1,
+        hasExplicitZIndex: true,
+      },
+    ]);
+    const firstFailure = new Error("first persist failed");
+    let rejectFirst: ((error: Error) => void) | undefined;
+    let resolveSecond: (() => void) | undefined;
+    const persist = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = () => resolve({ durable: true, allMatched: true, changed: true });
+          }),
+      );
+    let commit: ReorderCommit | undefined;
+
+    function Harness() {
+      ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({ commitDomEditPatchBatches: persist }),
+      ));
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    let firstPending: Promise<unknown> | undefined;
+    let secondPending: Promise<unknown> | undefined;
+    act(() => {
+      firstPending = runZLaneGesture({
+        commitZ: () =>
+          commit!([
+            { element: el, zIndex: 2, id: "clip-a", sourceFile: "index.html", key: "clip-a" },
+          ]),
+        mirror: async () => true,
+      });
+      secondPending = runZLaneGesture({
+        commitZ: () =>
+          commit!([
+            { element: el, zIndex: 3, id: "clip-a", sourceFile: "index.html", key: "clip-a" },
+          ]),
+        mirror: async () => true,
+      });
+    });
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(el.style.zIndex).toBe("2");
+    expect(usePlayerStore.getState().elements[0]?.zIndex).toBe(2);
+
+    let rejection: unknown;
+    await act(async () => {
+      rejectFirst!(firstFailure);
+      try {
+        await firstPending;
+      } catch (error) {
+        rejection = error;
+      }
+      await Promise.resolve();
+    });
+
+    expect(rejection).toBe(firstFailure);
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(el.style.zIndex).toBe("3");
+    expect(usePlayerStore.getState().elements[0]?.zIndex).toBe(3);
+
+    await act(async () => {
+      resolveSecond!();
+      await secondPending;
+    });
+    expect(el.style.zIndex).toBe("3");
+    expect(usePlayerStore.getState().elements[0]?.zIndex).toBe(3);
+    act(() => root.unmount());
+  });
+
+  it.each(["deselection", "playback"] as const)(
+    "does not resurrect a reveal released by %s while persistence is pending",
+    async (releaseBy) => {
+      vi.useFakeTimers();
+      const el = document.createElement("div");
+      el.id = "clip-a";
+      el.style.zIndex = "4";
+      el.style.position = "static";
+      const other = document.createElement("div");
+      document.body.append(el, other);
+      const failure = new Error("persist failed");
+      let rejectPersist: ((error: Error) => void) | undefined;
+      const persist = vi.fn(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectPersist = reject;
+          }),
+      );
+      let commit: ReorderCommit | undefined;
+      let scheduleReveal: ((element: HTMLElement, delayMs: number) => void) | undefined;
+
+      function Harness({
+        selectedElement,
+        isPlaying,
+      }: {
+        selectedElement: HTMLElement | null;
+        isPlaying: boolean;
+      }) {
+        ({ scheduleReveal } = useLayerRevealOverride({ isPlaying, selectedElement }));
+        ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps(
+          makeLifecycleOpsParams({ commitDomEditPatchBatches: persist }),
+        ));
+        return null;
+      }
+
+      const root = mountReactHarness(<Harness selectedElement={el} isPlaying={false} />);
+      act(() => {
+        scheduleReveal!(el, 0);
+        vi.advanceTimersByTime(0);
+      });
+      expect(el.style.zIndex).toBe(LAYER_REVEAL_LIFT_Z);
+
+      let pending: Promise<unknown> | undefined;
+      act(() => {
+        pending = commit!([{ element: el, zIndex: 8, id: el.id, sourceFile: "index.html" }]);
+      });
+      expect(el.style.zIndex).toBe("8");
+      expect(el.hasAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR)).toBe(true);
+
+      act(() => {
+        root.render(
+          <Harness
+            selectedElement={releaseBy === "deselection" ? other : el}
+            isPlaying={releaseBy === "playback"}
+          />,
+        );
+      });
+
+      let rejection: unknown;
+      await act(async () => {
+        rejectPersist!(failure);
+        try {
+          await pending;
+        } catch (error) {
+          rejection = error;
+        }
+      });
+
+      expect(rejection).toBe(failure);
+      expect(el.style.zIndex).toBe("4");
+      expect(el.style.position).toBe("static");
+      expect(el.hasAttribute(LAYER_REVEAL_PRIOR_Z_ATTR)).toBe(false);
+      expect(el.hasAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR)).toBe(false);
+      expect(el.hasAttribute(LAYER_REVEAL_PENDING_COMMIT_ATTR)).toBe(false);
+      act(() => root.unmount());
+    },
+  );
 
   it("rolls back only live and store state after an atomic reorder failure", async () => {
     const writeProjectFile = vi.fn(async () => {});
@@ -367,20 +736,17 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     let commit: ReorderCommit | undefined;
     function Harness() {
-      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
-        activeCompPath: "index.html",
-        showToast: vi.fn(),
-        writeProjectFile,
-        domEditSaveTimestampRef: { current: 0 },
-        editHistory: { recordEdit },
-        projectIdRef: { current: "demo" },
-        reloadPreview: vi.fn(),
-        clearDomSelection: vi.fn(),
-        forceReloadSdkSession,
-        commitDomEditPatchBatches: vi.fn(async () => {
-          throw originalError;
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps(
+        makeLifecycleOpsParams({
+          writeProjectFile,
+          editHistory: { recordEdit },
+          projectIdRef: { current: "demo" },
+          forceReloadSdkSession,
+          commitDomEditPatchBatches: vi.fn(async () => {
+            throw originalError;
+          }),
         }),
-      });
+      );
       commit = handleDomZIndexReorderCommit;
       return null;
     }

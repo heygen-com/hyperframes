@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { openComposition } from "@hyperframes/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
+import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { useTimelineEditing } from "./useTimelineEditing";
 
@@ -165,7 +166,11 @@ type TimelineRecordEdit = NonNullable<
 function renderTimelineEditingHookWithLifecycle(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
-  commitDomEditPatchBatches: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>;
+  commitDomEditPatchBatches: ReturnType<
+    typeof vi.fn<
+      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+    >
+  >;
 }): {
   move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
   unmount: () => void;
@@ -209,19 +214,6 @@ function renderTimelineEditingHookWithLifecycle(input: {
   return { move, unmount };
 }
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function requestUrl(input: Parameters<typeof fetch>[0]): string {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.toString();
-  return input.url;
-}
-
 async function flushAsyncWork(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
     await Promise.resolve();
@@ -233,22 +225,97 @@ async function flushAsyncWork(): Promise<void> {
  * string, or a path → content map) and answers the GSAP-mutation endpoint
  * with `gsapBody`. Returns the mock for call inspection.
  */
-function stubProjectFetch(
-  files: string | Record<string, string>,
-  gsapBody: unknown = { ok: true },
-) {
+function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unknown) {
+  // Keep this test server's capability, file-read, and mutation routes together;
+  // splitting the fixture would obscure the request sequence asserted by callers.
+  // fallow-ignore-next-line complexity
   const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
     const url = requestUrl(input);
+    if (url.includes("/api/projects/p1/gsap-mutation-capabilities")) {
+      return jsonResponse({ atomicOwnershipPairs: true });
+    }
     if (url.includes("/api/projects/p1/files/")) {
       if (typeof files === "string") return jsonResponse({ content: files });
       const path = decodeURIComponent(url.split("/files/")[1] ?? "index.html");
       return jsonResponse({ content: files[path] });
     }
-    if (url.includes("/api/projects/p1/gsap-mutations/")) return jsonResponse(gsapBody);
+    if (url.includes("/api/projects/p1/gsap-mutations/")) {
+      const path = decodeURIComponent(url.split("/gsap-mutations/")[1] ?? "index.html");
+      const content = typeof files === "string" ? files : (files[path] ?? "");
+      return jsonResponse(
+        gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
+      );
+    }
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+/**
+ * One clip on track 0 + the editing hook wired to project "p1" — shared setup
+ * for the single-clip move-path tests (horizontal, vertical-only, track-only,
+ * diagonal) so their arrange blocks aren't clones of each other.
+ */
+function setupSingleClipHarness(options?: {
+  source?: string;
+  clipStyle?: string;
+  onZIndexCommit?: (entries: ZIndexEntry[]) => Promise<void>;
+}) {
+  const iframe = createPreviewIframe([{ id: "clip", track: 0, style: options?.clipStyle }]);
+  const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+  const commit =
+    options?.onZIndexCommit ??
+    vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
+  const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+  const reloadPreview = vi.fn();
+  const fetchMock = stubProjectFetch(
+    options?.source ?? '<div id="clip" data-start="0" data-track-index="0"></div>',
+  );
+  const hook = renderTimelineEditingHook({
+    timelineElements: [clip],
+    iframe,
+    onZIndexCommit: commit,
+    projectId: "p1",
+    writeProjectFile,
+    recordEdit: vi.fn(async () => {}),
+    reloadPreview,
+  });
+  return { iframe, clip, commit, writeProjectFile, reloadPreview, fetchMock, ...hook };
+}
+
+/** Assert a lane write landed in both the live iframe DOM and the persisted file. */
+function expectLanePersisted(
+  iframe: HTMLIFrameElement,
+  writeProjectFile: { mock: { calls: unknown[][] } },
+  track: string,
+): void {
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error("Expected iframe document");
+  expect(doc.getElementById("clip")?.getAttribute("data-track-index")).toBe(track);
+  expect(writeProjectFile.mock.calls[0]![1]).toContain(`data-track-index="${track}"`);
+}
+
+/**
+ * Two 1s clips — a@0s on track 0, b@1s on track 1 — plus the matching iframe.
+ * Shared by the group-move tests; `bSourceFile` puts b in its own file for the
+ * cross-file partition test.
+ */
+function makeTwoClipPair(bSourceFile?: string) {
+  const iframe = createPreviewIframe([
+    { id: "a", track: 0 },
+    { id: "b", track: 1 },
+  ]);
+  const a = timelineElement({ id: "a", track: 0, zIndex: 0, start: 0, duration: 1 });
+  const b = timelineElement({
+    id: "b",
+    track: 1,
+    zIndex: 0,
+    start: 1,
+    duration: 1,
+    sourceFile: bSourceFile,
+  });
+  return { iframe, a, b };
 }
 
 const ROOT_DURATION_FALLBACK_SOURCE = [
@@ -270,7 +337,12 @@ async function setupRootDurationFallback() {
   const iframeWindow = iframe.contentWindow;
   if (!iframeWindow) throw new Error("Expected iframe window");
   const postMessageSpy = vi.spyOn(iframeWindow, "postMessage");
-  stubProjectFetch(ROOT_DURATION_FALLBACK_SOURCE, { ok: true, mutated: false });
+  stubProjectFetch(ROOT_DURATION_FALLBACK_SOURCE, {
+    mutated: false,
+    scriptText: null,
+    before: ROOT_DURATION_FALLBACK_SOURCE,
+    after: ROOT_DURATION_FALLBACK_SOURCE,
+  });
   usePlayerStore.getState().setDuration(4);
   const hook = renderTimelineEditingHook({
     timelineElements: [clip],
@@ -457,7 +529,9 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
     const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    const commitDomEditPatchBatches = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const commitDomEditPatchBatches = vi.fn<
+      (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+    >(async () => ({ durable: true, allMatched: true, changed: true }));
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
@@ -502,7 +576,9 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const saveError = new Error("save failed");
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<void>>()
+      .fn<
+        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+      >()
       .mockRejectedValueOnce(saveError);
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
@@ -566,8 +642,12 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       releaseBatch = resolve;
     });
     const commitDomEditPatchBatches = vi
-      .fn<(...args: unknown[]) => Promise<void>>()
-      .mockReturnValueOnce(batchSave);
+      .fn<
+        (...args: unknown[]) => Promise<{ durable: boolean; allMatched: boolean; changed: boolean }>
+      >()
+      .mockReturnValueOnce(
+        batchSave.then(() => ({ durable: true, allMatched: true, changed: true })),
+      );
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
@@ -608,98 +688,59 @@ describe("useTimelineEditing timeline z-index reorder", () => {
   });
 
   it("keeps horizontal-only drag on the timing and GSAP shift path without z-index writes", async () => {
-    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
-    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
-    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    const recordEdit = vi.fn<TimelineRecordEdit>(async (_entry) => {});
-    const reloadPreview = vi.fn();
-    const fetchMock = stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [clip],
-      iframe,
-      onZIndexCommit: commit,
-      projectId: "p1",
-      writeProjectFile,
-      recordEdit,
-      reloadPreview,
-    });
+    const h = setupSingleClipHarness();
 
     await act(async () => {
-      await move(clip, { start: 1.25, track: clip.track });
+      await h.move(h.clip, { start: 1.25, track: h.clip.track });
     });
 
-    const doc = iframe.contentDocument;
+    const doc = h.iframe.contentDocument;
     if (!doc) throw new Error("Expected iframe document");
     expect(doc.getElementById("clip")?.getAttribute("data-start")).toBe("1.25");
     expect(doc.getElementById("clip")?.getAttribute("data-track-index")).toBe("0");
-    expect(commit).not.toHaveBeenCalled();
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="1.25"');
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-track-index="0"');
-    expect(writeProjectFile.mock.calls[0]![1]).not.toContain("z-index");
+    expect(h.commit).not.toHaveBeenCalled();
+    expect(h.writeProjectFile.mock.calls[0]![1]).toContain('data-start="1.25"');
+    expect(h.writeProjectFile.mock.calls[0]![1]).toContain('data-track-index="0"');
+    expect(h.writeProjectFile.mock.calls[0]![1]).not.toContain("z-index");
     expect(
-      fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
+      h.fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
     ).toBe(true);
 
-    unmount();
+    h.unmount();
   });
 
   it("persists a vertical-only lane move (start unchanged) through the single-element fallback", async () => {
     // Regression: `if (!startChanged) return` ran BEFORE the file persist, so a
     // pure lane change routed through onMoveElement (no onMoveElements wired)
     // wrote NOTHING — the lane snapped back on the next reload.
-    const iframe = createPreviewIframe([{ id: "clip", track: 0 }]);
-    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockResolvedValue(undefined);
-    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [clip],
-      iframe,
-      onZIndexCommit: commit,
-      projectId: "p1",
-      writeProjectFile,
-      recordEdit: vi.fn(async () => {}),
-    });
+    const h = setupSingleClipHarness();
 
     await act(async () => {
       // Vertical-only: same start, new track (already authored-space on this path).
-      await move(clip, { start: clip.start, track: 2 });
+      await h.move(h.clip, { start: h.clip.start, track: 2 });
     });
 
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
-    // Live DOM patched so a pre-reload re-discovery doesn't snap the lane back...
-    expect(doc.getElementById("clip")?.getAttribute("data-track-index")).toBe("2");
-    // ...and the file write carries the new data-track-index with start intact.
-    expect(writeProjectFile).toHaveBeenCalled();
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-track-index="2"');
-    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="0"');
+    // Live DOM patched (no pre-reload lane snap-back) and the file write
+    // carries the new data-track-index with start intact.
+    expectLanePersisted(h.iframe, h.writeProjectFile, "2");
+    expect(h.writeProjectFile.mock.calls[0]![1]).toContain('data-start="0"');
 
-    unmount();
+    h.unmount();
   });
 
   it("orders the timing write after the z-index commit so a diagonal drag can't clobber the restack", async () => {
-    const iframe = createPreviewIframe([
-      { id: "clip", track: 0, style: "position: relative; z-index: 0" },
-    ]);
-    const clip = timelineElement({ id: "clip", track: 0, zIndex: 0 });
     // Gate the z-index commit so we can observe whether the timing write waits.
     let releaseCommit!: () => void;
     const commitGate = new Promise<void>((resolve) => {
       releaseCommit = resolve;
     });
-    const commit = vi.fn<(entries: ZIndexEntry[]) => Promise<void>>().mockReturnValue(commitGate);
-    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-    stubProjectFetch('<div id="clip" data-start="0" data-track-index="0"></div>');
-    const { move, unmount } = renderTimelineEditingHook({
-      timelineElements: [clip],
-      iframe,
-      onZIndexCommit: commit,
-      projectId: "p1",
-      writeProjectFile,
-      recordEdit: vi.fn(async () => {}),
+    const h = setupSingleClipHarness({
+      clipStyle: "position: relative; z-index: 0",
+      onZIndexCommit: vi
+        .fn<(entries: ZIndexEntry[]) => Promise<void>>()
+        .mockReturnValue(commitGate),
     });
+    const { clip, commit, writeProjectFile, move, unmount } = h;
 
     // Diagonal drag: both a time move (start change) and a restack (z-index change).
     let movePromise!: Promise<unknown>;
@@ -784,19 +825,7 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       "index.html": '<div id="a" data-start="0" data-duration="1"></div>',
       "scene.html": '<div id="b" data-start="1" data-duration="1"></div>',
     };
-    const iframe = createPreviewIframe([
-      { id: "a", track: 0 },
-      { id: "b", track: 1 },
-    ]);
-    const a = timelineElement({ id: "a", track: 0, zIndex: 0, start: 0, duration: 1 });
-    const b = timelineElement({
-      id: "b",
-      track: 1,
-      zIndex: 0,
-      start: 1,
-      duration: 1,
-      sourceFile: "scene.html",
-    });
+    const { iframe, a, b } = makeTwoClipPair("scene.html");
     const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const recordEdit = vi.fn<TimelineRecordEdit>(async (_entry) => {});
     stubProjectFetch(files);
@@ -863,6 +892,148 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       await flushAsyncWork();
     });
     expect(writeProjectFile).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it("skips the GSAP fallback and reload for a TRACK-ONLY group move (z-mirror lane move)", async () => {
+    // The mirrored z-order lane move persists {start: unchanged, track: new}.
+    // Nothing timing-related changed — data-track-index is never read by the
+    // renderer — so the persist must NOT be followed by the GSAP round-trip or
+    // the full preview reload (the reload is what blinked the canvas).
+    const h = setupSingleClipHarness({
+      source: '<div id="clip" data-start="0" data-duration="2" data-track-index="0"></div>',
+    });
+
+    await act(async () => {
+      await h.groupMove([{ element: h.clip, start: h.clip.start, track: 2 }]);
+      await flushAsyncWork();
+    });
+
+    // The lane write still persisted (live DOM + file)...
+    expectLanePersisted(h.iframe, h.writeProjectFile, "2");
+    expect(h.writeProjectFile).toHaveBeenCalledTimes(1);
+    // ...but no GSAP mutation ran and the preview was NOT reloaded.
+    expect(
+      h.fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
+    ).toBe(false);
+    expect(h.reloadPreview).not.toHaveBeenCalled();
+
+    h.unmount();
+  });
+
+  it("rebinds the preview in place (no blink) for a time-move of a no-domId clip", async () => {
+    // The gap-close blink path: "Close gap" issues pure TIME moves through
+    // handleTimelineGroupMove. A selector-addressed clip (no domId — e.g. a
+    // .sub caption) has no id-addressed GSAP tweens, so the mutation step has
+    // nothing to rewrite and used to fall through to a full reloadPreview().
+    // The sync must instead rebind the runtime timing in place — seek + rebind
+    // re-derive the clip windows from the already-patched DOM — WITHOUT
+    // re-executing any script (a comp's init-style scripts, e.g. a three.js
+    // setup, must never run twice) and without the full-reload blink.
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+    doc.body.innerHTML =
+      '<div class="cap" data-start="2" data-duration="1" data-track-index="0"></div>';
+    const liveScript = doc.createElement("script");
+    liveScript.textContent =
+      'window.__timelines = window.__timelines || {}; window.__timelines["root"] = { kill: function () {} };';
+    doc.body.appendChild(liveScript);
+    const win = iframe.contentWindow as unknown as Record<string, unknown>;
+    win.gsap = { timeline: vi.fn(), set: vi.fn() };
+    win.__timelines = { root: { kill: vi.fn() } };
+    win.__hfForceTimelineRebind = vi.fn();
+    win.__player = { getTime: () => 0, seek: vi.fn() };
+
+    const cap: TimelineElement = {
+      ...timelineElement({ id: "cap", track: 0, zIndex: 0, start: 2, duration: 1 }),
+      domId: undefined,
+      selector: ".cap",
+      selectorIndex: 0,
+    };
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const reloadPreview = vi.fn();
+    const fetchMock = stubProjectFetch(
+      '<div class="cap" data-hf-id="hf-cap" data-start="2" data-duration="1" data-track-index="0"></div>',
+    );
+    const { groupMove, unmount } = renderTimelineEditingHook({
+      timelineElements: [cap],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview,
+    });
+
+    await act(async () => {
+      // Mirror timelineGapCommit: a pure time move keeping the current lane.
+      await groupMove([{ element: cap, start: 1, track: cap.track }]);
+      await flushAsyncWork();
+    });
+
+    // The move persisted (live DOM + file)...
+    expect(doc.querySelector(".cap")?.getAttribute("data-start")).toBe("1");
+    expect(writeProjectFile.mock.calls[0]![1]).toContain('data-start="1"');
+    // ...no GSAP mutation ran (nothing id-addressed to rewrite)...
+    expect(
+      fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
+    ).toBe(false);
+    // ...and the preview was rebound in place, NOT full-reloaded (blink),
+    // with the live script element left untouched (no re-execution).
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(win.__hfForceTimelineRebind).toHaveBeenCalledTimes(1);
+    expect(doc.body.contains(liveScript)).toBe(true);
+    expect(doc.querySelectorAll("script")).toHaveLength(1);
+
+    unmount();
+  });
+
+  it("keeps the GSAP fallback + reload for a MIXED batch (any start change)", async () => {
+    // One clip changes lane only, the other shifts in time — the batch is not
+    // track-only, so the existing behavior (GSAP shift + full reload when no
+    // rewritten scriptText comes back — this stub iframe has no runtime rebind
+    // hook, so the in-place rebind can't apply) must be preserved.
+    const source = [
+      '<div id="a" data-start="0" data-duration="1" data-track-index="0"></div>',
+      '<div id="b" data-start="1" data-duration="1" data-track-index="1"></div>',
+    ].join("\n");
+    const { iframe, a, b } = makeTwoClipPair();
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const reloadPreview = vi.fn();
+    const fetchMock = stubProjectFetch(source, {
+      mutated: false,
+      scriptText: null,
+      before: source,
+      after: source,
+    });
+    const { groupMove, unmount } = renderTimelineEditingHook({
+      timelineElements: [a, b],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      reloadPreview,
+    });
+
+    await act(async () => {
+      await groupMove([
+        { element: a, start: a.start, track: 2 },
+        { element: b, start: 1.5, track: b.track },
+      ]);
+      await flushAsyncWork();
+    });
+
+    expect(writeProjectFile).toHaveBeenCalledTimes(1);
+    // The time-shifted clip still goes through the GSAP shift endpoint...
+    expect(
+      fetchMock.mock.calls.some((call) => requestUrl(call[0]).includes("gsap-mutations")),
+    ).toBe(true);
+    // ...and with no rewritten scriptText the sync escalates to one full reload.
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
 
     unmount();
   });
@@ -949,79 +1120,56 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     return { iframe, clip, hook, writeError };
   }
 
-  it("rolls back the store duration and live root when a move persist fails", async () => {
-    const { iframe, clip, hook, writeError } = setupFailedPersist();
-
+  /**
+   * Run a persist that must reject with the harness's writeError, then assert
+   * the store duration AND the live root rolled back to the pre-edit 4s —
+   * the shared act/assert core of the four failed-persist tests below.
+   */
+  async function expectPersistRollback(
+    ctx: ReturnType<typeof setupFailedPersist>,
+    run: () => Promise<unknown>,
+  ): Promise<void> {
     let rejection: unknown;
     await act(async () => {
-      // Move past the end: the optimistic sync grows the readout to 5s.
-      await hook.move(clip, { start: 3, track: clip.track }).catch((error) => {
+      await run().catch((error) => {
         rejection = error;
       });
       await flushAsyncWork();
     });
-
-    expect(rejection).toBe(writeError);
+    expect(rejection).toBe(ctx.writeError);
     expect(usePlayerStore.getState().duration).toBe(4);
-    expect(rootDurationAttr(iframe)).toBe("4");
+    expect(rootDurationAttr(ctx.iframe)).toBe("4");
+  }
 
-    hook.unmount();
+  it("rolls back the store duration and live root when a move persist fails", async () => {
+    const ctx = setupFailedPersist();
+    // Move past the end: the optimistic sync grows the readout to 5s.
+    await expectPersistRollback(ctx, () =>
+      ctx.hook.move(ctx.clip, { start: 3, track: ctx.clip.track }),
+    );
+    ctx.hook.unmount();
   });
 
   it("rolls back the store duration and live root when a resize persist fails", async () => {
-    const { iframe, clip, hook, writeError } = setupFailedPersist();
-
-    let rejection: unknown;
-    await act(async () => {
-      await hook
-        .resize(clip, { start: 0, duration: 6, playbackStart: undefined })
-        .catch((error) => {
-          rejection = error;
-        });
-      await flushAsyncWork();
-    });
-
-    expect(rejection).toBe(writeError);
-    expect(usePlayerStore.getState().duration).toBe(4);
-    expect(rootDurationAttr(iframe)).toBe("4");
-
-    hook.unmount();
+    const ctx = setupFailedPersist();
+    await expectPersistRollback(ctx, () =>
+      ctx.hook.resize(ctx.clip, { start: 0, duration: 6, playbackStart: undefined }),
+    );
+    ctx.hook.unmount();
   });
 
   it("rolls back the store duration and live root when a group move persist fails", async () => {
-    const { iframe, clip, hook, writeError } = setupFailedPersist();
-
-    let rejection: unknown;
-    await act(async () => {
-      await hook.groupMove([{ element: clip, start: 3.5 }]).catch((error) => {
-        rejection = error;
-      });
-      await flushAsyncWork();
-    });
-
-    expect(rejection).toBe(writeError);
-    expect(usePlayerStore.getState().duration).toBe(4);
-    expect(rootDurationAttr(iframe)).toBe("4");
-
-    hook.unmount();
+    const ctx = setupFailedPersist();
+    await expectPersistRollback(ctx, () => ctx.hook.groupMove([{ element: ctx.clip, start: 3.5 }]));
+    ctx.hook.unmount();
   });
 
   it("rolls back the store duration and live root when a group resize persist fails", async () => {
-    const { iframe, clip, hook, writeError } = setupFailedPersist();
-
-    let rejection: unknown;
-    await act(async () => {
-      await hook.groupResize([{ element: clip, start: 0, duration: 7 }]).catch((error) => {
-        rejection = error;
-      });
-      await flushAsyncWork();
-    });
-
-    expect(rejection).toBe(writeError);
-    expect(usePlayerStore.getState().duration).toBe(4);
-    expect(rootDurationAttr(iframe)).toBe("4");
-
-    hook.unmount();
+    const ctx = setupFailedPersist();
+    await expectPersistRollback(ctx, () =>
+      ctx.hook.groupResize([{ element: ctx.clip, start: 0, duration: 7 }]),
+    );
+    ctx.hook.unmount();
   });
 
   it("rolls back the store duration and live root when a delete persist fails", async () => {

@@ -1,5 +1,6 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
+import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import { flush, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 
@@ -600,6 +601,7 @@ export function trackRenderFeedback(props: {
   trackEvent("survey sent", {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
+    rating_scale: FEEDBACK_RATING_SCALE,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
     ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),

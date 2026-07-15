@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER, RULER_H, formatTimelineTickLabel } from "./timelineLayout";
+import { GUTTER, RULER_H, TRACKS_LEFT_PAD, formatTimelineTickLabel } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import { secondsToFrame } from "../lib/time";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
@@ -45,7 +45,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
         className="absolute pointer-events-none"
-        style={{ left: GUTTER, width: trackContentWidth, zIndex: 0 }}
+        style={{ left: GUTTER + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
         {showBeats &&
@@ -74,16 +74,29 @@ export const TimelineRuler = memo(function TimelineRuler({
           rows and drag overlays but below the playhead (z 100). */}
       <div
         className="sticky top-0 flex"
-        style={{ height: RULER_H, width: GUTTER + trackContentWidth, zIndex: 70 }}
+        style={{
+          height: RULER_H,
+          width: GUTTER + TRACKS_LEFT_PAD + trackContentWidth,
+          zIndex: 70,
+        }}
       >
         <div
           className="sticky left-0 z-[12] flex-shrink-0"
           style={{
             width: GUTTER,
-            // Ruler corner uses the panel surface — same as the ruler strip itself.
+            // Ruler corner uses the panel surface — same as the ruler strip
+            // itself, and NO right border: the ruler band stays completely
+            // clean until 00:00 (the header-boundary line belongs to the track
+            // rows below, not the ruler).
             background: theme.shellBackground,
-            borderRight: `1px solid ${theme.gutterBorder}`,
           }}
+        />
+        {/* Left breathing pad — scrolls with the content, so 00:00 starts a
+            beat right of the gutter (see TRACKS_LEFT_PAD). */}
+        <div
+          aria-hidden="true"
+          className="flex-shrink-0"
+          style={{ width: TRACKS_LEFT_PAD, background: theme.shellBackground }}
         />
         <div
           className="relative overflow-hidden"

@@ -58,28 +58,29 @@ window.__contrastAuditPrepare = function () {
   }
 
   function parseColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return [0, 0, 0, 1];
-    var p = m[1].split(",").map(function (s) {
-      return parseFloat(s.trim());
-    });
-    return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
-  }
-
-  // Like parseColor, but returns null instead of defaulting to black when the
-  // value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords such as
-  // "none"/"context-fill", or a gradient/pattern reference like
-  // 'url("#grad")'. Callers should fall back to another source of truth
-  // rather than trust a fabricated black.
-  function tryParseSolidColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
+    var m = (c || "").match(/^rgba?\(([^)]+)\)$/i);
+    if (!m) {
+      var mix = (c || "").match(
+        /^color-mix\(\s*in\s+srgb\s*,\s*(rgba?\([^)]+\))\s+(\d+(?:\.\d+)?|\.\d+)%\s*,\s*(rgba?\([^)]+\))\s+(\d+(?:\.\d+)?|\.\d+)%\s*\)$/i,
+      );
+      if (!mix) return null;
+      var first = parseColor(mix[1]);
+      var second = parseColor(mix[3]);
+      var firstWeight = parseFloat(mix[2]);
+      var secondWeight = parseFloat(mix[4]);
+      var weightTotal = firstWeight + secondWeight;
+      if (!first || !second || !isFinite(weightTotal) || weightTotal <= 0) return null;
+      return first.map(function (channel, index) {
+        return (channel * firstWeight + second[index] * secondWeight) / weightTotal;
+      });
+    }
     var p = m[1].split(",").map(function (s) {
       return parseFloat(s.trim());
     });
     if (
+      (p.length !== 3 && p.length !== 4) ||
       p.some(function (v) {
-        return isNaN(v);
+        return !isFinite(v);
       })
     )
       return null;
@@ -218,10 +219,11 @@ window.__contrastAuditPrepare = function () {
     // `color` rather than crashing parseColor or reporting a fabricated
     // black.
     var isSvgText = isSvgTextElement(el);
-    var fg = isSvgText ? tryParseSolidColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
+    var fg = isSvgText ? parseColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
+    if (!fg) continue;
     if (fg[3] <= 0.01) continue;
     var strokeWidth = parseFloat(cs.webkitTextStrokeWidth || "0");
-    var stroke = strokeWidth > 0 ? tryParseSolidColor(cs.webkitTextStrokeColor || "") : null;
+    var stroke = strokeWidth > 0 ? parseColor(cs.webkitTextStrokeColor || "") : null;
     if (stroke && stroke[3] <= 0.01) stroke = null;
 
     var fontSize = parseFloat(cs.fontSize);

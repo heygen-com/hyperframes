@@ -27,6 +27,8 @@ export interface HyperframesConfig {
   lastUpdateCheck?: string;
   /** Latest version found on npm */
   latestVersion?: string;
+  /** Throttle for the non-TTY stale-project-pin notice (ms epoch). */
+  lastStalePinNoticeAt?: number;
   /**
    * Auto-update marker. Set when a background install is spawned so a
    * subsequent run can skip re-triggering it. Cleared once
@@ -122,6 +124,7 @@ export function readConfig(): HyperframesConfig {
       lastFeedbackPromptAt: parsed.lastFeedbackPromptAt ?? DEFAULT_CONFIG.lastFeedbackPromptAt,
       lastUpdateCheck: parsed.lastUpdateCheck,
       latestVersion: parsed.latestVersion,
+      lastStalePinNoticeAt: parsed.lastStalePinNoticeAt,
       pendingUpdate: parsed.pendingUpdate,
       completedUpdate: parsed.completedUpdate,
       lastSkillsCheck: parsed.lastSkillsCheck,

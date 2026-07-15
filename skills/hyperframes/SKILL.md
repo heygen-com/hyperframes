@@ -132,6 +132,6 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Images, icons, logos, audio, captions, grades, LUTs, reusable media                                                 | `/media-use`             |
 | Init, lint, check, snapshots, compare, batch render, Studio, render, publish, or diagnostics                        | `/hyperframes-cli`       |
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |
-| Figma assets, tokens, components, or storyboard frames                                                              | `/figma`                 |
+| Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |
 
 Domain skills never take ownership of the end-to-end deliverable. Load only what the active workflow needs.

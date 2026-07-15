@@ -77,7 +77,9 @@ import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
+import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
+import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   MAX_VP9_CPU_USED,
@@ -1439,8 +1441,18 @@ export async function renderLocal(
   outputPath: string,
   options: RenderOptions,
 ): Promise<SingleRenderResult> {
+  const recoveredOrphanTrees = killOrphanedProcesses();
+  if (recoveredOrphanTrees > 0 && !options.quiet) {
+    console.warn(
+      c.warn(
+        `  Recovered ${recoveredOrphanTrees} orphaned browser process ${recoveredOrphanTrees === 1 ? "tree" : "trees"} from an interrupted render.`,
+      ),
+    );
+  }
+
   const preflight = await runEnvironmentChecks({
     projectDir,
+    diskPaths: [tmpdir(), dirname(outputPath)],
     browserPath: options.browserPath,
     includeBrowser: true,
     includeDisk: true,
@@ -1466,6 +1478,26 @@ export async function renderLocal(
   if (preflight.ffprobePath) process.env.HYPERFRAMES_FFPROBE_PATH = preflight.ffprobePath;
   if (preflight.browser?.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
     process.env.PRODUCER_HEADLESS_SHELL_PATH = preflight.browser.executablePath;
+  }
+
+  if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
+    let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
+    try {
+      encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+    } catch (error) {
+      // Capability probing is advisory. Let the real encode surface the
+      // authoritative FFmpeg error instead of failing here with a bare stack.
+      if (!options.quiet) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+      }
+    }
+    if (encoderMode === "gpu") {
+      console.warn(
+        c.warn("  FFmpeg does not include libx264; falling back to VideoToolbox H.264 encoding."),
+      );
+      options = { ...options, gpu: true };
+    }
   }
 
   const producer = await loadProducer();

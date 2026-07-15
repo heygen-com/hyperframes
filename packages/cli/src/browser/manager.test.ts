@@ -697,6 +697,105 @@ describe("installWithCorruptArchiveRecovery", () => {
   });
 });
 
+// Sibling failure mode to #2078 (SIGTRAP at launch): the field feedback in
+// #hyperframes-cli-feedback ts 1784055194.202169 (darwin/arm64, HF CLI 0.7.57)
+// hit `All providers failed for chrome-headless-shell 152.0.7928.2` at download
+// time and had to discover `HYPERFRAMES_BROWSER_PATH` on their own. The raw
+// error propagated straight through `downloadBrowser` without naming the
+// escape hatch. This guards the rewrap so the next reporter sees the hint.
+//
+// Parameterized across all three OS families because `browserPathHintForPlatform`
+// branches on `process.platform` and each branch has to survive on its own —
+// the field reporter was macOS but the same rewrap is what a Windows or Linux
+// (non-ARM) user would see next time providers fail, and each branch names a
+// different Chrome install path that has to be spelled correctly.
+describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH hint", () => {
+  const origPlatform = process.platform;
+  const origArch = process.arch;
+
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    installChildProcessMocks();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+    Object.defineProperty(process, "arch", { value: origArch, configurable: true });
+    vi.restoreAllMocks();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:os");
+    vi.doUnmock("node:child_process");
+    vi.doUnmock("@puppeteer/browsers");
+  });
+
+  // Note: linux/arm64 is deliberately excluded — `downloadBrowser` short-circuits
+  // into `ensureLinuxArmBrowser` before it ever reaches the install() call this
+  // suite guards (chrome-headless-shell has no linux-arm64 build; see `isLinuxArm`
+  // at the top of `downloadBrowser`). Use linux/x64 to exercise the linux branch
+  // of `browserPathHintForPlatform`.
+  it.each([
+    {
+      label: "darwin/arm64",
+      platform: "darwin",
+      arch: "arm64",
+      expectedPathHint: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    },
+    {
+      label: "win32/x64",
+      platform: "win32",
+      arch: "x64",
+      expectedPathHint: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    },
+    {
+      label: "linux/x64",
+      platform: "linux",
+      arch: "x64",
+      expectedPathHint: "/usr/bin/google-chrome",
+    },
+  ])(
+    "rethrows a non-corrupt install failure with an HYPERFRAMES_BROWSER_PATH hint and preserves the original via cause ($label)",
+    async ({ platform, arch, expectedPathHint }) => {
+      Object.defineProperty(process, "platform", { value: platform, configurable: true });
+      Object.defineProperty(process, "arch", { value: arch, configurable: true });
+
+      // No cache, no system Chrome — forces the download-of-last-resort path
+      // that ends in @puppeteer/browsers install().
+      installFsMocks({ existing: new Set([CACHE_ROOT]) });
+      const rawMsg = "All providers failed for chrome-headless-shell 152.0.7928.2";
+      const originalError = new Error(rawMsg);
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [],
+        installImpl: async () => {
+          throw originalError;
+        },
+      });
+
+      const { ensureBrowser } = await import("./manager.js");
+
+      let caught: unknown;
+      try {
+        await ensureBrowser();
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      const msg = (caught as Error).message;
+      // Names the escape-hatch env var by name (that's the entire point).
+      expect(msg).toContain("HYPERFRAMES_BROWSER_PATH");
+      // Includes the platform-specific example path from
+      // `browserPathHintForPlatform`.
+      expect(msg).toContain(expectedPathHint);
+      // Keeps the original provider-failure text so the user can still
+      // diagnose the underlying cause from the surfaced message.
+      expect(msg).toContain(rawMsg);
+      // Structured `cause` chain intact for tooling that walks it.
+      expect((caught as Error).cause).toBe(originalError);
+    },
+  );
+});
+
 // Regression guard for HF#2103: `hyperframes render` hung forever on macOS
 // (Apple Silicon) under Node >= 24.16. Root cause was NOT in this file — it was
 // the extractor `@puppeteer/browsers` <3.0.2 shells out to. That chain

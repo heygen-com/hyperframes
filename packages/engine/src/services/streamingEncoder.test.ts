@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 /**
  * buildStreamingArgs unit tests.
  *
@@ -12,7 +13,7 @@
 import { EventEmitter } from "events";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { basename, join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -511,7 +512,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("ffmpeg");
+    expect(basename(calls[0]?.command ?? "")).toMatch(/^ffmpeg(?:\.exe)?$/);
 
     const proc = calls[0]!.proc;
     const closePromise = encoder.close();

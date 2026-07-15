@@ -173,6 +173,22 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not count transcript caption cues as dense track elements", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1080" data-height="1920" data-start="0">
+    <div class="caption-group clip" data-start="0" data-duration="1" data-track-index="2">一</div>
+    <div class="caption-line clip" data-start="1" data-duration="1" data-track-index="2">二</div>
+    <div class="caption_block clip" data-start="2" data-duration="1" data-track-index="2">三</div>
+    <div class="cg-4 clip" data-start="3" data-duration="1" data-track-index="2">四</div>
+  </div>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
+      expect(finding).toBeUndefined();
+    });
+
     it("does not count root composition or mounted sub-compositions as dense elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
@@ -187,6 +203,89 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
       const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
       expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("duplicate_composition_id", () => {
+    it("flags a meta tag and root div sharing the same data-composition-id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="composition-id" data-composition-id="x">
+</head>
+<body>
+  <div data-composition-id="x" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not flag a single valid composition id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag distinct composition ids in one file", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5" data-no-timeline>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="5"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("ignores composition ids inside inert template content", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <template><div data-composition-id="main"></div></template>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("flags entity-equivalent composition ids", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <meta data-composition-id="&#109;ain">
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+    });
+
+    it("uses the browser's first value for duplicate attributes", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <meta data-composition-id="main" data-composition-id="other">
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
     });
   });
 

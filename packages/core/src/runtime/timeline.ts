@@ -7,6 +7,7 @@ import type {
 import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
+import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 
@@ -401,7 +402,7 @@ export function collectRuntimeTimelinePayload(params: {
       duration,
       track: parseAuthoredTrack(node, i),
       zIndex: readInlineZIndex(node),
-      stackingContextId: compositionContext.parentCompositionId ?? rootCompositionId,
+      stackingContextId: resolveCssStackingContextId(node),
       kind,
       tagName: tag,
       compositionId: node.getAttribute("data-composition-id"),
@@ -510,7 +511,7 @@ export function collectRuntimeTimelinePayload(params: {
             duration: clampedDuration,
             track: parseAuthoredTrack(el, gsapTrack),
             zIndex: readInlineZIndex(el),
-            stackingContextId: rootCompositionIdForGsap,
+            stackingContextId: resolveCssStackingContextId(el),
             kind: "element",
             tagName: el.tagName.toLowerCase(),
             compositionId: el.getAttribute("data-composition-id"),
@@ -565,7 +566,7 @@ export function collectRuntimeTimelinePayload(params: {
         duration: clampedDuration,
         track: parseAuthoredTrack(el, overlayTrack),
         zIndex: readInlineZIndex(el),
-        stackingContextId: rootCompositionIdForGsap,
+        stackingContextId: resolveCssStackingContextId(el),
         kind: "element",
         tagName: tag,
         compositionId: el.getAttribute("data-composition-id"),

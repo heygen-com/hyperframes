@@ -189,10 +189,10 @@ export function StudioApp() {
       }>,
       coalesceKey?: string,
       operation: TimelineMoveOperation = "timing",
+      coalesceMs?: number,
     ) => {
-      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, {
-        handleTimelineGroupMove: timelineEditing.handleTimelineGroupMove,
-      });
+      const deps = { handleTimelineGroupMove: timelineEditing.handleTimelineGroupMove };
+      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, deps, coalesceMs);
     },
     [timelineEditing.handleTimelineGroupMove],
   );

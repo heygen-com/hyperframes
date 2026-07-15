@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, Plus, X } from "../../icons/SystemIcons";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { LABEL } from "./propertyPanelHelpers";
 import { ColorGradingSliderControl } from "./propertyPanelColorGradingSlider";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const LUT_UPLOAD_DIR = "assets/luts";
 
@@ -175,6 +176,7 @@ export function ColorGradingControls({
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onCommitColorGrading: (nextGrading: NormalizedHfColorGrading) => void;
 }) {
+  const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
   const [detailSettings, setDetailSettings] = useState<"vignette" | "grain" | null>(null);
@@ -195,7 +197,10 @@ export function ColorGradingControls({
 
   const applyPreset = (preset: string) => {
     const next = normalizeHfColorGrading({ preset, intensity: 1, lut: grading.lut });
-    if (next) onCommitColorGrading(next);
+    if (next) {
+      track("select", "Preset");
+      onCommitColorGrading(next);
+    }
   };
   const updateFilterIntensity = (value: number) => {
     onCommitColorGrading({
@@ -218,7 +223,10 @@ export function ColorGradingControls({
     if (!files?.length || !onImportAssets) return;
     const uploaded = await onImportAssets(files, LUT_UPLOAD_DIR);
     const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
-    if (firstLut) applyLut(firstLut, 1);
+    if (firstLut) {
+      track("button", "Import LUT");
+      applyLut(firstLut, 1);
+    }
   };
   const commitDetailSlider = (slider: DetailSlider, next: number) => {
     onCommitColorGrading({
@@ -313,6 +321,7 @@ export function ColorGradingControls({
                 value={selectedLut}
                 onChange={(event) => {
                   const nextSrc = event.target.value;
+                  track("select", "Custom LUT");
                   applyLut(
                     nextSrc || null,
                     nextSrc && grading.lut?.src === nextSrc ? grading.lut.intensity : 1,

@@ -2,6 +2,7 @@ import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from
 import {
   findHtmlTag,
   readAttr,
+  readDecodedAttr,
   readJsonAttr,
   stripJsComments,
   truncateSnippet,
@@ -14,6 +15,8 @@ import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 const MAX_COMPOSITION_LINES = 300;
 const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
+const CAPTION_CUE_TOKEN =
+  /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
 
 // `parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004`. Sub-second
 // authored adjacencies survive parse + add as a value a few ulps above the
@@ -35,6 +38,15 @@ function countStructuralLines(source: string): number {
   return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
 }
 
+function isCaptionCue(tag: OpenTag): boolean {
+  const classTokens = (readAttr(tag.raw, "class") || "").split(/\s+/).filter(Boolean);
+  const id = readAttr(tag.raw, "id");
+  return (
+    classTokens.some((token) => CAPTION_CUE_TOKEN.test(token)) ||
+    Boolean(id && CAPTION_CUE_TOKEN.test(id))
+  );
+}
+
 export function isRegistrySourceFile(filePath?: string): boolean {
   if (!filePath) return false;
 
@@ -48,7 +60,7 @@ export function isRegistryInstalledFile(rawSource: string): boolean {
 
 function isCompositionRootOrMount(rawTag: string): boolean {
   return Boolean(
-    readAttr(rawTag, "data-composition-id") || readAttr(rawTag, "data-composition-src"),
+    readDecodedAttr(rawTag, "data-composition-id") || readAttr(rawTag, "data-composition-src"),
   );
 }
 
@@ -156,7 +168,47 @@ function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | nul
   return declared;
 }
 
+function isInsideInertTemplate(tag: OpenTag, tags: readonly OpenTag[]): boolean {
+  return tags.some(
+    (candidate) =>
+      candidate.name === "template" &&
+      candidate.closeIndex != null &&
+      tag.index > candidate.index &&
+      tag.index < candidate.closeIndex,
+  );
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // duplicate_composition_id catches meta-tag/root collisions that create duplicate composition entries.
+  ({ tags }) => {
+    const tagsByCompositionId = new Map<string, string[]>();
+    for (const tag of tags) {
+      if (isInsideInertTemplate(tag, tags)) continue;
+      const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
+      if (!compositionId || compositionId.trim().length === 0) continue;
+
+      const matchingTags = tagsByCompositionId.get(compositionId) ?? [];
+      matchingTags.push(tag.raw);
+      tagsByCompositionId.set(compositionId, matchingTags);
+    }
+
+    const findings: HyperframeLintFinding[] = [];
+    for (const [compositionId, matchingTags] of tagsByCompositionId) {
+      if (matchingTags.length < 2) continue;
+
+      findings.push({
+        code: "duplicate_composition_id",
+        severity: "error",
+        message: `Composition id "${compositionId}" is used by ${matchingTags.length} elements. Each data-composition-id value must be unique within a composition file.`,
+        fixHint:
+          "Keep data-composition-id on exactly one element, the composition root. Remove it from metadata or duplicate hosts, especially a <meta> tag carrying the same data-composition-id as the root <div>, which causes a silent duplicate-id collision.",
+        snippet: truncateSnippet(matchingTags[0] ?? ""),
+      });
+    }
+
+    return findings;
+  },
+
   // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
   // href, inline-style url(), and <style> url() asset references on
   // compositions. Sub-compositions live under compositions/ but are served
@@ -253,6 +305,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const trackCounts = new Map<string, number>();
     for (const tag of tags) {
       if (TRACK_DENSITY_EXEMPT_TAGS.has(tag.name)) continue;
+      if (isCaptionCue(tag)) continue;
       if (isCompositionRootOrMount(tag.raw)) continue;
       if (!readAttr(tag.raw, "data-start")) continue;
 
@@ -285,7 +338,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const tag of tags) {
       if (tag.name === "audio" || tag.name === "script" || tag.name === "style") continue;
       if (!readAttr(tag.raw, "data-start")) continue;
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       if (readAttr(tag.raw, "data-composition-src")) continue;
       const classAttr = readAttr(tag.raw, "class") || "";
       const styleAttr = readAttr(tag.raw, "style") || "";
@@ -400,7 +453,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     for (const tag of tags) {
       if (skipTags.has(tag.name)) continue;
       // Skip composition hosts
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       if (readAttr(tag.raw, "data-composition-src")) continue;
 
       const hasStart = readAttr(tag.raw, "data-start") !== null;
@@ -483,7 +536,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const findings: HyperframeLintFinding[] = [];
     if (options.isSubComposition) return findings;
     if (!rootTag) return findings;
-    const compId = readAttr(rootTag.raw, "data-composition-id");
+    const compId = readDecodedAttr(rootTag.raw, "data-composition-id");
     if (!compId) return findings;
     const hasStart = readAttr(rootTag.raw, "data-start") !== null;
     if (!hasStart) {
@@ -919,7 +972,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // — e.g. a slideshow demo.html mounts <hyperframes-player src="index.html">
     // with no data-composition-id of its own. Nothing to capture there, so
     // there's no duration contract to enforce.
-    if (readAttr(rootTag.raw, "data-composition-id") === null) return [];
+    if (readDecodedAttr(rootTag.raw, "data-composition-id") === null) return [];
     if (readAttr(rootTag.raw, "data-duration") !== null) return [];
 
     // Strip comments before scanning for signals — a commented-out

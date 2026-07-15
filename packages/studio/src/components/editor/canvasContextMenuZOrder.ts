@@ -42,6 +42,7 @@
  */
 
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { readLayerRevealPriorZ } from "../../player/lib/timelineElementHelpers";
 
 export type ZOrderAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
 
@@ -107,8 +108,11 @@ export function parseZIndex(value: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Read the effective z-index for an element (inline style preferred). */
+/** Read the effective z-index for an element (inline style preferred).
+ *  Reveal-lift transparent: an active Layers-panel lift reports the TRUE z. */
 export function readEffectiveZIndex(el: HTMLElement): number {
+  const prior = readLayerRevealPriorZ(el);
+  if (prior != null) return prior;
   const inline = el.style.zIndex;
   if (inline && inline !== "auto") return parseZIndex(inline);
   try {
@@ -437,6 +441,41 @@ export function resolveZOrderChange(
   }
 
   return realizeOrder(order, desired, target, entries);
+}
+
+/**
+ * Realize an ARBITRARY repositioning of `target` within a scoped sibling set —
+ * the Layers-panel drag, which can jump several siblings in one drop, unlike
+ * the menu's four fixed actions. `desiredOrderBottomToTop` is the scoped set
+ * (target included at its new slot) in the intended render order. Reuses the
+ * menu's minimal-write realization (realizeOrder): one between-z write when a
+ * strict gap exists, band-safe scoped renumber otherwise — replacing the old
+ * LayersPanel computeReorderZValues path that stamped EVERY sibling.
+ *
+ * Null when nothing changes, the set is too small, or an element in the
+ * desired order is not actually a painting sibling of `target`.
+ */
+export function resolveZOrderReposition(
+  target: HTMLElement,
+  desiredOrderBottomToTop: readonly HTMLElement[],
+): ZOrderPatch[] | null {
+  const { entries } = getFamily(target);
+  if (entries.length < 2) return null;
+  const byElement = new Map(entries.map((entry) => [entry.element, entry]));
+  const desired: RenderEntry[] = [];
+  for (const el of desiredOrderBottomToTop) {
+    const entry = byElement.get(el);
+    if (!entry) return null;
+    desired.push(entry);
+  }
+  if (desired.length < 2 || !desired.some((entry) => entry.element === target)) return null;
+  const currentOrder = toRenderOrder(desired);
+  // A drop back into the same slot is a no-op. The menu actions guard this via
+  // their position checks before realizeOrder; an arbitrary reposition must
+  // compare the orders itself — realizeOrder would otherwise "normalize" an
+  // end-of-set target to a fresh z value it doesn't need.
+  if (currentOrder.every((entry, i) => entry.element === desired[i].element)) return null;
+  return realizeOrder(currentOrder, desired, target, entries);
 }
 
 /**

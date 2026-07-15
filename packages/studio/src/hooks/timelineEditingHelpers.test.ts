@@ -5,6 +5,7 @@ import {
   buildTimelineMoveTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
+  patchIframeDomTiming,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
@@ -42,7 +43,11 @@ describe("applyTimelineStackingReorder", () => {
   it("commits via the change's own locator even when the element is not in timelineElements", () => {
     // Sub-comp children live in the preview iframe but NOT in the top-level
     // timelineElements list — the intent must be self-contained.
-    const iframe = makeIframeWith(`<div id="chip" style="z-index: 1"></div>`);
+    const iframe = makeIframeWith(`
+      <div data-composition-id="scene" data-composition-file="scenes/scene.html">
+        <div id="chip" style="z-index: 1"></div>
+      </div>
+    `);
     const commit = vi.fn<(entries: unknown[]) => void>();
 
     applyTimelineStackingReorder({
@@ -95,6 +100,92 @@ describe("applyTimelineStackingReorder", () => {
     });
 
     expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("resolves selectorIndex within the change's source file", () => {
+    const iframe = makeIframeWith(`
+      <div data-composition-id="root">
+        <div class="chip">root</div>
+        <div data-composition-id="scene" data-composition-file="scenes/scene.html">
+          <div class="chip">scene zero</div>
+          <div class="chip" style="z-index: 1">scene one</div>
+        </div>
+      </div>
+    `);
+    const sceneOne = iframe.contentDocument?.querySelectorAll(".chip")[2];
+    const commit = vi.fn<(entries: unknown[]) => void>();
+
+    applyTimelineStackingReorder({
+      element: el({ id: "scene-one", tag: "div" }),
+      stackingReorder: {
+        contextKey: "scene",
+        placement: { type: "above", layerId: "layer:scene:x" },
+        zIndexChanges: [
+          {
+            key: "scenes/scene.html#.chip:1",
+            zIndex: 5,
+            selector: ".chip",
+            selectorIndex: 1,
+            sourceFile: "scenes/scene.html",
+          },
+        ],
+      },
+      timelineElements: [],
+      iframe,
+      activeCompPath: "index.html",
+      commit,
+    });
+
+    const entries = commit.mock.calls[0]![0] as Array<{ element: Element }>;
+    expect(entries[0]!.element).toBe(sceneOne);
+  });
+});
+
+describe("patchIframeDomTiming", () => {
+  it("resolves selectorIndex within the element's source file", () => {
+    const iframe = makeIframeWith(`
+      <div data-composition-id="root">
+        <div class="clip" data-start="1">root</div>
+        <div data-composition-id="scene" data-composition-file="scenes/scene.html">
+          <div class="clip" data-start="2">scene zero</div>
+          <div class="clip" data-start="3">scene one</div>
+        </div>
+      </div>
+    `);
+    const clips = iframe.contentDocument?.querySelectorAll<HTMLElement>(".clip");
+    const target = el({
+      id: "scene-one",
+      tag: "div",
+      selector: ".clip",
+      selectorIndex: 1,
+      sourceFile: "scenes/scene.html",
+    });
+
+    patchIframeDomTiming(iframe, target, [["data-start", "9"]], "index.html");
+
+    expect([...clips!].map((clip) => clip.dataset.start)).toEqual(["1", "2", "9"]);
+  });
+
+  it("resolves duplicate domId within the element's source file", () => {
+    const iframe = makeIframeWith(`
+      <div data-composition-id="root">
+        <div id="card" data-start="1">root</div>
+        <div data-composition-id="scene" data-composition-file="scenes/scene.html">
+          <div id="card" data-start="2">scene</div>
+        </div>
+      </div>
+    `);
+    const cards = iframe.contentDocument?.querySelectorAll<HTMLElement>("#card");
+    const target = el({
+      id: "scene-card",
+      tag: "div",
+      domId: "card",
+      sourceFile: "scenes/scene.html",
+    });
+
+    patchIframeDomTiming(iframe, target, [["data-start", "9"]], "index.html");
+
+    expect([...cards!].map((card) => card.dataset.start)).toEqual(["1", "9"]);
   });
 });
 

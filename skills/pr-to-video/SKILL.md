@@ -72,7 +72,8 @@ PR="<url | owner/repo#N | N>"
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-pr.mjs --pr "$PR" --out-dir ./capture)
 
 # Offline transform → capture/extracted/{tokens.json (colors:[] → claude palette),
-# visible-text.txt (the brief), people.json (contributors, bot-filtered, avatarFile=assets/<login>.png)}.
+# visible-text.txt (the brief), people.json (contributors, bot-filtered, name+login,
+# avatarFile=assets/<login>.png)}.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/ingest.mjs \
   --pr-json ./capture/pr.json --diff ./capture/diff.patch --out-dir ./capture/extracted)
 
@@ -83,6 +84,8 @@ PR="<url | owner/repo#N | N>"
 ```
 
 If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and stop — **do not fabricate PR contents**. If `ingest.mjs` exits 1, read its stderr (usually a malformed `pr.json`), fix, and rerun (deterministic). `fetch-people-avatars.mjs` always exits 0; missing avatars just mean no credits close to author.
+
+`people.json` carries a `name` for whichever contributors `gh` already named (the PR author, commit authors, `mergedBy`) — `null` for the rest (reviewers/commenters/assignees, which `gh pr view` only ever gives a bare `login`). Before writing the credits close in Step 3, resolve any `null` name yourself for the 1-6 people who'll actually appear on that frame: `gh api users/<login> --jq .name` (you already have `gh` — no need to script this). If GitHub has no public name for that user either, fall back to the login on-screen and drop that person from the spoken line (see story-design.md's credits section — the voiceover must still say names, never raw handles).
 
 **Gate:** `capture/pr.json`, `capture/diff.patch`, `capture/extracted/tokens.json`, `capture/extracted/visible-text.txt`, and `capture/extracted/people.json` exist; you can state the PR's change in one clear sentence. `assets/<login>.png` is best-effort — its absence is not a failure.
 

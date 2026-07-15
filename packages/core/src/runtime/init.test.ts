@@ -367,6 +367,43 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("visible");
   });
 
+  it("removes external composition head links during runtime teardown", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "sub");
+    child.setAttribute("data-composition-src", "https://example.com/compositions/sub.html");
+    child.setAttribute("data-start", "0");
+    child.setAttribute("data-duration", "3");
+    root.appendChild(child);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><head><link rel="stylesheet" href="./sub.css"></head><body><template id="sub-template"><div data-composition-id="sub">Sub</div></template></body></html>`,
+        { status: 200 },
+      ),
+    );
+    window.__timelines = { main: createMockTimeline(3), sub: createMockTimeline(3) };
+
+    initSandboxRuntimeModular();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    const injectedLink = document.head.querySelector<HTMLLinkElement>(
+      'link[href="https://example.com/compositions/sub.css"]',
+    );
+    expect(injectedLink).not.toBeNull();
+
+    window.__hfRuntimeTeardown?.();
+
+    expect(injectedLink?.isConnected).toBe(false);
+  });
+
   it("keeps compiled external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

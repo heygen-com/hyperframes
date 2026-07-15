@@ -25,12 +25,25 @@ export interface PropertyPanelProps {
   assets: string[];
   element: DomEditSelection | null;
   multiSelectCount?: number;
+  multiSelectedElements?: DomEditSelection[];
+  onGroupSelection?: () => void;
+  onHideAllSelected?: () => void;
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
-  onSetAttributeLive: (attr: string, value: string | null) => void | Promise<void>;
+  /** Commits several data-* attributes on the SAME element in ONE atomic
+   *  persist call — e.g. a pinned timing range's start+duration together, so
+   *  a selection change or a partial failure mid-commit can't misdirect one
+   *  of the two writes or leave them half-applied. Falls back to sequential
+   *  `onSetAttribute` calls where omitted. */
+  onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
+  onSetAttributeLive: (
+    attr: string,
+    value: string | null,
+    onSettled?: (ok: boolean) => void,
+  ) => void | Promise<void>;
   onApplyColorGradingScope?: (
     scope: "source-file" | "project",
     value: string | null,

@@ -145,15 +145,19 @@ export function useDomEditTextCommits({
   const domTextCommitVersionRef = useRef(0);
   const domStyleCommitVersionRef = useRef(new Map<string, number>());
 
-  const { handleDomAttributeCommit, handleDomAttributeLiveCommit, handleDomHtmlAttributeCommit } =
-    useDomEditAttributeCommits({
-      activeCompPath,
-      previewIframeRef,
-      showToast,
-      domEditSelection,
-      refreshDomEditSelectionFromPreview,
-      persistDomEditOperations,
-    });
+  const {
+    handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
+    handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
+  } = useDomEditAttributeCommits({
+    activeCompPath,
+    previewIframeRef,
+    showToast,
+    domEditSelection,
+    refreshDomEditSelectionFromPreview,
+    persistDomEditOperations,
+  });
 
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
@@ -471,6 +475,7 @@ export function useDomEditTextCommits({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,

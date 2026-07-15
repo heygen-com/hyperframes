@@ -640,6 +640,44 @@ export async function installWithCorruptArchiveRecovery<T>(
   }
 }
 
+/**
+ * When `@puppeteer/browsers`' install() rejects for any reason the corrupt-
+ * archive recovery path can't handle (all CDN providers rejected — the
+ * `All providers failed for chrome-headless-shell <ver>` case reported from the
+ * field on darwin/arm64 with CLI 0.7.57; DNS/network failure; a macOS Gatekeeper
+ * quarantine that blocks the pinned Dev-channel binary from launching a probe;
+ * a second corruption that trips the retry gate), the raw error names none of
+ * the escape hatches that would unblock the user. Rewrap it in one that does:
+ * `HYPERFRAMES_BROWSER_PATH` wins over both the managed download and system
+ * lookup (see `findFromEnv` above), so pointing it at an already-installed
+ * Chrome renders successfully via the screenshot fallback while the pinned
+ * chrome-headless-shell download is broken. Sibling failure mode: #2078
+ * (SIGTRAP at launch), same remediation, different trigger.
+ */
+function browserPathHintForPlatform(): string {
+  if (process.platform === "darwin") {
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  }
+  if (process.platform === "win32") {
+    return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+  }
+  return "/usr/bin/google-chrome";
+}
+
+function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
+  const original = normalizeErrorMessage(cause);
+  const example = browserPathHintForPlatform();
+  const message =
+    `Failed to download chrome-headless-shell ${CHROME_VERSION}: ${original}\n\n` +
+    `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
+    `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
+    `Then re-run your command. Any Chrome build works for the screenshot ` +
+    `capture path; install a real chrome-headless-shell later if you need the ` +
+    `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
+    `Docker image which ships a compatible headless-shell.`;
+  return new Error(message, { cause: cause instanceof Error ? cause : undefined });
+}
+
 async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
   if (isLinuxArm()) {
     return ensureLinuxArmBrowser(options);
@@ -661,17 +699,22 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
       downloadProgressCallback: options?.onProgress,
     });
 
-  const installed = await installWithCorruptArchiveRecovery(
-    runInstall,
-    () => {
-      rmSync(CACHE_DIR, { recursive: true, force: true });
-      mkdirSync(CACHE_DIR, { recursive: true });
-    },
-    (err) =>
-      console.warn(
-        `[hyperframes] Cached browser archive was corrupt (${normalizeErrorMessage(err)}); clearing the cache and re-downloading.`,
-      ),
-  );
+  let installed;
+  try {
+    installed = await installWithCorruptArchiveRecovery(
+      runInstall,
+      () => {
+        rmSync(CACHE_DIR, { recursive: true, force: true });
+        mkdirSync(CACHE_DIR, { recursive: true });
+      },
+      (err) =>
+        console.warn(
+          `[hyperframes] Cached browser archive was corrupt (${normalizeErrorMessage(err)}); clearing the cache and re-downloading.`,
+        ),
+    );
+  } catch (err) {
+    throw wrapDownloadFailureWithBrowserPathHint(err);
+  }
 
   return { executablePath: installed.executablePath, source: "download" };
 }

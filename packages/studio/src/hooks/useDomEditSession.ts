@@ -43,7 +43,7 @@ export interface UseDomEditSessionParams {
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   updateEditingFileContent: (path: string, content: string) => void;
@@ -229,6 +229,7 @@ export function useDomEditSession({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -260,8 +261,13 @@ export function useDomEditSession({
       ? (selection, operations, originalContent, targetPath, options) => {
           // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
           // Pass originalContent so the runtime-node filter can suppress hf-ids
-          // absent from source (script-created nodes the SDK can't model).
-          runResolverShadow(sdkSession, selection.hfId, operations, originalContent);
+          // absent from source (script-created nodes the SDK can't model), and
+          // the paths so cross-file edits (session models only the active comp)
+          // skip instead of emitting structural element_not_found noise.
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
+            targetPath,
+            compositionPath: activeCompPath,
+          });
           return sdkCutoverPersist(
             selection,
             operations,
@@ -524,6 +530,7 @@ export function useDomEditSession({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,

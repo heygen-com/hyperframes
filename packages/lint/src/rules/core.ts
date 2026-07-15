@@ -2,6 +2,7 @@ import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import {
   readAttr,
+  readDecodedAttr,
   truncateSnippet,
   stripJsComments,
   extractCompositionIdsFromCss,
@@ -40,7 +41,7 @@ function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
 function describeStudioElement(tag: { raw: string; name: string }): string {
   const parts = [`<${tag.name}`];
   const className = readAttr(tag.raw, "class");
-  const compositionId = readAttr(tag.raw, "data-composition-id");
+  const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
   const dataStart = readAttr(tag.raw, "data-start");
   const dataTrack = readAttr(tag.raw, "data-track-index") ?? readAttr(tag.raw, "data-track");
 
@@ -203,7 +204,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
-    if (!rootTag || !readAttr(rootTag.raw, "data-composition-id")) {
+    if (!rootTag || !readDecodedAttr(rootTag.raw, "data-composition-id")) {
       findings.push({
         code: "root_missing_composition_id",
         severity: "error",
@@ -300,15 +301,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // timeline_id_mismatch
-  ({ source }) => {
+  ({ source, compositionIds }) => {
     const findings: HyperframeLintFinding[] = [];
-    const htmlCompIds = new Set<string>();
+    const htmlCompIds = new Set(compositionIds);
     const timelineRegKeys = new Set<string>();
-    const compIdRe = /data-composition-id\s*=\s*["']([^"']+)["']/gi;
-    let m: RegExpExecArray | null;
-    while ((m = compIdRe.exec(source)) !== null) {
-      if (m[1]) htmlCompIds.add(m[1]);
-    }
     for (const key of extractTimelineRegistryKeys(source)) {
       timelineRegKeys.add(key);
     }
@@ -369,7 +365,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     for (const tag of tags) {
       const src = readAttr(tag.raw, "data-composition-src");
       if (!src) continue;
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       findings.push({
         code: "host_missing_composition_id",
         severity: "error",
@@ -452,8 +448,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         code: "studio_missing_editable_id",
         severity: "warning",
         message: `${descriptor} has no id, so Studio cannot use a stable edit target for its timeline and canvas controls.`,
-        selector: readAttr(tag.raw, "data-composition-id")
-          ? `[data-composition-id="${readAttr(tag.raw, "data-composition-id")}"]`
+        selector: readDecodedAttr(tag.raw, "data-composition-id")
+          ? `[data-composition-id="${readDecodedAttr(tag.raw, "data-composition-id")}"]`
           : undefined,
         fixHint:
           'Add a stable, human-readable id such as id="hero-title" or id="scene-1-card" to every timeline-visible element you want agents or Studio to edit.',

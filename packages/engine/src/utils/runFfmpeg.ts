@@ -29,6 +29,14 @@ const DEFAULT_STDERR_TAIL_LINES = 15;
 
 function formatWindowsFfmpegExit(exitCode: number | null): string | undefined {
   if (process.platform !== "win32" || exitCode === null) return undefined;
+  if (exitCode === 3221225781 || exitCode === -1073741515) {
+    const ffmpegPath = getFfmpegBinary();
+    return (
+      `[FFmpeg] Windows could not start "${ffmpegPath}": ` +
+      "0xC0000135 (STATUS_DLL_NOT_FOUND). A required DLL could not be loaded. " +
+      "Install a working 64-bit Windows FFmpeg build with all required runtime DLLs."
+    );
+  }
   if (exitCode === 3221225595 || exitCode === -1073741701) {
     return (
       "[FFmpeg] Windows could not start ffmpeg.exe (STATUS_INVALID_IMAGE_FORMAT). " +

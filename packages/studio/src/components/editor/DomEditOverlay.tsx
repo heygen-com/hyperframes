@@ -103,6 +103,9 @@ interface DomEditOverlayProps {
     selection: DomEditSelection,
     patches: ZOrderPatch[],
     action: ZOrderAction,
+    /** Sibling a forward/backward step moved past (pre-mutation render order);
+     *  null for front/back. Feeds the timeline z-mirror's crossedKey. */
+    crossed: HTMLElement | null,
   ) => void;
 }
 
@@ -529,8 +532,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           }
           onApplyZIndex={
             onApplyZIndex
-              ? (patches, action) => {
-                  onApplyZIndex(contextMenu.sel, patches, action);
+              ? (patches, action, crossed) => {
+                  onApplyZIndex(contextMenu.sel, patches, action, crossed);
                 }
               : undefined
           }

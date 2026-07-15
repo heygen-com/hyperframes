@@ -74,9 +74,9 @@ describe("distributed warning policy", () => {
     expect(job.warnings.map((warning) => warning.code)).toEqual(["audio_processing_failed"]);
   });
 
-  it("records distributed audio degradation in best-effort mode", () => {
+  it("rejects distributed audio degradation in best-effort mode", () => {
     const job = createJob("best-effort");
-    expect(() => applyDistributedAudioWarningPolicy(job, "mix failed")).not.toThrow();
+    expect(() => applyDistributedAudioWarningPolicy(job, "mix failed")).toThrow(RenderQualityError);
     expect(job.warnings.map((warning) => warning.code)).toEqual(["audio_processing_failed"]);
   });
 });

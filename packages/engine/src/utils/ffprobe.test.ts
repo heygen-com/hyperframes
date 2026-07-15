@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { EventEmitter } from "events";
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import { basename, resolve } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { extractMediaMetadata, extractPngMetadataFromBuffer } from "./ffprobe.js";
 
@@ -217,7 +217,7 @@ describe("ffprobe missing-binary fallback", () => {
     const meta = await extractMediaMetadataMocked(fixture);
 
     expect(calls.length).toBe(1);
-    expect(calls[0]?.command).toBe("ffprobe");
+    expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
     expect(meta.videoCodec).toBe("png");
     expect(meta.durationSeconds).toBe(0);
     expect(meta.fps).toBe(0);
@@ -323,7 +323,7 @@ describe("ffprobe missing-binary fallback", () => {
       /ffprobe not found/,
     );
     expect(calls.length).toBe(1);
-    expect(calls[0]?.command).toBe("ffprobe");
+    expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
 
   it("analyzeKeyframeIntervals surfaces a ffprobe-missing error verbatim", async () => {
@@ -338,7 +338,7 @@ describe("ffprobe missing-binary fallback", () => {
       /ffprobe not found/,
     );
     expect(calls.length).toBe(1);
-    expect(calls[0]?.command).toBe("ffprobe");
+    expect(basename(calls[0]?.command ?? "")).toMatch(/^ffprobe(?:\.exe)?$/);
   });
 
   it("ffprobe-missing error message includes install hint", async () => {

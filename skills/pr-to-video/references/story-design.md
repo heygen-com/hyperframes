@@ -159,6 +159,8 @@ A PR is shipped by people, and every PR video closes with a `credits` frame nami
 
 The `credits` frame is an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 1–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. The frame sits in the Step 3 proposal like any other, so the user can cut it there; skip it yourself only when no avatar was fetched.
 
+> **Narrate the name, not the handle.** `people.json` carries a `name` field (GitHub display name, e.g. "Miguel Angel Simon Sierra") next to `login` for whichever contributors `gh` already named (author, commit authors, `mergedBy`); it's `null` for reviewers/commenters/assignees, which `gh pr view` only ever gives a bare login. Before writing this frame, resolve any `null` name yourself for the 1-6 people going on the close: `gh api users/<login> --jq .name`. Voiceover always says the **name** (first name is enough — "Shipped by Miguel, reviewed by Wenbo") and **never** reads a raw `@login` aloud (`@miguAng18947550` spoken by TTS is the failure mode this exists to avoid). On-screen text under each avatar can show both, name first, handle small and secondary: `Miguel Angel Simon Sierra` / `@miguel-heygen`. When a name still doesn't resolve (GitHub has no public name for that user either), fall back to the login on-screen and skip that person from the spoken line rather than reading the handle.
+
 Every other frame has **no** `asset_candidates` (the visuals are invented downstream from `scene` + the diff).
 
 ### Versions on the end card (cta / changelog)

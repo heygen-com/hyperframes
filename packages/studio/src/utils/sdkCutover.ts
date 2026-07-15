@@ -82,6 +82,20 @@ function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
   return deps.compositionPath != null && targetPath !== deps.compositionPath;
 }
 
+/**
+ * Reader for the animation-resolver tripwire's disk-truth check: on an
+ * animationId miss it re-parses the CURRENT file to distinguish a stale
+ * session (panel ids re-derive from disk every render; session ids date from
+ * the last reload) from a genuine resolver divergence.
+ */
+function gsapReadSource(
+  deps: CutoverDeps,
+  targetPath: string,
+): (() => Promise<string | undefined>) | undefined {
+  const read = deps.readProjectFile;
+  return read ? () => read(targetPath) : undefined;
+}
+
 interface CutoverOptions {
   label?: string;
   coalesceKey?: string;
@@ -175,6 +189,7 @@ export async function sdkTimingPersist(
     hfId,
     "setTiming",
     timingSrc ? () => timingSrc(targetPath) : undefined,
+    { targetPath, compositionPath: deps.compositionPath },
   );
   // Dark-launch gate: without this, timing cutover runs whenever an SDK session
   // exists (it always does, for shadow/selection) — flipping the flag OFF would
@@ -217,6 +232,7 @@ export async function sdkTimingBatchPersist(
       change.hfId,
       "setTiming",
       timingSrc ? () => timingSrc(targetPath) : undefined,
+      { targetPath, compositionPath: deps.compositionPath },
     );
   }
   if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
@@ -269,12 +285,15 @@ export function sdkGsapTweenPersist(
       op.target,
       "addGsapTween",
       gsapSrc ? () => gsapSrc(targetPath) : undefined,
+      { targetPath, compositionPath: deps.compositionPath },
     );
   } else {
-    recordAnimationResolverParity(
+    void recordAnimationResolverParity(
       sdkSession,
       op.animationId,
       op.kind === "set" ? "setGsapTween" : "removeGsapTween",
+      gsapReadSource(deps, targetPath),
+      { targetPath, compositionPath: deps.compositionPath },
     );
   }
   // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
@@ -309,7 +328,13 @@ async function dispatchGsapOpAndPersist(
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
   // the SDK can't resolve the animationId the server GSAP path is addressing.
   if (resolverTarget) {
-    recordAnimationResolverParity(sdkSession, resolverTarget.animationId, resolverTarget.opLabel);
+    void recordAnimationResolverParity(
+      sdkSession,
+      resolverTarget.animationId,
+      resolverTarget.opLabel,
+      gsapReadSource(deps, targetPath),
+      { targetPath, compositionPath: deps.compositionPath },
+    );
   }
   // Dark-launch gate (shared chokepoint for every GSAP-op cutover persist):
   // flag OFF → return false → caller falls back to the legacy server path.
@@ -533,8 +558,12 @@ export async function sdkDeletePersist(
   deps: CutoverDeps,
 ): Promise<boolean> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled).
-  void recordResolverParity(sdkSession, hfId, "removeElement", () =>
-    Promise.resolve(originalContent),
+  void recordResolverParity(
+    sdkSession,
+    hfId,
+    "removeElement",
+    () => Promise.resolve(originalContent),
+    { targetPath, compositionPath: deps.compositionPath },
   );
   // Dark-launch gate: flag OFF → legacy server delete path.
   if (!STUDIO_SDK_CUTOVER_ENABLED) return false;

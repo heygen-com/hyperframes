@@ -14,8 +14,14 @@ import {
 } from "../../utils/studioHelpers";
 import { Layers } from "../../icons/SystemIcons";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
-import { computeReorderZValues, getElementZIndex } from "../../player/lib/layerOrdering";
+import { getVisibleLayers, sortLayersByZIndex } from "./layersPanelSort";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
+import { resolveZOrderReposition } from "./canvasContextMenuZOrder";
+import { buildStableSelector } from "./domEditingDom";
+import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
+import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMirror";
+import { runZLaneGesture } from "../nle/zLaneGesture";
+import { useLayerRevealOverride } from "./useLayerRevealOverride";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -85,8 +91,13 @@ interface CollapsedState {
 // fallow-ignore-next-line complexity
 export const LayersPanel = memo(function LayersPanel() {
   const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
-  const { refreshKey, compositionLoading, timelineElements } = useStudioPlaybackContext();
+  const { refreshKey, compositionLoading, timelineElements, isPlaying } =
+    useStudioPlaybackContext();
   const currentTime = usePlayerStore((s) => s.currentTime);
+  // Flashless z commits (canvas menu, timeline lane-drag z-sync) mutate iframe
+  // z-indexes with no reload and no refreshKey bump — while paused, nothing
+  // else re-collects, so the panel's z-sorted order would go stale.
+  const zEditVersion = usePlayerStore((s) => s.zEditVersion);
   const {
     domEditSelection,
     activeGroupElement,
@@ -100,6 +111,11 @@ export const LayersPanel = memo(function LayersPanel() {
   const [collapsed, setCollapsed] = useState<CollapsedState>({});
   const prevDocVersionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const mirrorLayerReorderToTimeline = useLayerReorderTimelineMirror();
+  const { scheduleReveal } = useLayerRevealOverride({
+    isPlaying,
+    selectedElement: domEditSelection?.element ?? null,
+  });
 
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
@@ -131,7 +147,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
   useEffect(() => {
     collectLayers();
-  }, [collectLayers, refreshKey]);
+  }, [collectLayers, refreshKey, zEditVersion]);
 
   useEffect(() => {
     const iframe = previewIframeRef.current;
@@ -230,8 +246,13 @@ export const LayersPanel = memo(function LayersPanel() {
       if (!selection) return;
       applyDomSelection(selection);
       await seekToLayer(layer);
+      // Force-reveal AFTER the seek's runtime visibility sync has had a beat:
+      // a clip made active by the seek shows naturally and needs no override,
+      // so the reveal only touches nodes that REMAIN hidden (animation-parked
+      // opacity, non-clip display/visibility hides, hidden ancestors).
+      scheduleReveal(selection.element, 150);
     },
-    [resolveSelection, applyDomSelection, seekToLayer],
+    [resolveSelection, applyDomSelection, seekToLayer, scheduleReveal],
   );
 
   // Double-click a group row → drill into it; any other row → select it.
@@ -264,6 +285,7 @@ export const LayersPanel = memo(function LayersPanel() {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // fallow-ignore-next-line complexity
   const handleReorder = useCallback(
     (event: LayerReorderEvent) => {
       const { siblingLayers, fromIndex, toIndex } = event;
@@ -271,29 +293,88 @@ export const LayersPanel = memo(function LayersPanel() {
       const [moved] = reordered.splice(fromIndex, 1);
       reordered.splice(toIndex, 0, moved);
 
-      const existingValues = siblingLayers.map((l) => getElementZIndex(l.element));
-      const zValues = computeReorderZValues(existingValues, fromIndex, toIndex);
+      // Panel order is top-first (sortLayersByZIndex: z desc, later-DOM-first),
+      // so the desired RENDER order (bottom→top) is the reverse. The minimal
+      // resolver (shared with the canvas z-menu) then writes one between-z
+      // value when a strict gap exists, band-safe renumber otherwise — instead
+      // of the old computeReorderZValues stamp of every sibling.
+      const desiredBottomToTop = [...reordered].reverse();
+      const patches = resolveZOrderReposition(
+        moved.element,
+        desiredBottomToTop.map((l) => l.element),
+      );
+      if (!patches || patches.length === 0) return; // paint order unchanged
 
-      const entries = reordered.map((layer, i) => ({
-        element: layer.element,
-        zIndex: zValues[i],
-        id: layer.id,
-        selector: layer.selector,
-        selectorIndex: layer.selectorIndex,
-        sourceFile: layer.sourceFile,
-        key: deriveTimelineStoreKey({
-          domId: layer.id,
-          selector: layer.selector,
-          selectorIndex: layer.selectorIndex,
-          sourceFile: layer.sourceFile,
-        }),
-      }));
+      const layerByElement = new Map(siblingLayers.map((l) => [l.element, l]));
+      const entries: Array<{
+        element: HTMLElement;
+        zIndex: number;
+        id?: string;
+        selector?: string;
+        selectorIndex?: number;
+        sourceFile: string;
+        key?: string;
+      }> = [];
+      for (const patch of patches) {
+        // The renumber fallback can patch a painting sibling the panel didn't
+        // list (non-collected family member): derive its identity from the DOM
+        // node, exactly like the canvas menu's siblingZIndexEntry. Un-targetable
+        // nodes get a live-only style write (reverts on reload).
+        const layer = layerByElement.get(patch.element);
+        const id = layer?.id ?? (patch.element.id || undefined);
+        const selector = layer?.selector ?? buildStableSelector(patch.element);
+        if (!id && !selector) {
+          patch.element.style.zIndex = String(patch.zIndex);
+          continue;
+        }
+        const sourceFile = layer?.sourceFile ?? moved.sourceFile;
+        entries.push({
+          element: patch.element,
+          zIndex: patch.zIndex,
+          id,
+          selector,
+          selectorIndex: layer?.selectorIndex,
+          sourceFile,
+          key: deriveTimelineStoreKey({
+            domId: id,
+            selector,
+            selectorIndex: layer?.selectorIndex,
+            sourceFile,
+          }),
+        });
+      }
+      if (entries.length === 0) return;
 
-      // "layer-drag" keeps consecutive drops of the same sibling set coalescing
-      // into one undo step, without merging with a context-menu z action.
-      handleDomZIndexReorderCommit(entries, undefined, "layer-drag");
+      // ONE undo entry for the whole gesture: the z persist and the timeline
+      // lane mirror below share this per-gesture-unique key (same contract as
+      // the canvas menu's wiring in PreviewOverlays).
+      const coalesceKey = zReorderCoalesceKey(entries, "layer-drag");
+      const desiredOrderKeys = desiredBottomToTop.map(
+        (l) =>
+          deriveTimelineStoreKey({
+            domId: l.id,
+            selector: l.selector,
+            selectorIndex: l.selectorIndex,
+            sourceFile: l.sourceFile,
+          }) ?? null,
+      );
+      const movedKey = deriveTimelineStoreKey({
+        domId: moved.id,
+        selector: moved.selector,
+        selectorIndex: moved.selectorIndex,
+        sourceFile: moved.sourceFile,
+      });
+      // One serialized z→lane transaction (shared queue with the canvas
+      // z-order menu): the mirror runs only after a DURABLE z persist, and
+      // rapid successive gestures cannot interleave phases — see
+      // runZLaneGesture.
+      runZLaneGesture({
+        commitZ: () => handleDomZIndexReorderCommit(entries, coalesceKey, "layer-drag"),
+        mirror: () =>
+          mirrorLayerReorderToTimeline({ selectionKey: movedKey, desiredOrderKeys, coalesceKey }),
+      }).catch(() => undefined);
     },
-    [handleDomZIndexReorderCommit],
+    [handleDomZIndexReorderCommit, mirrorLayerReorderToTimeline],
   );
 
   const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
@@ -436,76 +517,6 @@ export const LayersPanel = memo(function LayersPanel() {
   );
 });
 
-// ── Pure helpers ──────────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem[] {
-  if (layers.length <= 1) return layers;
-
-  const minDepth = layers[0].depth;
-  for (let i = 1; i < layers.length; i++) {
-    if (layers[i].depth < minDepth) return layers;
-  }
-
-  const chunks: Array<{ root: DomEditLayerItem; children: DomEditLayerItem[]; domIndex: number }> =
-    [];
-
-  for (let i = 0; i < layers.length; i++) {
-    if (layers[i].depth === minDepth) {
-      const children: DomEditLayerItem[] = [];
-      let j = i + 1;
-      while (j < layers.length && layers[j].depth > minDepth) {
-        children.push(layers[j]);
-        j++;
-      }
-      chunks.push({ root: layers[i], children, domIndex: chunks.length });
-    }
-  }
-
-  if (chunks.length <= 1) {
-    if (chunks.length === 1 && chunks[0].children.length > 0) {
-      const sorted = sortLayersByZIndex(chunks[0].children);
-      return [chunks[0].root, ...sorted];
-    }
-    return layers;
-  }
-
-  chunks.sort((a, b) => {
-    const zA = getElementZIndex(a.root.element);
-    const zB = getElementZIndex(b.root.element);
-    if (zA !== zB) return zB - zA;
-    return b.domIndex - a.domIndex;
-  });
-
-  const result: DomEditLayerItem[] = [];
-  for (const chunk of chunks) {
-    result.push(chunk.root);
-    if (chunk.children.length > 0) {
-      result.push(...sortLayersByZIndex(chunk.children));
-    }
-  }
-  return result;
-}
-
-function getVisibleLayers(
-  layers: DomEditLayerItem[],
-  collapsed: CollapsedState,
-): DomEditLayerItem[] {
-  if (Object.keys(collapsed).length === 0) return layers;
-
-  const result: DomEditLayerItem[] = [];
-  let skipDepth = -1;
-
-  for (const layer of layers) {
-    if (skipDepth >= 0 && layer.depth > skipDepth) continue;
-    skipDepth = -1;
-
-    result.push(layer);
-
-    if (collapsed[layer.key] && layer.childCount > 0) {
-      skipDepth = layer.depth;
-    }
-  }
-
-  return result;
-}
+// The sort helper lives in layersPanelSort.ts (600-line studio cap);
+// re-exported so existing imports from "./LayersPanel" still resolve.
+export { sortLayersByZIndex } from "./layersPanelSort";

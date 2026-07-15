@@ -10,6 +10,7 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
+import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -228,6 +229,7 @@ export function createImplicitTimelineLayersFromDOM(
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(child),
       start: 0,
       tag: child.tagName.toLowerCase(),
       timingSource: "implicit",
@@ -303,6 +305,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(el),
       timingSource: "authored",
       zIndex: readTimelineElementZIndex(el),
     };

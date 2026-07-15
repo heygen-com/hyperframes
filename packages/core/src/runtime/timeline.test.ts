@@ -132,37 +132,119 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].zIndex).toBe(0);
   });
 
-  it("assigns stacking context ids from root and nearest sub-composition", () => {
+  it("partitions clips by their nearest real CSS stacking context", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-duration", "10");
     document.body.appendChild(root);
 
-    const rootClip = document.createElement("div");
-    rootClip.id = "root-layer";
-    rootClip.setAttribute("data-start", "0");
-    rootClip.setAttribute("data-duration", "5");
-    root.appendChild(rootClip);
+    const contextA = document.createElement("div");
+    contextA.style.transform = "translateX(0px)";
+    const contextB = document.createElement("div");
+    contextB.style.opacity = "0.9";
+    root.append(contextA, contextB);
 
-    const scene = document.createElement("div");
-    scene.id = "scene-host";
-    scene.setAttribute("data-composition-id", "scene");
-    scene.setAttribute("data-start", "0");
-    scene.setAttribute("data-duration", "5");
-    root.appendChild(scene);
-
-    const nestedClip = document.createElement("div");
-    nestedClip.id = "nested-layer";
-    nestedClip.setAttribute("data-start", "0");
-    nestedClip.setAttribute("data-duration", "2");
-    scene.appendChild(nestedClip);
+    const addClip = (parent: Element, id: string) => {
+      const clip = document.createElement("div");
+      clip.id = id;
+      clip.setAttribute("data-start", "0");
+      clip.setAttribute("data-duration", "2");
+      parent.appendChild(clip);
+    };
+    addClip(contextA, "a-1");
+    addClip(contextA, "a-2");
+    addClip(contextB, "b-1");
 
     const result = collectRuntimeTimelinePayload(defaultParams);
-    const rootLayer = result.clips.find((clip) => clip.id === "root-layer");
-    const nestedLayer = result.clips.find((clip) => clip.id === "nested-layer");
+    const contextOf = (id: string) =>
+      result.clips.find((clip) => clip.id === id)?.stackingContextId;
 
-    expect(rootLayer?.stackingContextId).toBe("main");
-    expect(nestedLayer?.stackingContextId).toBe("scene");
+    expect(contextOf("a-1")).toBe(contextOf("a-2"));
+    expect(contextOf("a-1")).not.toBe(contextOf("b-1"));
+    expect(contextOf("a-1")).not.toBe("css:root");
+  });
+
+  it("keeps clips without a stacking-context ancestor in the shared root scope", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const plainWrapper = document.createElement("div");
+    root.appendChild(plainWrapper);
+    for (const [parent, id] of [
+      [root, "root-layer"],
+      [plainWrapper, "wrapped-layer"],
+    ] as const) {
+      const clip = document.createElement("div");
+      clip.id = id;
+      clip.setAttribute("data-start", "0");
+      clip.setAttribute("data-duration", "2");
+      parent.appendChild(clip);
+    }
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const contextOf = (id: string) =>
+      result.clips.find((clip) => clip.id === id)?.stackingContextId;
+    expect(contextOf("root-layer")).toBe("css:root");
+    expect(contextOf("wrapped-layer")).toBe("css:root");
+  });
+
+  it("scopes an element's own z-index in its parent context, not a context it creates", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    for (const id of ["layer-a", "layer-b"]) {
+      const clip = document.createElement("div");
+      clip.id = id;
+      clip.style.cssText = "position: relative; z-index: 1";
+      clip.setAttribute("data-start", "0");
+      clip.setAttribute("data-duration", "2");
+      root.appendChild(clip);
+    }
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const contexts = result.clips.map((clip) => clip.stackingContextId);
+    expect(contexts).toEqual(["css:root", "css:root"]);
+  });
+
+  it.each([
+    ["positioned z-index", "", "position: relative; z-index: 1"],
+    ["fixed position", "", "position: fixed"],
+    ["sticky position", "", "position: sticky"],
+    ["transform", "", "transform: translateX(0px)"],
+    ["opacity", "", "opacity: 0.9"],
+    ["isolation", "", "isolation: isolate"],
+    ["filter", "", "filter: blur(1px)"],
+    ["perspective", "", "perspective: 100px"],
+    ["mix blend mode", "", "mix-blend-mode: multiply"],
+    ["contain", "", "contain: paint"],
+    ["container type", "", "container-type: inline-size"],
+    ["will change", "", "will-change: transform"],
+    ["z-indexed flex item", "display: flex", "z-index: 1"],
+    ["z-indexed grid item", "display: grid", "z-index: 1"],
+  ])("recognizes a %s stacking-context ancestor", (_label, rootCssText, contextCssText) => {
+    const root = document.createElement("div");
+    root.style.cssText = rootCssText;
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const context = document.createElement("div");
+    context.style.cssText = contextCssText;
+    root.appendChild(context);
+    const clip = document.createElement("div");
+    clip.id = "nested-layer";
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "2");
+    context.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips.find((item) => item.id === clip.id)?.stackingContextId).not.toBe(
+      "css:root",
+    );
   });
 
   it("identifies video clips by tag", () => {

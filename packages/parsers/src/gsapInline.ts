@@ -73,14 +73,20 @@ function collectPatternNames(pattern: Node, out: Set<string>): void {
   else if (pattern?.type === "RestElement") collectPatternNames(pattern.argument, out);
 }
 
+function boundPatterns(node: Node): Node[] {
+  if (isFunctionNode(node)) return node.params ?? [];
+  if (node.type === "VariableDeclarator") return [node.id];
+  if (node.type === "CatchClause") return [node.param];
+  if (node.type === "AssignmentExpression" && node.left?.type === "Identifier") return [node.left];
+  return [];
+}
+
 /** Every identifier name bound anywhere inside the subtree (fn params, declared vars, catch params). */
 function collectBoundNames(root: Node): Set<string> {
   const names = new Set<string>();
   const visit = (node: Node): Node => {
     if (!isNode(node)) return node;
-    if (isFunctionNode(node)) for (const p of node.params ?? []) collectPatternNames(p, names);
-    else if (node.type === "VariableDeclarator") collectPatternNames(node.id, names);
-    else if (node.type === "CatchClause") collectPatternNames(node.param, names);
+    for (const pattern of boundPatterns(node)) collectPatternNames(pattern, names);
     transformChildren(node, visit);
     return node;
   };
@@ -339,8 +345,13 @@ function expandBody(
   ctx: ExpandCtx,
 ): Node[] {
   const block = substituteParams(cloneNode({ type: "BlockStatement", body: bodyStmts }), bindings);
+  tagProvenance(block, prov);
   tagTimelineCalls(block.body, prov, ctx);
-  return expandStatements(block.body, { ...ctx, depth: ctx.depth + 1 });
+  block.body = expandStatements(block.body, { ...ctx, depth: ctx.depth + 1 });
+  // Keep each synthetic expansion in its own lexical scope. Flattening repeated
+  // loop/helper bodies into Program scope makes same-named local DOM bindings
+  // overwrite one another during selector analysis.
+  return [block];
 }
 
 function inlineHelper(call: Node, ctx: ExpandCtx): Node[] {

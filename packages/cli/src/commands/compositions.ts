@@ -1,4 +1,5 @@
 import { defineCommand } from "citty";
+import { parseNumeric, parseStartExpression } from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -45,12 +46,78 @@ function estimateDurationFromScripts(root: ParentNode): number {
   return duration;
 }
 
-function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
+function findReferenceTargetEl(doc: Document, refId: string): Element | null {
+  return doc.getElementById(refId) ?? doc.querySelector(`[data-composition-id="${refId}"]`);
+}
+
+function resolveStart(
+  doc: Document,
+  el: Element,
+  startCache: Map<Element, number>,
+  visiting: Set<Element>,
+): number {
+  const cached = startCache.get(el);
+  if (cached !== undefined) return cached;
+  if (visiting.has(el)) return 0;
+  visiting.add(el);
+
+  try {
+    const expression = parseStartExpression(el.getAttribute("data-start"));
+    if (!expression) {
+      startCache.set(el, 0);
+      return 0;
+    }
+
+    if (expression.kind === "absolute") {
+      const value = Math.max(0, expression.value);
+      startCache.set(el, value);
+      return value;
+    }
+
+    const target = findReferenceTargetEl(doc, expression.refId);
+    if (!target) {
+      startCache.set(el, 0);
+      return 0;
+    }
+
+    const targetStart = resolveStart(doc, target, startCache, visiting);
+    const targetDuration = resolveReferencedDuration(doc, target, startCache, visiting);
+    const resolved =
+      targetDuration != null && targetDuration > 0
+        ? Math.max(0, targetStart + targetDuration + expression.offset)
+        : Math.max(0, targetStart + expression.offset);
+    startCache.set(el, resolved);
+    return resolved;
+  } finally {
+    visiting.delete(el);
+  }
+}
+
+function resolveReferencedDuration(
+  doc: Document,
+  el: Element,
+  startCache: Map<Element, number>,
+  visiting: Set<Element>,
+): number | null {
+  const durationAttr = parseNumeric(el.getAttribute("data-duration"));
+  if (durationAttr != null && durationAttr > 0) return durationAttr;
+  const endAttr = parseNumeric(el.getAttribute("data-end"));
+  if (endAttr != null) {
+    const start = resolveStart(doc, el, startCache, visiting);
+    const delta = endAttr - start;
+    if (Number.isFinite(delta) && delta > 0) return delta;
+  }
+  return null;
+}
+
+export function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
   const compositionDivs = doc.querySelectorAll("[data-composition-id]");
   const compositions: CompositionInfo[] = [];
+  const startCache = new Map<Element, number>();
+  const visiting = new Set<Element>();
 
   compositionDivs.forEach((div) => {
     const id = div.getAttribute("data-composition-id") ?? "unknown";
@@ -75,7 +142,7 @@ function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
 
     timedChildren.forEach((el) => {
       elementCount++;
-      const start = parseFloat(el.getAttribute("data-start") ?? "0");
+      const start = resolveStart(doc, el, startCache, visiting);
       const endAttr = el.getAttribute("data-end");
       const durationAttr = el.getAttribute("data-duration");
 
@@ -141,9 +208,11 @@ export function parseSubComposition(
   // Also check timed children for max end time
   if (compDiv) {
     const timedEls = compDiv.querySelectorAll("[data-start]");
+    const startCache = new Map<Element, number>();
+    const visiting = new Set<Element>();
     timedEls.forEach((el) => {
       elementCount = Math.max(elementCount, timedEls.length);
-      const start = parseFloat(el.getAttribute("data-start") ?? "0");
+      const start = resolveStart(doc, el, startCache, visiting);
       const endAttr = el.getAttribute("data-end");
       const durAttr = el.getAttribute("data-duration");
 

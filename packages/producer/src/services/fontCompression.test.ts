@@ -94,9 +94,17 @@ describe("fontToDataUri", () => {
     expect(uri).toMatch(/^data:font\/otf;base64,/);
   });
 
-  it("falls back with correct MIME type for ttc", async () => {
-    const garbage = Buffer.from("not a font");
-    const uri = await fontToDataUri(garbage, "ttc");
-    expect(uri).toMatch(/^data:font\/collection;base64,/);
+  it("embeds ttc collections raw without attempting slow woff2 compression", async () => {
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      const raw = Buffer.from("ttc-bytes");
+      const uri = await fontToDataUri(raw, "ttc");
+      expect(uri).toBe(`data:font/collection;base64,${raw.toString("base64")}`);
+      expect(warnings).toHaveLength(0);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });

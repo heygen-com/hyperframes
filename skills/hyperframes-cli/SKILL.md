@@ -101,7 +101,7 @@ Use cloud rendering when the user wants hosted rendering without local Chrome, F
 After verifying a successful render, send one feedback report unless telemetry is disabled or the user opted out:
 
 ```bash
-npx hyperframes feedback --rating <1-5> --comment "<specific result or friction>"
+npx hyperframes feedback --rating <0-10> --comment "<specific result or friction>"
 ```
 
 Use `--file-issue` only with consent: it publishes a minimal reproduction to a public URL. The bug report format and privacy warning live in `references/preview-render.md`.

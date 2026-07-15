@@ -219,10 +219,10 @@
     const text = textContentFor(element, directOnly);
     if (!text) return false;
     if (directOnly) return true;
-    for (const child of Array.from(element.children)) {
-      if (isVisibleElement(child) && textContentFor(child)) return false;
-    }
-    return true;
+    // Aggregate text may come exclusively from descendants (including hidden
+    // captions). The container itself does not paint that text and must not be
+    // audited as though it did.
+    return textContentFor(element, true).length > 0;
   }
 
   function textClientRects(element, directOnly) {
@@ -436,9 +436,9 @@
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return [];
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     const selector = selectorFor(element);
     const issues = [];
 
@@ -571,7 +571,7 @@
   // (low colour alpha) is decorative and exempt, as are elements opted out with
   // data-layout-allow-overlap.
   function isSolidTextBlock(element) {
-    if (!isVisibleElement(element) || !hasOwnTextCandidate(element)) return false;
+    if (!isVisibleElement(element) || !hasOwnTextCandidate(element, true)) return false;
     if (hasAllowOverlapFlag(element)) return false;
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
@@ -580,8 +580,9 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
-      const rect = textRectFor(element);
-      if (rect) blocks.push({ element, rect });
+      const rects = textClientRects(element, true);
+      const rect = textRectFor(element, true);
+      if (rect) blocks.push({ element, rect, rects });
     }
     return blocks;
   }
@@ -594,6 +595,18 @@
     const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     return overlapX > 0 && overlapY > 0 ? overlapX * overlapY : 0;
+  }
+
+  function rectsArea(rects) {
+    return rects.reduce((total, rect) => total + rectArea(rect), 0);
+  }
+
+  function fragmentIntersectionArea(a, b) {
+    let total = 0;
+    for (const aRect of a) {
+      for (const bRect of b) total += intersectionArea(aRect, bRect);
+    }
+    return total;
   }
 
   function isNested(a, b) {
@@ -631,8 +644,8 @@
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
     if (isManagedFlowOverlap(a.element, b.element)) return null;
-    const area = intersectionArea(a.rect, b.rect);
-    if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
+    const area = fragmentIntersectionArea(a.rects, b.rects);
+    if (area <= Math.min(rectsArea(a.rects), rectsArea(b.rects)) * 0.2) return null;
     return {
       // Warning at the per-sample level: a single-sample overlap is usually an
       // entrance/exit transient (two blocks crossing mid-animation), not a real
@@ -928,25 +941,32 @@
     return text.length > 0 && text.length <= ATOMIC_LABEL_MAX_CHARS && !/\s/.test(text);
   }
 
-  // Sweep a grid across the text box (three rows, not just the mid-line, so
-  // overlays covering only part of a multi-line block are caught). Unlike a
+  // Sweep a grid across each painted text fragment (three rows, not just the
+  // mid-line, so overlays covering only part of a multi-line block are caught).
+  // Sampling fragments instead of their union avoids probing empty line gaps.
+  // Unlike a
   // first-hit scan, this keeps sampling every point so it can report what
   // fraction of the box is actually covered — a corner nibble on a paragraph
   // reads very differently from a label buried under an overlay. Still
   // returns the first opaque element found, for `containerSelector`.
-  function occlusionCoverage(element, textRect) {
+  function occlusionCoverage(element, textRects) {
     let occluder = null;
     let hits = 0;
-    for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
-      const y = textRect.top + textRect.height * yFraction;
-      for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
-        const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
-        if (!hit) continue;
-        hits += 1;
-        if (!occluder) occluder = hit;
+    for (const textRect of textRects) {
+      for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
+        const y = textRect.top + textRect.height * yFraction;
+        for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
+          const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+          if (!hit) continue;
+          hits += 1;
+          if (!occluder) occluder = hit;
+        }
       }
     }
-    return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
+    return {
+      occluder,
+      coveredFraction: round(hits / (OCCLUSION_GRID_POINTS * textRects.length)),
+    };
   }
 
   // pointer-events:none hides elements from elementFromPoint — both probed text AND occluders.
@@ -983,10 +1003,14 @@
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
     if (!hasVisibleTextInk(element)) return null;
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
-    const { occluder, coveredFraction } = occlusionCoverage(element, textRect);
+    const textRects = textClientRects(element, true);
+    const text = textContentFor(element, true);
+    const { occluder, coveredFraction } = occlusionCoverage(
+      element,
+      textRects.length > 0 ? textRects : [textRect],
+    );
     if (!occluder) return null;
     if (!isAtomicLabel(text) && coveredFraction < PROSE_COVERAGE_FLOOR) return null;
     return {
@@ -1016,9 +1040,9 @@
   // paints the glyphs; a `background-clip: text` with no gradient/image and no
   // opaque background-color paints nothing, so it stays reportable.
   function invisibleTextIssue(element, time) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     if (!text) return null;
     const cs = getComputedStyle(element);
     // Vendor computed-style props are read by property (camelCase), matching
@@ -1141,8 +1165,8 @@
       if (escapedElements.has(element)) continue;
       // Ownership is geometric and strict-mutex: any text breach past canvas_overflow's own
       // tolerance cedes the element to canvas_overflow; in-bounds text leaves the panel finding.
-      if (hasOwnTextCandidate(element)) {
-        const textRect = textRectFor(element);
+      if (hasOwnTextCandidate(element, true)) {
+        const textRect = textRectFor(element, true);
         if (textRect && overflowFor(textRect, rootRect, tolerance)) continue;
       }
       const rect = toRect(element.getBoundingClientRect());
@@ -1372,7 +1396,7 @@
       document.body;
     const rootRect = rootRectFor(root);
     const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element),
+      isVisibleElement(element, 0.05),
     );
     const issues = [];
 

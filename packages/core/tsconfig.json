@@ -17,7 +17,8 @@
     "src/runtime/clipTree.ts",
     "src/runtime/mediaVolumeEnvelope.ts",
     "src/runtime/positionEdits.ts",
-    "src/runtime/protocol.ts"
+    "src/runtime/protocol.ts",
+    "src/runtime/stackingContext.ts"
   ],
   "include": ["src/**/*"],
   "exclude": [

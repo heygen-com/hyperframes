@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeStackingPatches, laneIsAbove, type StackingElement } from "./timelineStackingSync";
+import {
+  computeStackingPatches,
+  laneIsAbove,
+  samePaintScope,
+  type StackingElement,
+} from "./timelineStackingSync";
 
 function el(
   key: string,
@@ -20,6 +25,42 @@ function patchMap(elements: StackingElement[], edited: string[]): Record<string,
 }
 
 describe("stacking-context partitioning", () => {
+  it("uses source file and normalized stacking context as the canonical paint scope", () => {
+    expect(samePaintScope({}, { stackingContextId: null })).toBe(true);
+    expect(samePaintScope({}, { sourceFile: "index.html" })).toBe(false);
+    expect(
+      samePaintScope(
+        { sourceFile: "scene.html", stackingContextId: "card" },
+        { sourceFile: "scene.html", stackingContextId: "modal" },
+      ),
+    ).toBe(false);
+  });
+
+  it("never compares or patches across source files in the root context", () => {
+    const root: StackingElement = {
+      key: "root",
+      track: 0,
+      start: 0,
+      duration: 5,
+      zIndex: 1,
+      isAudio: false,
+      sourceFile: "index.html",
+      stackingContextId: null,
+    };
+    const scene: StackingElement = {
+      key: "scene",
+      track: 1,
+      start: 0,
+      duration: 5,
+      zIndex: 10,
+      isAudio: false,
+      sourceFile: "scenes/scene.html",
+      stackingContextId: null,
+    };
+
+    expect(patchMap([root, scene], ["root"])).toEqual({});
+  });
+
   it("never compares or patches across stacking contexts", () => {
     // X lives in sub-comp context "scene-1" with a high leaf z; Y is a root clip
     // with a lower leaf z, overlapping in time. Their leaf z values are NOT

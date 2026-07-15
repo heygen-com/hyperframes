@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
 import { resolveZIndexEntries } from "../nle/PreviewOverlays";
 import { useElementLifecycleOps } from "../../hooks/useElementLifecycleOps";
+import { makeLifecycleOpsParams } from "../../hooks/elementLifecycleOpsTestUtils";
 import type { DomEditPatchBatch } from "../../hooks/domEditCommitTypes";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
@@ -102,9 +103,26 @@ describe("CanvasContextMenu — handler gating", () => {
 
     renderMenu({ selection: makeSelection("Target", el), onApplyZIndex: vi.fn() });
 
-    expect(zOrderButtons()).toHaveLength(4);
+    const buttons = zOrderButtons();
+    expect(buttons).toHaveLength(4);
     expect(hasDeleteItem()).toBe(false);
     expect(document.body.querySelector(".border-t")).toBeNull();
+
+    // Labels stay the exact industry-standard names (the icons add no text)...
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Bring to front",
+      "Bring forward",
+      "Send backward",
+      "Send to back",
+    ]);
+    // ...and each item leads with a stroke icon that inherits the item's text
+    // color (currentColor), so the disabled muted tone applies to it too.
+    for (const button of buttons) {
+      const svg = button.firstElementChild;
+      expect(svg?.tagName.toLowerCase()).toBe("svg");
+      expect(svg?.getAttribute("stroke")).toBe("currentColor");
+      expect(svg?.getAttribute("aria-hidden")).toBe("true");
+    }
   });
 
   it("shows only Delete (no z-order items, no divider) when onApplyZIndex is absent", () => {
@@ -158,19 +176,14 @@ function renderCommitHook(captured: CapturedBatchCall[]) {
   type Commit = ReturnType<typeof useElementLifecycleOps>["handleDomZIndexReorderCommit"];
   let commit: Commit | undefined;
   function Harness() {
-    ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps({
-      activeCompPath: "index.html",
-      showToast: vi.fn(),
-      writeProjectFile: vi.fn(async () => {}),
-      domEditSaveTimestampRef: { current: 0 },
-      editHistory: { recordEdit: vi.fn(async () => {}) },
-      projectIdRef: { current: null },
-      reloadPreview: vi.fn(),
-      clearDomSelection: vi.fn(),
-      commitDomEditPatchBatches: async (batches, options) => {
-        captured.push({ batches, options });
-      },
-    }));
+    ({ handleDomZIndexReorderCommit: commit } = useElementLifecycleOps(
+      makeLifecycleOpsParams({
+        commitDomEditPatchBatches: async (batches, options) => {
+          captured.push({ batches, options });
+          return { durable: true, allMatched: true, changed: true };
+        },
+      }),
+    ));
     return null;
   }
   const hookHost = document.createElement("div");

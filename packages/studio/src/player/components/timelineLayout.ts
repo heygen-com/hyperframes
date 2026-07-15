@@ -31,6 +31,17 @@ export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
  */
 export const TRACKS_TOP_PAD = 50;
 export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
+/**
+ * Breathing room LEFT of t=0 (CapCut-style), inside the scroll content — the
+ * horizontal sibling of TRACKS_TOP_PAD: empty lane surface between the sticky
+ * gutter and where the ruler's 00:00 / the clips actually start, scrolling
+ * WITH the content. Time↔pixel mapping: content x = GUTTER + TRACKS_LEFT_PAD
+ * + t·pps, and every pointer→time inverse subtracts it symmetrically. The
+ * lanes and the ruler realize it as a plain flow spacer between the sticky
+ * gutter cell and the time-mapped content div, so all content-relative math
+ * (clip left = t·pps, beat lines, lane-menu time) is untouched.
+ */
+export const TRACKS_LEFT_PAD = 48;
 
 /**
  * The y (content-space) of the top edge of track ROW index `row` (0 = first
@@ -209,8 +220,8 @@ export function getTimelineFitPps(viewportWidth: number, effectiveDuration: numb
   const safeDuration =
     Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
   const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
-  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER) return 100;
-  return (viewportWidth - GUTTER - 2) / span;
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER + TRACKS_LEFT_PAD) return 100;
+  return (viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2) / span;
 }
 
 /**
@@ -230,7 +241,7 @@ export function getTimelineDisplayContentWidth(input: {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
     input.trackContentWidth,
-    input.viewportWidth - GUTTER - 2,
+    input.viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,
     MIN_TIMELINE_EXTENT_S * safePps,
@@ -300,9 +311,14 @@ export const PLAYHEAD_HEAD_W = 9;
  */
 export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
   if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) {
-    return GUTTER - PLAYHEAD_HEAD_W / 2;
+    return GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2;
   }
-  return GUTTER + Math.max(0, time) * Math.max(0, pixelsPerSecond) - PLAYHEAD_HEAD_W / 2;
+  return (
+    GUTTER +
+    TRACKS_LEFT_PAD +
+    Math.max(0, time) * Math.max(0, pixelsPerSecond) -
+    PLAYHEAD_HEAD_W / 2
+  );
 }
 
 export function getTimelineCanvasHeight(trackCount: number): number {
@@ -373,7 +389,7 @@ export function resolveTimelineAssetDrop(
   clientX: number,
   clientY: number,
 ): { start: number; track: number } {
-  const x = clientX - input.rectLeft + input.scrollLeft - GUTTER;
+  const x = clientX - input.rectLeft + input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
   const contentY = clientY - input.rectTop + input.scrollTop;
   const start = Math.max(
     0,

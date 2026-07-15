@@ -128,7 +128,7 @@ describe("updateJobStatus", () => {
     expect(job.warnings).toHaveLength(1);
   });
 
-  it("preserves best-effort behavior when strictness is omitted", () => {
+  it("blocks audio processing failures when strictness is omitted", () => {
     const job = createRenderJob({ fps: 30, quality: "high" });
     const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
     expect(() =>
@@ -143,7 +143,7 @@ describe("updateJobStatus", () => {
         ],
         log,
       ),
-    ).not.toThrow();
+    ).toThrow(RenderQualityError);
     expect(job.config.strictness).toBe("best-effort");
     expect(job.warnings).toHaveLength(1);
   });

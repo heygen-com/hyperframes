@@ -6,7 +6,7 @@ import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER, TRACK_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import { GUTTER, TRACK_H, TRACKS_LEFT_PAD, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -80,6 +80,12 @@ export interface TimelineLaneBaseProps {
     toClipPercentage: number,
   ) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
+  /**
+   * Right-click on EMPTY lane space (not on a clip — those preventDefault
+   * before this fires — not the gutter/ruler, not below the lanes). `time` is
+   * the timeline time (seconds) under the pointer on that lane.
+   */
+  onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
 }
 
@@ -133,6 +139,7 @@ export function TimelineLanes({
   onContextMenuKeyframe,
   onMoveKeyframe,
   onContextMenuClip,
+  onContextMenuLane,
   beatAnalysis,
   onToggleTrackHidden,
   onResizeElement,
@@ -167,21 +174,14 @@ export function TimelineLanes({
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
           return (
-            <div
-              key={trackNum}
-              className="relative flex"
-              style={{
-                height: TRACK_H,
-                background: rowBackground,
-                borderBottom: `1px solid ${theme.rowBorder}`,
-              }}
-            >
+            <div key={trackNum} className="relative flex" style={{ height: TRACK_H }}>
               <div
                 className="sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
                 style={{
                   width: GUTTER,
                   background: theme.gutterBackground,
                   borderRight: `1px solid ${theme.gutterBorder}`,
+                  borderBottom: `1px solid ${theme.rowBorder}`,
                 }}
               >
                 {isAudioTrack && (
@@ -211,13 +211,35 @@ export function TimelineLanes({
                   )}
                 </button>
               </div>
+              {/* Left breathing pad — empty lane surface before t=0, scrolling
+                  with the content (the horizontal TRACKS_TOP_PAD). Sits OUTSIDE
+                  the time-mapped content div so clip/beat/menu math stays
+                  content-relative (clip left = t·pps). */}
+              <div
+                aria-hidden="true"
+                className="flex-shrink-0"
+                style={{ width: TRACKS_LEFT_PAD }}
+              />
               <div
                 style={{
                   width: trackContentWidth,
+                  background: rowBackground,
+                  borderBottom: `1px solid ${theme.rowBorder}`,
                   opacity: isTrackHidden ? 0.35 : 1,
                   transition: "opacity 120ms ease",
                 }}
                 className="relative"
+                onContextMenu={(e: React.MouseEvent) => {
+                  // Clip / keyframe-diamond context menus preventDefault at the
+                  // target before this bubble handler runs — respect them so a
+                  // right-click on a clip never also opens the gap menu.
+                  if (e.defaultPrevented || !onContextMenuLane) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const time = (e.clientX - rect.left) / pps;
+                  if (time < 0) return;
+                  e.preventDefault();
+                  onContextMenuLane(e, trackNum, time);
+                }}
               >
                 {/* Faint beat lines in every track's background (behind the clips);
                     the active move-snap target is highlighted. */}

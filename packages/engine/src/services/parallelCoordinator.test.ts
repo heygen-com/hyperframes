@@ -76,6 +76,17 @@ describe("calculateOptimalWorkers", () => {
 
     expect(workers).toBe(4);
   });
+
+  it.each([12, 16])(
+    "honors an explicit %i-worker request above the auto safe maximum",
+    (requested) => {
+      expect(calculateOptimalWorkers(900, requested, { concurrency: "auto" })).toBe(requested);
+    },
+  );
+
+  it("caps explicit worker requests at the documented 24-worker ceiling", () => {
+    expect(calculateOptimalWorkers(900, 25, { concurrency: "auto" })).toBe(24);
+  });
 });
 
 describe("shouldDisableBrowserPoolForParallelWorker", () => {
