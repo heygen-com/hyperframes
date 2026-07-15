@@ -59,6 +59,7 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
+import { isActionableProbeFailure } from "./probeFailures.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -643,9 +644,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   // These don't block the render but indicate missing images, fonts, or
   // scripts that may produce unexpected visual artifacts.
   if (probeSession) {
-    const failedRequests = probeSession.browserConsoleBuffer.filter((line) =>
-      /404|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|net::ERR_/i.test(line),
-    );
+    const failedRequests = probeSession.browserConsoleBuffer.filter(isActionableProbeFailure);
     if (failedRequests.length > 0) {
       log.warn("Browser encountered network failures during page load:", {
         failures: failedRequests.slice(0, 10),
