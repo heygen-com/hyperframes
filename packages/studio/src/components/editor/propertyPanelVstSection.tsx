@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Zap } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import { Section } from "./propertyPanelPrimitives";
@@ -69,6 +69,28 @@ async function writeChainFile(
   return response.ok;
 }
 
+/**
+ * Finding 1 (final whole-branch review): a native plugin editor window edits
+ * the sidecar's live in-memory plugin instance directly — there is no
+ * "editor was closed" event on the wire (the native window closes via its
+ * own OS chrome, not our WebSocket protocol; `close-editor` is a
+ * client-initiated no-op, see useVstHost). Without persistence, the chain
+ * file keeps whatever `stateB64` it had before the user opened the editor,
+ * so `hyperframes render` would silently bounce stale/default plugin state
+ * instead of what the user actually heard in preview.
+ *
+ * Fix: while an editor is presumed open for this track (since the last
+ * `openEditor` click, until the track/chain changes or this section
+ * unmounts), poll `vstHost.getState` and persist any diff to the chain file
+ * via the same `writeChainFile` PUT `handleAddEffect`/`handleRemovePlugin`
+ * already use. 2.5s is a compromise: short enough that the state-loss
+ * window if the studio process dies right after a tweak is small, long
+ * enough to not hammer the project file store with PUTs while a knob is
+ * being dragged continuously (dragging doesn't need every intermediate
+ * value persisted — only the settled result before a render).
+ */
+const VST_STATE_POLL_INTERVAL_MS = 2500;
+
 export function VstSection({
   projectId,
   element,
@@ -80,9 +102,22 @@ export function VstSection({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   vstHost: VstHostApi | null;
 }) {
+  const trackId = vstElementId(element);
   const chainPath = element.dataAttributes["vst-chain"] || null;
   const [chain, setChain] = useState<ChainFileJson | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+
+  // Diffing/writing target for the poller below — mutated in place every
+  // render so the poll tick (and its unmount/navigate-away flush) always
+  // reads the latest known chain without needing to be in the polling
+  // effect's dependency array (which would restart the interval on every
+  // add/remove/persist).
+  const chainRef = useRef<ChainFileJson | null>(null);
+  chainRef.current = chain;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const persistingRef = useRef(false);
 
   useEffect(() => {
     if (!chainPath) {
@@ -97,6 +132,63 @@ export function VstSection({
       cancelled = true;
     };
   }, [projectId, chainPath]);
+
+  // A different selected element/track means any editor presumed open
+  // belonged to the PREVIOUS track — stop treating one as open here (the
+  // polling effect below still gets one final best-effort flush for the old
+  // track via its own cleanup, since chainPath changing also tears it down).
+  useEffect(() => {
+    setEditorOpen(false);
+  }, [chainPath]);
+
+  // Finding 1: persist native-editor edits. See VST_STATE_POLL_INTERVAL_MS's
+  // doc-comment for why polling (vs. an on-close event) and why this
+  // interval.
+  useEffect(() => {
+    if (!editorOpen || !chainPath || !vstHost) return;
+
+    const persistIfChanged = async (): Promise<void> => {
+      if (busyRef.current || persistingRef.current) return;
+      const current = chainRef.current;
+      if (!current || current.plugins.length === 0) return;
+      persistingRef.current = true;
+      try {
+        let states: string[];
+        try {
+          states = await vstHost.getState(trackId);
+        } catch {
+          return; // sidecar unreachable this tick — try again next tick
+        }
+        // Only matches when every plugin in the chain is currently loaded in
+        // the sidecar, in the same order — anything else is ambiguous, so
+        // skip rather than guess at an index mapping.
+        if (states.length !== current.plugins.length) return;
+        if (current.plugins.every((plugin, i) => plugin.stateB64 === states[i])) return;
+        const nextChain: ChainFileJson = {
+          version: 1,
+          plugins: current.plugins.map((plugin, i) => ({ ...plugin, stateB64: states[i] })),
+        };
+        const ok = await writeChainFile(projectId, chainPath, nextChain);
+        if (ok) chainRef.current = nextChain;
+      } finally {
+        persistingRef.current = false;
+      }
+    };
+
+    const interval = setInterval(() => {
+      void persistIfChanged();
+    }, VST_STATE_POLL_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+      // Best-effort flush: the section is unmounting, or the user navigated
+      // to a different element/track — save whatever state we can read
+      // right now instead of losing up to VST_STATE_POLL_INTERVAL_MS of
+      // edits. Skipped (persistingRef guard above) if a tick happens to
+      // already be in flight — acceptable for a best-effort save.
+      void persistIfChanged();
+    };
+  }, [editorOpen, chainPath, projectId, trackId, vstHost]);
 
   if (!vstHost) {
     return (
@@ -196,7 +288,10 @@ export function VstSection({
               <button
                 type="button"
                 data-vst-open-editor="true"
-                onClick={() => vstHost.openEditor(vstElementId(element), index)}
+                onClick={() => {
+                  vstHost.openEditor(trackId, index);
+                  setEditorOpen(true);
+                }}
                 className="h-7 flex-shrink-0 rounded-md px-2 text-[10px] font-medium text-panel-text-3 hover:bg-panel-hover"
               >
                 Open editor
