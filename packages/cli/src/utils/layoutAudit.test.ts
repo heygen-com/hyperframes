@@ -166,6 +166,19 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("t=1-5s (3 samples)");
   });
 
+  it("appends one registry suggestion line to an applicable finding", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("motion_frozen", "error"),
+      fixHint: "Keep the shot moving.",
+    });
+
+    expect(formatted.split("\n")).toEqual([
+      expect.stringContaining("motion_frozen"),
+      "    Fix: Keep the shot moving.",
+      "    suggestion: a static hold can carry motion via 'hyperframes add drift-hold'",
+    ]);
+  });
+
   // The clip rule that suppresses the odometer/ticker false positive: text
   // spilling past an `overflow:hidden` reel window is the mechanism, not a bug.
   it("treats clipping overflow values as masking (suppress) and visible as not (still report)", () => {

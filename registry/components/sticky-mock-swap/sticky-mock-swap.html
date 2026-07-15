@@ -1,0 +1,465 @@
+<!doctype html>
+<!--
+  sticky-mock-swap: HyperFrames video primitive (product-demo / demonstrate)
+
+  Concept: a product mock stays pinned while captions advance beside it. Each
+  caption rises along a shallow arc, holds, pauses before dismissal, then exits
+  upward along a second arc. At every caption threshold, only the mock content
+  cross-fades to the corresponding accent-tinted skeleton state.
+
+  Variables:
+    - captions (comma-separated string): feature captions. Whitespace and empty
+      entries are removed, with the declared default used when none remain.
+    - accent (green | blue | violet): tint shared by all mock states.
+
+  Envelope (caption-count driven, never timeScale):
+    PHASE = D / parsed caption count.
+    IN_BASE = 0.38s per phase for the caption rise and mock cross-fade.
+    HOLD = elastic per phase. Longer mounts stretch only this still-readable
+           interval, with a subtle seek-driven pulse inside the pinned mock.
+    OUT_BASE = 0.28s exit-delay plus 0.32s caption exit per phase.
+    If a phase is shorter than the fixed motion envelope, IN and OUT compress
+    proportionally and HOLD becomes zero. At the default D=6 and three captions,
+    the 0.28s stillness before each exit stays inside the 0.2s to 0.4s house rule.
+
+  Mount contract: this is a template-wrapped sub-composition. The runtime clones
+  only template contents. #root fills the host-owned box, has no data-width or
+  data-height, and establishes the cqw/cqh basis for every internal measurement.
+  One paused timeline is registered under the hardcoded sticky-mock-swap id.
+-->
+<html
+  lang="en"
+  data-composition-id="sticky-mock-swap"
+  data-composition-duration="6"
+  data-composition-variables='[
+    { "id": "captions", "type": "string", "role": "content", "label": "Captions", "description": "Comma-separated feature captions shown beside the pinned mock.", "default": "Instant previews,Zero config,Ship on Friday" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent tint used across the mock states.", "default": "violet", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sticky Mock Swap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="sticky-mock-swap" data-duration="6" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .sms-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .sms-shell {
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
+            align-items: center;
+            gap: 5cqw;
+            padding: 8cqh 7cqw;
+          }
+
+          .sms-mock {
+            position: relative;
+            width: 100%;
+            height: 70cqh;
+            overflow: hidden;
+            border: 0.12cqmin solid color-mix(in srgb, var(--border, #334155) 74%, transparent);
+            border-radius: 2.8cqmin;
+            background: var(--surface, #121722);
+            box-shadow: 0 4cqh 10cqh color-mix(in srgb, #000 46%, transparent);
+          }
+
+          .sms-states,
+          .sms-state {
+            position: absolute;
+            inset: 0;
+          }
+
+          .sms-state {
+            --sms-live: 0.64;
+            display: grid;
+            grid-template-rows: 8cqh minmax(0, 1fr);
+            overflow: hidden;
+            opacity: 0;
+            background: color-mix(in srgb, var(--surface, #121722) 94%, var(--sms-accent));
+          }
+
+          .sms-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2.2cqw;
+            border-bottom: 0.1cqmin solid
+              color-mix(in srgb, var(--border, #334155) 62%, transparent);
+            background: color-mix(in srgb, #0f131c 92%, var(--sms-accent));
+          }
+
+          .sms-dots {
+            display: flex;
+            gap: 0.55cqw;
+          }
+
+          .sms-dots i {
+            width: 0.62cqw;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--muted, #94a3b8) 46%, transparent);
+          }
+
+          .sms-status {
+            width: 7.4cqw;
+            height: 1.2cqh;
+            border-radius: 1cqmin;
+            opacity: var(--sms-live);
+            background: var(--sms-accent);
+          }
+
+          .sms-window {
+            display: grid;
+            grid-template-columns: 24% minmax(0, 1fr);
+            min-height: 0;
+          }
+
+          .sms-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 2.3cqh;
+            padding: 3.2cqh 1.8cqw;
+            border-right: 0.1cqmin solid color-mix(in srgb, var(--border, #334155) 52%, transparent);
+            background: color-mix(in srgb, #0e121a 94%, var(--sms-accent));
+          }
+
+          .sms-sidebar i,
+          .sms-title,
+          .sms-subtitle,
+          .sms-block {
+            display: block;
+            border-radius: 0.7cqmin;
+            background: color-mix(in srgb, var(--muted, #94a3b8) 20%, transparent);
+          }
+
+          .sms-sidebar i {
+            width: 82%;
+            height: 1.2cqh;
+          }
+
+          .sms-sidebar i:first-child {
+            width: 100%;
+            background: color-mix(in srgb, var(--sms-accent) 54%, transparent);
+          }
+
+          .sms-main {
+            position: relative;
+            min-width: 0;
+            padding: 4.4cqh 2.5cqw;
+          }
+
+          .sms-title {
+            width: 46%;
+            height: 2.1cqh;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 44%, transparent);
+          }
+
+          .sms-subtitle {
+            width: 68%;
+            height: 1.2cqh;
+            margin-top: 1.8cqh;
+          }
+
+          .sms-canvas {
+            position: absolute;
+            inset: 11.5cqh 2.5cqw 4.2cqh;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+            gap: 1.5cqmin;
+          }
+
+          .sms-block {
+            position: relative;
+            overflow: hidden;
+            border: 0.1cqmin solid color-mix(in srgb, var(--border, #334155) 54%, transparent);
+            background: color-mix(in srgb, #263044 54%, transparent);
+          }
+
+          .sms-block::after {
+            content: "";
+            position: absolute;
+            left: 12%;
+            right: 12%;
+            bottom: 16%;
+            height: 0.8cqh;
+            border-radius: 1cqmin;
+            opacity: var(--sms-live);
+            background: var(--sms-accent);
+          }
+
+          .sms-state--2 .sms-canvas {
+            grid-template-columns: 1fr;
+            grid-template-rows: repeat(4, minmax(0, 1fr));
+          }
+
+          .sms-state--2 .sms-block::after {
+            left: 8%;
+            right: 35%;
+            bottom: 28%;
+          }
+
+          .sms-state--3 .sms-canvas {
+            grid-template-columns: 1.45fr 0.55fr;
+            grid-template-rows: repeat(3, minmax(0, 1fr));
+          }
+
+          .sms-state--3 .sms-block:first-child {
+            grid-row: 1 / 4;
+          }
+
+          .sms-state--3 .sms-block::after {
+            left: 10%;
+            right: 18%;
+            bottom: 18%;
+          }
+
+          .sms-captions {
+            position: relative;
+            width: 100%;
+            height: 32cqh;
+          }
+
+          .sms-caption {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            max-width: 34cqw;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 5.8cqmin;
+            font-weight: 720;
+            line-height: 1.04;
+            letter-spacing: -0.04em;
+            overflow-wrap: anywhere;
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .sms-caption::before {
+            content: "";
+            flex: 0 0 auto;
+            align-self: center;
+            width: 0.75cqw;
+            height: 9cqh;
+            margin-right: 1.5cqw;
+            border-radius: 1cqmin;
+            background: var(--sms-accent);
+            box-shadow: 0 0 2cqmin color-mix(in srgb, var(--sms-accent) 48%, transparent);
+          }
+        </style>
+
+        <div
+          id="sticky-mock-swap-clip"
+          class="sms-clip clip"
+          data-start="0"
+          data-duration="6"
+          data-track-index="0"
+        >
+          <div class="sms-shell">
+            <div class="sms-mock" aria-hidden="true">
+              <div class="sms-states"></div>
+            </div>
+            <div class="sms-captions" aria-label="Feature captions"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var captionsHost = root.querySelector(".sms-captions");
+            var statesHost = root.querySelector(".sms-states");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var DEFAULT_CAPTIONS = ["Instant previews", "Zero config", "Ship on Friday"];
+            var captionsSource =
+              vars.captions == null ? DEFAULT_CAPTIONS.join(",") : String(vars.captions);
+            var captions = captionsSource.split(",").reduce(function (parsed, token) {
+              var caption = token.trim();
+              if (caption) parsed.push(caption);
+              return parsed;
+            }, []);
+            if (captions.length === 0) captions = DEFAULT_CAPTIONS.slice();
+
+            var accent =
+              vars.accent === "green" || vars.accent === "blue" || vars.accent === "violet"
+                ? vars.accent
+                : "violet";
+            var accentColors = {
+              green: "#34d399",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            root.style.setProperty("--sms-accent", accentColors[accent]);
+
+            var captionElements = [];
+            var stateElements = [];
+
+            captions.forEach(function (captionText, index) {
+              var caption = document.createElement("div");
+              caption.className = "sms-caption";
+              caption.textContent = captionText;
+              captionsHost.appendChild(caption);
+              captionElements.push(caption);
+
+              var state = document.createElement("div");
+              state.className = "sms-state sms-state--" + ((index % 3) + 1);
+              state.setAttribute("aria-hidden", "true");
+              state.innerHTML =
+                '<div class="sms-toolbar"><span class="sms-dots"><i></i><i></i><i></i></span><span class="sms-status"></span></div>' +
+                '<div class="sms-window"><aside class="sms-sidebar"><i></i><i></i><i></i><i></i></aside>' +
+                '<main class="sms-main"><span class="sms-title"></span><span class="sms-subtitle"></span>' +
+                '<div class="sms-canvas"><i class="sms-block"></i><i class="sms-block"></i><i class="sms-block"></i><i class="sms-block"></i></div></main></div>';
+              statesHost.appendChild(state);
+              stateElements.push(state);
+            });
+
+            var durationValue = parseFloat(root.dataset.duration || "6");
+            var duration = Number.isFinite(durationValue) ? Math.max(0.001, durationValue) : 6;
+
+            // Caption count owns the threshold grid. Longer durations add only
+            // to each phase's HOLD, never by scaling the completed timeline.
+            var phaseDuration = duration / captions.length;
+            var RISE_BASE = 0.38;
+            var EXIT_DELAY_BASE = 0.28;
+            var EXIT_BASE = 0.32;
+            var MOTION_BASE = RISE_BASE + EXIT_DELAY_BASE + EXIT_BASE;
+            var motionScale = phaseDuration < MOTION_BASE ? phaseDuration / MOTION_BASE : 1;
+            var RISE = RISE_BASE * motionScale;
+            var EXIT_DELAY = EXIT_DELAY_BASE * motionScale;
+            var EXIT = EXIT_BASE * motionScale;
+            var HOLD = Math.max(0, phaseDuration - RISE - EXIT_DELAY - EXIT);
+            var SWAP = Math.min(0.28 * motionScale, phaseDuration * 0.4);
+
+            captionElements.forEach(function (caption, index) {
+              gsap.set(caption, { opacity: 0, x: "-1.2cqw", y: "3.6cqh" });
+              gsap.set(stateElements[index], { opacity: index === 0 ? 1 : 0, "--sms-live": 0.64 });
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            captionElements.forEach(function (caption, index) {
+              var phaseStart = index * phaseDuration;
+              var riseArc = RISE * 0.72;
+              var exitStart = phaseStart + RISE + HOLD + EXIT_DELAY;
+              var exitArc = EXIT * 0.32;
+
+              // IN: two authored segments form a shallow arrival arc.
+              tl.fromTo(
+                caption,
+                { opacity: 0, x: "-1.2cqw", y: "3.6cqh" },
+                {
+                  opacity: 1,
+                  x: "0.45cqw",
+                  y: "-0.28cqh",
+                  duration: riseArc,
+                  ease: "power2.out",
+                },
+                phaseStart,
+              );
+              tl.to(
+                caption,
+                {
+                  x: "0cqw",
+                  y: "0cqh",
+                  duration: RISE - riseArc,
+                  ease: "power2.out",
+                },
+                phaseStart + riseArc,
+              );
+
+              if (index > 0) {
+                tl.to(
+                  stateElements[index - 1],
+                  { opacity: 0, duration: SWAP, ease: "power2.in" },
+                  phaseStart,
+                );
+                tl.fromTo(
+                  stateElements[index],
+                  { opacity: 0 },
+                  { opacity: 1, duration: SWAP, ease: "power2.out" },
+                  phaseStart,
+                );
+              }
+
+              // HOLD: the mock content breathes without moving the pinned panel.
+              if (HOLD >= 0.4) {
+                tl.to(
+                  stateElements[index],
+                  {
+                    "--sms-live": 0.9,
+                    duration: HOLD / 2,
+                    ease: "sine.inOut",
+                    yoyo: true,
+                    repeat: 1,
+                  },
+                  phaseStart + RISE,
+                );
+              }
+
+              // OUT: EXIT_DELAY is empty stillness, then two segments arc upward.
+              tl.to(
+                caption,
+                {
+                  x: "0.42cqw",
+                  y: "-0.9cqh",
+                  duration: exitArc,
+                  ease: "power2.in",
+                },
+                exitStart,
+              );
+              tl.to(
+                caption,
+                {
+                  opacity: 0,
+                  x: "-1.1cqw",
+                  y: "-4.5cqh",
+                  duration: EXIT - exitArc,
+                  ease: "power2.in",
+                },
+                exitStart + exitArc,
+              );
+            });
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["sticky-mock-swap"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

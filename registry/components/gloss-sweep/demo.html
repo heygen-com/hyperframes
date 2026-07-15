@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  gloss-sweep demo. This standalone composition mounts gloss-sweep.html with
+  non-default values for all three variables. The wrapper adds no motion.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Gloss Sweep Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --font-display: Inter, system-ui, sans-serif;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      .mount-card {
+        width: 46%;
+        height: 38%;
+        left: 27%;
+        top: 31%;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="gloss-sweep-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.5"
+      data-fps="30"
+    >
+      <div
+        id="gloss-sweep-mount"
+        class="mount-card clip"
+        data-composition-id="gloss-sweep"
+        data-composition-src="./gloss-sweep.html"
+        data-variable-values='{"text":"Studio","accent":"violet","sweep_angle":38}'
+        data-start="0"
+        data-duration="2.5"
+        data-track-index="0"
+        data-width="883"
+        data-height="410"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["gloss-sweep-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

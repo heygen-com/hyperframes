@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tracing-beam",
+  "type": "hyperframes:component",
+  "title": "Tracing Beam",
+  "description": "A glowing dash follows one SVG path through three UI elements, lifting and brightening each element in sequence.",
+  "tags": ["motion-primitive", "product-demo", "attention", "beam", "path", "spotlight"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "attention",
+  "evidence": "Aceternity Tracing Beam class, adapted from scroll progress to a deterministic HyperFrames timeline",
+  "files": [
+    {
+      "path": "tracing-beam.html",
+      "target": "compositions/components/tracing-beam.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Labels",
+      "description": "Three comma-separated labels shown in path order.",
+      "default": "Search,Preview,Export"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Beam and active-element color.",
+      "default": "cyan",
+      "options": [
+        { "value": "cyan", "label": "Cyan" },
+        { "value": "violet", "label": "Violet" },
+        { "value": "amber", "label": "Amber" }
+      ]
+    }
+  ]
+}

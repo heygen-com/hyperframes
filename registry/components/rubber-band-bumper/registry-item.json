@@ -1,0 +1,47 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "rubber-band-bumper",
+  "type": "hyperframes:component",
+  "title": "Rubber Band Bumper",
+  "description": "An outgoing panel pulls against increasing resistance, holds at tension, then snaps past an edge with overshoot as the incoming panel settles behind it.",
+  "tags": ["motion-primitive", "transition", "rubber-band", "resistance", "overshoot"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "elastic",
+  "evidence": "Wave H U33 specification, inspired by the Snapchat and Claude pull-to-refresh motion pattern",
+  "syncPoints": [{ "id": "release", "phase": "out", "offset": 0 }],
+  "files": [
+    {
+      "path": "rubber-band-bumper.html",
+      "target": "compositions/components/rubber-band-bumper.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "content",
+      "label": "Direction",
+      "description": "Edge the outgoing panel releases through.",
+      "default": "up",
+      "options": [
+        { "value": "up", "label": "Up" },
+        { "value": "left", "label": "Left" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color applied to the tension bands and incoming panel.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

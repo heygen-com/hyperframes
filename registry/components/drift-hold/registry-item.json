@@ -1,0 +1,41 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "drift-hold",
+  "type": "hyperframes:component",
+  "title": "Drift Hold",
+  "description": "A centered content card stays subtly alive through loop-exact rotation, scale breathing, and a slow light sweep.",
+  "tags": ["motion-primitive", "camera", "ambient", "drift", "hold", "loopable"],
+  "jobs": ["orient"],
+  "family": "camera",
+  "profile": "ambient",
+  "evidence": "Wave G U18 drift-hold specification",
+  "files": [
+    {
+      "path": "drift-hold.html",
+      "target": "compositions/components/drift-hold.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Text displayed in the default centered card.",
+      "default": "Always alive"
+    },
+    {
+      "id": "intensity",
+      "type": "enum",
+      "role": "motion",
+      "label": "Intensity",
+      "description": "Amplitude of the ambient rotation, breathing, and light sweep.",
+      "default": "standard",
+      "options": [
+        { "value": "whisper", "label": "Whisper" },
+        { "value": "standard", "label": "Standard" }
+      ]
+    }
+  ]
+}

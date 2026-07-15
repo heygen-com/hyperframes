@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "velocity-throw-snap",
+  "type": "hyperframes:component",
+  "title": "Velocity Throw Snap",
+  "description": "A five-shot rail whips past on a fast decaying curve, then overshoots and snaps the selected hero shot exactly to center.",
+  "tags": ["motion-primitive", "feature-tour", "rail", "velocity", "throw", "snap", "physics"],
+  "jobs": ["exhibit"],
+  "family": "feature-tour",
+  "profile": "kinetic",
+  "evidence": "Video Primitives Wave H U29 velocity-throw-snap contract",
+  "syncPoints": [{ "id": "hero-settle", "phase": "in", "offset": 1.4 }],
+  "files": [
+    {
+      "path": "velocity-throw-snap.html",
+      "target": "compositions/components/velocity-throw-snap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "hero_index",
+      "type": "number",
+      "role": "content",
+      "label": "Hero index",
+      "description": "Zero-based index of the shot centered at the settle.",
+      "default": 2,
+      "min": 0,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight color used by the hero shot.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "card_label_prefix",
+      "type": "string",
+      "role": "content",
+      "label": "Card label prefix",
+      "description": "Text placed before each shot number.",
+      "default": "Shot"
+    }
+  ]
+}

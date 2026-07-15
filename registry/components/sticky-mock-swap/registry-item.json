@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "sticky-mock-swap",
+  "type": "hyperframes:component",
+  "title": "Sticky Mock Swap",
+  "description": "A pinned product mock cross-fades through accent-tinted feature states while matching captions rise, hold, and exit beside it.",
+  "tags": ["motion-primitive", "product-demo", "sticky", "mock", "crossfade", "feature-tour"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "sticky-swap",
+  "evidence": "Vercel and Raycast launch-page motion research: pinned product mock with caption-driven threshold swaps",
+  "files": [
+    {
+      "path": "sticky-mock-swap.html",
+      "target": "compositions/components/sticky-mock-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "captions",
+      "type": "string",
+      "role": "content",
+      "label": "Captions",
+      "description": "Comma-separated feature captions shown beside the pinned mock.",
+      "default": "Instant previews,Zero config,Ship on Friday"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent tint used across the mock states.",
+      "default": "violet",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "char-slam-explode",
+  "type": "hyperframes:component",
+  "title": "Char Slam Explode",
+  "description": "Headline glyphs hold in a deterministic scatter, then reassemble with an overshooting slam and a three-frame landing shake.",
+  "tags": ["motion-primitive", "typography", "text-treatment", "scatter", "slam", "impact"],
+  "jobs": ["emphasize"],
+  "family": "typography",
+  "profile": "impact",
+  "evidence": "Wave H U26 char-slam-explode specification, inspired by Bodak 055",
+  "syncPoints": [{ "id": "slam-impact", "phase": "in", "offset": 1.52 }],
+  "files": [
+    {
+      "path": "char-slam-explode.html",
+      "target": "compositions/components/char-slam-explode.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Text split into glyphs for the scatter and slam.",
+      "default": "Impact"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Headline and glow color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "spread",
+      "type": "enum",
+      "role": "motion",
+      "label": "Spread",
+      "description": "Distance and rotation of the scattered glyphs.",
+      "default": "tight",
+      "options": [
+        { "value": "tight", "label": "Tight" },
+        { "value": "wild", "label": "Wild" }
+      ]
+    }
+  ]
+}

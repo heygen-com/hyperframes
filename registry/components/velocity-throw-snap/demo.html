@@ -1,0 +1,83 @@
+<!doctype html>
+<!--
+  velocity-throw-snap demo. This standalone 1920x1080 composition mounts the
+  primitive through data-composition-src. Non-default values select the last
+  card, violet styling, and a custom label prefix to prove variable flow.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Velocity Throw Snap Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 44%, #1d2130 0%, #0b0c0e 72%);
+      }
+
+      .velocity-throw-snap-mount {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #a7b0c0;
+        --surface: #182033;
+        --border: #475569;
+        width: 88%;
+        height: 74%;
+        left: 6%;
+        top: 13%;
+        overflow: hidden;
+        border: 1px solid #343c4d;
+        border-radius: 34px;
+        background: #0b0c0e;
+        box-shadow: 0 52px 120px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="velocity-throw-snap-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="velocity-throw-snap-mount"
+        class="velocity-throw-snap-mount clip"
+        data-composition-id="velocity-throw-snap"
+        data-composition-src="./velocity-throw-snap.html"
+        data-variable-values='{"hero_index":4,"accent":"violet","card_label_prefix":"Frame"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1690"
+        data-height="799"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["velocity-throw-snap-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

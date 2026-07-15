@@ -1,0 +1,331 @@
+<!doctype html>
+<!--
+  rubber-band-bumper: HyperFrames video primitive
+
+  The outgoing panel is pulled opposite its exit direction in progressively
+  smaller steps, visibly loading two accent bands. After a still threshold
+  hold, it releases past the chosen edge with overshoot while the incoming
+  panel settles into place behind it.
+
+  Variables:
+    direction: up or left exit direction
+    accent: green, blue, or violet tension color
+
+  Envelope, fixed IN and OUT with elastic HOLD:
+    IN_BASE  = 1.25s, five equal pull beats add decreasing displacement
+    HOLD     = max(0, D - IN - OUT), stillness at maximum tension
+    OUT_BASE = 0.95s, overshooting release and incoming-panel settle
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. One paused timeline registers under the literal
+  rubber-band-bumper key.
+-->
+<html
+  lang="en"
+  data-composition-id="rubber-band-bumper"
+  data-composition-duration="2.5"
+  data-composition-variables='[
+    { "id": "direction", "type": "enum", "role": "content", "label": "Direction", "description": "Edge the outgoing panel releases through.", "default": "up", "options": [{ "value": "up", "label": "Up" }, { "value": "left", "label": "Left" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied to the tension bands and incoming panel.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rubber Band Bumper</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="rubber-band-bumper" data-duration="2.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .rbb-clip,
+          .rbb-panel {
+            position: absolute;
+            inset: 0;
+            width: 100cqw;
+            height: 100cqh;
+          }
+
+          .rbb-clip {
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+          }
+
+          .rbb-panel {
+            display: grid;
+            place-items: center;
+            will-change: transform, opacity;
+          }
+
+          .rbb-incoming {
+            background:
+              radial-gradient(
+                circle at 50% 44%,
+                color-mix(in srgb, var(--rbb-accent) 20%, transparent),
+                transparent 42%
+              ),
+              linear-gradient(145deg, #172033, #0c111b 72%);
+          }
+
+          .rbb-outgoing {
+            z-index: 2;
+            background: linear-gradient(145deg, #263247, #121925 68%);
+            border: 0.18cqmin solid color-mix(in srgb, #94a3b8 30%, transparent);
+            box-shadow: 0 2.8cqh 8cqh rgba(0, 0, 0, 0.48);
+          }
+
+          .rbb-copy {
+            display: grid;
+            justify-items: center;
+            gap: 2.4cqh;
+            max-width: 72cqw;
+            text-align: center;
+          }
+
+          .rbb-kicker {
+            padding: 1cqh 1.4cqw;
+            border: 0.14cqmin solid color-mix(in srgb, var(--rbb-accent) 68%, transparent);
+            border-radius: 999px;
+            color: var(--rbb-accent);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+            font-size: clamp(11px, 2.2cqmin, 24px);
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            line-height: 1;
+          }
+
+          .rbb-title {
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(26px, 8.8cqmin, 92px);
+            font-weight: 760;
+            letter-spacing: -0.045em;
+            line-height: 0.95;
+          }
+
+          .rbb-subtitle {
+            margin: 0;
+            color: #b6c0d0;
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            font-size: clamp(13px, 3.1cqmin, 30px);
+            font-weight: 520;
+            line-height: 1.25;
+          }
+
+          .rbb-band {
+            position: absolute;
+            z-index: 1;
+            border-radius: 999px;
+            background: var(--rbb-accent);
+            box-shadow: 0 0 2.2cqmin color-mix(in srgb, var(--rbb-accent) 72%, transparent);
+            will-change: transform, opacity;
+          }
+
+          #root.rbb-left .rbb-band {
+            left: 0;
+            width: 14cqw;
+            height: 1.1cqh;
+            transform-origin: 0 50%;
+          }
+
+          #root.rbb-left .rbb-band-a {
+            top: 34cqh;
+          }
+
+          #root.rbb-left .rbb-band-b {
+            top: 66cqh;
+          }
+
+          #root.rbb-up .rbb-band {
+            top: 0;
+            width: 1.1cqw;
+            height: 14cqh;
+            transform-origin: 50% 0;
+          }
+
+          #root.rbb-up .rbb-band-a {
+            left: 34cqw;
+          }
+
+          #root.rbb-up .rbb-band-b {
+            left: 66cqw;
+          }
+        </style>
+
+        <div
+          id="rubber-band-bumper-clip"
+          class="rbb-clip clip"
+          data-start="0"
+          data-duration="2.5"
+          data-track-index="0"
+        >
+          <section class="rbb-panel rbb-incoming">
+            <div class="rbb-copy">
+              <span class="rbb-kicker">NEXT</span>
+              <h2 class="rbb-title">Clean release</h2>
+              <p class="rbb-subtitle">The incoming scene settles behind the snap.</p>
+            </div>
+          </section>
+
+          <span class="rbb-band rbb-band-a" aria-hidden="true"></span>
+          <span class="rbb-band rbb-band-b" aria-hidden="true"></span>
+
+          <section class="rbb-panel rbb-outgoing">
+            <div class="rbb-copy">
+              <span class="rbb-kicker">CURRENT</span>
+              <h2 class="rbb-title">Hold the tension</h2>
+              <p class="rbb-subtitle">Each pull travels less as resistance builds.</p>
+            </div>
+          </section>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var outgoing = root.querySelector(".rbb-outgoing");
+            var incoming = root.querySelector(".rbb-incoming");
+            var bands = root.querySelectorAll(".rbb-band");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var direction = vars.direction === "left" ? "left" : "up";
+            var accentColors = {
+              green: "#6ee7b7",
+              blue: "#60a5fa",
+              violet: "#a78bfa",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var motionByDirection = {
+              up: {
+                rootClass: "rbb-up",
+                axis: "y",
+                crossAxis: "x",
+                bandAxis: "scaleY",
+                outgoingArc: "3%",
+                incomingArc: "-1.6%",
+              },
+              left: {
+                rootClass: "rbb-left",
+                axis: "x",
+                crossAxis: "y",
+                bandAxis: "scaleX",
+                outgoingArc: "-3%",
+                incomingArc: "1.6%",
+              },
+            };
+            var motion = motionByDirection[direction];
+
+            root.classList.add(motion.rootClass);
+            root.style.setProperty("--rbb-accent", accentColors[accent]);
+
+            var IN_BASE = 1.25;
+            var OUT_BASE = 0.95;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var OUT_START = IN + HOLD;
+
+            // One authored table owns the resistance curve. Equal-time steps
+            // add 5, 3.5, 2, 1.25, then 0.5 percent displacement.
+            var pullPositions = [5, 8.5, 10.5, 11.75, 12.25];
+            var segmentDuration = IN / pullPositions.length;
+            var exitPosition = "-112%";
+            var incomingStart = "-5%";
+
+            gsap.set(outgoing, { x: "0%", y: "0%" });
+            gsap.set(incoming, { x: "0%", y: "0%", scale: 0.985, opacity: 0.82 });
+            var incomingOffset = {};
+            incomingOffset[motion.axis] = incomingStart;
+            gsap.set(incoming, incomingOffset);
+            gsap.set(bands, { opacity: 0.7, scaleX: 1, scaleY: 1 });
+            var bandStart = {};
+            bandStart[motion.bandAxis] = 0.08;
+            gsap.set(bands, bandStart);
+
+            var tl = gsap.timeline({ paused: true });
+
+            pullPositions.forEach(function (position, index) {
+              var at = index * segmentDuration;
+              var panelTween = { duration: segmentDuration, ease: "power2.out" };
+              var bandTween = { duration: segmentDuration, ease: "power2.out" };
+              panelTween[motion.axis] = position + "%";
+              bandTween[motion.bandAxis] = 0.08 + position / 14;
+              tl.to(outgoing, panelTween, at);
+              tl.to(bands, bandTween, at);
+            });
+
+            var releaseDuration = OUT * 0.84;
+            var releaseTween = { duration: releaseDuration, ease: "back.out(1.7)" };
+            var outgoingArc = {
+              duration: releaseDuration * 0.5,
+              ease: "sine.inOut",
+              yoyo: true,
+              repeat: 1,
+            };
+            releaseTween[motion.axis] = exitPosition;
+            outgoingArc[motion.crossAxis] = motion.outgoingArc;
+            tl.to(outgoing, releaseTween, OUT_START);
+            tl.to(outgoing, outgoingArc, OUT_START);
+            var bandRelease = {
+              opacity: 0,
+              duration: OUT * 0.28,
+              ease: "power4.out",
+            };
+            bandRelease[motion.bandAxis] = 0.04;
+            tl.to(bands, bandRelease, OUT_START);
+            var incomingDuration = OUT * 0.78;
+            var incomingSettle = {
+              scale: 1,
+              opacity: 1,
+              duration: incomingDuration,
+              ease: "back.out(1.7)",
+            };
+            var incomingArc = {
+              duration: incomingDuration * 0.5,
+              ease: "sine.inOut",
+              yoyo: true,
+              repeat: 1,
+            };
+            incomingSettle[motion.axis] = "0%";
+            incomingArc[motion.crossAxis] = motion.incomingArc;
+            tl.to(incoming, incomingSettle, OUT_START);
+            tl.to(incoming, incomingArc, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["rubber-band-bumper"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

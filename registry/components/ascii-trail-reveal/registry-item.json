@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ascii-trail-reveal",
+  "type": "hyperframes:component",
+  "title": "ASCII Trail Reveal",
+  "description": "An authored S-curve sweeps through a deterministic ASCII grid, flipping cells away to reveal a labeled panel.",
+  "tags": ["motion-primitive", "intro", "reveal", "ascii", "trail", "grid"],
+  "jobs": ["reveal"],
+  "family": "intros-and-reveals",
+  "profile": "trail",
+  "evidence": "Wave H U24 ascii-trail-reveal design research unit",
+  "syncPoints": [{ "id": "reveal-complete", "phase": "in", "offset": 3.2 }],
+  "files": [
+    {
+      "path": "ascii-trail-reveal.html",
+      "target": "compositions/components/ascii-trail-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Panel label",
+      "description": "Text shown on the revealed panel.",
+      "default": "The reveal"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the trail and revealed panel.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "trail_width",
+      "type": "enum",
+      "role": "layout",
+      "label": "Trail width",
+      "description": "Width of the cell reveal tail around the authored path.",
+      "default": "narrow",
+      "options": [
+        { "value": "narrow", "label": "Narrow" },
+        { "value": "wide", "label": "Wide" }
+      ]
+    }
+  ]
+}

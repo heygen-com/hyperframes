@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "aurora-drift",
+  "type": "hyperframes:component",
+  "title": "Aurora Drift",
+  "description": "Three soft accent-derived aurora fields drift in an exact ambient loop over a deep base and faint vignette.",
+  "tags": ["motion-primitive", "background", "aurora", "gradient", "ambient", "loopable"],
+  "jobs": ["orient"],
+  "family": "backgrounds",
+  "profile": "ambient",
+  "evidence": "Wave G U19 aurora-drift specification",
+  "files": [
+    {
+      "path": "aurora-drift.html",
+      "target": "compositions/components/aurora-drift.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used to derive the aurora hues.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "mood",
+      "type": "enum",
+      "role": "style",
+      "label": "Mood",
+      "description": "Base luminance and aurora field strength.",
+      "default": "deep",
+      "options": [
+        { "value": "deep", "label": "Deep" },
+        { "value": "bright", "label": "Bright" }
+      ]
+    }
+  ]
+}

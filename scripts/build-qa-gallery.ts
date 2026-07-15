@@ -14,6 +14,8 @@ const JOBS = [
   "payoff",
   "bridge",
   "ask",
+  "camera",
+  "backgrounds",
 ] as const;
 
 // Display names for the groups (coverage-map rows keep the internal keys above).
@@ -28,6 +30,8 @@ const GROUP_NAMES: Record<string, string> = {
   payoff: "Celebrations",
   bridge: "Transitions",
   ask: "Call to action",
+  camera: "Camera moves",
+  backgrounds: "Backgrounds",
 };
 
 function groupName(job: string): string {

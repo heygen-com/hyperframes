@@ -1,0 +1,20 @@
+:root {
+  --bg: #080611;
+  --fg: #fff8ff;
+  --muted: #b6a9ca;
+  --surface: #1b1230;
+  --border: #493668;
+  --brand: #ff3d81;
+  --accent: #7c5cff;
+  --accent-2: #00d4ff;
+  --font-display: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  --font-body: Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --radius: 1.4cqmin;
+  --space-1: 1.2cqmin;
+  --space-2: 2.6cqmin;
+  --space-3: 4.6cqmin;
+  --dur-beat: 0.32s;
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-emphasis: cubic-bezier(0.34, 1.56, 0.64, 1);
+}

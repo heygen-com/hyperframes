@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "grain-field",
+  "type": "hyperframes:component",
+  "title": "Grain Field",
+  "description": "A clearly visible accent-tinted dot field drifts over a subtle luminance gradient in an exact ambient loop.",
+  "tags": ["motion-primitive", "background", "grain", "dots", "texture", "ambient", "loopable"],
+  "jobs": ["orient"],
+  "family": "backgrounds",
+  "profile": "ambient",
+  "evidence": "Wave G U20 grain-field specification",
+  "files": [
+    {
+      "path": "grain-field.html",
+      "target": "compositions/components/grain-field.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Dot size and spacing across the grain field.",
+      "default": "fine",
+      "options": [
+        { "value": "fine", "label": "Fine" },
+        { "value": "coarse", "label": "Coarse" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used to color the dots and luminance wash.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

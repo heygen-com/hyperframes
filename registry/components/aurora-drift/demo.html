@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  aurora-drift demo. This standalone composition mounts aurora-drift.html
+  through data-composition-src. The bright violet overrides prove both
+  variables flow through the mount while the primitive stays host-sized.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Aurora Drift Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --surface: #17191f;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-2: #a78bfa;
+        --brand: #34d399;
+        --border: #334155;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #17191f 0%, #0b0c0e 72%);
+      }
+
+      .mount-card {
+        width: 75%;
+        height: 70%;
+        left: 12.5%;
+        top: 15%;
+        overflow: hidden;
+        border: 1px solid rgb(255 255 255 / 0.14);
+        border-radius: 28px;
+        background: #080a12;
+        box-shadow: 0 5cqh 14cqh rgb(0 0 0 / 0.52);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="aurora-drift-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="aurora-drift-mount"
+        class="mount-card clip"
+        data-composition-id="aurora-drift"
+        data-composition-src="./aurora-drift.html"
+        data-variable-values='{"accent":"violet","mood":"bright"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1440"
+        data-height="756"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["aurora-drift-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

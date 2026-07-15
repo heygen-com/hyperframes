@@ -1,0 +1,204 @@
+<!doctype html>
+<!--
+  beat-pulse-background: HyperFrames video primitive (backgrounds / rhythmic)
+
+  Concept: a deep accent-derived backdrop pulses its glow intensity and
+  saturation on a supplied beat grid. Each retained beat owns one fast attack
+  and one slower decay. The pulses stay tasteful enough to carry foreground
+  content without reading as a strobe.
+
+  Variables:
+    - beats (string, default "0.5,1.0,1.5,2.0,2.5,3.0,3.5"): comma-separated
+      beat times in seconds. Junk and blank entries are ignored. Numeric times
+      are clamped to the composition duration.
+    - accent (green | blue | violet, default green): pulse color family.
+    - intensity (subtle | club, default subtle): glow and saturation strength.
+
+  Envelope: IN = 0, HOLD = the full elastic duration, OUT = 0. Beat times are
+  absolute data inside HOLD, so a longer mount extends HOLD without retiming
+  the supplied grid. Every pulse is constructed synchronously as one attack
+  and one decay tween pair.
+
+  Sound: none. Beats are supplied data, not audio analysis.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the hardcoded beat-pulse-background
+  id.
+-->
+<html
+  lang="en"
+  data-composition-id="beat-pulse-background"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "beats", "type": "string", "role": "timing", "label": "Beats", "description": "Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration.", "default": "0.5,1.0,1.5,2.0,2.5,3.0,3.5" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used by the pulsing glow.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "intensity", "type": "enum", "role": "style", "label": "Intensity", "description": "Strength of the glow and saturation pulse.", "default": "subtle", "options": [{ "value": "subtle", "label": "Subtle" }, { "value": "club", "label": "Club" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Beat Pulse Background</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="beat-pulse-background" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            pointer-events: none;
+          }
+
+          .bpb-clip,
+          .bpb-base,
+          .bpb-pulse,
+          .bpb-vignette {
+            position: absolute;
+            inset: 0;
+          }
+
+          .bpb-clip {
+            overflow: hidden;
+          }
+
+          .bpb-base {
+            background:
+              radial-gradient(
+                ellipse at 50% 42%,
+                color-mix(in srgb, var(--bpb-accent) 10%, var(--bg, #070a12)) 0%,
+                var(--bg, #070a12) 70%
+              ),
+              var(--bg, #070a12);
+          }
+
+          .bpb-pulse {
+            background:
+              radial-gradient(
+                ellipse at 24% 30%,
+                color-mix(in srgb, var(--bpb-accent) 74%, transparent) 0%,
+                color-mix(in srgb, var(--bpb-accent) 28%, transparent) 34%,
+                transparent 66%
+              ),
+              radial-gradient(
+                ellipse at 76% 68%,
+                color-mix(in srgb, var(--bpb-accent) 60%, var(--accent-2, #a78bfa)) 0%,
+                color-mix(in srgb, var(--bpb-accent) 20%, transparent) 38%,
+                transparent 70%
+              );
+            filter: saturate(var(--bpb-saturation, 1));
+            mix-blend-mode: screen;
+            opacity: 0.2;
+            will-change: opacity, filter;
+          }
+
+          .bpb-vignette {
+            background: radial-gradient(ellipse at center, transparent 34%, rgb(0 0 0 / 0.58) 100%);
+          }
+        </style>
+
+        <div
+          id="beat-pulse-background-clip"
+          class="bpb-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="bpb-base"></div>
+          <div class="bpb-pulse"></div>
+          <div class="bpb-vignette"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var pulse = root.querySelector(".bpb-pulse");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accentTokens = {
+              green: "var(--brand, #34d399)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #a78bfa)",
+            };
+            var intensityLevels = {
+              subtle: { baseOpacity: 0.2, peakOpacity: 0.5, peakSaturation: 1.3 },
+              club: { baseOpacity: 0.26, peakOpacity: 0.72, peakSaturation: 1.65 },
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentTokens, vars.accent)
+              ? vars.accent
+              : "green";
+            var intensity = vars.intensity === "club" ? "club" : "subtle";
+            var level = intensityLevels[intensity];
+
+            root.style.setProperty("--bpb-accent", accentTokens[accent]);
+
+            var durationValue = Number(root.dataset.duration);
+            var duration = Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 4;
+            var defaultBeats = "0.5,1.0,1.5,2.0,2.5,3.0,3.5";
+            var beatsValue = vars.beats == null ? defaultBeats : String(vars.beats);
+            var beats = beatsValue.split(",").reduce(function (result, token) {
+              var trimmed = token.trim();
+              if (trimmed === "") return result;
+
+              var seconds = Number(trimmed);
+              if (!Number.isFinite(seconds)) return result;
+
+              result.push(Math.max(0, Math.min(duration, seconds)));
+              return result;
+            }, []);
+
+            var ATTACK = 0.08;
+            var DECAY = 0.36;
+
+            gsap.set(pulse, { opacity: level.baseOpacity, "--bpb-saturation": 1 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            beats.forEach(function (beat) {
+              tl.to(
+                pulse,
+                {
+                  opacity: level.peakOpacity,
+                  "--bpb-saturation": level.peakSaturation,
+                  duration: ATTACK,
+                  ease: "expo.out",
+                },
+                beat,
+              );
+              tl.to(
+                pulse,
+                {
+                  opacity: level.baseOpacity,
+                  "--bpb-saturation": 1,
+                  duration: DECAY,
+                  ease: "power2.in",
+                },
+                beat + ATTACK,
+              );
+            });
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines["beat-pulse-background"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

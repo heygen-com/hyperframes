@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "scramble-reveal",
+  "type": "hyperframes:component",
+  "title": "Scramble Reveal",
+  "description": "A deterministic hacker-style text reveal that cycles fixed glyph rows and locks the target string from left to right.",
+  "tags": ["motion-primitive", "text-effects", "scramble", "reveal", "deterministic"],
+  "jobs": ["reveal"],
+  "family": "text-effects",
+  "profile": "decode",
+  "evidence": "Wave H U27 design research: fixed-seed glyph cycling with authored left-to-right lock frames",
+  "syncPoints": [{ "id": "scramble-lock", "phase": "in", "offset": 1.5 }],
+  "files": [
+    {
+      "path": "scramble-reveal.html",
+      "target": "compositions/components/scramble-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Target string that resolves from deterministic wrong glyphs.",
+      "default": "HYPERFRAMES"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the text, prefix, and optional terminal frame.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "style",
+      "type": "enum",
+      "role": "style",
+      "label": "Style",
+      "description": "Terminal frame or clean text-only presentation.",
+      "default": "terminal",
+      "options": [
+        { "value": "terminal", "label": "Terminal" },
+        { "value": "clean", "label": "Clean" }
+      ]
+    }
+  ]
+}

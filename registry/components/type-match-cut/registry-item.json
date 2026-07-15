@@ -1,0 +1,43 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "type-match-cut",
+  "type": "hyperframes:component",
+  "title": "Type Match Cut",
+  "description": "A headline splits vertically around an incoming panel, which grows from the negative space and takes the frame as the words exit through opposite edges.",
+  "tags": ["motion-primitive", "transition", "typography", "match-cut", "continuity"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "match-cut",
+  "evidence": "Wave H U30 type-match-cut specification, inspired by the verified MONOLOG type-to-image transition",
+  "syncPoints": [{ "id": "panel-slot", "phase": "in", "offset": 0.58 }],
+  "files": [
+    {
+      "path": "type-match-cut.html",
+      "target": "compositions/components/type-match-cut.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Headline",
+      "description": "Text split around the incoming panel.",
+      "default": "Meet the new editor"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent color used by the incoming editor scene.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

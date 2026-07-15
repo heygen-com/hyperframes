@@ -1,0 +1,20 @@
+:root {
+  --bg: #e9e1d2;
+  --fg: #202725;
+  --muted: #6c746f;
+  --surface: #f8f1e5;
+  --border: #c9bfad;
+  --brand: #246b63;
+  --accent: #31776f;
+  --accent-2: #8a6549;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --radius: 0.9cqmin;
+  --space-1: 1.1cqmin;
+  --space-2: 2.2cqmin;
+  --space-3: 3.8cqmin;
+  --dur-beat: 0.48s;
+  --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+}

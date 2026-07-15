@@ -1,0 +1,20 @@
+:root {
+  --bg: #f3f4f6;
+  --fg: #111318;
+  --muted: #626873;
+  --surface: #fcfcfd;
+  --border: #d7dbe2;
+  --brand: #2563eb;
+  --accent: #0284c7;
+  --accent-2: #7c3aed;
+  --font-display: Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-body: Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --radius: 2.4cqmin;
+  --space-1: 1.2cqmin;
+  --space-2: 2.4cqmin;
+  --space-3: 4cqmin;
+  --dur-beat: 0.4s;
+  --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+}

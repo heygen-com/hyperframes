@@ -1,3 +1,5 @@
+import { registrySuggestionForFinding } from "./checkSuggestion.js";
+
 export interface LayoutRect {
   left: number;
   top: number;
@@ -135,8 +137,11 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
     issue.text ? quoteText(issue.text) : "",
   ].filter(Boolean);
 
-  const line = `${parts.join(" ")} — ${issue.message}`;
-  return issue.fixHint ? `${line}\n    Fix: ${issue.fixHint}` : line;
+  const lines = [`${parts.join(" ")}: ${issue.message}`];
+  if (issue.fixHint) lines.push(`Fix: ${issue.fixHint}`);
+  const suggestion = registrySuggestionForFinding(issue.code);
+  if (suggestion) lines.push(`suggestion: ${suggestion}`);
+  return lines.join("\n    ");
 }
 
 export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {

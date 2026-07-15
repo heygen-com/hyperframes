@@ -1,0 +1,330 @@
+<!doctype html>
+<!--
+  focus-rack: HyperFrames video primitive (camera / holdable / emphasize)
+
+  Concept: two cards sit at different apparent depths. Card A begins sharp
+  and near while card B is blurred and dim. Focus moves to card B exactly
+  once, with blur, scale, and parallax changing together over 0.7 seconds.
+
+  Variables:
+    - label_a (string, default "Draft"): foreground card label.
+    - label_b (string, default "Published"): background card label.
+    - accent (green | blue | violet, default "blue"): focus highlight.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN_BASE  = 1.32s  stage reveal, initial focus beat, then one 0.7s rack
+    HOLD     = elastic card B remains sharp with a restrained depth drift
+    OUT_BASE = 0.42s  completed focus state fades from the stage
+    If D is shorter than IN_BASE plus OUT_BASE, both fixed phases compress
+    proportionally and HOLD becomes zero. The rack still occurs exactly once.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the hardcoded focus-rack id.
+-->
+<html
+  lang="en"
+  data-composition-id="focus-rack"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "label_a", "type": "string", "role": "content", "label": "Card A label", "description": "Label on the card that begins in focus.", "default": "Draft" },
+    { "id": "label_b", "type": "string", "role": "content", "label": "Card B label", "description": "Label on the card that receives focus.", "default": "Published" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Highlight color shared by both cards.", "default": "blue", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Focus Rack</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="focus-rack" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .fr-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: radial-gradient(
+              ellipse at 52% 48%,
+              color-mix(in srgb, var(--fr-accent) 12%, var(--surface, #18202d)) 0%,
+              var(--bg, #0b0c0e) 72%
+            );
+          }
+
+          .fr-stage {
+            position: absolute;
+            inset: 0;
+            perspective: 120cqw;
+            opacity: 0;
+          }
+
+          .fr-card {
+            --fr-blur: 0;
+            position: absolute;
+            top: 21cqh;
+            width: 39cqw;
+            height: 58cqh;
+            padding: 4.2cqh 3.4cqw;
+            overflow: hidden;
+            border: 0.1cqw solid color-mix(in srgb, var(--fr-accent) 28%, #cbd5e1);
+            border-radius: 2.4cqmin;
+            background: linear-gradient(145deg, #ffffff, #e9edf4);
+            box-shadow:
+              0 4.4cqh 10cqh rgba(0, 0, 0, 0.42),
+              inset 0 0.12cqh 0 rgba(255, 255, 255, 0.86);
+            color: #101827;
+            filter: blur(calc(var(--fr-blur) * 1cqw));
+            transform-origin: 50% 50%;
+            will-change: transform, opacity, filter;
+          }
+
+          .fr-card-a {
+            left: 8cqw;
+          }
+
+          .fr-card-b {
+            right: 8cqw;
+          }
+
+          .fr-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+
+          .fr-kicker {
+            display: flex;
+            align-items: center;
+            gap: 0.8cqw;
+            color: #667085;
+            font-size: 1.15cqw;
+            font-weight: 760;
+            letter-spacing: 0.13em;
+            line-height: 1;
+            text-transform: uppercase;
+          }
+
+          .fr-dot {
+            width: 0.75cqw;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--fr-accent);
+            box-shadow: 0 0 1.4cqw color-mix(in srgb, var(--fr-accent) 52%, transparent);
+          }
+
+          .fr-index {
+            color: #98a2b3;
+            font-family: var(--font-mono, ui-monospace, monospace);
+            font-size: 1.05cqw;
+            font-weight: 700;
+          }
+
+          .fr-label {
+            margin-top: 7.4cqh;
+            max-width: 100%;
+            overflow: hidden;
+            color: #101827;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: 4.8cqw;
+            font-weight: 790;
+            letter-spacing: -0.055em;
+            line-height: 0.94;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .fr-rule {
+            width: 100%;
+            height: 0.35cqh;
+            margin-top: 5cqh;
+            border-radius: 99cqh;
+            background: color-mix(in srgb, var(--fr-accent) 76%, #d0d5dd);
+          }
+
+          .fr-copy {
+            display: grid;
+            gap: 1.4cqh;
+            margin-top: 3.2cqh;
+          }
+
+          .fr-line {
+            display: block;
+            height: 1.15cqh;
+            border-radius: 99cqh;
+            background: #c9d0dc;
+          }
+
+          .fr-line:last-child {
+            width: 68%;
+          }
+        </style>
+
+        <div
+          id="focus-rack-clip"
+          class="fr-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="fr-stage">
+            <article class="fr-card fr-card-a">
+              <div class="fr-card-top">
+                <span class="fr-kicker"><span class="fr-dot"></span>Workspace</span>
+                <span class="fr-index">A</span>
+              </div>
+              <div class="fr-label fr-label-a"></div>
+              <div class="fr-rule"></div>
+              <div class="fr-copy" aria-hidden="true">
+                <span class="fr-line"></span>
+                <span class="fr-line"></span>
+              </div>
+            </article>
+
+            <article class="fr-card fr-card-b">
+              <div class="fr-card-top">
+                <span class="fr-kicker"><span class="fr-dot"></span>Workspace</span>
+                <span class="fr-index">B</span>
+              </div>
+              <div class="fr-label fr-label-b"></div>
+              <div class="fr-rule"></div>
+              <div class="fr-copy" aria-hidden="true">
+                <span class="fr-line"></span>
+                <span class="fr-line"></span>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".fr-stage");
+            var cardA = root.querySelector(".fr-card-a");
+            var cardB = root.querySelector(".fr-card-b");
+            var labelA = root.querySelector(".fr-label-a");
+            var labelB = root.querySelector(".fr-label-b");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var accent = vars.accent === "green" || vars.accent === "violet" ? vars.accent : "blue";
+            var accents = { green: "#34d399", blue: "#60a5fa", violet: "#a78bfa" };
+
+            labelA.textContent = vars.label_a == null ? "Draft" : String(vars.label_a);
+            labelB.textContent = vars.label_b == null ? "Published" : String(vars.label_b);
+            root.style.setProperty("--fr-accent", accents[accent]);
+
+            var IN_BASE = 1.32;
+            var OUT_BASE = 0.42;
+            var STAGE_IN_BASE = 0.38;
+            var RACK_AT_BASE = 0.62;
+            var RACK_DURATION_BASE = 0.7;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var fixedDuration = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedDuration ? duration / fixedDuration : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var STAGE_IN = STAGE_IN_BASE * phaseScale;
+            var RACK_AT = RACK_AT_BASE * phaseScale;
+            var RACK_DURATION = RACK_DURATION_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.set(stage, { opacity: 0 }, 0);
+            tl.set(
+              cardA,
+              {
+                "--fr-blur": 0,
+                opacity: 1,
+                x: "0cqw",
+                y: "-0.5cqh",
+                scale: 1.045,
+                rotation: -3,
+              },
+              0,
+            );
+            tl.set(
+              cardB,
+              {
+                "--fr-blur": 0.48,
+                opacity: 0.52,
+                x: "1.6cqw",
+                y: "0.8cqh",
+                scale: 0.93,
+                rotation: 2.4,
+              },
+              0,
+            );
+
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+
+            tl.to(
+              cardA,
+              {
+                "--fr-blur": 0.48,
+                opacity: 0.5,
+                x: "-1.4cqw",
+                y: "0.8cqh",
+                scale: 0.94,
+                rotation: -1.6,
+                duration: RACK_DURATION,
+                ease: "sine.inOut",
+              },
+              RACK_AT,
+            );
+            tl.to(
+              cardB,
+              {
+                "--fr-blur": 0,
+                opacity: 1,
+                x: "-1.6cqw",
+                y: "-0.4cqh",
+                scale: 1.04,
+                rotation: 1.3,
+                duration: RACK_DURATION,
+                ease: "sine.inOut",
+              },
+              RACK_AT,
+            );
+
+            if (HOLD > 0) {
+              tl.to(cardA, { y: "1.15cqh", duration: HOLD, ease: "sine.inOut" }, HOLD_START);
+              tl.to(cardB, { y: "-0.75cqh", duration: HOLD, ease: "sine.inOut" }, HOLD_START);
+            }
+
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["focus-rack"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

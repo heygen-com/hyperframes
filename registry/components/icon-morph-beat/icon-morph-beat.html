@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  icon-morph-beat: HyperFrames video primitive (product-demo / state-change)
+
+  Concept: one icon holds as a readable before state, morphs into its after
+  state while shifting to the selected accent, then marks completion with a
+  small pulse. The authored SVG paths in every pair have matching command
+  structure and point count so GSAP can tween the d attribute directly.
+
+  Variables:
+    - pair (mic-check | play-check | lock-unlock, default mic-check): the
+      before and after icon states.
+    - accent (green | blue | violet, default green): the completion color.
+
+  Envelope (fixed IN, elastic HOLD, no OUT):
+    IN_BASE  = 1.20s, readable before-state hold, morph, and completion pulse
+    HOLD     = elastic = max(0, D - IN_BASE), a restrained halo breath
+    OUT_BASE = 0s, the completed icon remains visible at the final frame
+    If D is shorter than IN_BASE, the complete state-change beat compresses
+    proportionally and HOLD becomes zero.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the hardcoded
+  icon-morph-beat id.
+-->
+<html
+  lang="en"
+  data-composition-id="icon-morph-beat"
+  data-composition-duration="2.5"
+  data-composition-variables='[
+    { "id": "pair", "type": "enum", "role": "content", "label": "Icon pair", "description": "Before and after icon states used by the morph.", "default": "mic-check", "options": [{ "value": "mic-check", "label": "Mic to check" }, { "value": "play-check", "label": "Play to check" }, { "value": "lock-unlock", "label": "Lock to unlock" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color applied as the morph completes.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Icon Morph Beat</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="icon-morph-beat" data-duration="2.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            pointer-events: none;
+          }
+
+          .imb-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .imb-stage {
+            position: relative;
+            display: grid;
+            width: 42cqmin;
+            aspect-ratio: 1;
+            place-items: center;
+          }
+
+          .imb-halo {
+            position: absolute;
+            inset: -12%;
+            border-radius: 50%;
+            background: radial-gradient(
+              circle,
+              color-mix(in srgb, var(--imb-accent) 38%, transparent) 0%,
+              color-mix(in srgb, var(--imb-accent) 12%, transparent) 46%,
+              transparent 72%
+            );
+            opacity: 0.14;
+            will-change: opacity, transform;
+          }
+
+          .imb-shell {
+            position: relative;
+            display: grid;
+            width: 100%;
+            aspect-ratio: 1;
+            place-items: center;
+            border: 0.28cqmin solid color-mix(in srgb, var(--border, #475569) 76%, transparent);
+            border-radius: 28%;
+            background: linear-gradient(
+              145deg,
+              color-mix(in srgb, var(--surface, #1e293b) 86%, white 7%),
+              var(--surface, #1e293b)
+            );
+            box-shadow:
+              0 3.2cqh 8cqh color-mix(in srgb, var(--bg, #05070d) 58%, transparent),
+              inset 0 0 0 0.12cqmin color-mix(in srgb, white 10%, transparent);
+            transform-origin: 50% 50%;
+            will-change: transform;
+          }
+
+          .imb-icon {
+            width: 58%;
+            height: 58%;
+            overflow: visible;
+            color: var(--fg, #f8fafc);
+            filter: drop-shadow(0 0.8cqh 1.8cqh rgba(2, 6, 23, 0.34));
+          }
+
+          .imb-shape {
+            fill: currentColor;
+            fill-rule: nonzero;
+          }
+        </style>
+
+        <div
+          id="icon-morph-beat-clip"
+          class="imb-clip clip"
+          data-start="0"
+          data-duration="2.5"
+          data-track-index="0"
+        >
+          <div class="imb-stage">
+            <div class="imb-halo" aria-hidden="true"></div>
+            <div class="imb-shell">
+              <svg class="imb-icon" viewBox="0 0 100 100" role="img" aria-label="Icon state change">
+                <path class="imb-shape" d="" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var shell = root.querySelector(".imb-shell");
+            var halo = root.querySelector(".imb-halo");
+            var icon = root.querySelector(".imb-icon");
+            var shape = root.querySelector(".imb-shape");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            // Each from/to pair has the same SVG command sequence and point
+            // count. Keep the pair together when editing either silhouette.
+            var paths = {
+              "mic-check": {
+                from: "M 42 18 L 58 18 L 64 24 L 64 48 L 61 56 L 56 62 L 56 72 L 68 72 L 68 82 L 32 82 L 32 72 L 44 72 L 44 62 L 39 56 L 36 48 L 36 24 Z",
+                to: "M 16 50 L 20 46 L 24 42 L 34 52 L 44 62 L 52 54 L 60 46 L 68 38 L 76 30 L 80 34 L 84 38 L 74 48 L 64 58 L 54 68 L 44 78 L 34 68 Z",
+              },
+              "play-check": {
+                from: "M 28 18 L 36 23 L 44 28 L 52 33 L 60 38 L 68 43 L 76 48 L 80 50 L 76 52 L 68 57 L 60 62 L 52 67 L 44 72 L 36 77 L 28 82 L 28 50 Z",
+                to: "M 16 50 L 20 46 L 24 42 L 34 52 L 44 62 L 52 54 L 60 46 L 68 38 L 76 30 L 80 34 L 84 38 L 74 48 L 64 58 L 54 68 L 44 78 L 34 68 Z",
+              },
+              "lock-unlock": {
+                from: "M 22 42 L 78 42 L 78 84 L 22 84 Z M 30 44 L 30 31 C 30 18 39 12 50 12 C 61 12 70 18 70 31 L 70 44 L 60 44 L 60 31 C 60 25 56 22 50 22 C 44 22 40 25 40 31 L 40 44 Z",
+                to: "M 22 42 L 78 42 L 78 84 L 22 84 Z M 34 44 L 34 31 C 34 18 43 12 54 12 C 65 12 74 18 74 31 L 74 35 L 64 35 L 64 31 C 64 25 60 22 54 22 C 48 22 44 25 44 31 L 44 44 Z",
+              },
+            };
+            var accents = {
+              green: "#34d399",
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+            };
+            var pair = Object.prototype.hasOwnProperty.call(paths, vars.pair)
+              ? vars.pair
+              : "mic-check";
+            var accent = Object.prototype.hasOwnProperty.call(accents, vars.accent)
+              ? vars.accent
+              : "green";
+            var selectedPaths = paths[pair];
+            var accentColor = accents[accent];
+
+            root.style.setProperty("--imb-accent", accentColor);
+            shape.setAttribute("d", selectedPaths.from);
+            icon.setAttribute("aria-label", pair.replace("-", " to "));
+
+            var IN_BASE = 1.2;
+            var MORPH_AT_BASE = 0.35;
+            var MORPH_BASE = 0.55;
+            var PULSE_UP_BASE = 0.12;
+            var PULSE_DOWN_BASE = 0.18;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2.5"));
+            var scale = duration < IN_BASE ? duration / IN_BASE : 1;
+            var IN = IN_BASE * scale;
+            var MORPH_AT = MORPH_AT_BASE * scale;
+            var MORPH = MORPH_BASE * scale;
+            var PULSE_UP = PULSE_UP_BASE * scale;
+            var PULSE_DOWN = PULSE_DOWN_BASE * scale;
+            var COMPLETE_AT = MORPH_AT + MORPH;
+            var HOLD = Math.max(0, duration - IN);
+
+            gsap.set(icon, { color: "#f8fafc" });
+            gsap.set(shell, { scale: 1 });
+            gsap.set(halo, { opacity: 0.14, scale: 1 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(
+              shape,
+              { attr: { d: selectedPaths.to }, duration: MORPH, ease: "power3.out" },
+              MORPH_AT,
+            );
+            tl.to(icon, { color: accentColor, duration: MORPH, ease: "power2.out" }, MORPH_AT);
+            tl.to(shell, { scale: 1.08, duration: PULSE_UP, ease: "power3.out" }, COMPLETE_AT);
+            tl.to(
+              shell,
+              { scale: 1, duration: PULSE_DOWN, ease: "power2.out" },
+              COMPLETE_AT + PULSE_UP,
+            );
+            tl.to(
+              halo,
+              { opacity: 0.62, scale: 1.08, duration: PULSE_UP, ease: "power3.out" },
+              COMPLETE_AT,
+            );
+            tl.to(
+              halo,
+              { opacity: 0.14, scale: 1, duration: PULSE_DOWN, ease: "power2.out" },
+              COMPLETE_AT + PULSE_UP,
+            );
+
+            if (HOLD > 0.04) {
+              var driftHalf = Math.min(0.45, HOLD / 2);
+              tl.fromTo(
+                halo,
+                { opacity: 0.14 },
+                {
+                  opacity: 0.22,
+                  duration: driftHalf,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                IN,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["icon-morph-beat"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

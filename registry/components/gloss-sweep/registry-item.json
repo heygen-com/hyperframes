@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "gloss-sweep",
+  "type": "hyperframes:component",
+  "title": "Gloss Sweep",
+  "description": "A card lands with a restrained slam, catches one diagonal specular gloss, and holds perfectly still.",
+  "tags": ["motion-primitive", "celebration", "gloss", "card", "badge", "payoff"],
+  "jobs": ["celebrate"],
+  "family": "celebrations",
+  "profile": "payoff",
+  "evidence": "Wave H U25 gloss-sweep brief",
+  "syncPoints": [{ "id": "gloss-complete", "phase": "in", "offset": 1.35 }],
+  "files": [
+    {
+      "path": "gloss-sweep.html",
+      "target": "compositions/components/gloss-sweep.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "Text displayed on the card.",
+      "default": "Pro"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color treatment for the card.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "sweep_angle",
+      "type": "number",
+      "role": "style",
+      "label": "Sweep angle",
+      "description": "Angle of the specular gloss in degrees.",
+      "default": 25,
+      "min": -60,
+      "max": 60,
+      "step": 1,
+      "unit": "deg"
+    }
+  ]
+}

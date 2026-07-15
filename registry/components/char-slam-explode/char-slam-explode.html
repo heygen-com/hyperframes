@@ -1,0 +1,338 @@
+<!doctype html>
+<!--
+  char-slam-explode: HyperFrames video primitive
+
+  A headline begins as individually scattered glyphs, holds the explosion,
+  then reassembles with an overshooting slam and a deterministic three-frame
+  stage shake.
+
+  Variables:
+    text: headline copy
+    accent: green, blue, or violet headline color
+    spread: tight or wild scatter distance
+
+  Envelope, fixed IN and OUT with elastic HOLD:
+    IN_BASE  = 1.64s, scattered hold, staggered return, and landing shake
+    HOLD     = max(0, D - IN - OUT), subtle drift followed by 0.30s stillness
+    OUT_BASE = 0.40s, composed headline fades and scales down
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  The scatter table was generated at build time from fixed LCG seed
+  0x0c5e2026. Runtime code only reads the authored table.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. One paused timeline registers under the literal
+  char-slam-explode key.
+-->
+<html
+  lang="en"
+  data-composition-id="char-slam-explode"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Headline", "description": "Text split into glyphs for the scatter and slam.", "default": "Impact" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Headline and glow color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "spread", "type": "enum", "role": "motion", "label": "Spread", "description": "Distance and rotation of the scattered glyphs.", "default": "tight", "options": [{ "value": "tight", "label": "Tight" }, { "value": "wild", "label": "Wild" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Char Slam Explode</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="char-slam-explode" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cse-clip,
+          .cse-stage {
+            position: absolute;
+            inset: 0;
+            width: 100cqw;
+            height: 100cqh;
+          }
+
+          .cse-clip {
+            overflow: hidden;
+          }
+
+          .cse-stage {
+            display: grid;
+            place-items: center;
+            will-change: transform;
+          }
+
+          .cse-headline {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 60cqw;
+            min-height: 32cqh;
+            color: var(--cse-accent, #71f5a7);
+            font-size: var(--cse-font-size, min(10cqw, 27cqh));
+            font-weight: 900;
+            line-height: 0.9;
+            letter-spacing: -0.045em;
+            text-align: center;
+            text-shadow:
+              0 0 2.8cqh color-mix(in srgb, var(--cse-accent, #71f5a7) 28%, transparent),
+              0 1.2cqh 4.5cqh color-mix(in srgb, #000 58%, transparent);
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+
+          .cse-glyph {
+            display: inline-block;
+            flex: 0 0 auto;
+            white-space: pre;
+            transform-origin: 50% 55%;
+            will-change: transform;
+          }
+        </style>
+
+        <div
+          id="char-slam-explode-clip"
+          class="cse-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="cse-stage">
+            <div class="cse-headline" role="heading" aria-level="1"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".cse-stage");
+            var headline = root.querySelector(".cse-headline");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "Impact" : String(vars.text);
+            var accentColors = {
+              green: "#71f5a7",
+              blue: "#61a8ff",
+              violet: "#b895ff",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var spread = vars.spread === "wild" ? "wild" : "tight";
+            var spreadValues = {
+              tight: { x: 9, y: 10, rotation: 12 },
+              wild: { x: 17, y: 19, rotation: 22 },
+            };
+
+            root.style.setProperty("--cse-accent", accentColors[accent]);
+            headline.setAttribute("aria-label", text);
+
+            var characters = Array.from(text);
+            characters.forEach(function (character, index) {
+              var glyph = document.createElement("span");
+              glyph.id = "char-slam-explode-glyph-" + index;
+              glyph.className = "cse-glyph";
+              glyph.textContent = /\s/.test(character) ? "\u00a0" : character;
+              glyph.setAttribute("aria-hidden", "true");
+              headline.appendChild(glyph);
+            });
+
+            // Conservative one-em-per-character fitting keeps any glyph mix
+            // inside the 60cqw composed width. The height cap protects short,
+            // wide mounts, while the surrounding clearance protects wild
+            // scatter and the return overshoot.
+            var fittedCqw = Math.min(13.5, 60 / Math.max(1, characters.length));
+            root.style.setProperty(
+              "--cse-font-size",
+              "min(" + fittedCqw.toFixed(3) + "cqw, 27cqh)",
+            );
+
+            // Fixed-seed LCG table, generated at build time. Each row stores
+            // normalized x, y, and rotation values. Long strings wrap the
+            // authored table without introducing runtime randomness.
+            var scatterTable = [
+              [-0.9, -0.038, 0.677],
+              [0.61, 0.716, -0.967],
+              [0.418, 0.575, 0.822],
+              [-0.76, -0.451, 0.944],
+              [-0.621, 0.579, -0.215],
+              [0.714, 0.437, -0.824],
+              [0.577, 0.567, 0.464],
+              [0.902, 0.346, 0.016],
+              [-0.526, 0.743, -0.275],
+              [-0.571, -0.353, 0.954],
+              [-0.666, 0.61, -0.075],
+              [-0.122, 0.875, -0.783],
+              [-0.141, 0.726, -0.659],
+              [0.606, -0.665, -0.713],
+              [-0.962, 0.131, 0.307],
+              [0.227, 0.813, -0.979],
+              [0.264, -0.754, -0.013],
+              [-0.4, 0.903, 0.573],
+              [0.393, 0.542, -0.992],
+              [0.884, -0.313, -0.834],
+              [-0.048, 0.707, -0.331],
+              [-0.766, 0.226, 0.567],
+              [0.207, 0.734, -0.714],
+              [-0.677, -0.614, 0.462],
+              [0.389, -0.542, -0.384],
+              [0.497, 0.716, 0.414],
+              [0.729, -0.59, -0.774],
+              [0.665, -0.061, -0.58],
+              [-0.758, -0.546, 0.364],
+              [0.113, 0.667, -0.202],
+              [0.963, 0.171, 0.47],
+              [0.662, -0.295, 0.912],
+              [0.555, 0.548, 0.952],
+              [-0.132, -0.677, 0.685],
+              [-0.758, 0.133, -0.469],
+              [-0.296, 0.697, 0.61],
+              [-0.27, 0.786, -0.677],
+              [-0.781, -0.478, -0.384],
+              [-0.216, -0.633, -0.949],
+              [0.721, -0.452, -0.62],
+              [-0.434, 0.816, 0.526],
+              [-0.794, 0.014, -0.971],
+              [-0.683, -0.158, 0.844],
+              [-0.914, 0.066, 0.396],
+              [0.157, -0.721, -0.188],
+              [0.662, -0.087, 0.573],
+              [-0.732, 0.651, -0.935],
+              [0.35, 0.605, 0.152],
+              [-0.317, -0.668, 0.206],
+              [0.139, 0.822, -0.11],
+              [-0.821, 0.464, 0.347],
+              [-0.668, -0.527, -0.879],
+              [-0.578, -0.444, 0.673],
+              [0.573, 0.744, 0.819],
+              [-0.52, -0.449, 0.256],
+              [-0.053, -0.703, 0.258],
+              [-0.646, 0.266, -0.551],
+              [-0.728, -0.448, -0.488],
+              [-0.547, -0.5, -0.099],
+              [0.714, 0.091, 0.084],
+              [-0.114, 0.764, -0.357],
+              [0.02, -0.706, -0.59],
+              [0.144, -0.947, -0.95],
+              [-0.851, 0.232, -0.445],
+            ];
+            var glyphs = Array.from(root.querySelectorAll(".cse-glyph"));
+            var scatter = spreadValues[spread];
+
+            glyphs.forEach(function (glyph, index) {
+              var values = scatterTable[index % scatterTable.length];
+              gsap.set(glyph, {
+                x: (values[0] * scatter.x).toFixed(3) + "cqw",
+                y: (values[1] * scatter.y).toFixed(3) + "cqh",
+                rotation: values[2] * scatter.rotation,
+                scale: 0.82,
+              });
+            });
+
+            var IN_BASE = 1.64;
+            var OUT_BASE = 0.4;
+            var RETURN_AT_BASE = 0.58;
+            var RETURN_DURATION_BASE = 0.66;
+            var STAGGER_BASE = 0.28;
+            var LAND_AT_BASE = RETURN_AT_BASE + RETURN_DURATION_BASE + STAGGER_BASE;
+            var SHAKE_FRAME_BASE = 1 / 30;
+            var STILL_HOLD_BASE = 0.3;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var baseTotal = IN_BASE + OUT_BASE;
+            var envelopeScale = duration < baseTotal ? duration / baseTotal : 1;
+            var IN = IN_BASE * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var RETURN_AT = RETURN_AT_BASE * envelopeScale;
+            var RETURN_DURATION = RETURN_DURATION_BASE * envelopeScale;
+            var STAGGER = STAGGER_BASE * envelopeScale;
+            var LAND_AT = LAND_AT_BASE * envelopeScale;
+            var SHAKE_FRAME = SHAKE_FRAME_BASE * envelopeScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var ACTIVE_HOLD = Math.max(0, HOLD - Math.min(STILL_HOLD_BASE, HOLD));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(
+              glyphs,
+              {
+                x: 0,
+                y: 0,
+                rotation: 0,
+                scale: 1,
+                duration: RETURN_DURATION,
+                ease: "back.out(1.7)",
+                stagger: { amount: STAGGER, from: "center" },
+              },
+              RETURN_AT,
+            );
+
+            tl.to(
+              stage,
+              { x: "0.55cqw", y: "-0.3cqh", duration: SHAKE_FRAME, ease: "power2.out" },
+              LAND_AT,
+            );
+            tl.to(stage, {
+              x: "-0.38cqw",
+              y: "0.2cqh",
+              duration: SHAKE_FRAME,
+              ease: "power2.out",
+            });
+            tl.to(stage, { x: 0, y: 0, duration: SHAKE_FRAME, ease: "power2.out" });
+
+            if (ACTIVE_HOLD > 0) {
+              tl.fromTo(
+                headline,
+                { y: 0 },
+                {
+                  y: "-0.4cqh",
+                  duration: ACTIVE_HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                  immediateRender: false,
+                },
+                HOLD_START,
+              );
+            }
+
+            tl.to(
+              headline,
+              { opacity: 0, scale: 0.96, duration: OUT, ease: "power2.in" },
+              OUT_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["char-slam-explode"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

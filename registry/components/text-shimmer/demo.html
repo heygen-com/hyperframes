@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+  text-shimmer demo. This standalone composition mounts text-shimmer.html
+  through data-composition-src. Non-default values prove that text, accent,
+  and sweep_at flow through the mount while the primitive follows its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Text Shimmer Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #15171b;
+        --border: #343840;
+        --brand: #22c55e;
+        --accent: #38bdf8;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --radius: 3cqmin;
+        --space-3: 4cqmin;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 45%, #181b21 0%, #0b0c0e 72%);
+      }
+
+      .mount-card {
+        width: 52%;
+        height: 34%;
+        left: 24%;
+        top: 33%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 30px;
+        background: #15171b;
+        box-shadow: 0 42px 100px rgba(0, 0, 0, 0.48);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="text-shimmer-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+    >
+      <div
+        id="text-shimmer-mount"
+        class="mount-card clip"
+        data-composition-id="text-shimmer"
+        data-composition-src="./text-shimmer.html"
+        data-variable-values='{"text":"Pure momentum","accent":"blue","sweep_at":0.8}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        data-width="998"
+        data-height="367"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["text-shimmer-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
