@@ -540,7 +540,15 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   while (progress.status === "running") {
     await new Promise((r) => setTimeout(r, intervalMs));
     progress = await getRenderProgress({ executionName: handle.executionName });
-    if (!args.json) process.stdout.write(`\r  status=${progress.status} `);
+    if (!args.json) {
+      const chunks =
+        progress.totalChunks != null
+          ? ` chunks=${progress.chunksCompleted}/${progress.totalChunks}`
+          : "";
+      process.stdout.write(
+        `\r  status=${progress.status} progress=${(progress.overallProgress * 100).toFixed(0)}%${chunks} `,
+      );
+    }
   }
   if (!args.json) process.stdout.write("\n");
   if (args.json) {
@@ -572,6 +580,8 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
     return;
   }
   console.log(`status=${progress.status} progress=${(progress.overallProgress * 100).toFixed(0)}%`);
+  if (progress.totalChunks != null)
+    console.log(`chunks=${progress.chunksCompleted}/${progress.totalChunks}`);
   if (progress.totalFrames)
     console.log(`frames=${progress.framesRendered}/${progress.totalFrames}`);
   if (progress.outputFile) console.log(`output=${progress.outputFile.gcsUri}`);

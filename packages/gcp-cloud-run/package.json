@@ -45,6 +45,7 @@
     "@google-cloud/workflows": "^4.2.0",
     "@hono/node-server": "^1.13.0",
     "@hyperframes/producer": "workspace:^",
+    "google-auth-library": "^10.5.0",
     "hono": "^4.6.0",
     "puppeteer-core": "^25.2.1",
     "tar": "^7.4.3"

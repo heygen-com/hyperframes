@@ -98,6 +98,8 @@ console.log(progress.status, progress.outputFile, progress.costs.displayCost);
 
 Pass `projectDir` for one-shot uploads, or call `deploySite()` separately and reuse the returned site handle across many renders.
 
+While the execution is running, `getRenderProgress` reads the Cloud Workflows **step-entries API** to report live chunk-level progress — `overallProgress` follows the same 10% plan + 80% chunks + 10% assemble split as the AWS adapter, and `chunksCompleted` / `totalChunks` expose the raw counts. The read is best-effort: if the caller lacks `workflowexecutions.stepEntries.list` (included in `roles/workflows.viewer`) the snapshot degrades to coarse `overallProgress = 0` instead of failing. Pass `midFlightProgress: false` to skip the extra API call per poll. Exact frame totals and costs still come from the accumulated result on success.
+
 ## Related Guides
 
 <CardGroup cols={2}>
