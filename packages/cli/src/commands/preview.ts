@@ -61,6 +61,7 @@ import {
   startBackgroundPreview,
   stopBackgroundPreview,
 } from "./previewLifecycle.js";
+import { stopVstSidecar } from "../vst/sidecar.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -861,6 +862,11 @@ function removeSymlinkOnExit(createdSymlink: boolean, symlinkPath: string): void
 function registerChildTreeShutdown(child: StudioChildProcess): void {
   const shutdown = (): void => {
     if (child.pid) killProcessTree(child.pid);
+    // The VST sidecar (packages/cli/src/vst/sidecar.ts) is started lazily by
+    // the studio's API route, not spawned here — but whichever mode ends up
+    // starting it, Ctrl-C during this preview session must still tear it
+    // down. Safe no-op if no sidecar is running.
+    stopVstSidecar();
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
@@ -1106,6 +1112,11 @@ async function runEmbeddedMode(
         const { closeThumbnailBrowser } = await import("../server/studioServer.js");
         const { drainBrowserPool, killTrackedProcesses } = await import("@hyperframes/engine");
         killTrackedProcesses();
+        // Embedded mode has no StudioChildProcess to hand to
+        // registerChildTreeShutdown (it runs an in-process Hono server, not
+        // a spawned child) — so the VST sidecar, if the API route started
+        // one during this session, is torn down directly here instead.
+        stopVstSidecar();
         await closeThumbnailBrowser().catch(() => {});
         await drainBrowserPool().catch(() => {});
       };
@@ -1125,7 +1136,10 @@ async function runEmbeddedMode(
     import("@hyperframes/engine")
       .then(({ killTrackedProcesses }) => {
         process.once("exit", () => {
-          if (!shuttingDown) killTrackedProcesses();
+          if (!shuttingDown) {
+            killTrackedProcesses();
+            stopVstSidecar();
+          }
         });
       })
       .catch(() => {});
