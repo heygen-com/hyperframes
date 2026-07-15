@@ -1,5 +1,4 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { Clock } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
@@ -70,7 +69,7 @@ export function TimingSection({
   };
 
   return (
-    <Section title="Timing" icon={<Clock size={15} />}>
+    <Section title="Timing">
       <div className={RESPONSIVE_GRID}>
         <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
         <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />

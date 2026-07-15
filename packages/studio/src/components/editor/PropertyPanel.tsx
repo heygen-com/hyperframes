@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Move } from "../../icons/SystemIcons";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -52,7 +51,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   assets,
   element,
   multiSelectCount = 0,
-  copiedAgentPrompt: _copiedAgentPrompt,
   onClearSelection,
   onUngroup,
   onSetStyle,
@@ -68,7 +66,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   onSetTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
-  onAskAgent: _onAskAgent,
   onToggleElementHidden,
   onImportAssets,
   fontAssets = [],
@@ -381,7 +378,7 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
-        <Section title="Layout" icon={<Move size={15} />}>
+        <Section title="Layout">
           <div className={RESPONSIVE_GRID}>
             <div className="flex items-center gap-1">
               <div className="flex-1">

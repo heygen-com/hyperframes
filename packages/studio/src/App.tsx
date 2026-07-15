@@ -560,8 +560,6 @@ export function StudioApp() {
                     setCompositionLoading={setCompositionLoading}
                     shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                     isGestureRecording={gestureState === "recording"}
-                    recordingState={gestureState}
-                    onToggleRecording={recordingToggle}
                     blockPreview={blockPreview}
                     gestureOverlay={
                       gestureState === "recording" && previewIframe ? (
