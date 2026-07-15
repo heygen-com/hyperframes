@@ -17,18 +17,11 @@ import { describe, expect, it } from "bun:test";
 import {
   buildPadTrimAudioArgs,
   buildPadTrimAudioPlan,
-  durationSecondsFromAacPacketCount,
   padOrTrimAudioToVideoFrameCount,
   type AudioProbeInfo,
   type PadTrimAudioInput,
   type ProbeVideoFrameInfo,
 } from "./audioPadTrim.js";
-
-describe("durationSecondsFromAacPacketCount", () => {
-  it("derives ADTS AAC duration from packet count instead of unreliable container metadata", () => {
-    expect(durationSecondsFromAacPacketCount(783, 48_000)).toBe(16.704);
-  });
-});
 
 describe("buildPadTrimAudioArgs", () => {
   it("emits a concat-copy pad plan when audio is shorter than target", () => {

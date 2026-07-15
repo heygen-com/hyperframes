@@ -203,6 +203,58 @@ describe("ffprobe missing-binary fallback", () => {
     expect(calls[0]?.command).toBe(resolve("/tools/ffprobe.exe"));
   });
 
+  it.each([
+    { name: "non-AAC metadata", codec: "mp3", packets: undefined, expected: 1.25, calls: 1 },
+    { name: "valid AAC packet count", codec: "aac", packets: "783", expected: 16.704, calls: 2 },
+    {
+      name: "missing AAC packet count",
+      codec: "aac",
+      packets: undefined,
+      expected: 1.25,
+      calls: 2,
+    },
+    { name: "zero AAC packet count", codec: "aac", packets: "0", expected: 1.25, calls: 2 },
+    {
+      name: "invalid AAC packet count",
+      codec: "aac",
+      packets: "invalid",
+      expected: 1.25,
+      calls: 2,
+    },
+  ])(
+    "derives audio duration for $name",
+    async ({ codec, packets, expected, calls: expectedCalls }) => {
+      const outcomes: SpawnOutcome[] = [
+        {
+          kind: "exit",
+          code: 0,
+          stdout: JSON.stringify({
+            streams: [
+              { codec_type: "audio", codec_name: codec, sample_rate: "48000", channels: 2 },
+            ],
+            format: { duration: "1.25", bit_rate: "128000" },
+          }),
+        },
+      ];
+      if (codec === "aac") {
+        outcomes.push({
+          kind: "exit",
+          code: 0,
+          stdout: JSON.stringify({ streams: [{ nb_read_packets: packets }], format: {} }),
+        });
+      }
+      const { spawn, calls } = createSpawnSpy(outcomes);
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { extractAudioMetadata } = await import("./ffprobe.js");
+      const meta = await extractAudioMetadata(`/tmp/${codec}-${packets ?? "none"}.audio`);
+
+      expect(meta.durationSeconds).toBeCloseTo(expected, 6);
+      expect(calls).toHaveLength(expectedCalls);
+    },
+  );
+
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
     const { spawn, calls } = createSpawnSpy([{ kind: "missing" }]);
     hidePathBinaries();
