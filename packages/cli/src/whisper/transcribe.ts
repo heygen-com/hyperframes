@@ -46,14 +46,8 @@ const WHISPER_TIMEOUT_CAP_MS = 43_200_000;
  * Give long recordings enough time to transcribe while retaining a bounded
  * failure window. Short recordings keep the historical five-minute timeout.
  */
-export function resolveWhisperTimeoutMs(
-  durationSeconds: number | null,
-): number {
-  if (
-    durationSeconds === null ||
-    !Number.isFinite(durationSeconds) ||
-    durationSeconds <= 0
-  ) {
+export function resolveWhisperTimeoutMs(durationSeconds: number | null): number {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     return WHISPER_TIMEOUT_FLOOR_MS;
   }
 
@@ -342,9 +336,7 @@ export async function transcribe(
   }
   whisperArgs.push(wavPath);
 
-  const whisperTimeoutMs = resolveWhisperTimeoutMs(
-    getPreparedWavDurationSeconds(wavPath),
-  );
+  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath));
   execFileSync(whisper.executablePath, whisperArgs, {
     stdio: "ignore",
     timeout: whisperTimeoutMs,
