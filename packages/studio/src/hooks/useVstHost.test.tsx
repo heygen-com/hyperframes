@@ -232,6 +232,134 @@ describe("useVstHost — loadChain", () => {
 
     act(() => root.unmount());
   });
+
+  it("rejects the first call's promise as superseded when a second loadChain for the same trackId is issued first", async () => {
+    const { getState, socket, root } = await setupReadyHost();
+    const chain: ChainFileJson = { version: 1, plugins: [] };
+
+    const firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
+      settled: false,
+      rejected: false,
+      err: null,
+    };
+    let secondResolved = false;
+
+    await act(async () => {
+      const api = required(getState().api, "api");
+      const firstPromise = api.loadChain("track-1", chain, "/abs/dry1.wav");
+      await flushAsyncWork();
+      const secondPromise = api.loadChain("track-1", chain, "/abs/dry2.wav");
+      await flushAsyncWork();
+
+      // Only the second request gets a server reply.
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+
+      await secondPromise.then(() => {
+        secondResolved = true;
+      });
+
+      // The first promise must settle (reject) on its own — it never gets a
+      // matching server reply. Race it against a short timer so an unfixed
+      // hang fails the test instead of hanging the whole run.
+      await Promise.race([
+        firstPromise.then(
+          () => {
+            firstOutcome.settled = true;
+          },
+          (err: unknown) => {
+            firstOutcome.settled = true;
+            firstOutcome.rejected = true;
+            firstOutcome.err = err;
+          },
+        ),
+        new Promise<void>((resolve) => setTimeout(resolve, 100)),
+      ]);
+    });
+
+    expect(secondResolved).toBe(true);
+    // If this is false, the first promise never settled within 100ms — i.e. it hung.
+    expect(firstOutcome.settled).toBe(true);
+    expect(firstOutcome.rejected).toBe(true);
+    expect(firstOutcome.err).toBeInstanceOf(Error);
+    if (firstOutcome.err instanceof Error) {
+      expect(firstOutcome.err.message).toMatch(/superseded/);
+    }
+
+    act(() => root.unmount());
+  });
+});
+
+// ── getState ──────────────────────────────────────────────────────────────────
+
+describe("useVstHost — getState", () => {
+  it("resolves with the plugin list from a matching state event", async () => {
+    const { getState, socket, root } = await setupReadyHost();
+
+    let result: string[] | null = null;
+    await act(async () => {
+      const api = required(getState().api, "api");
+      const statePromise = api.getState("track-1");
+      await flushAsyncWork();
+      socket.emitJson({ event: "state", trackId: "track-1", plugins: ["Reverb.vst3"] });
+      result = await statePromise;
+    });
+
+    expect(result).toEqual(["Reverb.vst3"]);
+
+    act(() => root.unmount());
+  });
+
+  it("rejects the first call's promise as superseded when a second getState for the same trackId is issued first", async () => {
+    const { getState, socket, root } = await setupReadyHost();
+
+    const firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
+      settled: false,
+      rejected: false,
+      err: null,
+    };
+    let secondResult: string[] | null = null;
+
+    await act(async () => {
+      const api = required(getState().api, "api");
+      const firstPromise = api.getState("track-1");
+      await flushAsyncWork();
+      const secondPromise = api.getState("track-1");
+      await flushAsyncWork();
+
+      // Only the second request gets a server reply.
+      socket.emitJson({ event: "state", trackId: "track-1", plugins: ["Reverb.vst3"] });
+
+      secondResult = await secondPromise;
+
+      // The first promise must settle (reject) on its own — it never gets a
+      // matching server reply. Race it against a short timer so an unfixed
+      // hang fails the test instead of hanging the whole run.
+      await Promise.race([
+        firstPromise.then(
+          () => {
+            firstOutcome.settled = true;
+          },
+          (err: unknown) => {
+            firstOutcome.settled = true;
+            firstOutcome.rejected = true;
+            firstOutcome.err = err;
+          },
+        ),
+        new Promise<void>((resolve) => setTimeout(resolve, 100)),
+      ]);
+    });
+
+    expect(secondResult).toEqual(["Reverb.vst3"]);
+    // If this is false, the first promise never settled within 100ms — i.e. it hung.
+    expect(firstOutcome.settled).toBe(true);
+    expect(firstOutcome.rejected).toBe(true);
+    expect(firstOutcome.err).toBeInstanceOf(Error);
+    if (firstOutcome.err instanceof Error) {
+      expect(firstOutcome.err.message).toMatch(/superseded/);
+    }
+
+    act(() => root.unmount());
+  });
 });
 
 // ── PCM frames ────────────────────────────────────────────────────────────────

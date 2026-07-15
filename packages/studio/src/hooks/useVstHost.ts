@@ -374,6 +374,10 @@ export function useVstHost(): UseVstHostResult {
   const loadChain = useCallback(
     (trackId: string, chain: ChainFileJson, wavUrl: string): Promise<void> => {
       return new Promise<void>((resolve, reject) => {
+        const previous = pendingTrackRef.current.get(trackId);
+        previous?.reject(
+          new Error(`load-chain superseded by a new request for track "${trackId}"`),
+        );
         pendingTrackRef.current.set(trackId, { kind: "load-chain", resolve, reject });
         sendJson({ cmd: "load-chain", trackId, chainJson: chain, wavPath: wavUrl });
       });
@@ -384,6 +388,8 @@ export function useVstHost(): UseVstHostResult {
   const getState = useCallback(
     (trackId: string): Promise<string[]> => {
       return new Promise<string[]>((resolve, reject) => {
+        const previous = pendingTrackRef.current.get(trackId);
+        previous?.reject(new Error(`get-state superseded by a new request for track "${trackId}"`));
         pendingTrackRef.current.set(trackId, { kind: "get-state", resolve, reject });
         sendJson({ cmd: "get-state", trackId });
       });
