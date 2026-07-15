@@ -2860,6 +2860,16 @@ export function initSandboxRuntimeModular(): void {
       // affected — the seek runs whenever the clock is playing.
       if (clock.isPlaying() || !hasActiveStudioManualEditGesture()) {
         seekTimelineAndAdapters(t);
+        // Clip visibility must track the playhead every tick, paused or not —
+        // GSAP tween values update via seekTimelineAndAdapters above regardless
+        // of play state, but the separate [data-start] visibility/display gate
+        // (syncTimedElementVisibility) was only reached through
+        // syncMediaForCurrentState below, which is gated on clock.isPlaying().
+        // A composition loaded paused (the common case: initial mount, or any
+        // seek that doesn't also start playback) therefore never hid clips
+        // outside their time window, leaving every later-DOM-order scene at its
+        // default visibility:visible and permanently stacked over earlier ones.
+        syncTimedElementVisibility(t);
       }
 
       // Looping is handled at the player layer (<hyperframes-player>),

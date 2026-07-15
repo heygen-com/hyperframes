@@ -742,6 +742,50 @@ describe("initSandboxRuntimeModular", () => {
     expect(sceneB.style.visibility).toBe("visible");
   });
 
+  it("hides sibling scenes outside their time window on initial load, before any explicit seek (paused)", () => {
+    // Regression: a freshly mounted composition sits paused at t=0 until the
+    // Studio player (or a "play" command) explicitly seeks it. The transport
+    // tick loop still runs every frame while paused — it must re-derive clip
+    // visibility from the current time on its own, not only when something
+    // calls player.seek()/player.play() first. Before the fix,
+    // syncTimedElementVisibility was only reached from inside the
+    // clock.isPlaying() branch of the tick, so a paused composition never hid
+    // a later sibling scene outside its own window — every "cut"-transition
+    // scene (no incoming/outgoing GSAP opacity tween of its own) stayed at
+    // the CSS default visibility:visible and permanently painted over any
+    // earlier scene lower in the same stacking context.
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "8");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const sceneA = document.createElement("div");
+    sceneA.id = "scene-a";
+    sceneA.setAttribute("data-start", "0");
+    sceneA.setAttribute("data-duration", "4");
+    root.appendChild(sceneA);
+
+    const sceneB = document.createElement("div");
+    sceneB.id = "scene-b";
+    sceneB.setAttribute("data-start", "4");
+    sceneB.setAttribute("data-duration", "4");
+    root.appendChild(sceneB);
+
+    window.__timelines = { main: createMockTimeline(8) };
+
+    initSandboxRuntimeModular();
+
+    // No player.seek()/player.play() call — this is the composition's state
+    // exactly as a browser would paint it right after the iframe loads.
+    expect(window.__player).toBeDefined();
+    expect(sceneA.style.visibility).toBe("visible");
+    expect(sceneB.style.visibility).toBe("hidden");
+  });
+
   it("hides GSAP tween targets inside a hidden timed clip (issue #1387)", () => {
     withStudioIframe(() => {
       const root = document.createElement("div");
