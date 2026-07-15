@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { resolveCompositionPreviewScale, resolveThumbnailSeekTime } from "./CompositionsTab";
+import { describe, expect, it, vi } from "vitest";
+import {
+  resolveCompositionPreviewScale,
+  resolveThumbnailSeekTime,
+  syncIframePlayback,
+} from "./CompositionsTab";
 
 describe("resolveCompositionPreviewScale", () => {
   it("scales a 16:9 stage to fit the composition card", () => {
@@ -48,5 +52,21 @@ describe("resolveThumbnailSeekTime", () => {
   it("falls back to the default 3s frame when duration is unknown", () => {
     expect(resolveThumbnailSeekTime(null)).toBe(3);
     expect(resolveThumbnailSeekTime(Number.NaN)).toBe(3);
+  });
+});
+
+describe("syncIframePlayback", () => {
+  it("mutes a composition-card preview before playing it", () => {
+    const player = {
+      muted: false,
+      play: vi.fn(),
+    };
+    const iframe = {
+      contentWindow: { __player: player },
+    } as unknown as HTMLIFrameElement;
+
+    expect(syncIframePlayback(iframe, true)).toBe(true);
+    expect(player.muted).toBe(true);
+    expect(player.play).toHaveBeenCalledOnce();
   });
 });

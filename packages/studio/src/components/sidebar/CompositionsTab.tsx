@@ -18,6 +18,7 @@ const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
   __player?: {
+    muted?: boolean;
     play?: () => void;
     pause?: () => void;
     seek?: (time: number) => void;
@@ -87,12 +88,13 @@ function resolveIframeDuration(iframe: HTMLIFrameElement | null): number | null 
   }
 }
 
-function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
+export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
   try {
     const player = (iframe?.contentWindow as PreviewWindow | null)?.__player;
     if (!player) return false;
 
     if (shouldPlay) {
+      player.muted = true;
       player.play?.();
       return true;
     }
