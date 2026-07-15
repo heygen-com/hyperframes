@@ -5,14 +5,26 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
-export function deduplicateKeyframes(
-  keyframes: GsapPercentageKeyframe[],
-): GsapPercentageKeyframe[] {
-  const byPct = new Map<number, GsapPercentageKeyframe>();
+export function deduplicateKeyframes<
+  T extends GsapPercentageKeyframe & { animationId?: string; easeAmbiguous?: boolean },
+>(keyframes: T[]): T[] {
+  const byPct = new Map<number, T>();
   for (const kf of keyframes) {
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
+      // Two different source animations with a keyframe at the same clip % but
+      // different eases: the merged segment's ease target is ambiguous. Flag it
+      // (compared before the ease overwrite below) so the collapsed clip row
+      // hides the inline ease button there and the user edits per-lane instead.
+      if (
+        existing.animationId !== undefined &&
+        kf.animationId !== undefined &&
+        existing.animationId !== kf.animationId &&
+        existing.ease !== kf.ease
+      ) {
+        existing.easeAmbiguous = true;
+      }
       if (kf.ease) existing.ease = kf.ease;
     } else {
       byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });

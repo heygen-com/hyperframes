@@ -337,4 +337,52 @@ describe("TimelineClipDiamonds", () => {
     expect(suppressClickRef.current).toBe(true);
     act(() => root.unmount());
   });
+
+  const renderSegmentLane = (lastAmbiguous: boolean) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const kf = (percentage: number, extra: Record<string, unknown> = {}) => ({
+      percentage,
+      tweenPercentage: percentage,
+      propertyGroup: "position",
+      animationId: "anim-1",
+      properties: { x: percentage },
+      ...extra,
+    });
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [kf(0), kf(50), kf(100, { easeAmbiguous: lastAmbiguous })],
+          }}
+          clipWidthPx={200}
+          clipHeightPx={48}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={0}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          onSelectSegment={vi.fn()}
+          groupAware
+        />,
+      );
+    });
+    return { host, root };
+  };
+
+  it("hides the inline ease button on an ambiguous merged segment", () => {
+    // Segments 0->50 and 50->100; the 50->100 segment ends on the ambiguous
+    // keyframe, so its hover/ease-button area is not rendered.
+    const { host, root } = renderSegmentLane(true);
+    expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(1);
+    act(() => root.unmount());
+  });
+
+  it("keeps the inline ease button on unambiguous merged segments", () => {
+    const { host, root } = renderSegmentLane(false);
+    expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
+    act(() => root.unmount());
+  });
 });

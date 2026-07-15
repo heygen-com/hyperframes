@@ -56,6 +56,18 @@ export function updateKeyframeCacheFromParsed(
         const prev = byPct.get(kf.percentage);
         if (prev) {
           prev.properties = { ...prev.properties, ...kf.properties };
+          // Mirror deduplicateKeyframes: a same-% collision across different
+          // source animations with different eases is an ambiguous merged
+          // segment — flag it (before the ease overwrite) so the collapsed row
+          // suppresses the inline ease button there.
+          if (
+            prev.animationId !== undefined &&
+            kf.animationId !== undefined &&
+            prev.animationId !== kf.animationId &&
+            prev.ease !== kf.ease
+          ) {
+            prev.easeAmbiguous = true;
+          }
           if (kf.ease) prev.ease = kf.ease;
         } else {
           byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });

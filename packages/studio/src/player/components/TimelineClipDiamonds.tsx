@@ -21,6 +21,9 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
+  /** Set when 2+ source animations collide at this percentage with different
+   *  eases — the collapsed row hides the inline ease button on this segment. */
+  easeAmbiguous?: boolean;
 }
 
 interface KeyframeCacheEntry {
@@ -203,9 +206,11 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
         const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
         if (x2 - x1 < 1) return null;
-        // Always a group-aware target for the ease button: the segment ease is
-        // per-keyframe (each keyframe carries its own animationId/tweenPercentage),
-        // so the button resolves unambiguously even in the merged inline clip row.
+        // Group-aware target for the ease button: the segment ease is
+        // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
+        // On a merged inline row the button is hidden where the segment is
+        // ambiguous (two source animations collide at this % with different
+        // eases) — see easeAmbiguous below; the user edits those per-lane.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
         return (
@@ -224,7 +229,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && (
+            {onSelectSegment && !kf.easeAmbiguous && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""
