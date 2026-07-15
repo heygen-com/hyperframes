@@ -253,6 +253,44 @@ export function updateJobStatus(
 }
 
 /**
+ * Surface auto-worker calibration as its own stage. Calibration writes
+ * throwaway sample frames, so keep the final-output counter at zero until the
+ * real capture stage begins.
+ */
+export function prepareCaptureCalibration(input: {
+  job: RenderJob;
+  totalFrames: number;
+  htmlInCanvasDetected: boolean;
+  lowMemoryMode: boolean;
+  deInversionEligible: boolean;
+  deParallelRouterEligible: boolean;
+  onProgress?: ProgressCallback;
+}): boolean {
+  const {
+    job,
+    totalFrames,
+    htmlInCanvasDetected,
+    lowMemoryMode,
+    deInversionEligible,
+    deParallelRouterEligible,
+    onProgress,
+  } = input;
+  if (
+    job.config.workers !== undefined ||
+    totalFrames < 60 ||
+    htmlInCanvasDetected ||
+    lowMemoryMode ||
+    deInversionEligible ||
+    deParallelRouterEligible
+  ) {
+    return false;
+  }
+  job.framesRendered = 0;
+  updateJobStatus(job, "rendering", "Calibrating capture performance", 25, onProgress);
+  return true;
+}
+
+/**
  * Build a `resolver(framePath)` closure that maps an absolute path to
  * a frame inside `compiledDir` into a server-relative URL the producer's
  * file server will serve. Returns `null` for any path that escapes the

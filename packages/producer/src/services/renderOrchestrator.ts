@@ -90,7 +90,12 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
-import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
+import {
+  createMemorySampler,
+  prepareCaptureCalibration,
+  type MemorySampler,
+  updateJobStatus,
+} from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
 import {
   OrderedRenderEventPublisher,
@@ -2250,12 +2255,15 @@ export async function executeRenderJob(
     });
 
     if (
-      job.config.workers === undefined &&
-      totalFrames >= 60 &&
-      !htmlInCanvasDetected &&
-      !cfg.lowMemoryMode &&
-      !deInversionEligible &&
-      !deParallelRouterEligible
+      prepareCaptureCalibration({
+        job,
+        totalFrames,
+        htmlInCanvasDetected,
+        lowMemoryMode: Boolean(cfg.lowMemoryMode),
+        deInversionEligible,
+        deParallelRouterEligible,
+        onProgress,
+      })
     ) {
       const outcome = await observeRenderStage(
         observability,
