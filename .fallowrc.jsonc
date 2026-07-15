@@ -491,6 +491,12 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // AnimationCard.tsx / EaseCurveSection.tsx: pre-existing large components
+      // (360/276-line render functions) re-flagged by the easing-picker
+      // consolidation, which only removed a select from one and added a small
+      // select to the other. Splitting them is out of scope here.
+      "packages/studio/src/components/editor/AnimationCard.tsx",
+      "packages/studio/src/components/editor/EaseCurveSection.tsx",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited

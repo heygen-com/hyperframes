@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from "react";
+import { SUPPORTED_EASES } from "@hyperframes/core/gsap-constants";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
+import { SelectField } from "./propertyPanelPrimitives";
 import { roundToCenti } from "../../utils/rounding";
 
 // Figma-canonical ordering: linear, the three core eases, then the expressive
@@ -14,6 +16,12 @@ const PRESET_GRID_EASES = [
   "back.inOut",
   "expo.out",
 ] as const;
+
+const ADDITIONAL_CURVE_EASES = SUPPORTED_EASES.filter(
+  (name) => EASE_CURVES[name] && !PRESET_GRID_EASES.some((preset) => preset === name),
+);
+const NON_CURVE_EASES = SUPPORTED_EASES.filter((name) => !EASE_CURVES[name]);
+const ADDITIONAL_EASES = [...ADDITIONAL_CURVE_EASES, ...NON_CURVE_EASES];
 
 function MiniCurveSvg({
   curve,
@@ -149,8 +157,7 @@ export function EaseCurveSection({
   }, []);
 
   const active = draft ?? curve;
-  if (!active) return null;
-  const [x1, y1, x2, y2] = active;
+  const [x1, y1, x2, y2] = active ?? EASE_CURVES.none;
 
   // Anchors + control handles. Handle *display* is clamped to the view so an
   // extreme loaded overshoot rides the edge instead of disappearing.
@@ -217,150 +224,174 @@ export function EaseCurveSection({
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
       <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
+      <div className="mb-2">
+        <SelectField
+          label="More eases"
+          value={isCustom ? "custom" : ease}
+          options={ADDITIONAL_EASES}
+          onChange={(next) => onCustomEaseCommit(next)}
+        />
+      </div>
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
-        <button
-          type="button"
-          onClick={play}
-          className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
-        >
-          {progress !== null ? "Playing…" : "Preview"}
-        </button>
+        {active && (
+          <button
+            type="button"
+            onClick={play}
+            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
+          >
+            {progress !== null ? "Playing…" : "Preview"}
+          </button>
+        )}
       </div>
-      <div
-        className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
-        style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
-      >
-        <svg
-          ref={svgRef}
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${SVGW} ${SVGH}`}
-          preserveAspectRatio="none"
-          className="touch-none select-none"
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          {/* Grid — quarter lines inside the unit square */}
-          {[0.25, 0.5, 0.75].map((q) => (
-            <line
-              key={`v${q}`}
-              x1={xToSvg(q)}
-              y1={top}
-              x2={xToSvg(q)}
-              y2={bottom}
-              stroke="white"
-              strokeOpacity="0.05"
-              strokeWidth="1"
-            />
-          ))}
-          {[0.25, 0.5, 0.75].map((q) => (
-            <line
-              key={`h${q}`}
-              x1={left}
-              y1={yToSvg(q)}
-              x2={right}
-              y2={yToSvg(q)}
-              stroke="white"
-              strokeOpacity="0.05"
-              strokeWidth="1"
-            />
-          ))}
-          {/* Unit-square frame (progress 0 → 1) */}
-          <rect
-            x={left}
-            y={top}
-            width={S}
-            height={bottom - top}
-            fill="none"
-            stroke="white"
-            strokeOpacity="0.1"
-            strokeWidth="1"
-          />
-          {/* Linear reference diagonal */}
-          <line
-            x1={a0.x}
-            y1={a0.y}
-            x2={a1.x}
-            y2={a1.y}
-            stroke="white"
-            strokeOpacity="0.08"
-            strokeWidth="1"
-            strokeDasharray="3 4"
-          />
-          {/* Tangent handle lines */}
-          <line
-            x1={a0.x}
-            y1={a0.y}
-            x2={p1.x}
-            y2={p1.y}
-            stroke={ACCENT}
-            strokeOpacity="0.5"
-            strokeWidth="1.5"
-          />
-          <line
-            x1={a1.x}
-            y1={a1.y}
-            x2={p2.x}
-            y2={p2.y}
-            stroke={ACCENT}
-            strokeOpacity="0.5"
-            strokeWidth="1.5"
-          />
-          {/* The curve */}
-          <path d={curvePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" />
-          {/* Anchors at (0,0) and (1,1) */}
-          <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
-          <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
-          {/* Animated preview dot */}
-          {dot && (
-            <>
-              <circle cx={dot.x} cy={dot.y} r="9" fill={ACCENT} fillOpacity="0.18" />
-              <circle cx={dot.x} cy={dot.y} r="4.5" fill={ACCENT} />
-            </>
-          )}
-          {/* Draggable control handles (large transparent hit area + visible dot) */}
-          {[["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
-            <g key={key}>
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r="14"
-                fill="transparent"
-                className="cursor-grab active:cursor-grabbing"
-                onPointerDown={(e) => handlePointerDown(key, e)}
-                onPointerEnter={() => setHover(key)}
-                onPointerLeave={() => setHover((h) => (h === key ? null : h))}
+      {active ? (
+        <>
+          <div
+            className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+            style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
+          >
+            <svg
+              ref={svgRef}
+              width="100%"
+              height="100%"
+              viewBox={`0 0 ${SVGW} ${SVGH}`}
+              preserveAspectRatio="none"
+              className="touch-none select-none"
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {/* Grid — quarter lines inside the unit square */}
+              {[0.25, 0.5, 0.75].map((q) => (
+                <line
+                  key={`v${q}`}
+                  x1={xToSvg(q)}
+                  y1={top}
+                  x2={xToSvg(q)}
+                  y2={bottom}
+                  stroke="white"
+                  strokeOpacity="0.05"
+                  strokeWidth="1"
+                />
+              ))}
+              {[0.25, 0.5, 0.75].map((q) => (
+                <line
+                  key={`h${q}`}
+                  x1={left}
+                  y1={yToSvg(q)}
+                  x2={right}
+                  y2={yToSvg(q)}
+                  stroke="white"
+                  strokeOpacity="0.05"
+                  strokeWidth="1"
+                />
+              ))}
+              {/* Unit-square frame (progress 0 → 1) */}
+              <rect
+                x={left}
+                y={top}
+                width={S}
+                height={bottom - top}
+                fill="none"
+                stroke="white"
+                strokeOpacity="0.1"
+                strokeWidth="1"
               />
-              <circle
-                cx={pt.x}
-                cy={pt.y}
-                r={hover === key || draggingRef.current === key ? 7 : 5.5}
-                fill="#0a0a1a"
+              {/* Linear reference diagonal */}
+              <line
+                x1={a0.x}
+                y1={a0.y}
+                x2={a1.x}
+                y2={a1.y}
+                stroke="white"
+                strokeOpacity="0.08"
+                strokeWidth="1"
+                strokeDasharray="3 4"
+              />
+              {/* Tangent handle lines */}
+              <line
+                x1={a0.x}
+                y1={a0.y}
+                x2={p1.x}
+                y2={p1.y}
+                stroke={ACCENT}
+                strokeOpacity="0.5"
+                strokeWidth="1.5"
+              />
+              <line
+                x1={a1.x}
+                y1={a1.y}
+                x2={p2.x}
+                y2={p2.y}
+                stroke={ACCENT}
+                strokeOpacity="0.5"
+                strokeWidth="1.5"
+              />
+              {/* The curve */}
+              <path
+                d={curvePath}
+                fill="none"
                 stroke={ACCENT}
                 strokeWidth="2.5"
-                className="pointer-events-none transition-[r]"
+                strokeLinecap="round"
               />
-            </g>
-          ))}
-        </svg>
-      </div>
-      {/* Axis + value readout */}
-      <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
-        <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
-        <span className="tracking-wide text-neutral-500">time →</span>
-        <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
-      </div>
-      <div className="mt-1 flex items-center justify-between px-0.5">
-        <span className="text-[10px] text-neutral-400">{label}</span>
-        <span
-          className="font-mono text-[9px] tracking-tight text-neutral-600"
-          title="cubic-bezier control points"
-        >
-          {bezierText}
-        </span>
-      </div>
+              {/* Anchors at (0,0) and (1,1) */}
+              <circle cx={a0.x} cy={a0.y} r="3" fill={ACCENT} />
+              <circle cx={a1.x} cy={a1.y} r="3" fill={ACCENT} />
+              {/* Animated preview dot */}
+              {dot && (
+                <>
+                  <circle cx={dot.x} cy={dot.y} r="9" fill={ACCENT} fillOpacity="0.18" />
+                  <circle cx={dot.x} cy={dot.y} r="4.5" fill={ACCENT} />
+                </>
+              )}
+              {/* Draggable control handles (large transparent hit area + visible dot) */}
+              {[["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
+                <g key={key}>
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r="14"
+                    fill="transparent"
+                    className="cursor-grab active:cursor-grabbing"
+                    onPointerDown={(e) => handlePointerDown(key, e)}
+                    onPointerEnter={() => setHover(key)}
+                    onPointerLeave={() => setHover((h) => (h === key ? null : h))}
+                  />
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={hover === key || draggingRef.current === key ? 7 : 5.5}
+                    fill="#0a0a1a"
+                    stroke={ACCENT}
+                    strokeWidth="2.5"
+                    className="pointer-events-none transition-[r]"
+                  />
+                </g>
+              ))}
+            </svg>
+          </div>
+          {/* Axis + value readout */}
+          <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
+            <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
+            <span className="tracking-wide text-neutral-500">time →</span>
+            <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between px-0.5">
+            <span className="text-[10px] text-neutral-400">{label}</span>
+            <span
+              className="font-mono text-[9px] tracking-tight text-neutral-600"
+              title="cubic-bezier control points"
+            >
+              {bezierText}
+            </span>
+          </div>
+        </>
+      ) : (
+        <p className="py-3 text-center text-[10px] text-neutral-500">
+          {label} has no editable curve preview.
+        </p>
+      )}
     </div>
   );
 }
