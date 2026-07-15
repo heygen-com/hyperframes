@@ -16,6 +16,7 @@ import { TimelineCanvas } from "./TimelineCanvas";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { TimelineOverlays } from "./TimelineOverlays";
+import { animationContributesLane } from "./TimelinePropertyLanes";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -116,7 +117,10 @@ export const Timeline = memo(function Timeline({
   const hasKeyframedClips = useMemo(
     () =>
       Array.from(gsapAnimations.values()).some((list) =>
-        list.some((animation) => animation.keyframes),
+        // Same lane-contribution predicate the layout uses: real keyframes OR a
+        // synthesizable flat tween. Checking animation.keyframes alone left a
+        // flat-tween-only comp without its reserved label column.
+        list.some((animation) => animationContributesLane(animation)),
       ),
     [gsapAnimations],
   );

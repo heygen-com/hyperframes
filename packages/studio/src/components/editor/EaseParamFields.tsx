@@ -50,7 +50,11 @@ export function EaseBezierField({
       .filter((value) => Number.isFinite(value));
     if (nums.length !== 4) return;
     const [x1, y1, x2, y2] = nums as [number, number, number, number];
-    onCommit(`custom(M0,0 C${round2(x1)},${round2(y1)} ${round2(x2)},${round2(y2)} 1,1)`);
+    // Control-point X must stay in [0,1] for a monotonic (valid) time curve;
+    // clamp it so an out-of-range entry can't persist as a broken ease. Y is
+    // left free so overshoot/anticipation curves still work.
+    const cx = (v: number) => Math.max(0, Math.min(1, v));
+    onCommit(`custom(M0,0 C${round2(cx(x1))},${round2(y1)} ${round2(cx(x2))},${round2(y2)} 1,1)`);
   };
   return (
     <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
