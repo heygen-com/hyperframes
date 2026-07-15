@@ -23,6 +23,7 @@ import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -169,7 +170,10 @@ export function StudioRightPanel({
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
 
-  const [layersPanePercent, setLayersPanePercent] = useState(40);
+  const [layersPanePercent, setLayersPanePercentState] = useState(() => {
+    const stored = readStudioUiPreferences().inspectorSplitPercent ?? 40;
+    return Math.min(MAX_INSPECTOR_SPLIT_PERCENT, Math.max(MIN_INSPECTOR_SPLIT_PERCENT, stored));
+  });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const splitDragRef = useRef<{
     startY: number;
@@ -177,6 +181,11 @@ export function StudioRightPanel({
     height: number;
   } | null>(null);
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
+
+  const setLayersPanePercent = useCallback((percent: number) => {
+    setLayersPanePercentState(percent);
+    writeStudioUiPreferences({ inspectorSplitPercent: percent });
+  }, []);
 
   useEffect(
     () => () => {
@@ -230,16 +239,19 @@ export function StudioRightPanel({
     [layersPanePercent],
   );
 
-  const handleInspectorSplitResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = splitDragRef.current;
-    if (!drag || drag.height <= 0) return;
-    const deltaPercent = ((event.clientY - drag.startY) / drag.height) * 100;
-    const next = Math.min(
-      MAX_INSPECTOR_SPLIT_PERCENT,
-      Math.max(MIN_INSPECTOR_SPLIT_PERCENT, drag.startPercent + deltaPercent),
-    );
-    setLayersPanePercent(next);
-  }, []);
+  const handleInspectorSplitResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = splitDragRef.current;
+      if (!drag || drag.height <= 0) return;
+      const deltaPercent = ((event.clientY - drag.startY) / drag.height) * 100;
+      const next = Math.min(
+        MAX_INSPECTOR_SPLIT_PERCENT,
+        Math.max(MIN_INSPECTOR_SPLIT_PERCENT, drag.startPercent + deltaPercent),
+      );
+      setLayersPanePercent(next);
+    },
+    [setLayersPanePercent],
+  );
 
   const handleInspectorSplitResizeEnd = useCallback(() => {
     splitDragRef.current = null;
@@ -449,7 +461,7 @@ export function StudioRightPanel({
           e.preventDefault();
           // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
           const delta = e.key === "ArrowLeft" ? 16 : -16;
-          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+          setRightWidth(rightWidth + delta);
         }}
       >
         {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
@@ -465,7 +477,7 @@ export function StudioRightPanel({
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
                   <PanelTabButton

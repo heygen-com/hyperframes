@@ -49,6 +49,34 @@ describe("studio UI preferences", () => {
       timelineVisible: true,
     });
   });
+
+  it("reads persisted panel dimensions", () => {
+    const storage = createStorage();
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ leftPanelWidth: 312, rightPanelWidth: 448, inspectorSplitPercent: 55 }),
+    );
+
+    expect(readStudioUiPreferences(storage)).toEqual({
+      leftPanelWidth: 312,
+      rightPanelWidth: 448,
+      inspectorSplitPercent: 55,
+    });
+  });
+
+  it("ignores malformed panel dimensions", () => {
+    const storage = createStorage();
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({
+        leftPanelWidth: "wide",
+        rightPanelWidth: Number.NaN,
+        inspectorSplitPercent: null,
+      }),
+    );
+
+    expect(readStudioUiPreferences(storage)).toEqual({});
+  });
 });
 
 describe("timelineSnapEnabled preference", () => {
