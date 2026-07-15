@@ -10,8 +10,12 @@ const CANVAS_NUDGE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRi
 
 export const CANVAS_NUDGE_STEP_PX = 1;
 export const CANVAS_NUDGE_SHIFT_STEP_PX = 10;
-/** One undo entry per key burst: the commit fires after this idle gap. */
-export const CANVAS_NUDGE_COMMIT_DEBOUNCE_MS = 400;
+/** Backstop for a missing keyup, not the normal interaction boundary. */
+export const CANVAS_NUDGE_SAFETY_TIMEOUT_MS = 5_000;
+
+export function isCanvasNudgeKey(key: string): boolean {
+  return CANVAS_NUDGE_KEYS.has(key);
+}
 
 type CanvasNudgeKeyEvent = Pick<
   KeyboardEvent,
@@ -26,7 +30,7 @@ export function resolveCanvasNudgeDelta(
   event: CanvasNudgeKeyEvent,
 ): { dx: number; dy: number } | null {
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
-  if (!CANVAS_NUDGE_KEYS.has(event.key)) return null;
+  if (!isCanvasNudgeKey(event.key)) return null;
   const step = event.shiftKey ? CANVAS_NUDGE_SHIFT_STEP_PX : CANVAS_NUDGE_STEP_PX;
   return {
     dx: event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0,

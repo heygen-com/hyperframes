@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
-import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
+import { CANVAS_NUDGE_SAFETY_TIMEOUT_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
@@ -58,6 +58,33 @@ function dispatchArrowRight(): void {
   );
 }
 
+function releaseArrowRight(): void {
+  window.dispatchEvent(
+    new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true, cancelable: true }),
+  );
+}
+
+function mountSingleNudge(
+  onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"],
+): () => void {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const element = document.createElement("div");
+  element.id = "dot-a";
+  document.body.append(element);
+  act(() => {
+    root.render(
+      <Harness selection={makeSelection("Dot", element)} onPathOffsetCommit={onPathOffsetCommit} />,
+    );
+  });
+  return () => {
+    act(() => root.unmount());
+    host.remove();
+    element.remove();
+  };
+}
+
 describe("useDomEditNudge — selection cleanup keyed on stable identity", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,6 +93,87 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("commits one undo step when a held arrow key is released", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        for (let step = 0; step < 5; step += 1) dispatchArrowRight();
+        releaseArrowRight();
+      });
+
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit.mock.calls[0]?.[1]).toEqual({ x: 5 * CANVAS_NUDGE_STEP_PX, y: 0 });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("commits separate undo steps for separate key presses", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        dispatchArrowRight();
+        releaseArrowRight();
+      });
+      expect(commit).toHaveBeenCalledTimes(1);
+
+      act(() => vi.advanceTimersByTime(1_000));
+      act(() => {
+        dispatchArrowRight();
+        releaseArrowRight();
+      });
+
+      expect(commit).toHaveBeenCalledTimes(2);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("undoes a held-key burst to its pre-burst position", () => {
+    let position = 0;
+    const undoEntries: Array<{ before: number; after: number }> = [];
+    const commit = vi.fn((_selection: DomEditSelection, next: { x: number; y: number }) => {
+      undoEntries.push({ before: position, after: next.x });
+      position = next.x;
+    });
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        for (let step = 0; step < 5; step += 1) dispatchArrowRight();
+        releaseArrowRight();
+      });
+      expect(undoEntries).toEqual([{ before: 0, after: 5 }]);
+
+      const entry = undoEntries.pop();
+      if (!entry) throw new Error("Expected a nudge undo entry");
+      position = entry.before;
+      expect(position).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("uses the safety timeout only when keyup is missed", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => dispatchArrowRight());
+      act(() => vi.advanceTimersByTime(CANVAS_NUDGE_SAFETY_TIMEOUT_MS - 1));
+      expect(commit).not.toHaveBeenCalled();
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(commit).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+    }
   });
 
   it("keeps a nudge burst alive when the parent hands down a new selection object for the same element", () => {
@@ -108,9 +216,7 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     });
     expect(commit).not.toHaveBeenCalled();
 
-    act(() => {
-      vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
-    });
+    act(() => releaseArrowRight());
 
     // One combined commit for both presses, not two separate (premature) ones.
     expect(commit).toHaveBeenCalledTimes(1);

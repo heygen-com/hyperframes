@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
-import type { ResizingClipState } from "./useTimelineClipDrag";
+import type { DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 
@@ -41,7 +41,9 @@ function renderResizeHarness(
   document.body.append(scroll);
   const onResizeElement = vi.fn();
   const onResizeElements = vi.fn().mockResolvedValue(undefined);
+  const onMoveElement = vi.fn().mockResolvedValue(undefined);
   let setResizingClip: ((s: ResizingClipState | null) => void) | null = null;
+  let setDraggedClip: ((s: DraggedClipState | null) => void) | null = null;
 
   function Harness() {
     const hook = useTimelineClipDrag({
@@ -49,19 +51,23 @@ function renderResizeHarness(
       ppsRef: { current: 100 },
       durationRef: { current: 100 },
       trackOrderRef: { current: [0, 1] },
+      onMoveElement,
       onResizeElement,
       onResizeElements: options.wireGroupResize === false ? undefined : onResizeElements,
       setShowPopover: vi.fn(),
       setRangeSelectionRef: { current: vi.fn() },
     });
     setResizingClip = hook.setResizingClip;
+    setDraggedClip = hook.setDraggedClip;
     return null;
   }
 
   const root = mountReactHarness(<Harness />);
   const apply = setResizingClip!;
+  const applyDrag = setDraggedClip!;
 
   return {
+    onMoveElement,
     onResizeElement,
     onResizeElements,
     storeById(id: string) {
@@ -80,9 +86,31 @@ function renderResizeHarness(
         });
       });
     },
-    movePointer(clientX: number) {
+    startDrag(element: TimelineElement) {
       act(() => {
-        window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX, clientY: 0 }));
+        applyDrag({
+          element,
+          originClientX: 100,
+          originClientY: 98,
+          originScrollLeft: 0,
+          originScrollTop: 0,
+          pointerClientX: 100,
+          pointerClientY: 98,
+          pointerOffsetX: 0,
+          pointerOffsetY: 0,
+          previewStart: element.start,
+          previewTrack: element.track,
+          desiredTrack: element.track,
+          insertRow: null,
+          snapTime: null,
+          snapType: null,
+          started: false,
+        });
+      });
+    },
+    movePointer(clientX: number, clientY = 0) {
+      act(() => {
+        window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX, clientY }));
       });
     },
     async dropPointer() {
@@ -100,6 +128,28 @@ function renderResizeHarness(
     },
   };
 }
+
+describe("useTimelineClipDrag move transaction", () => {
+  it("records one undo entry for one pointer drag gesture", async () => {
+    const clip = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([clip], []);
+    const undoEntries: Array<{ before: number; after: number }> = [];
+    h.onMoveElement.mockImplementation(async (element, updates) => {
+      undoEntries.push({ before: element.start, after: updates.start });
+    });
+
+    h.startDrag(clip);
+    h.movePointer(120, 98);
+    h.movePointer(140, 98);
+    h.movePointer(160, 98);
+    await h.dropPointer();
+
+    expect(h.onMoveElement).toHaveBeenCalledTimes(1);
+    expect(undoEntries).toHaveLength(1);
+    expect(undoEntries[0]).toEqual({ before: 0, after: 0.6 });
+    h.unmount();
+  });
+});
 
 // Two clips a(0,2) + b(5,3) selected as a group, with a's END edge grabbed and
 // dragged +0.5s (50px @ 100pps). `bOver` customizes b (e.g. locking it).
