@@ -24,6 +24,7 @@ interface HarnessProps {
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  onSelectionNotFound: () => void;
 }
 
 afterEach(() => {
@@ -96,6 +97,7 @@ describe("useTimelineSelectionPreviewSync", () => {
       buildDomSelectionForTimelineElement,
       applyDomSelection,
       applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
     });
 
     expect(applyMarqueeSelection).toHaveBeenCalledWith([secondSelection, firstSelection], false);
@@ -120,9 +122,78 @@ describe("useTimelineSelectionPreviewSync", () => {
       }),
       applyDomSelection,
       applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
     });
 
     expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
+    expect(applyMarqueeSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
+  it("does not apply a stale selection after a rapid clip switch", async () => {
+    const { firstSelection, secondSelection, timelineElements, selectionById } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    let resolveFirstSelection: (selection: DomEditSelection | null) => void = () => undefined;
+    const firstSelectionResult = new Promise<DomEditSelection | null>((resolve) => {
+      resolveFirstSelection = resolve;
+    });
+    const buildDomSelectionForTimelineElement = vi.fn((element: TimelineElement) => {
+      if (element.id === "clip-1") return firstSelectionResult;
+      return Promise.resolve(selectionById.get(element.id) ?? null);
+    });
+    const harness = renderHarness();
+    const baseProps = {
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    };
+
+    await harness.rerender({
+      ...baseProps,
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+    });
+    await harness.rerender({
+      ...baseProps,
+      selectedElementId: "clip-2",
+      selectedElementIds: new Set(["clip-2"]),
+    });
+    await act(async () => {
+      resolveFirstSelection(firstSelection);
+      await firstSelectionResult;
+    });
+
+    expect(applyDomSelection).toHaveBeenCalledTimes(1);
+    expect(applyDomSelection).toHaveBeenCalledWith(secondSelection, { revealPanel: false });
+    harness.cleanup();
+  });
+
+  it("reports when a selected timeline element has no live preview node", async () => {
+    const { timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement: vi.fn(async () => null),
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(applyDomSelection).not.toHaveBeenCalled();
     expect(applyMarqueeSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });

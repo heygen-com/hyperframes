@@ -18,6 +18,7 @@ interface UseTimelineSelectionPreviewSyncParams {
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  onSelectionNotFound: () => void;
 }
 
 function orderSelectedIds(ids: Set<string>, anchor: string | null): string[] {
@@ -56,6 +57,7 @@ export function useTimelineSelectionPreviewSync({
   buildDomSelectionForTimelineElement,
   applyDomSelection,
   applyMarqueeSelection,
+  onSelectionNotFound,
 }: UseTimelineSelectionPreviewSyncParams): void {
   const selectedIds = useMemo(
     () => orderSelectedIds(selectedElementIds, selectedElementId),
@@ -99,9 +101,10 @@ export function useTimelineSelectionPreviewSync({
       if (cancelled) return;
       // The store is the source of truth: applying a partial set would write that
       // shrunk set back and silently drop the members whose DOM node was not ready.
-      // Bail instead; a later effect run (on timelineElements/DOM change) applies the
-      // full set once every resolvable member has a live node.
-      if (selections.length < resolvableCount) return;
+      if (selections.length < resolvableCount) {
+        onSelectionNotFound();
+        return;
+      }
       if (selections.length === 0) {
         applyDomSelection(null, { revealPanel: false });
       } else if (selections.length === 1) {
@@ -122,6 +125,7 @@ export function useTimelineSelectionPreviewSync({
     buildDomSelectionForTimelineElement,
     domEditGroupSelections,
     domEditSelection,
+    onSelectionNotFound,
     selectedElementId,
     selectedIds,
     selectedKey,

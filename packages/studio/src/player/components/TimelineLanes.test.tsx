@@ -49,7 +49,6 @@ function renderLanes({
   const setSelectedElementId = vi.fn((id: string | null) => {
     usePlayerStore.getState().setSelectedElementId(id);
   });
-  const onSelectElement = vi.fn();
   const trackStyle = getTrackStyle("div");
 
   act(() => {
@@ -83,7 +82,6 @@ function renderLanes({
         getTrackStyle={getTrackStyle}
         selectedKeyframes={new Set()}
         currentTime={0}
-        onSelectElement={onSelectElement}
         onToggleTrackHidden={undefined}
         onResizeElement={undefined}
         onMoveElement={undefined}
@@ -93,7 +91,7 @@ function renderLanes({
     );
   });
 
-  return { host, root, setSelectedElementId, onSelectElement };
+  return { host, root, setSelectedElementId };
 }
 
 function clickClip(host: HTMLElement, id: string): void {
@@ -105,7 +103,7 @@ function clickClip(host: HTMLElement, id: string): void {
 }
 
 describe("TimelineLanes selection", () => {
-  it("keeps an already-selected clip selected on a plain click", () => {
+  it("writes a plain clip click to store selection only", () => {
     usePlayerStore.getState().setSelectedElementId(firstClip.id);
     const harness = renderLanes({ selectedElementId: firstClip.id });
 
@@ -113,12 +111,11 @@ describe("TimelineLanes selection", () => {
 
     expect(harness.setSelectedElementId).toHaveBeenCalledWith(firstClip.id);
     expect(harness.setSelectedElementId).not.toHaveBeenCalledWith(null);
-    expect(harness.onSelectElement).toHaveBeenCalledWith(firstClip);
     expect(usePlayerStore.getState().selectedElementId).toBe(firstClip.id);
     act(() => harness.root.unmount());
   });
 
-  it("narrows a marquee selection to the clicked clip", () => {
+  it("narrows a marquee selection in the store to the clicked clip", () => {
     usePlayerStore.getState().setSelection([firstClip.id, secondClip.id], firstClip.id);
     const harness = renderLanes({
       elements: [firstClip, secondClip],
@@ -129,7 +126,6 @@ describe("TimelineLanes selection", () => {
     clickClip(harness.host, secondClip.id);
 
     expect(harness.setSelectedElementId).toHaveBeenCalledWith(secondClip.id);
-    expect(harness.onSelectElement).toHaveBeenCalledWith(secondClip);
     expect([...usePlayerStore.getState().selectedElementIds]).toEqual([secondClip.id]);
     act(() => harness.root.unmount());
   });

@@ -53,7 +53,6 @@ export interface TimelineLaneBaseProps {
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDrillDown?: (element: TimelineElement) => void;
-  onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
   setRangeSelection: (v: null) => void;
@@ -114,7 +113,6 @@ export function TimelineLanes({
   renderClipContent,
   renderClipOverlay,
   onDrillDown,
-  onSelectElement,
   setHoveredClip,
   setShowPopover,
   setRangeSelection,
@@ -415,9 +413,7 @@ export function TimelineLanes({
                             // Plain click always selects this clip and drops any marquee
                             // multi-selection, narrowing it to the clicked clip.
                             usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement = el;
                             setSelectedElementId(elementKey);
-                            onSelectElement?.(nextElement);
                           }
                         }
                         onDoubleClick={(e) => {
