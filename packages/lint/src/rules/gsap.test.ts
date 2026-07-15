@@ -1393,6 +1393,49 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("errors when CSS-hidden content has a fromTo reveal without a destination opacity", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card" style="opacity: 0">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5, immediateRender: false }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#card");
+  });
+
+  it("errors when standalone gsap.set hides a fromTo target with no destination opacity", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="card">Visible after entrance</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    gsap.set("#card", { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#card", { opacity: 1, x: -60 }, { x: 0, duration: 0.5 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_cold_seek_hidden_fromto_missing_reveal",
+    );
+    expect(finding).toBeDefined();
+  });
+
   it("does NOT error when gsap.to() uses opacity:0 (exit animation)", async () => {
     const html = `
 <html><body>
