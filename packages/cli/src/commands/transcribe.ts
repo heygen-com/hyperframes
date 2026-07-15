@@ -19,7 +19,7 @@ export const examples: Example[] = [
     "hyperframes transcribe transcript.json --to vtt --preserve-cues",
   ],
 ];
-import { resolve, join, extname, dirname } from "node:path";
+import { resolve, join, extname, dirname, basename } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
@@ -203,14 +203,24 @@ function exitNoWords(json: boolean): never {
   failWith("No words found in transcript.", json);
 }
 
+function transcriptPathForInput(inputPath: string, dir: string): string {
+  const stem = basename(inputPath, extname(inputPath));
+  return join(dir, `${stem}.transcript.json`);
+}
+
+function writeLegacyTranscriptAlias(dir: string, words: unknown): void {
+  writeFileSync(join(dir, "transcript.json"), JSON.stringify(words, null, 2));
+}
+
 async function importTranscript(inputPath: string, dir: string, json: boolean): Promise<void> {
   const { loadTranscript, patchCaptionHtml } = await import("../whisper/normalize.js");
   const { words, format } = loadTranscript(inputPath);
 
   if (words.length === 0) exitNoWords(json);
 
-  const outPath = join(dir, "transcript.json");
+  const outPath = transcriptPathForInput(inputPath, dir);
   writeFileSync(outPath, JSON.stringify(words, null, 2));
+  writeLegacyTranscriptAlias(dir, words);
   patchCaptionHtml(dir, words);
 
   if (json) {
@@ -219,7 +229,7 @@ async function importTranscript(inputPath: string, dir: string, json: boolean): 
     );
   } else {
     console.log(
-      `${c.success("◇")}  Imported ${c.accent(String(words.length))} words from ${c.accent(format)} format → ${c.accent("transcript.json")}`,
+      `${c.success("◇")}  Imported ${c.accent(String(words.length))} words from ${c.accent(format)} format → ${c.accent(basename(outPath))}`,
     );
   }
 }
@@ -300,16 +310,19 @@ async function transcribeAudio(
   const label = useParakeet ? "Parakeet" : model;
   const spin = opts.json ? null : clack.spinner();
   spin?.start(`Transcribing with ${c.accent(label)}...`);
+  const transcriptPath = transcriptPathForInput(inputPath, dir);
 
   try {
     const result = useParakeet
       ? transcribeWithParakeet(inputPath, dir, {
           language: opts.language,
+          transcriptPath,
           onProgress: spin ? (msg) => spin.message(msg) : undefined,
         })
       : await transcribe(inputPath, dir, {
           model,
           language: opts.language,
+          transcriptPath,
           onProgress: spin ? (msg) => spin.message(msg) : undefined,
           timeoutMs: opts.timeoutMs,
         });
@@ -328,6 +341,7 @@ async function transcribeAudio(
     }
 
     writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
+    writeLegacyTranscriptAlias(dir, words);
     patchCaptionHtml(dir, words);
 
     if (opts.json) {
