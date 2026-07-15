@@ -35,7 +35,7 @@ After init, let `<PROJECT_ROOT>` be `videos/<project>` and run every subsequent 
 
 **Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Resolve `<MEDIA_DIR>` as the installed `/media-use` skill directory. Then record each preference-backed answer with `node <MEDIA_DIR>/scripts/prefs.mjs record --hyperframes .` (`brief-format.md` names the subset). If the intent layer adopted a recipe, run `node <MEDIA_DIR>/scripts/recipe.mjs use --hyperframes . --name <name>`; it copies its `frame.md` into the project (Step 2 is then skipped) and returns the skeletons Step 3 drafts from. A recipe fills answers, not approvals; the review gates still run.
 
-**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and relay its output verbatim. It reports whether voice/BGM will use HeyGen or local engines and, when signed out, how to sign in. Apply one branch:
+**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and relay its output verbatim. It reports whether voice/BGM will use HeyGen or local engines and, when signed out, how to sign in. Note the exit code contract: `auth status` **exits 1 when not signed in** (and when the stored credential is rejected) — that non-zero exit is the normal signed-out state, not a command failure, so don't treat it as an error, don't retry it, and don't chain it with `&&`/`set -e` in a way that would abort the workflow. Apply one branch:
 
 - **Collaborative:** wait for the user to sign in or explicitly choose `offline` / `go`.
 - **Autonomous:** state the status and continue through the available local engines.
@@ -104,11 +104,13 @@ Start audio after Step 3 approval. Run it in the background, then continue to St
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --provider <provider> --voice <voice-id> &`
 
-The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field. This uses the HeyGen Audio API for retrieval, not generation, and uses the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`.
+The audio script handles narration, word timings, BGM lookup from HeyGen's music library, and timing metadata. BGM mood comes from the storyboard's `music:` field; **`music: none` turns BGM off**. This uses the HeyGen Audio API for retrieval, not generation, and uses the same `~/.heygen` credential as TTS. For provider details, read `../media-use/audio/references/tts.md`.
 
 If there is no narration and no `SCRIPT.md`, skip voice generation. BGM may still run if the storyboard has a music mood.
 
-**Gate:** audio job has started, or the project is marked silent.
+**The canonical fully-silent marker:** `music: none` in the STORYBOARD.md top YAML block **and** no `SCRIPT.md`. That combination marks the project silent — no narration, no BGM, no SFX. `audio.mjs` recognizes it and generates nothing (it removes any stale `audio_meta.json`; an absent `audio_meta.json` is what assemble treats as silent), so Step 3.1 is a clean skip. Use it when the user asks for a silent / music-free video — don't improvise other spellings.
+
+**Gate:** audio job has started, or the project is marked silent (`music: none` + no `SCRIPT.md`).
 
 ---
 
