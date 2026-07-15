@@ -57,16 +57,22 @@ describe("resolveThumbnailSeekTime", () => {
 
 describe("syncIframePlayback", () => {
   it("mutes a composition-card preview before playing it", () => {
+    const calls: string[] = [];
+    const postMessage = vi.fn(() => calls.push("mute"));
     const player = {
-      muted: false,
-      play: vi.fn(),
+      play: vi.fn(() => calls.push("play")),
     };
     const iframe = {
-      contentWindow: { __player: player },
+      contentWindow: { __player: player, postMessage },
+      getRootNode: () => ({}),
     } as unknown as HTMLIFrameElement;
 
     expect(syncIframePlayback(iframe, true)).toBe(true);
-    expect(player.muted).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "set-muted", muted: true }),
+      "*",
+    );
+    expect(calls).toEqual(["mute", "play"]);
     expect(player.play).toHaveBeenCalledOnce();
   });
 });

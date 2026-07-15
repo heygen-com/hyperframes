@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -18,7 +19,6 @@ const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
   __player?: {
-    muted?: boolean;
     play?: () => void;
     pause?: () => void;
     seek?: (time: number) => void;
@@ -94,7 +94,7 @@ export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay:
     if (!player) return false;
 
     if (shouldPlay) {
-      player.muted = true;
+      setPreviewMediaMuted(iframe, true);
       player.play?.();
       return true;
     }
