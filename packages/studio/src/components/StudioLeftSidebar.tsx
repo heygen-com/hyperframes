@@ -170,8 +170,7 @@ export function StudioLeftSidebar({
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
           e.preventDefault();
           const delta = e.key === "ArrowLeft" ? -16 : 16;
-          const maxLeft = Math.floor(window.innerWidth * 0.5);
-          setLeftWidth(Math.max(160, Math.min(maxLeft, leftWidth + delta)));
+          setLeftWidth(leftWidth + delta);
         }}
       >
         {/* Expanded hit zone: 8px wide, centered on the 3px seam */}

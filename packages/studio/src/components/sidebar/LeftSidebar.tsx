@@ -99,6 +99,7 @@ export const LeftSidebar = memo(
   ) {
     const [tab, setTab] = useState<SidebarTab>(getPersistedTab);
     const tabRef = useRef(tab);
+    const hasFiles = (fileProp?.length ?? 0) > 0;
     tabRef.current = tab;
 
     const selectTab = useCallback((t: SidebarTab) => {
@@ -236,9 +237,16 @@ export const LeftSidebar = memo(
               />
             )}
             {tab === "code" && (
-              <div className="flex flex-1 min-h-0">
-                {(fileProp?.length ?? 0) > 0 && (
-                  <div className="w-[160px] flex-shrink-0 border-r border-neutral-800 overflow-y-auto">
+              <div
+                className="grid min-h-0 flex-1"
+                style={{
+                  gridTemplateColumns: hasFiles
+                    ? "minmax(80px, 160px) minmax(80px, 1fr)"
+                    : "minmax(80px, 1fr)",
+                }}
+              >
+                {hasFiles && (
+                  <div className="overflow-y-auto border-r border-neutral-800">
                     <FileTree
                       files={fileProp ?? []}
                       activeFile={editingFile?.path ?? null}
@@ -254,7 +262,7 @@ export const LeftSidebar = memo(
                     />
                   </div>
                 )}
-                <div className="flex-1 overflow-hidden min-w-0">
+                <div className="min-w-0 overflow-hidden">
                   {codeChildren ?? (
                     <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
                       Select a file to edit
