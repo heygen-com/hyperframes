@@ -106,10 +106,52 @@ export interface AcquiredBrowser {
   captureMode: CaptureMode;
 }
 
+function compareBrowserVersionsDescending(left: string, right: string): number {
+  const parse = (value: string): number[] => {
+    const version = value.slice(value.indexOf("-") + 1);
+    const segments: number[] = [];
+    for (const segment of version.split(".")) {
+      const parsed = Number.parseInt(segment, 10);
+      if (!Number.isFinite(parsed)) break;
+      segments.push(parsed);
+    }
+    return segments;
+  };
+  const leftSegments = parse(left);
+  const rightSegments = parse(right);
+  const length = Math.max(leftSegments.length, rightSegments.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightSegments[index] ?? 0) - (leftSegments[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function findCachedHeadlessShell(baseDir: string): string | undefined {
+  if (!existsSync(baseDir)) return undefined;
+  try {
+    const versions = readdirSync(baseDir).sort(compareBrowserVersionsDescending);
+    for (const version of versions) {
+      const candidates = [
+        join(baseDir, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+        join(baseDir, version, "chrome-headless-shell-mac-arm64", "chrome-headless-shell"),
+        join(baseDir, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
+        join(baseDir, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
+      ];
+      for (const binary of candidates) {
+        if (existsSync(binary)) return binary;
+      }
+    }
+  } catch {
+    // Ignore unreadable cache directories and continue browser discovery.
+  }
+  return undefined;
+}
+
 /**
  * Resolve chrome-headless-shell binary for deterministic BeginFrame rendering.
  * Checks config.chromePath, then PRODUCER_HEADLESS_SHELL_PATH env var,
- * then scans Puppeteer's managed cache at ~/.cache/puppeteer/chrome-headless-shell/.
+ * then the CLI browser override, HyperFrames' managed cache, and Puppeteer's cache.
  */
 export function resolveHeadlessShellPath(
   config?: Partial<Pick<EngineConfig, "chromePath">>,
@@ -127,25 +169,22 @@ export function resolveHeadlessShellPath(
     }
     return envPath;
   }
-  const baseDir = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
-  if (!existsSync(baseDir)) return undefined;
-  try {
-    const versions = readdirSync(baseDir).sort().reverse(); // newest first
-    for (const version of versions) {
-      const candidates = [
-        join(baseDir, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-mac-arm64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
-      ];
-      for (const binary of candidates) {
-        if (existsSync(binary)) return binary;
-      }
+  if (process.env.HYPERFRAMES_BROWSER_PATH) {
+    const envPath = process.env.HYPERFRAMES_BROWSER_PATH;
+    if (!existsSync(envPath)) {
+      throw new Error(
+        `[BrowserManager] Chrome binary not found at HYPERFRAMES_BROWSER_PATH="${envPath}". ` +
+          "Run `hyperframes browser ensure` to re-download.",
+      );
     }
-  } catch {
-    // ignore
+    return envPath;
   }
-  return undefined;
+  const home = homedir();
+  return (
+    findCachedHeadlessShell(
+      join(home, ".cache", "hyperframes", "chrome", "chrome-headless-shell"),
+    ) ?? findCachedHeadlessShell(join(home, ".cache", "puppeteer", "chrome-headless-shell"))
+  );
 }
 
 let pooledBrowser: Browser | null = null;

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { Browser, PuppeteerNode } from "puppeteer-core";
 
@@ -222,10 +226,13 @@ describe("resolveBrowserGpuMode", () => {
 
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
+  const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
 
   afterEach(() => {
     if (originalHeadlessShellPath === undefined) delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
     else process.env.PRODUCER_HEADLESS_SHELL_PATH = originalHeadlessShellPath;
+    if (originalHyperframesBrowserPath === undefined) delete process.env.HYPERFRAMES_BROWSER_PATH;
+    else process.env.HYPERFRAMES_BROWSER_PATH = originalHyperframesBrowserPath;
   });
 
   it("throws a clear error when PRODUCER_HEADLESS_SHELL_PATH points at a missing binary", () => {
@@ -234,6 +241,58 @@ describe("resolveHeadlessShellPath", () => {
     expect(() => resolveHeadlessShellPath({})).toThrow(
       /Chrome binary not found at PRODUCER_HEADLESS_SHELL_PATH/,
     );
+  });
+
+  it("uses HYPERFRAMES_BROWSER_PATH when the CLI resolved a browser explicitly", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-env-"));
+    try {
+      const binary = join(dir, "chrome-headless-shell");
+      writeFileSync(binary, "");
+      delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+      process.env.HYPERFRAMES_BROWSER_PATH = binary;
+
+      expect(resolveHeadlessShellPath({})).toBe(binary);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses chrome-headless-shell from the HyperFrames-managed cache", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-cache-"));
+    try {
+      const binary = join(
+        home,
+        ".cache",
+        "hyperframes",
+        "chrome",
+        "chrome-headless-shell",
+        "linux-152.0.7928.2",
+        "chrome-headless-shell-linux64",
+        "chrome-headless-shell",
+      );
+      mkdirSync(join(binary, ".."), { recursive: true });
+      writeFileSync(binary, "");
+      const olderBinary = binary.replace("linux-152.0.7928.2", "linux-99.0.1.1");
+      mkdirSync(join(olderBinary, ".."), { recursive: true });
+      writeFileSync(olderBinary, "");
+
+      const env = { ...process.env, HOME: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+      const stdout = execFileSync(
+        "bun",
+        [
+          "--eval",
+          `import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+        ],
+        { encoding: "utf8", env },
+      );
+
+      expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 
