@@ -36,6 +36,11 @@ import {
  * threshold and well below any frame interval at 24/30/60fps.
  */
 const AUDIO_DURATION_TOLERANCE_SECONDS = 0.001;
+const AAC_SAMPLES_PER_PACKET = 1024;
+
+export function durationSecondsFromAacPacketCount(packetCount: number, sampleRate: number): number {
+  return (packetCount * AAC_SAMPLES_PER_PACKET) / sampleRate;
+}
 
 export interface ProbeVideoFrameInfo {
   /** Number of video frames in the stream. */
@@ -418,8 +423,27 @@ function parseFrameRate(rate: string): { fpsNum: number; fpsDen: number } {
 async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo> {
   // extractAudioMetadata is the shared ffprobe wrapper (caches results).
   const metadata: AudioMetadata = await extractAudioMetadata(audioPath);
+  let durationSeconds = metadata.durationSeconds;
+  if (metadata.audioCodec === "aac" && metadata.sampleRate > 0) {
+    const packetInfo = await runFfprobeJson<FfprobeOutput>([
+      "-v",
+      "error",
+      "-select_streams",
+      "a:0",
+      "-count_packets",
+      "-show_entries",
+      "stream=nb_read_packets",
+      "-of",
+      "json",
+      audioPath,
+    ]);
+    const packetCount = Number(packetInfo.streams?.[0]?.nb_read_packets);
+    if (Number.isFinite(packetCount) && packetCount > 0) {
+      durationSeconds = durationSecondsFromAacPacketCount(packetCount, metadata.sampleRate);
+    }
+  }
   return {
-    durationSeconds: metadata.durationSeconds,
+    durationSeconds,
     sampleRate: metadata.sampleRate,
     channels: metadata.channels,
     audioCodec: metadata.audioCodec,
