@@ -419,6 +419,7 @@ export function StudioRightPanel({
         recordingDuration={recordingDuration}
         onToggleRecording={onToggleRecording}
         vstHost={vstHost.api}
+        domEditSaveTimestampRef={domEditSaveTimestampRef}
       />
     </DesignPanelPromoteProvider>
   );

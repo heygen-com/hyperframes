@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { Zap } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import { Section } from "./propertyPanelPrimitives";
@@ -96,11 +96,16 @@ export function VstSection({
   element,
   onSetAttribute,
   vstHost,
+  domEditSaveTimestampRef,
 }: {
   projectId: string;
   element: DomEditSelection;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   vstHost: VstHostApi | null;
+  /** Stamped after every chain-file write so the studio's file-watcher
+   *  treats it as our own save and skips reloading the preview — every
+   *  other save path in the app does this; the poller below must too. */
+  domEditSaveTimestampRef?: MutableRefObject<number>;
 }) {
   const trackId = vstElementId(element);
   const chainPath = element.dataAttributes["vst-chain"] || null;
@@ -147,6 +152,7 @@ export function VstSection({
   useEffect(() => {
     if (!editorOpen || !chainPath || !vstHost) return;
 
+    // fallow-ignore-next-line complexity
     const persistIfChanged = async (): Promise<void> => {
       if (busyRef.current || persistingRef.current) return;
       const current = chainRef.current;
@@ -169,7 +175,10 @@ export function VstSection({
           plugins: current.plugins.map((plugin, i) => ({ ...plugin, stateB64: states[i] })),
         };
         const ok = await writeChainFile(projectId, chainPath, nextChain);
-        if (ok) chainRef.current = nextChain;
+        if (ok) {
+          chainRef.current = nextChain;
+          if (domEditSaveTimestampRef) domEditSaveTimestampRef.current = Date.now();
+        }
       } finally {
         persistingRef.current = false;
       }
@@ -188,7 +197,7 @@ export function VstSection({
       // already be in flight — acceptable for a best-effort save.
       void persistIfChanged();
     };
-  }, [editorOpen, chainPath, projectId, trackId, vstHost]);
+  }, [editorOpen, chainPath, projectId, trackId, vstHost, domEditSaveTimestampRef]);
 
   if (!vstHost) {
     return (
@@ -227,6 +236,7 @@ export function VstSection({
       const path = chainFilePath(element);
       const ok = await writeChainFile(projectId, path, newChain);
       if (!ok) return;
+      if (domEditSaveTimestampRef) domEditSaveTimestampRef.current = Date.now();
       setChain(newChain);
       await onSetAttribute("vst-chain", path);
     } finally {
@@ -242,6 +252,7 @@ export function VstSection({
       const nextChain: ChainFileJson = { version: 1, plugins: nextPlugins };
       const ok = await writeChainFile(projectId, chainPath, nextChain);
       if (!ok) return;
+      if (domEditSaveTimestampRef) domEditSaveTimestampRef.current = Date.now();
       setChain(nextChain);
       if (nextPlugins.length === 0) {
         // The commit path (`handleDomAttributeCommit`) types `value` as `string`,

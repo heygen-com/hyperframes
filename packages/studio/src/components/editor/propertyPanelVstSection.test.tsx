@@ -327,6 +327,61 @@ describe("VstSection — native-editor state persistence", () => {
     act(() => root.unmount());
   });
 
+  it("stamps domEditSaveTimestampRef after a poll-triggered PUT (suppresses the studio's own file-change reload)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/fx%2Fvo-1.vstchain.json")) {
+        if (init?.method === "PUT") return jsonResponse({ ok: true });
+        return jsonResponse({ content: serializeChainFile(existingChain) });
+      }
+      throw new Error(`Unexpected fetch: ${url} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const getState = vi.fn(async () => ["NEW_STATE_B64"]);
+    const vstHost = makeVstHost({ getState });
+    const domEditSaveTimestampRef = { current: 0 };
+
+    const { host, root } = await act(async () => {
+      const rendered = renderInto(
+        <VstSection
+          projectId="p1"
+          element={makeAudioElement({ dataAttributes: { "vst-chain": "fx/vo-1.vstchain.json" } })}
+          onSetAttribute={vi.fn()}
+          vstHost={vstHost}
+          domEditSaveTimestampRef={domEditSaveTimestampRef}
+        />,
+      );
+      await flushAsyncWork();
+      return rendered;
+    });
+
+    const openButton = host.querySelector<HTMLButtonElement>('[data-vst-open-editor="true"]');
+    await act(async () => {
+      openButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsyncWork();
+    });
+
+    expect(domEditSaveTimestampRef.current).toBe(0);
+
+    const beforePoll = Date.now();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+      await flushAsyncWork();
+    });
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(putCall).toBeDefined();
+    // The ref must be stamped to "now" (not left at its initial 0) exactly
+    // when a real write happens, so the studio's file-watcher (which reloads
+    // the preview iframe unless Date.now() - domEditSaveTimestampRef.current
+    // < 4000) treats this as our own save and skips reloading.
+    expect(domEditSaveTimestampRef.current).toBeGreaterThanOrEqual(beforePoll);
+
+    act(() => root.unmount());
+  });
+
   it("does not PUT when getState reports no change", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     const fetchMock = stubReadOnly();

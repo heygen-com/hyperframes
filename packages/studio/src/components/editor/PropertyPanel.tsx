@@ -113,6 +113,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     recordingDuration,
     onToggleRecording,
     vstHost = null,
+    domEditSaveTimestampRef,
   } = props;
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
@@ -393,6 +394,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             element={element}
             onSetAttribute={onSetAttribute}
             vstHost={vstHost}
+            domEditSaveTimestampRef={domEditSaveTimestampRef}
           />
         )}
 

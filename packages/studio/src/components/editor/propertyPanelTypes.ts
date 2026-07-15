@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -125,4 +125,8 @@ export interface PropertyPanelProps {
   onToggleRecording?: () => void;
   /** Task 12's `useVstHost` supplies the real client; `null`/omitted renders the install hint. */
   vstHost?: VstHostApi | null;
+  /** Shared timestamp ref — written by any studio save (code tab, timeline,
+   *  DOM edits, VST chain persistence). Used to suppress file-change echoes
+   *  so the preview doesn't reload after our own saves. */
+  domEditSaveTimestampRef?: MutableRefObject<number>;
 }
