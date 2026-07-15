@@ -1,7 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+async function waitFor(predicate: () => boolean, timeoutMs: number, intervalMs = 20) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
 
 // The mix filter graph is written to a temp file and passed via
 // a file-valued filter option (not inlined via -filter_complex) so the command
@@ -532,6 +548,8 @@ describe("processCompositionAudio VST chain application", () => {
 
   afterEach(() => {
     delete process.env.HF_VST_HOST_CMD;
+    delete process.env.HF_TEST_PIDFILE;
+    delete process.env.HF_TEST_SENTINEL;
     runFfmpegMock.mockClear();
     capturedFilterScripts.length = 0;
     for (const dir of tempDirs.splice(0)) {
@@ -660,6 +678,122 @@ echo processed > "$out"
         2,
       ),
     ).rejects.toThrow('VST chain file not found for track "music"');
+  });
+
+  it("kills a sibling's still-running VST sidecar when another track's chain hard-fails", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    // Separate from workDir on purpose: workDir is deleted by
+    // processCompositionAudio's `finally` block the moment the call rejects,
+    // so a sentinel/pid file written there would disappear regardless of
+    // whether the sidecar was actually killed — that would make this test
+    // pass even without the fix. Writing to an independent control dir keeps
+    // the assertions about the sidecar's own lifecycle.
+    const controlDir = mkdtempSync(join(tmpdir(), "hf-audio-control-"));
+    tempDirs.push(baseDir, workDir, controlDir);
+
+    writeFileSync(join(baseDir, "music-slow.wav"), "stub");
+    writeFileSync(join(baseDir, "music-fail.wav"), "stub");
+    writeFileSync(join(baseDir, "chain-slow.json"), "{}");
+    writeFileSync(join(baseDir, "chain-fail.json"), "{}");
+
+    const pidFile = join(controlDir, "slow.pid");
+    const sentinelFile = join(controlDir, "slow.done");
+    process.env.HF_TEST_PIDFILE = pidFile;
+    process.env.HF_TEST_SENTINEL = sentinelFile;
+    // Branches on the `--chain` filename: the "fail" track exits 3 (missing
+    // plugin) immediately; the "slow" track records its own pid, sleeps
+    // (simulating a slow bounce/convolution reverb), then — only if it ran to
+    // completion uninterrupted — writes a sentinel and its output.
+    process.env.HF_VST_HOST_CMD = makeFakeSidecar(
+      workDir,
+      `
+chain=""
+out=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--chain" ]; then chain="$a"; fi
+  if [ "$prev" = "--output" ]; then out="$a"; fi
+  prev="$a"
+done
+case "$chain" in
+  *fail*)
+    echo "PLUGIN_MISSING FabFilter Pro-Q 3" >&2
+    exit 3
+    ;;
+  *)
+    echo $$ > "$HF_TEST_PIDFILE"
+    sleep 1.2
+    echo done > "$HF_TEST_SENTINEL"
+    echo processed > "$out"
+    ;;
+esac
+`,
+    );
+
+    const startedAt = Date.now();
+    await expect(
+      processCompositionAudio(
+        [
+          {
+            id: "musicSlow",
+            src: "music-slow.wav",
+            start: 0,
+            end: 1,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            vstChain: "chain-slow.json",
+            type: "audio",
+          },
+          {
+            id: "musicFail",
+            src: "music-fail.wav",
+            start: 0,
+            end: 1,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            vstChain: "chain-fail.json",
+            type: "audio",
+          },
+        ],
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        1,
+      ),
+    ).rejects.toThrow(/plugin "FabFilter Pro-Q 3" is not installed/);
+
+    // Rejects promptly on the failing sibling — it must not wait out the
+    // slow sibling's full sleep.
+    expect(Date.now() - startedAt).toBeLessThan(1000);
+
+    // The slow sidecar had actually started (recorded its own pid) before
+    // the rejection tore things down.
+    await waitFor(() => existsSync(pidFile), 500);
+    const pid = Number(readFileSync(pidFile, "utf8").trim());
+    expect(Number.isFinite(pid)).toBe(true);
+
+    // The fix under test: once the sibling's VstChainProcessingError rejects
+    // processCompositionAudio, the still-running slow sidecar must actually
+    // be terminated, not left running unmanaged.
+    await waitFor(() => {
+      try {
+        process.kill(pid, 0);
+        return false; // still alive
+      } catch {
+        return true; // ESRCH — process is gone
+      }
+    }, 1500);
+    expect(() => process.kill(pid, 0)).toThrow();
+
+    // Let the sidecar's full sleep duration elapse; the sentinel — written
+    // only on an uninterrupted run — must never appear, proving the process
+    // was killed rather than merely racing the assertions above.
+    const remaining = 1500 - (Date.now() - startedAt);
+    if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
+    expect(existsSync(sentinelFile)).toBe(false);
   });
 });
 

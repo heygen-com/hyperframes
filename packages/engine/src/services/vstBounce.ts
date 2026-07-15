@@ -9,6 +9,11 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { trackChildProcess } from "../utils/processTracker.js";
+
+export interface ApplyVstChainOptions {
+  signal?: AbortSignal;
+}
 
 // Plugin scanning + audio bounce through a DAW-grade chain can be slow,
 // especially on first run (plugin validation) or with convolution reverbs.
@@ -48,12 +53,18 @@ export function resolveVstHostCommand(): string[] {
  * fails. A missing plugin (sidecar exit code 3 with `PLUGIN_MISSING <name>`
  * on stderr) is reported with the specific plugin name and track id so the
  * failure is actionable rather than a silent swap to dry audio.
+ *
+ * `options.signal`, when provided, kills the sidecar (SIGTERM) if aborted —
+ * e.g. by `processCompositionAudio` when a sibling track's VST chain fails
+ * and the whole render is about to be torn down, so this sidecar isn't left
+ * running against a `workDir` that's about to be deleted.
  */
 export function applyVstChainToWav(
   wavPath: string,
   chainAbsPath: string,
   workDir: string,
   trackId: string,
+  options?: ApplyVstChainOptions,
 ): Promise<string> {
   const outputPath = join(workDir, `${basename(wavPath, ".wav")}_vst.wav`);
   const commandParts = resolveVstHostCommand();
@@ -75,12 +86,26 @@ export function applyVstChainToWav(
     outputPath,
   ];
 
+  const signal = options?.signal;
+
   return new Promise<string>((resolvePromise, reject) => {
     const child = spawn(cmd, args);
+    trackChildProcess(child);
     let stderr = "";
     child.stderr.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
+
+    const onAbort = () => {
+      child.kill("SIGTERM");
+    };
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
 
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
@@ -89,11 +114,17 @@ export function applyVstChainToWav(
 
     child.on("error", (err) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       reject(new Error(`VST sidecar could not be started for track "${trackId}": ${err.message}`));
     });
 
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        reject(new Error(`VST render cancelled for track "${trackId}"`));
+        return;
+      }
       if (code === 0) {
         resolvePromise(outputPath);
         return;
