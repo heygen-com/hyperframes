@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useCaptionStore } from "../captions/store";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
 import { useCaptionSync } from "../captions/hooks/useCaptionSync";
@@ -25,6 +25,13 @@ export function useCaptionDetection({
   captionSync,
   setRightCollapsed,
 }: UseCaptionDetectionParams) {
+  const autoActivationDismissedRef = useRef(false);
+  const exitCaptionMode = useCallback(() => {
+    autoActivationDismissedRef.current = true;
+    useCaptionStore.getState().setEditMode(false);
+    setRightCollapsed(false);
+  }, [setRightCollapsed]);
+
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!projectId) return;
@@ -32,7 +39,11 @@ export function useCaptionDetection({
     let activating = false;
 
     const tryActivateCaptions = () => {
-      if (useCaptionStore.getState().isEditMode || activating) {
+      if (
+        autoActivationDismissedRef.current ||
+        useCaptionStore.getState().isEditMode ||
+        activating
+      ) {
         return;
       }
 
@@ -90,7 +101,15 @@ export function useCaptionDetection({
       fetch(`/api/projects/${projectId}/files/${encodeURIComponent(srcPath)}`)
         .then((r) => r.json())
         .then((data: { content?: string }) => {
-          if (!data.content || !doc || !win || useCaptionStore.getState().isEditMode) return;
+          if (
+            autoActivationDismissedRef.current ||
+            !data.content ||
+            !doc ||
+            !win ||
+            useCaptionStore.getState().isEditMode
+          ) {
+            return;
+          }
           const root = doc.querySelector("[data-composition-id]");
           const w = parseInt(root?.getAttribute("data-width") ?? "1920", 10);
           const h = parseInt(root?.getAttribute("data-height") ?? "1080", 10);
@@ -131,4 +150,6 @@ export function useCaptionDetection({
       setRightCollapsed(!captionHasSelection);
     }
   }, [captionHasSelection, captionEditMode, setRightCollapsed]);
+
+  return exitCaptionMode;
 }
