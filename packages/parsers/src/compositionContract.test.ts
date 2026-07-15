@@ -31,11 +31,18 @@ describe("composition timing contract", () => {
     ["1.25", { kind: "absolute", value: 1.25 }],
     ["intro", { kind: "reference", refId: "intro", offset: 0 }],
     ["intro + 2", { kind: "reference", refId: "intro", offset: 2 }],
+    ["intro+2", { kind: "reference", refId: "intro", offset: 2 }],
     ["intro - .5", { kind: "reference", refId: "intro", offset: -0.5 }],
+    ["intro- 2", { kind: "reference", refId: "intro", offset: -2 }],
+    ["intro-2", { kind: "reference", refId: "intro-2", offset: 0 }],
     ["intro + nope", null],
     ["Infinity", { kind: "reference", refId: "Infinity", offset: 0 }],
   ])("parses start expression %s", (raw, expected) => {
     expect(parseStartExpression(raw)).toEqual(expected);
+  });
+
+  it("rejects adversarial start input without regex backtracking", () => {
+    expect(parseStartExpression(`-+${"0".repeat(100_000)}x`)).toBeNull();
   });
 
   it("matches runtime clamping for negative absolute and reference starts", () => {

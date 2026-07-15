@@ -103,6 +103,49 @@ export function parseNumeric(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const REFERENCE_ID_PATTERN = /^[A-Za-z0-9_.:-]+$/;
+
+function isAsciiDigitAt(value: string, index: number): boolean {
+  const code = value.charCodeAt(index);
+  return code >= 48 && code <= 57;
+}
+
+function skipDigitsLeft(value: string, start: number): number {
+  let cursor = start;
+  while (cursor >= 0 && isAsciiDigitAt(value, cursor)) cursor--;
+  return cursor;
+}
+
+function skipWhitespaceLeft(value: string, start: number): number {
+  let cursor = start;
+  while (cursor >= 0 && (value[cursor] ?? "").trim() === "") cursor--;
+  return cursor;
+}
+
+function findMagnitudeStart(value: string): number | null {
+  const last = value.length - 1;
+  if (!isAsciiDigitAt(value, last)) return null;
+  let cursor = skipDigitsLeft(value, last);
+  if (value[cursor] === ".") cursor = skipDigitsLeft(value, cursor - 1);
+  return cursor + 1;
+}
+
+function parseReferenceOffset(
+  value: string,
+): { refId: string; operator: "+" | "-"; magnitude: number } | null {
+  const magnitudeStart = findMagnitudeStart(value);
+  if (magnitudeStart == null) return null;
+  const operatorIndex = skipWhitespaceLeft(value, magnitudeStart - 1);
+  const operator = value[operatorIndex];
+  if (operator !== "+" && operator !== "-") return null;
+
+  const refId = value.slice(0, operatorIndex).trim();
+  if (!REFERENCE_ID_PATTERN.test(refId)) return null;
+  const magnitude = Number(value.slice(magnitudeStart));
+  if (!Number.isFinite(magnitude)) return null;
+  return { refId, operator, magnitude };
+}
+
 /**
  * Parse the data-start grammar: absolute seconds, `clip-id`, or
  * `clip-id +/- offset`, where references resolve to the referenced clip's end.
@@ -112,16 +155,15 @@ export function parseStartExpression(raw: string | null | undefined): ReferenceE
   if (!normalized) return null;
   const absolute = parseNumeric(normalized);
   if (absolute != null) return { kind: "absolute", value: absolute };
-  const match = normalized.match(/^([A-Za-z0-9_.:-]+)(?:\s*([+-])\s*([0-9]*\.?[0-9]+))?$/);
-  if (!match) return null;
-  const refId = (match[1] ?? "").trim();
-  if (!refId) return null;
-  const magnitude = Number(match[3] ?? "0");
-  if (!Number.isFinite(magnitude) || magnitude < 0) return null;
+  if (REFERENCE_ID_PATTERN.test(normalized)) {
+    return { kind: "reference", refId: normalized, offset: 0 };
+  }
+  const reference = parseReferenceOffset(normalized);
+  if (!reference) return null;
   return {
     kind: "reference",
-    refId,
-    offset: match[2] === "-" ? -magnitude : magnitude,
+    refId: reference.refId,
+    offset: reference.operator === "-" ? -reference.magnitude : reference.magnitude,
   };
 }
 
