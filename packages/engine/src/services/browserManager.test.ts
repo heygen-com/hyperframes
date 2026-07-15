@@ -276,7 +276,8 @@ describe("resolveHeadlessShellPath", () => {
       mkdirSync(join(olderBinary, ".."), { recursive: true });
       writeFileSync(olderBinary, "");
 
-      const env = { ...process.env, HOME: home };
+      // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
