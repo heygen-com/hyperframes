@@ -101,7 +101,7 @@ export function useFileManager({
       let expectedVersion = await studioExpectedFileVersion(fileVersions, path, expectedContent);
       if (expectedVersion === undefined) {
         const preflight = await fetch(
-          `/api/projects/${writeProjectId}/files/${encodeURIComponent(path)}`,
+          `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
         );
         if (preflight.ok) {
           const data = (await preflight.json()) as { content?: string; version?: string };

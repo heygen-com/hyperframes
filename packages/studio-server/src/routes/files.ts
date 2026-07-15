@@ -5,9 +5,13 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
+  closeSync,
   existsSync,
+  ftruncateSync,
+  openSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   mkdirSync,
   unlinkSync,
   rmSync,
@@ -1959,36 +1963,95 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const body = await c.req.text();
-    const existed = existsSync(res.absPath);
-    const currentContent = existed ? readFileSync(res.absPath, "utf-8") : null;
-    const currentVersion = currentContent === null ? null : fileContentVersion(currentContent);
     const expectedVersion = c.req.header("If-Match")?.trim() ?? null;
     const createOnly = c.req.header("If-None-Match")?.trim() === "*";
     if (expectedVersion === null && !createOnly) {
+      let currentContent: string | null = null;
+      try {
+        currentContent = readFileSync(res.absPath, "utf-8");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+          throw error;
+        }
+      }
       return c.json(
-        { error: "precondition required", path: res.filePath, currentVersion, currentContent },
+        {
+          error: "precondition required",
+          path: res.filePath,
+          currentVersion: currentContent === null ? null : fileContentVersion(currentContent),
+          currentContent,
+        },
         428,
       );
     }
-    if (
-      (createOnly && existed) ||
-      (expectedVersion !== null && expectedVersion !== currentVersion)
-    ) {
-      return c.json(
-        {
-          error: "file conflict",
-          path: res.filePath,
-          currentVersion,
-          currentContent,
-        },
-        409,
-      );
-    }
 
-    ensureDir(res.absPath);
-    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
-    writeFileSync(res.absPath, body, "utf-8");
+    let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
+    if (createOnly) {
+      ensureDir(res.absPath);
+      let fd: number;
+      try {
+        fd = openSync(res.absPath, "wx");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
+          throw error;
+        }
+        const currentContent = readFileSync(res.absPath, "utf-8");
+        return c.json(
+          {
+            error: "file conflict",
+            path: res.filePath,
+            currentVersion: fileContentVersion(currentContent),
+            currentContent,
+          },
+          409,
+        );
+      }
+      try {
+        writeSync(fd, body, 0, "utf-8");
+      } finally {
+        closeSync(fd);
+      }
+    } else {
+      let fd: number;
+      try {
+        fd = openSync(res.absPath, "r+");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+          throw error;
+        }
+        return c.json(
+          {
+            error: "file conflict",
+            path: res.filePath,
+            currentVersion: null,
+            currentContent: null,
+          },
+          409,
+        );
+      }
+      try {
+        const currentContent = readFileSync(fd, "utf-8");
+        const currentVersion = fileContentVersion(currentContent);
+        if (expectedVersion !== currentVersion) {
+          return c.json(
+            {
+              error: "file conflict",
+              path: res.filePath,
+              currentVersion,
+              currentContent,
+            },
+            409,
+          );
+        }
+        backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+        if (backup.error)
+          console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+        ftruncateSync(fd, 0);
+        writeSync(fd, body, 0, "utf-8");
+      } finally {
+        closeSync(fd);
+      }
+    }
     const version = fileContentVersion(body);
     const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
     recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken });
