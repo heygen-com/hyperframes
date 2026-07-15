@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,6 +115,25 @@ describe("HyperFrames skill helpers", () => {
         rmSync(root, { recursive: true, force: true });
       }
     });
+});
+
+// The two package-loader.mjs copies are intentionally byte-identical (each
+// skill ships standalone, so neither can import the other's) and now carry
+// shared logic (initializeSessionWithRetry + FALLBACK_TRANSIENT_PATTERNS)
+// that a future fix could land in one copy and silently miss in the other —
+// the exact drift class the audio.mjs identity pin was born to catch.
+describe("package-loader parity", () => {
+  it("package-loader.mjs is byte-identical to hyperframes-creative's copy (the stated contract)", () => {
+    const here = readFileSync(
+      join(REPO_ROOT, "skills", "hyperframes-animation", "scripts", "package-loader.mjs"),
+      "utf8",
+    );
+    const sibling = readFileSync(
+      join(REPO_ROOT, "skills", "hyperframes-creative", "scripts", "package-loader.mjs"),
+      "utf8",
+    );
+    assert.equal(here, sibling);
+  });
 });
 
 // ── Transient-init retry (the zero-duration false-fail fix) ─────────────────

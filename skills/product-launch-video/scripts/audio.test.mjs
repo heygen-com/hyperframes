@@ -108,6 +108,19 @@ test("music: none with narration keeps TTS but turns BGM off (not fully silent)"
   assert.equal(request.lines.length, 1);
 });
 
+test('a quoted music: "none" is still the silent marker (frontmatter stripQuotes)', () => {
+  // YAML authors quote scalars freely; the vendored storyboard parser strips
+  // matching quotes at parse time (storyboard.mjs stripQuotes), so the marker
+  // must not depend on the unquoted spelling.
+  const { dir, result } = runAudioRaw({
+    storyboard: '---\nmessage: Test\nmusic: "none"\n---\n',
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /marked silent/);
+  assert.equal(existsSync(join(dir, "audio_meta.json")), false);
+});
+
 test("a storyboard music mood still retrieves BGM (marker is exact, not fuzzy)", () => {
   const { dir, result } = runAudioRaw({
     storyboard: "---\nmessage: Test\nmusic: upbeat synthwave with heavy drums\n---\n",
