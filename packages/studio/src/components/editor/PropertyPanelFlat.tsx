@@ -258,11 +258,11 @@ export function PropertyPanelFlat({
   // the group is expanded) can consume the focus and reveal the ease editor.
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   useEffect(() => {
-    if (!focusedEaseSegment) return;
+    if (!focusedEaseSegment || focusedEaseSegment.elementId !== selectedElementId) return;
     if (gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId)) {
       setOpenGroupId("motion");
     }
-  }, [focusedEaseSegment, gsapAnimations]);
+  }, [focusedEaseSegment, gsapAnimations, selectedElementId]);
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

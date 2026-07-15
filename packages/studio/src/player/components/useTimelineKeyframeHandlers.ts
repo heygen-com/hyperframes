@@ -66,6 +66,7 @@ export function useTimelineKeyframeHandlers({
         usePlayerStore.getState().setFocusedEaseSegment({
           animationId: target.animationId,
           tweenPercentage: target.tweenPercentage,
+          elementId: elId,
         });
         trackStudioSegmentEaseEdit({ action: "open" });
       }

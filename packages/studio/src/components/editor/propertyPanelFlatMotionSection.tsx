@@ -147,6 +147,13 @@ export function FlatMotionSection({
   };
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  // Only consume a focus request aimed at the element this panel is showing, so
+  // a shared (class-selector) animation id can't open the wrong element's editor.
+  const focusedHere =
+    focusedEaseSegment && focusedEaseSegment.elementId === selectedElementId
+      ? focusedEaseSegment
+      : null;
 
   return (
     <div className="space-y-3">
@@ -179,9 +186,7 @@ export function FlatMotionSection({
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
-                  focusedSegment={
-                    focusedEaseSegment?.animationId === anim.id ? focusedEaseSegment : null
-                  }
+                  focusedSegment={focusedHere?.animationId === anim.id ? focusedHere : null}
                   onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
                   onUpdateProperty={(animationId, property, value) => {
                     trackProperty(property);

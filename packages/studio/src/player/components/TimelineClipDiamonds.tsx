@@ -381,6 +381,15 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onPointerCancel={(e) => {
+              // Browser/OS cancellation (or lost capture) ends the drag without a
+              // pointerup, so clear the armed drag and preview or a ghost diamond
+              // stays stuck at the last previewed position.
+              if (dragRef.current?.kfKey !== kfKey) return;
+              dragRef.current = null;
+              setPreview(null);
+              e.currentTarget.releasePointerCapture?.(e.pointerId);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();

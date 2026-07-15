@@ -32,8 +32,12 @@ export interface KeyframeSlice {
   /** Union-expand clips (keyframed clips are expanded by default on load). */
   expandClips: (ids: readonly string[]) => void;
 
-  focusedEaseSegment: { animationId: string; tweenPercentage: number } | null;
-  setFocusedEaseSegment: (target: { animationId: string; tweenPercentage: number } | null) => void;
+  /** elementId scopes the request to one element so a shared (class-selector)
+   * animation id can't open the ease editor on the wrong element. */
+  focusedEaseSegment: { animationId: string; tweenPercentage: number; elementId: string } | null;
+  setFocusedEaseSegment: (
+    target: { animationId: string; tweenPercentage: number; elementId: string } | null,
+  ) => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
