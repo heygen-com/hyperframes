@@ -15,6 +15,8 @@ import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 const MAX_COMPOSITION_LINES = 300;
 const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
+const CAPTION_CUE_TOKEN =
+  /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
 
 // `parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004`. Sub-second
 // authored adjacencies survive parse + add as a value a few ulps above the
@@ -34,6 +36,15 @@ function countPhysicalLines(source: string): number {
 
 function countStructuralLines(source: string): number {
   return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
+}
+
+function isCaptionCue(tag: OpenTag): boolean {
+  const classTokens = (readAttr(tag.raw, "class") || "").split(/\s+/).filter(Boolean);
+  const id = readAttr(tag.raw, "id");
+  return (
+    classTokens.some((token) => CAPTION_CUE_TOKEN.test(token)) ||
+    Boolean(id && CAPTION_CUE_TOKEN.test(id))
+  );
 }
 
 export function isRegistrySourceFile(filePath?: string): boolean {
@@ -294,6 +305,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const trackCounts = new Map<string, number>();
     for (const tag of tags) {
       if (TRACK_DENSITY_EXEMPT_TAGS.has(tag.name)) continue;
+      if (isCaptionCue(tag)) continue;
       if (isCompositionRootOrMount(tag.raw)) continue;
       if (!readAttr(tag.raw, "data-start")) continue;
 

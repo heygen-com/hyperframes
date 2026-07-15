@@ -173,6 +173,22 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not count transcript caption cues as dense track elements", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1080" data-height="1920" data-start="0">
+    <div class="caption-group clip" data-start="0" data-duration="1" data-track-index="2">一</div>
+    <div class="caption-line clip" data-start="1" data-duration="1" data-track-index="2">二</div>
+    <div class="caption_block clip" data-start="2" data-duration="1" data-track-index="2">三</div>
+    <div class="cg-4 clip" data-start="3" data-duration="1" data-track-index="2">四</div>
+  </div>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
+      expect(finding).toBeUndefined();
+    });
+
     it("does not count root composition or mounted sub-compositions as dense elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
