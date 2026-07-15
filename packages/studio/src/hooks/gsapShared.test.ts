@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { isInstantHold, parsePercentageKeyframes } from "./gsapShared";
+import { idSelector, isInstantHold, parsePercentageKeyframes } from "./gsapShared";
 
 describe("isInstantHold", () => {
   const animation = (method: GsapAnimation["method"], duration?: number) =>
@@ -72,5 +72,34 @@ describe("parsePercentageKeyframes", () => {
   it("returns null for keyframes with no positional/animatable props", () => {
     expect(parsePercentageKeyframes([] as unknown as Record<string, unknown>)).toBeNull();
     expect(parsePercentageKeyframes({})).toBeNull();
+  });
+});
+
+describe("idSelector", () => {
+  it("uses #id for valid CSS identifiers", () => {
+    expect(idSelector("hero-word")).toBe("#hero-word");
+    expect(idSelector("el_1")).toBe("#el_1");
+  });
+
+  it("uses an attribute selector for ids that #id can't address (digit-leading, dots, spaces)", () => {
+    // #01-... / #a.b / #a b throw a SyntaxError in querySelector / GSAP, crashing
+    // the preview when such a target is committed (e.g. dragging the element).
+    expect(idSelector("01-hook-hero-word")).toBe('[id="01-hook-hero-word"]');
+    expect(idSelector("my.class")).toBe('[id="my.class"]');
+    expect(idSelector("1box")).toBe('[id="1box"]');
+  });
+
+  it("escapes quotes and backslashes in the attribute selector value", () => {
+    expect(idSelector('1"x')).toBe('[id="1\\"x"]');
+  });
+
+  it("only ever emits #id for ids that can't break querySelector", () => {
+    // Every id resolves to either a plain #id (only when safe) or an attribute
+    // selector — never a #id that would throw a SyntaxError.
+    for (const id of ["hero-word", "01-hook", "a.b", "a b", "1", "--x", '1"q']) {
+      const sel = idSelector(id);
+      if (sel.startsWith("#")) expect(sel).toBe(`#${id}`);
+      else expect(sel.startsWith('[id="')).toBe(true);
+    }
   });
 });

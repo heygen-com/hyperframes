@@ -2,12 +2,13 @@ import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mu
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 export { PROPERTY_DEFAULTS } from "./gsapShared";
+import { idSelector } from "./gsapShared";
 
 export function ensureElementAddressable(selection: DomEditSelection): {
   selector: string;
   autoId?: string;
 } {
-  if (selection.id) return { selector: `#${selection.id}` };
+  if (selection.id) return { selector: idSelector(selection.id) };
   if (selection.selector) return { selector: selection.selector };
 
   const el = selection.element;
@@ -20,7 +21,7 @@ export function ensureElementAddressable(selection: DomEditSelection): {
     id = `${tag}-${n}`;
   }
   el.setAttribute("id", id);
-  return { selector: `#${id}`, autoId: id };
+  return { selector: idSelector(id), autoId: id };
 }
 
 export class GsapMutationHttpError extends Error {
