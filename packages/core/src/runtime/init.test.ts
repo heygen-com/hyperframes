@@ -155,6 +155,46 @@ describe("initSandboxRuntimeModular", () => {
     expect(originalParseEase).not.toHaveBeenCalledWith("hold");
   });
 
+  it("repairs a keyframes tween's inner-timeline ease baked to undefined before custom-ease registration", () => {
+    // The composition inline script builds keyframes tweens BEFORE this runtime
+    // registers the custom eases, so a `{keyframes, ease:"hold"}` tween's inner
+    // timeline `_ease` bakes to undefined (GSAP resolves it once at build via the
+    // internal ease map). GSAP then throws "_ease is not a function" on the first
+    // render. The runtime must re-resolve that inner ease after registration.
+    window.gsap = {
+      timeline: () => createMockTimeline(20),
+      parseEase: vi.fn(() => (progress: number) => progress),
+      registerPlugin: vi.fn(),
+      registerEase: vi.fn(),
+    } as unknown as typeof window.gsap;
+
+    const innerTimeline: { _ease?: unknown } = { _ease: undefined };
+    const keyframesTween = {
+      vars: { ease: "hold", keyframes: { "0%": { x: 0 }, "100%": { x: 50 } } },
+      timeline: innerTimeline,
+      _ease: (progress: number) => progress,
+      targets: () => [document.createElement("div")],
+    };
+    const main = createMockTimeline(20);
+    main.getChildren = () => [keyframesTween as unknown as RuntimeTimelineLike];
+
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    window.__timelines = { main };
+
+    expect(innerTimeline._ease).toBeUndefined();
+    initSandboxRuntimeModular();
+    // Bind re-resolves the inner ease to a real function (the installed hold ease),
+    // so a subsequent render can call `timeline._ease(...)` without throwing.
+    expect(innerTimeline._ease).toBeTypeOf("function");
+  });
+
   it("resolves Studio custom cubic-bezier eases on the composition GSAP instance", () => {
     const defaultEase = (progress: number) => 1 - (1 - progress) ** 2;
     const originalParseEase = vi.fn(() => defaultEase);
