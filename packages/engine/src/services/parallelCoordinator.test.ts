@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const frameCaptureMocks = vi.hoisted(() => ({
+  createCaptureSession: vi.fn(),
+  initializeSession: vi.fn(),
+  discardWarmupCapture: vi.fn(),
+  closeCaptureSession: vi.fn(),
+  captureFrame: vi.fn(),
+  captureFrameToBufferPipelined: vi.fn(),
+  captureFrameToBuffer: vi.fn(),
+  getCapturePerfSummary: vi.fn(),
+}));
+
+vi.mock("./frameCapture.js", () => frameCaptureMocks);
+
 import {
+  __testing,
   calculateOptimalWorkers,
   distributeFrames,
   formatWorkerFailure,
@@ -9,6 +24,97 @@ import {
   resolveParallelDeVerifySamples,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
+
+const { executeWorkerTask } = __testing;
+
+function makeWorkerSession() {
+  return {
+    browserConsoleBuffer: [],
+    captureMode: "screenshot",
+    workerEncodeEnabled: false,
+  };
+}
+
+const captureOptions = {
+  width: 1280,
+  height: 720,
+  fps: { num: 30, den: 1 },
+};
+
+function runWorker(workerId: number, startFrame: number, signal?: AbortSignal) {
+  return executeWorkerTask(
+    { workerId, startFrame, endFrame: startFrame + 2, outputDir: "/tmp" },
+    "http://127.0.0.1:4173",
+    captureOptions,
+    () => null,
+    signal,
+  );
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  frameCaptureMocks.createCaptureSession.mockImplementation(async () => makeWorkerSession());
+  frameCaptureMocks.initializeSession.mockResolvedValue(undefined);
+  frameCaptureMocks.discardWarmupCapture.mockResolvedValue(undefined);
+  frameCaptureMocks.closeCaptureSession.mockResolvedValue(undefined);
+  frameCaptureMocks.captureFrame.mockResolvedValue(undefined);
+});
+
+describe("executeWorkerTask", () => {
+  it("warms a non-zero worker after initialization and before its first frame", async () => {
+    const callOrder: string[] = [];
+    frameCaptureMocks.initializeSession.mockImplementation(async () => {
+      callOrder.push("initialize");
+    });
+    frameCaptureMocks.discardWarmupCapture.mockImplementation(async () => {
+      callOrder.push("warmup");
+    });
+    frameCaptureMocks.captureFrame.mockImplementation(async (_session, frameIndex) => {
+      callOrder.push(`capture:${frameIndex}`);
+    });
+
+    const result = await runWorker(1, 36);
+
+    expect(result.error).toBeUndefined();
+    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledOnce();
+    expect(callOrder).toEqual(["initialize", "warmup", "capture:36", "capture:37"]);
+  });
+
+  it("warms every worker without changing its reported frame count", async () => {
+    const results = await Promise.all([runWorker(0, 0), runWorker(1, 36)]);
+
+    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledTimes(2);
+    expect(results.map((result) => result.framesCaptured)).toEqual([2, 2]);
+    expect(frameCaptureMocks.captureFrame).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns a worker error and closes the session when warmup fails", async () => {
+    const session = makeWorkerSession();
+    frameCaptureMocks.createCaptureSession.mockResolvedValue(session);
+    frameCaptureMocks.discardWarmupCapture.mockRejectedValue(new Error("warmup failed"));
+
+    const result = await runWorker(1, 36);
+
+    expect(result).toMatchObject({ error: "warmup failed", framesCaptured: 0 });
+    expect(frameCaptureMocks.captureFrame).not.toHaveBeenCalled();
+    expect(frameCaptureMocks.closeCaptureSession).toHaveBeenCalledWith(session);
+  });
+
+  it("returns a cancellation error and closes the session when aborted during warmup", async () => {
+    const controller = new AbortController();
+    const session = makeWorkerSession();
+    frameCaptureMocks.createCaptureSession.mockResolvedValue(session);
+    frameCaptureMocks.discardWarmupCapture.mockImplementation(async () => {
+      controller.abort();
+    });
+
+    const result = await runWorker(0, 0, controller.signal);
+
+    expect(result).toMatchObject({ error: "Parallel worker cancelled", framesCaptured: 0 });
+    expect(frameCaptureMocks.captureFrame).not.toHaveBeenCalled();
+    expect(frameCaptureMocks.closeCaptureSession).toHaveBeenCalledWith(session);
+  });
+});
 
 describe("distributeFrames", () => {
   it("distributes frames evenly across workers", () => {

@@ -13,6 +13,7 @@ import { join } from "path";
 import {
   createCaptureSession,
   initializeSession,
+  discardWarmupCapture,
   closeCaptureSession,
   captureFrame,
   captureFrameToBufferPipelined,
@@ -418,6 +419,7 @@ async function executeWorkerTask(
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
+    await discardWarmupCapture(session);
     if (process.env.HF_DE_PAR_DEBUG === "1") {
       console.log(
         `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
@@ -458,6 +460,8 @@ async function executeWorkerTask(
     if (session) await closeCaptureSession(session).catch(() => {});
   }
 }
+
+export const __testing = { executeWorkerTask };
 
 /**
  * drawElement self-verify sample count for multi-worker capture. Each worker
