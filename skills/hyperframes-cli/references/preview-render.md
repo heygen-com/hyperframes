@@ -153,7 +153,17 @@ npx hyperframes feedback --rating 10                              # clean run, n
 npx hyperframes feedback --rating 6 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
 ```
 
-`--rating` is an integer from 0-10 (required); `--comment` is free text — use it for any bug, workaround, missing feature, or confusing behaviour. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat env in the comment. For a **bug**, a paraphrase can't be reproduced — give the maintainer: the **exact error string verbatim** and whether the render still produced output / silently fell back (`re-rendering via screenshot`) / hard-exited (`Killed: 9`, `Target closed`); the **isolated trigger** ("only at 4K", "only with a `<video>`", "only when the text uses `font-family: 苹方`"); the **exact command + `HF_*`/`PRODUCER_*` env**; and the **frame/timestamp + visual defect** vs. expected.
+`--rating` is an integer from 0-10 (required); `--comment` is free text. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
+
+```text
+REPRO COMMAND: cd <project path> && <HF_*/PRODUCER_* env> npx hyperframes <exact command>
+EXPECTED / ACTUAL: <expected behavior> / <observed behavior and isolated trigger>
+EXACT ERROR: <verbatim error or warning; include frame/timestamp for visual defects>
+OUTCOME: <output correct | output corrupt | fallback succeeded | hard exit | command hung>
+WORKAROUND: <exact workaround, or none>
+```
+
+Preserve paths containing spaces, flags, and relevant `HF_*` / `PRODUCER_*` variables; redact secrets and credentials. If the failure no longer reproduces, include the last failing command and log excerpt. Share a project link only when one is already available and safe to share.
 
 Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--yes` for non-interactive shells) to also publish a minimal repro to a public URL and open a pre-filled GitHub `bug` issue draft for a maintainer to file. This publishes the project publicly, so it is opt-in and consent-gated; the issue is never auto-submitted.
 
