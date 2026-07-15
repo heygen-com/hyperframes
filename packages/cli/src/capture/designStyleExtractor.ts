@@ -21,7 +21,8 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   function rgbToHex(color) {
     if (!color) return "";
     if (color.startsWith('#')) return color.toUpperCase();
-    // capture optional alpha (group 4), allowing both comma and modern slash (rgb r g b / a) syntax.
+    // capture optional alpha (group 4); RGB stay comma-separated (as getComputedStyle returns them),
+    // the alpha may follow a comma or a slash (rgb(r, g, b / a)).
     var m = color.match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)(?:\\s*[,/]\\s*([\\d.]+))?/);
     if (!m) return color;
     // fully-transparent fill (rgba(...,0)) → sentinel, NOT #000000 — otherwise a transparent
@@ -127,7 +128,9 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   var isFilledEl = (el) => {
     var cs = getComputedStyle(el);
     var bg = cs.backgroundColor;
-    var solid = !!bg && bg !== "transparent" && !/rgba?\\([^)]*,\\s*0\\s*\\)/.test(bg);
+    // require the alpha form rgba( — only rgba() carries an explicit alpha. Matching rgba? would
+    // treat rgb(r, g, 0) (e.g. solid black rgb(0, 0, 0)) as zero-alpha and wrongly drop a black CTA.
+    var solid = !!bg && bg !== "transparent" && !/rgba\\([^)]*,\\s*0\\s*\\)/.test(bg);
     // a gradient-filled CTA (e.g. Snowflake's blue pill = background: var(--ui-background-03)) has a
     // transparent background-COLOR but a gradient background-IMAGE — count it as filled too.
     return solid || (cs.backgroundImage || "").indexOf("gradient") >= 0;
@@ -143,8 +146,9 @@ const EXTRACT_DESIGN_STYLES_SCRIPT = `(() => {
   var buttonMap = {};
   for (var bi = 0; bi < buttonEls.length; bi++) {
     var bs = getStyles(buttonEls[bi]);
-    // Deduplicate by visual appearance (gradient fill kept distinct so a gradient CTA survives)
-    var bKey = bs.background + "|" + bs.backgroundImage + "|" + bs.borderRadius + "|" + bs.border;
+    // Deduplicate by visual appearance (gradient fill + glass blur kept distinct so a gradient or
+    // frosted CTA survives — mirrors the card dedup key).
+    var bKey = bs.background + "|" + bs.backgroundImage + "|" + bs.backdropFilter + "|" + bs.borderRadius + "|" + bs.border;
     if (!buttonMap[bKey]) {
       var btnText = (buttonEls[bi].textContent || "").trim().slice(0, 40);
       buttonMap[bKey] = {
