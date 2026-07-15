@@ -74,6 +74,16 @@ describe("runAssembleStage audio duration parity", () => {
     );
   });
 
+  it("uses a distinct AAC normalization path when the mixed-audio extension differs", async () => {
+    await runAssembleStage(makeInput({ audioOutputPath: "/tmp/audio.m4a" }));
+
+    expect(padOrTrimAudioMock).toHaveBeenCalledWith({
+      videoPath: "/tmp/video-only.mp4",
+      audioPath: "/tmp/audio.m4a",
+      outputPath: "/tmp/audio.duration-normalized.aac",
+    });
+  });
+
   it("fails instead of muxing an unnormalized AAC tail", async () => {
     padOrTrimAudioMock.mockResolvedValue({
       success: false,

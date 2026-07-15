@@ -17,6 +17,7 @@
  */
 
 import { applyFaststart, muxVideoWithAudio } from "@hyperframes/engine";
+import { extname } from "node:path";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { padOrTrimAudioToVideoFrameCount } from "../audioPadTrim.js";
 import { updateJobStatus } from "../shared.js";
@@ -56,7 +57,11 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
   updateJobStatus(job, "assembling", "Assembling final video", 90, onProgress);
 
   if (hasAudio) {
-    const normalizedAudioPath = audioOutputPath.replace(/\.aac$/i, ".duration-normalized.aac");
+    const audioExtension = extname(audioOutputPath);
+    const audioStem = audioExtension
+      ? audioOutputPath.slice(0, -audioExtension.length)
+      : audioOutputPath;
+    const normalizedAudioPath = `${audioStem}.duration-normalized.aac`;
     const normalizeResult = await padOrTrimAudioToVideoFrameCount({
       videoPath: videoOnlyPath,
       audioPath: audioOutputPath,
