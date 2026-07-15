@@ -60,6 +60,28 @@ function orbitStageSource(): string {
  * `hyperframes snapshot` indefinitely. */
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
 
+/** Keep an exact clip-end snapshot aligned with the renderer's inclusive media
+ * window. FFmpeg cannot decode a frame at a source's exclusive duration, so
+ * sample one nominal 30fps frame inside the source while retaining the
+ * requested snapshot timestamp and filename. */
+export function resolveSnapshotVideoFrameTime(input: {
+  globalTime: number;
+  clipStart: number;
+  clipDuration: number;
+  relativeTime: number;
+  sourceDuration: number;
+}): number | null {
+  const { globalTime, clipStart, clipDuration, relativeTime, sourceDuration } = input;
+  const clipEnd = clipStart + clipDuration;
+  if (globalTime < clipStart || globalTime > clipEnd || relativeTime < 0) return null;
+
+  const atClipEnd = Math.abs(globalTime - clipEnd) <= 1e-9;
+  if (!atClipEnd) return relativeTime;
+
+  const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
+  return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
+}
+
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   if (ffmpegPath) return ffmpegPath;
   throw new Error(
@@ -365,38 +387,48 @@ async function captureSnapshots(
         if (cameraExpr) await page.evaluate(cameraExpr);
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          const active = await page.evaluate((t: number) => {
-            return Array.from(document.querySelectorAll("video[data-start]"))
-              .map((el) => {
-                const v = el as HTMLVideoElement;
-                const start = parseFloat(v.dataset.start ?? "0") || 0;
-                const rawRate = v.defaultPlaybackRate;
-                const playbackRate =
-                  Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
-                const mediaStart =
-                  parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
-                const rawDuration = parseFloat(v.dataset.duration ?? "");
-                const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
-                const duration =
-                  Number.isFinite(rawDuration) && rawDuration > 0
-                    ? rawDuration
-                    : srcDur > 0
-                      ? Math.max(0, (srcDur - mediaStart) / playbackRate)
-                      : Number.POSITIVE_INFINITY;
-                let relTime = (t - start) * playbackRate + mediaStart;
-                if (v.loop && srcDur > mediaStart && relTime >= srcDur) {
-                  relTime = mediaStart + ((relTime - mediaStart) % (srcDur - mediaStart));
-                }
-                const activeNow = t >= start && t < start + duration && relTime >= 0 && !!v.id;
-                return {
-                  id: v.id,
-                  src: v.currentSrc || v.src,
-                  relTime,
-                  active: activeNow,
-                };
-              })
-              .filter((entry) => entry.active && entry.src);
+          const candidates = await page.evaluate((t: number) => {
+            return Array.from(document.querySelectorAll("video[data-start]")).map((el) => {
+              const v = el as HTMLVideoElement;
+              const start = parseFloat(v.dataset.start ?? "0") || 0;
+              const rawRate = v.defaultPlaybackRate;
+              const playbackRate =
+                Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+              const mediaStart =
+                parseFloat(v.dataset.playbackStart ?? v.dataset.mediaStart ?? "0") || 0;
+              const rawDuration = parseFloat(v.dataset.duration ?? "");
+              const srcDur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+              const duration =
+                Number.isFinite(rawDuration) && rawDuration > 0
+                  ? rawDuration
+                  : srcDur > 0
+                    ? Math.max(0, (srcDur - mediaStart) / playbackRate)
+                    : Number.POSITIVE_INFINITY;
+              let relTime = (t - start) * playbackRate + mediaStart;
+              if (v.loop && srcDur > mediaStart && relTime >= srcDur) {
+                relTime = mediaStart + ((relTime - mediaStart) % (srcDur - mediaStart));
+              }
+              return {
+                id: v.id,
+                src: v.currentSrc || v.src,
+                start,
+                duration,
+                srcDuration: srcDur,
+                relTime,
+              };
+            });
           }, time);
+          const active = candidates.flatMap((candidate) => {
+            if (!candidate.id || !candidate.src) return [];
+            const frameTime = resolveSnapshotVideoFrameTime({
+              globalTime: time,
+              clipStart: candidate.start,
+              clipDuration: candidate.duration,
+              relativeTime: candidate.relTime,
+              sourceDuration: candidate.srcDuration,
+            });
+            return frameTime === null ? [] : [{ ...candidate, relTime: frameTime }];
+          });
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];
           for (const v of active) {
