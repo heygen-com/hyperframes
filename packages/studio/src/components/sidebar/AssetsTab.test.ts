@@ -1,7 +1,67 @@
-import { describe, expect, it } from "vitest";
-import { filterByUsage, countUsage, deriveUsedPaths } from "./AssetsTab";
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AssetsTab, filterByUsage, countUsage, deriveUsedPaths } from "./AssetsTab";
 import { truncateMiddle, formatDuration } from "./assetHelpers";
 import { globalAssetRows } from "./GlobalAssetsView";
+import { usePlayerStore } from "../../player/store/playerStore";
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+let root: Root | null = null;
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
+  document.body.replaceChildren();
+  usePlayerStore.getState().reset();
+  vi.restoreAllMocks();
+});
+
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("input value setter unavailable");
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+function findButton(label: string): HTMLButtonElement {
+  const button = [...document.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === label,
+  );
+  if (!(button instanceof HTMLButtonElement)) throw new Error(`${label} button not rendered`);
+  return button;
+}
+
+describe("AssetsTab", () => {
+  it("shows a clearable no-matches state instead of the empty-library drop zone", () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    act(() => {
+      root?.render(
+        React.createElement(AssetsTab, { projectId: "demo", assets: ["assets/logo.png"] }),
+      );
+    });
+
+    const search = document.querySelector('input[placeholder="Search assets..."]');
+    if (!(search instanceof HTMLInputElement)) throw new Error("search input not rendered");
+    setInputValue(search, "missing");
+
+    expect(document.body.textContent).toContain("No assets match your search");
+    expect(document.body.textContent).not.toContain("Drop media files here");
+
+    act(() => findButton("Clear search").click());
+
+    expect(document.body.textContent).toContain("logo.png");
+    expect(document.body.textContent).not.toContain("No assets match your search");
+  });
+});
 
 const assets = ["bgm.mp3", "logo.png", "orphan.wav"];
 const used = new Set(["bgm.mp3", "logo.png"]);

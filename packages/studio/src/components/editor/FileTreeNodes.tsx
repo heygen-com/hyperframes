@@ -166,12 +166,14 @@ export function InlineInput({
   defaultValue: string;
   depth: number;
   isFolder: boolean;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const committedRef = useRef(false);
   const [value, setValue] = useState(defaultValue);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -186,13 +188,22 @@ export function InlineInput({
     }
   }, [defaultValue]);
 
-  const commit = (name: string) => {
+  const commit = async (name: string) => {
     if (committedRef.current) return;
     committedRef.current = true;
-    onCommit(name);
+    setPending(true);
+    setError(null);
+    const nextError = await onCommit(name);
+    if (nextError) {
+      committedRef.current = false;
+      setError(nextError);
+      setPending(false);
+      inputRef.current?.focus();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (pending) return;
     if (e.key === "Enter") {
       e.preventDefault();
       const trimmed = value.trim();
@@ -205,6 +216,7 @@ export function InlineInput({
   };
 
   const handleBlur = () => {
+    if (pending) return;
     const trimmed = value.trim();
     if (trimmed && trimmed !== defaultValue && !(/[/\\]/.test(trimmed) || trimmed.includes("..")))
       commit(trimmed);
@@ -212,24 +224,31 @@ export function InlineInput({
   };
 
   return (
-    <div
-      className="flex items-center gap-2 py-0.5 min-h-7"
-      style={{ paddingLeft: `${8 + depth * 12 + (isFolder ? 0 : 14)}px` }}
-    >
-      {isFolder ? (
-        <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="flex-shrink-0" />
-      ) : (
-        <FileIcon path={value} />
+    <div style={{ paddingLeft: `${8 + depth * 12 + (isFolder ? 0 : 14)}px` }}>
+      <div className="flex items-center gap-2 py-0.5 min-h-7">
+        {isFolder ? (
+          <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="flex-shrink-0" />
+        ) : (
+          <FileIcon path={value} />
+        )}
+        <input
+          ref={inputRef}
+          value={value}
+          disabled={pending}
+          aria-busy={pending}
+          aria-invalid={error != null}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          className="flex-1 min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-[#3CE6AC] disabled:opacity-60"
+          spellCheck={false}
+        />
+      </div>
+      {error && (
+        <p role="alert" className="pb-1 pr-2 text-[10px] leading-tight text-red-400">
+          {error}
+        </p>
       )}
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        className="flex-1 min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-[#3CE6AC]"
-        spellCheck={false}
-      />
     </div>
   );
 }
@@ -320,10 +339,10 @@ export const TreeFile = memo(function TreeFile({
         depth={depth}
         isFolder={false}
         onCommit={(name) => {
-          inlineInput?.onCommit?.(name);
+          return inlineInput.onCommit(name);
         }}
         onCancel={() => {
-          inlineInput?.onCancel?.();
+          inlineInput.onCancel();
         }}
       />
     );
@@ -404,10 +423,10 @@ export const TreeFolder = memo(function TreeFolder({
         depth={depth}
         isFolder={true}
         onCommit={(name) => {
-          inlineInput?.onCommit?.(name);
+          return inlineInput.onCommit(name);
         }}
         onCancel={() => {
-          inlineInput?.onCancel?.();
+          inlineInput.onCancel();
         }}
       />
     );
@@ -452,10 +471,10 @@ export const TreeFolder = memo(function TreeFolder({
                 depth={depth + 1}
                 isFolder={inlineInput.mode === "new-folder"}
                 onCommit={(name) => {
-                  inlineInput?.onCommit?.(name);
+                  return inlineInput.onCommit(name);
                 }}
                 onCancel={() => {
-                  inlineInput?.onCancel?.();
+                  inlineInput.onCancel();
                 }}
               />
             )}
