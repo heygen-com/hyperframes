@@ -4,6 +4,7 @@ import {
   computeSnapshotTimes,
   parseZoomScale,
   requireSnapshotFfmpeg,
+  resolveSnapshotMediaTiming,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -114,5 +115,18 @@ describe("requireSnapshotFfmpeg", () => {
 
   it("preserves the resolved FFmpeg executable", () => {
     expect(requireSnapshotFfmpeg("C:\\tools\\ffmpeg.exe")).toBe("C:\\tools\\ffmpeg.exe");
+  });
+});
+
+describe("snapshot media timing", () => {
+  it("uses resolved manifest timing for relative starts with hyphenated ids", () => {
+    expect(
+      resolveSnapshotMediaTiming({
+        startAttr: "intro-clip",
+        durationAttr: "4",
+        manifestStart: 6,
+        manifestDuration: 4,
+      }),
+    ).toEqual({ start: 6, duration: 4 });
   });
 });
