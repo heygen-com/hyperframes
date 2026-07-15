@@ -347,7 +347,11 @@ export function useGsapAnimationsForElement(
     );
 
     const allKeyframes: Array<
-      GsapKeyframesData["keyframes"][0] & { tweenPercentage?: number; propertyGroup?: string }
+      GsapKeyframesData["keyframes"][0] & {
+        tweenPercentage?: number;
+        propertyGroup?: string;
+        animationId?: string;
+      }
     > = [];
     let format: GsapKeyframesData["format"] = "percentage";
     let ease: string | undefined;
@@ -385,6 +389,7 @@ export function useGsapAnimationsForElement(
           percentage: clipPct,
           tweenPercentage: k.percentage,
           propertyGroup: anim.propertyGroup,
+          animationId: anim.id,
         });
       }
       format = kf.format;

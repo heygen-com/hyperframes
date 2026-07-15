@@ -53,6 +53,9 @@ interface TimelineClipDiamondsProps {
     fromClipPercentage: number,
     toClipPercentage: number,
   ) => void;
+  /** Open the segment ease editor for the hovered mid-point button — available on
+   *  the inline clip row too, not just the expanded lanes. */
+  onSelectSegment?: (elementId: string, target: TimelineKeyframeTarget) => void;
   /** Set while resolving a diamond press so the ancestor clip's onClick (which
    *  toggles selection off when already selected) ignores the native "click"
    *  the browser auto-synthesizes after this button's pointerdown+pointerup. */
@@ -61,7 +64,11 @@ interface TimelineClipDiamondsProps {
 
 interface TimelineDiamondLaneProps extends Omit<
   TimelineClipDiamondsProps,
-  "onClickKeyframe" | "onShiftClickKeyframe" | "onContextMenuKeyframe" | "onMoveKeyframe"
+  | "onClickKeyframe"
+  | "onShiftClickKeyframe"
+  | "onContextMenuKeyframe"
+  | "onMoveKeyframe"
+  | "onSelectSegment"
 > {
   groupAware?: boolean;
   globalEase?: string;
@@ -188,7 +195,10 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
         const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
         if (x2 - x1 < 1) return null;
-        const target = keyframeTarget(kf, groupAware);
+        // Always a group-aware target for the ease button: the segment ease is
+        // per-keyframe (each keyframe carries its own animationId/tweenPercentage),
+        // so the button resolves unambiguously even in the merged inline clip row.
+        const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
         return (
           <Fragment key={`line-${i}-${prev.percentage}-${kf.percentage}`}>
@@ -206,7 +216,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {groupAware && onSelectSegment && (
+            {onSelectSegment && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""
@@ -419,6 +429,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds(
         props.onMoveKeyframe
           ? (target, toClipPercentage) =>
               props.onMoveKeyframe?.(props.elementId, target.percentage, toClipPercentage)
+          : undefined
+      }
+      onSelectSegment={
+        props.onSelectSegment
+          ? (target) => props.onSelectSegment?.(props.elementId, target)
           : undefined
       }
     />

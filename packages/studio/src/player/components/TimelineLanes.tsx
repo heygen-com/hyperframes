@@ -525,6 +525,7 @@ export function TimelineLanes({
                                 onContextMenuKeyframe?.(e, elId, { percentage: pct })
                               }
                               onMoveKeyframe={onMoveKeyframe}
+                              onSelectSegment={onSelectSegment}
                               suppressClickRef={suppressClickRef}
                             />
                           )}

@@ -10,6 +10,8 @@ export interface KeyframeCacheEntry {
     tweenPercentage?: number;
     /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
     propertyGroup?: string;
+    /** Source tween id — lets the inline clip-row ease button target a specific segment. */
+    animationId?: string;
     properties: Record<string, number | string>;
     ease?: string;
   }>;

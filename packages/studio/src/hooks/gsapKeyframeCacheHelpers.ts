@@ -45,6 +45,7 @@ export function updateKeyframeCacheFromParsed(
         percentage: clipPct,
         tweenPercentage: kf.percentage,
         propertyGroup: anim.propertyGroup,
+        animationId: anim.id,
       };
     });
 
