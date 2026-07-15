@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
     buildDomSelectionForTimelineElement: vi.fn(),
   },
   selection: { id: "box", selector: "#box", sourceFile: "index.html" },
-  animations: [] as GsapAnimation[],
+  animations: Array<GsapAnimation>(),
 }));
 
 vi.mock("../../contexts/StudioContext", () => ({
@@ -64,6 +64,23 @@ const flatAnimation: GsapAnimation = {
   propertyGroup: "position",
 };
 
+const otherFlatAnimation: GsapAnimation = {
+  ...flatAnimation,
+  id: "circle-to-0-position",
+  targetSelector: "#circle",
+};
+
+const otherKeyframedAnimation: GsapAnimation = {
+  ...otherFlatAnimation,
+  keyframes: {
+    format: "percentage",
+    keyframes: [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 420 } },
+    ],
+  },
+};
+
 function renderCallbacks(): { callbacks: TimelineEditCallbacks; unmount: () => void } {
   let callbacks: TimelineEditCallbacks | null = null;
   function Harness() {
@@ -94,11 +111,17 @@ beforeEach(() => {
     elements: [element],
     domClipChildren: [],
     keyframeCache: new Map(),
+    gsapAnimations: new Map([["box", [flatAnimation]]]),
   });
 });
 
 afterEach(() => {
-  usePlayerStore.setState({ elements: [], domClipChildren: [], keyframeCache: new Map() });
+  usePlayerStore.setState({
+    elements: [],
+    domClipChildren: [],
+    keyframeCache: new Map(),
+    gsapAnimations: new Map(),
+  });
 });
 
 describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
@@ -138,7 +161,52 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
-  it("deletes a flat boundary through the guarded animation delete path", () => {
+  it("deletes a non-selected element flat boundary through its animation delete path", () => {
+    usePlayerStore.setState({
+      gsapAnimations: new Map([["scenes/main.html#circle", [otherFlatAnimation]]]),
+    });
+    const view = renderCallbacks();
+
+    act(() => {
+      view.callbacks.onDeleteKeyframe?.(
+        "scenes/main.html#circle",
+        0,
+        "position",
+        0,
+        otherFlatAnimation.id,
+      );
+    });
+
+    expect(mocks.actions.handleGsapDeleteAnimation).toHaveBeenCalledWith(otherFlatAnimation.id);
+    expect(mocks.actions.handleGsapRemoveKeyframe).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("removes a non-selected element authored endpoint as a keyframe", () => {
+    usePlayerStore.setState({
+      gsapAnimations: new Map([["index.html#circle", [otherKeyframedAnimation]]]),
+    });
+    const view = renderCallbacks();
+
+    act(() => {
+      view.callbacks.onDeleteKeyframe?.(
+        "scenes/main.html#circle",
+        100,
+        "position",
+        100,
+        otherKeyframedAnimation.id,
+      );
+    });
+
+    expect(mocks.actions.handleGsapRemoveKeyframe).toHaveBeenCalledWith(
+      otherKeyframedAnimation.id,
+      100,
+    );
+    expect(mocks.actions.handleGsapDeleteAnimation).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("keeps selected-element flat boundary deletion on the animation delete path", () => {
     const view = renderCallbacks();
 
     act(() => {
@@ -185,6 +253,7 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
         },
       },
     ];
+    usePlayerStore.setState({ gsapAnimations: new Map([["box", mocks.animations]]) });
     const view = renderCallbacks();
 
     act(() => {
