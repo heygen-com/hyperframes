@@ -70,7 +70,7 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  const viewModeValue = useViewModeState();
+  const viewModeValue = useViewModeState(initialUrlStateRef.current.viewMode);
 
   useEffect(() => {
     if (resolving || waitingForServer) return;
@@ -417,6 +417,8 @@ export function StudioApp() {
     previewIframeRef,
     rightPanelTab: panelLayout.rightPanelTab,
     rightCollapsed: panelLayout.rightCollapsed,
+    viewMode: viewModeValue.viewMode,
+    setViewMode: viewModeValue.setViewMode,
     activeCompPathHydrated,
     domEditSelection: domEditSession.domEditSelection,
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
