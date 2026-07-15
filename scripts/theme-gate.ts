@@ -23,7 +23,15 @@ export function injectTheme(html: string, theme: Theme): string {
   const closingHead = html.search(/<\/head\s*>/i);
   if (closingHead === -1) throw new Error("QA page has no closing head tag");
 
-  const style = `  <style data-hyperframes-theme="${theme.name}">\n${theme.css.trim()}\n  </style>\n`;
+  // Demos declare contract tokens on element scope (#root { --bg: ... }),
+  // which beats a plain :root injection for every descendant. Re-target the
+  // theme block at both scopes and mark each declaration !important so the
+  // injected theme actually wins, emulating a host that supplies the theme.
+  const forced = theme.css
+    .trim()
+    .replace(/^:root\s*\{/, ":root, #root, [data-composition-id] {")
+    .replace(/;(\s*\n)/g, " !important;$1");
+  const style = `  <style data-hyperframes-theme="${theme.name}">\n${forced}\n  </style>\n`;
   return `${html.slice(0, closingHead)}${style}${html.slice(closingHead)}`;
 }
 
@@ -33,13 +41,18 @@ async function main(): Promise<void> {
   const outputDir = join(repoRoot, "docs/public/theme-gate");
 
   const candidates = parseCoverageMap(await readFile(coveragePath, "utf8"));
-  const primitiveNames = [
-    ...new Set(
-      candidates
-        .filter((candidate) => candidate.status === "BUILT")
-        .map((candidate) => candidate.candidate),
-    ),
-  ];
+  // Explicit names win (bun scripts/theme-gate.ts name1 name2 ...); default: all BUILT.
+  const requested = process.argv.slice(2);
+  const primitiveNames =
+    requested.length > 0
+      ? requested
+      : [
+          ...new Set(
+            candidates
+              .filter((candidate) => candidate.status === "BUILT")
+              .map((candidate) => candidate.candidate),
+          ),
+        ];
   if (primitiveNames.length === 0) throw new Error("coverage map contains no BUILT primitives");
 
   const themes: Theme[] = await Promise.all(

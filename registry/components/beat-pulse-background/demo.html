@@ -22,7 +22,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0b0c0e;
+        background: var(--bg, #0b0c0e);
       }
 
       #root {
@@ -38,7 +38,11 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: radial-gradient(ellipse at 50% 42%, #17191f 0%, #0b0c0e 72%);
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          var(--bg, #17191f) 0%,
+          var(--bg, #0b0c0e) 72%
+        );
       }
 
       .mount-card {
@@ -47,10 +51,10 @@
         left: 12.5%;
         top: 15%;
         overflow: hidden;
-        border: 1px solid rgb(255 255 255 / 0.14);
+        border: 1px solid color-mix(in srgb, var(--border, #ffffff) 14%, transparent);
         border-radius: 28px;
-        background: #080a12;
-        box-shadow: 0 5cqh 14cqh rgb(0 0 0 / 0.52);
+        background: var(--bg, #080a12);
+        box-shadow: 0 5cqh 14cqh color-mix(in srgb, var(--bg, #000000) 52%, transparent);
       }
     </style>
   </head>

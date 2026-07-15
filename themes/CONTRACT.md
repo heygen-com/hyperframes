@@ -29,4 +29,4 @@ These theme-like tokens are each consumed by only one BUILT primitive and must b
 
 ## Theme pack rules
 
-Each theme file contains exactly one `:root` block and defines all 18 tokens. Theme packs are the only files in this directory allowed to declare contract tokens globally. A staged theme block is injected at the end of the QA page head so it wins over demo defaults without changing primitive source.
+Each theme file contains exactly one `:root` block and defines all 18 tokens. Theme packs are the only files in this directory allowed to declare contract tokens globally. A staged theme block is injected at the end of the QA page head, re-targeted at :root, #root, [data-composition-id] with !important on every declaration: demos declare contract tokens at element scope (#root), which a plain :root injection can never override for descendants.

@@ -21,7 +21,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #0b0c0e;
+        background: var(--bg, #0b0c0e);
       }
 
       #root {
@@ -29,7 +29,11 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: radial-gradient(ellipse at 50% 44%, #1d2130 0%, #0b0c0e 72%);
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          var(--bg, #1d2130) 0%,
+          var(--bg, #0b0c0e) 72%
+        );
       }
 
       .velocity-throw-snap-mount {
@@ -43,10 +47,10 @@
         left: 6%;
         top: 13%;
         overflow: hidden;
-        border: 1px solid #343c4d;
+        border: 1px solid var(--border, #343c4d);
         border-radius: 34px;
-        background: #0b0c0e;
-        box-shadow: 0 52px 120px rgba(0, 0, 0, 0.5);
+        background: var(--bg, #0b0c0e);
+        box-shadow: 0 52px 120px color-mix(in srgb, var(--bg, #000000) 50%, transparent);
       }
     </style>
   </head>

@@ -102,7 +102,11 @@
           }
 
           .bpb-vignette {
-            background: radial-gradient(ellipse at center, transparent 34%, rgb(0 0 0 / 0.58) 100%);
+            background: radial-gradient(
+              ellipse at center,
+              transparent 34%,
+              color-mix(in srgb, var(--bg, #000000) 58%, transparent) 100%
+            );
           }
         </style>
 

@@ -287,9 +287,9 @@
             var accentName =
               vars.accent === "violet" || vars.accent === "amber" ? vars.accent : "cyan";
             var accentColors = {
-              cyan: "#5ee7ff",
-              violet: "#a78bfa",
-              amber: "#fbbf24",
+              cyan: "var(--accent, #5ee7ff)",
+              violet: "var(--accent-2, #a78bfa)",
+              amber: "var(--brand, #fbbf24)",
             };
             root.style.setProperty("--tb-accent", accentColors[accentName]);
 

@@ -21,8 +21,8 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
-        font-family: Inter, system-ui, sans-serif;
+        background: var(--bg, #f7f7f8);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
       .demo-frame {
         display: grid;
@@ -31,12 +31,8 @@
         transform: scale(1.6); /* ponytail: scale wrapper, not GSAP targets */
       }
       .hf-remocn-confetti {
-        --hf-accent: #2563eb;
-        --hf-ink: #111827;
-        --hf-muted: #6b7280;
-        --hf-surface: #ffffff;
-        color: var(--hf-ink);
-        font-family: Inter, system-ui, sans-serif;
+        color: var(--fg, #111827);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
       .hf-remocn-confetti {
         position: relative;
@@ -44,8 +40,8 @@
         height: 428px;
         overflow: hidden;
         border-radius: 30px;
-        background: #080b12;
-        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+        background: var(--bg, #080b12);
+        box-shadow: 0 28px 80px color-mix(in srgb, var(--bg, #0f172a) 20%, transparent);
       }
       .hf-remocn-confetti .mesh {
         position: absolute;
@@ -55,27 +51,27 @@
         background:
           radial-gradient(
             circle at var(--hf-x1, 20%) var(--hf-y1, 30%),
-            #60a5fa 0 18%,
+            var(--accent, #60a5fa) 0 18%,
             transparent 32%
           ),
           radial-gradient(
             circle at var(--hf-x2, 76%) var(--hf-y2, 52%),
-            #f472b6 0 16%,
+            var(--accent-2, #f472b6) 0 16%,
             transparent 34%
           ),
           radial-gradient(
             circle at var(--hf-x3, 46%) var(--hf-y3, 78%),
-            #34d399 0 18%,
+            var(--brand, #34d399) 0 18%,
             transparent 34%
           );
       }
       .hf-remocn-confetti .card {
         position: absolute;
         inset: 74px 92px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
+        border: 1px solid color-mix(in srgb, var(--border, #ffffff) 16%, transparent);
         border-radius: 26px;
-        background: rgba(255, 255, 255, 0.08);
-        color: #fff;
+        background: color-mix(in srgb, var(--surface, #ffffff) 8%, transparent);
+        color: var(--fg, #fff);
         display: grid;
         place-items: center;
         text-align: center;
@@ -86,7 +82,11 @@
         width: 260px;
         height: 260px;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 65%);
+        background: radial-gradient(
+          circle,
+          color-mix(in srgb, var(--fg, #ffffff) 50%, transparent),
+          transparent 65%
+        );
         transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
         mix-blend-mode: screen;
       }
@@ -109,7 +109,7 @@
       .hf-remocn-confetti p {
         margin: 8px 0 0;
         font-size: 15px;
-        color: rgba(255, 255, 255, 0.7);
+        color: color-mix(in srgb, var(--muted, #ffffff) 70%, transparent);
       }
     </style>
   </head>
@@ -132,28 +132,28 @@
               <p>A deterministic celebration burst with seeded particles and gravity.</p>
             </div>
           </div>
-          <span class="particle" style="--c: #f43f5e"></span
-          ><span class="particle" style="--c: #f59e0b"></span
-          ><span class="particle" style="--c: #22c55e"></span
-          ><span class="particle" style="--c: #38bdf8"></span
-          ><span class="particle" style="--c: #a855f7"></span
-          ><span class="particle" style="--c: #f43f5e"></span
-          ><span class="particle" style="--c: #f59e0b"></span
-          ><span class="particle" style="--c: #22c55e"></span
-          ><span class="particle" style="--c: #38bdf8"></span
-          ><span class="particle" style="--c: #a855f7"></span
-          ><span class="particle" style="--c: #f43f5e"></span
-          ><span class="particle" style="--c: #f59e0b"></span
-          ><span class="particle" style="--c: #22c55e"></span
-          ><span class="particle" style="--c: #38bdf8"></span
-          ><span class="particle" style="--c: #a855f7"></span
-          ><span class="particle" style="--c: #f43f5e"></span
-          ><span class="particle" style="--c: #f59e0b"></span
-          ><span class="particle" style="--c: #22c55e"></span
-          ><span class="particle" style="--c: #38bdf8"></span
-          ><span class="particle" style="--c: #a855f7"></span
-          ><span class="particle" style="--c: #f43f5e"></span
-          ><span class="particle" style="--c: #f59e0b"></span>
+          <span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span>
         </div>
       </div>
       <script>

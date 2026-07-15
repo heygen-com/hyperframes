@@ -56,6 +56,7 @@
             container-type: size;
             isolation: isolate;
             overflow: hidden;
+            background: var(--bg, transparent);
             color: var(--fg, #f8fafc);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             pointer-events: none;
@@ -68,11 +69,12 @@
             place-items: center;
             overflow: hidden;
             padding: var(--space-3, 4cqmin);
+            background: var(--surface, transparent);
           }
 
           .ts-headline {
             --ts-base: var(--fg, #f8fafc);
-            --ts-accent: #22c55e;
+            --ts-accent: var(--brand, #22c55e);
             display: block;
             max-width: 90cqw;
             color: transparent;
@@ -86,9 +88,9 @@
               110deg,
               var(--ts-base) 0%,
               var(--ts-base) 40%,
-              color-mix(in srgb, var(--ts-accent) 58%, white) 47%,
-              white 50%,
-              color-mix(in srgb, var(--ts-accent) 72%, white) 53%,
+              color-mix(in srgb, var(--ts-accent) 58%, var(--fg, white)) 47%,
+              var(--fg, white) 50%,
+              color-mix(in srgb, var(--ts-accent) 72%, var(--fg, white)) 53%,
               var(--ts-base) 60%,
               var(--ts-base) 100%
             );

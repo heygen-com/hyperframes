@@ -68,6 +68,7 @@
             display: grid;
             place-items: center;
             overflow: hidden;
+            background: var(--bg, transparent);
           }
 
           .sr-stage {
@@ -89,7 +90,7 @@
             border-radius: var(--radius, 2.4cqmin);
             background: color-mix(in srgb, var(--surface, #0b1016) 92%, var(--sr-accent));
             box-shadow:
-              0 3.5cqh 10cqh rgba(0, 0, 0, 0.42),
+              0 3.5cqh 10cqh color-mix(in srgb, var(--bg, #000000) 42%, transparent),
               inset 0 0 4cqh color-mix(in srgb, var(--sr-accent) 7%, transparent);
           }
 

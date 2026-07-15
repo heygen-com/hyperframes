@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hero 20 theme compare</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; background: #0a0a0b; color: #f2f2f4; font-family: system-ui, sans-serif; }
+      header { max-width: 1480px; margin: 0 auto 28px; }
+      h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 36px); letter-spacing: -0.03em; }
+      header p { margin: 0; color: #8a8a92; }
+      .board { max-width: 1480px; margin: 0 auto; display: grid; grid-template-columns: 150px repeat(3, minmax(0, 1fr)); gap: 14px; align-items: center; }
+      .colhead { font: 600 13px ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; color: #e5484d; text-align: center; }
+      .rowhead { font: 600 12px ui-monospace, monospace; color: #8a8a92; word-break: break-all; }
+      .cell { overflow: hidden; background: #141416; border: 1px solid #26262b; border-radius: 10px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Hero 20: one primitive, three themes</h1>
+      <p>The Top 20 in rank order. Same component files in every column, only the injected token block differs: Neutral / Bold / Editorial.</p>
+    </header>
+    <div class="board" id="board">
+      <div></div>
+      <div class="colhead">Neutral</div>
+      <div class="colhead">Bold</div>
+      <div class="colhead">Editorial</div>
+    </div>
+    <script src="/hyperframes-player.global.js"></script>
+    <script src="/hyperframes-player-embed.js"></script>
+    <script>
+      var comps = ["comparison-split", "cut-the-curve", "multiplayer-cursors", "OffsetPathTraveler", "oversized-cursor", "per-word-rise", "scramble-reveal", "scroll-feed", "SplitTypeReveal", "SvgStrokeTrace", "vector-editor-rig", "velocity-throw-snap", "beat-pulse-background", "constellation-hub", "count-up", "kinetic-type-swap", "marker-highlight", "text-shimmer", "tracing-beam", "confetti-burst"];
+      var themes = ["neutral", "bold", "editorial"];
+      var board = document.getElementById("board");
+      comps.forEach(function (name) {
+        var head = document.createElement("div");
+        head.className = "rowhead";
+        head.textContent = name;
+        board.appendChild(head);
+        themes.forEach(function (theme) {
+          var cell = document.createElement("div");
+          cell.className = "cell";
+          var marker = document.createElement("div");
+          marker.setAttribute("data-hf-player", "true");
+          marker.setAttribute("data-src", "/public/theme-gate/" + name + "." + theme + ".html");
+          marker.setAttribute("data-width", "1920");
+          marker.setAttribute("data-height", "1080");
+          marker.style.aspectRatio = "16/9";
+          marker.style.background = "#0b0c0e";
+          cell.appendChild(marker);
+          board.appendChild(cell);
+        });
+      });
+    </script>
+    <script src="/qa-autoplay.js"></script>
+  </body>
+</html>

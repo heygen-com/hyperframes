@@ -23,7 +23,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #05070d;
+        background: var(--bg, #05070d);
       }
 
       #root {
@@ -32,8 +32,12 @@
         height: 1080px;
         overflow: hidden;
         background:
-          radial-gradient(circle at 50% 46%, rgba(56, 189, 248, 0.12), transparent 34%),
-          linear-gradient(145deg, #0b1220, #05070d 68%);
+          radial-gradient(
+            circle at 50% 46%,
+            color-mix(in srgb, var(--accent, #38bdf8) 12%, transparent),
+            transparent 34%
+          ),
+          linear-gradient(145deg, var(--bg, #0b1220), var(--bg, #05070d) 68%);
       }
 
       .mount-card {
@@ -60,19 +64,26 @@
         left: 23%;
         top: 22%;
         overflow: hidden;
-        border: 1px solid rgba(148, 163, 184, 0.28);
+        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 28%, transparent);
         border-radius: 36px;
         background:
-          linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px),
-          radial-gradient(circle at 50% 50%, #162238, var(--bg, #0b1120) 64%);
+          linear-gradient(
+            color-mix(in srgb, var(--border, #94a3b8) 5.5%, transparent) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--border, #94a3b8) 5.5%, transparent) 1px,
+            transparent 1px
+          ),
+          radial-gradient(circle at 50% 50%, var(--bg, #162238), var(--bg, #0b1120) 64%);
         background-size:
           52px 52px,
           52px 52px,
           100% 100%;
         box-shadow:
-          0 40px 100px rgba(0, 0, 0, 0.46),
-          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          0 40px 100px color-mix(in srgb, var(--bg, #000000) 46%, transparent),
+          inset 0 1px 0 color-mix(in srgb, var(--fg, #ffffff) 5%, transparent);
       }
     </style>
   </head>

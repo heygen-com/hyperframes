@@ -50,7 +50,7 @@
     overflow: hidden;
     border-radius: var(--radius, 30px);
     background: var(--bg, #080b12);
-    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+    box-shadow: 0 28px 80px color-mix(in srgb, var(--bg, #0f172a) 20%, transparent);
   }
   .hf-remocn-confetti .mesh {
     position: absolute;
@@ -77,9 +77,9 @@
   .hf-remocn-confetti .card {
     position: absolute;
     inset: var(--space-3, 74px) var(--space-3, 92px);
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border: 1px solid color-mix(in srgb, var(--border, #ffffff) 16%, transparent);
     border-radius: var(--radius, 26px);
-    background: var(--surface, rgba(255, 255, 255, 0.08));
+    background: color-mix(in srgb, var(--surface, #ffffff) 8%, transparent);
     color: var(--fg, #fff);
     display: grid;
     place-items: center;
@@ -91,7 +91,11 @@
     width: 260px;
     height: 260px;
     border-radius: 50%;
-    background: radial-gradient(circle, var(--fg, rgba(255, 255, 255, 0.5)), transparent 65%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--fg, #ffffff) 50%, transparent),
+      transparent 65%
+    );
     transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
     mix-blend-mode: screen;
   }
@@ -113,7 +117,7 @@
   }
   .hf-remocn-confetti p {
     margin: var(--space-1, 8px) 0 0;
-    color: var(--muted, rgba(255, 255, 255, 0.7));
+    color: color-mix(in srgb, var(--muted, #ffffff) 70%, transparent);
   }
 </style>
 

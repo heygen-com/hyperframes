@@ -23,7 +23,7 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #050812;
+        background: var(--bg, #050812);
       }
 
       #root {
@@ -31,7 +31,11 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: radial-gradient(ellipse at 50% 42%, #14213b 0%, #050812 72%);
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          var(--bg, #14213b) 0%,
+          var(--bg, #050812) 72%
+        );
       }
 
       /* The primitive uses cqw/cqh inside this definite host box. Keeping an
@@ -56,9 +60,9 @@
         width: 72%;
         height: 68%;
         overflow: hidden;
-        border: 1px solid rgba(148, 163, 184, 0.28);
+        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 28%, transparent);
         border-radius: 32px;
-        box-shadow: 0 44px 110px rgba(0, 0, 0, 0.48);
+        box-shadow: 0 44px 110px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
   </head>

@@ -72,10 +72,10 @@
             background:
               radial-gradient(
                 circle at 50% 46%,
-                color-mix(in srgb, var(--vts-accent) 13%, #172033) 0%,
-                #0b0c0e 72%
+                color-mix(in srgb, var(--vts-accent) 13%, var(--bg, #172033)) 0%,
+                var(--bg, #0b0c0e) 72%
               ),
-              #0b0c0e;
+              var(--bg, #0b0c0e);
           }
 
           .vts-rail {
@@ -107,9 +107,13 @@
             overflow: hidden;
             border: 0.16cqmin solid color-mix(in srgb, var(--border, #475569) 76%, transparent);
             border-radius: var(--radius, 3.2cqmin);
-            background: linear-gradient(150deg, #f8fafc 0%, #dbe5f1 100%);
-            color: #101827;
-            box-shadow: 0 3.6cqh 8cqh color-mix(in srgb, #000 46%, transparent);
+            background: linear-gradient(
+              150deg,
+              var(--surface, #f8fafc) 0%,
+              var(--surface, #dbe5f1) 100%
+            );
+            color: var(--fg, #101827);
+            box-shadow: 0 3.6cqh 8cqh color-mix(in srgb, var(--bg, #000000) 46%, transparent);
             transform-origin: 50% 50%;
             will-change: transform, opacity, border-color, box-shadow;
           }
@@ -133,8 +137,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 2.6cqw;
-            border-bottom: 0.1cqmin solid #c4ceda;
-            background: rgba(255, 255, 255, 0.58);
+            border-bottom: 0.1cqmin solid var(--border, #c4ceda);
+            background: color-mix(in srgb, var(--surface, #ffffff) 58%, transparent);
           }
 
           .vts-dots {
@@ -146,7 +150,7 @@
             width: 0.58cqw;
             aspect-ratio: 1;
             border-radius: 50%;
-            background: #91a0b3;
+            background: var(--muted, #91a0b3);
           }
 
           .vts-index {
@@ -167,9 +171,9 @@
 
           .vts-panel,
           .vts-stack {
-            border: 0.1cqmin solid #c4ceda;
+            border: 0.1cqmin solid var(--border, #c4ceda);
             border-radius: 1.5cqmin;
-            background: #edf2f7;
+            background: var(--surface, #edf2f7);
           }
 
           .vts-panel {
@@ -177,8 +181,8 @@
             overflow: hidden;
             background: linear-gradient(
               145deg,
-              color-mix(in srgb, var(--vts-accent) 30%, #eaf0f6),
-              #d7e0ea
+              color-mix(in srgb, var(--vts-accent) 30%, var(--surface, #eaf0f6)),
+              var(--surface, #d7e0ea)
             );
           }
 
@@ -187,7 +191,7 @@
             content: "";
             position: absolute;
             border-radius: 1cqmin;
-            background: color-mix(in srgb, var(--vts-accent) 72%, #ffffff);
+            background: color-mix(in srgb, var(--vts-accent) 72%, var(--surface, #ffffff));
           }
 
           .vts-panel::before {
@@ -215,7 +219,7 @@
             display: block;
             height: 1.2cqh;
             border-radius: 1cqh;
-            background: #bcc8d6;
+            background: var(--muted, #bcc8d6);
           }
 
           .vts-stack i:first-child {
@@ -232,7 +236,7 @@
             max-width: 100%;
             padding: 0 2.6cqw;
             overflow: hidden;
-            color: #101827;
+            color: var(--fg, #101827);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: 3.4cqw;
             font-weight: 780;
@@ -344,10 +348,23 @@
             var prefix = vars.card_label_prefix == null ? "Shot" : String(vars.card_label_prefix);
             var accentName =
               vars.accent === "blue" || vars.accent === "violet" ? vars.accent : "green";
+            var themeStyles = getComputedStyle(root);
             var palettes = {
-              green: { accent: "#34d399", dark: "#08795b", glow: "rgba(52, 211, 153, 0.4)" },
-              blue: { accent: "#60a5fa", dark: "#2563a8", glow: "rgba(96, 165, 250, 0.42)" },
-              violet: { accent: "#a78bfa", dark: "#6742b8", glow: "rgba(167, 139, 250, 0.42)" },
+              green: {
+                accent: themeStyles.getPropertyValue("--brand").trim() || "#34d399",
+                dark: themeStyles.getPropertyValue("--brand").trim() || "#08795b",
+                glow: "rgba(52, 211, 153, 0.4)",
+              },
+              blue: {
+                accent: themeStyles.getPropertyValue("--accent").trim() || "#60a5fa",
+                dark: themeStyles.getPropertyValue("--accent").trim() || "#2563a8",
+                glow: "rgba(96, 165, 250, 0.42)",
+              },
+              violet: {
+                accent: themeStyles.getPropertyValue("--accent-2").trim() || "#a78bfa",
+                dark: themeStyles.getPropertyValue("--accent-2").trim() || "#6742b8",
+                glow: "rgba(167, 139, 250, 0.42)",
+              },
             };
             var palette = palettes[accentName];
 
