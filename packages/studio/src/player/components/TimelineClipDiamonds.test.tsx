@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
+import { TimelineClipDiamonds, TimelineDiamondLane } from "./TimelineClipDiamonds";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -84,12 +84,24 @@ describe("TimelineClipDiamonds", () => {
     const root = createRoot(host);
     act(() => {
       root.render(
-        <TimelineClipDiamonds
+        <TimelineDiamondLane
           keyframesData={{
             format: "percentage",
             keyframes: [
-              { percentage: 0, properties: { x: 0 } },
-              { percentage: 50, properties: { x: 100 } },
+              {
+                percentage: 0,
+                tweenPercentage: 0,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 0 },
+              },
+              {
+                percentage: 50,
+                tweenPercentage: 100,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 100 },
+              },
             ],
           }}
           clipWidthPx={5000}
@@ -101,6 +113,7 @@ describe("TimelineClipDiamonds", () => {
           selectedKeyframes={new Set()}
           onClickKeyframe={onClickKeyframe}
           onMoveKeyframe={onMoveKeyframe}
+          groupAware
         />,
       );
     });
@@ -117,7 +130,12 @@ describe("TimelineClipDiamonds", () => {
       diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 104 }));
     });
 
-    expect(onClickKeyframe).toHaveBeenCalledWith(50);
+    expect(onClickKeyframe).toHaveBeenCalledWith({
+      percentage: 50,
+      tweenPercentage: 100,
+      propertyGroup: "position",
+      animationId: "anim-1",
+    });
     expect(onMoveKeyframe).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
@@ -126,7 +144,7 @@ describe("TimelineClipDiamonds", () => {
   // keyframe) committed the move but never selected/parked on the result —
   // the diamond it was just dragged looked exactly like one nothing happened
   // to. Select it at its NEW position too.
-  it("selects the keyframe at its new position after a real drag-retime", () => {
+  it("reselects a retimed keyframe with its post-move tween percentage", () => {
     const onClickKeyframe = vi.fn();
     const onMoveKeyframe = vi.fn();
     const host = document.createElement("div");
@@ -134,12 +152,31 @@ describe("TimelineClipDiamonds", () => {
     const root = createRoot(host);
     act(() => {
       root.render(
-        <TimelineClipDiamonds
+        <TimelineDiamondLane
           keyframesData={{
             format: "percentage",
             keyframes: [
-              { percentage: 0, properties: { x: 0 } },
-              { percentage: 50, properties: { x: 100 } },
+              {
+                percentage: 20,
+                tweenPercentage: 0,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 0 },
+              },
+              {
+                percentage: 40,
+                tweenPercentage: 50,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 100 },
+              },
+              {
+                percentage: 60,
+                tweenPercentage: 100,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 200 },
+              },
             ],
           }}
           clipWidthPx={200}
@@ -151,23 +188,35 @@ describe("TimelineClipDiamonds", () => {
           selectedKeyframes={new Set()}
           onClickKeyframe={onClickKeyframe}
           onMoveKeyframe={onMoveKeyframe}
+          groupAware
         />,
       );
     });
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="40%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
       diamond!.dispatchEvent(
-        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 80 }),
       );
-      // 4px at a 200px clip width is 2 clip-% — well past the no-op epsilon,
-      // a real retime.
-      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 104 }));
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 100 }));
     });
 
-    expect(onMoveKeyframe).toHaveBeenCalledWith("clip-1", 50, 52);
-    expect(onClickKeyframe).toHaveBeenCalledWith(52);
+    expect(onMoveKeyframe).toHaveBeenCalledWith(
+      {
+        percentage: 40,
+        tweenPercentage: 50,
+        propertyGroup: "position",
+        animationId: "anim-1",
+      },
+      50,
+    );
+    expect(onClickKeyframe).toHaveBeenCalledWith({
+      percentage: 50,
+      tweenPercentage: 75,
+      propertyGroup: "position",
+      animationId: "anim-1",
+    });
     act(() => root.unmount());
   });
 

@@ -6,6 +6,7 @@ import {
   resolveKeyframeDrag,
 } from "../../components/editor/keyframeDrag";
 import { MiniCurveSvg } from "../../components/editor/EaseCurveSection";
+import { clipToTweenPercentage } from "../../components/editor/KeyframeNavigation";
 import { LANE_H } from "./timelineLayout";
 import {
   timelineKeyframeSelectionKey,
@@ -351,7 +352,18 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
             // something looks identical to one that silently did nothing.
-            onClickKeyframe?.({ ...target, percentage: res.toClipPct });
+            onClickKeyframe?.({
+              ...target,
+              percentage: res.toClipPct,
+              tweenPercentage: clipToTweenPercentage(
+                target.animationId === undefined
+                  ? keyframesData.keyframes
+                  : keyframesData.keyframes.filter(
+                      (keyframe) => keyframe.animationId === target.animationId,
+                    ),
+                res.toClipPct,
+              ),
+            });
           }
         };
 
