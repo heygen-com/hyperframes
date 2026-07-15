@@ -88,3 +88,51 @@ async def test_get_state_roundtrip(dry_wav):
         params = json.loads(base64.b64decode(state["plugins"][0]))
         assert abs(params["gain_db"] + 6.0) < 1e-6
     await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_unrelated_client_disconnect_does_not_kill_other_clients_playback(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws_a:
+        await ws_a.send(
+            json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav})
+        )
+        loaded = await recv_json(ws_a)
+        assert loaded["event"] == "chain-loaded"
+
+        await ws_a.send(json.dumps({"cmd": "transport", "action": "play", "timeSec": 0.0, "rate": 1.0}))
+        frame = await recv_binary(ws_a)
+        idx, _pos, _pcm = decode_frame(frame)
+        assert idx == 0
+
+        # Client B connects and disconnects without ever calling play.
+        ws_b = await websockets.connect(f"ws://127.0.0.1:{port}")
+        await ws_b.close()
+
+        # Client A's playback must still be alive: another frame should arrive.
+        frame2 = await recv_binary(ws_a)
+        idx2, _pos2, _pcm2 = decode_frame(frame2)
+        assert idx2 == 0
+
+        await ws_a.send(json.dumps({"cmd": "transport", "action": "pause"}))
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_command_for_unknown_track_id_replies_bad_command_instead_of_closing(dry_wav):
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+        await ws.send(json.dumps({"cmd": "get-state", "trackId": "never-loaded"}))
+        err = await recv_json(ws)
+        assert err["event"] == "error"
+        assert err["code"] == "bad_command"
+
+        # Connection must still be alive and able to handle further commands.
+        await ws.send(
+            json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": dry_wav})
+        )
+        loaded = await recv_json(ws)
+        assert loaded["event"] == "chain-loaded"
+    await server.stop()

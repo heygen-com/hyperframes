@@ -17,6 +17,7 @@ class VstServer:
         self._tracks: dict[str, TrackStream] = {}
         self._plugins: dict[str, list] = {}
         self._play_task: asyncio.Task | None = None
+        self._play_owner: object | None = None
         self._server: websockets.WebSocketServer | None = None
         self._rate = 1.0
 
@@ -41,7 +42,7 @@ class VstServer:
                 msg = json.loads(raw)
                 await self._dispatch(ws, msg)
         finally:
-            if self._play_task:
+            if self._play_task and self._play_owner is ws:
                 self._play_task.cancel()
 
     async def _dispatch(self, ws, msg: dict) -> None:
@@ -90,6 +91,11 @@ class VstServer:
                 "event": "error", "code": "plugin_missing",
                 "plugin": exc.plugin_name, "trackId": msg.get("trackId"),
             }))
+        except Exception:
+            await ws.send(json.dumps({
+                "event": "error", "code": "bad_command",
+                "trackId": msg.get("trackId"),
+            }))
 
     async def _transport(self, ws, msg: dict) -> None:
         action = msg.get("action")
@@ -103,10 +109,12 @@ class VstServer:
             if self._play_task:
                 self._play_task.cancel()
             self._play_task = asyncio.create_task(self._pump(ws))
+            self._play_owner = ws
         elif action == "pause":
             if self._play_task:
                 self._play_task.cancel()
                 self._play_task = None
+                self._play_owner = None
 
     async def _pump(self, ws) -> None:
         while True:
