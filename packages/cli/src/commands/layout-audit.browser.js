@@ -580,8 +580,9 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
+      const rects = textClientRects(element, true);
       const rect = textRectFor(element, true);
-      if (rect) blocks.push({ element, rect });
+      if (rect) blocks.push({ element, rect, rects });
     }
     return blocks;
   }
@@ -594,6 +595,18 @@
     const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     return overlapX > 0 && overlapY > 0 ? overlapX * overlapY : 0;
+  }
+
+  function rectsArea(rects) {
+    return rects.reduce((total, rect) => total + rectArea(rect), 0);
+  }
+
+  function fragmentIntersectionArea(a, b) {
+    let total = 0;
+    for (const aRect of a) {
+      for (const bRect of b) total += intersectionArea(aRect, bRect);
+    }
+    return total;
   }
 
   function isNested(a, b) {
@@ -631,8 +644,8 @@
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
     if (isManagedFlowOverlap(a.element, b.element)) return null;
-    const area = intersectionArea(a.rect, b.rect);
-    if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
+    const area = fragmentIntersectionArea(a.rects, b.rects);
+    if (area <= Math.min(rectsArea(a.rects), rectsArea(b.rects)) * 0.2) return null;
     return {
       // Warning at the per-sample level: a single-sample overlap is usually an
       // entrance/exit transient (two blocks crossing mid-animation), not a real

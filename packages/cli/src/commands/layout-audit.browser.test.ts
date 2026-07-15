@@ -861,6 +861,20 @@ describe("layout-audit.browser content overlap", () => {
     expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
   });
 
+  it("ignores another block placed only in a multiline text block's empty line gap", () => {
+    const issues = auditOverlapScene({
+      a: {
+        textRect: [
+          rect({ left: 100, top: 100, width: 400, height: 60 }),
+          rect({ left: 100, top: 260, width: 400, height: 60 }),
+        ],
+      },
+      b: { textRect: rect({ left: 180, top: 180, width: 240, height: 50 }) },
+    });
+
+    expect(issues.some((issue) => issue.code === "content_overlap")).toBe(false);
+  });
+
   it("ignores watermark-style text with low colour alpha", () => {
     expectExemptFromOverlap({ color: "rgba(0, 0, 0, 0.2)" });
   });
@@ -1283,8 +1297,8 @@ function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string })
 }
 
 function auditOverlapScene(options: {
-  a: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
-  b: { textRect: DOMRect; color?: string; attrs?: string; clipPath?: string };
+  a: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
+  b: { textRect: DOMRect | DOMRect[]; color?: string; attrs?: string; clipPath?: string };
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -1300,7 +1314,10 @@ function auditOverlapScene(options: {
     a: options.a.clipPath ?? "none",
     b: options.b.clipPath ?? "none",
   };
-  const textRects: Record<string, DOMRect> = { a: options.a.textRect, b: options.b.textRect };
+  const textRects: Record<string, DOMRect[]> = {
+    a: normalizeTextRects(options.a.textRect),
+    b: normalizeTextRects(options.b.textRect),
+  };
 
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
     const id = (element as Element).id;
@@ -1323,7 +1340,8 @@ function auditOverlapScene(options: {
 
   for (const element of Array.from(document.querySelectorAll("*"))) {
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
-      textRects[element.id] ?? rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      boundingTextRect(textRects[element.id]) ??
+        rect({ left: 0, top: 0, width: 1920, height: 1080 }),
     );
   }
 
@@ -1339,9 +1357,7 @@ function auditOverlapScene(options: {
             ? selected.parentElement
             : (selected as Element | null);
         const id = element?.id ?? "";
-        return textRects[id]
-          ? ([textRects[id]] as unknown as DOMRectList)
-          : ([] as unknown as DOMRectList);
+        return (textRects[id] ?? []) as unknown as DOMRectList;
       },
       detach() {},
     } as unknown as Range;
@@ -1349,6 +1365,19 @@ function auditOverlapScene(options: {
 
   installAuditScript();
   return runAudit();
+}
+
+function normalizeTextRects(value: DOMRect | DOMRect[]): DOMRect[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+function boundingTextRect(rects: DOMRect[] | undefined): DOMRect | undefined {
+  if (!rects?.length) return undefined;
+  const left = Math.min(...rects.map((item) => item.left));
+  const top = Math.min(...rects.map((item) => item.top));
+  const right = Math.max(...rects.map((item) => item.right));
+  const bottom = Math.max(...rects.map((item) => item.bottom));
+  return rect({ left, top, width: right - left, height: bottom - top });
 }
 
 function isFullyClipped(clipPath: string): boolean {
