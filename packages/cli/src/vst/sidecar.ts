@@ -24,6 +24,15 @@ interface RunningSidecar {
 
 let running: RunningSidecar | null = null;
 let pending: Promise<{ port: number; stop: () => void }> | null = null;
+/**
+ * The child process of an in-flight `startVstSidecar()` attempt, tracked from
+ * the moment `spawn()` returns until either the ready handshake arrives (at
+ * which point `running` takes over tracking) or the attempt fails/times out.
+ * Lets `stopVstSidecar()` kill a sidecar that's still booting — without this,
+ * a shutdown that races the ready handshake (e.g. Ctrl-C during a slow boot)
+ * would see `running === null` and leave the child orphaned.
+ */
+let spawningChild: ChildProcess | null = null;
 
 /**
  * Resolves the command used to invoke the VST host sidecar.
@@ -68,9 +77,17 @@ export function getVstSidecar(): { port: number } | null {
  * is currently running — used by `hyperframes preview`'s shutdown paths so
  * every launch mode tears the sidecar down without needing to know whether
  * one was ever started.
+ *
+ * Also handles a sidecar that's still mid-spawn (a `startVstSidecar()` call
+ * in flight whose child hasn't announced its ready port yet): `running` is
+ * null in that window, so falls back to killing `spawningChild`.
  */
 export function stopVstSidecar(): void {
-  if (running) stopSidecar(running.child);
+  if (running) {
+    stopSidecar(running.child);
+  } else if (spawningChild) {
+    stopSidecar(spawningChild);
+  }
 }
 
 /** Test-only: force-resets singleton state between test cases. */
@@ -78,8 +95,12 @@ export function __resetForTests(): void {
   if (running) {
     running.child.kill();
   }
+  if (spawningChild) {
+    spawningChild.kill();
+  }
   running = null;
   pending = null;
+  spawningChild = null;
 }
 
 /**
@@ -116,11 +137,13 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
     const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
+    spawningChild = child;
     let settled = false;
 
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      if (spawningChild === child) spawningChild = null;
       child.kill();
       reject(new Error(`VST sidecar did not become ready in 30s. ${INSTALL_HINT}`));
     }, READY_TIMEOUT_MS);
@@ -134,12 +157,14 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
       clearTimeout(timer);
       const port = Number(portGroup);
       running = { port, child };
+      if (spawningChild === child) spawningChild = null;
       resolvePromise({ port, stop: () => stopSidecar(child) });
     });
 
     child.on("error", () => {
       if (settled) return;
       settled = true;
+      if (spawningChild === child) spawningChild = null;
       clearTimeout(timer);
       reject(new Error(`VST sidecar could not be started. ${INSTALL_HINT}`));
     });
@@ -148,6 +173,7 @@ export function startVstSidecar(): Promise<{ port: number; stop: () => void }> {
       if (running && running.child === child) {
         running = null;
       }
+      if (spawningChild === child) spawningChild = null;
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -164,5 +190,8 @@ function stopSidecar(child: ChildProcess): void {
   child.kill();
   if (running && running.child === child) {
     running = null;
+  }
+  if (spawningChild === child) {
+    spawningChild = null;
   }
 }

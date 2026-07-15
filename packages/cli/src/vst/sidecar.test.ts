@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getVstSidecar, startVstSidecar, __resetForTests } from "./sidecar";
+import { getVstSidecar, startVstSidecar, stopVstSidecar, __resetForTests } from "./sidecar";
 
 afterEach(() => {
   __resetForTests();
@@ -60,4 +60,63 @@ describe("startVstSidecar", () => {
 
     a.stop();
   });
+
+  it("recovers after a failed spawn attempt so a later call can succeed", async () => {
+    process.env.HF_VST_HOST_CMD = "/definitely/not/here-again";
+    await expect(startVstSidecar()).rejects.toThrow(/uv tool install hyperframes-vst-host/);
+
+    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
+    process.env.HF_VST_HOST_CMD = fakeServe(dir, `echo "VST-HOST-LISTENING port=9559"; sleep 60`);
+    const { port, stop } = await startVstSidecar();
+    expect(port).toBe(9559);
+    stop();
+  });
+});
+
+describe("stopVstSidecar", () => {
+  it("kills a sidecar that is still mid-spawn, before the ready handshake arrives", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
+    const pidFile = join(dir, "child.pid");
+    // Writes its own PID immediately, then simulates a slow real-world boot
+    // (a real `uv run ... hyperframes-vst serve` can take over a second)
+    // before ever printing the ready line.
+    process.env.HF_VST_HOST_CMD = fakeServe(
+      dir,
+      `echo $$ > "${pidFile}"\nsleep 1\necho "VST-HOST-LISTENING port=9558"\nsleep 60`,
+    );
+
+    const startPromise = startVstSidecar();
+    // This attempt is expected to be killed out from under it and reject;
+    // swallow here so an unhandled-rejection warning doesn't fire before we
+    // assert on it below.
+    startPromise.catch(() => {});
+
+    // Give the child time to spawn and record its PID, well inside the fake
+    // sidecar's 1s boot delay — so stopVstSidecar() genuinely races the
+    // ready handshake rather than the test's own timing.
+    await new Promise((r) => setTimeout(r, 300));
+    const pid = Number(readFileSync(pidFile, "utf8").trim());
+    expect(() => process.kill(pid, 0)).not.toThrow();
+
+    stopVstSidecar();
+
+    // Poll until the killed child actually exits.
+    const deadline = Date.now() + 2000;
+    let alive = true;
+    while (Date.now() < deadline) {
+      try {
+        process.kill(pid, 0);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch {
+        alive = false;
+        break;
+      }
+    }
+    expect(alive).toBe(false);
+
+    // The in-flight attempt settles (rejects) once its child is killed, and
+    // clears its bookkeeping so a subsequent startVstSidecar() call isn't
+    // stuck waiting on a dead attempt.
+    await expect(startPromise).rejects.toThrow();
+  }, 5000);
 });
