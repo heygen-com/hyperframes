@@ -212,6 +212,37 @@ describe("loadExternalCompositions", () => {
     expect(injectedScripts).toEqual([]);
   });
 
+  it("does not fail composition mounting when a head script src is malformed", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><script src="http://[invalid"></script></head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    const onDiagnostic = vi.fn();
+    await loadExternalCompositions({ ...defaultParams, injectedScripts, onDiagnostic });
+
+    expect(injectedScripts).toHaveLength(1);
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
   it("calls onDiagnostic when fetch fails", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/broken.html");

@@ -212,13 +212,19 @@ function resolveScriptSourceUrl(scriptSrc: string, compositionUrl: URL | null): 
 }
 
 function isSameDocumentUrl(candidate: string | URL, compositionUrl: URL): boolean {
-  const candidateDocumentUrl = new URL(candidate);
-  const compositionDocumentUrl = new URL(compositionUrl);
-  candidateDocumentUrl.search = "";
-  candidateDocumentUrl.hash = "";
-  compositionDocumentUrl.search = "";
-  compositionDocumentUrl.hash = "";
-  return candidateDocumentUrl.href === compositionDocumentUrl.href;
+  try {
+    const candidateDocumentUrl = new URL(candidate);
+    const compositionDocumentUrl = new URL(compositionUrl);
+    candidateDocumentUrl.search = "";
+    candidateDocumentUrl.hash = "";
+    compositionDocumentUrl.search = "";
+    compositionDocumentUrl.hash = "";
+    return candidateDocumentUrl.href === compositionDocumentUrl.href;
+  } catch {
+    // Invalid authored URLs are not self-references. Preserve the existing
+    // browser-load path so its failure remains isolated to the script itself.
+    return false;
+  }
 }
 
 type HostCompositionIdentity = {
