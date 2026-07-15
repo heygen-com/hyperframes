@@ -27,6 +27,7 @@ import {
   isRecoverableParallelCaptureError,
   MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
+  resolveRenderWorkDirPrefix,
   shouldDiscardProbeSessionForPageSideCompositing,
   resolveInversionRetryPlan,
   resolveParallelRouterRetryPlan,
@@ -56,6 +57,16 @@ import {
   writeCompiledArtifacts,
 } from "./render/shared.js";
 import { formatCaptureFrameName, toExternalAssetKey } from "../utils/paths.js";
+
+describe("resolveRenderWorkDirPrefix", () => {
+  it("uses a short system temp prefix on Windows instead of the output path", () => {
+    const outputPath = win32.join("C:\\deep", "nested".repeat(30), "renders", "final.mp4");
+
+    expect(resolveRenderWorkDirPrefix(outputPath, "long-render-job-id", "win32", "C:/Temp")).toBe(
+      join("C:/Temp", "hf-render-"),
+    );
+  });
+});
 
 describe("extractStandaloneEntryFromIndex", () => {
   it("reuses the index wrapper and keeps only the requested composition host", () => {

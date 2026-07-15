@@ -43,6 +43,7 @@ import {
   copyFileSync,
   appendFileSync,
 } from "fs";
+import { tmpdir } from "node:os";
 import { parseHTML } from "linkedom";
 import { type CanvasResolution, type Fps, type FpsInput, toFps } from "@hyperframes/core";
 import {
@@ -724,6 +725,16 @@ export function buildMissingFrameRetryBatches(
 
 export function getNextRetryWorkerCount(currentWorkers: number): number {
   return Math.max(1, Math.floor(currentWorkers / 2));
+}
+
+export function resolveRenderWorkDirPrefix(
+  outputPath: string,
+  jobId: string,
+  platform: NodeJS.Platform = process.platform,
+  systemTempDir: string = tmpdir(),
+): string {
+  if (platform === "win32") return join(systemTempDir, "hf-render-");
+  return join(dirname(outputPath), `work-${jobId}-`);
 }
 
 /**
@@ -1514,7 +1525,7 @@ export async function executeRenderJob(
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const workDir = job.config.debug
     ? join(debugDir, job.id)
-    : mkdtempSync(join(outputDir, `work-${job.id}-`));
+    : mkdtempSync(resolveRenderWorkDirPrefix(outputPath, job.id));
   const pipelineStart = Date.now();
   const baseLog = job.config.logger ?? defaultLogger;
   const logPath = job.config.debug ? join(workDir, "render.log") : null;
