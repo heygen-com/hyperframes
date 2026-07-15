@@ -204,8 +204,7 @@ function exitNoWords(json: boolean): never {
 }
 
 function transcriptPathForInput(inputPath: string, dir: string): string {
-  const stem = basename(inputPath, extname(inputPath));
-  return join(dir, `${stem}.transcript.json`);
+  return join(dir, `${basename(inputPath)}.transcript.json`);
 }
 
 function writeLegacyTranscriptAlias(dir: string, words: unknown): void {

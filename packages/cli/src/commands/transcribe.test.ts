@@ -136,8 +136,8 @@ Render video. Built for agents.
     await transcribeCmd.run!({ args: { input: first, dir, json: true } } as never);
     await transcribeCmd.run!({ args: { input: second, dir, json: true } } as never);
 
-    expect(readFileSync(join(dir, "first.transcript.json"), "utf-8")).toContain("FIRST");
-    expect(readFileSync(join(dir, "second.transcript.json"), "utf-8")).toContain("SECOND");
+    expect(readFileSync(join(dir, "first.srt.transcript.json"), "utf-8")).toContain("FIRST");
+    expect(readFileSync(join(dir, "second.srt.transcript.json"), "utf-8")).toContain("SECOND");
     expect(readFileSync(join(dir, "transcript.json"), "utf-8")).toContain("SECOND");
   });
 
@@ -168,8 +168,35 @@ Render video. Built for agents.
       args: { input: second, dir, engine: "whisper", json: true },
     } as never);
 
-    expect(readFileSync(join(dir, "first.transcript.json"), "utf-8")).toContain("FIRST");
-    expect(readFileSync(join(dir, "second.transcript.json"), "utf-8")).toContain("SECOND");
+    expect(readFileSync(join(dir, "first.wav.transcript.json"), "utf-8")).toContain("FIRST");
+    expect(readFileSync(join(dir, "second.wav.transcript.json"), "utf-8")).toContain("SECOND");
+  });
+
+  it("preserves transcripts for same-stem inputs with different extensions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const wav = join(dir, "sample.wav");
+    const mp3 = join(dir, "sample.mp3");
+    writeFileSync(wav, "not-real-audio");
+    writeFileSync(mp3, "not-real-audio");
+    transcribeMock.mockImplementation(
+      async (input: string, _dir: string, opts: { transcriptPath: string }) => {
+        const text = input === wav ? "WAV" : "MP3";
+        writeFileSync(opts.transcriptPath, JSON.stringify([{ text, start: 0, end: 1 }], null, 2));
+        return {
+          transcriptPath: opts.transcriptPath,
+          wordCount: 1,
+          durationSeconds: 1,
+          speechOnsetSeconds: null,
+        };
+      },
+    );
+
+    await transcribeCmd.run!({ args: { input: wav, dir, engine: "whisper", json: true } } as never);
+    await transcribeCmd.run!({ args: { input: mp3, dir, engine: "whisper", json: true } } as never);
+
+    expect(readFileSync(join(dir, "sample.wav.transcript.json"), "utf-8")).toContain("WAV");
+    expect(readFileSync(join(dir, "sample.mp3.transcript.json"), "utf-8")).toContain("MP3");
   });
 
   it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {
