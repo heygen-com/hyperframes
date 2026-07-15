@@ -183,7 +183,7 @@ describe("hyperframes init flag rename", () => {
     const target = join(dir, "proj");
     const source = join(dir, "source.mp4");
     try {
-      const ffmpeg = findFFmpeg();
+      const ffmpeg = process.env.FFMPEG_BIN ?? findFFmpeg();
       expect(ffmpeg).toBeDefined();
       execFileSync(
         ffmpeg as string,
