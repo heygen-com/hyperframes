@@ -42,11 +42,12 @@ afterEach(() => {
 });
 
 function renderCard(
-  focusedSegment: { tweenPercentage: number } | null,
+  focusedSegment: { tweenPercentage: number; collidingAnimationIds?: string[] } | null,
   onEaseCommit = vi.fn(),
   defaultExpanded = false,
   animation = ANIMATION,
   onUpdateMeta = vi.fn(),
+  onUpdateSegmentEase = vi.fn(),
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -65,6 +66,7 @@ function renderCard(
           onAddProperty={vi.fn()}
           onRemoveProperty={vi.fn()}
           onUpdateKeyframeEase={onEaseCommit}
+          onUpdateSegmentEase={onUpdateSegmentEase}
         />,
       );
     });
@@ -135,6 +137,43 @@ describe("AnimationCard", () => {
 
     expect(onEaseCommit).toHaveBeenCalledWith(ANIMATION.id, 50, ease);
     expect(trackStudioSegmentEaseEdit).toHaveBeenCalledWith({ action: "commit", ease });
+    act(() => view.root.unmount());
+  });
+
+  it("commits a focused multi-id segment ease through the bulk callback", () => {
+    const onUpdateKeyframeEase = vi.fn();
+    const onUpdateSegmentEase = vi.fn();
+    const collidingAnimationIds = [ANIMATION.id, "scale-tween", "opacity-tween"];
+    const view = renderCard(
+      { tweenPercentage: 50, collidingAnimationIds },
+      onUpdateKeyframeEase,
+      false,
+      ANIMATION,
+      vi.fn(),
+      onUpdateSegmentEase,
+    );
+    const ease = selectPreset(view.host, "quad-out");
+
+    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(collidingAnimationIds, 50, ease);
+    expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
+    act(() => view.root.unmount());
+  });
+
+  it("keeps a focused single-id segment ease on the single callback", () => {
+    const onUpdateKeyframeEase = vi.fn();
+    const onUpdateSegmentEase = vi.fn();
+    const view = renderCard(
+      { tweenPercentage: 50, collidingAnimationIds: [ANIMATION.id] },
+      onUpdateKeyframeEase,
+      false,
+      ANIMATION,
+      vi.fn(),
+      onUpdateSegmentEase,
+    );
+    const ease = selectPreset(view.host, "quad-out");
+
+    expect(onUpdateKeyframeEase).toHaveBeenCalledExactlyOnceWith(ANIMATION.id, 50, ease);
+    expect(onUpdateSegmentEase).not.toHaveBeenCalled();
     act(() => view.root.unmount());
   });
 

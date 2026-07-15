@@ -235,9 +235,11 @@ function EaseParameterField({
 export function EaseCurveSection({
   ease,
   onCustomEaseCommit,
+  collidingAnimationIds,
 }: {
   ease: string;
   onCustomEaseCommit: (ease: string) => void;
+  collidingAnimationIds?: string[];
 }) {
   const springBounce = parseSpringBounce(ease);
   const isSpring = springBounce !== null;
@@ -320,6 +322,11 @@ export function EaseCurveSection({
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
       <EaseTypeDropdown kind={mode} ease={ease} label={label} onSelect={onCustomEaseCommit} />
+      {collidingAnimationIds && collidingAnimationIds.length > 1 && (
+        <p className="mb-1 text-[9px] text-neutral-500">
+          Applies to {collidingAnimationIds.length} properties
+        </p>
+      )}
       <EaseModeToggle mode={mode} onCommit={onCustomEaseCommit} />
       {showGraph ? (
         <>

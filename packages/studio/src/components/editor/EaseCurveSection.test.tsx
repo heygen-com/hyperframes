@@ -11,12 +11,22 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function renderSection(ease = "none", onCustomEaseCommit = vi.fn()) {
+function renderSection(
+  ease = "none",
+  onCustomEaseCommit = vi.fn(),
+  collidingAnimationIds?: string[],
+) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<EaseCurveSection ease={ease} onCustomEaseCommit={onCustomEaseCommit} />);
+    root.render(
+      <EaseCurveSection
+        ease={ease}
+        onCustomEaseCommit={onCustomEaseCommit}
+        collidingAnimationIds={collidingAnimationIds}
+      />,
+    );
   });
   return { host, root, onCustomEaseCommit };
 }
@@ -82,6 +92,25 @@ function editorLabel(host: HTMLElement): string | null {
 }
 
 describe("EaseCurveSection preset grid", () => {
+  it("shows the number of properties for a multi-id segment", () => {
+    const { host, root } = renderSection("power2.out", vi.fn(), ["move-x", "move-y", "fade"]);
+
+    expect(host.textContent).toContain("Applies to 3 properties");
+
+    act(() => root.unmount());
+  });
+
+  it.each([undefined, ["move-x"]])(
+    "does not show a property count for a non-colliding segment",
+    (collidingAnimationIds) => {
+      const { host, root } = renderSection("power2.out", vi.fn(), collidingAnimationIds);
+
+      expect(host.textContent).not.toContain("Applies to");
+
+      act(() => root.unmount());
+    },
+  );
+
   it.each([
     ["curve", "none", "linear", ["flow-7", "spring-bouncy"]],
     ["spring", "spring(0.42)", "spring-bouncy", ["linear", "flow-7"]],

@@ -44,6 +44,7 @@ export function KeyframeEaseList({
   keyframes,
   globalEase,
   expandedPct,
+  collidingAnimationIds,
   onToggle,
   onEaseCommit,
   onApplyAll,
@@ -51,6 +52,7 @@ export function KeyframeEaseList({
   keyframes: GsapPercentageKeyframe[];
   globalEase: string;
   expandedPct: number | null;
+  collidingAnimationIds?: string[];
   onToggle: (pct: number | null) => void;
   onEaseCommit: (pct: number, ease: string) => void;
   /** Apply one ease to every segment at once (clears per-segment overrides). */
@@ -119,6 +121,7 @@ export function KeyframeEaseList({
               <div className="px-2 pb-2">
                 <EaseCurveSection
                   ease={segEase}
+                  collidingAnimationIds={collidingAnimationIds}
                   onCustomEaseCommit={(ease) => onEaseCommit(kf.percentage, ease)}
                 />
               </div>
