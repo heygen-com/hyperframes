@@ -7,7 +7,10 @@ import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
 import { AnimationCard } from "./AnimationCard";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
-import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import {
+  trackAnimationMetaUpdate,
+  type GsapAnimationEditCallbacks,
+} from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 
 export function FlatTimingRow({
@@ -178,9 +181,7 @@ export function FlatMotionSection({
                     callbacks.onUpdateProperty(animationId, property, value);
                   }}
                   onUpdateMeta={(animationId, updates) => {
-                    if (updates.duration !== undefined) track("metric", "Length");
-                    else if (updates.position !== undefined) track("metric", "Starts at");
-                    else track("select", "Speed");
+                    trackAnimationMetaUpdate(track, updates);
                     callbacks.onUpdateMeta(animationId, updates);
                   }}
                   onDeleteAnimation={(animationId) => {

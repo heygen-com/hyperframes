@@ -4,6 +4,16 @@ import { trackStudioEvent } from "./studioTelemetry";
 // (classic PropertyPanel, flat PropertyPanelFlat) funnel their inputs through this
 // one helper so usage can be ranked by input to find removal candidates. Emits the
 // batched `studio:design_input` event via trackStudioEvent (opt-out-aware, never-throw).
+//
+// Fire convention (kept consistent across both UIs):
+//   - Discrete controls (metric/text/select/segmented/toggle/color/button) fire only
+//     when a real committed value change happens (the commit site guards on
+//     next !== current).
+//   - Continuous controls (sliders, scrub) fire once per user interaction that
+//     produced commits, even if the net value ends unchanged — net-change-at-settle
+//     is unreliable for them because mid-drag commits have already advanced the value,
+//     so "did the user work this control" is the honest signal. The coalescing window
+//     below collapses the many mid-drag commits into that single event.
 
 export type DesignInputUi = "flat" | "classic";
 

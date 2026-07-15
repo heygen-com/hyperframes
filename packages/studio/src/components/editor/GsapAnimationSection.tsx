@@ -4,7 +4,10 @@ import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import { AnimationCard } from "./AnimationCard";
-import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import {
+  trackAnimationMetaUpdate,
+  type GsapAnimationEditCallbacks,
+} from "./gsapAnimationCallbacks";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
@@ -50,9 +53,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
     animationId: string,
     updates: { duration?: number; ease?: string; position?: number },
   ) => {
-    if (updates.duration !== undefined) track("metric", "Length");
-    else if (updates.position !== undefined) track("metric", "Starts at");
-    else track("select", "Speed");
+    trackAnimationMetaUpdate(track, updates);
     onUpdateMeta(animationId, updates);
   };
 

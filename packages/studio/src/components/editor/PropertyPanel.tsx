@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
@@ -306,49 +305,38 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
 
   const classicPanel = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-neutral-100">
-              {element.label}
+      <DesignPanelInputProvider section="header">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold text-neutral-100">
+                {element.label}
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
             </div>
-            <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
-          </div>
-          <div className="flex items-center gap-1">
-            {selectedElementId && onToggleElementHidden && (
-              <button
-                type="button"
-                aria-label={visibilityToggleLabel}
-                title={visibilityToggleLabel}
-                onClick={() => {
-                  void onToggleElementHidden(selectedElementId, !selectedElementHidden);
-                }}
-                className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-              >
-                {selectedElementHidden ? (
-                  <EyeSlash size={13} weight="bold" aria-hidden="true" />
-                ) : (
-                  <Eye size={13} weight="bold" aria-hidden="true" />
-                )}
-              </button>
-            )}
             <InspectorHeaderActions
               element={element}
               copied={clipboardCopied}
               onCopy={handleCopyElementInfo}
               onClear={onClearSelection}
               onUngroup={onUngroup}
+              selectedElementId={selectedElementId}
+              selectedElementHidden={selectedElementHidden}
+              visibilityLabel={visibilityToggleLabel}
+              onToggleHidden={onToggleElementHidden}
             />
           </div>
         </div>
-      </div>
+      </DesignPanelInputProvider>
       <div className="flex-1 overflow-y-auto">
         {onToggleRecording && (
-          <GestureRecordPanelButton
-            recordingState={recordingState}
-            recordingDuration={recordingDuration}
-            onToggleRecording={onToggleRecording}
-          />
+          <DesignPanelInputProvider section="footer">
+            <GestureRecordPanelButton
+              recordingState={recordingState}
+              recordingDuration={recordingDuration}
+              onToggleRecording={onToggleRecording}
+            />
+          </DesignPanelInputProvider>
         )}
 
         <TextSection

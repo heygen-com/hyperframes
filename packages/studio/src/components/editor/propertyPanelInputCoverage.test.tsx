@@ -447,7 +447,7 @@ function representativeElement() {
 }
 
 describe("classic PropertyPanel input coverage", () => {
-  it("emits only named classic events from a known section for every layout input", async () => {
+  it("emits only named, known-section events across body inputs and header/footer chrome", async () => {
     const { PropertyPanel } = await import("./PropertyPanel");
     const host = render(
       <PropertyPanel
@@ -468,30 +468,45 @@ describe("classic PropertyPanel input coverage", () => {
         } as unknown as PropertyPanelProps)}
       />,
     );
-    const layout = host.querySelector('[data-panel-section="layout"]');
-    if (!layout) throw new Error("expected classic Layout section");
-    const inputs = Array.from(layout.querySelectorAll<HTMLInputElement>('input[type="text"]'));
-    expect(inputs.length).toBeGreaterThan(0);
 
-    for (const [index, input] of inputs.entries()) {
-      act(() => {
-        changeInput(input, String(100 + index));
-      });
+    // Fire every body text input across the WHOLE panel (not just the layout
+    // section): a section rendered without a <DesignPanelInputProvider section="X">
+    // would surface here as section "unknown" and fail the invariant below.
+    const bodyInputs = Array.from(host.querySelectorAll<HTMLInputElement>('input[type="text"]'));
+    expect(bodyInputs.length).toBeGreaterThan(0);
+    for (const [index, input] of bodyInputs.entries()) {
+      act(() => changeInput(input, String(100 + index)));
       act(() => blurInput(input));
     }
 
-    expect(trackStudioEvent).toHaveBeenCalledTimes(inputs.length);
+    // Header + footer chrome — the classic siblings of the flat header/footer.
+    // (Copy is skipped: its handler reaches for the clipboard, unavailable here.
+    // The visibility toggle is store-gated on a live selection this unit mock does
+    // not model; Clear selection already exercises the header section.)
+    const clear = host.querySelector<HTMLButtonElement>('[aria-label="Clear selection"]');
+    if (!clear) throw new Error("expected classic Clear selection control");
+    act(() => clear.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const recordButton = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Record gesture"),
+    );
+    if (!recordButton) throw new Error("expected classic gesture record button");
+    act(() => recordButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(trackStudioEvent).toHaveBeenCalled();
+    const sections = new Set<string>();
     for (const [, payload] of trackStudioEvent.mock.calls) {
-      expect(payload).toEqual(
-        expect.objectContaining({
-          ui: "classic",
-          section: "layout",
-        }),
-      );
+      expect(payload.ui).toBe("classic");
       expect(payload.name).not.toBe("");
       expect(payload.name).not.toBe("unnamed");
+      expect(payload.section).not.toBe("");
       expect(payload.section).not.toBe("unknown");
+      sections.add(payload.section as string);
     }
+    // A body section plus both chrome regions: proves coverage beyond one section
+    // and that classic chrome is wired in parallel with the flat header/footer.
+    expect(sections.has("header")).toBe(true);
+    expect(sections.has("footer")).toBe(true);
+    expect(sections.size).toBeGreaterThan(2);
   });
 });
 
