@@ -115,6 +115,7 @@ describe("useDomEditTextCommits", () => {
       refreshDomEditSelectionFromPreview: vi.fn(),
       buildDomSelectionFromTarget: vi.fn(async () => null),
       persistDomEditOperations,
+      queueDomEditSave: async (save) => save(),
       resolveImportedFontAsset: () => null,
     });
 
