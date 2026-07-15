@@ -9,7 +9,10 @@ dependencies = ["pedalboard>=0.9.24", "websockets>=12", "numpy>=1.26"]
 hyperframes-vst = "hyperframes_vst.__main__:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hyperframes_vst"]

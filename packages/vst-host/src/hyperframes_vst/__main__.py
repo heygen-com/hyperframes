@@ -20,6 +20,9 @@ def main() -> int:
     p_scan.add_argument("--dirs", nargs="*", default=None)
     p_scan.add_argument("--json", action="store_true")
 
+    p_serve = sub.add_parser("serve", help="Run the WebSocket sidecar")
+    p_serve.add_argument("--port", type=int, default=0)
+
     args = parser.parse_args()
 
     if args.command == "bounce":
@@ -46,6 +49,12 @@ def main() -> int:
         from .scan import default_plugin_dirs, scan_paths
 
         print(_json.dumps(scan_paths(args.dirs or default_plugin_dirs())))
+        return 0
+
+    if args.command == "serve":
+        from .server import serve
+
+        serve(args.port)
         return 0
 
     return 2
