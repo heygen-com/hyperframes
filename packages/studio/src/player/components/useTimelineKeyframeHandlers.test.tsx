@@ -95,6 +95,7 @@ describe("useTimelineKeyframeHandlers", () => {
     expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
       animationId: "position-tween",
       tweenPercentage: 100,
+      elementId: ELEMENT.id,
     });
     expect(setSelectedElementId).toHaveBeenCalledWith(ELEMENT.id);
     expect(onSelectElement).toHaveBeenCalledWith(ELEMENT);
