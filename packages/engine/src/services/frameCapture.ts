@@ -2359,6 +2359,13 @@ export async function computeStaticFrameSet(
 // sampleCount, so that knob's effect on density stays monotonic (see below).
 const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 
+// Verification uses full-page screenshots, whose cost scales with canvas size
+// and page complexity rather than frame count. Bound wall time as well as the
+// capture count so a long composition cannot spend minutes proving an
+// optimization before the real render starts. Exhaustion fails closed: dedup is
+// disabled and normal capture proceeds.
+const STATIC_VERIFY_MAX_MS = 15_000;
+
 /**
  * Interior verification points for a run [a..b], plus the always-included end `b`.
  * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
@@ -2414,6 +2421,7 @@ export async function verifyStaticFramesSafe(
 ): Promise<{ badFrame: number; budgetExhausted: boolean } | null> {
   const frames = [...staticFrames].sort((a, b) => a - b);
   if (frames.length === 0) return null;
+  const deadline = Date.now() + STATIC_VERIFY_MAX_MS;
   // Runs are maximal-contiguous (adjacent frames merge), so a run's anchor a-1 is
   // guaranteed NOT static — always a freshly-captured frame.
   const runs: Array<{ a: number; b: number }> = [];
@@ -2460,9 +2468,11 @@ export async function verifyStaticFramesSafe(
     for (const { a, b } of runs) {
       const anchor = a - 1;
       if (anchor < 0) continue;
+      if (Date.now() >= deadline) return { badFrame: a, budgetExhausted: true };
       const anchorBuf = await seekCapture(anchor);
       spent++;
       for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
+        if (Date.now() >= deadline) return { badFrame: f, budgetExhausted: true };
         const cur = await seekCapture(f);
         spent++;
         if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
