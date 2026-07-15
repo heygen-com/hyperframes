@@ -13,15 +13,15 @@ export function deduplicateKeyframes<
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
-      // Two different source animations with a keyframe at the same clip % but
-      // different eases: the merged segment's ease target is ambiguous. Flag it
-      // (compared before the ease overwrite below) so the collapsed clip row
-      // hides the inline ease button there and the user edits per-lane instead.
+      // Two DIFFERENT source animations with a keyframe at the same clip %: a
+      // single inline ease button can only target one of them, and which one is
+      // arbitrary (each may also inherit a different easeEach/animation ease, so
+      // comparing raw keyframe eases isn't enough). Flag it so the collapsed row
+      // hides the button there and the user edits per-lane instead.
       if (
         existing.animationId !== undefined &&
         kf.animationId !== undefined &&
-        existing.animationId !== kf.animationId &&
-        existing.ease !== kf.ease
+        existing.animationId !== kf.animationId
       ) {
         existing.easeAmbiguous = true;
       }

@@ -98,7 +98,7 @@ describe("clearKeyframeCacheForFile", () => {
 });
 
 describe("updateKeyframeCacheFromParsed", () => {
-  it("preserves the byte-identical cache output for a multi-keyframe tween", () => {
+  it("serializes a multi-keyframe tween with a stable shape and animation identity", () => {
     const animation: GsapAnimation = {
       ...animWithKeyframes("hero"),
       duration: 2,

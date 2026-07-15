@@ -147,11 +147,13 @@ export function FlatMotionSection({
   };
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
-  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  // Only consume a focus request aimed at the element this panel is showing, so
-  // a shared (class-selector) animation id can't open the wrong element's editor.
+  // Only consume a focus request aimed at the element THIS panel renders (not
+  // the store's selectedElementId, which flips synchronously during async
+  // selection resolution), so a shared class-selector animation id can't open
+  // the wrong element's editor.
+  const renderedElementId = `${element.sourceFile}#${element.id}`;
   const focusedHere =
-    focusedEaseSegment && focusedEaseSegment.elementId === selectedElementId
+    focusedEaseSegment && focusedEaseSegment.elementId === renderedElementId
       ? focusedEaseSegment
       : null;
 

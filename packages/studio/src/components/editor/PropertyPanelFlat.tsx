@@ -257,12 +257,18 @@ export function PropertyPanelFlat({
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  // Identity of the element THIS panel actually renders (not the store's
+  // selectedElementId, which flips synchronously on selection while the panel
+  // still renders the previous element during async DOM-selection resolution):
+  // a stale panel would otherwise consume a focus request meant for its
+  // successor when both share a class-selector animation id.
+  const renderedElementId = `${element.sourceFile}#${element.id}`;
   useEffect(() => {
-    if (!focusedEaseSegment || focusedEaseSegment.elementId !== selectedElementId) return;
+    if (!focusedEaseSegment || focusedEaseSegment.elementId !== renderedElementId) return;
     if (gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId)) {
       setOpenGroupId("motion");
     }
-  }, [focusedEaseSegment, gsapAnimations, selectedElementId]);
+  }, [focusedEaseSegment, gsapAnimations, renderedElementId]);
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

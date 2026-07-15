@@ -55,7 +55,7 @@ describe("synthesizeFlatTweenKeyframes", () => {
 });
 
 describe("deduplicateKeyframes ease ambiguity", () => {
-  it("flags a same-% collision from different animations with different eases", () => {
+  it("flags a same-% collision from different animations (different eases)", () => {
     const merged = deduplicateKeyframes([
       { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
       { percentage: 45, properties: { opacity: 1 }, ease: "power2.out", animationId: "#a-visual" },
@@ -64,12 +64,14 @@ describe("deduplicateKeyframes ease ambiguity", () => {
     expect(kf?.easeAmbiguous).toBe(true);
   });
 
-  it("does not flag when the colliding eases match", () => {
+  it("flags a cross-animation collision even when the raw eases match", () => {
+    // The button can still only target one arbitrary animation, and each may
+    // inherit a different easeEach/animation ease that raw comparison misses.
     const merged = deduplicateKeyframes([
       { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
       { percentage: 45, properties: { opacity: 1 }, ease: "power2.in", animationId: "#a-visual" },
     ]);
-    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBeFalsy();
+    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBe(true);
   });
 
   it("does not flag a same-% collision within a single animation", () => {

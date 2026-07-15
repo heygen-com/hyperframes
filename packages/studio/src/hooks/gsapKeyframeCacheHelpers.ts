@@ -57,14 +57,13 @@ export function updateKeyframeCacheFromParsed(
         if (prev) {
           prev.properties = { ...prev.properties, ...kf.properties };
           // Mirror deduplicateKeyframes: a same-% collision across different
-          // source animations with different eases is an ambiguous merged
-          // segment — flag it (before the ease overwrite) so the collapsed row
+          // source animations is an ambiguous merged segment (the button can
+          // only target one arbitrary animation). Flag it so the collapsed row
           // suppresses the inline ease button there.
           if (
             prev.animationId !== undefined &&
             kf.animationId !== undefined &&
-            prev.animationId !== kf.animationId &&
-            prev.ease !== kf.ease
+            prev.animationId !== kf.animationId
           ) {
             prev.easeAmbiguous = true;
           }
