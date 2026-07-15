@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -524,6 +524,139 @@ describe("processCompositionAudio", () => {
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
     expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(baseDir, ".media", "tone.wav"));
+  });
+});
+
+describe("processCompositionAudio VST chain application", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    delete process.env.HF_VST_HOST_CMD;
+    runFfmpegMock.mockClear();
+    capturedFilterScripts.length = 0;
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeFakeSidecar(dir: string, body: string): string {
+    const script = join(dir, "fake-vst.sh");
+    writeFileSync(script, `#!/bin/sh\n${body}\n`);
+    chmodSync(script, 0o755);
+    return script;
+  }
+
+  it("applies the chain via the sidecar before the volume-envelope bake, with no errors", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "music.wav"), "stub");
+    writeFileSync(join(baseDir, "chain.json"), "{}");
+    process.env.HF_VST_HOST_CMD = makeFakeSidecar(
+      workDir,
+      `
+out=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--output" ]; then out="$a"; fi
+  prev="$a"
+done
+echo processed > "$out"
+`,
+    );
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "music",
+          src: "music.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          vstChain: "chain.json",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("hard-fails the track (never falls back to unprocessed audio) and names the missing plugin", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "music.wav"), "stub");
+    writeFileSync(join(baseDir, "chain.json"), "{}");
+    process.env.HF_VST_HOST_CMD = makeFakeSidecar(
+      workDir,
+      `echo "PLUGIN_MISSING FabFilter Pro-Q 3" >&2; exit 3`,
+    );
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "music",
+          src: "music.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          vstChain: "chain.json",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.tracksProcessed).toBe(0);
+    expect(result.error).toContain("music");
+    expect(result.error).toContain('plugin "FabFilter Pro-Q 3" is not installed');
+  });
+
+  it("hard-fails when the referenced VST chain file doesn't exist on disk", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "music.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "music",
+          src: "music.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          vstChain: "does-not-exist.json",
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.tracksProcessed).toBe(0);
+    expect(result.error).toContain("music");
+    expect(result.error).toContain("VST chain file not found");
   });
 });
 

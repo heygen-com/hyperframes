@@ -16,6 +16,7 @@ import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
+import { applyVstChainToWav } from "./vstBounce.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -611,6 +612,21 @@ export async function processCompositionAudio(
             return;
           }
           audioSrcPath = trimmedPath;
+        }
+
+        // Apply the track's VST plugin chain (if any) to the dry, trimmed WAV
+        // before volume automation is baked in — plugins should see the raw
+        // signal, and the envelope should be applied to their output.
+        // A missing plugin or sidecar failure is a hard failure for this
+        // track: never silently fall back to unprocessed audio.
+        if (element.vstChain) {
+          const chainAbsPath = resolveProjectRelativeSrc(element.vstChain, baseDir, compiledDir);
+          if (!existsSync(chainAbsPath)) {
+            throw new Error(
+              `VST chain file not found for track "${element.id}": ${element.vstChain}`,
+            );
+          }
+          audioSrcPath = await applyVstChainToWav(audioSrcPath, chainAbsPath, workDir, element.id);
         }
 
         // Primary volume-automation path: bake the envelope into the PCM samples
