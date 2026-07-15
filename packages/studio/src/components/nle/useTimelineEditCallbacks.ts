@@ -12,6 +12,9 @@ import { resolveTweenStart, resolveTweenDuration } from "../../utils/globalTimeC
 import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+import { isMusicTrack } from "../../utils/timelineInspector";
+import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
+import { snapKeyframeRetimeTime } from "../../player/components/timelineSnapping";
 
 export interface TimelineEditCallbackDeps {
   handleTimelineElementMove: (
@@ -130,14 +133,30 @@ export function useTimelineEditCallbacks({
         if (!anim || tweenStart === null) return;
         const tweenDuration = anim.duration ?? resolveTweenDuration(anim);
         const sourceFile = sel.sourceFile || activeCompPath || "index.html";
-        const { elements, domClipChildren } = usePlayerStore.getState();
+        const playerState = usePlayerStore.getState();
+        const { elements, domClipChildren } = playerState;
         const { elStart, elDuration } = resolveClipTimingBasis(
           sel.id ?? "",
           sourceFile,
           elements,
           domClipChildren,
         );
-        const dropAbsTime = elStart + (toClipPct / 100) * elDuration;
+        const unsnappedDropAbsTime = elStart + (toClipPct / 100) * elDuration;
+        const beatTimes = playerState.timelineSnapEnabled
+          ? (remapBeatAnalysisToComposition(
+              playerState.beatAnalysis,
+              elements.find(isMusicTrack) ?? null,
+              playerState.beatEdits,
+            )?.beatTimes ?? [])
+          : [];
+        const dropAbsTime = snapKeyframeRetimeTime({
+          enabled: playerState.timelineSnapEnabled,
+          dropAbsTime: unsnappedDropAbsTime,
+          elements,
+          playheadTime: playerState.currentTime,
+          beatTimes,
+          pixelsPerSecond: playerState.timelinePps,
+        });
         const decision = resolveKeyframeRetime({
           keyframes: anim.keyframes?.keyframes ?? [],
           draggedTweenPct: target.tweenPct,

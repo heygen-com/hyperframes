@@ -16,7 +16,7 @@ function pointerEvent(type: string, init: PointerEventInit): Event {
   return new MouseEvent(type, init);
 }
 
-function renderDiamonds(onClickKeyframe = vi.fn()) {
+function renderDiamonds(onClickKeyframe = vi.fn(), clipWidthPx = 200, onMoveKeyframe = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -30,7 +30,7 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
             { percentage: 50, properties: { x: 100 } },
           ],
         }}
-        clipWidthPx={200}
+        clipWidthPx={clipWidthPx}
         clipHeightPx={48}
         accentColor="#4ba3d2"
         isSelected
@@ -38,6 +38,7 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
         elementId="clip-1"
         selectedKeyframes={new Set()}
         onClickKeyframe={onClickKeyframe}
+        onMoveKeyframe={onMoveKeyframe}
       />,
     );
   });
@@ -45,6 +46,30 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
 }
 
 describe("TimelineClipDiamonds", () => {
+  it("renders, clicks, and drags diamonds when the clip is narrower than 20px", () => {
+    const onClickKeyframe = vi.fn();
+    const onMoveKeyframe = vi.fn();
+    const { host, root } = renderDiamonds(onClickKeyframe, 12, onMoveKeyframe);
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    act(() => {
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0 }));
+    });
+
+    expect(onClickKeyframe).toHaveBeenCalledWith(50);
+
+    act(() => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 50 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 56 }));
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledWith("clip-1", 50, 100);
+    act(() => root.unmount());
+  });
+
   it("treats primary pointerup without drag as a keyframe click", () => {
     const { host, root, onClickKeyframe } = renderDiamonds();
     const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
