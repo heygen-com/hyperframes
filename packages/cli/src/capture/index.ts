@@ -19,6 +19,7 @@ import { extractDesignStyles } from "./designStyleExtractor.js";
 import { downloadAssets, downloadAndRewriteFonts } from "./assetDownloader.js";
 import { extractFontMetadata } from "./fontMetadataExtractor.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { diag } from "../ui/diagnostics.js";
 // briefGenerator.ts, visual-style, capture-summary removed — DESIGN.md replaces them
 import {
   setupAnimationCapture,
@@ -474,17 +475,17 @@ export async function captureWebsite(
         const summary = fontsManifest.families
           .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
           .join(", ");
-        // stderr: `capture --json` writes its envelope to stdout; this progress
-        // note must not corrupt it (matches the sibling console.warn below).
-        console.warn(`Font metadata extracted: ${summary}`);
+        // stderr (via diag): `capture --json` writes its envelope to stdout, so
+        // these progress/advisory lines must not land there.
+        diag.notice(`Font metadata extracted: ${summary}`);
         if (fontsManifest.unidentified.length > 0) {
-          console.warn(
+          diag.warn(
             `  ${fontsManifest.unidentified.length} font file(s) could not be identified — DESIGN.md should flag these explicitly.`,
           );
         }
       }
     } catch (err) {
-      console.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
+      diag.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
     }
 
     // Save animation catalog — lean version for the agent (not 745 raw CSS declarations)

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
+import { diag } from "../ui/diagnostics.js";
 import { isDevMode } from "../utils/env.js";
 import { getSystemMeta } from "./system.js";
 
@@ -219,18 +220,18 @@ export function showTelemetryNotice(): boolean {
   config.telemetryNoticeShown = true;
   writeConfig(config);
 
-  // stderr, not stdout: this first-run disclosure is not gated by --json (the
-  // guard in cli.ts filters by command only), so a stdout banner would corrupt
-  // the JSON envelope of the very first `check --json` / `info --json` etc.
-  console.error();
-  console.error(`  ${c.dim("Hyperframes collects anonymous usage data to improve the tool.")}`);
-  console.error(`  ${c.dim("File paths and composition content are never collected.")}`);
-  console.error(
+  // stderr (via diag), not stdout: this first-run disclosure is not gated by
+  // --json (the guard in cli.ts filters by command only), so a stdout banner
+  // would corrupt the JSON envelope of the very first `check --json` etc.
+  diag.notice();
+  diag.notice(`  ${c.dim("Hyperframes collects anonymous usage data to improve the tool.")}`);
+  diag.notice(`  ${c.dim("File paths and composition content are never collected.")}`);
+  diag.notice(
     `  ${c.dim("If you sign in to HeyGen, your account (email, or username) is linked to your usage.")}`,
   );
-  console.error();
-  console.error(`  ${c.dim("Disable anytime:")} ${c.accent("hyperframes telemetry disable")}`);
-  console.error();
+  diag.notice();
+  diag.notice(`  ${c.dim("Disable anytime:")} ${c.accent("hyperframes telemetry disable")}`);
+  diag.notice();
 
   return true;
 }
