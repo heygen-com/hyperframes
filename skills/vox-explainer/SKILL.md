@@ -72,6 +72,12 @@ A vox piece is a sequence of DIFFERENT pages, not one page redecorated. Two hard
 
 ### 3. Compose (per beat = one `.clip` scene)
 
+**Reusable registry items (prefer these over hand-writing the CSS):**
+`npx hyperframes add vox-paper-page vox-torn-card vox-cutout-label vox-tape vox-boil` —
+the five core vox components; and `npx hyperframes add vox-beat-hero` — a complete
+variable-driven hero beat block (label / image_src / page_color / accent_color / duration),
+cloneable per beat so the page arc is a variables change, not a rewrite.
+
 Working example with every pattern wired: `patterns/beat-collage-example.html`
 (lint+WCAG-clean, rendered). Theme tokens, torn-edge card `clip-path`, tape strips
 (`mix-blend-mode: multiply`), cutout label strips, paper grain (`feTurbulence` SVG), fold crease.

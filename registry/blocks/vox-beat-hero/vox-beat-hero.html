@@ -1,0 +1,69 @@
+<template id="vox-beat-hero-template">
+  <div data-composition-id="vox-beat-hero" data-width="720" data-height="1280">
+    <style>
+      [data-composition-id="vox-beat-hero"] { background: var(--page, #E7D7B5); overflow: hidden; position: relative;
+        font-family: "Bebas Neue", "Arial Narrow", sans-serif; }
+      [data-composition-id="vox-beat-hero"] .vb-crease { position: absolute; left: -20px; right: -20px; top: 58%; height: 3px;
+        background: linear-gradient(to bottom, rgba(0,0,0,.10), rgba(255,255,255,.25) 70%, transparent); transform: rotate(-.4deg); }
+      [data-composition-id="vox-beat-hero"] .vb-grain { position: absolute; inset: -20px; opacity: .5; pointer-events: none; z-index: 9; }
+      [data-composition-id="vox-beat-hero"] .vb-block { position: absolute; z-index: 2; width: 480px; height: 780px;
+        left: 110px; top: 170px; background: var(--accent, #D2382B); transform: rotate(-2.6deg); box-shadow: 6px 7px 0 rgba(0,0,0,.20); }
+      [data-composition-id="vox-beat-hero"] .vb-card-wrap { position: absolute; z-index: 4; left: 128px; top: 236px; }
+      [data-composition-id="vox-beat-hero"] .vb-card { width: 464px; padding: 16px 16px 18px; background: #fdfaf2;
+        clip-path: polygon(1.2% .8%, 8% .2%, 16% 1.1%, 25% .4%, 34% 1.3%, 44% .3%, 55% 1.2%, 66% .5%, 76% 1.4%, 86% .4%, 94% 1.2%, 99% .6%, 99.4% 9%, 98.8% 19%, 99.6% 30%, 98.9% 41%, 99.5% 53%, 98.8% 64%, 99.6% 75%, 99% 86%, 99.5% 94%, 98.9% 99.2%, 91% 99.6%, 81% 98.9%, 70% 99.7%, 59% 99%, 48% 99.6%, 37% 98.9%, 26% 99.5%, 15% 99%, 6% 99.6%, .9% 99%, .4% 90%, 1.1% 79%, .3% 68%, 1.2% 56%, .5% 45%, 1.3% 34%, .4% 23%, 1.1% 12%);
+        filter: drop-shadow(6px 8px 0 rgba(0,0,0,.22)); transform: rotate(-2deg); }
+      [data-composition-id="vox-beat-hero"] .vb-card img { display: block; width: 100%; height: 620px; object-fit: cover; }
+      [data-composition-id="vox-beat-hero"] .vb-tape { position: absolute; z-index: 5; width: 150px; height: 42px;
+        background: rgba(210,56,43,.85); mix-blend-mode: multiply; box-shadow: 2px 3px 0 rgba(0,0,0,.10); }
+      [data-composition-id="vox-beat-hero"] .vb-tape.t1 { left: 96px; top: 218px; transform: rotate(-38deg); }
+      [data-composition-id="vox-beat-hero"] .vb-tape.t2 { left: 520px; top: 960px; transform: rotate(43deg); }
+      [data-composition-id="vox-beat-hero"] .vb-label-wrap { position: absolute; z-index: 6; left: 0; right: 0; top: 1000px;
+        display: flex; justify-content: center; }
+      [data-composition-id="vox-beat-hero"] .vb-label { background: #f2ecd9; padding: 6px 44px 0; font-size: 172px; line-height: .98;
+        letter-spacing: 3px; color: #0c0c0c;
+        clip-path: polygon(.8% 2%, 12% .5%, 30% 2.5%, 52% .8%, 73% 2.8%, 90% .6%, 99.3% 2.2%, 99.7% 50%, 99.1% 97%, 84% 99.4%, 62% 97.5%, 40% 99.6%, 18% 97.8%, .5% 99.2%, 1.2% 55%);
+        filter: drop-shadow(5px 6px 0 rgba(0,0,0,.25)); transform: rotate(-1.6deg); }
+    </style>
+    <div id="vb-push" style="position:absolute;inset:0">
+      <div class="vb-crease"></div>
+      <div class="vb-block" id="vbBlock"></div>
+      <div class="vb-card-wrap" id="vbCardWrap"><div class="vb-card" id="vbCard"><img id="vbImg" src="" alt=""></div></div>
+      <div class="vb-tape t1" id="vbTape1"></div>
+      <div class="vb-tape t2" id="vbTape2"></div>
+      <div class="vb-label-wrap" id="vbLabelWrap"><div class="vb-label" id="vbLabel"></div></div>
+    </div>
+    <svg class="vb-grain" width="100%" height="100%">
+      <filter id="vbNoise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.36  0 0 0 0 0.30  0 0 0 0 0.20  0 0 0 0.16 0"/></filter>
+      <rect width="100%" height="100%" filter="url(#vbNoise)"/>
+    </svg>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        var v = window.__hyperframes ? window.__hyperframes.getVariables() : {};
+        var root = document.querySelector('[data-composition-id="vox-beat-hero"]');
+        root.style.setProperty('--page', v.page_color || '#E7D7B5');
+        root.style.setProperty('--accent', v.accent_color || '#D2382B');
+        document.getElementById('vbLabel').textContent = v.label || 'UNSEEN';
+        if (v.image_src) document.getElementById('vbImg').src = v.image_src;
+        var DUR = Number(v.duration) || 6.0;
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo('#vbBlock', { x: 700, opacity: 0 }, { x: 0, opacity: 1, duration: .6, ease: 'power3.out' }, .15);
+        tl.fromTo('#vbCardWrap', { scale: .25, rotation: -10, opacity: 0, transformOrigin: '50% 60%' },
+          { scale: 1, rotation: 0, opacity: 1, duration: .7, ease: 'back.out(2)' }, .45);
+        tl.fromTo('#vbTape1', { scale: 2.4, opacity: 0 }, { scale: 1, opacity: 1, duration: .26, ease: 'power4.out' }, 1.0);
+        tl.fromTo('#vbTape2', { scale: 2.2, opacity: 0 }, { scale: 1, opacity: 1, duration: .24, ease: 'power4.out' }, 1.15);
+        tl.fromTo('#vbLabelWrap', { y: 300, scale: 1.35, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: .5, ease: 'back.out(1.6)' }, 1.5);
+        function mulberry32(a){return function(){a|=0;a=(a+0x6d2b79f5)|0;var t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+        var rnd = mulberry32(20260716);
+        for (var i = Math.ceil(1.35 * 6); i / 6 < DUR; i++) {
+          tl.set('#vbCard', { x: (rnd()-.5)*4, y: (rnd()-.5)*4, rotation: -2 + (rnd()-.5)*1.1 }, i / 6);
+        }
+        tl.fromTo('#vb-push', { scale: 1.0, transformOrigin: '50% 42%' }, { scale: 1.065, duration: DUR, ease: 'none' }, 0);
+        tl.set({}, {}, DUR);
+        window.__timelines['vox-beat-hero'] = tl;
+      })();
+    </script>
+  </div>
+</template>

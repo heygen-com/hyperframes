@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Paper Page demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#E7D7B5;display:grid;place-items:center}</style></head>
+<body><!-- vox-paper-page: page background layer. Set --page on the wrapper to run a palette arc
+     (kraft #E7D7B5 / cream #E8E4D8 / deep purple #3a2a55 / newsprint #EFE7D2). -->
+<style>
+  .vox-page { position: absolute; inset: 0; background: var(--page, #E7D7B5); overflow: hidden; }
+  .vox-page .vox-crease { position: absolute; left: -20px; right: -20px; top: 58%; height: 3px;
+    background: linear-gradient(to bottom, rgba(0,0,0,.10), rgba(255,255,255,.25) 70%, transparent);
+    transform: rotate(-.4deg); }
+  .vox-page .vox-grain { position: absolute; inset: -20px; opacity: .5; pointer-events: none; }
+</style>
+<div class="vox-page" style="--page:#E7D7B5">
+  <div class="vox-crease"></div>
+  <svg class="vox-grain" width="100%" height="100%">
+    <filter id="voxPaperNoise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.36  0 0 0 0 0.30  0 0 0 0 0.20  0 0 0 0.16 0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#voxPaperNoise)"/>
+  </svg>
+</div></body></html>

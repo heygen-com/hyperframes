@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-tape",
+  "type": "hyperframes:component",
+  "title": "Vox Tape Strip",
+  "description": "Translucent red masking-tape strip (mix-blend multiply). Snap onto card corners.",
+  "tags": [
+    "vox",
+    "tape",
+    "collage",
+    "decoration"
+  ],
+  "files": [
+    {
+      "path": "vox-tape.html",
+      "target": "compositions/components/vox-tape.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

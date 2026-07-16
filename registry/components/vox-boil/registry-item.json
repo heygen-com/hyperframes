@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-boil",
+  "type": "hyperframes:component",
+  "title": "Vox Stop-Motion Boil",
+  "description": "Deterministic 6fps stop-motion jitter (seeded mulberry32 tl.set steps). Apply to cutouts and props, NEVER to text or faces.",
+  "tags": [
+    "vox",
+    "animation",
+    "gsap",
+    "stop-motion",
+    "boil"
+  ],
+  "files": [
+    {
+      "path": "vox-boil.html",
+      "target": "compositions/components/vox-boil.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

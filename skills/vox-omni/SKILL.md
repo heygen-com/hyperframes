@@ -50,7 +50,7 @@ Always end the style block with the mute template:
 ## Step 3 — Generate (scripts/gen_clips.py)
 
 - Endpoint: `POST /v1beta/interactions` (Interactions API only — model metadata falsely advertises generateContent).
-- Auth: Bearer OAuth from service-account JSON, scope `generative-language` (cloud-platform 403s). At HeyGen: Infisical `GEMINI_PREFAB_KEY`, run via `infisical run --projectId bdf5f4fb-… --env dev -- python3 scripts/gen_clips.py`.
+- Auth: Bearer OAuth from service-account JSON, scope `generative-language` (cloud-platform 403s). At HeyGen: Infisical `GEMINI_PREFAB_KEY`, inject via your secrets manager (at HeyGen: `infisical run -- python3 scripts/gen_clips.py`).
 - Chaining: extract last frame (ffmpeg), pass as image input + `task: image_to_video`, prompt says "Begin exactly from the provided reference frame… then <transition> to …". There is NO official last-frame API (roadmap "soon").
 - Budget: $0.10/s output (~$1/clip); reserve 3–5× for retries; ~40-45s generation per clip.
 - Video retrieval: response `steps[].content[].uri` → GET `files/{id}:download?alt=media` (raw bytes, not JSON).
@@ -72,7 +72,7 @@ TTS per VO line (HeyGen voice preferred; Google TTS `en-US-Studio-Q` as fallback
 
 ## Known limits
 
-- 720p cap; upscaling loses paper texture (HD delivery = use vox-hyperframes skill instead).
+- 720p cap; upscaling loses paper texture (HD delivery = use /vox-explainer or /vox-avatar instead).
 - No true first-frame lock: image input ≠ exact first frame.
 - **Photo→talking generation REDRAWS the person** (measured: ArcFace 0.46-0.59 vs source across
   i2v / reference_to_video / identity-lock prompts — "similar but a different person"; the lock
