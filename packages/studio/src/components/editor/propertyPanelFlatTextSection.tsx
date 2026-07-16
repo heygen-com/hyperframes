@@ -267,7 +267,7 @@ export function FlatTextSection({
 
   if (textFields.length > 1) {
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-2.5">
         <FlatTextLayerList
           fields={textFields}
           activeFieldKey={activeField.key}
@@ -295,7 +295,7 @@ export function FlatTextSection({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2.5">
       <FlatTextFieldEditor
         field={activeField}
         styles={styles}
