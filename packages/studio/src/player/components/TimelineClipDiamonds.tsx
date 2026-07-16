@@ -12,6 +12,7 @@ import {
   timelineKeyframeSelectionKey,
   type TimelineKeyframeTarget,
 } from "./timelineKeyframeIdentity";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 export interface TimelineDiamondKeyframe {
   percentage: number;
@@ -21,8 +22,8 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
-  /** Source animation ids that collide at this percentage, in first-seen order. */
-  collidingAnimationIds?: string[];
+  /** Source animation/keyframe targets that collide at this clip percentage. */
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
 }
 
 interface KeyframeCacheEntry {
@@ -55,7 +56,7 @@ interface TimelineClipDiamondsProps {
     elementId: string,
     fromClipPercentage: number,
     toClipPercentage: number,
-  ) => void;
+  ) => Promise<boolean>;
   /** Open the segment ease editor for the hovered mid-point button — available on
    *  the inline clip row too, not just the expanded lanes. */
   onSelectSegment?: (elementId: string, target: TimelineKeyframeTarget) => void;
@@ -79,7 +80,7 @@ interface TimelineDiamondLaneProps extends Omit<
   onClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, target: TimelineKeyframeTarget) => void;
-  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => void;
+  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => Promise<boolean>;
 }
 
 const DIAMOND_RATIO = 0.8;
@@ -107,7 +108,7 @@ function keyframeTarget(
         tweenPercentage: keyframe.tweenPercentage,
         propertyGroup: keyframe.propertyGroup,
         animationId: keyframe.animationId,
-        collidingAnimationIds: keyframe.collidingAnimationIds,
+        collidingAnimationTargets: keyframe.collidingAnimationTargets,
       }
     : { percentage: keyframe.percentage };
 }
@@ -394,8 +395,16 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                   tweenPercentage: pendingBefore.tweenPct,
                 }
               : target;
-            pendingRetimeRef.current.set(kfKey, { clipPct: res.toClipPct, tweenPct: newTweenPct });
-            onMoveKeyframe?.(fromTarget, res.toClipPct);
+            const pending = { clipPct: res.toClipPct, tweenPct: newTweenPct };
+            pendingRetimeRef.current.set(kfKey, pending);
+            const clearPending = () => {
+              if (pendingRetimeRef.current.get(kfKey) === pending) {
+                pendingRetimeRef.current.delete(kfKey);
+              }
+            };
+            void onMoveKeyframe?.(fromTarget, res.toClipPct).then((committed) => {
+              if (!committed) clearPending();
+            }, clearPending);
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
             // something looks identical to one that silently did nothing.
@@ -489,7 +498,8 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds(
       onMoveKeyframe={
         props.onMoveKeyframe
           ? (target, toClipPercentage) =>
-              props.onMoveKeyframe?.(props.elementId, target.percentage, toClipPercentage)
+              props.onMoveKeyframe?.(props.elementId, target.percentage, toClipPercentage) ??
+              Promise.resolve(false)
           : undefined
       }
       onSelectSegment={

@@ -19,6 +19,7 @@ import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
+import type { AnimationKeyframeTarget } from "./gsapTweenSynth";
 
 interface RecordEditInput {
   label: string;
@@ -460,19 +461,19 @@ export function useDomEditSession({
     updateArcSegment,
   });
   const handleUpdateSegmentEase = useCallback(
-    (animationIds: string[], tweenPct: number, ease: string) => {
+    (targets: AnimationKeyframeTarget[], ease: string) => {
       const selection = domEditSelectionRef.current;
-      if (!selection || animationIds.length === 0) return;
+      if (!selection || targets.length === 0) return;
       const options = {
-        label: animationIds.length === 1 ? "Update keyframe ease" : "Update segment ease",
+        label: targets.length === 1 ? "Update keyframe ease" : "Update segment ease",
         softReload: true,
       };
-      const calls = animationIds.map((animationId) => ({
+      const calls = targets.map(({ animationId, tweenPercentage }) => ({
         selection,
         mutation: {
           type: "update-keyframe",
           animationId,
-          percentage: tweenPct,
+          percentage: tweenPercentage,
           properties: {},
           ease,
         },
@@ -489,7 +490,7 @@ export function useDomEditSession({
   );
   const handleUpdateKeyframeEase = useCallback(
     (animationId: string, percentage: number, ease: string) =>
-      handleUpdateSegmentEase([animationId], percentage, ease),
+      handleUpdateSegmentEase([{ animationId, tweenPercentage: percentage }], ease),
     [handleUpdateSegmentEase],
   );
   const handleSetAllKeyframeEases = useCallback(

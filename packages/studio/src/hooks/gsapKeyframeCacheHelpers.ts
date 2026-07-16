@@ -5,7 +5,10 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
-import { accumulateCollidingAnimationIds, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
+import {
+  accumulateCollidingAnimationTargets,
+  synthesizeFlatTweenKeyframes,
+} from "./gsapTweenSynth";
 
 export function updateKeyframeCacheFromParsed(
   animations: GsapAnimation[],
@@ -56,7 +59,7 @@ export function updateKeyframeCacheFromParsed(
         const prev = byPct.get(kf.percentage);
         if (prev) {
           prev.properties = { ...prev.properties, ...kf.properties };
-          accumulateCollidingAnimationIds(prev, kf.animationId);
+          accumulateCollidingAnimationTargets(prev, kf);
           if (kf.ease) prev.ease = kf.ease;
         } else {
           byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });

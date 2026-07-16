@@ -234,7 +234,7 @@ export function useGsapKeyframeOps({
   );
 
   const moveKeyframe = useCallback(
-    (
+    async (
       selection: DomEditSelection,
       animationId: string,
       fromPercentage: number,
@@ -245,18 +245,22 @@ export function useGsapKeyframeOps({
       // updateKeyframeCacheFromParsed re-keys the diamond from the fresh parse, so no
       // optimistic cache write is needed (mapping the tween-% to clip-% here would
       // duplicate that math). softReload mirrors remove-keyframe.
-      void commitMutation(selection, mutation, {
-        label: `Move keyframe to ${toPercentage}%`,
-        softReload: true,
-      }).catch((error) => {
+      try {
+        await commitMutation(selection, mutation, {
+          label: `Move keyframe to ${toPercentage}%`,
+          softReload: true,
+        });
+        return true;
+      } catch (error) {
         trackGsapSaveFailure(error, selection, mutation, `Move keyframe to ${toPercentage}%`);
-      });
+        return false;
+      }
     },
     [commitMutation, trackGsapSaveFailure],
   );
 
   const resizeKeyframedTween = useCallback(
-    (
+    async (
       selection: DomEditSelection,
       animationId: string,
       position: number,
@@ -273,12 +277,16 @@ export function useGsapKeyframeOps({
       // Boundary drag-to-retime: the server re-keys keyframes in place + grows the
       // tween window, preserving _auto / per-keyframe ease / easeEach / outer ease.
       // softReload re-keys the diamonds from the fresh parse (mirrors moveKeyframe).
-      void commitMutation(selection, mutation, {
-        label: "Retime keyframe (resize tween)",
-        softReload: true,
-      }).catch((error) => {
+      try {
+        await commitMutation(selection, mutation, {
+          label: "Retime keyframe (resize tween)",
+          softReload: true,
+        });
+        return true;
+      } catch (error) {
         trackGsapSaveFailure(error, selection, mutation, "Retime keyframe (resize tween)");
-      });
+        return false;
+      }
     },
     [commitMutation, trackGsapSaveFailure],
   );

@@ -14,6 +14,7 @@ import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
 import type { DomEditSelection } from "../editor/domEditingTypes";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+import { getTimelineElementIdentity } from "../../player/lib/timelineElementHelpers";
 
 export interface TimelineEditCallbackDeps {
   handleTimelineElementMove: (
@@ -96,15 +97,19 @@ export function useTimelineEditCallbacks({
   const resolveKeyframeTarget = useCallback(
     // fallow-ignore-next-line complexity
     (
+      elementKey: string,
       pct: number,
       propertyGroup?: string,
       tweenPercentage?: number,
       animationId?: string,
       animations: GsapAnimation[] = selectedGsapAnimations,
     ): { animId: string; tweenPct: number } | null => {
+      const hashIndex = elementKey.lastIndexOf("#");
+      const elementId = hashIndex === -1 ? elementKey : elementKey.slice(hashIndex + 1);
       const cached = propertyGroup
         ? undefined
-        : usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
+        : (usePlayerStore.getState().keyframeCache.get(elementKey) ??
+          usePlayerStore.getState().keyframeCache.get(elementId));
       const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
       const group = propertyGroup ?? kf?.propertyGroup;
       const anim =
@@ -115,7 +120,7 @@ export function useTimelineEditCallbacks({
         ? { animId: anim.id, tweenPct: tweenPercentage ?? kf?.tweenPercentage ?? pct }
         : null;
     },
-    [domEditSelection?.id, selectedGsapAnimations],
+    [selectedGsapAnimations],
   );
 
   const removeKeyframeTarget = useCallback(
@@ -148,17 +153,20 @@ export function useTimelineEditCallbacks({
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
-      onDeleteAllKeyframes: () => {
+      onDeleteAllKeyframes: (element) => {
         // Hold the element where it is (collapse keyframes to a static set) rather
         // than deleting the whole animation — deleting strands a stale GSAP base
         // that the next drag adds to, flinging the element off-screen.
-        const anim = selectedGsapAnimations.find((a) => a.keyframes);
+        const elementKey = getTimelineElementIdentity(element);
+        const anim = resolveElementAnimations(elementKey).find((animation) => animation.keyframes);
         if (!anim) return;
-        handleGsapRemoveAllKeyframes(anim.id);
+        void buildDomSelectionForTimelineElement(element).then((selection) => {
+          if (selection) handleGsapRemoveAllKeyframes(anim.id, selection);
+        });
       },
       onDeleteKeyframe: (elId, pct, group, tweenPct, animationId) => {
         const animations = resolveElementAnimations(elId);
-        const target = resolveKeyframeTarget(pct, group, tweenPct, animationId, animations);
+        const target = resolveKeyframeTarget(elId, pct, group, tweenPct, animationId, animations);
         if (!target) return;
         const element = usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === elId);
         if (!element) {
@@ -169,13 +177,31 @@ export function useTimelineEditCallbacks({
         // non-selected element (especially one in a different source file) commits
         // against the right element instead of the current domEditSelection.
         void buildDomSelectionForTimelineElement(element).then((selection) => {
-          removeKeyframeTarget(target.animId, target.tweenPct, animations, selection);
+          if (selection)
+            removeKeyframeTarget(target.animId, target.tweenPct, animations, selection);
         });
       },
       // Retime the keyframe to the playhead, preserving its value + ease.
-      onMoveKeyframeToPlayhead: (_elId, pct, group, tweenPct, animationId) => {
-        const target = resolveKeyframeTarget(pct, group, tweenPct, animationId);
-        if (target) handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct);
+      onMoveKeyframeToPlayhead: (element, pct, group, tweenPct, animationId) => {
+        const elementKey = getTimelineElementIdentity(element);
+        const animations = resolveElementAnimations(elementKey);
+        const target = resolveKeyframeTarget(
+          elementKey,
+          pct,
+          group,
+          tweenPct,
+          animationId,
+          animations,
+        );
+        const animation = target
+          ? animations.find((candidate) => candidate.id === target.animId)
+          : undefined;
+        if (!target || !animation) return;
+        void buildDomSelectionForTimelineElement(element).then((selection) => {
+          if (selection) {
+            handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct, selection, animation);
+          }
+        });
       },
       // Drag-to-retime. The diamond reports clip-%s; resolveKeyframeTarget gives
       // the dragged keyframe's anim + tween-%. We convert the clip-% drop to an
@@ -185,17 +211,17 @@ export function useTimelineEditCallbacks({
       // resizes the tween — position/duration grow so the dragged keyframe lands at
       // the drop while every other keyframe keeps its absolute time (value+ease too).
       // fallow-ignore-next-line complexity
-      onMoveKeyframe: (_elId, fromClipPct, toClipPct, group, tweenPct, animationId) => {
-        const target = resolveKeyframeTarget(fromClipPct, group, tweenPct, animationId);
+      onMoveKeyframe: (elId, fromClipPct, toClipPct, group, tweenPct, animationId) => {
+        const target = resolveKeyframeTarget(elId, fromClipPct, group, tweenPct, animationId);
         const sel = domEditSelection;
-        if (!target || !sel) return;
+        if (!target || !sel) return Promise.resolve(false);
         const anim = selectedGsapAnimations.find((a) => a.id === target.animId);
         const tweenStart = anim ? resolveTweenStart(anim) : null;
-        if (!anim || tweenStart === null) return;
+        if (!anim || tweenStart === null) return Promise.resolve(false);
         // Synthesized flat endpoints are clip boundaries, not authored keyframes.
         // Boundary-to-clip resize wiring is intentionally deferred; ignore the
         // drag rather than dispatching a free keyframe move that cannot be written.
-        if (!anim.keyframes) return;
+        if (!anim.keyframes) return Promise.resolve(false);
         const tweenDuration = anim.duration ?? resolveTweenDuration(anim);
         const sourceFile = sel.sourceFile || activeCompPath || "index.html";
         const { elements, domClipChildren } = usePlayerStore.getState();
@@ -214,20 +240,21 @@ export function useTimelineEditCallbacks({
           dropAbsTime,
         });
         if (decision.kind === "move" && decision.toTweenPct != null) {
-          handleGsapMoveKeyframe(target.animId, target.tweenPct, decision.toTweenPct);
+          return handleGsapMoveKeyframe(target.animId, target.tweenPct, decision.toTweenPct);
         } else if (
           decision.kind === "resize" &&
           decision.pctRemap &&
           decision.position != null &&
           decision.duration != null
         ) {
-          handleGsapResizeKeyframedTween(
+          return handleGsapResizeKeyframedTween(
             target.animId,
             decision.position,
             decision.duration,
             decision.pctRemap,
           );
         }
+        return Promise.resolve(false);
       },
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
         for (const anim of selectedGsapAnimations) {

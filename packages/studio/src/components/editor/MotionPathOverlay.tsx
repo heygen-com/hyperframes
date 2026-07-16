@@ -88,6 +88,13 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // The keyframe % selected by clicking its node — highlighted, and the next drag
   // modifies it rather than adding a keyframe.
   const activeKeyframePct = usePlayerStore((s) => s.activeKeyframePct);
+  const timelineElement = usePlayerStore((state) => {
+    if (!selection) return undefined;
+    const sourceScopedId = `${selection.sourceFile || "index.html"}#${selection.id}`;
+    return state.elements.find(
+      (element) => (element.key ?? element.id) === sourceScopedId || element.id === selection.id,
+    );
+  });
   // Set-destination mode is armed from the preview toolbar (replaces the old
   // double-click-on-canvas UX). See createMode effects below.
   const armed = usePlayerStore((s) => s.motionPathArmed);
@@ -418,12 +425,13 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // Right-click a keyframe node → the timeline's keyframe context menu (delete
   // this keyframe / delete all), so motion-path keyframes are removable in place.
   const onNodeContextMenu = (e: React.MouseEvent, ref: MotionNodeRef) => {
-    if (ref.type !== "keyframe" || !animId || !elementId) return;
+    if (ref.type !== "keyframe" || !animId || !elementId || !timelineElement) return;
     e.preventDefault();
     e.stopPropagation();
     setKfMenu({
       x: e.clientX,
       y: e.clientY,
+      element: timelineElement,
       elementId,
       percentage: ref.pct,
       tweenPercentage: ref.pct,

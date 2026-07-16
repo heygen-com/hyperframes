@@ -551,6 +551,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           onAddGsapProperty &&
           onAddGsapAnimation && (
             <GsapAnimationSection
+              elementId={`${element.sourceFile || "index.html"}#${element.id}`}
               animations={gsapAnimations}
               multipleTimelines={gsapMultipleTimelines}
               unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}

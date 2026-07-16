@@ -1,4 +1,5 @@
 import type { ArcPathSegment } from "@hyperframes/parsers/gsap-parser";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 /**
  * Edit callbacks shared by GsapAnimationSection and each AnimationCard it
@@ -29,7 +30,7 @@ export interface GsapAnimationEditCallbacks {
     update: Partial<ArcPathSegment>,
   ) => void;
   onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
-  onUpdateSegmentEase?: (animationIds: string[], tweenPct: number, ease: string) => void;
+  onUpdateSegmentEase?: (targets: AnimationKeyframeTarget[], ease: string) => void;
   /** Apply one ease to every keyframe segment at once (clears per-segment overrides). */
   onSetAllKeyframeEases?: (animationId: string, ease: string) => void;
   /** Unroll a computed (helper/loop) tween into literal tweens so it edits directly. */

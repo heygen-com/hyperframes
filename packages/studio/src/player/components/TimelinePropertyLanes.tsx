@@ -25,7 +25,7 @@ export interface TimelinePropertyLanesProps {
   onClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onContextMenuKeyframe?: (e: ReactMouseEvent, target: TimelineKeyframeTarget) => void;
-  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => void;
+  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => Promise<boolean>;
   suppressClickRef?: RefObject<boolean>;
 }
 

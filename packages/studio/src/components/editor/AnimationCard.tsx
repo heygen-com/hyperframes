@@ -18,12 +18,16 @@ import {
   parseNumericOrString,
   BOOLEAN_PROPS,
 } from "./AnimationCardParts";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
   flat?: boolean;
-  focusedSegment?: { tweenPercentage: number; collidingAnimationIds?: string[] } | null;
+  focusedSegment?: {
+    tweenPercentage: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+  } | null;
   onFocusSegmentConsumed?: () => void;
 }
 
@@ -55,8 +59,8 @@ export const AnimationCard = memo(function AnimationCard({
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
   const [expandedKfPct, setExpandedKfPct] = useState<number | null>(null);
-  const [focusedCollidingAnimationIds, setFocusedCollidingAnimationIds] = useState<
-    string[] | undefined
+  const [focusedCollidingAnimationTargets, setFocusedCollidingAnimationTargets] = useState<
+    AnimationKeyframeTarget[] | undefined
   >();
   const cardRef = useRef<HTMLDivElement>(null);
   const pendingAutoScrollRef = useRef(false);
@@ -66,7 +70,7 @@ export const AnimationCard = memo(function AnimationCard({
     setExpanded(true);
     pendingAutoScrollRef.current = true;
     setExpandedKfPct(focusedSegment.tweenPercentage);
-    setFocusedCollidingAnimationIds(focusedSegment.collidingAnimationIds);
+    setFocusedCollidingAnimationTargets(focusedSegment.collidingAnimationTargets);
     onFocusSegmentConsumed?.();
   }, [focusedSegment, onFocusSegmentConsumed]);
 
@@ -293,18 +297,18 @@ export const AnimationCard = memo(function AnimationCard({
                     keyframes={animation.keyframes.keyframes}
                     globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
                     expandedPct={expandedKfPct}
-                    collidingAnimationIds={focusedCollidingAnimationIds}
+                    collidingAnimationTargets={focusedCollidingAnimationTargets}
                     onToggle={(pct) => {
                       setExpandedKfPct(pct);
-                      setFocusedCollidingAnimationIds(undefined);
+                      setFocusedCollidingAnimationTargets(undefined);
                     }}
                     onEaseCommit={(pct, ease) => {
                       if (
-                        focusedCollidingAnimationIds &&
-                        focusedCollidingAnimationIds.length > 1 &&
+                        focusedCollidingAnimationTargets &&
+                        focusedCollidingAnimationTargets.length > 1 &&
                         onUpdateSegmentEase
                       ) {
-                        onUpdateSegmentEase(focusedCollidingAnimationIds, pct, ease);
+                        onUpdateSegmentEase(focusedCollidingAnimationTargets, ease);
                       } else {
                         onUpdateKeyframeEase(animation.id, pct, ease);
                       }
