@@ -375,12 +375,9 @@ async function mountCompositionContent(params: {
   /** Extra <link> elements from the parsed document <head> (font stylesheets, preconnects). */
   headLinks?: HTMLLinkElement[];
   /**
-   * Defaults extracted from the sub-composition's own
-   * `<html data-composition-variables="...">` attribute. Layered under the
-   * host element's `data-variable-values` to produce the per-instance
-   * variables visible inside the sub-comp's scoped `getVariables()`.
-   * Populated only by `loadExternalCompositions`; inline templates have no
-   * separate document root so no declared defaults are passed.
+   * Defaults extracted from the sub-composition document carrier. Defaults
+   * declared on an inner fragment root are merged below after `innerRoot` is
+   * resolved. Host `data-variable-values` override both layers.
    */
   declaredVariableDefaults?: Record<string, unknown>;
   onDiagnostic?: (payload: {
@@ -406,6 +403,10 @@ async function mountCompositionContent(params: {
   const runtimeScopeCompositionId =
     params.runtimeCompositionId || authoredScopeCompositionId || null;
   const authoredRootId = innerRoot?.getAttribute("id")?.trim() || null;
+  const declaredVariableDefaults = {
+    ...params.declaredVariableDefaults,
+    ...readDeclaredDefaults(innerRoot),
+  };
   const runtimeScopeSelector = runtimeScopeCompositionId
     ? `[data-composition-id="${CSS.escape(runtimeScopeCompositionId)}"]`
     : undefined;
@@ -536,7 +537,11 @@ async function mountCompositionContent(params: {
   // `window.__hfVariablesByComp[compId]`, so this table must be populated
   // before the wrapped IIFE evaluates.
   if (runtimeScopeCompositionId) {
-    stashInstanceVariables(params, contentNode, runtimeScopeCompositionId);
+    stashInstanceVariables(
+      { host: params.host, declaredVariableDefaults },
+      contentNode,
+      runtimeScopeCompositionId,
+    );
   }
 
   for (const scriptPayload of scriptPayloads) {
@@ -734,10 +739,6 @@ export async function loadExternalCompositions(
           headStyles,
           headScripts,
           headLinks,
-          // TODO(template-var-carriers): reads `<html>` only. A template/fragment
-          // sub-comp that declares on its `[data-composition-id]` root div (the
-          // dual-carrier contract from #2081) loses its defaults on this lazy
-          // external-load path — see inlineSubCompositions for the fixed path.
           declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
           onDiagnostic: params.onDiagnostic,
         });
