@@ -22,9 +22,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 import secrets
+import subprocess
+import sys
 import threading
+import time
+import traceback
 from urllib.parse import parse_qs, urlsplit
 
 import websockets
@@ -32,11 +37,42 @@ from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
 from .chain import PluginMissingError, build_chain, load_chain_spec, serialize_states
-from .scan import default_plugin_dirs, scan_paths
-from .stream import TrackStream
+from .scan import builtin_registry, default_plugin_dirs, scan_paths
+from .stream import TrackStream, probe_chain_stability
+
+
+def _raise_editor_window_macos() -> None:
+    """Bring the sidecar process's native plugin-editor window to the front.
+
+    `plugin.show_editor()` opens a real VST3/AU editor window, but the sidecar
+    is a background (`uv run`) process, so on macOS the window opens BEHIND the
+    browser the user is looking at. There's no pedalboard API to raise it, so
+    activate this process via System Events by its pid. Fired on a short delay
+    (the window doesn't exist the instant show_editor is called) from a timer
+    thread, since show_editor blocks the pedalboard thread until the window
+    closes. Best-effort: any failure (osascript missing, permissions) is
+    swallowed — a window behind the browser is a worse-but-not-broken state.
+    """
+    if sys.platform != "darwin":
+        return
+    script = (
+        'tell application "System Events" to set frontmost of '
+        f"(first process whose unix id is {os.getpid()}) to true"
+    )
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+    except Exception:
+        pass
 
 
 class VstServer:
+    # Seconds of audio to burst-send ahead of the real-time playhead when a
+    # transport starts, pre-filling the client's ring buffer as a jitter
+    # cushion. Must stay below the client ring's capacity (1s — see
+    # useVstPreview's per-track `driftTracker`/worklet ring) so the lead can
+    # never overflow it.
+    _PUMP_LEAD_SEC = 0.5
+
     def __init__(self) -> None:
         self._tracks: dict[str, TrackStream] = {}
         self._plugins: dict[str, list] = {}
@@ -127,7 +163,10 @@ class VstServer:
         cmd = msg.get("cmd")
         try:
             if cmd == "scan":
-                plugins = await asyncio.to_thread(scan_paths, msg.get("paths") or default_plugin_dirs())
+                discovered = await asyncio.to_thread(scan_paths, msg.get("paths") or default_plugin_dirs())
+                # Built-ins first: always-available, host-clean options that
+                # need no disk scan (see scan.py's BUILTIN_EFFECTS).
+                plugins = builtin_registry() + discovered
                 await ws.send(json.dumps({"event": "registry", "plugins": plugins}))
             elif cmd == "load-chain":
                 track_id = msg["trackId"]
@@ -145,13 +184,30 @@ class VstServer:
                 if old:
                     old.close()
                 self._plugins[track_id] = plugins
-                self._tracks[track_id] = TrackStream(len(self._tracks), msg["wavPath"], plugins)
+                # Probe whether pedalboard can host this chain without emitting
+                # NaN/Inf/runaway output (see probe_chain_stability). An
+                # unstable track is still registered — so its wire index stays
+                # in lockstep with the client's own counter — but flagged so it
+                # never streams; the client then keeps it on dry audio and warns
+                # instead of muting the original into NaN-driven silence.
+                stable = await asyncio.to_thread(probe_chain_stability, msg["wavPath"], plugins)
+                track = TrackStream(len(self._tracks), msg["wavPath"], plugins, stable=stable)
+                self._tracks[track_id] = track
                 params = [
                     [{"name": k, "value": float(v.raw_value) if hasattr(v, "raw_value") else None}
                      for k, v in getattr(p, "parameters", {}).items()]
                     for p in plugins
                 ]
-                await ws.send(json.dumps({"event": "chain-loaded", "trackId": track_id, "params": params}))
+                # The client hardcoding a sample rate (rather than reading the
+                # dry file's real one) plays streamed PCM at the wrong pitch
+                # and speed, and — since its drift-check compares elapsed
+                # wall-clock time against a WRONG samples-per-second
+                # assumption — measures genuine, ever-growing drift where
+                # none exists, repeatedly forcing a destructive reseek.
+                await ws.send(json.dumps({
+                    "event": "chain-loaded", "trackId": track_id, "params": params,
+                    "sampleRate": track.sample_rate, "stable": stable,
+                }))
             elif cmd == "unload-chain":
                 track = self._tracks.pop(msg["trackId"], None)
                 self._plugins.pop(msg["trackId"], None)
@@ -177,6 +233,11 @@ class VstServer:
                 # window is open (show_editor blocks the pedalboard thread,
                 # not this coroutine).
                 asyncio.create_task(self._run_on_pedalboard_thread(_open))
+                # The editor window opens BEHIND the browser (this sidecar is a
+                # background process). Raise it to the front shortly after it's
+                # created — on a timer thread, since show_editor above blocks
+                # the pedalboard thread until the window closes.
+                threading.Timer(0.4, _raise_editor_window_macos).start()
             elif cmd == "close-editor":
                 close_event = self._editor_close_events.get((msg["trackId"], msg["pluginIndex"]))
                 if close_event:
@@ -194,6 +255,11 @@ class VstServer:
                 "plugin": exc.plugin_name, "trackId": msg.get("trackId"),
             }))
         except Exception:
+            # Unlike PluginMissingError, this is unexpected — print it so a
+            # real bug doesn't hide behind the generic "bad_command" wire
+            # error (a silent one cost a long live-debugging session before
+            # this print existed).
+            traceback.print_exc()
             await ws.send(json.dumps({
                 "event": "error", "code": "bad_command",
                 "trackId": msg.get("trackId"),
@@ -237,24 +303,98 @@ class VstServer:
         self._pedalboard_queue.put(None)
 
     async def _pump(self, ws) -> None:
+        # Absolute-deadline pacing. `deadline` is when the NEXT block is due;
+        # it advances by one block's real duration each iteration. Because it's
+        # an absolute target (not a fresh `sleep(block)` each iteration), the
+        # time spent processing+sending a block and the sleep's own overshoot
+        # never accumulate into a production deficit — when we fall behind, the
+        # deadline is already in the past and the next block goes out
+        # immediately to catch up. The old open-loop `sleep(block/rate)`
+        # delivered only ~96% of real time, starving the client's ring buffer:
+        # the worklet zero-filled the gaps (degraded audio) and the shortfall
+        # accrued as genuine drift until the drift-check forced a destructive
+        # reseek ("cuts out"). See test_pump_keeps_up_with_real_time.
+        loop = asyncio.get_running_loop()
+        # Prime the clock `_PUMP_LEAD_SEC` in the past so the first blocks are
+        # sent back-to-back (no sleep) until the deadline catches up to now —
+        # that burst pre-fills the client ring as a jitter cushion.
+        deadline = loop.time() - self._PUMP_LEAD_SEC
         while True:
             sent_any = False
-            delay = 1024 / 48000
+            block_dur = 1024 / 48000
             for track in list(self._tracks.values()):
                 frame = track.next_block()
                 if frame is None:
                     continue
-                delay = track.block_size / track.sample_rate
+                block_dur = track.block_size / track.sample_rate
                 await ws.send(frame)
                 sent_any = True
             if not sent_any:
                 return
-            await asyncio.sleep(delay / self._rate)
+            deadline += block_dur / self._rate
+            # Cap how far behind real time the deadline may fall, so a
+            # transient stall (GC, a slow plugin block) re-primes the lead
+            # cushion instead of bursting an unbounded backlog into the
+            # client's fixed-size ring.
+            # ponytail: fixed lead cap; fine unless a plugin can't render real-time.
+            floor = loop.time() - self._PUMP_LEAD_SEC
+            if deadline < floor:
+                deadline = floor
+            sleep_for = deadline - loop.time()
+            if sleep_for > 0:
+                await asyncio.sleep(sleep_for)
 
 
-def serve(port: int = 0) -> None:
+def _process_alive(pid: int) -> bool:
+    """True if `pid` is a live process. `os.kill(pid, 0)` sends no signal but
+    raises ProcessLookupError once the process is gone (EPERM — a live process
+    we don't own — still counts as alive)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _watch_parent_and_exit(
+    watch_pid: int | None, initial_ppid: int, interval_sec: float = 1.0
+) -> None:
+    """Exit the process once the studio-server / `hyperframes preview` that
+    spawned us is gone. When it dies ungracefully (SIGKILL, crash) it can't run
+    its own child-teardown, so without this the sidecar is orphaned and lingers
+    — holding a port, showing up as a stale `hyperframes-vst serve` a later
+    studio has to `pkill` by hand.
+
+    `watch_pid` is the spawner's OWN pid, passed explicitly (`--parent-pid`),
+    and polled via `os.kill(pid, 0)`. This is necessary because the spawner
+    launches us through `uv run`, so our real `getppid()` is the intervening
+    `uv` process — which survives the spawner's death — making a `getppid()`
+    change useless on its own. Falls back to the `getppid()`-change heuristic
+    when no `watch_pid` was given (bare/standalone launch). Runs on a daemon
+    thread; `os._exit` because there's nothing to flush and the asyncio server
+    owns the normal shutdown path."""
+    while True:
+        time.sleep(interval_sec)
+        if watch_pid is not None:
+            if not _process_alive(watch_pid):
+                os._exit(0)
+        elif os.getppid() != initial_ppid:
+            os._exit(0)
+
+
+def serve(port: int = 0, parent_pid: int | None = None) -> None:
     server = VstServer()
     started = threading.Event()
+
+    # Self-reap if the spawner dies (see _watch_parent_and_exit). initial_ppid
+    # is the getppid()-change fallback for a bare launch with no --parent-pid.
+    threading.Thread(
+        target=_watch_parent_and_exit,
+        args=(parent_pid, os.getppid()),
+        daemon=True,
+    ).start()
 
     def _run_asyncio_server() -> None:
         async def _run() -> None:

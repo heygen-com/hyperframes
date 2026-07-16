@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -9,7 +10,13 @@ import websockets
 from pedalboard.io import AudioFile
 
 from hyperframes_vst.server import VstServer
-from hyperframes_vst.stream import decode_frame
+from hyperframes_vst.stream import (
+    MAX_STABLE_PEAK,
+    TrackStream,
+    decode_frame,
+    output_is_stable,
+    probe_chain_stability,
+)
 
 
 @pytest.fixture
@@ -57,6 +64,114 @@ async def recv_binary(ws):
 
 
 @pytest.mark.asyncio
+async def test_chain_loaded_reports_the_dry_files_real_sample_rate(tmp_path):
+    # dry_wav (used by most other tests here) happens to be 48000Hz already,
+    # so it can't catch a client that ignores this field and hardcodes a
+    # constant instead — a 44100Hz file (the common case for real music
+    # tracks) makes the mismatch concrete: the sidecar must report the
+    # FILE's own rate, not the wire protocol's usual round-number default.
+    sr = 44100
+    audio = (np.ones((2, sr)) * 0.25).astype(np.float32)
+    path = str(tmp_path / "dry-44100.wav")
+    with AudioFile(path, "w", sr, 2) as f:
+        f.write(audio)
+
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(ws_uri(server, port)) as ws:
+        await ws.send(json.dumps({"cmd": "load-chain", "trackId": "music", "chainJson": CHAIN, "wavPath": path}))
+        loaded = await recv_json(ws)
+        assert loaded["event"] == "chain-loaded"
+        assert loaded["sampleRate"] == 44100
+
+
+def test_builtin_registry_entries_are_real_pedalboard_effect_classes():
+    import pedalboard
+    from hyperframes_vst.scan import builtin_registry
+
+    entries = builtin_registry()
+    assert len(entries) >= 10
+    names = {e["name"] for e in entries}
+    assert {"Reverb", "Delay", "Distortion"} <= names  # the staples must be offered
+    for e in entries:
+        assert e["format"] == "builtin"
+        # `path` must resolve to a real pedalboard class (chain.py builds it via
+        # getattr(pedalboard, path)); a typo here would 404 the effect at add time.
+        assert isinstance(getattr(pedalboard, e["path"], None), type), e["path"]
+
+
+@pytest.mark.asyncio
+async def test_scan_lists_builtins_ahead_of_discovered_plugins(monkeypatch):
+    # Isolate from whatever plugins happen to be installed on the test machine.
+    monkeypatch.setattr("hyperframes_vst.server.scan_paths", lambda *a, **k: [])
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(ws_uri(server, port)) as ws:
+        await ws.send(json.dumps({"cmd": "scan"}))
+        reg = await recv_json(ws)
+        assert reg["event"] == "registry"
+        names = [p["name"] for p in reg["plugins"]]
+        assert "Reverb" in names and "Delay" in names
+        assert all(p["format"] == "builtin" for p in reg["plugins"])  # only builtins, since disk scan is stubbed empty
+    await server.stop()
+
+
+def test_output_is_stable_accepts_normal_and_rejects_nan_inf_and_runaway():
+    sr = 1000
+    assert output_is_stable(np.zeros((2, sr), dtype=np.float32)) is True
+    assert output_is_stable((np.ones((2, sr)) * 0.8).astype(np.float32)) is True
+    nan = np.zeros((2, sr), dtype=np.float32)
+    nan[0, 5] = np.nan
+    assert output_is_stable(nan) is False
+    inf = np.zeros((2, sr), dtype=np.float32)
+    inf[1, 3] = np.inf
+    assert output_is_stable(inf) is False
+    # Some plugins run away to astronomical (still-finite) magnitudes before
+    # hitting NaN — those are unstable too (see ValhallaFreqEcho under pedalboard).
+    runaway = np.full((2, sr), MAX_STABLE_PEAK * 10, dtype=np.float32)
+    assert output_is_stable(runaway) is False
+
+
+def test_probe_reports_a_working_builtin_chain_as_stable(dry_wav):
+    from hyperframes_vst.chain import build_chain, load_chain_spec
+
+    plugins = build_chain(load_chain_spec(json.dumps(CHAIN)))
+    assert probe_chain_stability(dry_wav, plugins) is True
+
+
+def test_unstable_track_never_emits_a_frame(dry_wav):
+    # An unstable chain is still constructed (so its wire index stays in
+    # lockstep with the client), but must never stream — the client keeps it dry.
+    from hyperframes_vst.chain import build_chain, load_chain_spec
+
+    plugins = build_chain(load_chain_spec(json.dumps(CHAIN)))
+    track = TrackStream(0, dry_wav, plugins, stable=False)
+    assert track.next_block() is None
+    track.close()
+
+
+@pytest.mark.asyncio
+async def test_chain_loaded_reports_stability_and_unstable_never_streams(dry_wav, monkeypatch):
+    # Force the probe to declare the chain unstable without needing a plugin
+    # that actually misbehaves in CI.
+    monkeypatch.setattr("hyperframes_vst.server.probe_chain_stability", lambda *a, **k: False)
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(ws_uri(server, port)) as ws:
+        await ws.send(json.dumps({"cmd": "load-chain", "trackId": "m", "chainJson": CHAIN, "wavPath": dry_wav}))
+        loaded = await recv_json(ws)
+        assert loaded["event"] == "chain-loaded"
+        assert loaded["stable"] is False
+
+        await ws.send(json.dumps({"cmd": "transport", "action": "play", "timeSec": 0.0, "rate": 1.0}))
+        # No PCM should ever arrive for an unstable track — the pump finds no
+        # sendable frame and stops. Expect a timeout, not a binary frame.
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(recv_binary(ws), timeout=1.0)
+    await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_load_chain_and_stream(dry_wav):
     server = VstServer()
     port = await server.start(0)
@@ -65,6 +180,11 @@ async def test_load_chain_and_stream(dry_wav):
         loaded = await recv_json(ws)
         assert loaded["event"] == "chain-loaded"
         assert loaded["trackId"] == "music"
+        # The client hardcoding a sample rate instead of reading this field
+        # plays streamed PCM at the wrong pitch/speed, and its drift-check
+        # then misreads the resulting rate mismatch as ever-growing drift.
+        assert loaded["sampleRate"] == 48000  # dry_wav's real rate
+        assert loaded["stable"] is True  # a builtin Gain chain hosts fine
 
         await ws.send(json.dumps({"cmd": "transport", "action": "play", "timeSec": 0.0, "rate": 1.0}))
         frame = await recv_binary(ws)
@@ -72,6 +192,67 @@ async def test_load_chain_and_stream(dry_wav):
         assert idx == 0
         assert pcm.shape[0] == 2
         await ws.send(json.dumps({"cmd": "transport", "action": "pause"}))
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_pump_keeps_up_with_real_time(tmp_path):
+    # The client plays streamed PCM through a real-time AudioContext: it
+    # consumes exactly `sample_rate` samples per wall-clock second. If the
+    # sidecar's pump delivers fewer than that, the client's ring buffer
+    # starves — the worklet zero-fills the gaps (choppy/degraded audio) and
+    # the shortfall accumulates as genuine drift until the drift-check trips
+    # a destructive reseek (playback "cuts out").
+    #
+    # `_pump`'s open-loop `await sleep(block/rate)` never subtracts the time
+    # spent processing+sending a block, nor the sleep's own overshoot, so the
+    # real period is always LONGER than one block — a systematic production
+    # deficit. This test drives real playback and asserts the delivered
+    # sample count keeps pace with the wall clock it took to deliver them.
+    sr = 48000
+    seconds = 6
+    audio = (np.ones((2, sr * seconds)) * 0.25).astype(np.float32)
+    path = str(tmp_path / "long.wav")
+    with AudioFile(path, "w", sr, 2) as f:
+        f.write(audio)
+
+    server = VstServer()
+    port = await server.start(0)
+    async with websockets.connect(ws_uri(server, port)) as ws:
+        await ws.send(json.dumps({"cmd": "load-chain", "trackId": "m", "chainJson": CHAIN, "wavPath": path}))
+        loaded = await recv_json(ws)
+        assert loaded["event"] == "chain-loaded"
+
+        await ws.send(json.dumps({"cmd": "transport", "action": "play", "timeSec": 0.0, "rate": 1.0}))
+
+        # Drain the very first frame to mark the moment real streaming begins,
+        # then measure only the steady-state pump from there (excludes the
+        # one-time load/handshake latency, which the client anchors its drift
+        # baseline to anyway).
+        first = await recv_binary(ws)
+        _idx, _pos, first_pcm = decode_frame(first)
+        delivered = first_pcm.shape[1]
+        start = time.monotonic()
+
+        target_wall = 3.0
+        while True:
+            frame = await recv_binary(ws)
+            _i, _p, pcm = decode_frame(frame)
+            delivered += pcm.shape[1]
+            if time.monotonic() - start >= target_wall:
+                break
+
+        elapsed = time.monotonic() - start
+        await ws.send(json.dumps({"cmd": "transport", "action": "pause"}))
+
+    real_time_samples = sr * elapsed
+    ratio = delivered / real_time_samples
+    # A real-time consumer needs >=100%; allow 1% for measurement jitter.
+    assert ratio >= 0.99, (
+        f"pump delivered {delivered} samples in {elapsed:.3f}s "
+        f"({ratio:.1%} of the {real_time_samples:.0f} a real-time client consumes) "
+        f"— production deficit starves the client ring buffer"
+    )
     await server.stop()
 
 
@@ -319,16 +500,21 @@ async def test_load_chain_runs_on_the_same_pedalboard_thread_as_open_editor(dry_
         _RecordingPlugin above. This test is only about which thread
         build_chain/show_editor run on, not audio streaming."""
 
-        def __init__(self, track_index, wav_path, plugins):
-            pass
+        def __init__(self, track_index, wav_path, plugins, stable=True):
+            self.sample_rate = 48000
+            self.stable = stable
 
         def close(self):
             pass
 
     original = server_module.build_chain
     original_track_stream = server_module.TrackStream
+    original_probe = server_module.probe_chain_stability
     server_module.build_chain = fake_build_chain
     server_module.TrackStream = _FakeTrackStream
+    # The stability probe wraps plugins in a real Pedalboard, which the fake
+    # _RecordingPlugin can't join; this test is only about thread affinity.
+    server_module.probe_chain_stability = lambda *a, **k: True
     try:
         async with websockets.connect(ws_uri(server, port)) as ws:
             await ws.send(
@@ -349,6 +535,7 @@ async def test_load_chain_runs_on_the_same_pedalboard_thread_as_open_editor(dry_
     finally:
         server_module.build_chain = original
         server_module.TrackStream = original_track_stream
+        server_module.probe_chain_stability = original_probe
 
     server.stop_pedalboard_thread()
     host_thread.join(timeout=2)
@@ -369,3 +556,94 @@ async def test_builtin_chain_load_does_not_require_the_pedalboard_thread(dry_wav
         loaded = await recv_json(ws)
         assert loaded["event"] == "chain-loaded"
     await server.stop()
+
+
+def test_raise_editor_window_is_a_safe_noop_off_macos(monkeypatch):
+    # The editor-raise helper is macOS-only (System Events activation); on any
+    # other platform it must return without spawning anything. Also proves it
+    # never throws — it's best-effort and called from a fire-and-forget timer.
+    import hyperframes_vst.server as server_module
+
+    monkeypatch.setattr(server_module.sys, "platform", "linux")
+    called = False
+
+    def _fail(*a, **k):
+        nonlocal called
+        called = True
+        raise AssertionError("must not spawn osascript off macOS")
+
+    monkeypatch.setattr(server_module.subprocess, "run", _fail)
+    server_module._raise_editor_window_macos()  # must not raise, must not call run
+    assert called is False
+
+
+def test_watch_parent_exits_when_orphaned(monkeypatch):
+    # The sidecar self-reaps when its parent dies (getppid changes) so an
+    # ungraceful studio-server death doesn't leave a stale `serve` process.
+    import hyperframes_vst.server as server_module
+
+    monkeypatch.setattr(server_module.time, "sleep", lambda *_: None)
+    # First poll: parent unchanged (still alive) → keep waiting. Second poll:
+    # ppid changed (orphaned) → must exit.
+    ppids = iter([1234, 1234, 1])
+
+    def fake_getppid():
+        return next(ppids)
+
+    monkeypatch.setattr(server_module.os, "getppid", fake_getppid)
+
+    class _Exit(Exception):
+        pass
+
+    def fake_exit(code):
+        raise _Exit(code)
+
+    monkeypatch.setattr(server_module.os, "_exit", fake_exit)
+    with pytest.raises(_Exit) as exc:
+        server_module._watch_parent_and_exit(watch_pid=None, initial_ppid=1234, interval_sec=0)
+    assert exc.value.args[0] == 0
+
+
+def test_watch_parent_stays_alive_while_parent_lives(monkeypatch):
+    # Never exit while getppid keeps returning the original parent — guards
+    # against a watchdog that reaps a still-healthy sidecar.
+    import hyperframes_vst.server as server_module
+
+    calls = {"n": 0}
+
+    def fake_sleep(*_):
+        calls["n"] += 1
+        if calls["n"] >= 5:
+            raise KeyboardInterrupt  # break the loop after a few clean polls
+
+    monkeypatch.setattr(server_module.time, "sleep", fake_sleep)
+    monkeypatch.setattr(server_module.os, "getppid", lambda: 4242)
+
+    def fail_exit(_code):
+        raise AssertionError("must not exit while parent is alive")
+
+    monkeypatch.setattr(server_module.os, "_exit", fail_exit)
+    with pytest.raises(KeyboardInterrupt):
+        server_module._watch_parent_and_exit(watch_pid=None, initial_ppid=4242, interval_sec=0)
+
+
+def test_watch_parent_exits_when_watched_pid_dies(monkeypatch):
+    # With an explicit --parent-pid (the studio-server pid), the sidecar polls
+    # that pid via os.kill(pid, 0) — NOT getppid — because `uv run` sits
+    # between them and would otherwise mask the spawner's death.
+    import hyperframes_vst.server as server_module
+
+    monkeypatch.setattr(server_module.time, "sleep", lambda *_: None)
+    # getppid stays constant (the uv wrapper is alive) — proving the exit is
+    # driven by the watched pid, not the ppid heuristic.
+    monkeypatch.setattr(server_module.os, "getppid", lambda: 999)
+    alive = iter([True, True, False])
+    monkeypatch.setattr(server_module, "_process_alive", lambda _pid: next(alive))
+
+    class _Exit(Exception):
+        pass
+
+    monkeypatch.setattr(server_module.os, "_exit", lambda code: (_ for _ in ()).throw(_Exit(code)))
+    with pytest.raises(_Exit) as exc:
+        server_module._watch_parent_and_exit(watch_pid=54321, initial_ppid=999, interval_sec=0)
+    assert exc.value.args[0] == 0

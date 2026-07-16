@@ -11,6 +11,27 @@ import sys
 BUNDLE_EXTENSIONS = {".vst3": "vst3", ".component": "au"}
 PROBE_TIMEOUT_SEC = 10
 
+# pedalboard's built-in effects that host cleanly with no constructor args and
+# no external plugin file — the reliable, always-available options (unlike
+# third-party VST3/AU, which pedalboard's headless host can't run for a real
+# subset; see the stability guard). Each maps to a `pedalboard.<name>` class in
+# chain.py's `_build_builtin` (format "builtin", path = the class name).
+# Ordered most-useful-first for the FX picker. Convolution and IIRFilter are
+# excluded: they require constructor arguments (an impulse response / filter
+# coefficients) this add flow can't supply.
+BUILTIN_EFFECTS = [
+    "Reverb", "Delay", "Chorus", "Phaser", "Distortion", "Compressor",
+    "Limiter", "NoiseGate", "Gain", "PitchShift", "Bitcrush", "Clipping",
+    "LadderFilter", "LowpassFilter", "HighpassFilter", "PeakFilter",
+    "LowShelfFilter", "HighShelfFilter", "MP3Compressor", "Invert",
+]
+
+
+def builtin_registry() -> list[dict]:
+    """The built-in effects, in FX-picker registry form. `pluginName` is None
+    (builtins take no sub-name), `path` is the pedalboard class name."""
+    return [{"path": name, "name": name, "format": "builtin"} for name in BUILTIN_EFFECTS]
+
 
 def default_plugin_dirs() -> list[str]:
     home = os.path.expanduser("~")
