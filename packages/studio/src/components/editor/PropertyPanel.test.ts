@@ -2,7 +2,7 @@
 
 import { act, createElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../../player";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -26,6 +26,8 @@ vi.mock("../../contexts/StudioContext", () => ({
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+afterEach(() => vi.unstubAllGlobals());
 
 function makeSelection(
   capabilityOverrides: Partial<DomEditSelection["capabilities"]>,
@@ -80,8 +82,11 @@ function renderInDocument(node: ReactNode): {
   };
 }
 
-function renderPropertyPanel(element: DomEditSelection) {
-  return renderInDocument(
+function renderPropertyPanel(
+  element: DomEditSelection,
+  onSetTextFieldStyle = vi.fn<(fieldKey: string, property: string, value: string | null) => void>(),
+) {
+  const rendered = renderInDocument(
     createElement(PropertyPanel, {
       projectId: "project",
       projectDir: null,
@@ -96,11 +101,12 @@ function renderPropertyPanel(element: DomEditSelection) {
       onSetManualSize: vi.fn(),
       onSetManualRotation: vi.fn(),
       onSetText: vi.fn(),
-      onSetTextFieldStyle: vi.fn(),
+      onSetTextFieldStyle,
       onAddTextField: vi.fn(),
       onRemoveTextField: vi.fn(),
     }),
   );
+  return { ...rendered, onSetTextFieldStyle };
 }
 
 function renderStyleSections(element: DomEditSelection) {
@@ -196,6 +202,61 @@ describe("PropertyPanel disabled control reasons", () => {
     expect(panel.host.querySelector('[data-panel-section="fill"] [data-disabled-reason]')).toBe(
       null,
     );
+    panel.unmount();
+  });
+});
+
+describe("PropertyPanel text style reset", () => {
+  it("removes an inline text-field style through the shared reset affordance", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+    const element = makeSelection({});
+    element.textFields = [
+      {
+        key: "self",
+        label: "Text",
+        value: "Hello",
+        tagName: "div",
+        attributes: [],
+        inlineStyles: { "font-size": "24px" },
+        computedStyles: { "font-size": "24px" },
+        source: "self",
+      },
+    ];
+    const panel = renderPropertyPanel(element);
+
+    const reset = panel.host.querySelector<HTMLButtonElement>('[aria-label="Reset Size"]');
+    if (!reset) throw new Error("Missing text size reset");
+    act(() => reset.click());
+
+    expect(panel.onSetTextFieldStyle).toHaveBeenCalledWith("self", "font-size", null);
+    panel.unmount();
+  });
+
+  it("does not offer selected-element reset controls for child text fields", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+    const element = makeSelection({});
+    element.textFields = [
+      {
+        key: "child:0:span",
+        label: "Text",
+        value: "Hello",
+        tagName: "span",
+        attributes: [],
+        inlineStyles: { "font-size": "24px" },
+        computedStyles: { "font-size": "24px" },
+        source: "child",
+        sourceChildIndex: 0,
+      },
+    ];
+    const panel = renderPropertyPanel(element);
+
+    expect(panel.host.querySelector('[aria-label="Reset Size"]')).toBeNull();
     panel.unmount();
   });
 });

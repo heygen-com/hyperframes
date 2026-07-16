@@ -15,7 +15,6 @@ import {
   getClipPathInsetPx,
   inferBoxShadowPreset,
   inferClipPathPreset,
-  LABEL,
   normalizePanelPxValue,
   parseInsetClipPathSides,
   parseNumericValue,
@@ -27,6 +26,7 @@ import {
 } from "./propertyPanelHelpers";
 import {
   DetailField,
+  FieldLabel,
   MetricField,
   Section,
   SegmentedControl,
@@ -51,7 +51,7 @@ export function StyleSections({
   element: DomEditSelection;
   styles: Record<string, string>;
   assets: string[];
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string | null) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
 }) {
@@ -101,6 +101,13 @@ export function StyleSections({
   const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
+  const resetInlineStyle = (...properties: string[]): (() => void) | undefined => {
+    const property = properties.find((candidate) => Object.hasOwn(element.inlineStyles, candidate));
+    if (property === undefined) return undefined;
+    return () => {
+      void onSetStyle(property, null);
+    };
+  };
 
   const fillMode =
     backgroundImage && backgroundImage !== "none"
@@ -151,20 +158,28 @@ export function StyleSections({
           defaultCollapsed
         >
           <div className="space-y-4">
-            <SegmentedControl
-              disabled={styleEditingDisabled}
-              value={styles["flex-direction"] || "row"}
-              onChange={(next) => onSetStyle("flex-direction", next)}
-              options={[
-                { label: "→ Row", value: "row" },
-                { label: "↓ Column", value: "column" },
-              ]}
-            />
+            <div className="grid min-w-0 gap-1.5">
+              <FieldLabel
+                label="Direction"
+                disabled={styleEditingDisabled}
+                onReset={resetInlineStyle("flex-direction")}
+              />
+              <SegmentedControl
+                disabled={styleEditingDisabled}
+                value={styles["flex-direction"] || "row"}
+                onChange={(next) => onSetStyle("flex-direction", next)}
+                options={[
+                  { label: "→ Row", value: "row" },
+                  { label: "↓ Column", value: "column" },
+                ]}
+              />
+            </div>
             <div className={RESPONSIVE_GRID}>
               <SelectField
                 label="Justify"
                 value={styles["justify-content"] || "flex-start"}
                 disabled={styleEditingDisabled}
+                onReset={resetInlineStyle("justify-content")}
                 onChange={(next) => onSetStyle("justify-content", next)}
                 options={[
                   "flex-start",
@@ -179,6 +194,7 @@ export function StyleSections({
                 label="Align"
                 value={styles["align-items"] || "stretch"}
                 disabled={styleEditingDisabled}
+                onReset={resetInlineStyle("align-items")}
                 onChange={(next) => onSetStyle("align-items", next)}
                 options={["stretch", "flex-start", "center", "flex-end", "baseline"]}
               />
@@ -187,6 +203,7 @@ export function StyleSections({
               label="Gap"
               value={styles.gap ?? "0px"}
               disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("gap")}
               onCommit={(next) => onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
             />
           </div>
@@ -205,6 +222,13 @@ export function StyleSections({
             br={radiusBR}
             bl={radiusBL}
             disabled={styleEditingDisabled}
+            resets={{
+              all: resetInlineStyle("border-radius"),
+              tl: resetInlineStyle("border-top-left-radius"),
+              tr: resetInlineStyle("border-top-right-radius"),
+              br: resetInlineStyle("border-bottom-right-radius"),
+              bl: resetInlineStyle("border-bottom-left-radius"),
+            }}
             onCommit={(corner, value) => {
               const px = `${formatNumericValue(value)}px`;
               if (corner === "all") {
@@ -235,6 +259,7 @@ export function StyleSections({
               value={formatPxMetricValue(borderWidthValue)}
               disabled={styleEditingDisabled}
               liveCommit
+              onReset={resetInlineStyle("border-width", "border-top-width")}
               onCommit={async (next) => {
                 const normalized = normalizePanelPxValue(next, {
                   min: 0,
@@ -254,6 +279,7 @@ export function StyleSections({
               label="Style"
               value={borderStyleValue}
               disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("border-style", "border-top-style")}
               onChange={async (next) => {
                 for (const [property, value] of buildStrokeStyleUpdates(
                   next,
@@ -269,6 +295,7 @@ export function StyleSections({
             label="Stroke color"
             value={borderColorValue}
             disabled={styleEditingDisabled}
+            onReset={resetInlineStyle("border-color", "border-top-color")}
             onCommit={(next) => onSetStyle("border-color", next)}
           />
         </div>
@@ -285,6 +312,7 @@ export function StyleSections({
             value={boxShadowPreset}
             disabled={styleEditingDisabled}
             disableUnlistedValue
+            onReset={resetInlineStyle("box-shadow")}
             onChange={(next) => {
               onSetStyle(
                 "box-shadow",
@@ -295,7 +323,11 @@ export function StyleSections({
           />
           <div className={RESPONSIVE_GRID}>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Layer blur</span>
+              <FieldLabel
+                label="Layer blur"
+                disabled={styleEditingDisabled}
+                onReset={resetInlineStyle("filter")}
+              />
               <SliderControl
                 value={filterBlurValue}
                 min={0}
@@ -310,7 +342,11 @@ export function StyleSections({
               />
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <span className={LABEL}>Backdrop</span>
+              <FieldLabel
+                label="Backdrop"
+                disabled={styleEditingDisabled}
+                onReset={resetInlineStyle("backdrop-filter")}
+              />
               <SliderControl
                 value={backdropBlurValue}
                 min={0}
@@ -342,6 +378,7 @@ export function StyleSections({
               label="Overflow"
               value={styles.overflow || "visible"}
               disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("overflow")}
               onChange={(next) => onSetStyle("overflow", next)}
               options={["visible", "hidden", "clip"]}
             />
@@ -350,6 +387,7 @@ export function StyleSections({
               value={clipPathPreset}
               disabled={styleEditingDisabled}
               disableUnlistedValue
+              onReset={resetInlineStyle("clip-path")}
               onChange={(next) => {
                 onSetStyle(
                   "clip-path",
@@ -364,7 +402,11 @@ export function StyleSections({
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Mask inset</span>
+            <FieldLabel
+              label="Mask inset"
+              disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("clip-path")}
+            />
             <SliderControl
               value={clipInsetValue}
               min={0}
@@ -385,24 +427,28 @@ export function StyleSections({
                   label="T"
                   value={formatPxMetricValue(clipInsetSides.top)}
                   disabled={styleEditingDisabled}
+                  onReset={resetInlineStyle("clip-path")}
                   onCommit={(next) => commitClipInsetSide("top", next)}
                 />
                 <MetricField
                   label="R"
                   value={formatPxMetricValue(clipInsetSides.right)}
                   disabled={styleEditingDisabled}
+                  onReset={resetInlineStyle("clip-path")}
                   onCommit={(next) => commitClipInsetSide("right", next)}
                 />
                 <MetricField
                   label="B"
                   value={formatPxMetricValue(clipInsetSides.bottom)}
                   disabled={styleEditingDisabled}
+                  onReset={resetInlineStyle("clip-path")}
                   onCommit={(next) => commitClipInsetSide("bottom", next)}
                 />
                 <MetricField
                   label="L"
                   value={formatPxMetricValue(clipInsetSides.left)}
                   disabled={styleEditingDisabled}
+                  onReset={resetInlineStyle("clip-path")}
                   onCommit={(next) => commitClipInsetSide("left", next)}
                 />
               </div>
@@ -417,20 +463,28 @@ export function StyleSections({
         defaultCollapsed
       >
         <div className="space-y-4">
-          <SliderControl
-            value={opacityValue}
-            min={0}
-            max={100}
-            step={1}
-            disabled={styleEditingDisabled}
-            displayValue={`${opacityValue}%`}
-            formatDisplayValue={(next) => `${Math.round(next)}%`}
-            onCommit={(next) => onSetStyle("opacity", formatNumericValue(next / 100))}
-          />
+          <div className="grid min-w-0 gap-1.5">
+            <FieldLabel
+              label="Opacity"
+              disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("opacity")}
+            />
+            <SliderControl
+              value={opacityValue}
+              min={0}
+              max={100}
+              step={1}
+              disabled={styleEditingDisabled}
+              displayValue={`${opacityValue}%`}
+              formatDisplayValue={(next) => `${Math.round(next)}%`}
+              onCommit={(next) => onSetStyle("opacity", formatNumericValue(next / 100))}
+            />
+          </div>
           <SelectField
             label="Mode"
             value={styles["mix-blend-mode"] || "normal"}
             disabled={styleEditingDisabled}
+            onReset={resetInlineStyle("mix-blend-mode")}
             onChange={(next) => onSetStyle("mix-blend-mode", next)}
             options={["normal", "multiply", "screen", "overlay", "darken", "lighten"]}
           />
@@ -442,21 +496,29 @@ export function StyleSections({
         disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
       >
         <div className="space-y-4">
-          <SegmentedControl
-            disabled={styleEditingDisabled}
-            value={preferredFillMode}
-            onChange={handleFillModeChange}
-            options={[
-              { label: "Solid", value: "Solid" },
-              { label: "Gradient", value: "Gradient" },
-              { label: "Image", value: "Image" },
-            ]}
-          />
+          <div className="grid min-w-0 gap-1.5">
+            <FieldLabel
+              label="Fill mode"
+              disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("background-image")}
+            />
+            <SegmentedControl
+              disabled={styleEditingDisabled}
+              value={preferredFillMode}
+              onChange={handleFillModeChange}
+              options={[
+                { label: "Solid", value: "Solid" },
+                { label: "Gradient", value: "Gradient" },
+                { label: "Image", value: "Image" },
+              ]}
+            />
+          </div>
           {preferredFillMode === "Solid" ? (
             <ColorField
               label="Fill color"
               value={styles["background-color"] ?? "transparent"}
               disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("background-color")}
               onCommit={(next) => onSetStyle("background-color", next)}
             />
           ) : preferredFillMode === "Gradient" ? (
@@ -486,6 +548,7 @@ export function StyleSections({
               label="Text color"
               value={styles.color ?? "rgb(0, 0, 0)"}
               disabled={styleEditingDisabled}
+              onReset={resetInlineStyle("color")}
               onCommit={(next) => onSetStyle("color", next)}
             />
           )}

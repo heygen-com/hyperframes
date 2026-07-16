@@ -63,14 +63,15 @@ interface DomTextCommitPlan {
   operations: PatchOperation[];
 }
 
-function buildDomStyleCommitOperations(
-  property: string,
-  value: string,
-  isImageBackgroundCommit: boolean,
-): PatchOperation[] {
-  const operations: PatchOperation[] = [
-    buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value)),
-  ];
+interface DomStyleCommitPlan {
+  operations: PatchOperation[];
+  isImageBackgroundCommit: boolean;
+}
+
+function buildDomStyleCommitPlan(property: string, value: string | null): DomStyleCommitPlan {
+  const isImageBackgroundCommit =
+    value !== null && property === "background-image" && isImageBackgroundValue(value);
+  const operations: PatchOperation[] = [buildDomEditStylePatchOperation(property, value)];
   if (isImageBackgroundCommit) {
     operations.push(
       buildDomEditStylePatchOperation("background-position", "center"),
@@ -78,7 +79,75 @@ function buildDomStyleCommitOperations(
       buildDomEditStylePatchOperation("background-size", "contain"),
     );
   }
-  return operations;
+  return { operations, isImageBackgroundCommit };
+}
+
+function resolveNullableDomStyleValue(
+  property: string,
+  value: string | null,
+  resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null,
+): { normalizedValue: string | null; importedFont: ImportedFontAsset | null } {
+  return {
+    normalizedValue: value === null ? null : normalizeDomEditStyleValue(property, value),
+    importedFont:
+      property === "font-family" && value !== null ? resolveImportedFontAsset(value) : null,
+  };
+}
+
+function injectPreviewFontForStyle(
+  doc: Document | null | undefined,
+  property: string,
+  value: string | null,
+  importedFont: ImportedFontAsset | null,
+): void {
+  if (!doc || property !== "font-family" || value === null) return;
+
+  injectPreviewGoogleFont(doc, value);
+  if (importedFont) injectPreviewImportedFont(doc, importedFont);
+}
+
+function applyNullableStyleValue(
+  element: HTMLElement,
+  property: string,
+  value: string | null,
+  computedStyles: Record<string, string>,
+  doc: Document | null | undefined,
+): void {
+  if (value !== null) {
+    element.style.setProperty(property, value);
+    computedStyles[property] = value;
+    return;
+  }
+
+  element.style.removeProperty(property);
+  // The panel reads this exact snapshot synchronously, so keep coupled
+  // style builders fresh while persistence is still pending.
+  const authoredValue = doc?.defaultView?.getComputedStyle(element).getPropertyValue(property);
+  if (authoredValue === undefined) {
+    delete computedStyles[property];
+    return;
+  }
+  computedStyles[property] = authoredValue;
+}
+
+function buildNextDomTextFieldStyle(
+  field: DomEditTextField,
+  fieldKey: string,
+  property: string,
+  value: string | null,
+): DomEditTextField {
+  if (field.key !== fieldKey) return field;
+
+  const inlineStyles = { ...field.inlineStyles };
+  const computedStyles = { ...field.computedStyles };
+  if (value === null) {
+    delete inlineStyles[property];
+    delete computedStyles[property];
+  } else {
+    inlineStyles[property] = value;
+    computedStyles[property] = value;
+  }
+  return { ...field, inlineStyles, computedStyles };
 }
 
 function buildNextDomTextFields(
@@ -163,7 +232,7 @@ export function useDomEditTextCommits({
     });
 
   const handleDomStyleCommit = useCallback(
-    async (property: string, value: string) => {
+    async (property: string, value: string | null) => {
       if (!domEditSelection) return;
       if (isManualGeometryStyleProperty(property)) return;
       if (!domEditSelection.capabilities.canEditStyles) return;
@@ -172,16 +241,20 @@ export function useDomEditTextCommits({
         domStyleCommitVersionRef.current,
         styleCommitKey,
       );
-      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
+      const { normalizedValue, importedFont } = resolveNullableDomStyleValue(
+        property,
+        value,
+        resolveImportedFontAsset,
+      );
       const iframe = previewIframeRef.current;
       const doc = iframe?.contentDocument;
-      const normalizedValue = normalizeDomEditStyleValue(property, value);
-      const isImageBackgroundCommit =
-        property === "background-image" && isImageBackgroundValue(value);
       let editedElement: HTMLElement | null = null;
       let previousInlineValue: string | null = null;
       let previousComputedValue: string | undefined;
-      const operations = buildDomStyleCommitOperations(property, value, isImageBackgroundCommit);
+      const { operations, isImageBackgroundCommit } = buildDomStyleCommitPlan(
+        property,
+        normalizedValue,
+      );
       // Inline-style commits never full-reload the preview (that blanks the iframe
       // until it re-renders): the live element was already mutated optimistically in
       // apply(). z-index is no exception — setting `element.style.zIndex` restacks the
@@ -199,14 +272,14 @@ export function useDomEditTextCommits({
         },
         apply: () => {
           if (!editedElement) return;
-          editedElement.style.setProperty(property, normalizedValue);
-          // The panel reads this exact snapshot synchronously, so keep coupled
-          // style builders fresh while persistence is still pending.
-          domEditSelection.computedStyles[property] = normalizedValue;
-          if (property === "font-family" && doc) {
-            injectPreviewGoogleFont(doc, value);
-            if (importedFont) injectPreviewImportedFont(doc, importedFont);
-          }
+          applyNullableStyleValue(
+            editedElement,
+            property,
+            normalizedValue,
+            domEditSelection.computedStyles,
+            doc,
+          );
+          injectPreviewFontForStyle(doc, property, value, importedFont);
           if (isImageBackgroundCommit) {
             editedElement.style.setProperty("background-position", "center");
             editedElement.style.setProperty("background-repeat", "no-repeat");
@@ -395,7 +468,7 @@ export function useDomEditTextCommits({
   );
 
   const handleDomTextFieldStyleCommit = useCallback(
-    async (fieldKey: string, property: string, value: string) => {
+    async (fieldKey: string, property: string, value: string | null) => {
       if (!domEditSelection) return;
       const field = domEditSelection.textFields.find((entry) => entry.key === fieldKey);
       if (!field) return;
@@ -405,29 +478,19 @@ export function useDomEditTextCommits({
         return;
       }
 
-      const normalizedValue = normalizeDomEditStyleValue(property, value);
-      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
-      if (property === "font-family") {
-        const doc = previewIframeRef.current?.contentDocument;
-        if (doc) {
-          injectPreviewGoogleFont(doc, normalizedValue);
-          if (importedFont) injectPreviewImportedFont(doc, importedFont);
-        }
-      }
+      const { normalizedValue, importedFont } = resolveNullableDomStyleValue(
+        property,
+        value,
+        resolveImportedFontAsset,
+      );
+      injectPreviewFontForStyle(
+        previewIframeRef.current?.contentDocument,
+        property,
+        normalizedValue,
+        importedFont,
+      );
       const nextTextFields = domEditSelection.textFields.map((entry) =>
-        entry.key === fieldKey
-          ? {
-              ...entry,
-              inlineStyles: {
-                ...entry.inlineStyles,
-                [property]: normalizedValue,
-              },
-              computedStyles: {
-                ...entry.computedStyles,
-                [property]: normalizedValue,
-              },
-            }
-          : entry,
+        buildNextDomTextFieldStyle(entry, fieldKey, property, normalizedValue),
       );
 
       await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });

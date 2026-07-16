@@ -27,7 +27,7 @@ export interface PropertyPanelProps {
   multiSelectCount?: number;
   onClearSelection: () => void;
   onUngroup?: () => void;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string | null) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetAttributeLive: (attr: string, value: string | null) => void | Promise<void>;
   onApplyColorGradingScope?: (
@@ -47,7 +47,7 @@ export interface PropertyPanelProps {
   onSetManualSize: (element: DomEditSelection, next: { width: number; height: number }) => void;
   onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
-  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onSetTextFieldStyle: (fieldKey: string, property: string, value: string | null) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;

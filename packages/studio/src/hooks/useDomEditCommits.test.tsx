@@ -9,9 +9,16 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { buildStrokeWidthStyleUpdates } from "../components/editor/propertyPanelHelpers";
 import { usePlayerStore } from "../player";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import {
+  buildEditHistoryEntry,
+  createEmptyEditHistory,
+  hashEditHistoryContent,
+  pushEditHistoryEntry,
+  undoEditHistory,
+} from "../utils/editHistory";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { useDomEditCommits } from "./useDomEditCommits";
+import { useDomEditCommits, type UseDomEditCommitsParams } from "./useDomEditCommits";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -26,10 +33,12 @@ interface PatchResponseBody {
   content?: string;
 }
 
+type RecordEditInput = Parameters<UseDomEditCommitsParams["editHistory"]["recordEdit"]>[0];
+
 interface RenderedDomEditCommits {
   hook: ReturnType<typeof useDomEditCommits>;
   showToast: ReturnType<typeof makeShowToast>;
-  recordEdit: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  recordEdit: ReturnType<typeof vi.fn<(entry: RecordEditInput) => Promise<void>>>;
   reloadPreview: ReturnType<typeof vi.fn>;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
   cleanup: () => void;
@@ -251,7 +260,7 @@ function renderDomEditCommits(
 ) {
   const captured: { current: ReturnType<typeof useDomEditCommits> | null } = { current: null };
   const showToast = makeShowToast();
-  const recordEdit = vi.fn(async () => {});
+  const recordEdit = vi.fn(async (_entry: RecordEditInput) => {});
   const previewIframeRef: MutableRefObject<HTMLIFrameElement | null> = { current: iframe };
   const projectIdRef: MutableRefObject<string | null> = { current: "p1" };
   const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
@@ -666,6 +675,66 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
     } finally {
       cleanup();
+    }
+  });
+
+  it("removes an inline style live, persists null, and records the original HTML for undo", async () => {
+    const original = '<div data-hf-id="hf-card" style="color: red">Card</div>';
+    const patched = '<div data-hf-id="hf-card">Card</div>';
+    const fetchMock = stubPatchFetch(
+      { ok: true, changed: true, matched: true, content: patched },
+      original,
+    );
+    const { iframe, element } = createPreviewElement(original);
+    const selection = createSelection(element, {
+      computedStyles: { color: "red" },
+      inlineStyles: { color: "red" },
+    });
+    const rendered = renderDomEditCommits(selection, iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("color", null);
+      });
+
+      expect(element.style.getPropertyValue("color")).toBe("");
+      const patchCall = fetchMock.mock.calls.find(([input]) =>
+        requestUrl(input).includes("/file-mutations/patch-element/"),
+      );
+      if (!patchCall) throw new Error("Missing patch request");
+      expect(requestOperations(patchCall[1])).toEqual([
+        {
+          type: "inline-style",
+          property: "color",
+          value: null,
+          childSelector: undefined,
+          childIndex: undefined,
+        },
+      ]);
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledWith(selection);
+      expect(rendered.recordEdit).toHaveBeenCalledWith({
+        label: "Edit layer style",
+        kind: "manual",
+        coalesceKey: undefined,
+        coalesceMs: undefined,
+        files: { "index.html": { before: original, after: patched } },
+      });
+      const recorded = rendered.recordEdit.mock.calls[0]?.[0];
+      if (!recorded) throw new Error("Missing reset history entry");
+      const history = pushEditHistoryEntry(
+        createEmptyEditHistory(),
+        buildEditHistoryEntry({
+          ...recorded,
+          projectId: "p1",
+          id: "reset-color",
+          now: 1,
+        }),
+      );
+      const undo = undoEditHistory(history, { "index.html": hashEditHistoryContent(patched) }, 2);
+      expect(undo.ok).toBe(true);
+      expect(undo.filesToWrite).toEqual({ "index.html": original });
+    } finally {
+      rendered.cleanup();
     }
   });
 

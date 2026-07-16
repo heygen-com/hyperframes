@@ -4,8 +4,10 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditingTypes";
+import { getInlineStyles } from "./domEditingDom";
 import { SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { StyleSections } from "./propertyPanelStyleSections";
+import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,6 +38,15 @@ function findSelect(host: HTMLElement, label: string): HTMLSelectElement {
   const select = field?.querySelector<HTMLSelectElement>("select");
   if (!select) throw new Error(`Missing select field: ${label}`);
   return select;
+}
+
+function findInput(host: HTMLElement, label: string): HTMLInputElement {
+  const field = Array.from(host.querySelectorAll("label")).find((candidate) =>
+    Array.from(candidate.querySelectorAll("span")).some((span) => span.textContent === label),
+  );
+  const input = field?.querySelector<HTMLInputElement>('input[type="text"]');
+  if (!input) throw new Error(`Missing input field: ${label}`);
+  return input;
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {
@@ -193,7 +204,7 @@ describe("SliderControl commit contract", () => {
 
 describe("StyleSections curated options", () => {
   it("keeps authored off-list values visible and commits remaining options", () => {
-    const calls: Array<[property: string, value: string]> = [];
+    const calls: Array<[property: string, value: string | null]> = [];
     const host = render(
       <StyleSections
         projectId="project"
@@ -248,5 +259,111 @@ describe("StyleSections curated options", () => {
 
     expect(calls).toContainEqual(["border-style", "dashed"]);
     expect(calls).toContainEqual(["overflow", "hidden"]);
+  });
+});
+
+describe("StyleSections inline style reset", () => {
+  it("detects inline corner-radius longhands from the canonical style snapshot", () => {
+    const element = document.createElement("div");
+    element.style.setProperty("border-top-left-radius", "12px");
+
+    expect(getInlineStyles(element)).toMatchObject({ "border-top-left-radius": "12px" });
+  });
+
+  it("reveals reset on label hover only for an inline override", () => {
+    const overridden = createSelection();
+    overridden.inlineStyles = { gap: "24px" };
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={overridden}
+        styles={{ display: "flex", gap: "24px" }}
+        assets={[]}
+        onSetStyle={() => undefined}
+      />,
+    );
+    expandSection(host, "flex");
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Gap"]');
+    expect(reset).not.toBeNull();
+    expect(reset?.className).toContain("opacity-0");
+    expect(reset?.className).toContain("group-hover:opacity-100");
+
+    const authoredOnly = createSelection();
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={authoredOnly}
+          styles={{ display: "flex", gap: "12px" }}
+          assets={[]}
+          onSetStyle={() => undefined}
+        />,
+      ),
+    );
+
+    expect(host.querySelector('[aria-label="Reset Gap"]')).toBeNull();
+  });
+
+  it("resets the inline property and displays the refreshed authored value", () => {
+    const element = createSelection();
+    element.inlineStyles = { gap: "24px" };
+    const onSetStyle = vi.fn<(property: string, value: string | null) => void>();
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={element}
+        styles={{ display: "flex", gap: "24px" }}
+        assets={[]}
+        onSetStyle={onSetStyle}
+      />,
+    );
+    expandSection(host, "flex");
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Gap"]');
+    if (!reset) throw new Error("Missing gap reset");
+    act(() => reset.click());
+    expect(onSetStyle).toHaveBeenCalledWith("gap", null);
+
+    element.inlineStyles = {};
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ display: "flex", gap: "12px" }}
+          assets={[]}
+          onSetStyle={onSetStyle}
+        />,
+      ),
+    );
+
+    expect(findInput(host, "Gap").value).toBe("12px");
+    expect(host.querySelector('[aria-label="Reset Gap"]')).toBeNull();
+  });
+});
+
+describe("BorderRadiusEditor inline style reset", () => {
+  it("shows a longhand reset in linked mode when no shorthand reset exists", () => {
+    const resetTopLeft = vi.fn();
+    const host = render(
+      <BorderRadiusEditor
+        tl={12}
+        tr={12}
+        br={12}
+        bl={12}
+        resets={{ tl: resetTopLeft }}
+        onCommit={() => undefined}
+      />,
+    );
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset All"]');
+    if (!reset) throw new Error("Missing linked radius reset");
+    act(() => reset.click());
+    expect(resetTopLeft).toHaveBeenCalledOnce();
   });
 });

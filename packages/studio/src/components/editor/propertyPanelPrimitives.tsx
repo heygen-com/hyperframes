@@ -1,7 +1,46 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { RotateCcw } from "../../icons/SystemIcons";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
 const INSPECTOR_COMMIT_DELAY_MS = 350;
+
+export function FieldLabel({
+  label,
+  labelNode,
+  disabled,
+  onReset,
+}: {
+  label: string;
+  labelNode?: ReactNode;
+  disabled?: boolean;
+  onReset?: () => void;
+}) {
+  return (
+    <span className="group inline-flex min-w-0 items-center gap-1">
+      {labelNode ?? <span className={LABEL}>{label}</span>}
+      {onReset && (
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Reset ${label}`}
+          title={`Reset ${label} to authored value`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onReset();
+          }}
+          className="pointer-events-none inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        >
+          <RotateCcw size={10} aria-hidden="true" />
+        </button>
+      )}
+    </span>
+  );
+}
 
 export function useDebouncedCommit<T>({
   sourceValue,
@@ -159,6 +198,7 @@ export function MetricField({
   scrub,
   suffix,
   tooltip,
+  onReset,
   onCommit,
 }: {
   label: string;
@@ -168,6 +208,7 @@ export function MetricField({
   scrub?: boolean;
   suffix?: string;
   tooltip?: string;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
@@ -227,7 +268,12 @@ export function MetricField({
   return (
     <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
-        <span {...scrubProps}>{label}</span>
+        <FieldLabel
+          label={label}
+          disabled={disabled}
+          onReset={onReset}
+          labelNode={<span {...scrubProps}>{label}</span>}
+        />
         <CommitField
           value={displayedValue}
           disabled={disabled}
@@ -248,16 +294,18 @@ export function DetailField({
   label,
   value,
   disabled,
+  onReset,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   return (
     <label className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <FieldLabel label={label} disabled={disabled} onReset={onReset} />
       <div className={FIELD}>
         <CommitField value={value} disabled={disabled} onCommit={onCommit} />
       </div>
@@ -360,6 +408,7 @@ export function SelectField({
   value,
   disabled,
   disableUnlistedValue,
+  onReset,
   options,
   onChange,
 }: {
@@ -367,6 +416,7 @@ export function SelectField({
   value: string;
   disabled?: boolean;
   disableUnlistedValue?: boolean;
+  onReset?: () => void;
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
@@ -374,7 +424,14 @@ export function SelectField({
   const renderedOptions = hasUnlistedValue ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <FieldLabel
+        label={label}
+        disabled={disabled}
+        onReset={onReset}
+        labelNode={
+          <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+        }
+      />
       <select
         value={value}
         disabled={disabled}

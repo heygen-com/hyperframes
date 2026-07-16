@@ -9,7 +9,6 @@ import {
   DEFAULT_FONT_FAMILIES,
   FIELD,
   GENERIC_FONT_FAMILIES,
-  LABEL,
   localFontSortScore,
   sanitizeFontFilePart,
   sortFontOptions,
@@ -18,6 +17,7 @@ import {
   type FontOption,
   type LocalFontData,
 } from "./propertyPanelHelpers";
+import { FieldLabel } from "./propertyPanelPrimitives";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -125,12 +125,14 @@ export function FontFamilyField({
   disabled,
   importedFonts,
   onImportFonts,
+  onReset,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
   importedFonts: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const currentFamily = primaryFontFamily(value);
@@ -368,7 +370,7 @@ export function FontFamilyField({
 
   return (
     <div ref={containerRef} className="relative grid min-w-0 gap-1.5">
-      <span className={LABEL}>Font family</span>
+      <FieldLabel label="Font family" disabled={disabled} onReset={onReset} />
       <button
         type="button"
         disabled={disabled}

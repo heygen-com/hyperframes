@@ -11,7 +11,7 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
-import { useDebouncedCommit } from "./propertyPanelPrimitives";
+import { FieldLabel, useDebouncedCommit } from "./propertyPanelPrimitives";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
@@ -122,11 +122,13 @@ export function ColorField({
   label,
   value,
   disabled,
+  onReset,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -366,7 +368,7 @@ export function ColorField({
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <FieldLabel label={label} disabled={disabled} onReset={onReset} />
       <button
         type="button"
         disabled={disabled}

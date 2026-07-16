@@ -538,6 +538,13 @@ export const PropertyPanel = memo(function PropertyPanel({
               label="Z-index"
               value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
               scrub
+              onReset={
+                Object.hasOwn(element.inlineStyles, "z-index")
+                  ? () => {
+                      void onSetStyle("z-index", null);
+                    }
+                  : undefined
+              }
               onCommit={(next) => onSetStyle("z-index", next)}
             />
           </div>
