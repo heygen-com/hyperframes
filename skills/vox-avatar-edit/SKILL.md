@@ -58,7 +58,7 @@ Working script: `scripts/omni_edit_batch2.py <case>` (compose → edit → confo
    +0–2.1% (measured across 9 beats) — enough to visibly desync lips by the end of a beat.
    After download: `setpts=PTS*(src_dur/edit_dur)` on the video (residual ≤33ms), then rule 5.
 
-5. **AUDIO CONTRACT: remux the source voice, stream-copied.** Edit output audio is re-baked by
+5. **AUDIO CONTRACT (defined in /vox-avatar): remux the source voice, stream-copied.** Edit output audio is re-baked by
    the model. A "preserve the audio" instruction makes it RE-PERFORM the dialogue word-for-word
    (transcript 100% match) but as a new recording — waveform correlation vs source is 0.149 and
    duration still drifts. That re-performance is what Flow-style "audio consistency" is; the

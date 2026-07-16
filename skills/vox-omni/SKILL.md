@@ -28,30 +28,18 @@ topic → beat map (ONE approval gate) → per-clip Omni gen (last-frame chainin
 
 ## Step 1 — Beat map (the contract; show user, get ONE approval)
 
-Write `beats.json`. Schema per beat:
+The beat contract is defined ONCE in `/vox-explainer` (§1: label/vo/camera/transition rules,
+style-content separation, page arc) — use it as-is. Omni-specific deltas on top:
 
-```json
-{
-  "id": 1,
-  "label": "UNSEEN",                  // 1-3 words ALL-CAPS, keyed to a VO keyword
-  "task": "text_to_video",            // beat 1 only; others "image_to_video" (chain)
-  "vo": "16-21 words, ~2.2 words/sec",
-  "visual": "tableau A … then tableau B … (PACK 2 TABLEAUX PER 10s CLIP)",
-  "camera": "push_in",                // vary per beat; NEVER same move on adjacent beats
-  "recurring_motif": "purple ribbon"  // optional: cheap continuity device across beats
-}
-```
-
-Hard rules (from reference-clip dissection, breakdown/ori-v1-mesmer-breakdown.md):
-- **Pack 2 tableaux per 10s clip** — the 10s unit is a model cap, not an editorial choice; real Vox rhythm is 4–6s/beat. One tableau per clip = the #1 cause of slow-feeling output.
-- VO: cold-open hook (date/place or impossible fact) → data anchors → loop-close ending.
-- Labels ARE the format: one 1–3 word ALL-CAPS cutout label per tableau, no full-sentence subtitles.
-- Last beat: minimal payoff, static camera, big negative space.
-- Style/content hard separation: style vocabulary lives ONLY in the style block; never let style words (paper, collage…) into `vo` or `label` (they leak into rendered text).
+- `task`: `text_to_video` for beat 1, `image_to_video` for chained beats.
+- **Pack 2 tableaux per 10s clip** — the 10s unit is a model cap, not editorial rhythm
+  (reference dissection: ~5s/tableau). One tableau per clip is the #1 cause of slow output.
+- `vo`: 16–21 words per 10s clip (~2.2 words/sec).
+- Optional `recurring_motif`: one accent element re-entering across beats (cheap continuity).
 
 ## Step 2 — Style block (append to every clip prompt)
 
-Two presets in `presets/`; pick one, never mix within a piece:
+Two presets in `../vox-explainer/presets/` (single source for the family); pick one, never mix within a piece:
 - `paper-craft.md` — cream diorama, engraved cutouts, soft 2-4px shadows, accent ribbon motif (Ori V1 DNA)
 - `collage-zine.md` — kraft, halftone, torn edges, red tape, 3-6px hard shadows (Hongbin prompt DNA)
 
