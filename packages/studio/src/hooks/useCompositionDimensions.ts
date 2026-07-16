@@ -1,6 +1,33 @@
 import { useState } from "react";
 import { useMountEffect } from "./useMountEffect";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
+
+function readCompositionSizeMessage(data: unknown): CompositionDimensions | null {
+  if (!isStageSizeMessage(data)) return null;
+  const message = data;
+  if (!acceptStudioRuntimeMessage(message)) return null;
+  return readPositiveDimensions(message.width, message.height);
+}
+
+function isStageSizeMessage(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object") return false;
+  if (value === null) return false;
+  const message = value as Record<string, unknown>;
+  return message.source === "hf-preview" && message.type === "stage-size";
+}
+
+function readPositiveNumber(value: unknown): number | null {
+  if (typeof value !== "number") return null;
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readPositiveDimensions(width: unknown, height: unknown): CompositionDimensions | null {
+  const parsedWidth = readPositiveNumber(width);
+  const parsedHeight = readPositiveNumber(height);
+  if (parsedWidth === null || parsedHeight === null) return null;
+  return { width: parsedWidth, height: parsedHeight };
+}
 
 export function useCompositionDimensions() {
   const [compositionDimensions, setCompositionDimensions] = useState<CompositionDimensions | null>(
@@ -9,12 +36,12 @@ export function useCompositionDimensions() {
 
   useMountEffect(() => {
     const handleMessage = (e: MessageEvent) => {
-      const data = e.data;
-      if (data?.source !== "hf-preview" || data?.type !== "stage-size") return;
-      const { width, height } = data as { width: number; height: number };
-      if (!(width > 0) || !(height > 0)) return;
+      const dimensions = readCompositionSizeMessage(e.data);
+      if (!dimensions) return;
       setCompositionDimensions((prev) =>
-        prev && prev.width === width && prev.height === height ? prev : { width, height },
+        prev && prev.width === dimensions.width && prev.height === dimensions.height
+          ? prev
+          : dimensions,
       );
     };
     window.addEventListener("message", handleMessage);

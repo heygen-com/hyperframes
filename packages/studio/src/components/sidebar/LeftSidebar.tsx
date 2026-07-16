@@ -60,6 +60,7 @@ interface LeftSidebarProps {
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   takeoverContent?: ReactNode;
+  onAddAssetToTimeline?: (path: string) => void;
 }
 
 export const LeftSidebar = memo(
@@ -92,6 +93,7 @@ export const LeftSidebar = memo(
       onAddBlock,
       onPreviewBlock,
       takeoverContent,
+      onAddAssetToTimeline,
     },
     ref,
   ) {
@@ -111,7 +113,7 @@ export const LeftSidebar = memo(
 
     return (
       <div
-        className="flex flex-col h-full bg-neutral-950 border-r border-neutral-800/50"
+        className="flex flex-col h-full overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
         style={{ width }}
       >
         {takeoverContent ? (
@@ -230,6 +232,7 @@ export const LeftSidebar = memo(
                 onImport={onImportFiles}
                 onDelete={onDeleteFile}
                 onRename={onRenameFile}
+                onAddAssetToTimeline={onAddAssetToTimeline}
               />
             )}
             {tab === "code" && (

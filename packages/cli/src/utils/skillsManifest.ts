@@ -17,7 +17,14 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -515,6 +522,51 @@ function detectRemoved(
   return { removed, lockMissing: lock === null };
 }
 
+/**
+ * Remove `names` from the vercel-labs/skills lock at `scope`, writing the file
+ * back if anything changed. Self-heals the half of removed-upstream detection
+ * that `skills remove` can't: upstream's `remove` command scans ON-DISK skill
+ * directories to decide what's installed (see vercel-labs/skills'
+ * `removeCommand`), so a lock entry for a skill retired before it ever shipped
+ * a bundle to this machine has no on-disk dir to match. That makes `skills
+ * remove <name> -g --yes` a silent no-op — it prints "No matching skills found
+ * for: …" and exits 0 WITHOUT touching the lock. Left alone, `detectRemoved`
+ * re-flags the same lock entry as "removed" on every future run, forever.
+ *
+ * Reuses the pinned lock path (see SKILLS_CLI_LOCK_PATHS_VERIFIED_AT above —
+ * re-check that comment before bumping the upstream version this is pinned
+ * against) so this writes to exactly where the upstream CLI itself reads and
+ * writes the lock.
+ *
+ * Idempotent by construction: only entries still present in the lock are ever
+ * touched, so calling this again with the same names — after the upstream
+ * `skills remove` no-op reported above has already run once — finds nothing
+ * left and returns `[]`.
+ */
+export function pruneOrphanedLockEntries(
+  names: readonly string[],
+  scope: "project" | "global",
+  opts: { cwd?: string; home?: string } = {},
+): string[] {
+  const path = lockPathForScope(scope, opts);
+  const lock = readSkillLock(path);
+  if (!lock?.skills) return [];
+  const pruned = names.filter((name) => name in lock.skills!);
+  if (pruned.length === 0) return [];
+  for (const name of pruned) delete lock.skills[name];
+  // Atomic write (temp file + rename, same pattern as telemetry/autoUpdate.ts
+  // and utils/download.ts) so a crash mid-write can never leave a truncated
+  // lock behind. `path` is guaranteed to exist here (readSkillLock already
+  // returned a non-null lock), so preserving its mode on the temp file before
+  // the rename is safe. No trailing newline: matches the upstream
+  // vercel-labs/skills lock's on-disk shape, so a prune stays a minimal diff.
+  const mode = statSync(path).mode & 0o777;
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(lock, null, 2), { mode });
+  renameSync(tmp, path);
+  return pruned;
+}
+
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
 
 /** Walk up from `cwd` to find a repo checkout that ships the manifest. */
@@ -613,17 +665,27 @@ async function fetchRemoteManifest(source?: string): Promise<SkillsManifest> {
  *   - undefined → in-repo manifest if present (dev / CI), else fetch from GitHub
  *   - a local path to a manifest file or a repo root containing `skills/`
  *   - an `owner/repo` slug or full URL → fetched from GitHub
+ *
+ * `canonical: true` skips the in-repo shortcut (the `!source` branch below)
+ * even when one is found, and always resolves over the network instead. Use
+ * it for any decision that must match what `skills add` actually installs
+ * from — the canonical published repo — never a local checkout's manifest,
+ * which can be stale (e.g. still listing a skill that was retired/renamed
+ * upstream since that checkout's last pull). An explicit local `source`
+ * override is a deliberate caller choice and still wins regardless of
+ * `canonical`.
  */
 async function resolveLatestManifest(
   source?: string,
   cwd = process.cwd(),
+  opts: { canonical?: boolean } = {},
 ): Promise<SkillsManifest> {
   // A local path is a relative one (./ ../) or an absolute one — isAbsolute
   // covers POSIX `/…` and Windows `C:\…` / `\…` on their respective platforms.
   if (source && (source.startsWith(".") || isAbsolute(source))) {
     return resolveLocalManifest(source);
   }
-  if (!source) {
+  if (!source && !opts.canonical) {
     const repoManifest = findRepoManifest(cwd);
     if (repoManifest) return JSON.parse(readFileSync(repoManifest, "utf8")) as SkillsManifest;
   }
@@ -635,9 +697,16 @@ async function resolveLatestManifest(
  * manifest. Pure-ish (network only via `resolveLatestManifest`).
  */
 export async function checkSkills(
-  opts: { dir?: string; source?: string; cwd?: string; home?: string } = {},
+  opts: {
+    dir?: string;
+    source?: string;
+    cwd?: string;
+    home?: string;
+    /** See resolveLatestManifest — bypass the in-repo manifest shortcut. */
+    canonical?: boolean;
+  } = {},
 ): Promise<SkillsCheckResult> {
-  const latest = await resolveLatestManifest(opts.source, opts.cwd);
+  const latest = await resolveLatestManifest(opts.source, opts.cwd, { canonical: opts.canonical });
   const skillNames = Object.keys(latest.skills);
   const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
   const installed = root ? hashInstalled(root, skillNames) : {};

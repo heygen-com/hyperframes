@@ -410,62 +410,22 @@ export function resolveSnapAdjustment(input: {
 }
 
 // ---------------------------------------------------------------------------
-// resolveResizeSnapAdjustment — resize variant (only right/bottom snap)
+// resolveGuideLineRect — screen rect for rendering a snap guide line
 // ---------------------------------------------------------------------------
 
-// fallow-ignore-next-line complexity
-export function resolveResizeSnapAdjustment(input: {
-  movingRect: Rect;
-  proposedDx: number;
-  proposedDy: number;
-  targets: SnapTarget[];
-  gridEdges?: { x: SnapEdge[]; y: SnapEdge[] };
-  threshold: number;
-  disabled: boolean;
-}): SnapResult {
-  if (input.disabled || input.threshold <= 0) {
-    return DISABLED_RESULT(input.proposedDx, input.proposedDy);
+/**
+ * Full-length guide line spanning the composition: a vertical line (axis "x")
+ * runs the composition's height at the snapped x position; a horizontal line
+ * (axis "y") runs the composition's width. `composition` is the composition
+ * rect in overlay space — guide positions are already overlay-space, so the
+ * line must be offset by the composition's left/top (the canvas is usually
+ * letterboxed inside the overlay).
+ */
+export function resolveGuideLineRect(guide: SnapGuide, composition: Rect): Rect {
+  if (guide.axis === "x") {
+    return { left: guide.position, top: composition.top, width: 1, height: composition.height };
   }
-
-  const mr = input.movingRect;
-  const proposedRight = rectRight(mr) + input.proposedDx;
-  const proposedBottom = rectBottom(mr) + input.proposedDy;
-
-  const xCandidates = collectCandidates(
-    [proposedRight],
-    input.targets,
-    (t) => [t.left, t.centerX, t.right],
-    input.gridEdges?.x,
-    input.threshold,
-  );
-  const yCandidates = collectCandidates(
-    [proposedBottom],
-    input.targets,
-    (t) => [t.top, t.centerY, t.bottom],
-    input.gridEdges?.y,
-    input.threshold,
-  );
-
-  const bestX = pickBest(xCandidates);
-  const bestY = pickBest(yCandidates);
-  const adjustedDx = input.proposedDx + (bestX?.adjustment ?? 0);
-  const adjustedDy = input.proposedDy + (bestY?.adjustment ?? 0);
-
-  const adjustedRect: Rect = {
-    left: mr.left,
-    top: mr.top,
-    width: mr.width + adjustedDx,
-    height: mr.height + adjustedDy,
-  };
-
-  const targetMap = new Map(input.targets.map((t) => [t.id, t]));
-
-  return {
-    dx: adjustedDx,
-    dy: adjustedDy,
-    guides: buildGuidesFromMatches(bestX, bestY, adjustedRect, targetMap),
-    spacingGuides: [], // computed separately via resolveEquidistanceGuides
-  };
+  return { left: composition.left, top: guide.position, width: composition.width, height: 1 };
 }
 
 // ---------------------------------------------------------------------------

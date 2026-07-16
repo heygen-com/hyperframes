@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CaptureStageError, getCaptureStageBrowserConsole } from "./captureStageError.js";
 import {
   computeCompositionObservabilityHash,
+  observeRenderStage,
   RenderObservabilityRecorder,
   sanitizeObservationMessage,
   summarizeBrowserDiagnostics,
@@ -95,6 +96,261 @@ describe("CaptureStageError", () => {
 });
 
 describe("RenderObservabilityRecorder", () => {
+  it("emits capped heartbeats while a stage is still running and stops after settlement", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-hang",
+    });
+    let resolveStage: (() => void) | undefined;
+    let framesCompleted = 0;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      {
+        workerCount: 1,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        totalFrames: 900,
+        get framesCompleted() {
+          return framesCompleted;
+        },
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    framesCompleted = 12;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(log.info).toHaveBeenCalledWith(
+      "[Render:trace]",
+      expect.objectContaining({
+        phase: "capture_streaming",
+        status: "checkpoint",
+        message: "stage still running",
+        heartbeatIndex: 1,
+        stageElapsedMs: 30_000,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        framesCompleted: 12,
+        totalFrames: 900,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls).toHaveLength(3);
+
+    resolveStage?.();
+    await stage;
+    const endCall = log.info.mock.calls.find(
+      // fallow-ignore-next-line complexity
+      ([message, meta]) =>
+        message === "[Render:trace]" &&
+        meta?.phase === "capture_streaming" &&
+        meta?.status === "end",
+    );
+    expect(endCall?.[1]).toEqual(
+      expect.objectContaining({
+        framesCompleted: 12,
+        totalFrames: 900,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        workerCount: 1,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(
+      log.info.mock.calls.filter(
+        ([message, meta]) =>
+          message === "[Render:trace]" && meta?.message === "stage still running",
+      ),
+    ).toHaveLength(3);
+    vi.useRealTimers();
+  });
+
+  it("keeps emitting heartbeats every 120s once the initial ramp is exhausted", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-long-hang",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      { captureMode: "screenshot" },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    // Ramp: 30s, 60s, 120s → 3 heartbeats. Then steady 120s cadence: 240s, 360s.
+    await vi.advanceTimersByTimeAsync(360_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls.map(([, meta]) => meta?.heartbeatIndex)).toEqual([1, 2, 3, 4, 5]);
+    expect(heartbeatCalls.map(([, meta]) => meta?.stageElapsedMs)).toEqual([
+      30_000, 60_000, 120_000, 240_000, 360_000,
+    ]);
+
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
+  // Field signal ts=1784019503: a healthy ~64s browser calibration
+  // pre-capture emitted heartbeats saying "stage still running /
+  // framesCompleted: 0" and read as broken to downstream consumers. The
+  // calibration call sites now pass `heartbeatMessage: "browser calibrating
+  // (frames not started)"` so operator-facing logs and metrics can
+  // distinguish healthy calibration waits from actual zero-frame stalls
+  // once capture is meant to be underway.
+  it("uses a custom heartbeat message during calibration stages", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-calibrating",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_calibration",
+      { stagePhase: "calibrating", framesCompleted: 0, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+      { heartbeatMessage: "browser calibrating (frames not started)" },
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) =>
+        message === "[Render:trace]" &&
+        meta?.phase === "capture_calibration" &&
+        meta?.status === "checkpoint",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        message: "browser calibrating (frames not started)",
+        stagePhase: "calibrating",
+        framesCompleted: 0,
+        heartbeatIndex: 1,
+      }),
+    );
+    // No "stage still running" for this stage — the calibration override
+    // must fully replace the default, not sit alongside it.
+    expect(
+      log.info.mock.calls.some(
+        ([message, meta]) =>
+          message === "[Render:trace]" && meta?.message === "stage still running",
+      ),
+    ).toBe(false);
+
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
+  it("keeps the default heartbeat message when no override is passed", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-default",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      { stagePhase: "capturing", framesCompleted: 42, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        stagePhase: "capturing",
+        framesCompleted: 42,
+      }),
+    );
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
+  it("clears pending heartbeats when a stage rejects", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-error",
+    });
+
+    await expect(
+      observeRenderStage(
+        recorder,
+        "capture_disk",
+        {
+          workerCount: 2,
+          totalFrames: 42,
+          framesCompleted: 7,
+          captureMode: "screenshot",
+          captureOperation: "captureScreenshot",
+        },
+        async () => {
+          throw new Error("capture failed");
+        },
+      ),
+    ).rejects.toThrow("capture failed");
+    const errorCall = log.info.mock.calls.find(
+      // fallow-ignore-next-line complexity
+      ([message, meta]) =>
+        message === "[Render:trace]" && meta?.phase === "capture_disk" && meta?.status === "error",
+    );
+    expect(errorCall?.[1]).toEqual(
+      expect.objectContaining({
+        framesCompleted: 7,
+        totalFrames: 42,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        workerCount: 2,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(240_000);
+
+    expect(
+      log.info.mock.calls.some(
+        ([message, meta]) =>
+          message === "[Render:trace]" && meta?.message === "stage still running",
+      ),
+    ).toBe(false);
+    vi.useRealTimers();
+  });
+
   // fallow-ignore-next-line complexity
   it("records bounded phase events and summarizes browser diagnostics", () => {
     const log = makeLog();

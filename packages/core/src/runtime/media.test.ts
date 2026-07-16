@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { readElementPlaybackRate, refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
+import {
+  readElementPlaybackRate,
+  refreshRuntimeMediaCache,
+  resolveRuntimeMediaClipDuration,
+  syncRuntimeMedia,
+} from "./media";
 import type { RuntimeMediaClip } from "./media";
 
 function createVideo(attrs: Record<string, string>): HTMLVideoElement {
@@ -195,6 +200,65 @@ describe("refreshRuntimeMediaCache", () => {
   });
 });
 
+describe("resolveRuntimeMediaClipDuration", () => {
+  it("preserves an explicit video slot beyond the source", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: true,
+        sourceDuration: 1,
+        hostRemaining: 8,
+        explicitDuration: 5,
+      }),
+    ).toBe(5);
+  });
+
+  it("honors an explicit slot for a looping video instead of truncating it to one loop", () => {
+    // Loop wrapping happens later in syncRuntimeMedia. Duration resolution must
+    // preserve the authored window that the loop fills.
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: true,
+        sourceDuration: 1,
+        hostRemaining: null,
+        explicitDuration: 10,
+      }),
+    ).toBe(10);
+  });
+
+  it("keeps audio bounded by its playable source", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: false,
+        sourceDuration: 1,
+        hostRemaining: 8,
+        explicitDuration: 5,
+      }),
+    ).toBe(1);
+  });
+
+  it("uses natural duration for a video without an explicit slot", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: true,
+        sourceDuration: 1,
+        hostRemaining: 8,
+        explicitDuration: null,
+      }),
+    ).toBe(1);
+  });
+
+  it("uses natural source duration when a video has no slot or host window", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: true,
+        sourceDuration: 1,
+        hostRemaining: null,
+        explicitDuration: null,
+      }),
+    ).toBe(1);
+  });
+});
+
 describe("syncRuntimeMedia", () => {
   function fakePlayedRanges(el: HTMLMediaElement, ranges: Array<[number, number]>): void {
     Object.defineProperty(el, "played", {
@@ -248,6 +312,28 @@ describe("syncRuntimeMedia", () => {
     Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
     syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
     expect(clip.el.play).toHaveBeenCalled();
+  });
+
+  it("uses a half-open interval around a clip's end boundary", () => {
+    const clip = createMockClip({ start: 0, end: 2.5 });
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 2.5 - 1e-9,
+      playing: true,
+      playbackRate: 1,
+    });
+    expect(clip.el.play).toHaveBeenCalledTimes(1);
+
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 2.5, playing: true, playbackRate: 1 });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 2.5 + 1e-9,
+      playing: true,
+      playbackRate: 1,
+    });
+    expect(clip.el.play).toHaveBeenCalledTimes(1);
   });
 
   it("plays synchronously even when media is unbuffered (preserves user gesture)", () => {
@@ -415,6 +501,22 @@ describe("syncRuntimeMedia", () => {
     Object.defineProperty(clip.el, "ended", { value: true, writable: true, configurable: true });
     syncRuntimeMedia({ clips: [clip], timeSeconds: 62, playing: true, playbackRate: 1 });
     expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("seeks a non-looping video to its final frame when entering an authored hold tail", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 4, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0.25);
+    expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("seeks an ended video backward into its playable source", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 1 });
+    Object.defineProperty(clip.el, "currentTime", { value: 1, writable: true, configurable: true });
+    Object.defineProperty(clip.el, "ended", { value: true, writable: true, configurable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 0.9, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0.9);
+    expect(clip.el.play).toHaveBeenCalledTimes(1);
   });
 
   it("does restart a loop clip that has naturally ended while still within its active window", () => {
@@ -700,7 +802,7 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBe(7);
   });
 
-  it("does not loop when loop is false", () => {
+  it("holds the final frame instead of looping a non-looping video", () => {
     const clip = createMockClip({
       start: 0,
       end: 10,
@@ -709,9 +811,9 @@ describe("syncRuntimeMedia", () => {
       sourceDuration: 3,
     });
     Object.defineProperty(clip.el, "currentTime", { value: 0, writable: true });
-    // At t=7, relTime = 7 (no wrapping, even though > sourceDuration)
+    // At t=7 the source is exhausted, so the final frame remains visible.
     syncRuntimeMedia({ clips: [clip], timeSeconds: 7, playing: false, playbackRate: 1 });
-    expect(clip.el.currentTime).toBe(7);
+    expect(clip.el.currentTime).toBe(3);
   });
 
   it("asserts muted=true every tick while outputMuted is set", () => {

@@ -13,10 +13,20 @@ import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction"
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
+/** Which corner handle initiated a resize gesture. */
+export type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
-const MIN_RESIZE_EDGE_PX = 20;
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
+/**
+ * Above this rotation, resize/move edge-snapping is bypassed. Industry editors
+ * (tldraw/Figma) don't edge-snap rotated boxes — the snap targets are axis-aligned
+ * AABBs, so snapping a rotated box's AABB to them shifts the box in a way the user
+ * can't predict; a wrong snap is worse than none. Rotation ~0 keeps snapping exactly
+ * as before.
+ */
+export const ROTATED_SNAP_BYPASS_DEGREES = 0.5;
 
 export interface GestureState {
   kind: GestureKind;
@@ -39,10 +49,42 @@ export interface GestureState {
   actualRotation: number;
   editScaleX: number;
   editScaleY: number;
+  // Rendered-per-CSS-pixel factor of the element itself at gesture start (a GSAP
+  // scale() transform makes this > 1) — the resize draft divides by it so the box
+  // follows the cursor instead of overshooting by the live scale.
+  contentScaleX: number;
+  contentScaleY: number;
+  // Resize anchor pinning: with a live scale transform, growing the CSS box
+  // shifts the rendered box (scaling happens around the element center), so the
+  // un-dragged corner creeps during the draft. The move handler measures the
+  // gesture-start top-left drift each frame and counters it through the GSAP
+  // position channel; the pin accumulates so the correction converges.
+  // Present only on resize gestures.
+  resizeAnchor?: {
+    anchorX: number;
+    anchorY: number;
+    baseGsapX: number;
+    baseGsapY: number;
+    pinX: number;
+    pinY: number;
+  };
   manualEditDragToken?: string;
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  /** Corner the resize gesture grabbed (resize gestures only). */
+  resizeHandle?: ResizeHandle;
+  /** Last anchoring translation applied during a corner resize (overlay px). */
+  lastResizeAnchor?: { dx: number; dy: number };
+  /**
+   * The element's rendered CENTER in overlay px at gesture start (the centroid of
+   * its four real — possibly rotated — corners). A center-anchored resize keeps this
+   * point pinned; the per-frame anchor translation is computed as the shift of this
+   * exact center, not an AABB width/height delta (which only holds the center still
+   * when the element grows symmetrically from an unrotated layout box). Undefined
+   * when the corner geometry can't be measured (member creation still succeeded).
+   */
+  resizeFixedCenterStart?: { x: number; y: number };
 }
 
 export interface GroupGestureState {
@@ -70,38 +112,23 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
   element?.focus({ preventScroll: true });
 }
 
-export function resolveDomEditResizeGesture(input: {
+/**
+ * Overlay-px translation that keeps the element's CENTER fixed while a corner
+ * resizes: a CSS width/height change grows the layout box from its top-left, so
+ * the center drifts by half the size change on each axis; translating back by that
+ * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
+ * when the element's real transformed corners can't be measured — the primary path
+ * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
+ */
+export function resolveResizeCenterAnchorOffset(input: {
   originWidth: number;
   originHeight: number;
-  actualWidth: number;
-  actualHeight: number;
-  scaleX: number;
-  scaleY: number;
-  dx: number;
-  dy: number;
-  uniform: boolean;
-}): { overlayWidth: number; overlayHeight: number; width: number; height: number } {
-  const scaleX = input.scaleX > 0 ? input.scaleX : 1;
-  const scaleY = input.scaleY > 0 ? input.scaleY : 1;
-
-  if (input.uniform) {
-    const deltaX = input.dx / scaleX;
-    const deltaY = input.dy / scaleY;
-    const delta = Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
-    const side = Math.max(1, Math.max(input.actualWidth, input.actualHeight) + delta);
-    return {
-      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, side * scaleX),
-      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, side * scaleY),
-      width: side,
-      height: side,
-    };
-  }
-
+  overlayWidth: number;
+  overlayHeight: number;
+}): { dx: number; dy: number } {
   return {
-    overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, input.originWidth + input.dx),
-    overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
-    width: Math.max(1, input.actualWidth + input.dx / scaleX),
-    height: Math.max(1, input.actualHeight + input.dy / scaleY),
+    dx: (input.originWidth - input.overlayWidth) / 2,
+    dy: (input.originHeight - input.overlayHeight) / 2,
   };
 }
 
@@ -185,7 +212,12 @@ export type UseDomEditOverlayGesturesOptions = {
     (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
   >;
   onBoxSizeCommitRef: RefObject<
-    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
+    (
+      s: DomEditSelection,
+      n: { width: number; height: number },
+      offset?: { x: number; y: number },
+      restore?: () => void,
+    ) => Promise<void> | void
   >;
   onRotationCommitRef: RefObject<
     (s: DomEditSelection, n: { angle: number }) => Promise<void> | void

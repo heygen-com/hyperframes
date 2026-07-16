@@ -1,13 +1,13 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
-import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
+import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
 import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
@@ -38,14 +38,14 @@ export interface UseDomEditSessionParams {
   compositionLoading: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   refreshPreviewDocumentVersion: () => void;
-  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   readProjectFile: (path: string) => Promise<string>;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   updateEditingFileContent: (path: string, content: string) => void;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
@@ -67,6 +67,7 @@ export interface UseDomEditSessionParams {
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
+  publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
 }
 
@@ -108,10 +109,10 @@ export function useDomEditSession({
   selectSidebarTab,
   getSidebarTab,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-
   // ── Selection ──
 
   const {
@@ -178,7 +179,6 @@ export function useDomEditSession({
     previewDocumentVersion,
     refreshDomEditSelectionFromPreview,
   });
-
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
 
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
@@ -217,6 +217,7 @@ export function useDomEditSession({
     onFileContentChanged: updateEditingFileContent,
     showToast,
     sdkSession,
+    publishSdkSession,
     writeProjectFile,
     forceReloadSdkSession,
   });
@@ -229,6 +230,7 @@ export function useDomEditSession({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
@@ -260,8 +262,13 @@ export function useDomEditSession({
       ? (selection, operations, originalContent, targetPath, options) => {
           // Resolver shadow runs regardless of the cutover flag — decoupled tripwire.
           // Pass originalContent so the runtime-node filter can suppress hf-ids
-          // absent from source (script-created nodes the SDK can't model).
-          runResolverShadow(sdkSession, selection.hfId, operations, originalContent);
+          // absent from source (script-created nodes the SDK can't model), and
+          // the paths so cross-file edits (session models only the active comp)
+          // skip instead of emitting structural element_not_found noise.
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
+            targetPath,
+            compositionPath: activeCompPath,
+          });
           return sdkCutoverPersist(
             selection,
             operations,
@@ -274,6 +281,8 @@ export function useDomEditSession({
               reloadPreview,
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
+              readProjectFile,
+              publishSession: publishSdkSession,
             },
             options,
           );
@@ -287,6 +296,8 @@ export function useDomEditSession({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            readProjectFile,
+            publishSession: publishSdkSession,
           })
       : undefined,
     // Resolver shadow for the z-index reorder edit: it takes the server path (no
@@ -524,6 +535,7 @@ export function useDomEditSession({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomPathOffsetCommit: handleGsapAwarePathOffsetCommit,
     handleDomGroupPathOffsetCommit: handleGsapAwareGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,

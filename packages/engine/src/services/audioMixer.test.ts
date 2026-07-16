@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // The mix filter graph is written to a temp file and passed via
-// -filter_complex_script (not inlined via -filter_complex) so the command
+// a file-valued filter option (not inlined via -filter_complex) so the command
 // line doesn't scale with track count — production code deletes that file
 // the moment the (real) ffmpeg process exits. The mock captures each call's
 // filter content synchronously, while the file still exists, into an
@@ -15,7 +15,9 @@ const { runFfmpegMock, capturedFilterScripts } = vi.hoisted(() => {
   return {
     capturedFilterScripts,
     runFfmpegMock: vi.fn(async (args: string[]) => {
-      const idx = args.indexOf("-filter_complex_script");
+      const legacyIdx = args.indexOf("-filter_complex_script");
+      const currentIdx = args.indexOf("-/filter_complex");
+      const idx = legacyIdx >= 0 ? legacyIdx : currentIdx;
       if (idx >= 0) {
         const { readFileSync } = await import("node:fs");
         capturedFilterScripts.push(readFileSync(args[idx + 1], "utf8"));
@@ -139,6 +141,61 @@ describe("processCompositionAudio", () => {
     expect(filter).not.toContain("normalize=");
     // masterOutputGain(1) × tracks(3) = 3
     expect(filter).toContain("[mixed]volume=3[out]");
+  });
+
+  it("fails the audio result instead of silently mixing after one track preparation fails", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "working.wav"), "stub");
+    writeFileSync(join(baseDir, "missing-cue.wav"), "stub");
+
+    const defaultImplementation = runFfmpegMock.getMockImplementation()!;
+    runFfmpegMock.mockImplementation(async (args: string[]) => {
+      const isMissingCuePrepare = args.includes(join(baseDir, "missing-cue.wav"));
+      return {
+        success: !isMissingCuePrepare,
+        durationMs: 1,
+        stderr: isMissingCuePrepare ? "Invalid data found when processing input" : "",
+        exitCode: isMissingCuePrepare ? 1 : 0,
+      };
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "working",
+          src: "working.wav",
+          start: 0,
+          end: 0.5,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+        {
+          id: "missing-cue",
+          src: "missing-cue.wav",
+          start: 3.859,
+          end: 4.359,
+          mediaStart: 0,
+          layer: 1,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      5,
+    );
+    runFfmpegMock.mockImplementation(defaultImplementation);
+
+    expect(result.success).toBe(false);
+    expect(result.tracksProcessed).toBe(1);
+    expect(result.error).toMatch(/Prepare failed: missing-cue/);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(2);
   });
 
   it("uses frame-evaluated volume automation when keyframes are present", async () => {
@@ -348,6 +405,57 @@ describe("processCompositionAudio", () => {
     expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount);
   });
 
+  it("retries with the current file-valued filter option when a nightly removes the legacy alias", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    runFfmpegMock
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+      })
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return {
+          success: false,
+          durationMs: 1,
+          stderr: "Unrecognized option 'filter_complex_script'.\nError splitting the argument list",
+          exitCode: 8,
+        };
+      });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(3);
+    const legacyArgs = runFfmpegMock.mock.calls[1]?.[0] as string[];
+    const currentArgs = runFfmpegMock.mock.calls[2]?.[0] as string[];
+    expect(legacyArgs).toContain("-filter_complex_script");
+    expect(currentArgs).toContain("-/filter_complex");
+    expect(currentArgs).not.toContain("-filter_complex_script");
+    expect(capturedFilterScripts[2]).toContain("amix=inputs=1");
+  });
+
   it("prepares percent-encoded non-Latin audio srcs from decoded filesystem paths", async () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
@@ -384,6 +492,38 @@ describe("processCompositionAudio", () => {
 
     const prepareArgs = runFfmpegMock.mock.calls[0]?.[0];
     expect(prepareArgs).toContain(join(baseDir, "assets", filename));
+  });
+
+  it("prepares browser root-absolute audio srcs from the project root", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    mkdirSync(join(baseDir, ".media"), { recursive: true });
+    writeFileSync(join(baseDir, ".media", "tone.wav"), "stub");
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "tone",
+          src: "/.media/tone.wav",
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      1,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(baseDir, ".media", "tone.wav"));
   });
 });
 

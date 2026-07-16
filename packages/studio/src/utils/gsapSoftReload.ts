@@ -1,3 +1,6 @@
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
+
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
   __player?: { getTime?: () => number; seek?: (t: number) => void };
@@ -87,7 +90,7 @@ function isGsapScript(text: string): boolean {
   );
 }
 
-function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
+export function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
   const results: HTMLScriptElement[] = [];
   const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
   for (const script of scripts) {
@@ -99,8 +102,9 @@ function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
 /**
  * Extract the GSAP timeline script text from a serialized HTML document, for
  * feeding into applySoftReload. Returns null when zero or multiple GSAP scripts
- * are present (ambiguous — caller should fall back to a full reload), matching
- * applySoftReload's own single-script requirement.
+ * are present (ambiguous — a serialized snapshot can't say WHICH script a
+ * single rewritten text corresponds to; caller should fall back to a full
+ * reload), matching applySoftReload's own single-script requirement.
  */
 export function extractGsapScriptText(html: string): string | null {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -171,12 +175,70 @@ export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload
  * caller should perform a full reload to recover. It never fires on the
  * synchronous paths.
  */
+export interface SoftReloadOptions {
+  /** Escalation for async plugin-load failures (e.g. MotionPath CDN error). */
+  onAsyncFailure?: () => void;
+  /** Seek target for the rebuilt timeline; defaults to the iframe player time. */
+  currentTimeOverride?: number;
+  /** After-write file HTML — the primary source for authored-opacity restore. */
+  authoredHtml?: string;
+}
+
+/**
+ * The soft reload's finalization step, shared with the rebind-only preview sync
+ * below: seek → force timeline rebind → reapply studio manual edits.
+ *
+ * Seek BEFORE rebind: __hfForceTimelineRebind's own internal force-render
+ * (see init.ts) renders the freshly-created timeline at whatever the
+ * runtime's internal scrub position already is, not at whatever we pass
+ * here afterward — a redundant seek() call after rebind can be a GSAP
+ * no-op if the timeline already reports being at that time internally.
+ */
+function finalizeSoftReload(win: IframeWindow, currentTime: number): void {
+  win.__player?.seek?.(currentTime);
+  win.__hfForceTimelineRebind?.();
+  win.__hfStudioManualEditsApply?.();
+}
+
+/**
+ * Run ONLY applySoftReload's finalization (seek → __hfForceTimelineRebind →
+ * manual-edits reapply) against the live iframe — executing NO scripts and
+ * touching NO script elements. `__hfForceTimelineRebind` makes the runtime
+ * re-derive every clip's visibility window from the live DOM's `data-start` /
+ * `data-duration` attributes (init.ts: bindRootTimelineIfAvailable +
+ * syncTimedElementVisibility), so this is the flashless sync for a timing edit
+ * whose attributes were already live-patched and whose GSAP scripts are
+ * unchanged (`window.__timelines` still valid). Works for compositions with
+ * zero GSAP scripts too — the rebind hook is installed unconditionally by the
+ * runtime, independent of any animation library.
+ *
+ * Returns false when the iframe/runtime hook is unavailable or the run threw —
+ * the caller should escalate to a full reload.
+ */
+export function applySoftReloadFinalization(
+  iframe: HTMLIFrameElement | null,
+  currentTime: number,
+): boolean {
+  const win = iframe?.contentWindow as IframeWindow | null;
+  if (!win?.__hfForceTimelineRebind) return false;
+  try {
+    if (win.__hfSuppressSceneMutations) {
+      win.__hfSuppressSceneMutations(() => finalizeSoftReload(win, currentTime));
+    } else {
+      finalizeSoftReload(win, currentTime);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
-  onAsyncFailure?: () => void,
-  currentTimeOverride?: number,
+  options: SoftReloadOptions = {},
 ): SoftReloadResult {
+  const { onAsyncFailure, currentTimeOverride, authoredHtml } = options;
   if (!iframe || !scriptText) return "cannot-soft-reload";
 
   const win = iframe.contentWindow as IframeWindow | null;
@@ -226,6 +288,36 @@ export function applySoftReload(
   // once the plugin loads; the alternative (returning false) would trigger a
   // full iframe reload that destroys the very WebGL context we're preserving.
   let deferredToAsync = false;
+
+  // Authored-opacity resolution for the restore loop below. Three-state:
+  //   "0.98" — the element's authored inline opacity
+  //   ""     — resolved, and the element has NO authored inline opacity
+  //   null   — unknown (no authored HTML supplied, element not found in it,
+  //            and no runtime parse-time stamp)
+  // The just-written file (`authoredHtml`) is the current truth; the runtime's
+  // parse-time stamp (data-hf-authored-opacity, installAuthoredOpacityCapture)
+  // covers elements the file lookup can't resolve. Parsed lazily, at most once.
+  let authoredDoc: Document | null | undefined;
+  const findAuthoredSource = (el: HTMLElement): Element | null => {
+    if (authoredDoc === undefined) {
+      try {
+        authoredDoc = authoredHtml
+          ? new DOMParser().parseFromString(authoredHtml, "text/html")
+          : null;
+      } catch {
+        authoredDoc = null;
+      }
+    }
+    if (!authoredDoc) return null;
+    const hfId = el.getAttribute("data-hf-id");
+    if (hfId) return authoredDoc.querySelector(`[data-hf-id="${hfId}"]`);
+    return el.id ? authoredDoc.getElementById(el.id) : null;
+  };
+  const readAuthoredOpacity = (el: HTMLElement): string | null => {
+    const source = findAuthoredSource(el);
+    if (source instanceof HTMLElement) return source.style.opacity;
+    return readStampedAuthoredOpacity(el);
+  };
 
   // fallow-ignore-next-line complexity
   const doReload = () => {
@@ -283,19 +375,39 @@ export function applySoftReload(
     // nukes the element's CSS base (position, width, height, etc.) from the
     // HTML `style=""` attribute. Save → clear → restore → strip `transform`.
     if (allTargets.length > 0 && win.gsap?.set) {
-      const saved: Array<[Element, string]> = [];
+      const saved: Array<[HTMLElement, string]> = [];
       for (const el of allTargets) {
-        const s = (el as HTMLElement).style;
-        if (s?.cssText != null) saved.push([el, s.cssText]);
+        // Iframe-realm node: instanceof HTMLElement fails across realms, and
+        // gsap targets() only yields elements here — style access is duck-typed.
+        const styled = el as HTMLElement;
+        if (styled.style?.cssText != null) saved.push([styled, styled.style.cssText]);
       }
       try {
         win.gsap.set(allTargets, { clearProps: "all" });
       } catch {}
       for (const [el, css] of saved) {
-        const s = (el as HTMLElement).style;
-        if (!s) continue;
+        const s = el.style;
         s.cssText = css;
         s.removeProperty("transform");
+        // The restored cssText carries RUNTIME opacity, not authored opacity:
+        // a mid-flight tween's interpolated value, or the color-grading hide
+        // (`opacity: 0 !important`). The re-run script's tweens re-initialize
+        // against it — a from() captures it as its END, a to() as its START —
+        // turning the transient into the tween's permanent bound (dimmed or
+        // invisible elements). Put the AUTHORED inline opacity back; the seek
+        // below re-renders the correct animated value either way.
+        const authored = readAuthoredOpacity(el);
+        if (authored !== null) {
+          applyAuthoredInlineOpacity(s, authored);
+        } else if (
+          el.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) &&
+          s.getPropertyValue("opacity") === "0" &&
+          s.getPropertyPriority("opacity") === "important"
+        ) {
+          // Authored value unknown, but this is definitely the grading hide —
+          // never let a from() capture 0; fall back to the CSS cascade.
+          s.removeProperty("opacity");
+        }
       }
     }
 
@@ -308,14 +420,7 @@ export function applySoftReload(
       const s = doc.createElement("script");
       s.textContent = `(function(){${scriptText}\n})();`;
       doc.body.appendChild(s);
-      // Seek BEFORE rebind: __hfForceTimelineRebind's own internal force-render
-      // (see init.ts) renders the freshly-created timeline at whatever the
-      // runtime's internal scrub position already is, not at whatever we pass
-      // here afterward — a redundant seek() call after rebind can be a GSAP
-      // no-op if the timeline already reports being at that time internally.
-      win.__player?.seek?.(currentTime);
-      win.__hfForceTimelineRebind?.();
-      win.__hfStudioManualEditsApply?.();
+      finalizeSoftReload(win, currentTime);
     };
 
     const needsMotionPath = /motionPath\s*[:{]/.test(scriptText);

@@ -28,6 +28,7 @@ vi.mock("../utils/studioTelemetry", () => ({
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutationResult } from "./gsapScriptCommitTypes";
+import { persistSdkSerialize } from "../utils/sdkCutover";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
 
 // ── applyPreviewSync (pure preview-sync decision) ────────────────────────────
@@ -36,6 +37,27 @@ const FAKE_IFRAME = {} as HTMLIFrameElement;
 
 function result(over: Partial<MutationResult> = {}): MutationResult {
   return { ok: true, scriptText: "tl.set('#a',{})", ...over };
+}
+
+/** The canonical drag commit options every path-decision test drives with. */
+function dragOptions() {
+  return {
+    label: "drag",
+    softReload: true,
+    instantPatch: { selector: "#a", change: { kind: "set" as const, props: { x: 10 } } },
+  };
+}
+
+function syncDragPreview(res: MutationResult, reloadPreview: () => void) {
+  applyPreviewSync(FAKE_IFRAME, res, dragOptions(), reloadPreview);
+}
+
+function expectSoftReloadedWith(onAsyncFailure: unknown, authoredHtml: string | undefined) {
+  expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", {
+    onAsyncFailure,
+    currentTimeOverride: 0,
+    authoredHtml,
+  });
 }
 
 describe("applyPreviewSync", () => {
@@ -49,16 +71,7 @@ describe("applyPreviewSync", () => {
     patchRuntimeTweenInPlace.mockReturnValue(true);
     const reloadPreview = vi.fn();
 
-    applyPreviewSync(
-      FAKE_IFRAME,
-      result(),
-      {
-        label: "drag",
-        softReload: true,
-        instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-      },
-      reloadPreview,
-    );
+    syncDragPreview(result(), reloadPreview);
 
     expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
       kind: "set",
@@ -73,20 +86,11 @@ describe("applyPreviewSync", () => {
     applySoftReload.mockReturnValue("applied");
     const reloadPreview = vi.fn();
 
-    applyPreviewSync(
-      FAKE_IFRAME,
-      result({ scriptText: "SCRIPT" }),
-      {
-        label: "drag",
-        softReload: true,
-        instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-      },
-      reloadPreview,
-    );
+    syncDragPreview(result({ scriptText: "SCRIPT" }), reloadPreview);
 
     // reloadPreview is wired as onAsyncFailure (3rd arg) so a MotionPath-plugin
     // CDN load failure escalates to a full reload — but it is NOT called eagerly.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).not.toHaveBeenCalled();
     // A successful instant patch is the fast path; here it missed → fallback event.
     expect(trackStudioEvent).toHaveBeenCalledWith(
@@ -100,20 +104,11 @@ describe("applyPreviewSync", () => {
     applySoftReload.mockReturnValue("verify-failed");
     const reloadPreview = vi.fn();
 
-    applyPreviewSync(
-      FAKE_IFRAME,
-      result({ scriptText: "SCRIPT" }),
-      {
-        label: "drag",
-        softReload: true,
-        instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-      },
-      reloadPreview,
-    );
+    syncDragPreview(result({ scriptText: "SCRIPT" }), reloadPreview);
 
     // U4: "verify-failed" is the TRANSIENT empty-timeline window — the live state
     // is correct, so we must NOT escalate to a full reload.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).not.toHaveBeenCalled();
     // Telemetry records the suppressed transient (escalated: false).
     expect(trackStudioEvent).toHaveBeenCalledWith(
@@ -131,19 +126,10 @@ describe("applyPreviewSync", () => {
     applySoftReload.mockReturnValue("cannot-soft-reload");
     const reloadPreview = vi.fn();
 
-    applyPreviewSync(
-      FAKE_IFRAME,
-      result({ scriptText: "SCRIPT" }),
-      {
-        label: "drag",
-        softReload: true,
-        instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-      },
-      reloadPreview,
-    );
+    syncDragPreview(result({ scriptText: "SCRIPT" }), reloadPreview);
 
     // Structural failure: the preview is genuinely stale/broken → full reload.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -167,7 +153,7 @@ describe("applyPreviewSync", () => {
     );
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).not.toHaveBeenCalled();
     // "applied" emits no telemetry (only the failure paths do).
     expect(trackStudioEvent).not.toHaveBeenCalled();
@@ -185,7 +171,7 @@ describe("applyPreviewSync", () => {
     );
 
     // onAsyncFailure is wired, but the transient result does not trigger it.
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -204,7 +190,7 @@ describe("applyPreviewSync", () => {
       reloadPreview,
     );
 
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", reloadPreview, 0);
+    expectSoftReloadedWith(reloadPreview, undefined);
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledWith(
       "gsap_soft_reload_outcome",
@@ -229,9 +215,14 @@ type HookApi = ReturnType<typeof useGsapScriptCommits>;
 
 let cleanup: (() => void) | null = null;
 
-function renderCommitHook() {
+function renderCommitHook(
+  options: {
+    writeProjectFile?: (path: string, content: string) => Promise<void>;
+  } = {},
+) {
   const reloadPreview = vi.fn();
   const onCacheInvalidate = vi.fn();
+  const onFileContentChanged = vi.fn();
   const forceReloadSdkSession = vi.fn();
   const recordEdit = vi.fn(async () => {});
   const showToast = vi.fn();
@@ -246,10 +237,10 @@ function renderCommitHook() {
       domEditSaveTimestampRef: { current: 0 },
       reloadPreview,
       onCacheInvalidate,
-      onFileContentChanged: undefined,
+      onFileContentChanged,
       showToast,
       sdkSession: null,
-      writeProjectFile: undefined,
+      writeProjectFile: options.writeProjectFile,
       forceReloadSdkSession,
     });
     return null;
@@ -267,6 +258,7 @@ function renderCommitHook() {
     api: hookApi,
     reloadPreview,
     onCacheInvalidate,
+    onFileContentChanged,
     forceReloadSdkSession,
     recordEdit,
     showToast,
@@ -291,6 +283,57 @@ function mockFetchResult(over: Partial<MutationResult> = {}): void {
 }
 
 describe("runCommit — instantPatch wiring", () => {
+  it("no-op commit with an instantPatch still patches the runtime (paired x/y commits)", async () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+    mockFetchResult({ changed: false });
+    const deps = renderCommitHook();
+
+    await act(async () => {
+      await deps.api.commitMutation(
+        selection,
+        { type: "update-property", property: "y", value: 311 },
+        {
+          label: "Move layer",
+          softReload: true,
+          instantPatch: { selector: "#a", change: { kind: "set", props: { x: 485, y: 311 } } },
+        },
+      );
+    });
+
+    // The file already matched (changed:false) but the runtime patch deferred
+    // from the paired first commit must still land.
+    expect(patchRuntimeTweenInPlace).toHaveBeenCalledWith(FAKE_IFRAME, "#a", {
+      kind: "set",
+      props: { x: 485, y: 311 },
+    });
+    expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("no-op commit whose instant patch MISSES soft-reloads (never full-reloads)", async () => {
+    // Server contract: gsap-mutations returns scriptText on EVERY response,
+    // including changed:false — so the fallback re-runs the identical script
+    // ("applied") instead of escalating a genuine no-op to a full reload.
+    patchRuntimeTweenInPlace.mockReturnValue(false);
+    applySoftReload.mockReturnValue("applied");
+    mockFetchResult({ changed: false });
+    const deps = renderCommitHook();
+
+    await act(async () => {
+      await deps.api.commitMutation(
+        selection,
+        { type: "update-property", property: "y", value: 311 },
+        {
+          label: "Move layer",
+          softReload: true,
+          instantPatch: { selector: "#a", change: { kind: "set", props: { x: 485, y: 311 } } },
+        },
+      );
+    });
+
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
+    expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
@@ -308,15 +351,7 @@ describe("runCommit — instantPatch wiring", () => {
     const deps = renderCommitHook();
 
     await act(async () => {
-      await deps.api.commitMutation(
-        selection,
-        { x: 10 },
-        {
-          label: "drag",
-          softReload: true,
-          instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-        },
-      );
+      await deps.api.commitMutation(selection, { x: 10 }, dragOptions());
     });
 
     expect(fetch).toHaveBeenCalledTimes(1); // source mutation persisted
@@ -333,19 +368,11 @@ describe("runCommit — instantPatch wiring", () => {
     const deps = renderCommitHook();
 
     await act(async () => {
-      await deps.api.commitMutation(
-        selection,
-        { x: 10 },
-        {
-          label: "drag",
-          softReload: true,
-          instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-        },
-      );
+      await deps.api.commitMutation(selection, { x: 10 }, dragOptions());
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview, 0);
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
     expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
   });
@@ -360,7 +387,85 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", deps.reloadPreview, 0);
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("batch capability posts ordered mutations and finalizes the result once", async () => {
+    applySoftReload.mockReturnValue("applied");
+    mockFetchResult();
+    const deps = renderCommitHook();
+    const firstMutation = { type: "add", value: 1 };
+    const lastMutation = { type: "delete", value: 2 };
+    const batch = deps.api.commitMutation.batch;
+    if (!batch) throw new Error("batch capability missing");
+
+    await act(async () => {
+      await batch(
+        [
+          { selection, mutation: firstMutation, options: { label: "Resize", skipReload: true } },
+          { selection, mutation: lastMutation, options: { label: "Resize", softReload: true } },
+        ],
+        { label: "Resize", coalesceKey: "tx:resize:1", coalesceMs: Infinity, softReload: true },
+      );
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/proj-1/gsap-mutations-batch/index.html",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ mutations: [firstMutation, lastMutation] }),
+      }),
+    );
+    expect(deps.recordEdit).toHaveBeenCalledTimes(1);
+    expect(deps.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Resize", coalesceKey: "tx:resize:1" }),
+    );
+    expect(deps.onFileContentChanged).toHaveBeenCalledTimes(1);
+    expect(deps.forceReloadSdkSession).toHaveBeenCalledTimes(1);
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
+    expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes a legacy fallback request behind an in-flight SDK whole-file edit", async () => {
+    let releaseSdkWrite: (() => void) | undefined;
+    const sdkWriteGate = new Promise<void>((resolve) => {
+      releaseSdkWrite = resolve;
+    });
+    let notifySdkWriteStarted: (() => void) | undefined;
+    const sdkWriteStarted = new Promise<void>((resolve) => {
+      notifySdkWriteStarted = resolve;
+    });
+    const writeProjectFile = vi.fn(async () => {
+      notifySdkWriteStarted?.();
+      await sdkWriteGate;
+    });
+    const deps = renderCommitHook({ writeProjectFile });
+    const sdkEdit = persistSdkSerialize(() => "SDK_AFTER", "index.html", "BEFORE", {
+      editHistory: { recordEdit: deps.recordEdit },
+      writeProjectFile,
+      readProjectFile: vi.fn(async () => "BEFORE"),
+      reloadPreview: deps.reloadPreview,
+      domEditSaveTimestampRef: { current: 0 },
+    });
+    await sdkWriteStarted;
+
+    mockFetchResult();
+    let legacyEdit: Promise<void> | undefined;
+    act(() => {
+      legacyEdit = deps.api.commitMutation(selection, { x: 10 }, { label: "Legacy fallback" });
+    });
+    await Promise.resolve();
+    expect(fetch).not.toHaveBeenCalled();
+
+    releaseSdkWrite?.();
+    await act(async () => {
+      await Promise.all([sdkEdit, legacyEdit]);
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/proj-1/gsap-mutations/index.html",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

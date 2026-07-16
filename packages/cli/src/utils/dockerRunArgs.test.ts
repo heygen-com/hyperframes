@@ -172,6 +172,7 @@ describe("buildDockerRunArgs", () => {
         videoFrameFormat: "png",
         quiet: true,
         debug: true,
+        bestEffort: false,
         entryFile: "compositions/intro.html",
         experimentalFastCapture: true,
       },
@@ -191,12 +192,28 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("png");
     expect(args).toContain("--quiet");
     expect(args).toContain("--debug");
+    expect(args).toContain("--no-best-effort");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");
     expect(args).toContain("--composition");
     expect(args).toContain("compositions/intro.html");
     expect(args).toContain("--experimental-fast-capture");
+  });
+
+  it("forwards only an explicit strict-readiness opt-in", () => {
+    const compatible = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, bestEffort: true },
+    });
+    expect(compatible).not.toContain("--best-effort");
+    expect(compatible).not.toContain("--no-best-effort");
+
+    const strict = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, bestEffort: false },
+    });
+    expect(strict).toContain("--no-best-effort");
   });
 
   it("forwards --experimental-fast-capture only when enabled", () => {
@@ -358,6 +375,26 @@ describe("buildDockerRunArgs", () => {
     const idx = args.indexOf("--resolution");
     expect(idx).toBeGreaterThan(-1);
     expect(args[idx + 1]).toBe("landscape-4k");
+  });
+
+  it("forwards the RAW aspect-agnostic alias `1080p` verbatim (does not pre-normalize to `landscape`)", () => {
+    // Miga R2 important note on PR #2529: Docker correctness now depends on
+    // forwarding the raw alias string, not the canonical preset — the
+    // in-container CLI re-runs `normalizeResolutionFlag` +
+    // `isAspectAgnosticResolutionAlias` so aspect-agnostic aliases keep
+    // their orientation-adaptive behavior. A future refactor that
+    // silently substitutes the normalized preset here would restore the
+    // portrait-only Docker failure this test pins against.
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, outputResolution: "1080p" },
+    });
+    const idx = args.indexOf("--resolution");
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe("1080p");
+    // Belt-and-braces: the normalized preset name must NOT slip in as a
+    // second value that would confuse citty parsing on the container side.
+    expect(args).not.toContain("landscape");
   });
 
   it("omits --resolution when outputResolution is not set", () => {

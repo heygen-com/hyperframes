@@ -18,7 +18,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
-  shouldClampMediaDuration,
+  shouldClampResolvedMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
   type ResolvedDuration,
@@ -78,6 +78,8 @@ export interface CompiledComposition {
   usesThreeDTransforms: boolean;
   /** Author HTML/CSS use mix-blend-mode (pre-CDN-inline scan). */
   usesMixBlendMode: boolean;
+  /** Ancestors of the composition root carry a background-image (gradient/url). */
+  hasAncestorBackgroundImage: boolean;
 }
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
@@ -324,6 +326,64 @@ function detectMixBlendModeUsage(html: string): boolean {
   return MIX_BLEND_MODE_PATTERN.test(html);
 }
 
+/** A background declaration whose value paints an image (gradient or url). */
+const BACKGROUND_IMAGE_DECL_PATTERN =
+  /(?:^|;|\{)\s*background(?:-image)?\s*:[^;}]*(?:\bgradient\s*\(|url\s*\()/i;
+
+/**
+ * Background-image signals on ancestors of the composition root.
+ * drawElementImage only paints the captured subtree; drawElementService's
+ * per-frame ancestor fill replicates what lies behind it by walking up the
+ * DOM for the nearest non-transparent `backgroundColor`. A background-IMAGE
+ * (linear-gradient, url) on <body>/<html>/a wrapper reads as transparent in
+ * that scan, so a deeper ancestor's solid color paints instead — measured:
+ * a body `linear-gradient` replaced by the html background color wherever
+ * the subtree left pixels uncovered (30.9 dB min vs baseline), and the
+ * damage can set in late enough to slip past the self-verify sample grid.
+ * Backgrounds on elements INSIDE the root are painted correctly and are
+ * deliberately not matched — this walks only the root's ancestor chain and
+ * the style rules that select into it.
+ */
+export function detectAncestorBackgroundImage(html: string): boolean {
+  const { document } = parseHTML(html);
+  const root = document.querySelector("[data-composition-id]");
+  if (!root) return false;
+  const ancestors: Element[] = [];
+  for (let el = root.parentElement; el; el = el.parentElement) ancestors.push(el);
+  if (document.documentElement && !ancestors.includes(document.documentElement)) {
+    ancestors.push(document.documentElement);
+  }
+  // Inline styles on the ancestor chain.
+  for (const el of ancestors) {
+    const style = el.getAttribute("style");
+    if (style && BACKGROUND_IMAGE_DECL_PATTERN.test(`{${style}}`)) return true;
+  }
+  // <style> rules: any rule carrying an image-painting background declaration
+  // whose selector resolves to an ancestor of the root. Selector matching goes
+  // through querySelectorAll so class/id/compound selectors on wrappers are
+  // covered, not just literal `body`/`html`.
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent ?? "";
+    for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const [, selectorList = "", declarations = ""] = rule;
+      if (!BACKGROUND_IMAGE_DECL_PATTERN.test(`{${declarations}}`)) continue;
+      for (const selector of selectorList.split(",")) {
+        const sel = selector.trim();
+        if (!sel || sel.startsWith("@")) continue;
+        if (/^(?:html|:root)$/i.test(sel)) return true;
+        try {
+          for (const matched of document.querySelectorAll(sel)) {
+            if (ancestors.includes(matched)) return true;
+          }
+        } catch {
+          // Selector syntax linkedom can't parse (e.g. vendor pseudo) — skip.
+        }
+      }
+    }
+  }
+  return false;
+}
+
 const SHADER_TRANSITION_USAGE_PATTERN =
   /\b(?:(?:window|globalThis)\s*\.\s*)?HyperShader\s*\.\s*init\s*\(|\b__hf\s*\.\s*transitions\s*=/;
 
@@ -418,7 +478,8 @@ async function compileHtmlFile(
   let compiledHtml =
     resolutions.length > 0 ? injectDurations(staticCompiled, resolutions) : staticCompiled;
 
-  // Phase 2: Validate pre-resolved media — clamp data-duration to actual source duration (parallel ffprobe)
+  // Phase 2: Bound authored audio to playable source (parallel ffprobe).
+  // Explicit video slots may outlive their source and hold the final frame.
   const preResolved = extractResolvedMedia(compiledHtml);
   const clampResults = await Promise.all(
     preResolved
@@ -436,16 +497,17 @@ async function compileHtmlFile(
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
-    if (r.maxDuration > 0 && shouldClampMediaDuration(r.duration, r.maxDuration)) {
+    if (
+      r.maxDuration > 0 &&
+      shouldClampResolvedMediaDuration(r.tagName, r.duration, r.maxDuration)
+    ) {
       clampList.push({ id: r.id, duration: r.maxDuration });
       // This clip's `data-duration` is being silently shortened to its source.
       // Surface it so the author can confirm the longer slot wasn't intended.
-      // ponytail: top-level only — sub-composition clips still get clamped (and
-      // videos still hold the last frame); thread `log` through
-      // parseSubCompositions to warn for them too.
-      const kind = r.tagName === "audio" ? "Audio" : "Video";
+      // ponytail: top-level only — sub-composition audio still gets clamped;
+      // thread `log` through parseSubCompositions to warn for it too.
       log?.warn(
-        `[compile] ${kind} "${r.id}" (${r.src}) is ${r.maxDuration.toFixed(2)}s but its ` +
+        `[compile] Audio "${r.id}" (${r.src}) is ${r.maxDuration.toFixed(2)}s but its ` +
           `data-duration is ${r.duration.toFixed(2)}s — the slot is shortened to the media ` +
           `length. Set data-duration to ~${r.maxDuration.toFixed(2)}s, trim data-media-start, ` +
           `or use a longer/looping source if that isn't intended.`,
@@ -1545,7 +1607,8 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
   let result = html;
-  const embedded = new Set<string>();
+  const embeddedPaths = new Set<string>();
+  const dataUriByAbsolutePath = new Map<string, string>();
 
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRe.exec(html)) !== null) {
@@ -1558,19 +1621,23 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
       let urlMatch: RegExpExecArray | null;
       while ((urlMatch = urlRe.exec(block)) !== null) {
         const localPath = urlMatch[1];
-        if (!localPath || embedded.has(localPath)) continue;
+        if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir)) continue;
         if (!existsSync(absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
-          const buffer = readFileSync(absPath);
-          const dataUri = await toDataUri(buffer, ext);
+          let dataUri = dataUriByAbsolutePath.get(absPath);
+          if (!dataUri) {
+            const buffer = readFileSync(absPath);
+            dataUri = await toDataUri(buffer, ext);
+            dataUriByAbsolutePath.set(absPath, dataUri);
+            defaultLogger.info(
+              `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
+            );
+          }
           result = result.replaceAll(localPath, dataUri);
-          embedded.add(localPath);
-          defaultLogger.info(
-            `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
-          );
+          embeddedPaths.add(localPath);
         } catch {
           // File read or compression failed — keep the original path
         }
@@ -1706,6 +1773,7 @@ export async function compileForRender(
   // composition that loads GSAP from a CDN.
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
+  const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
@@ -1881,6 +1949,7 @@ export async function compileForRender(
     hasShaderTransitions,
     usesThreeDTransforms,
     usesMixBlendMode,
+    hasAncestorBackgroundImage,
   };
 }
 

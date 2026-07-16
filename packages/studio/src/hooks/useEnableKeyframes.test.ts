@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+import { act, createElement, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
@@ -7,8 +10,20 @@ import {
   isPlayheadWithinTween,
   promoteSetToKeyframes,
   resolveNewTweenRange,
+  useEnableKeyframes,
   type EnableKeyframesSession,
 } from "./useEnableKeyframes";
+import { usePlayerStore } from "../player/store/playerStore";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let cleanup: (() => void) | null = null;
+afterEach(() => {
+  cleanup?.();
+  cleanup = null;
+  vi.unstubAllGlobals();
+  window.location.hash = "";
+});
 
 function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
   return {
@@ -201,5 +216,131 @@ describe("promoteSetToKeyframes — auto endpoint", () => {
     expect(committed?.type).toBe("replace-with-keyframes");
     expect(kfs).toHaveLength(1);
     expect(kfs[0].percentage).toBe(0);
+  });
+});
+
+function renderEnableKeyframes(session: EnableKeyframesSession): () => Promise<void> {
+  let enable: (() => Promise<void>) | null = null;
+  function Probe() {
+    const sessionRef = useRef<EnableKeyframesSession | undefined>(session);
+    enable = useEnableKeyframes(sessionRef);
+    return null;
+  }
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  act(() => root.render(createElement(Probe)));
+  cleanup = () => act(() => root.unmount());
+  if (!enable) throw new Error("hook did not initialize");
+  return enable;
+}
+
+function flatTweenResponses(flat: GsapAnimation, converted: GsapAnimation) {
+  const responses = [{ animations: [flat] }, { animations: [converted] }];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => responses.shift() ?? { animations: [] },
+    })),
+  );
+}
+
+function makeElementSelection(): DomEditSelection {
+  const element = document.body.appendChild(document.createElement("div"));
+  element.id = "el";
+  return {
+    id: "el",
+    selector: "#el",
+    sourceFile: "index.html",
+    element,
+  } as DomEditSelection;
+}
+
+function stubFlatTweenConversion(id: string): {
+  flat: GsapAnimation;
+  converted: GsapAnimation;
+} {
+  const flat = anim({ id, position: 1, duration: 1, properties: { x: 10 } });
+  const converted = anim({
+    id,
+    position: 1,
+    duration: 1,
+    keyframes: {
+      format: "object-array",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 10 } },
+      ],
+    },
+  });
+  flatTweenResponses(flat, converted);
+  return { flat, converted };
+}
+
+describe("useEnableKeyframes — flat tween transaction", () => {
+  it("skips the convert reload and coalesces an outside-range terminal soft reload", async () => {
+    window.location.hash = "#/project/test-project";
+    usePlayerStore.setState({ currentTime: 3 });
+    const selection = makeElementSelection();
+    const { flat } = stubFlatTweenConversion("flat-1");
+    const handleConvert = vi.fn(async () => undefined);
+    const commitMutation = vi.fn(async () => undefined);
+    const enable = renderEnableKeyframes({
+      domEditSelection: selection,
+      selectedGsapAnimations: [flat],
+      previewIframeRef: {
+        current: {
+          contentWindow: { gsap: { getProperty: () => 10 } },
+        } as unknown as HTMLIFrameElement,
+      },
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapConvertToKeyframes: handleConvert,
+      handleGsapRemoveKeyframe: vi.fn(),
+      commitMutation,
+    });
+
+    await act(async () => enable());
+
+    const convertOptions = handleConvert.mock.calls[0]?.[3];
+    const terminalOptions = commitMutation.mock.calls[0]?.[1];
+    expect(convertOptions).toMatchObject({ skipReload: true, coalesceMs: Infinity });
+    expect(terminalOptions).toMatchObject({
+      softReload: true,
+      coalesceKey: convertOptions?.coalesceKey,
+    });
+    expect(convertOptions?.coalesceKey).toEqual(expect.any(String));
+  });
+
+  it("passes the convert coalesce key to an inside-range batch edit", async () => {
+    window.location.hash = "#/project/test-project";
+    usePlayerStore.setState({ currentTime: 1.5 });
+    const selection = makeElementSelection();
+    const { flat } = stubFlatTweenConversion("flat-2");
+    const handleConvert = vi.fn(async () => undefined);
+    const addKeyframeBatch = vi.fn(async () => undefined);
+    const enable = renderEnableKeyframes({
+      domEditSelection: selection,
+      selectedGsapAnimations: [flat],
+      previewIframeRef: {
+        current: {
+          contentWindow: { gsap: { getProperty: () => 5 } },
+        } as unknown as HTMLIFrameElement,
+      },
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapConvertToKeyframes: handleConvert,
+      handleGsapRemoveKeyframe: vi.fn(),
+      handleGsapAddKeyframeBatch: addKeyframeBatch,
+    });
+
+    await act(async () => enable());
+
+    const convertOptions = handleConvert.mock.calls[0]?.[3];
+    expect(addKeyframeBatch.mock.calls[0]?.[3]).toEqual({
+      softReload: true,
+      coalesceKey: convertOptions?.coalesceKey,
+      // Must carry the convert phase's infinite window so the inside-range
+      // apply folds into one undo entry regardless of round-trip latency.
+      coalesceMs: Infinity,
+    });
   });
 });

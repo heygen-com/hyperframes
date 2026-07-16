@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseColorRGBA, pickOpaqueBackground } from "./contrast-bg.js";
+import {
+  contrastRatio,
+  parseColorRGBA,
+  pickOpaqueBackground,
+  relativeLuminance,
+  requiredContrastRatio,
+  suggestCompliantForegroundColor,
+} from "./contrast-bg.js";
 
 const opaque = (bg: string) => ({ backgroundColor: bg, backgroundImage: "none" });
 
@@ -51,5 +58,53 @@ describe("pickOpaqueBackground", () => {
 
   it("returns null when nothing opaque exists (text truly over the scene)", () => {
     expect(pickOpaqueBackground([opaque("rgba(0, 0, 0, 0)")])).toBeNull();
+  });
+});
+
+describe("relativeLuminance", () => {
+  it("uses the WCAG sRGB transfer function", () => {
+    expect(relativeLuminance([0, 0, 0])).toBe(0);
+    expect(relativeLuminance([255, 255, 255])).toBe(1);
+    expect(relativeLuminance([255, 0, 0])).toBeCloseTo(0.2126, 4);
+  });
+});
+
+describe("contrastRatio", () => {
+  it("is symmetric and reaches 21:1 for black and white", () => {
+    expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBe(21);
+    expect(contrastRatio([255, 255, 255], [0, 0, 0])).toBe(21);
+  });
+});
+
+describe("requiredContrastRatio", () => {
+  it("requires 3:1 for large text and 4.5:1 otherwise", () => {
+    expect(requiredContrastRatio(true)).toBe(3);
+    expect(requiredContrastRatio(false)).toBe(4.5);
+  });
+});
+
+describe("suggestCompliantForegroundColor", () => {
+  it("brightens a failing foreground on a dark background until it passes", () => {
+    const background: [number, number, number] = [20, 20, 20];
+    const foreground: [number, number, number] = [80, 80, 80];
+    const suggested = suggestCompliantForegroundColor(foreground, background, 4.5);
+
+    expect(suggested[0]).toBeGreaterThan(foreground[0]);
+    expect(contrastRatio(suggested, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("darkens a failing foreground on a light background until it passes", () => {
+    const background: [number, number, number] = [245, 245, 245];
+    const foreground: [number, number, number] = [180, 180, 180];
+    const suggested = suggestCompliantForegroundColor(foreground, background, 4.5);
+
+    expect(suggested[0]).toBeLessThan(foreground[0]);
+    expect(contrastRatio(suggested, background)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("preserves a foreground that already passes", () => {
+    expect(suggestCompliantForegroundColor([255, 255, 255], [0, 0, 0], 4.5)).toEqual([
+      255, 255, 255,
+    ]);
   });
 });

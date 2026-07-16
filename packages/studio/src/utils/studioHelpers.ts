@@ -161,25 +161,34 @@ function matchesBySelector(selection: ElementMatchSelection, element: TimelineEl
   );
 }
 
-function elementMatchesSelection(
-  selection: ElementMatchSelection,
-  element: TimelineElement,
-  selectionSourceFile: string,
-): boolean {
-  return (
-    matchesByDomId(selection, element, selectionSourceFile) ||
-    matchesByCompositionHost(selection, element) ||
-    matchesBySelector(selection, element)
-  );
-}
-
 export function findMatchingTimelineElementId(
   selection: ElementMatchSelection,
   elements: TimelineElement[],
 ): string | null {
   const selectionSourceFile = selection.sourceFile || "index.html";
-  const match = elements.find((el) => elementMatchesSelection(selection, el, selectionSourceFile));
-  if (match) return match.key ?? match.id;
+  // Priority matters, not just "any of the three": a composition-host
+  // selection always carries its OWN id/selector too (computed generically
+  // for any element), so two repeated hosts sharing the same compositionSrc
+  // are still individually addressable by id/selector. Checking
+  // matchesByCompositionHost with equal priority in a single OR-per-element
+  // scan let `.find()` stop at an EARLIER, unrelated host that merely shares
+  // the compositionSrc, before the scan ever reached the correct id/selector
+  // match further down the list — collapsing every repeated host to the
+  // first one. Try id, then selector, across the WHOLE list first; only fall
+  // back to the coarser compositionSrc-only match when neither identifies a
+  // specific element.
+  const byId = selection.id
+    ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile))
+    : undefined;
+  if (byId) return byId.key ?? byId.id;
+
+  const bySelector = selection.selector
+    ? elements.find((el) => matchesBySelector(selection, el))
+    : undefined;
+  if (bySelector) return bySelector.key ?? bySelector.id;
+
+  const byHost = elements.find((el) => matchesByCompositionHost(selection, el));
+  if (byHost) return byHost.key ?? byHost.id;
 
   // Child inside a sub-composition: return a qualified ID so the expansion
   // hook can resolve the child via clipParentMap even though no timeline
@@ -236,6 +245,28 @@ export function resolveTimelineIdForSelection(
     )
   );
 }
+
+/**
+ * Resolve every multi-selected element to its scope-qualified timeline key
+ * (dropping unresolvable ones). Selections carry bare DOM ids/selectors, but
+ * the visibility toggle matches keys like "index.html#hero" — and callers must
+ * hide all keys in ONE call so the file is patched in a single atomic write
+ * (per-element calls would clobber each other's reads).
+ */
+export function timelineKeysForSelections(
+  selections: readonly DomEditSelection[],
+  elements: TimelineElement[],
+  activeCompPath: string | null,
+): string[] {
+  return selections
+    .map((selection) => resolveTimelineIdForSelection(selection, elements, activeCompPath))
+    .filter((key): key is string => key !== null);
+}
+
+export type ToggleHiddenHandler = (
+  elementKey: string | readonly string[],
+  hidden: boolean,
+) => Promise<void> | void;
 
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
@@ -307,4 +338,66 @@ export async function resolveDroppedAssetDuration(
   media.src = "";
   media.load();
   return duration;
+}
+
+export async function resolveDroppedAssetDimensions(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<{ width: number; height: number } | null> {
+  if (kind === "audio") return null;
+  const src = `/api/projects/${projectId}/preview/${assetPath}`;
+
+  if (kind === "image") {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const timeout = window.setTimeout(() => resolve(null), 3000);
+      img.addEventListener(
+        "load",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(
+            img.naturalWidth > 0 && img.naturalHeight > 0
+              ? { width: img.naturalWidth, height: img.naturalHeight }
+              : null,
+          );
+        },
+        { once: true },
+      );
+      img.addEventListener(
+        "error",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(null);
+        },
+        { once: true },
+      );
+      img.src = src;
+    });
+  }
+
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const timeout = window.setTimeout(() => resolve(null), 3000);
+    const finalize = (value: { width: number; height: number } | null) => {
+      window.clearTimeout(timeout);
+      video.src = "";
+      video.load();
+      resolve(value);
+    };
+    video.addEventListener(
+      "loadedmetadata",
+      () => {
+        finalize(
+          video.videoWidth > 0 && video.videoHeight > 0
+            ? { width: video.videoWidth, height: video.videoHeight }
+            : null,
+        );
+      },
+      { once: true },
+    );
+    video.addEventListener("error", () => finalize(null), { once: true });
+    video.src = src;
+  });
 }

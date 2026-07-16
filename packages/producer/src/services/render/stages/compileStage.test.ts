@@ -22,7 +22,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { EngineConfig } from "@hyperframes/engine";
-import { runCompileStage, type CompileStageInput } from "./compileStage.js";
+import type { CanvasResolution } from "@hyperframes/core";
+import {
+  runCompileStage,
+  type CompileStageInput,
+  type CompileStageResult,
+} from "./compileStage.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
 
 const noopLog = {
@@ -70,12 +75,13 @@ function createCfg(overrides: Partial<EngineConfig> = {}): EngineConfig {
   };
 }
 
-function createJob(): RenderJob {
+function createJob(overrides: Partial<RenderJob["config"]> = {}): RenderJob {
   return {
     id: "test-job",
     config: {
       fps: { num: 30, den: 1 },
       quality: "standard",
+      ...overrides,
     },
     status: "queued",
     progress: 0,
@@ -102,6 +108,20 @@ const IFRAME_HTML = `<!doctype html>
 <body>
   <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1">
     <iframe src="about:blank" data-start="0" data-end="1"></iframe>
+  </div>
+</body>
+</html>`;
+
+// Portrait/square/landscape fixture template — same shape as PLAIN_HTML but
+// with caller-supplied composition dimensions. Consumed by the aspect-agnostic
+// re-map tests below (and reachable from any sibling describe block, unlike a
+// helper scoped inside one describe).
+const orientedHtml = (w: number, h: number): string => `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="${w}" data-height="${h}" data-duration="1">
+    <p>oriented composition</p>
   </div>
 </body>
 </html>`;
@@ -209,5 +229,155 @@ describe("runCompileStage — forceScreenshot snapshot", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * Tests for the aspect-agnostic --resolution re-map in `runCompileStage`.
+ *
+ * Field signal ts=1784176662 (darwin/arm64, CLI 0.7.59):
+ *   "--resolution 1080p rejects a 1080x1920 portrait comp — render at native."
+ *
+ * `--resolution 1080p` / `hd` / `4k` / `uhd` name a resolution *tier* without
+ * pinning an orientation. `normalizeResolutionFlag` maps them all to a
+ * landscape preset (backwards compat), and the CLI/server layers then flag
+ * the raw input as aspect-agnostic on `RenderConfig`. The compile stage
+ * consults that flag before `resolveDeviceScaleFactor` — if the composition's
+ * orientation differs from the preset's, the preset is re-targeted to the
+ * matching sibling in the same tier (HD ↔ HD, 4K ↔ 4K). Explicit
+ * orientation-bearing presets stay strict.
+ */
+describe("runCompileStage — aspect-agnostic --resolution re-map", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  async function runResolutionCase(input: {
+    compWidth: number;
+    compHeight: number;
+    outputResolution: CanvasResolution;
+    aspectAgnostic: boolean;
+  }): Promise<CompileStageResult> {
+    fixture = setupFixture(orientedHtml(input.compWidth, input.compHeight));
+    const projectDir = join(fixture.workDir, "project");
+    const cfg = createCfg();
+    const stageInput: CompileStageInput = {
+      projectDir,
+      workDir: fixture.workDir,
+      htmlPath: fixture.htmlPath,
+      entryFile: "index.html",
+      job: createJob({
+        outputResolution: input.outputResolution,
+        outputResolutionAspectAgnostic: input.aspectAgnostic,
+      }),
+      cfg,
+      needsAlpha: false,
+      log: noopLog,
+      assertNotAborted: () => {},
+    };
+    return runCompileStage(stageInput);
+  }
+
+  // ─── Positive branches: aspect-agnostic auto-flip ──────────────────────
+
+  it("landscape composition + aspect-agnostic `landscape` preset → no re-map, DPR=1", async () => {
+    // Sanity: the flag was ambiguous but the composition IS landscape, so
+    // the preset already matches — nothing to flip.
+    const result = await runResolutionCase({
+      compWidth: 1920,
+      compHeight: 1080,
+      outputResolution: "landscape",
+      aspectAgnostic: true,
+    });
+    expect(result.deviceScaleFactor).toBe(1);
+    expect(result.outputWidth).toBe(1920);
+    expect(result.outputHeight).toBe(1080);
+  });
+
+  it("portrait composition + aspect-agnostic `landscape` preset → re-maps to portrait, DPR=1 (field signal scenario)", async () => {
+    // The reporter's exact case: --resolution 1080p (normalized landscape)
+    // on a 1080×1920 portrait comp. Previously threw "aspect ratio does not
+    // match"; now re-maps to portrait (1080×1920) and DPR resolves to 1.
+    const result = await runResolutionCase({
+      compWidth: 1080,
+      compHeight: 1920,
+      outputResolution: "landscape",
+      aspectAgnostic: true,
+    });
+    expect(result.deviceScaleFactor).toBe(1);
+    expect(result.outputWidth).toBe(1080);
+    expect(result.outputHeight).toBe(1920);
+  });
+
+  it("square composition + aspect-agnostic `landscape` preset → re-maps to square, DPR=1", async () => {
+    // --resolution 1080p on a 1080×1080 square comp → renders at 1080×1080.
+    const result = await runResolutionCase({
+      compWidth: 1080,
+      compHeight: 1080,
+      outputResolution: "landscape",
+      aspectAgnostic: true,
+    });
+    expect(result.deviceScaleFactor).toBe(1);
+    expect(result.outputWidth).toBe(1080);
+    expect(result.outputHeight).toBe(1080);
+  });
+
+  it("portrait composition + aspect-agnostic `landscape-4k` preset → re-maps to portrait-4k, preserves 4K tier", async () => {
+    // `--resolution 4k` (normalized landscape-4k) on a portrait comp: the
+    // re-map picks portrait-4k (same tier) rather than downgrading to
+    // portrait (HD). 1080×1920 comp × 2 = 2160×3840 (portrait-4k).
+    const result = await runResolutionCase({
+      compWidth: 1080,
+      compHeight: 1920,
+      outputResolution: "landscape-4k",
+      aspectAgnostic: true,
+    });
+    expect(result.deviceScaleFactor).toBe(2);
+    expect(result.outputWidth).toBe(2160);
+    expect(result.outputHeight).toBe(3840);
+  });
+
+  it("square composition + aspect-agnostic `landscape-4k` preset → re-maps to square-4k, preserves 4K tier", async () => {
+    const result = await runResolutionCase({
+      compWidth: 1080,
+      compHeight: 1080,
+      outputResolution: "landscape-4k",
+      aspectAgnostic: true,
+    });
+    expect(result.deviceScaleFactor).toBe(2);
+    expect(result.outputWidth).toBe(2160);
+    expect(result.outputHeight).toBe(2160);
+  });
+
+  // ─── Negative branch: explicit preset stays strict ─────────────────────
+
+  it("portrait composition + explicit `landscape` preset (NOT aspect-agnostic) still throws aspect-mismatch", async () => {
+    // The user typed `--resolution landscape` explicitly, not an alias.
+    // Their stated intent is landscape orientation, which the renderer
+    // cannot produce from a portrait composition (deviceScaleFactor can't
+    // change aspect). Keep the actionable error rather than silently
+    // swapping orientation.
+    await expect(
+      runResolutionCase({
+        compWidth: 1080,
+        compHeight: 1920,
+        outputResolution: "landscape",
+        aspectAgnostic: false,
+      }),
+    ).rejects.toThrow(/aspect ratio|--resolution portrait/i);
+  });
+
+  it("portrait composition + explicit `landscape-4k` preset (NOT aspect-agnostic) still throws", async () => {
+    await expect(
+      runResolutionCase({
+        compWidth: 1080,
+        compHeight: 1920,
+        outputResolution: "landscape-4k",
+        aspectAgnostic: false,
+      }),
+    ).rejects.toThrow(/aspect ratio|--resolution portrait/i);
   });
 });

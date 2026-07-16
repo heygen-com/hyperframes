@@ -1,5 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { parsePercentageKeyframes } from "./gsapShared";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { isInstantHold, parsePercentageKeyframes } from "./gsapShared";
+
+describe("isInstantHold", () => {
+  const animation = (method: GsapAnimation["method"], duration?: number) =>
+    ({ method, duration }) as unknown as GsapAnimation;
+
+  it("classifies set and duration-zero to/fromTo writes as instant holds", () => {
+    expect(isInstantHold(animation("set"))).toBe(true);
+    expect(isInstantHold(animation("to", 0))).toBe(true);
+    expect(isInstantHold(animation("fromTo", 0))).toBe(true);
+  });
+
+  it("does not classify live tweens or duration-zero from writes as instant holds", () => {
+    expect(isInstantHold(animation("to", 1))).toBe(false);
+    expect(isInstantHold(animation("fromTo"))).toBe(false);
+    expect(isInstantHold(animation("from", 0))).toBe(false);
+  });
+});
 
 describe("parsePercentageKeyframes", () => {
   it("parses the object/percentage form", () => {

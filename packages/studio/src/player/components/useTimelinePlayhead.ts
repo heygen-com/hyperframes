@@ -1,9 +1,10 @@
 import { useRef, useCallback, useEffect, useLayoutEffect } from "react";
-import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
+import { liveTime, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   GUTTER,
+  TRACKS_LEFT_PAD,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
@@ -73,7 +74,7 @@ export function useTimelinePlayhead({
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
-      gutter: GUTTER,
+      gutter: GUTTER + TRACKS_LEFT_PAD,
       currentPixelsPerSecond: prevPps,
       nextPixelsPerSecond: pps,
       duration: durationRef.current,
@@ -117,21 +118,9 @@ export function useTimelinePlayhead({
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      const playheadX = getTimelinePlayheadLeft(t, ppsRef.current);
-      playheadRef.current.style.left = `${playheadX}px`;
-      const scroll = scrollRef.current;
-      if (
-        scroll &&
-        !isDragging.current &&
-        usePlayerStore.getState().isPlaying &&
-        shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
-      ) {
-        const edgeMargin = scroll.clientWidth * 0.12;
-        if (playheadX > scroll.scrollLeft + scroll.clientWidth - edgeMargin)
-          scroll.scrollLeft = playheadX - scroll.clientWidth * 0.15;
-        else if (playheadX < scroll.scrollLeft + GUTTER)
-          scroll.scrollLeft = Math.max(0, playheadX - GUTTER);
-      }
+      // Playback deliberately does NOT scroll the viewport to chase the playhead —
+      // the user's scroll position is theirs; the playhead may run off-screen.
+      playheadRef.current.style.left = `${getTimelinePlayheadLeft(t, ppsRef.current)}px`;
     });
     return unsub;
   });
@@ -141,7 +130,7 @@ export function useTimelinePlayhead({
       const el = scrollRef.current;
       if (!el || effectiveDuration <= 0) return;
       const rect = el.getBoundingClientRect();
-      const x = clientX - rect.left + el.scrollLeft - GUTTER;
+      const x = clientX - rect.left + el.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
       if (x < 0) return;
       const time = Math.max(0, Math.min(effectiveDuration, x / pps));
       liveTime.notify(time);
@@ -197,7 +186,7 @@ export function useTimelinePlayhead({
       const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
         pointerX: e.clientX - rect.left,
         currentScrollLeft: scroll.scrollLeft,
-        gutter: GUTTER,
+        gutter: GUTTER + TRACKS_LEFT_PAD,
         currentPixelsPerSecond: ppsRef.current,
         nextPixelsPerSecond: nextPps,
         duration: durationRef.current,

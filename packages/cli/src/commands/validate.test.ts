@@ -1,12 +1,24 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+// Imported before "./validate.js" below: validate.js's own static import of
+// ../utils/project.js triggers that mocked module's factory as soon as
+// validate.js loads, so resolveProjectMock/lintProjectFailureMock must
+// already be bound by then (see the vi.mock calls a few lines down).
 import {
+  lintProjectFailureMock,
+  metaDescription,
+  resolveProjectMock,
+  runAndCaptureStdio,
+  runAndParseJsonEnvelope,
+} from "./deprecationTestHarness.js";
+import {
+  auditClipDurations,
   extractCompositionErrorsFromLint,
   navigationTimeoutHint,
   raceMediaReady,
   resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
-  waitForPreferredSeekTarget,
 } from "./validate.js";
+import { waitForPreferredSeekTarget } from "../capture/captureCompositionFrame.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 
 // validateInBrowser lazy-loads the producer localize helpers via loadProducer;
@@ -27,6 +39,68 @@ vi.mock("../utils/producer.js", () => ({
     })),
   })),
 }));
+
+// U5 deprecation tests: resolveProject and lintProject are both reached via a
+// dynamic `await import(...)` inside validate.ts's run() / validateInBrowser(),
+// so vi.mock intercepts them the same way it would a static import. Mocking
+// resolveProject skips real filesystem project resolution; mocking lintProject
+// (the first await inside validateInBrowser) gives a fast, deterministic
+// failure well before any real browser or network work — exercising run()'s
+// outer catch (the JSON failure envelope) without needing headless Chrome.
+vi.mock("../utils/project.js", () => resolveProjectMock());
+vi.mock("../utils/lintProject.js", () => lintProjectFailureMock());
+
+describe("auditClipDurations", () => {
+  it("audits audio only because explicit video slots hold their final frame", async () => {
+    let selector = "";
+    const originalDocument = globalThis.document;
+    const audio = {
+      duration: 1,
+      id: "voice",
+      loop: false,
+      tagName: "AUDIO",
+      getAttribute: (name: string) =>
+        name === "data-duration" ? "5" : name === "data-media-start" ? "0" : null,
+    };
+    const page = {
+      evaluate: async (fn: (waitMs: number) => unknown, waitMs: number) => {
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: {
+            querySelectorAll: (query: string) => {
+              selector = query;
+              return [audio];
+            },
+          },
+        });
+        return fn(waitMs);
+      },
+    };
+
+    try {
+      const warnings = await auditClipDurations(
+        page as never,
+        ({ slotSeconds, mediaSeconds }) => ({
+          shortfallSeconds: slotSeconds - mediaSeconds,
+          toleranceSeconds: 0.05,
+        }),
+        10,
+      );
+      expect(selector).toBe("audio[data-duration]");
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.text).toContain('Audio "voice"');
+    } finally {
+      if (originalDocument === undefined) {
+        Reflect.deleteProperty(globalThis, "document");
+      } else {
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: originalDocument,
+        });
+      }
+    }
+  });
+});
 
 // Regression for the validate audio-duration-probe timeout: a slow-loading
 // media element's duration was snapshotted once, at a fixed point in time,
@@ -126,6 +200,16 @@ describe("waitForPreferredSeekTarget", () => {
     const page = {
       waitForFunction: vi.fn(async () => {
         throw new Error("waiting failed: timeout");
+      }),
+    };
+
+    await expect(waitForPreferredSeekTarget(page, 1)).resolves.toBeUndefined();
+  });
+
+  it("does not fail validation when the page stub throws synchronously", async () => {
+    const page = {
+      waitForFunction: vi.fn(() => {
+        throw new Error("waiting failed synchronously");
       }),
     };
 
@@ -270,5 +354,31 @@ describe("navigationTimeoutHint", () => {
   it("returns null for any non-navigation-timeout error so the caller rethrows it as-is", () => {
     expect(navigationTimeoutHint(new Error("net::ERR_CONNECTION_REFUSED"), 10000)).toBeNull();
     expect(navigationTimeoutHint("some string failure", 10000)).toBeNull();
+  });
+});
+
+describe("validate command deprecation (U5)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("marks the command description as deprecated", async () => {
+    const { default: validateCommand } = await import("./validate.js");
+    expect(metaDescription(validateCommand)).toContain("(deprecated, use check)");
+  });
+
+  it("prints a one-line deprecation notice to stderr and never to stdout", async () => {
+    const { default: validateCommand } = await import("./validate.js");
+    const { stderrText, stdoutText } = await runAndCaptureStdio(validateCommand);
+    expect(stderrText).toContain("hyperframes validate");
+    expect(stderrText).toContain("hyperframes check");
+    expect(stdoutText).toBe("");
+  });
+
+  it("--json output is valid JSON with _meta.deprecated === true on failure", async () => {
+    const { default: validateCommand } = await import("./validate.js");
+    const { parsed } = await runAndParseJsonEnvelope(validateCommand);
+    expect(parsed.ok).toBe(false);
+    expect(parsed._meta.deprecated).toBe(true);
   });
 });

@@ -31,8 +31,6 @@ export interface StudioShellValue {
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 export interface StudioPlaybackValue {
@@ -54,6 +52,15 @@ export function useStudioShellContext(): StudioShellValue {
   const ctx = useContext(StudioShellContext);
   if (!ctx) throw new Error("useStudioShellContext must be used within StudioShellProvider");
   return ctx;
+}
+
+/**
+ * Optional access — returns null outside a provider. Lets the player-package
+ * <Timeline> (a public standalone export) read shell state when embedded in the
+ * NLE without hard-requiring the provider in standalone/test mounts.
+ */
+export function useStudioShellContextOptional(): StudioShellValue | null {
+  return useContext(StudioShellContext);
 }
 
 export function useStudioPlaybackContext(): StudioPlaybackValue {
@@ -90,8 +97,6 @@ export function StudioShellProvider({
     compositionDimensions,
     waitForPendingDomEditSaves,
     handlePreviewIframeRef,
-    timelineVisible,
-    toggleTimelineVisibility,
   } = value;
 
   const stable = useMemo<StudioShellValue>(
@@ -108,14 +113,11 @@ export function StudioShellProvider({
       compositionDimensions,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      timelineVisible,
-      toggleTimelineVisibility,
     }),
     [
       projectId,
       activeCompPath,
       compositionDimensions,
-      timelineVisible,
       editHistory,
       renderQueue,
       setActiveCompPath,
@@ -125,7 +127,6 @@ export function StudioShellProvider({
       handleRedo,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      toggleTimelineVisibility,
     ],
   );
   return <StudioShellContext value={stable}>{children}</StudioShellContext>;

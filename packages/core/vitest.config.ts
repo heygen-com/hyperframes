@@ -12,7 +12,6 @@ export default defineConfig({
         "src/runtime/types.ts",
         "src/runtime/window.d.ts",
         "src/runtime/entry.ts",
-        "src/runtime/init.ts",
         "src/runtime/README.md",
       ],
       thresholds: {

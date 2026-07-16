@@ -16,6 +16,16 @@ export type LayoutIssueCode =
   | "container_overflow"
   | "content_overlap"
   | "text_occluded"
+  | "text_not_painted"
+  | "caption_zone_collision"
+  | "frame_out_of_frame"
+  // Coordinate-frame findings — geometry computed in one frame, rendered in another.
+  | "escaped_container"
+  | "panel_out_of_canvas"
+  | "connector_detached"
+  // Frozen-sweep guard (#U10) — a whole-run meta-finding, not a per-sample
+  // geometry observation; never persistence-tiered (see `applyPersistenceTier`).
+  | "sweep_static"
   // Motion-verification findings (#1437) — evaluated against the seeked timeline.
   | "motion_appears_late"
   | "motion_out_of_order"
@@ -40,6 +50,9 @@ export interface LayoutIssue {
   rect: LayoutRect;
   containerRect?: LayoutRect;
   overflow?: LayoutOverflow;
+  /** `text_occluded` only: approximate fraction (0-1) of the occlusion probe
+   * grid that hit an opaque occluder — see layout-audit.browser.js. */
+  coveredFraction?: number;
   fixHint?: string;
 }
 
@@ -152,6 +165,7 @@ export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
       issue.containerSelector ?? "",
       issue.text ?? "",
       issue.overflow ? formatOverflow(issue.overflow) : "",
+      framePositionKey(issue),
     ].join("|");
     if (seen.has(key)) continue;
     seen.add(key);
@@ -161,7 +175,47 @@ export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
   return result;
 }
 
-export function collapseStaticLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
+// Persistence-tier thresholds (#U10, adapted from Adam Rosler's visual-linter
+// design). The approach doc frames these as held-duration floors — ignore
+// under ~250ms, re-promote content_overlap at >= ~500ms — measured against
+// the SAME firstSeen/lastSeen span this collapse step already tracks. At the
+// default 9-sample grid over a multi-second composition, a single collapsed
+// occurrence is held 0ms (one entrance/exit transient sample) and two
+// collapsed occurrences are already >= one sample-to-sample gap, which is
+// well past 500ms — so "held under 250ms" reduces to `occurrences <= 1` and
+// "held >= 500ms" reduces to `occurrences >= 2`. Tiering below is written in
+// those sample-count terms (the mapping the approach doc asks to document),
+// with the literal ms span (CONTENT_OVERLAP_HELD_ERROR_MS) kept as a fallback
+// for callers whose samples really are spaced close enough together for the
+// ms floor to matter on its own (dense `--at`/`--at-transitions` runs). The
+// ~250ms ignore floor needs no separate constant — see the occurrences <= 1
+// branch below.
+const CONTENT_OVERLAP_HELD_ERROR_MS = 500;
+const HELD_ACROSS_SAMPLES_MIN_OCCURRENCES = 2;
+
+// Tiering only applies to layout-audit.browser.js's own per-sample seek-grid
+// findings — the ones this collapse step's firstSeen/lastSeen span was built
+// to describe. `caption_zone_collision`/`frame_out_of_frame` (a different
+// script, U3) and the `motion_*`/`sweep_static` codes (evaluated once over
+// the whole run, not per grid sample) already carry their own singular
+// dedupe/severity semantics; re-interpreting their occurrence count as a
+// held-duration signal would misread it.
+const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
+  "text_box_overflow",
+  "clipped_text",
+  "canvas_overflow",
+  "container_overflow",
+  "content_overlap",
+  "text_occluded",
+  "escaped_container",
+  "panel_out_of_canvas",
+  "connector_detached",
+]);
+
+export function collapseStaticLayoutIssues(
+  issues: LayoutIssue[],
+  totalSampleCount?: number,
+): LayoutIssue[] {
   const groups = new Map<
     string,
     {
@@ -190,13 +244,82 @@ export function collapseStaticLayoutIssues(issues: LayoutIssue[]): LayoutIssue[]
     existing.occurrences += 1;
   }
 
-  return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences }) => ({
-    ...issue,
-    time: firstSeen,
-    firstSeen,
-    lastSeen,
-    occurrences,
-  }));
+  // A run that only ever sampled one point in time can't distinguish a
+  // transient from a persistent finding — skip tiering entirely rather than
+  // guess (see `applyPersistenceTier`).
+  const sampleCount = totalSampleCount ?? new Set(issues.map((issue) => issue.time)).size;
+  const multiSampleRun = sampleCount > 1;
+
+  return [...groups.values()].map(({ issue, firstSeen, lastSeen, occurrences }) =>
+    applyPersistenceTier(
+      { ...issue, time: firstSeen, firstSeen, lastSeen, occurrences },
+      multiSampleRun,
+    ),
+  );
+}
+
+/**
+ * Held-duration severity tiering (#U10). A finding observed at only one
+ * sample among several (held 0ms) is an entrance/exit transient, not a held
+ * defect — demote to info so it stays in the data (verbose/--json output)
+ * without gating the run. Two codes re-promote once held: `content_overlap`
+ * warning->error when the collision is sustained rather than a crossfade blip
+ * (resolves the TODO in layout-audit.browser.js's `overlapIssue`), and
+ * `canvas_overflow` info->warning when the breach is held, canvas-scale
+ * (>= 5% of the short edge) AND partially visible — a fully off-canvas rect
+ * is a parked entrance, not drift. Codes without a promotion rule are left
+ * untouched when held — persistence, not the code, decides their tier.
+ */
+function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): LayoutIssue {
+  if (!multiSampleRun) return issue;
+  if (!PERSISTENCE_TIERED_CODES.has(issue.code)) return issue;
+
+  const occurrences = issue.occurrences ?? 1;
+  // A single collapsed occurrence is held 0ms by construction (firstSeen ===
+  // lastSeen) — always under the ignore floor, so occurrences <= 1 is a
+  // complete (not approximate) test for "held under 250ms".
+  if (occurrences <= 1) {
+    return { ...issue, severity: "info" };
+  }
+  if (issue.code === "content_overlap" && isContentOverlapHeldLongEnough(issue, occurrences)) {
+    return { ...issue, severity: "error" };
+  }
+  if (issue.code === "canvas_overflow" && isCanvasBreachHeldLarge(issue, occurrences)) {
+    return { ...issue, severity: "warning" };
+  }
+  return issue;
+}
+
+// A held, canvas-scale, PARTIALLY visible breach is drift; a fully off-canvas rect is a parked entrance.
+function isCanvasBreachHeldLarge(issue: LayoutIssue, occurrences: number): boolean {
+  if (
+    occurrences < HELD_ACROSS_SAMPLES_MIN_OCCURRENCES ||
+    !issue.overflow ||
+    !issue.containerRect
+  ) {
+    return false;
+  }
+  const breach = Math.max(
+    ...Object.values(issue.overflow).filter((value) => typeof value === "number"),
+  );
+  if (breach < Math.min(issue.containerRect.width, issue.containerRect.height) * 0.05) return false;
+  const container = issue.containerRect;
+  const overlapX =
+    Math.min(issue.rect.right, container.right) - Math.max(issue.rect.left, container.left);
+  const overlapY =
+    Math.min(issue.rect.bottom, container.bottom) - Math.max(issue.rect.top, container.top);
+  return overlapX > 0 && overlapY > 0;
+}
+
+// Split out of applyPersistenceTier so the two independent "held long enough"
+// signals (sample count vs. wall-clock span) read as one boolean question
+// instead of adding a third compound branch to the tiering ladder above.
+function isContentOverlapHeldLongEnough(issue: LayoutIssue, occurrences: number): boolean {
+  if (occurrences >= HELD_ACROSS_SAMPLES_MIN_OCCURRENCES) return true;
+  const firstSeen = issue.firstSeen ?? issue.time;
+  const lastSeen = issue.lastSeen ?? issue.time;
+  const heldMs = (lastSeen - firstSeen) * 1000;
+  return heldMs >= CONTENT_OVERLAP_HELD_ERROR_MS;
 }
 
 export function limitLayoutIssues(
@@ -230,7 +353,15 @@ function staticIssueKey(issue: LayoutIssue): string {
     issue.containerSelector ?? "",
     issue.text ?? "",
     issue.overflow ? formatOverflow(issue.overflow) : "",
+    framePositionKey(issue),
   ].join("|");
+}
+
+function framePositionKey(issue: LayoutIssue): string {
+  // connector_detached shares it: id-less paths collapse to one selector, so distinct lines need geometry in the key.
+  return issue.code === "frame_out_of_frame" || issue.code === "connector_detached"
+    ? `${Math.round(issue.rect.left)},${Math.round(issue.rect.top)}`
+    : "";
 }
 
 function uniqueSortedTimes(times: number[]): number[] {

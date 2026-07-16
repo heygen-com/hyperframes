@@ -10,6 +10,7 @@ export type RuntimeJson =
 
 import type { HyperframeControlAction } from "../inline-scripts/runtimeContract.js";
 import type { HyperframePickerElementInfo } from "../inline-scripts/pickerApi.js";
+import type { RuntimeProtocolV1 } from "./protocol.js";
 
 export type RuntimeBridgeControlAction =
   | HyperframeControlAction
@@ -27,6 +28,7 @@ export type RuntimeBridgeControlMessage = {
   type: "control";
   action: RuntimeBridgeControlAction;
   frame?: number;
+  timeSeconds?: number;
   muted?: boolean;
   volume?: number;
   durationSeconds?: number;
@@ -78,9 +80,11 @@ export type RuntimeTimelineScene = {
   avatarName: string | null;
 };
 
-export type RuntimeTimelineMessage = {
+export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
   source: "hf-preview";
   type: "timeline";
+  compositionContractVersion: 1;
+  durationSeconds: number;
   durationInFrames: number;
   clips: RuntimeTimelineClip[];
   scenes: RuntimeTimelineScene[];
@@ -228,17 +232,32 @@ export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
 };
 
+export type RuntimeTimelineChildLike = {
+  targets?: () => unknown[];
+  vars?: unknown;
+  startTime?: () => number;
+  duration?: () => number;
+  parent?: RuntimeTimelineChildLike;
+};
+
 export type RuntimeTimelineLike = {
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, suppressEvents?: boolean) => void;
-  totalTime?: (timeSeconds: number, suppressEvents?: boolean) => void;
+  seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;
   add: (timeline: RuntimeTimelineLike, startAtSeconds: number) => void;
   paused: (paused?: boolean) => void;
   timeScale?: (rate: number) => void;
   set: (target: RuntimeGsapSetTarget, vars: RuntimeGsapSetVars, atSeconds?: number) => void;
+  getChildren?: (
+    nested?: boolean,
+    tweens?: boolean,
+    timelines?: boolean,
+    ignoreBeforeTime?: number,
+  ) => RuntimeTimelineChildLike[];
 };
 
 export type RuntimeDeterministicAdapter = {

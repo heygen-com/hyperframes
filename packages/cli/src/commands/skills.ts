@@ -10,11 +10,13 @@ import {
   hyperframesSkillNames,
   isCoreSkill,
   presentSkills,
+  pruneOrphanedLockEntries,
   SKILLS_CLI_LOCK_PATHS_VERIFIED_AT,
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
 import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
+import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
 
@@ -307,8 +309,29 @@ export async function updateSkills(
 
   let check: SkillsCheckResult | null = null;
   try {
-    check = await checkSkills({ cwd: opts.cwd });
-  } catch {
+    // `canonical: true` — target selection must match what `skills add`
+    // actually installs from (the canonical published repo), never a local
+    // checkout's `skills-manifest.json`. Without this, running from inside a
+    // stale hyperframes checkout could resolve "latest" from that stale local
+    // file, which may still list a skill that's since been retired/renamed
+    // upstream. `isCoreSkill` would then force it into `targets`/`toInstall`,
+    // `skills add` would correctly (and silently) decline to install a skill
+    // that no longer exists, and verifyInstalled would strict-throw on a
+    // "failure" that was never real. Resolving canonically means a retired
+    // skill simply never appears as a target in the first place.
+    check = await checkSkills({ cwd: opts.cwd, canonical: true });
+  } catch (err) {
+    // A *malformed* canonical manifest (the server was reached, but served a
+    // bad shape) is otherwise indistinguishable from being offline — both fall
+    // through to presence-only mode below. Surface it distinctly so ops can
+    // tell an upstream/CDN problem apart from a genuine network failure.
+    if (err instanceof Error && err.message.startsWith("Malformed skills manifest")) {
+      clack.log.warn(
+        c.warn(
+          "Canonical skills manifest was malformed — falling back to presence-only mode (an upstream/CDN issue, not your network).",
+        ),
+      );
+    }
     check = null; // manifest unreachable (offline / rate-limited) — presence mode below
   }
   if (!check) return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
@@ -346,6 +369,13 @@ export async function updateSkills(
     await installSkills(result.installed, { cwd: opts.cwd, strict });
     verifyInstalled(result.installed, { strict, cwd: opts.cwd });
   }
+  // The install (or the fresh canonical check confirming everything current)
+  // supersedes whatever the background nudge cached before it — drop the
+  // cached verdict so the next command re-checks instead of nagging from the
+  // pre-install snapshot for up to 24h. Deliberately NOT done on the offline
+  // (presence-only) path above: that run never learned anything about
+  // freshness, so the cached verdict is the best information we still have.
+  invalidateSkillsCache();
   return result;
 }
 
@@ -533,6 +563,11 @@ const checkCommand = defineCommand({
     if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));
     else renderCheck(result);
 
+    // This check just displayed a fresh verdict, superseding whatever the
+    // background nudge cached — invalidate so the next command's nudge agrees
+    // with what the user was just shown instead of a pre-check snapshot.
+    invalidateSkillsCache();
+
     // Exit non-zero when installed skills are stale, so agents and CI can gate:
     //   hyperframes skills check || npx hyperframes skills update
     if (result.updateAvailable) process.exitCode = 1;
@@ -687,6 +722,24 @@ const updateCommand = defineCommand({
           c.dim(`Removing ${removed.length} skill(s) no longer published: ${removed.join(", ")}`),
         );
         await runSkillsRemove(removed, { global: scope === "global" });
+        // Self-heal: `skills remove` only clears a lock entry for a name it
+        // found an on-disk bundle for (see pruneOrphanedLockEntries). A skill
+        // retired before it ever shipped a bundle to this machine has none, so
+        // the call above is a silent no-op for it — the lock entry lingers and
+        // would be re-flagged "removed" on every future run. Prune whatever is
+        // still attributed after the call so `check || update` converges
+        // instead of looping forever. Best-effort and scoped to exactly the
+        // lock the remove above targeted (same `scope`); a write failure here
+        // must not fail the update — the install already succeeded.
+        const scopeForPrune = scope ?? "global";
+        const stillOrphaned = pruneOrphanedLockEntries(removed, scopeForPrune);
+        if (stillOrphaned.length) {
+          console.log(
+            c.dim(
+              `Reconciled ${stillOrphaned.length} orphaned lock entr${stillOrphaned.length === 1 ? "y" : "ies"} with no on-disk bundle: ${stillOrphaned.join(", ")}`,
+            ),
+          );
+        }
       }
     } catch (err) {
       clack.log.warn(c.warn(`Skipped removed-skill cleanup: ${(err as Error).message}`));
@@ -708,6 +761,11 @@ export default defineCommand({
     // citty runs this parent handler even when a subcommand matches; guard on
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
-    if (!args._?.[0]) await installSkills("*");
+    if (!args._?.[0]) {
+      await installSkills("*");
+      // Same as updateSkills: a full install supersedes the background
+      // nudge's cached pre-install verdict.
+      invalidateSkillsCache();
+    }
   },
 });

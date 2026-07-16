@@ -183,4 +183,35 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
     expect(seekCalls.map((call) => Math.round(call.t * fps))).toEqual([0, 1, 2, 0]);
     expect(seekCalls.every((call) => call.options?.suppressEvents === true)).toBe(true);
   });
+
+  it("disarms within a wall-clock budget instead of spending minutes verifying a long static run", async () => {
+    const fps = 24;
+    let nowMs = 0;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
+    const page = {
+      evaluate: vi.fn(async () => undefined),
+    };
+    vi.mocked(pageScreenshotCapture).mockImplementation(async () => {
+      nowMs += 8_000;
+      return Buffer.from("same");
+    });
+
+    // Mirrors the reported 350.35s / 23.976fps alpha composition closely:
+    // ~8,400 predicted-static frames used to schedule ~352 full-page PNG
+    // screenshots before capture could begin.
+    const staticFrames = new Set<number>();
+    for (let frame = 1; frame < 8_400; frame++) staticFrames.add(frame);
+
+    const result = await verifyStaticFramesSafe(
+      { options: {} } as unknown as CaptureSession,
+      page as unknown as Parameters<typeof verifyStaticFramesSafe>[1],
+      staticFrames,
+      fps,
+      24,
+    );
+    nowSpy.mockRestore();
+
+    expect(result?.budgetExhausted).toBe(true);
+    expect(pageScreenshotCapture).toHaveBeenCalledTimes(2);
+  });
 });

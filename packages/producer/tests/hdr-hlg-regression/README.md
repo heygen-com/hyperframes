@@ -36,9 +36,9 @@ remuxed (no re-encode) so the HLG color tags survive verbatim.
 
 ```bash
 cd packages/producer
-bun run test hdr-hlg-regression
+bun run test:regression hdr-hlg-regression
 
-bun run test:update hdr-hlg-regression
+bun run test:regression:update hdr-hlg-regression
 ```
 
 In CI it runs in the `hdr` shard alongside `hdr-regression`

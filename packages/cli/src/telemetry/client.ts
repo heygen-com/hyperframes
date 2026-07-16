@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
@@ -20,7 +22,11 @@ interface EventProperties {
   [key: string]: string | number | boolean | null | undefined;
 }
 
-let eventQueue: Array<{
+interface QueuedEvent {
+  // Client-generated event id. PostHog dedupes on it, so an event that gets
+  // sent by an interrupted flush() AND re-sent by the exit-time flushSync()
+  // fallback still counts once.
+  uuid: string;
   event: string;
   properties: EventProperties;
   timestamp: string;
@@ -28,7 +34,9 @@ let eventQueue: Array<{
   // Used to attribute server-side studio renders to the browser user who
   // triggered them, so the render funnel is joinable across processes.
   distinctId?: string;
-}> = [];
+}
+
+let eventQueue: QueuedEvent[] = [];
 
 let telemetryEnabled: boolean | null = null;
 
@@ -72,6 +80,7 @@ export function trackEvent(
 
   const sys = getSystemMeta();
   eventQueue.push({
+    uuid: randomUUID(),
     event,
     distinctId,
     properties: {
@@ -102,32 +111,48 @@ export function trackEvent(
 }
 
 /**
- * Drain the in-memory queue into a PostHog `/batch/` payload string.
- * Returns null when there's nothing to send. Resets the queue as a side effect
- * so callers can fire-and-forget the resulting payload.
+ * Serialize events into a PostHog `/batch/` payload string. Pure — the queue
+ * is untouched, so callers decide when events count as delivered.
+ *
+ * Each event carries its client-generated `uuid`, which PostHog treats as the
+ * event id — re-sending the same event is idempotent, not a duplicate.
  *
  * $ip:null tells PostHog not to record the request IP for any of these events.
  * Server-side "Discard client IP data" is also enabled in project settings.
  */
-function drainQueueToPayload(): string | null {
-  if (eventQueue.length === 0) return null;
+function buildPayload(events: readonly QueuedEvent[]): string | null {
+  if (events.length === 0) return null;
   const config = readConfig();
-  const batch = eventQueue.map((e) => ({
+  const batch = events.map((e) => ({
+    uuid: e.uuid,
     event: e.event,
     properties: { ...e.properties, $ip: null },
     distinct_id: e.distinctId ?? config.anonymousId,
     timestamp: e.timestamp,
   }));
-  eventQueue = [];
   return JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
 }
 
 /**
  * Flush all queued events to PostHog via async HTTP POST.
- * Called before normal process exit via `beforeExit`.
+ * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
+ * after high-value events (trackRenderComplete / trackRenderError), and the
+ * `events` beacon command, which awaits delivery before its process exits.
+ *
+ * Events are only removed from the queue once the request has completed.
+ * The old drain-first version silently lost the whole batch whenever the
+ * process died with the fetch in flight — which is the NORMAL exit path for
+ * `render`: an agent pipe closing triggers the EPIPE `process.exit(0)`, and
+ * error paths call `process.exit(1)` directly, both killing the in-flight
+ * request that `beforeExit` had just started. Keeping the queue intact until
+ * delivery lets the exit-time flushSync() child (which survives the parent)
+ * re-send anything unconfirmed; event uuids make that re-send idempotent.
  */
 export async function flush(): Promise<void> {
-  const payload = drainQueueToPayload();
+  // Copy, not alias — events queued while the request is in flight must not
+  // be swept into the "delivered" set below.
+  const snapshot = eventQueue.slice();
+  const payload = buildPayload(snapshot);
   if (payload == null) return;
 
   const controller = new AbortController();
@@ -140,8 +165,13 @@ export async function flush(): Promise<void> {
       body: payload,
       signal: controller.signal,
     });
+    // Delivered — forget exactly what was sent (events queued while the
+    // request was in flight stay for the next flush).
+    const sent = new Set(snapshot);
+    eventQueue = eventQueue.filter((e) => !sent.has(e));
   } catch {
-    // Silently ignore — telemetry must never break the CLI
+    // Silently ignore — telemetry must never break the CLI. The events stay
+    // queued so the exit-time flushSync() fallback can still deliver them.
   } finally {
     clearTimeout(timeout);
   }
@@ -153,11 +183,11 @@ export async function flush(): Promise<void> {
  * so the parent process exits immediately without waiting.
  */
 export function flushSync(): void {
-  const payload = drainQueueToPayload();
+  const payload = buildPayload(eventQueue);
   if (payload == null) return;
+  eventQueue = [];
 
   try {
-    const { spawn } = require("node:child_process") as typeof import("node:child_process");
     const child = spawn(
       process.execPath,
       [

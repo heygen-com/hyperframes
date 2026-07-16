@@ -37,6 +37,7 @@
 
 import { join } from "node:path";
 import type { EngineConfig } from "@hyperframes/engine";
+import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -107,6 +108,41 @@ export interface CompileStageResult {
   /** Low-cardinality compile-time gate that disabled default drawElement:
    * `3d` | `mix_blend_mode` | `shader_transitions`. Undefined when none fired. */
   deCompileGate?: string;
+}
+
+/**
+ * Aspect-agnostic aliases (`--resolution 1080p` / `hd` / `4k` / `uhd`) all
+ * normalize to a landscape preset up-front (see `normalizeResolutionFlag`),
+ * which was historically fine because 16:9 was the only shipped orientation.
+ * Once portrait + square presets landed, that early normalization started
+ * rejecting portrait/square compositions with a cryptic "aspect ratio does
+ * not match" from `resolveDeviceScaleFactor` — a common enough hit that a
+ * field report (CLI 0.7.59) surfaced it. When the flag was aspect-agnostic,
+ * re-target the preset to the sibling that matches the composition's
+ * orientation while preserving the tier (HD vs 4K). Explicit
+ * orientation-bearing presets stay strict — a `--resolution portrait` on a
+ * landscape composition still errors, honoring the user's stated intent.
+ *
+ * Extracted so `runCompileStage` keeps its complexity envelope tight; the
+ * two-branch shape lives here.
+ */
+function adaptAspectAgnosticResolution(
+  requested: CanvasResolution | undefined,
+  aspectAgnostic: boolean | undefined,
+  width: number,
+  height: number,
+  log: ProducerLogger,
+): CanvasResolution | undefined {
+  if (!requested || !aspectAgnostic) return requested;
+  const flipped = suggestMatchingPreset(width, height, requested);
+  if (!flipped || flipped === requested) return requested;
+  log.info("Adapted aspect-agnostic --resolution to composition orientation", {
+    compositionWidth: width,
+    compositionHeight: height,
+    requestedResolution: requested,
+    effectiveResolution: flipped,
+  });
+  return flipped;
 }
 
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
@@ -200,6 +236,28 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "for this render. Capture uses the platform's baseline route.",
     );
   }
+  // Fast-capture ancestor-background-image gate, same shape as the gates above.
+  // drawElementService's per-frame ancestor fill replicates only the nearest
+  // non-transparent ancestor background-COLOR behind the captured subtree; a
+  // background-image (linear-gradient, url) on <body>/<html>/a wrapper reads
+  // as transparent there, so a deeper ancestor's solid color paints instead
+  // wherever the subtree leaves pixels uncovered (measured: body gradient
+  // replaced by html color, 30.9 dB min vs baseline — and late-onset, so the
+  // self-verify grid can miss it). HF_FAST_CAPTURE_ANCESTOR_BG=true bypasses
+  // for R&D.
+  if (
+    cfg.useDrawElement &&
+    process.env.HF_FAST_CAPTURE_ANCESTOR_BG !== "true" &&
+    compiled.hasAncestorBackgroundImage
+  ) {
+    cfg.useDrawElement = false;
+    deCompileGate = "ancestor_background_image";
+    log.info(
+      "[Render] Fast capture: composition root's ancestors (body/html/wrapper) carry a " +
+        "background-image — disabling drawElementImage for this render. Capture uses the " +
+        "platform's baseline route.",
+    );
+  }
   // Shader-transition comps: page-side compositing is the faster, purpose-built
   // path for them, and resolveConfig force-disables it whenever drawElement is
   // on. With drawElement default-on that trade is backwards — prefer page-side
@@ -251,10 +309,17 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     height: compiled.height,
   };
   const { width, height } = composition;
+  const effectiveResolution = adaptAspectAgnosticResolution(
+    job.config.outputResolution,
+    job.config.outputResolutionAspectAgnostic,
+    width,
+    height,
+    log,
+  );
   const deviceScaleFactor = resolveDeviceScaleFactor({
     compositionWidth: width,
     compositionHeight: height,
-    outputResolution: job.config.outputResolution,
+    outputResolution: effectiveResolution,
     hdrRequested: job.config.hdrMode === "force-hdr",
     alphaRequested: needsAlpha,
   });
@@ -264,7 +329,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     log.info("Supersampling composition via deviceScaleFactor", {
       compositionWidth: width,
       compositionHeight: height,
-      outputResolution: job.config.outputResolution,
+      outputResolution: effectiveResolution,
       outputWidth,
       outputHeight,
       deviceScaleFactor,

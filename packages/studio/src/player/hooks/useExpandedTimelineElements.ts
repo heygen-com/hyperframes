@@ -163,7 +163,24 @@ function buildChildElements(
       key,
       start: clamped.start,
       duration: clamped.duration,
-      track: display.track + result.length,
+      // `track` becomes a synthetic display row under the expanded host, but the
+      // factory-set `authoredTrack` (the child's data-track-index in ITS OWN
+      // file's coordinate space) and the runtime-computed `stackingContextId`
+      // must survive verbatim — lane persists and z-sync read them, they are
+      // never reconstructed from display lanes.
+      //
+      // COLLISION-FREE synthetic rows: the old `display.track + index` scheme
+      // could equal a REAL clip's integer lane (host on track 0 with two
+      // children puts child #2 on track 1 — where an unrelated top-level clip
+      // may live). Lane grouping merges purely by track number, so that
+      // collision fused clips from DIFFERENT source files into one display
+      // lane, and lane-scoped actions (gap close) then batch-persisted foreign
+      // clips. Fractions strictly between the host's lane and the next integer
+      // can never equal a normalized (integer) lane, while still rendering the
+      // children as their own ordered rows directly under the host.
+      track: display.track + (result.length + 1) / (siblings.length + 2),
+      authoredTrack: base.authoredTrack,
+      stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,
       domId,
       selector,
@@ -192,15 +209,13 @@ function domSiblingClips(
         start: host.start,
         duration: host.duration,
         track: host.track,
-        zIndex: 0,
-        stackingContextId: host.stackingContextId ?? host.domId ?? host.id ?? null,
         kind: "element",
         tagName: null,
         compositionId: null,
-        compositionAncestors: host.compositionAncestors ?? [],
         parentCompositionId: host.id ?? null,
         compositionSrc: host.compositionSrc ?? null,
         assetUrl: null,
+        stackingContextId: c.stackingContextId,
       }),
     );
 }

@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import type { TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
+import { ImageThumbnail } from "../player/components/ImageThumbnail";
+import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -51,8 +53,16 @@ function trimFractions(el: TimelineElement): { start?: number; end?: number } {
  */
 function renderAudioClip(el: TimelineElement, pid: string, labelColor: string): ReactNode {
   const srcRelative = resolvePreviewRelative(el.src, pid);
-  const audioUrl = srcRelative ? `/api/projects/${pid}/preview/${srcRelative}` : (el.src ?? "");
-  const waveformUrl = srcRelative ? `/api/projects/${pid}/waveform/${srcRelative}` : undefined;
+  // Encode each path segment (spaces, parens, U+202F, unicode) so the URL matches
+  // what the assets panel loads — a raw segment 404s. resolvePreviewRelative
+  // returns the DECODED path, so it must be re-encoded here.
+  const encodedRelative = srcRelative ? encodePreviewPath(srcRelative) : null;
+  const audioUrl = encodedRelative
+    ? `/api/projects/${pid}/preview/${encodedRelative}`
+    : (el.src ?? "");
+  const waveformUrl = encodedRelative
+    ? `/api/projects/${pid}/waveform/${encodedRelative}`
+    : undefined;
   const { start, end } = trimFractions(el);
   return createElement(AudioWaveform, {
     audioUrl,
@@ -100,7 +110,7 @@ export function useRenderClipContent({
       // instead of capturing the master at a time when the comp is fading in.
       if (compSrc) {
         return createElement(CompositionThumbnail, {
-          previewUrl: `/api/projects/${pid}/preview/comp/${compSrc}`,
+          previewUrl: `/api/projects/${pid}/preview/comp/${encodePreviewPath(compSrc)}`,
           label: "",
           labelColor: style.label,
 
@@ -138,9 +148,17 @@ export function useRenderClipContent({
         !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
-        const mediaSrc = el.src.startsWith("http")
-          ? el.src
-          : `/api/projects/${pid}/preview/${el.src}`;
+        const mediaSrc = resolveMediaPreviewUrl(el.src, pid);
+        // Still images can't be decoded by VideoThumbnail's <video> extractor
+        // (the error event fires and the shimmer never resolves) — render the
+        // image itself as the strip.
+        if (el.tag === "img") {
+          return createElement(ImageThumbnail, {
+            imageSrc: mediaSrc,
+            label: "",
+            labelColor: style.label,
+          });
+        }
         return createElement(VideoThumbnail, {
           videoSrc: mediaSrc,
           label: "",

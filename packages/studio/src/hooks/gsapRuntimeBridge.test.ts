@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
+import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { usePlayerStore } from "../player/store/playerStore";
 
 /**
@@ -90,7 +90,7 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     expect(mutation.type).not.toBe("add-keyframe");
   });
 
-  it("forwards instantPatch on BOTH coalesced commits when updating an existing static set", async () => {
+  it("forwards one complete instantPatch when atomically updating an existing static set", async () => {
     const commitMutation = vi.fn();
     const iframe = fakeIframe("puck-b", []); // runtime empty → STATIC path
     // An existing position-hold `set` for the selector → update-in-place (not add).
@@ -113,16 +113,14 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     );
 
     expect(handled).toBe(true);
-    // The coalesced update-property pair both carry an instantPatch so a partial
-    // (second-POST) failure still leaves the preview patched for what persisted:
-    // the x commit patches {x}, the final y commit patches the full {x,y}.
-    const updates = commitMutation.mock.calls.filter(([, m]) => m.type === "update-property");
-    expect(updates).toHaveLength(2);
-    expect(updates[0][2].instantPatch).toEqual({
-      selector: "#puck-b",
-      change: { kind: "set", props: { x: -50 } },
+    const updates = commitMutation.mock.calls.filter(([, m]) => m.type === "update-properties");
+    expect(updates).toHaveLength(1);
+    expect(updates[0][1]).toEqual({
+      type: "update-properties",
+      animationId: "#puck-b-set",
+      properties: { x: -50, y: 30 },
     });
-    expect(updates[1][2].instantPatch).toEqual({
+    expect(updates[0][2].instantPatch).toEqual({
       selector: "#puck-b",
       change: { kind: "set", props: { x: -50, y: 30 } },
     });
@@ -154,9 +152,9 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     );
 
     expect(handled).toBe(true);
-    // In-place update (2 coalesced update-property), NOT an `add`/`add-keyframe`.
+    // One atomic in-place update, NOT an `add`/`add-keyframe`.
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
-    expect(types.every((t: string) => t === "update-property")).toBe(true);
+    expect(types).toEqual(["update-properties"]);
     expect(types).not.toContain("add");
     expect(types).not.toContain("add-keyframe");
   });
@@ -177,6 +175,44 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
 
     const staleLogged = logSpy.mock.calls.some((c) => String(c[1] ?? "").includes("stale parse"));
     expect(staleLogged).toBe(false);
+  });
+});
+
+describe("tryGsapRotationIntercept — instant holds", () => {
+  it("updates a duration-zero fromTo hold instead of converting it to keyframes", async () => {
+    const rotationHold = {
+      id: "#puck-b-fromTo-0-rotation",
+      targetSelector: "#puck-b",
+      propertyGroup: "rotation",
+      method: "fromTo",
+      fromProperties: { rotation: 0 },
+      properties: { rotation: 30 },
+      position: 0,
+      resolvedStart: 0,
+      duration: 0,
+    } as unknown as GsapAnimation;
+    const commitMutation = vi.fn();
+
+    const handled = await tryGsapRotationIntercept(
+      selection,
+      75,
+      [rotationHold],
+      null,
+      commitMutation,
+    );
+
+    expect(handled).toBe(true);
+    expect(commitMutation).toHaveBeenCalledTimes(1);
+    expect(commitMutation.mock.calls[0]![1]).toEqual({
+      type: "update-property",
+      animationId: rotationHold.id,
+      property: "rotation",
+      value: 75,
+    });
+    const types = commitMutation.mock.calls.map(([, mutation]) => mutation.type);
+    expect(types).not.toContain("convert-to-keyframes");
+    expect(types).not.toContain("add-keyframe");
+    expect(types).not.toContain("add");
   });
 });
 

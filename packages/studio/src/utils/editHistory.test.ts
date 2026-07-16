@@ -209,6 +209,41 @@ describe("edit history", () => {
     expect(state.undo[0].files["index.html"].after).toBe("c");
   });
 
+  it("merges a lane-change move with its z-reorder past the default window via entry coalesceMs", () => {
+    // The z entry records only after the move persist's round-trip — often >300ms.
+    // Both sides pass coalesceMs: 5000 with the shared gesture key so the pair
+    // still folds into ONE undo step.
+    const move = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clips",
+      kind: "timeline",
+      coalesceKey: "clip-lane-move:1",
+      coalesceMs: 5000,
+      files: { "index.html": { before: "a", after: "b" } },
+      now: 100,
+      id: "move-entry",
+    });
+    const zReorder = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Reorder layers",
+      kind: "manual",
+      coalesceKey: "clip-lane-move:1",
+      coalesceMs: 5000,
+      files: { "index.html": { before: "b", after: "c" } },
+      now: 500,
+      id: "z-entry",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), move),
+      zReorder,
+    );
+
+    expect(state.undo).toHaveLength(1);
+    expect(state.undo[0].files["index.html"].before).toBe("a");
+    expect(state.undo[0].files["index.html"].after).toBe("c");
+  });
+
   it("folds a slow GSAP follow-up into the timing edit via a per-entry coalesceMs override", () => {
     const timing = buildEditHistoryEntry({
       projectId: "project-1",
@@ -240,6 +275,88 @@ describe("edit history", () => {
     expect(state.undo).toHaveLength(1);
     expect(state.undo[0].files["index.html"].before).toBe("orig");
     expect(state.undo[0].files["index.html"].after).toBe("timing+gsap");
+  });
+
+  it("keeps timing-only files when a multi-file GSAP follow-up touches one path", () => {
+    const timing = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clips",
+      kind: "timeline",
+      coalesceKey: "timeline-group-move:a,b",
+      files: {
+        "index.html": { before: "index-before", after: "index-timing" },
+        "scene.html": { before: "scene-before", after: "scene-timing" },
+      },
+      now: 0,
+      id: "timing",
+    });
+    const gsap = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clips",
+      kind: "timeline",
+      coalesceKey: "timeline-group-move:a,b",
+      coalesceMs: 10_000,
+      files: {
+        "index.html": { before: "index-timing", after: "index-timing+gsap" },
+      },
+      now: 2000,
+      id: "gsap",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), timing),
+      gsap,
+    );
+
+    expect(state.undo).toHaveLength(1);
+    expect(Object.keys(state.undo[0].files)).toEqual(["index.html", "scene.html"]);
+    expect(state.undo[0].files).toMatchObject({
+      "index.html": { before: "index-before", after: "index-timing+gsap" },
+      "scene.html": { before: "scene-before", after: "scene-timing" },
+    });
+  });
+
+  it("keeps a discontinuous GSAP follow-up separate and preserves foreign bytes on undo", () => {
+    const timing = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-move:clip",
+      files: { "index.html": { before: "A", after: "B" } },
+      now: 0,
+      id: "timing",
+    });
+    const gsapAfterForeignWrite = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-move:clip",
+      coalesceMs: 10_000,
+      files: { "index.html": { before: "F", after: "G" } },
+      now: 2000,
+      id: "gsap",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), timing),
+      gsapAfterForeignWrite,
+    );
+
+    expect(state.undo.map((entry) => entry.id)).toEqual(["timing", "gsap"]);
+    const undoGsap = undoEditHistory(state, { "index.html": hashEditHistoryContent("G") }, 3000);
+    expect(undoGsap.ok).toBe(true);
+    expect(undoGsap.filesToWrite).toEqual({ "index.html": "F" });
+
+    const undoTiming = undoEditHistory(
+      undoGsap.state,
+      { "index.html": hashEditHistoryContent("F") },
+      4000,
+    );
+    expect(undoTiming).toMatchObject({
+      ok: false,
+      reason: "content-mismatch",
+      filesToWrite: {},
+    });
   });
 
   it("does not merge a slow follow-up without the coalesceMs override", () => {

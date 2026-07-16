@@ -52,6 +52,27 @@ const RESOLUTION_ALIASES: Record<string, CanvasResolution> = {
 };
 
 /**
+ * Aliases that name a resolution *tier* (1080p / 4K) without also nailing an
+ * orientation. Historically they all normalize to the `landscape` preset
+ * (`normalizeResolutionFlag("1080p") === "landscape"`), which then rejects
+ * portrait / square compositions with a cryptic "aspect ratio does not match"
+ * error deep inside the render pipeline. Consumers that know the composition's
+ * dimensions can consult this set to decide whether to auto-adapt the preset's
+ * orientation instead — see `adaptAspectAgnosticResolution` in the compile
+ * stage (`@hyperframes/producer`) and `suggestMatchingPreset` here.
+ *
+ * Orientation-suffixed aliases (`1080p-portrait`, `4k-square`, …) are absent
+ * on purpose: the user *did* pick an orientation, and honoring it is important
+ * for the "you asked for landscape but composed portrait" error to still fire.
+ */
+const ASPECT_AGNOSTIC_RESOLUTION_ALIASES: ReadonlySet<string> = new Set([
+  "1080p",
+  "hd",
+  "4k",
+  "uhd",
+]);
+
+/**
  * Map a user-facing resolution string (canonical name or alias) to a
  * `CanvasResolution`. Returns undefined for unknown values so callers
  * can produce their own "invalid" UX (CLI exit, route validation, etc.).
@@ -63,6 +84,59 @@ export function normalizeResolutionFlag(input: string | undefined): CanvasResolu
     return lowered as CanvasResolution;
   }
   return RESOLUTION_ALIASES[lowered];
+}
+
+/**
+ * True when `input` names a resolution *tier* without nailing an orientation
+ * (`1080p`, `hd`, `4k`, `uhd`). Case-insensitive.
+ *
+ * The `--resolution` CLI flag treats these as "target this size; keep the
+ * composition's orientation" — a portrait 1080×1920 comp with `--resolution
+ * 1080p` should land at 1080×1920, not blow up on aspect mismatch. Explicit
+ * canonical presets (`landscape`, `portrait`, …) and orientation-suffixed
+ * aliases (`1080p-portrait`) stay strict — the user picked an orientation.
+ *
+ * Consumers pair this signal with the composition's dimensions (in a
+ * follow-up pass after HTML parse) to pick the right preset via
+ * `suggestMatchingPreset` — see `adaptAspectAgnosticResolution` in the
+ * compile stage (`@hyperframes/producer`) for the canonical remap.
+ */
+export function isAspectAgnosticResolutionAlias(input: string | undefined): boolean {
+  if (!input) return false;
+  return ASPECT_AGNOSTIC_RESOLUTION_ALIASES.has(input.toLowerCase());
+}
+
+/**
+ * Public-boundary helper: given a raw `--resolution` / `--output-resolution`
+ * flag value, return the pair every distributed render entrypoint needs to
+ * forward end-to-end so the compile stage can adapt aspect-agnostic aliases
+ * to the composition's orientation:
+ *
+ *   - `outputResolution`: normalized {@link CanvasResolution} (or `undefined`
+ *     for unknown values — callers own their invalid-input UX).
+ *   - `outputResolutionAspectAgnostic`: `true` when the raw input was a
+ *     tier-only alias (`1080p` / `hd` / `4k` / `uhd`). Passes through to
+ *     `DistributedRenderConfig.outputResolutionAspectAgnostic` so the compile
+ *     stage remaps `landscape` → `portrait` / `square` when the composition
+ *     dimensions demand it.
+ *
+ * Exported to centralize the two-step pattern (`normalizeResolutionFlag` +
+ * `isAspectAgnosticResolutionAlias`) that would otherwise be duplicated at
+ * every entrypoint that emits a `DistributedRenderConfig` (`hyperframes
+ * cloudrun render`, `hyperframes lambda render` / `render-batch`, the local
+ * CLI). Divergence between those callers is what shipped the portrait-1080p
+ * regression this helper prevents from recurring.
+ */
+export interface ResolvedResolutionFlag {
+  outputResolution: CanvasResolution | undefined;
+  outputResolutionAspectAgnostic: boolean;
+}
+
+export function resolveResolutionFlagPair(input: string | undefined): ResolvedResolutionFlag {
+  return {
+    outputResolution: normalizeResolutionFlag(input),
+    outputResolutionAspectAgnostic: isAspectAgnosticResolutionAlias(input),
+  };
 }
 
 export interface TimelineElementBase {

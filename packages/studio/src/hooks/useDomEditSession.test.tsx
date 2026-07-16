@@ -231,7 +231,9 @@ describe("onReorderShadow source filter", () => {
         setRightPanelTab: vi.fn(),
         showToast: vi.fn(),
         refreshPreviewDocumentVersion: vi.fn(),
-        queueDomEditSave: vi.fn(async (save: () => Promise<void>) => save()),
+        queueDomEditSave: vi.fn(async <T,>(save: () => Promise<T>) => save()) as <T>(
+          save: () => Promise<T>,
+        ) => Promise<T>,
         readProjectFile,
         writeProjectFile: vi.fn(async () => {}),
         updateEditingFileContent: vi.fn(),

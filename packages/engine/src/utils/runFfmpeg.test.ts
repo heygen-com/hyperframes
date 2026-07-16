@@ -6,9 +6,12 @@ import { formatFfmpegError } from "./runFfmpeg.js";
 
 describe("formatFfmpegError", () => {
   const originalPlatform = process.platform;
+  const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
   });
 
   it("reports exit code alone when stderr is empty", () => {
@@ -57,6 +60,20 @@ describe("formatFfmpegError", () => {
 
     expect(formatFfmpegError(3221225595, "")).toContain("wrong architecture");
   });
+
+  it.each([3221225781, -1073741515])(
+    "maps Windows DLL-not-found exit code %s to selected-path guidance",
+    (exitCode) => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      process.env.HYPERFRAMES_FFMPEG_PATH = "/tools/ffmpeg.exe";
+
+      const message = formatFfmpegError(exitCode, "");
+
+      expect(message).toContain("0xC0000135 (STATUS_DLL_NOT_FOUND)");
+      expect(message).toContain(resolve("/tools/ffmpeg.exe"));
+      expect(message).toContain("working 64-bit Windows FFmpeg build");
+    },
+  );
 });
 
 function createSpawnSpy() {

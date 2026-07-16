@@ -99,6 +99,32 @@ Render video. Built for agents.
     });
   });
 
+  it("rejects a below-minimum --timeout with a discoverable error", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    const consoleLog = vi.mocked(console.log);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`__exit_${code}__`);
+    }) as never);
+
+    // 100 is well below the 5000ms minimum — must fail loud instead of silently
+    // reverting to the auto-scaled default (the whole point of the flag is
+    // that the user explicitly asked for a specific value).
+    await expect(
+      transcribeCmd.run!({ args: { input, json: true, timeout: "100" } } as never),
+    ).rejects.toThrow("__exit_1__");
+
+    const log = consoleLog.mock.calls.at(-1)?.[0];
+    expect(typeof log).toBe("string");
+    if (typeof log !== "string") throw new Error("Expected JSON log output");
+    const parsed = JSON.parse(log);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("--timeout");
+    expect(parsed.error).toContain("5000");
+
+    exitSpy.mockRestore();
+  });
+
   it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
     dirs.push(dir);

@@ -23,6 +23,14 @@ import { resolve, join, extname, dirname } from "node:path";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+
+// Minimum accepted value for `--timeout` / `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`.
+// Kept out of `whisper/transcribe.ts` (avoids a top-level import into this
+// command module) so the CLI test file can hoist its
+// `vi.mock("../whisper/transcribe.js")` factory without the mocked module
+// entering the sync-import graph. Below this floor the whisper spawn has no
+// realistic chance of completing even on the fastest hardware for the shortest clip.
+const CLI_TIMEOUT_MIN_MS = 5000;
 import { trackCommandFailure, trackTranscribeUnavailable } from "../telemetry/events.js";
 
 export default defineCommand({
@@ -85,6 +93,16 @@ export default defineCommand({
         "Treat captions as optional: if whisper-cpp is unavailable, skip and exit 0 instead of failing. For pipelines that continue without captions.",
       default: false,
     },
+    timeout: {
+      type: "string",
+      description:
+        "Whisper spawn timeout in ms. Overrides the duration+model auto-scaled " +
+        "default. Increase on slow CPUs (e.g. emulated arm64/x64, low-power " +
+        "laptops) where whisper.cpp takes many seconds per audio second on " +
+        "medium/large models. Applies to the whisper engine only; Parakeet has " +
+        "a separate fixed timeout. Minimum 5000 (5 s). " +
+        "Env: HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS.",
+    },
   },
   async run({ args }) {
     const inputPath = resolve(args.input);
@@ -120,15 +138,41 @@ export default defineCommand({
     }
 
     // ── Transcribe mode: run the ASR engine ──────────────────────────────
+    const timeoutMs = parseTimeoutMs(args.timeout, args.json);
+
     return transcribeAudio(inputPath, dir, {
       engine: args.engine,
       model: args.model,
       language: args.language,
       json: args.json,
       optional: args.optional,
+      timeoutMs,
     });
   },
 });
+
+/**
+ * Resolve the whisper timeout override from `--timeout <ms>` or the
+ * `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS` env var. The flag wins over env; both
+ * paths share the same integer + minimum-5000ms validation so a bad value
+ * fails loud instead of silently reverting to the auto-scaled default.
+ * Returns `undefined` when neither source is set — the transcribe layer then
+ * derives the timeout from audio duration and model factor.
+ */
+function parseTimeoutMs(raw: string | undefined, json: boolean): number | undefined {
+  const source = raw ?? process.env["HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS"];
+  if (source == null || source === "") return undefined;
+
+  const parsed = Number.parseInt(source, 10);
+  if (!Number.isFinite(parsed) || parsed < CLI_TIMEOUT_MIN_MS) {
+    const origin = raw != null ? "--timeout" : "HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS";
+    failWith(
+      `Invalid ${origin}: "${source}". Must be an integer >= ${CLI_TIMEOUT_MIN_MS} (ms).`,
+      json,
+    );
+  }
+  return parsed;
+}
 
 function failWith(message: string, json: boolean): never {
   trackCommandFailure("transcribe", message);
@@ -226,7 +270,14 @@ async function exportTranscript(
 async function transcribeAudio(
   inputPath: string,
   dir: string,
-  opts: { engine?: string; model?: string; language?: string; json?: boolean; optional?: boolean },
+  opts: {
+    engine?: string;
+    model?: string;
+    language?: string;
+    json?: boolean;
+    optional?: boolean;
+    timeoutMs?: number;
+  },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
   const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
@@ -260,6 +311,7 @@ async function transcribeAudio(
           model,
           language: opts.language,
           onProgress: spin ? (msg) => spin.message(msg) : undefined,
+          timeoutMs: opts.timeoutMs,
         });
 
     let { words } = loadTranscript(result.transcriptPath);

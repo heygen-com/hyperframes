@@ -27,11 +27,15 @@ import {
   isRecoverableParallelCaptureError,
   MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
+  resolveRenderWorkDirPrefix,
   shouldDiscardProbeSessionForPageSideCompositing,
   resolveInversionRetryPlan,
   resolveParallelRouterRetryPlan,
+  resetCaptureAttemptProgress,
+  shouldRetryViaPinnedFallback,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  shouldStreamParallelCapture,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -53,6 +57,16 @@ import {
   writeCompiledArtifacts,
 } from "./render/shared.js";
 import { formatCaptureFrameName, toExternalAssetKey } from "../utils/paths.js";
+
+describe("resolveRenderWorkDirPrefix", () => {
+  it("uses a short system temp prefix on Windows instead of the output path", () => {
+    const outputPath = win32.join("C:\\deep", "nested".repeat(30), "renders", "final.mp4");
+
+    expect(resolveRenderWorkDirPrefix(outputPath, "long-render-job-id", "win32", "C:/Temp")).toBe(
+      join("C:/Temp", "hf-render-"),
+    );
+  });
+});
 
 describe("extractStandaloneEntryFromIndex", () => {
   it("reuses the index wrapper and keeps only the requested composition host", () => {
@@ -111,9 +125,55 @@ describe("extractStandaloneEntryFromIndex", () => {
 
     expect(extracted).toBeNull();
   });
+
+  it("re-points the wrapper duration at the scene's own, not the master's", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="3"></div></template>`;
+
+    const extracted = extractStandaloneEntryFromIndex(
+      indexHtml,
+      "compositions/scene1.html",
+      sceneHtml,
+    );
+
+    // The extracted standalone advertises the scene file's 3s, not the mount's 2s or master's 12s.
+    expect(extracted).toContain('data-duration="3"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
+
+  it("falls back to the mount's data-duration when the scene file isn't supplied", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+    const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/scene1.html");
+
+    expect(extracted).toContain('data-duration="2"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
 });
 
 describe("captureAttemptMadeProgress", () => {
+  it("resets completed frames before a fallback attempt starts", () => {
+    const job = { framesRendered: 900 };
+
+    resetCaptureAttemptProgress(job);
+
+    expect(job.framesRendered).toBe(0);
+  });
+
   it("retries when the attempt captured at least one frame toward its target", () => {
     // targeted 100 frames, 40 still missing -> 60 captured -> worth retrying the rest
     expect(captureAttemptMadeProgress(100, 40)).toBe(true);
@@ -181,7 +241,7 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
 
   const writeAllFrames = (framesDir: string, totalFrames: number): void => {
     for (let i = 0; i < totalFrames; i++) {
-      writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "x");
+      writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "captured-frame");
     }
   };
 
@@ -382,6 +442,7 @@ describe("shouldUseStreamingEncode", () => {
   const streamingEnabledConfig = {
     enableStreamingEncode: true,
     streamingEncodeMaxDurationSeconds: 240,
+    lowMemoryMode: false,
   };
 
   it("enables streaming for default single-worker video renders", () => {
@@ -423,6 +484,12 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+  });
+
+  it("keeps long single-worker renders streaming in low-memory mode", () => {
+    expect(
+      shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
+    ).toBe(true);
   });
 });
 
@@ -1155,10 +1222,15 @@ describe("resolveRenderWorkerCount", () => {
       debug: vi.fn(),
     };
 
+    const stableCfg = {
+      ...cfg,
+      concurrency: 2 as const,
+      largeRenderThreshold: 1_000,
+    };
     const workers = resolveRenderWorkerCount(
       180,
       undefined,
-      { ...cfg, forceScreenshot: true },
+      { ...stableCfg, forceScreenshot: true },
       {
         hasShaderTransitions: false,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
@@ -1167,7 +1239,7 @@ describe("resolveRenderWorkerCount", () => {
       { multiplier: 1, reasons: [], p95Ms: 180 },
     );
 
-    expect(workers).toBe(6);
+    expect(workers).toBe(2);
     expect(log.warn).not.toHaveBeenCalled();
   });
 });
@@ -1378,13 +1450,28 @@ describe("adaptive missing-frame retry helpers", () => {
   it("finds contiguous missing frame ranges from captured disk frames", () => {
     const framesDir = makeFramesDir();
     for (const frameIndex of [0, 1, 4]) {
-      writeFileSync(join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`), "x");
+      writeFileSync(
+        join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`),
+        "captured-frame",
+      );
     }
 
     expect(findMissingFrameRanges(6, framesDir, "jpg")).toEqual([
       { startFrame: 2, endFrame: 4 },
       { startFrame: 5, endFrame: 6 },
     ]);
+  });
+
+  it("retries a worker placeholder instead of accepting a truncated sequence", () => {
+    const framesDir = makeFramesDir();
+    for (let frameIndex = 0; frameIndex < 4; frameIndex++) {
+      writeFileSync(
+        join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`),
+        frameIndex === 2 ? "x" : "captured-frame",
+      );
+    }
+
+    expect(findMissingFrameRanges(4, framesDir, "jpg")).toEqual([{ startFrame: 2, endFrame: 3 }]);
   });
 
   it("builds retry batches that cap active workers per attempt", () => {
@@ -1667,6 +1754,7 @@ describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
         cfg,
         outputFormat: "mp4",
         durationSeconds: 80,
+        isMemoryExhaustion: false,
       }),
     ).toBe(null);
     expect(
@@ -1676,6 +1764,7 @@ describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
         cfg,
         outputFormat: "mp4",
         durationSeconds: 80,
+        isMemoryExhaustion: false,
       }),
     ).toBe(null);
   });
@@ -1687,6 +1776,7 @@ describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
       cfg,
       outputFormat: "mp4",
       durationSeconds: 80,
+      isMemoryExhaustion: false,
     });
     expect(plan).toEqual({
       workerCount: 5,
@@ -1704,6 +1794,23 @@ describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
       cfg,
       outputFormat: "mp4",
       durationSeconds: 80,
+      isMemoryExhaustion: false,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deWorkerInversion: "reverted",
+    });
+  });
+
+  it("drops to a single worker on OOM regardless of the pre-inversion count (the actual memory remedy)", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: true,
     });
     expect(plan).toEqual({
       workerCount: 1,
@@ -1728,10 +1835,26 @@ describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
     probeDeGated: false,
     experimentalParallelDeOptIn: false,
     routerEnabled: true,
+    totalMemoryMb: 32768,
+    minMemoryMb: 24576,
   };
 
   it("routes an auto-resolved multi-worker render for an eligible long comp", () => {
     expect(shouldPreferParallelDrawElement(eligible)).toBe(true);
+  });
+
+  it("withholds the parallel bet below the RAM floor (16 GB black-slab report)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 16384 })).toBe(false);
+  });
+
+  it("routes exactly at the RAM floor", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 24576 })).toBe(true);
+  });
+
+  it("minMemoryMb <= 0 disables the RAM guard", () => {
+    expect(
+      shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 8192, minMemoryMb: 0 }),
+    ).toBe(true);
   });
 
   it("is disabled by default (routerEnabled: false is the shipped default)", () => {
@@ -1804,6 +1927,7 @@ describe("resolveParallelRouterRetryPlan (self-verify retry rollback)", () => {
         cfg,
         outputFormat: "mp4",
         durationSeconds: 80,
+        isMemoryExhaustion: false,
       }),
     ).toBe(null);
     expect(
@@ -1813,6 +1937,7 @@ describe("resolveParallelRouterRetryPlan (self-verify retry rollback)", () => {
         cfg,
         outputFormat: "mp4",
         durationSeconds: 80,
+        isMemoryExhaustion: false,
       }),
     ).toBe(null);
   });
@@ -1824,11 +1949,177 @@ describe("resolveParallelRouterRetryPlan (self-verify retry rollback)", () => {
       cfg,
       outputFormat: "mp4",
       durationSeconds: 80,
+      isMemoryExhaustion: false,
     });
     expect(plan).toEqual({
       workerCount: 5,
       useStreamingEncode: false,
       deParallelRouter: "reverted",
     });
+  });
+
+  it("drops to a single worker on OOM regardless of the pre-router count (the actual memory remedy)", () => {
+    const plan = resolveParallelRouterRetryPlan({
+      deParallelRouter: "routed",
+      preRouterWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: true,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deParallelRouter: "reverted",
+    });
+  });
+});
+
+describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic capture failures, including OOM)", () => {
+  it("always retries a drawElement self-verify failure, pinned or not", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: true,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("retries a generic capture failure when the router pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(true);
+  });
+
+  it("retries a generic capture failure when the inversion pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry a generic capture failure when nothing pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("retries OOM too when the router pinned the worker count (fallback's Chrome processes are already dead by the time this runs, and the fallback is pooled/lighter than the pinned path)", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(true);
+  });
+
+  it("retries OOM too when the inversion pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry a generic failure on an already-reverted cohort (no pin left to retreat from)", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "reverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("never retries a cancellation, even on a pinned cohort — must propagate immediately, not detour through a fresh encoder spin-up", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(false);
+  });
+
+  it("cancellation wins even if the error also looks like a self-verify failure", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: true,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
+  const eligible = {
+    routerEnabled: true,
+    workerCount: 3,
+    useDrawElement: false,
+    outputFormat: "mp4" as const,
+    streamingOk: true,
+    layeredOrEffectRoute: false,
+  };
+
+  it("routes an eligible multi-worker non-drawElement render", () => {
+    expect(shouldStreamParallelCapture(eligible)).toBe(true);
+  });
+
+  it("is disabled by default (kill switch off is the shipped default)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
+  });
+
+  it("never fires for single-worker renders (those already stream)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+
+  it("never fires when drawElement will capture (the DE routers own that path)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, useDrawElement: true })).toBe(false);
+  });
+
+  it("only applies to mp4", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "png-sequence" })).toBe(false);
+  });
+
+  it("respects the streaming-encode config/duration gates", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, streamingOk: false })).toBe(false);
+  });
+
+  it("skips HDR-layered and shader-transition routes", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
   });
 });

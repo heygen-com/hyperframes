@@ -55,7 +55,10 @@ export {
   CANVAS_DIMENSIONS,
   VALID_CANVAS_RESOLUTIONS,
   normalizeResolutionFlag,
+  isAspectAgnosticResolutionAlias,
+  resolveResolutionFlagPair,
   checkOutputResolutionCompatibility,
+  suggestMatchingPreset,
   parseFps,
   parseFpsWithDefault,
   toFps,
@@ -138,6 +141,7 @@ export {
   extractResolvedMedia,
   clampDurations,
   shouldClampMediaDuration,
+  shouldClampResolvedMediaDuration,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
 } from "./compiler/timingCompiler";
 
@@ -231,6 +235,7 @@ export { createGSAPFrameAdapter } from "./adapters/gsap";
 // Text measurement
 export { fitTextFontSize } from "./text/index.js";
 export type { FitTextOptions, FitTextResult } from "./text/index.js";
+export { formatRenderOutputTimestamp } from "./utils/renderOutputTimestamp.js";
 
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
@@ -239,6 +244,20 @@ export {
   parseNumeric,
   type ReferenceExpression,
 } from "./runtime/startExpression.js";
+export {
+  COMPOSITION_CONTRACT_VERSION,
+  COMPOSITION_ATTRIBUTES,
+  CANONICAL_AUTHORED_TIMING_ATTRIBUTES,
+  DERIVED_TIMING_ATTRIBUTES,
+  LEGACY_TIMING_ATTRIBUTES,
+  readClipTiming,
+  writeClipTiming,
+  ClipTimingWriteError,
+  type ClipTiming,
+  type ClipTimingDiagnostic,
+  type ClipTimingDiagnosticCode,
+  type ClipTimingUpdate,
+} from "./compositionContract.js";
 
 // Variable validation (CLI / tooling-side)
 export {

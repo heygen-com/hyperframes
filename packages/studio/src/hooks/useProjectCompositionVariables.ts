@@ -103,17 +103,16 @@ export function useEditVariablesInFile(deps: EditVariablesDeps) {
   return useCallback(
     async (path: string, label: string, mutate: (session: Composition) => void): Promise<void> => {
       const originalContent = await readProjectFile(path);
-      const comp = await openComposition(originalContent, { history: false });
-      let after: string;
-      try {
-        mutate(comp);
-        after = comp.serialize();
-      } finally {
-        comp.dispose();
-      }
-      if (after === originalContent) return;
       await persistSdkSerialize(
-        after,
+        async (onDiskBefore) => {
+          const comp = await openComposition(onDiskBefore, { history: false });
+          try {
+            mutate(comp);
+            return comp.serialize();
+          } finally {
+            comp.dispose();
+          }
+        },
         path,
         originalContent,
         {
@@ -122,6 +121,7 @@ export function useEditVariablesInFile(deps: EditVariablesDeps) {
           reloadPreview,
           domEditSaveTimestampRef,
           compositionPath: path,
+          readProjectFile,
         },
         { label },
       );

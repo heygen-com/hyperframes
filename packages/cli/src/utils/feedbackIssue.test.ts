@@ -27,7 +27,7 @@ describe("buildIssueUrl", () => {
     const url = buildIssueUrl(base);
     expect(decoded(url, "title")).toBe("[feedback] GSAP timeline froze on seek");
     const body = decoded(url, "body");
-    expect(body).toContain("2/5");
+    expect(body).toContain("2/10");
     expect(body).toContain("https://hyperframes.dev/p/abc123");
     expect(body).toContain("os=darwin/arm64");
     expect(body).toContain("cli=1.2.3");
@@ -35,7 +35,7 @@ describe("buildIssueUrl", () => {
 
   it("falls back to a generic title when there is no comment", () => {
     const url = buildIssueUrl({ ...base, comment: undefined });
-    expect(decoded(url, "title")).toBe("Render feedback (rating 2/5)");
+    expect(decoded(url, "title")).toBe("Render feedback (rating 2/10)");
   });
 
   it("truncates an overlong comment in the body", () => {

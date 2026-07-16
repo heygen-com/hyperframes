@@ -24,6 +24,19 @@ interface CssSource {
   rootRelativePath?: string;
 }
 
+/** Linkedom keeps template contents in a DocumentFragment that is not part of
+ * the document query tree. Lint rules must still see shell styles and links
+ * inside templates, so walk each template's content recursively without
+ * falling back to regex parsing. */
+function querySelectorAllIncludingTemplates(root: ParentNode, selector: string): Element[] {
+  const matches: Element[] = [...root.querySelectorAll(selector)];
+  for (const template of root.querySelectorAll("template")) {
+    const content = (template as HTMLTemplateElement).content;
+    if (content) matches.push(...querySelectorAllIncludingTemplates(content, selector));
+  }
+  return matches;
+}
+
 export interface ProjectLintResult {
   results: Array<{ file: string; result: HyperframeLintResult }>;
   totalErrors: number;
@@ -32,19 +45,34 @@ export interface ProjectLintResult {
 }
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".opus"]);
-const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-const OPEN_TAG_RE = /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi;
 const MASK_IMAGE_URL_RE =
   /\b(?:-webkit-)?mask-image\s*:\s*[^;{}]*url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi;
 
-function readHtmlAttr(tag: string, name: string): string | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = tag.match(new RegExp(`\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
-  return match?.[1] ?? match?.[2] ?? null;
-}
-
 function isLocalStylesheetHref(href: string): boolean {
   return !!href && !/^(https?:|data:|blob:|\/\/)/i.test(href);
+}
+
+function collectLocalStylesheets(
+  projectDir: string,
+  document: ParentNode,
+  compSrcPath?: string,
+): Array<{ href: string; content: string; rootRelativePath: string }> {
+  const styles: Array<{ href: string; content: string; rootRelativePath: string }> = [];
+  for (const link of querySelectorAllIncludingTemplates(document, "link")) {
+    const rel = link.getAttribute("rel") ?? "";
+    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
+    const href = link.getAttribute("href") ?? "";
+    if (!isLocalStylesheetHref(href)) continue;
+    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
+    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelative);
+    if (!stylesheet) continue;
+    styles.push({
+      href,
+      content: readFileSync(stylesheet.resolved, "utf-8"),
+      rootRelativePath: stylesheet.rootRelativePath,
+    });
+  }
+  return styles;
 }
 
 function collectExternalStyles(
@@ -53,54 +81,31 @@ function collectExternalStyles(
   compSrcPath?: string,
 ): Array<{ href: string; content: string }> {
   const styles: Array<{ href: string; content: string }> = [];
-  const linkRe = /<link\b[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = linkRe.exec(html)) !== null) {
-    const tag = match[0];
-    const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
-    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
-    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
-    if (!isLocalStylesheetHref(href)) continue;
-    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
-    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelative);
-    if (!stylesheet) continue;
-    styles.push({ href, content: readFileSync(stylesheet.resolved, "utf-8") });
+  const { document } = parseHTML(html);
+  for (const { href, content } of collectLocalStylesheets(projectDir, document, compSrcPath)) {
+    styles.push({ href, content });
   }
   return styles;
 }
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
   const sources: CssSource[] = [];
+  const { document } = parseHTML(html);
 
-  let styleMatch: RegExpExecArray | null;
-  const stylePattern = new RegExp(STYLE_BLOCK_RE.source, STYLE_BLOCK_RE.flags);
-  while ((styleMatch = stylePattern.exec(html)) !== null) {
-    sources.push({ content: styleMatch[1] ?? "" });
+  for (const style of querySelectorAllIncludingTemplates(document, "style")) {
+    sources.push({ content: style.textContent ?? "" });
   }
 
-  const linkRe = /<link\b[^>]*>/gi;
-  let linkMatch: RegExpExecArray | null;
-  while ((linkMatch = linkRe.exec(html)) !== null) {
-    const tag = linkMatch[0];
-    const rel = readHtmlAttr(tag, "rel") ?? "";
-    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
-    const href = readHtmlAttr(tag, "href") ?? "";
-    if (!isLocalStylesheetHref(href)) continue;
-
-    const rootRelativePath = compSrcPath ? join(dirname(compSrcPath), href) : href;
-    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelativePath);
-    if (!stylesheet) continue;
-    sources.push({
-      content: readFileSync(stylesheet.resolved, "utf-8"),
-      rootRelativePath: stylesheet.rootRelativePath,
-    });
+  for (const { content, rootRelativePath } of collectLocalStylesheets(
+    projectDir,
+    document,
+    compSrcPath,
+  )) {
+    sources.push({ content, rootRelativePath });
   }
 
-  let tagMatch: RegExpExecArray | null;
-  const tagPattern = new RegExp(OPEN_TAG_RE.source, OPEN_TAG_RE.flags);
-  while ((tagMatch = tagPattern.exec(html)) !== null) {
-    const tag = tagMatch[0];
-    const style = readHtmlAttr(tag, "style");
+  for (const element of querySelectorAllIncludingTemplates(document, "[style]")) {
+    const style = element.getAttribute("style");
     if (!style) continue;
     sources.push({ content: style });
   }
@@ -175,8 +180,16 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
-export async function lintProject(projectDir: string): Promise<ProjectLintResult> {
-  const indexPath = resolve(projectDir, "index.html");
+export async function lintProject(
+  projectDir: string,
+  entryFile?: string,
+): Promise<ProjectLintResult> {
+  const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
+  if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
+    throw new Error(`Explicit lint entry is outside the project directory: ${entryFile}`);
+  }
+  const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
+  const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
   const results: Array<{ file: string; result: HyperframeLintResult }> = [];
   let totalErrors = 0;
   let totalWarnings = 0;
@@ -185,22 +198,29 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
   const rootHtml = readFileSync(indexPath, "utf-8");
   const rootResult = await lintHyperframeHtml(rootHtml, {
     filePath: indexPath,
-    externalStyles: collectExternalStyles(projectDir, rootHtml),
+    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
-  results.push({ file: "index.html", result: rootResult });
+  results.push({ file: rootFile, result: rootResult });
   totalErrors += rootResult.errorCount;
   totalWarnings += rootResult.warningCount;
   totalInfos += rootResult.infoCount;
 
-  const allHtmlSources: HtmlSource[] = [{ html: rootHtml }];
+  const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const compositionsDir = resolve(projectDir, "compositions");
-  if (existsSync(compositionsDir)) {
+  if (!entryFile && existsSync(compositionsDir)) {
     const collectHtmlFiles = (dir: string, rel: string): string[] => {
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
-        else if (entry.isFile() && entry.name.endsWith(".html")) out.push(relPath);
+        if (entry.isDirectory()) {
+          // Registry components are source snippets, not independently mounted
+          // sub-compositions. Linting every installed template here makes an
+          // unused component fail the assembled project check.
+          if (!rel && entry.name === "components") continue;
+          out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
+        } else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
+          out.push(relPath);
+        }
       }
       return out;
     };
@@ -232,7 +252,7 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
     ...lintAudioSrcNotFound(projectDir, allHtmlSources),
     ...lintMissingLocalAsset(projectDir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
-    ...lintMultipleRootCompositions(projectDir),
+    ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
   ];
@@ -442,7 +462,9 @@ function lintTextureMaskAssetNotFound(
 function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
   try {
-    const rootHtmlFiles = readdirSync(projectDir).filter((f) => f.endsWith(".html"));
+    const rootHtmlFiles = readdirSync(projectDir).filter(
+      (file) => file.endsWith(".html") && !file.startsWith("._"),
+    );
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
       if (file === "caption-skin.html") continue;

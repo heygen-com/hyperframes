@@ -3026,3 +3026,24 @@ describe("single position write per element (consolidation)", () => {
     expect(parseGsapScript(out).animations.some((a) => "opacity" in a.properties)).toBe(true);
   });
 });
+
+describe("recast writer never doubles vars keys", () => {
+  // Regression: buildTweenStatementCode pushed `immediateRender: true` for
+  // every timeline set AND appended extras — a parsed set carries the flag in
+  // extras, so splitting a mixed set emitted
+  // `immediateRender: true, immediateRender: true` into the file.
+  const src = `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.set("#a", { z: 0, rotationX: 5, immediateRender: true, scale: 1 }, 0);
+window.__timelines["main"] = tl;`;
+
+  it("split of a mixed set emits the flag once per group", () => {
+    const id = parseGsapScript(src).animations[0]!.id;
+    const { script: out } = splitIntoPropertyGroups(src, id);
+    const setLines = out.split("\n").filter((l) => l.includes("tl.set("));
+    expect(setLines.length).toBeGreaterThan(1);
+    for (const line of setLines) {
+      expect(line.match(/immediateRender/g) ?? []).toHaveLength(1);
+    }
+  });
+});

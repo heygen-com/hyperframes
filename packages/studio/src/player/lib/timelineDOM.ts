@@ -10,7 +10,8 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
-import { getElementZIndex, hasExplicitZIndex } from "./layerOrdering";
+import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
+import { readClipTiming } from "@hyperframes/core/composition-contract";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -24,6 +25,7 @@ import {
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
   isTimelineIgnoredElement,
+  readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -66,49 +68,6 @@ function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
 }
 
-function resolveDomCompositionContext(
-  element: Element,
-  root: Element | null,
-): {
-  parentCompositionId: string | null;
-  compositionAncestors: string[];
-  stackingContextId: string | null;
-} {
-  const ancestors: string[] = [];
-  let parentCompositionId: string | null = null;
-  let cursor = element.parentElement;
-  while (cursor) {
-    const compositionId = cursor.getAttribute("data-composition-id");
-    if (compositionId) {
-      ancestors.push(compositionId);
-      if (!parentCompositionId && cursor !== root) {
-        parentCompositionId = compositionId;
-      }
-    }
-    cursor = cursor.parentElement;
-  }
-  const compositionAncestors = ancestors.reverse();
-  return {
-    parentCompositionId,
-    compositionAncestors,
-    stackingContextId: parentCompositionId ?? compositionAncestors[0] ?? null,
-  };
-}
-
-function isHTMLElement(element: Element | null): element is HTMLElement {
-  if (!element) return false;
-  const HtmlElementCtor = element.ownerDocument.defaultView?.HTMLElement ?? globalThis.HTMLElement;
-  return typeof HtmlElementCtor !== "undefined" && element instanceof HtmlElementCtor;
-}
-
-function getTimelineElementZIndex(element: Element | null): number | undefined {
-  return isHTMLElement(element) ? getElementZIndex(element) : undefined;
-}
-
-function getTimelineElementHasExplicitZIndex(element: Element | null): boolean {
-  return isHTMLElement(element) ? hasExplicitZIndex(element) : false;
-}
-
 // fallow-ignore-next-line complexity
 export function createTimelineElementFromManifestClip(params: {
   clip: ClipManifestClip;
@@ -130,14 +89,6 @@ export function createTimelineElementFromManifestClip(params: {
   let sourceFile: string | undefined;
 
   let hfId: string | undefined;
-  const domContext = hostEl
-    ? resolveDomCompositionContext(hostEl, doc?.querySelector("[data-composition-id]") ?? null)
-    : null;
-  const compositionAncestors = clip.compositionAncestors ?? domContext?.compositionAncestors;
-  const parentCompositionId = clip.parentCompositionId ?? domContext?.parentCompositionId;
-  const stackingContextId =
-    clip.stackingContextId ?? parentCompositionId ?? compositionAncestors?.[0] ?? null;
-
   if (hostEl) {
     domId = hostEl.id || undefined;
     hfId = hostEl.getAttribute("data-hf-id") || undefined;
@@ -164,15 +115,15 @@ export function createTimelineElementFromManifestClip(params: {
     start: clip.start,
     duration: clip.duration,
     track: clip.track,
-    // Prefer the effective (computed) z-index read from the live element — the
-    // same read the reorder commit uses — so CSS-rule z-index (not just inline)
-    // is captured. clip.zIndex from the runtime is inline-only (0 for CSS rules),
-    // so it can only serve as a fallback when the element isn't live.
-    zIndex: getTimelineElementZIndex(hostEl) ?? clip.zIndex ?? 0,
-    hasExplicitZIndex: getTimelineElementHasExplicitZIndex(hostEl),
-    stackingContextId,
-    parentCompositionId,
-    compositionAncestors,
+    // clip.track IS the authored data-track-index verbatim (the runtime honors
+    // it; see parseAuthoredTrack in core/runtime/timeline.ts). Record it at this
+    // translation boundary so later display-lane remaps (normalizeToZones,
+    // expanded-child rows) can persist in AUTHORED space instead of
+    // reconstructing it from lane occupants.
+    authoredTrack: clip.track,
+    // Runtime-computed stacking context — authoritative; helpers read it, never
+    // re-derive it.
+    stackingContextId: clip.stackingContextId ?? null,
     domId,
     hfId,
     selector,
@@ -185,6 +136,7 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
   if (clip.kind === "composition" && clip.compositionId) {
@@ -207,8 +159,6 @@ export function createTimelineElementFromManifestClip(params: {
       }
     }
     if (hostEl) {
-      entry.zIndex = getTimelineElementZIndex(hostEl) ?? entry.zIndex;
-      entry.hasExplicitZIndex = getTimelineElementHasExplicitZIndex(hostEl);
       entry.domId = hostEl.id || undefined;
       entry.hfId = hostEl.getAttribute("data-hf-id") || undefined;
       entry.selector = getTimelineElementSelector(hostEl);
@@ -269,10 +219,10 @@ export function createImplicitTimelineLayersFromDOM(
     });
     if (existingKeys.has(identity.key) || existingKeys.has(identity.id)) continue;
 
-    const compositionContext = resolveDomCompositionContext(child, rootComp);
     layers.push({
       domId: child.id || undefined,
       hfId: child.getAttribute("data-hf-id") || undefined,
+      zIndex: readTimelineElementZIndex(child),
       duration: rootDuration,
       id: identity.id,
       key: identity.key,
@@ -280,12 +230,8 @@ export function createImplicitTimelineLayersFromDOM(
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(child),
       start: 0,
-      zIndex: getTimelineElementZIndex(child),
-      hasExplicitZIndex: getTimelineElementHasExplicitZIndex(child),
-      stackingContextId: compositionContext.stackingContextId,
-      parentCompositionId: compositionContext.parentCompositionId,
-      compositionAncestors: compositionContext.compositionAncestors,
       tag: child.tagName.toLowerCase(),
       timingSource: "implicit",
       track: maxTrack + 1 + layers.length,
@@ -310,24 +256,20 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     if (node === rootComp) return;
     if (isTimelineIgnoredElement(node)) return;
     const el = node as HTMLElement;
-    const startStr = el.getAttribute("data-start");
-    if (startStr == null) return;
-    const start = parseFloat(startStr);
-    if (isNaN(start)) return;
+    const timing = readClipTiming(el);
+    const start = timing.start;
+    if (start == null) return;
     if (Number.isFinite(rootDuration) && rootDuration > 0 && start >= rootDuration) return;
 
     const tagLower = el.tagName.toLowerCase();
-    let dur = 0;
-    const durStr = el.getAttribute("data-duration");
-    if (durStr != null) dur = parseFloat(durStr);
-    if (isNaN(dur) || dur <= 0) dur = Math.max(0, rootDuration - start);
+    let dur = timing.duration ?? 0;
+    if (dur <= 0) dur = Math.max(0, rootDuration - start);
     if (Number.isFinite(rootDuration) && rootDuration > 0) {
       dur = Math.min(dur, Math.max(0, rootDuration - start));
     }
     if (!Number.isFinite(dur) || dur <= 0) return;
 
-    const trackStr = el.getAttribute("data-track-index");
-    const track = trackStr != null ? parseInt(trackStr, 10) : trackCounter++;
+    const track = timing.trackSource === "default" ? trackCounter++ : timing.trackIndex;
     // fallow-ignore-next-line code-duplication
     const compId = el.getAttribute("data-composition-id");
     const selector = getTimelineElementSelector(el);
@@ -347,7 +289,6 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
     });
-    const compositionContext = resolveDomCompositionContext(el, rootComp);
     const entry: TimelineElement = {
       id: identity.id,
       label,
@@ -355,18 +296,15 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       tag: tagLower,
       start,
       duration: dur,
-      track: isNaN(track) ? 0 : track,
-      zIndex: getTimelineElementZIndex(el),
-      hasExplicitZIndex: getTimelineElementHasExplicitZIndex(el),
-      stackingContextId: compositionContext.stackingContextId,
-      parentCompositionId: compositionContext.parentCompositionId,
-      compositionAncestors: compositionContext.compositionAncestors,
+      track,
       domId: el.id || undefined,
       hfId: el.getAttribute("data-hf-id") || undefined,
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(el),
       timingSource: "authored",
+      zIndex: readTimelineElementZIndex(el),
     };
 
     const mediaEl = resolveMediaElement(el);
@@ -437,7 +375,14 @@ export function mergeTimelineElementsPreservingDowngrades(
 
   const nextIdentities = new Set(nextElements.map(getTimelineElementIdentity));
   const preserved = currentElements.filter(
-    (element) => !nextIdentities.has(getTimelineElementIdentity(element)),
+    (element) =>
+      !nextIdentities.has(getTimelineElementIdentity(element)) &&
+      // Only preserve enriched sub-composition children (compositionSrc set),
+      // which a bare DOM re-scan legitimately drops and enrichMissingCompositions
+      // re-adds. A TOP-LEVEL element missing from the fresh scan was genuinely
+      // removed (undo of a split, a delete), so let it go — otherwise undoing a
+      // split leaves a ghost clip in the timeline even though the file is reverted.
+      element.compositionSrc != null,
   );
   if (preserved.length === 0) return nextElements;
   return [...nextElements, ...preserved];
@@ -481,11 +426,6 @@ export function buildStandaloneRootTimelineElement(params: {
     start: 0,
     duration: params.rootDuration,
     track: 0,
-    zIndex: 0,
-    hasExplicitZIndex: false,
-    stackingContextId: params.compositionId,
-    parentCompositionId: null,
-    compositionAncestors: [params.compositionId],
     compositionSrc,
     selector: params.selector,
     selectorIndex: params.selectorIndex,

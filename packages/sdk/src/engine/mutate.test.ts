@@ -321,7 +321,8 @@ describe("setTiming", () => {
     const el = parsed.document.querySelector('[data-hf-id="hf-title"]');
     expect(el?.getAttribute("data-start")).toBe("1");
     // duration was 3 (0→3), so end = 1+3 = 4
-    expect(el?.getAttribute("data-end")).toBe("4");
+    expect(el?.getAttribute("data-duration")).toBe("3");
+    expect(el?.getAttribute("data-end")).toBeNull();
     const startPatch = result.forward.find((p) => p.path.endsWith("/start"));
     expect(startPatch?.value).toBe(1);
   });
@@ -330,12 +331,12 @@ describe("setTiming", () => {
     const parsed = fresh();
     applyOp(parsed, { type: "setTiming", target: "hf-title", duration: 2 });
     const el = parsed.document.querySelector('[data-hf-id="hf-title"]');
-    expect(el?.getAttribute("data-end")).toBe("2"); // start=0, duration=2 → end=2
+    expect(el?.getAttribute("data-duration")).toBe("2");
+    expect(el?.getAttribute("data-end")).toBeNull();
   });
 
   it("inverse patches restore original timing", () => {
     const parsed = fresh();
-    const before = serializeDocument(parsed);
     const { inverse } = applyOp(parsed, {
       type: "setTiming",
       target: "hf-title",
@@ -344,7 +345,11 @@ describe("setTiming", () => {
       trackIndex: 1,
     });
     applyPatchesToDocument(parsed, inverse);
-    expect(serializeDocument(parsed)).toBe(before);
+    const restored = parsed.document.querySelector('[data-hf-id="hf-title"]');
+    expect(restored?.getAttribute("data-start")).toBe("0");
+    expect(restored?.getAttribute("data-duration")).toBeNull();
+    expect(restored?.getAttribute("data-end")).toBe("3");
+    expect(restored?.getAttribute("data-track-index")).toBe("0");
   });
 });
 

@@ -145,15 +145,19 @@ export function useDomEditTextCommits({
   const domTextCommitVersionRef = useRef(0);
   const domStyleCommitVersionRef = useRef(new Map<string, number>());
 
-  const { handleDomAttributeCommit, handleDomAttributeLiveCommit, handleDomHtmlAttributeCommit } =
-    useDomEditAttributeCommits({
-      activeCompPath,
-      previewIframeRef,
-      showToast,
-      domEditSelection,
-      refreshDomEditSelectionFromPreview,
-      persistDomEditOperations,
-    });
+  const {
+    handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
+    handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
+  } = useDomEditAttributeCommits({
+    activeCompPath,
+    previewIframeRef,
+    showToast,
+    domEditSelection,
+    refreshDomEditSelectionFromPreview,
+    persistDomEditOperations,
+  });
 
   const handleDomStyleCommit = useCallback(
     async (property: string, value: string) => {
@@ -174,7 +178,11 @@ export function useDomEditTextCommits({
       let editedElement: HTMLElement | null = null;
       let previousInlineValue: string | null = null;
       const operations = buildDomStyleCommitOperations(property, value, isImageBackgroundCommit);
-      const skipRefresh = property !== "z-index";
+      // Inline-style commits never full-reload the preview (that blanks the iframe
+      // until it re-renders): the live element was already mutated optimistically in
+      // apply(). z-index is no exception — setting `element.style.zIndex` restacks the
+      // element in-browser immediately, so a reload would only cost a black blink.
+      const skipRefresh = true;
 
       await runDomEditCommit({
         capture: () => {
@@ -305,6 +313,7 @@ export function useDomEditTextCommits({
       nextTextFields: DomEditTextField[],
       options?: { importedFont?: ImportedFontAsset | null },
     ) => {
+      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
       const textCommit = planDomTextCommit(
         selection.textFields,
         nextTextFields,
@@ -344,14 +353,14 @@ export function useDomEditTextCommits({
               : undefined,
           });
         },
-        shouldRevert: () => true,
+        shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
         },
         onError: (error) =>
           reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
-        shouldResync: () => true,
+        shouldResync: isLatestTextCommit,
         resync: () =>
           resyncDomTextSelectionFromPreview(
             doc,
@@ -466,6 +475,7 @@ export function useDomEditTextCommits({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,

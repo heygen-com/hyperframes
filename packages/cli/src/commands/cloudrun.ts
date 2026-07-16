@@ -18,11 +18,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { defineCommand } from "citty";
-import {
-  type CanvasResolution,
-  normalizeResolutionFlag,
-  VALID_CANVAS_RESOLUTIONS,
-} from "@hyperframes/core";
+import { type CanvasResolution } from "@hyperframes/core";
+import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import {
@@ -774,13 +771,21 @@ function runDestroy(args: Record<string, unknown>): void {
  * separately (it differs per batch entry). Mirrors the local `hyperframes
  * render` flag surface so the two stay consistent.
  */
-function buildRenderConfig(
+/**
+ * Exported for unit-test coverage of the aspect-agnostic wire shape — the
+ * portrait-1080p sibling-surface regression that shipped in v0.7.60 landed
+ * here because this builder dropped the tier-alias signal on the floor.
+ */
+export function buildRenderConfig(
   args: Record<string, unknown>,
   fps: number,
   width: number,
   height: number,
   variables: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
+  const { outputResolution, outputResolutionAspectAgnostic } = parseOutputResolution(
+    args["output-resolution"],
+  );
   return stripUndefined({
     fps,
     width,
@@ -791,7 +796,11 @@ function buildRenderConfig(
     chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
     maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
     targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
-    outputResolution: parseOutputResolution(args["output-resolution"]),
+    outputResolution,
+    // Set only when true so the wire shape stays sparse for the common
+    // canonical-preset path (matches how the flag flows through
+    // `SerializableDistributedRenderConfig` from every other emitter).
+    outputResolutionAspectAgnostic: outputResolutionAspectAgnostic ? true : undefined,
     variables,
   });
 }
@@ -823,14 +832,18 @@ function resolveAndValidateVariables(
   return variables;
 }
 
-function parseOutputResolution(raw: unknown): CanvasResolution | undefined {
-  if (raw == null || raw === "") return undefined;
-  const normalized = normalizeResolutionFlag(String(raw));
-  if (normalized) return normalized;
-  throw new Error(
-    `[cloudrun render] --output-resolution must be one of ${VALID_CANVAS_RESOLUTIONS.join("|")} ` +
-      `(or an alias: 1080p, 4k, uhd, hd, …); got ${String(raw)}`,
-  );
+/**
+ * Cloud Run flavor of the shared {@link parseOutputResolutionFlag} — carries
+ * the aspect-agnostic signal through so `SerializableDistributedRenderConfig`
+ * can trigger the compile-stage remap. The runtime work lives in the shared
+ * util; wire-config-level coverage lives at `cloudrun.test.ts`, and full
+ * input-space coverage at `../utils/parseOutputResolution.test.ts`.
+ */
+function parseOutputResolution(raw: unknown): {
+  outputResolution: CanvasResolution | undefined;
+  outputResolutionAspectAgnostic: boolean;
+} {
+  return parseOutputResolutionFlag(raw, { surfaceLabel: "[cloudrun render]" });
 }
 
 // ── parse helpers ─────────────────────────────────────────────────────────

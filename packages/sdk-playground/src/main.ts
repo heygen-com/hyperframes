@@ -256,7 +256,7 @@ const TRACK_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#10b981", "#f87171", "#0
 
 function selectorToHfId(selector: string): string | null {
   const m = /\[data-hf-id=['"]([^'"]+)['"]\]/.exec(selector);
-  if (m) return m[1];
+  if (m) return m[1] ?? null;
   if (/^#/.test(selector.trim())) return selector.trim().slice(1);
   return null;
 }
@@ -347,7 +347,7 @@ function buildTrackRow(
   index: number,
   dur: number,
 ): HTMLDivElement {
-  const color = TRACK_COLORS[index % TRACK_COLORS.length];
+  const color = TRACK_COLORS[index % TRACK_COLORS.length] ?? "#3b82f6";
   const row = document.createElement("div");
   row.className = "tl-row";
   const labelEl = document.createElement("div");

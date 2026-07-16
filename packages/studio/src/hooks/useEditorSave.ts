@@ -14,7 +14,7 @@ interface UseEditorSaveOptions {
   editingPathRef: React.RefObject<string | undefined>;
   projectIdRef: React.RefObject<string | null>;
   readProjectFile: (path: string) => Promise<string>;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;

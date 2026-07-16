@@ -10,6 +10,7 @@ import {
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
+import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 export interface BlockPreviewInfo {
   videoUrl?: string;
   posterUrl?: string;
@@ -383,10 +384,16 @@ function BlockCard({
   return (
     <div
       className="group/card rounded-md overflow-hidden cursor-pointer transition-colors bg-neutral-900 hover:bg-neutral-800"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData(TIMELINE_BLOCK_MIME, JSON.stringify({ name }));
+        e.dataTransfer.setData("text/plain", name);
+        handleLeave(); // cancel the hover-preview timer so it doesn't fire mid-drag
+      }}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >
-      {/* Thumbnail */}
       <div className="aspect-video w-full overflow-hidden relative">
         {hovered && videoUrl ? (
           <video

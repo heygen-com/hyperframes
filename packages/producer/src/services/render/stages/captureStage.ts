@@ -133,6 +133,19 @@ export interface CaptureStageResult {
   captureBeyondViewport?: boolean;
 }
 
+/**
+ * An explicit worker count selects the initial concurrency; it must not disable
+ * recovery after a worker times out. The adaptive loop only retries missing
+ * frames, requires forward progress, and halves workers until sequential, so it
+ * remains bounded while preserving already-captured work.
+ */
+export function shouldAllowAdaptiveCaptureRetry(
+  workerCount: number,
+  _explicitlyConfigured: boolean,
+): boolean {
+  return workerCount > 1;
+}
+
 export async function runCaptureStage(input: CaptureStageInput): Promise<CaptureStageResult> {
   const {
     fileServer,
@@ -200,7 +213,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       framesDir,
       totalFrames,
       initialWorkerCount: workerCount,
-      allowRetry: job.config.workers === undefined,
+      allowRetry: shouldAllowAdaptiveCaptureRetry(workerCount, job.config.workers !== undefined),
       frameExt: needsAlpha ? "png" : "jpg",
       captureOptions: buildCaptureOptions(),
       createBeforeCaptureHook: createRenderVideoFrameInjector,

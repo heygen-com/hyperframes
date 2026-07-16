@@ -180,9 +180,9 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
         </>
       ) : (
         <>
-          <span className="text-neutral-500 flex-shrink-0">How's the Studio experience?</span>
+          <span className="text-neutral-500 flex-shrink-0">Recommend HyperFrames?</span>
           <div className="flex items-center gap-0.5">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {Array.from({ length: 11 }, (_, n) => n).map((n) => (
               <button
                 key={n}
                 onClick={() => handleRating(n)}

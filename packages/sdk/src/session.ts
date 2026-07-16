@@ -35,10 +35,10 @@ import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScript, resolveScoped, declarationElement } from "./engine/model.js";
+import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
-import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
+import { readClipTiming, type ClipTiming } from "@hyperframes/core/composition-contract";
 import {
   readDeclaredDefaults,
   validateVariables,
@@ -88,6 +88,13 @@ class CompositionImpl implements Composition {
   /** Accumulated override-set — T3 embedded mode fold contract. */
   private overrides: OverrideSet;
 
+  /**
+   * Declared variable defaults as authored at open — captured BEFORE the
+   * T3 override-set (and any later setVariableValue) folded into the
+   * declarations. Serves getVariableValue({ base: true }).
+   */
+  private readonly baseVariableDefaults: Record<string, unknown>;
+
   /** Lazily-built element snapshot, invalidated on every mutation. */
   private elementsCache: ElementSnapshot[] | null = null;
   /** Lazily-built root snapshot (getRootElements), invalidated alongside elementsCache. */
@@ -114,11 +121,16 @@ class CompositionImpl implements Composition {
   /** Override-set state at outermost batch entry — restored if the batch throws. */
   private batchOverridesSnapshot: OverrideSet = {};
 
-  constructor(parsed: ParsedDocument, opts: OpenCompositionOptions) {
+  constructor(
+    parsed: ParsedDocument,
+    opts: OpenCompositionOptions,
+    baseVariableDefaults: Record<string, unknown> = {},
+  ) {
     this.parsed = parsed;
     this.persist = opts.persist;
     this.preview = opts.preview;
     this.overrides = { ...(opts.overrides ?? {}) };
+    this.baseVariableDefaults = baseVariableDefaults;
     this.previewSelectionUnsubscribe =
       this.preview?.on("selection", (ids) => this.updateSelection(ids)) ?? null;
   }
@@ -169,14 +181,20 @@ class CompositionImpl implements Composition {
   // ── #2098 CRUD conveniences — thin aliases over the canonical surface below.
   // They delegate so the per-file declaration-element scope (template/fragment
   // sub-comps included) is resolved in exactly one place.
-  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined {
-    return this.getVariableValues()[id] as
-      | string
-      | number
-      | boolean
-      | FontValue
-      | ImageValue
-      | undefined;
+  getVariableValue(
+    id: string,
+    opts?: { base?: boolean },
+  ): string | number | boolean | FontValue | ImageValue | undefined {
+    // { base: true } reads the declaration default as authored at open —
+    // BEFORE the override-set / any setVariableValue folded into it. This
+    // is the value an undo-to-base must restore; the live default IS the
+    // override after a fold. Ids unseen at open (declared mid-session) fall
+    // through to the live default — their declaration is their base.
+    const source =
+      opts?.base && id in this.baseVariableDefaults
+        ? this.baseVariableDefaults
+        : this.getVariableValues();
+    return source[id] as string | number | boolean | FontValue | ImageValue | undefined;
   }
 
   listVariables(): CompositionVariable[] {
@@ -314,85 +332,56 @@ class CompositionImpl implements Composition {
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
 
   /**
-   * Cache of parsed GSAP labels keyed by EXACT script text. extractGsapLabels does
-   * a full acorn parse; caching avoids re-parsing on repeated getElementTimings reads
-   * when the script is unchanged. The content (not reference) key means any script
-   * edit changes the text and invalidates the cache, so renumbered tweens never yield
-   * stale label positions.
+   * Cache of parsed GSAP labels keyed by the ordered list of EXACT script texts.
+   * extractGsapLabels does a full acorn parse; caching avoids re-parsing on repeated
+   * getElementTimings reads when the scripts are unchanged.
    */
-  private _gsapLabelCache: { script: string; labels: ReturnType<typeof extractGsapLabels> } | null =
-    null;
+  private _gsapLabelCache: {
+    scripts: string[];
+    labels: ReturnType<typeof extractGsapLabels>;
+  } | null = null;
 
   // fallow-ignore-next-line complexity
   getElementTimings(): Record<HfId, ElementTimingSnapshot> {
-    const script = getGsapScript(this.parsed.document);
+    const scripts = getGsapScripts(this.parsed.document);
 
-    // Extract all addLabel("name", position) calls from the GSAP script (see cache note above).
+    // Extract all addLabel("name", position) calls from every GSAP script.
     let allLabels: ReturnType<typeof extractGsapLabels>;
-    if (script && this._gsapLabelCache?.script === script) {
-      allLabels = this._gsapLabelCache.labels;
+    const cachedScripts = this._gsapLabelCache?.scripts;
+    const cacheMatches =
+      cachedScripts?.length === scripts.length &&
+      cachedScripts.every((script, index) => script === scripts[index]);
+    if (cacheMatches) {
+      allLabels = this._gsapLabelCache?.labels ?? [];
     } else {
-      allLabels = script ? extractGsapLabels(script) : [];
-      this._gsapLabelCache = script ? { script, labels: allLabels } : null;
+      allLabels = scripts.flatMap((script) => extractGsapLabels(script));
+      this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
 
-    // Resolve a `data-start` that's a relative-timing REFERENCE ("intro", "intro + 2" —
-    // parseStartExpression's grammar) into an absolute second, recursively against the
-    // referenced element's own resolved start + duration. A plain numeric data-start keeps
-    // the old parseFloat path unchanged — this only touches the case that used to silently
-    // resolve to 0 (parseFloat("intro + 2") is NaN). Node-safe static counterpart of the
-    // runtime's own resolver (runtime/startResolver.ts): no live GSAP timeline to fall back
-    // on, so an unauthored sub-composition duration still resolves to 0, same as before.
-    //
-    // refId is always a BARE id (the reference grammar has no scope syntax), resolved via
-    // resolveScoped's bare-id rule: prefer the canonical top-level match, else document
-    // order. An element inside a sub-composition referencing a bare id that also exists at
-    // the top level resolves to the TOP-LEVEL one, not a same-scope sibling — this matches
-    // the runtime's own resolver (also a global, not scope-aware, lookup), so the two stay
-    // consistent, but it means a bare-id collision across scopes is a real footgun for
-    // authored content.
-    const startCache = new Map<Element, number>();
+    // refId remains a bare global id, matching runtime resolution. The shared
+    // contract owns parsing, canonical duration preference, clamping, and
+    // legacy data-end compatibility; this adapter only supplies document lookup.
+    const timingCache = new Map<Element, ClipTiming>();
     const visiting = new Set<Element>();
-    // Split out of resolveStart so its own branching stays low — this is the ONE
-    // path that recurses + calls resolveDuration, kept here so that's visible at a
-    // glance rather than buried inside resolveStart's try block.
-    const resolveReferenceStart = (refId: string, offset: number): number => {
-      const target = resolveScoped(this.parsed.document, refId);
-      if (!target) return 0;
-      return Math.max(0, resolveStart(target) + (resolveDuration(target) ?? 0) + offset);
-    };
-    const resolveStart = (el: Element): number => {
-      const cached = startCache.get(el);
-      if (cached !== undefined) return cached;
-      if (visiting.has(el)) return 0; // reference cycle — fail safe, don't loop
+    const resolveTiming = (el: Element): ClipTiming => {
+      const cached = timingCache.get(el);
+      if (cached) return cached;
+      if (visiting.has(el)) return readClipTiming(el);
       visiting.add(el);
-      let resolved: number;
       try {
-        const startStr = el.getAttribute("data-start");
-        const expr = parseStartExpression(startStr);
-        if (expr?.kind === "reference") {
-          resolved = resolveReferenceStart(expr.refId, expr.offset);
-        } else if (expr?.kind === "absolute") {
-          resolved = expr.value;
-        } else {
-          resolved = startStr !== null ? parseFloat(startStr) : 0;
-        }
+        const timing = readClipTiming(el, {
+          resolveReferenceEnd: (refId) => {
+            const target = resolveScoped(this.parsed.document, refId);
+            if (!target) return null;
+            const targetTiming = resolveTiming(target);
+            return targetTiming.end ?? targetTiming.start;
+          },
+        });
+        timingCache.set(el, timing);
+        return timing;
       } finally {
         visiting.delete(el);
       }
-      const finite = Number.isFinite(resolved) ? resolved : 0;
-      startCache.set(el, finite);
-      return finite;
-    };
-    // Same preference as handleSetTiming: prefer data-duration, fall back to end - start.
-    const resolveDuration = (el: Element): number | null => {
-      const durationStr = el.getAttribute("data-duration");
-      const durationAttr = durationStr !== null ? parseFloat(durationStr) : null;
-      if (durationAttr !== null && Number.isFinite(durationAttr)) return durationAttr;
-      const endStr = el.getAttribute("data-end");
-      const endAttr = endStr !== null ? parseFloat(endStr) : null;
-      if (endAttr !== null && Number.isFinite(endAttr)) return endAttr - resolveStart(el);
-      return null;
     };
 
     const result: Record<HfId, ElementTimingSnapshot> = {};
@@ -401,8 +390,9 @@ class CompositionImpl implements Composition {
       const domEl = resolveScoped(this.parsed.document, el.scopedId);
       if (!domEl) continue;
 
-      const enterAt = resolveStart(domEl);
-      const duration = resolveDuration(domEl);
+      const timing = resolveTiming(domEl);
+      const enterAt = timing.start ?? 0;
+      const duration = timing.duration;
       if (duration === null) continue; // no timing info — skip non-timed elements
 
       const exitAt = enterAt + duration;
@@ -555,8 +545,11 @@ class CompositionImpl implements Composition {
   }
 
   getAllAnimationIds(): Set<string> {
-    const script = getGsapScript(this.parsed.document);
-    return script ? parsedAnimationIds(script) : new Set();
+    const ids = new Set<string>();
+    for (const script of getGsapScripts(this.parsed.document)) {
+      for (const id of parsedAnimationIds(script)) ids.add(id);
+    }
+    return ids;
   }
 
   // ── Selection API ────────────────────────────────────────────────────────────
@@ -870,11 +863,19 @@ export async function openComposition(
   // the query API derives element snapshots from it lazily.
   const parsed = parseMutable(html);
 
+  // Pre-override declared defaults — applyOverrideSet below folds `var.<id>`
+  // overrides destructively into the declarations, so this is the last moment
+  // the authored base values are readable. getVariableValue({ base: true })
+  // serves them for the rest of the session (undo-to-base restores).
+  const baseVariableDefaults = readDeclaredDefaults(
+    declarationElement(parsed.document, parsed.wrapped),
+  );
+
   // T3 embedded: replay the stored override-set onto the base in one pass,
   // so the session exposes the user's exact edited state — not the template.
   if (opts?.overrides) applyOverrideSet(parsed, opts.overrides);
 
-  const session = new CompositionImpl(parsed, opts ?? {});
+  const session = new CompositionImpl(parsed, opts ?? {}, baseVariableDefaults);
 
   const isEmbedded = opts?.overrides !== undefined;
 

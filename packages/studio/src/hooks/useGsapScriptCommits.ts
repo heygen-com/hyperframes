@@ -1,10 +1,17 @@
 import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
+import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
+import {
+  getStudioSaveErrorMessage,
+  isStudioSaveErrorAlreadyToasted,
+  markStudioSaveErrorAlreadyToasted,
+} from "../utils/studioSaveDiagnostics";
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
@@ -15,6 +22,8 @@ import {
   readJsonResponseBody,
 } from "./gsapScriptCommitHelpers";
 import type {
+  CommitMutation,
+  CommitMutationCall,
   CommitMutationOptions,
   GsapScriptCommitsParams,
   MutationResult,
@@ -47,6 +56,128 @@ async function mutateGsapScript(
   return result;
 }
 
+async function mutateGsapScriptBatch(
+  projectId: string,
+  sourceFile: string,
+  mutations: Record<string, unknown>[],
+): Promise<MutationResult> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations-batch/${encodeURIComponent(sourceFile)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mutations }),
+    },
+  );
+  if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
+  const result = (await res.json()) as MutationResult;
+  if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
+  return result;
+}
+
+type ShowToast = (message: string, tone?: "error" | "info") => void;
+
+async function runMutationRequest(
+  mutations: Record<string, unknown>[],
+  options: CommitMutationOptions,
+  showToast: ShowToast | undefined,
+  request: () => Promise<MutationResult>,
+): Promise<MutationResult | undefined> {
+  const unsafeFields = mutations.flatMap((mutation) => findUnsafeMutationValues(mutation));
+  if (unsafeFields.length > 0) {
+    showToast?.("Couldn't read element layout — try again at a different playhead time", "error");
+    if (options.skipReload) return;
+    throw markStudioSaveErrorAlreadyToasted(
+      new Error(
+        `Mutation contains unsafe values: ${unsafeFields.map((field) => field.path).join(", ")}`,
+      ),
+    );
+  }
+  try {
+    return await request();
+  } catch (error) {
+    if (error instanceof GsapMutationHttpError) {
+      showToast?.(formatGsapMutationRejectionToast(error), "error");
+      markStudioSaveErrorAlreadyToasted(error);
+    }
+    if (options.skipReload) return;
+    throw error;
+  }
+}
+
+function finishUnchangedMutation(
+  iframe: HTMLIFrameElement | null,
+  result: MutationResult,
+  options: CommitMutationOptions,
+  reloadPreview: () => void,
+): boolean {
+  if (result.changed !== false) return false;
+  if (!options.skipReload && options.instantPatch) {
+    applyPreviewSync(iframe, result, options, reloadPreview);
+  }
+  return true;
+}
+
+function refreshMutationPreview(
+  iframe: HTMLIFrameElement | null,
+  result: MutationResult,
+  options: CommitMutationOptions,
+  reloadPreview: () => void,
+  onCacheInvalidate: () => void,
+): void {
+  options.beforeReload?.();
+  applyPreviewSync(iframe, result, options, reloadPreview);
+  onCacheInvalidate();
+}
+
+function isActiveCommitTarget(
+  projectIdRef: { current: string | null },
+  activeCompPathRef: { current: string | null },
+  projectId: string,
+  compositionPath: string | null,
+): boolean {
+  return projectIdRef.current === projectId && activeCompPathRef.current === compositionPath;
+}
+
+function syncCommittedGsapMutation({
+  iframe,
+  selection,
+  mutation,
+  targetPath,
+  result,
+  options,
+  onFileContentChanged,
+  forceReloadSdkSession,
+  reloadPreview,
+  onCacheInvalidate,
+}: {
+  iframe: HTMLIFrameElement | null;
+  selection: DomEditSelection;
+  mutation: Record<string, unknown>;
+  targetPath: string;
+  result: MutationResult;
+  options: CommitMutationOptions;
+  onFileContentChanged?: (path: string, content: string) => void;
+  forceReloadSdkSession?: () => void;
+  reloadPreview: () => void;
+  onCacheInvalidate: () => void;
+}): void {
+  if (result.after != null) onFileContentChanged?.(targetPath, result.after);
+  // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
+  // later SDK-routed edit doesn't serialize the pre-write doc and revert this.
+  forceReloadSdkSession?.();
+  if (options.skipReload) return;
+  if (result.parsed?.animations) {
+    updateKeyframeCacheFromParsed(
+      result.parsed.animations,
+      targetPath,
+      selection.id ?? undefined,
+      mutation,
+    );
+  }
+  refreshMutationPreview(iframe, result, options, reloadPreview, onCacheInvalidate);
+}
+
 /**
  * Apply a soft reload and enforce the U4 invariant via the richer
  * `SoftReloadResult`, with telemetry on every non-success path so the invariant
@@ -66,12 +197,17 @@ function softReloadOrEscalate(
   scriptText: string,
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
+  authoredHtml?: string,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
   // applySoftReload for why the two can desync after a keyframe-node drag.
   const currentTime = usePlayerStore.getState().currentTime;
-  const result: SoftReloadResult = applySoftReload(iframe, scriptText, reloadPreview, currentTime);
+  const result: SoftReloadResult = applySoftReload(iframe, scriptText, {
+    onAsyncFailure: reloadPreview,
+    currentTimeOverride: currentTime,
+    authoredHtml,
+  });
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
     origin,
@@ -116,7 +252,13 @@ export function applyPreviewSync(
     // already correct on screen, and a remount re-flashes the WebGL context AND
     // re-inlines subcomps (reverting their keyframes). The async MotionPath-plugin
     // load failure escalates separately via `onAsyncFailure`.
-    softReloadOrEscalate(iframe, result.scriptText, reloadPreview, "preview_sync");
+    softReloadOrEscalate(
+      iframe,
+      result.scriptText,
+      reloadPreview,
+      "preview_sync",
+      result.after ?? undefined,
+    );
   } else {
     reloadPreview();
   }
@@ -124,59 +266,135 @@ export function applyPreviewSync(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
+  const activeProjectId = projectIdRef.current;
+  const activeCompPathRef = useRef(activeCompPath);
+  activeCompPathRef.current = activeCompPath;
   // Serializer for per-key commits (options.serializeKey). Keyed by
   // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
   // the same animationId so their POSTs can't interleave. Held in a ref so the
   // chain survives re-renders.
   const serializerRef = useRef(createKeyedSerializer());
-  // fallow-ignore-next-line complexity
-  const runCommit = useCallback(async (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    const unsafeFields = findUnsafeMutationValues(mutation);
-    if (unsafeFields.length > 0) {
-      showToast?.("Couldn't read element layout — try again at a different playhead time", "error");
-      if (options.skipReload) return;
-      throw new Error(`Mutation contains unsafe values: ${unsafeFields.map((field) => field.path).join(", ")}`);
+  const recordMutationEdit = useCallback(async (targetPath: string, result: MutationResult, options: CommitMutationOptions) => {
+    if (result.before == null || result.after == null) return;
+    await editHistory.recordEdit({
+      label: options.label,
+      kind: "manual",
+      coalesceKey: options.coalesceKey,
+      coalesceMs: options.coalesceMs,
+      files: { [targetPath]: { before: result.before, after: result.after } },
+    });
+  }, [editHistory]);
+
+  const finalizeSuccessfulMutation = useCallback(async (projectId: string, compositionPath: string | null, selection: DomEditSelection, mutation: Record<string, unknown>, targetPath: string, result: MutationResult, options: CommitMutationOptions) => {
+    if (projectIdRef.current !== projectId) return;
+    const previewIsActive = isActiveCommitTarget(
+      projectIdRef,
+      activeCompPathRef,
+      projectId,
+      compositionPath,
+    );
+    // A no-op file write may still owe the runtime a deferred instant patch.
+    if (result.changed === false) {
+      if (previewIsActive) {
+        finishUnchangedMutation(previewIframeRef.current, result, options, reloadPreview);
+      }
+      return;
     }
-    const targetPath = selection.sourceFile || activeCompPath || "index.html";
-    let result: MutationResult;
-    try {
-      result = await mutateGsapScript(pid, targetPath, mutation);
-    } catch (error) {
-      if (error instanceof GsapMutationHttpError) showToast?.(formatGsapMutationRejectionToast(error), "error");
-      if (options.skipReload) return;
-      throw error;
-    }
-    if (result.changed === false) return;
-    domEditSaveTimestampRef.current = Date.now();
-    if (result.before != null && result.after != null) {
-      await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
-    }
-    if (result.after != null) onFileContentChanged?.(targetPath, result.after);
-    // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
-    // later SDK-routed edit doesn't serialize the pre-write doc and revert this.
-    forceReloadSdkSession?.();
-    if (options.skipReload) return;
-    if (result.parsed?.animations) updateKeyframeCacheFromParsed(result.parsed.animations, targetPath, selection.id ?? undefined, mutation);
-    options.beforeReload?.();
-    applyPreviewSync(previewIframeRef.current, result, options, reloadPreview);
-    onCacheInvalidate();
-  }, [projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, forceReloadSdkSession]);
+    if (previewIsActive) domEditSaveTimestampRef.current = Date.now();
+    await recordMutationEdit(targetPath, result, options);
+    // The durable mutation belongs to the project captured when it was queued.
+    // A later project must never receive its file state or preview refresh.
+    if (!isActiveCommitTarget(projectIdRef, activeCompPathRef, projectId, compositionPath)) return;
+    syncCommittedGsapMutation({
+      iframe: previewIframeRef.current,
+      selection,
+      mutation,
+      targetPath,
+      result,
+      options,
+      onFileContentChanged,
+      forceReloadSdkSession,
+      reloadPreview,
+      onCacheInvalidate,
+    });
+  }, [projectIdRef, previewIframeRef, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, forceReloadSdkSession, recordMutationEdit]);
+
+  const runCommit = useCallback(async (pid: string, compositionPath: string | null, targetPath: string, selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+    const result = await runMutationRequest([mutation], options, showToast, () =>
+      mutateGsapScript(pid, targetPath, mutation),
+    );
+    if (!result) return;
+    await finalizeSuccessfulMutation(pid, compositionPath, selection, mutation, targetPath, result, options);
+  }, [showToast, finalizeSuccessfulMutation]);
+
+  const runBatchCommit = useCallback(async (pid: string, compositionPath: string | null, targetPath: string, calls: CommitMutationCall[], options: CommitMutationOptions) => {
+    const first = calls[0];
+    const last = calls.at(-1);
+    if (!first || !last) return;
+    const mutations = calls.map(({ mutation }) => mutation);
+    const result = await runMutationRequest(mutations, options, showToast, () =>
+      mutateGsapScriptBatch(pid, targetPath, mutations),
+    );
+    if (!result) return;
+    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, options);
+  }, [showToast, finalizeSuccessfulMutation]);
+
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping
   // commits to the SAME file (any op type, any animation) interleave server-side,
-  // so serialize per target file by default; an explicit serializeKey overrides.
-  const commitMutation = useCallback(
-    (selection: DomEditSelection, mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+  // so every legacy request takes the same project/file lock as SDK writes. An
+  // explicit key adds ordering for related calls but never replaces the file lock.
+  const commitMutation = useMemo<CommitMutation>(() => {
+    const serializeFile = <T,>(file: string, task: () => Promise<T>): Promise<T> => {
+      if (writeProjectFile) {
+        return serializeStudioFileMutation(writeProjectFile, file, task);
+      }
+      return serializerRef.current(`gsap-file:${file}`, task);
+    };
+    const serializeCommit = <T,>(
+      file: string,
+      serializeKey: string | undefined,
+      task: () => Promise<T>,
+    ): Promise<T> => {
+      const fileKey = `gsap-file:${file}`;
+      const run = () => serializeFile(file, task);
+      if (serializeKey && (writeProjectFile || serializeKey !== fileKey)) {
+        return serializerRef.current(serializeKey, run);
+      }
+      return run();
+    };
+    const commit: CommitMutation = (selection, mutation, options) => {
+      if (!activeProjectId) return Promise.resolve();
       const file = selection.sourceFile || activeCompPath || "index.html";
-      const key = options.serializeKey ?? `gsap-file:${file}`;
-      return serializerRef.current(key, () => runCommit(selection, mutation, options));
-    },
-    [runCommit, activeCompPath],
-  );
+      return serializeCommit(file, options.serializeKey, () =>
+        runCommit(activeProjectId, activeCompPath, file, selection, mutation, options),
+      );
+    };
+    commit.batch = (calls, options) => {
+      if (!activeProjectId) return Promise.resolve();
+      const file = calls[0]?.selection.sourceFile || activeCompPath || "index.html";
+      return serializeCommit(file, options.serializeKey, () =>
+        runBatchCommit(activeProjectId, activeCompPath, file, calls, options),
+      );
+    };
+    return commit;
+  }, [runCommit, runBatchCommit, activeCompPath, activeProjectId, writeProjectFile]);
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
-  const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, trackGsapSaveFailure, showToast);
+  const handleGsapSaveFailure = useCallback(
+    (
+      error: unknown,
+      selection: DomEditSelection,
+      mutation: Record<string, unknown>,
+      label?: string,
+    ) => {
+      trackGsapSaveFailure(error, selection, mutation, label);
+      if (!isStudioSaveErrorAlreadyToasted(error)) {
+        showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+      }
+    },
+    [showToast, trackGsapSaveFailure],
+  );
+  const commitMutationSafely = useSafeGsapCommitMutation(commitMutation, handleGsapSaveFailure);
 
   // One stable SDK-deps object shared by all GSAP child hooks. Memoized so the
   // hooks' callbacks keep a stable identity (an inline literal here re-fired the
@@ -196,7 +414,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
         // plugin-CDN load error genuinely breaks the iframe → full reload. Per U4, a
         // synchronous "verify-failed" (transient empty __timelines) does NOT escalate,
         // but a "cannot-soft-reload" (structural failure) does.
-        softReloadOrEscalate(previewIframeRef.current, script, reloadPreview, "sdk_refresh");
+        softReloadOrEscalate(previewIframeRef.current, script, reloadPreview, "sdk_refresh", after);
       } else {
         reloadPreview();
       }
@@ -204,27 +422,15 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     },
     [previewIframeRef, reloadPreview, onCacheInvalidate],
   );
-  // Reuse the SAME per-file serializer the legacy commitMutation path uses, so
-  // SDK gsap-write flushes serialize against legacy commits AND each other —
-  // overlapping same-file read-modify-writes can't interleave and lose an edit.
-  const serializeByFile = useCallback(
-    <T>(key: string, task: () => Promise<T>): Promise<T> => serializerRef.current(key, task),
-    [],
-  );
   // Read the on-disk bytes of targetPath so the SDK GSAP persist captures the
   // exact prior content as its undo `before` (matching the style/delete paths),
   // instead of a normalized full-DOM re-emit that would reformat the whole file.
   const readProjectFileContent = useCallback(
-    async (path: string): Promise<string> => {
-      const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
-      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-      if (!res.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await res.json()) as { content?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-      return data.content;
+    (path: string): Promise<string> => {
+      if (!activeProjectId) throw new Error("No active project");
+      return readSharedProjectFileContent(activeProjectId, path);
     },
-    [projectIdRef],
+    [activeProjectId],
   );
   const sdkDeps = useMemo<CutoverDeps | null>(
     () =>
@@ -236,8 +442,8 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
             domEditSaveTimestampRef,
             refresh: sdkRefresh,
             compositionPath: activeCompPath,
-            serialize: serializeByFile,
             readProjectFile: readProjectFileContent,
+            publishSession: publishSdkSession,
           }
         : null,
     [
@@ -247,8 +453,8 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       domEditSaveTimestampRef,
       sdkRefresh,
       activeCompPath,
-      serializeByFile,
       readProjectFileContent,
+      publishSdkSession,
     ],
   );
 
@@ -256,6 +462,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     sdkSession,
     sdkDeps,
     activeCompPath,
+    onFlushError: handleGsapSaveFailure,
   });
   const animationOps = useGsapAnimationOps({
     projectIdRef,
@@ -270,7 +477,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     activeCompPath,
     commitMutation,
     commitMutationSafely,
-    trackGsapSaveFailure,
+    trackGsapSaveFailure: handleGsapSaveFailure,
     sdkSession,
     sdkDeps,
   });

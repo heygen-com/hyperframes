@@ -686,6 +686,18 @@ export function buildChromeArgs(
 
   // BeginFrame flags — only when using chrome-headless-shell on Linux
   if (options.captureMode !== "screenshot") {
+    // SwiftShader's GPU compositor can retain a transformed layer for several
+    // sequential frames after a GSAP yoyo/reversal. The DOM and timeline are
+    // already at the requested time, but both BeginFrame and
+    // Page.captureScreenshot read the stale surface (the duplicate is present
+    // in the raw JPEG before encoding). Keep deterministic BeginFrame capture,
+    // but route compositing through Chrome's software path when the browser is
+    // already in software-GPU mode. Hardware-GPU and screenshot captures keep
+    // their existing compositor paths. Remove this workaround once the pinned
+    // chrome-headless-shell includes https://issues.chromium.org/issues/535256667.
+    if (browserGpuMode === "software") {
+      chromeArgs.push("--disable-gpu-compositing");
+    }
     chromeArgs.push(
       "--deterministic-mode",
       "--enable-begin-frame-control",

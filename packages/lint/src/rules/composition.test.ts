@@ -3,6 +3,33 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("composition rules", () => {
+  describe("canonical timing contract", () => {
+    it("rejects deprecated attributes even when canonical attributes are also present", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div class="clip" data-start="1" data-duration="2" data-end="9" data-track-index="1" data-layer="4"></div>
+        </div>
+      </body></html>`);
+
+      expect(result.findings.map(({ code }) => code)).toEqual(
+        expect.arrayContaining(["deprecated_data_end", "deprecated_data_layer"]),
+      );
+    });
+
+    it("uses canonical timing when deprecated attributes conflict", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div id="a" class="clip" data-start="0" data-duration="2" data-end="9" data-track-index="1"></div>
+          <div id="b" class="clip" data-start="2" data-duration="2" data-track-index="1"></div>
+        </div>
+      </body></html>`);
+
+      expect(
+        result.findings.find(({ code }) => code === "overlapping_clips_same_track"),
+      ).toBeUndefined();
+    });
+  });
+
   describe("subcomposition guidance", () => {
     it("warns when any HTML composition file is over 300 lines", async () => {
       const html = Array.from({ length: 301 }, (_, i) =>
@@ -173,6 +200,22 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not count transcript caption cues as dense track elements", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1080" data-height="1920" data-start="0">
+    <div class="caption-group clip" data-start="0" data-duration="1" data-track-index="2">一</div>
+    <div class="caption-line clip" data-start="1" data-duration="1" data-track-index="2">二</div>
+    <div class="caption_block clip" data-start="2" data-duration="1" data-track-index="2">三</div>
+    <div class="cg-4 clip" data-start="3" data-duration="1" data-track-index="2">四</div>
+  </div>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
+      expect(finding).toBeUndefined();
+    });
+
     it("does not count root composition or mounted sub-compositions as dense elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
@@ -187,6 +230,89 @@ describe("composition rules", () => {
       const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
       const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
       expect(finding).toBeUndefined();
+    });
+  });
+
+  describe("duplicate_composition_id", () => {
+    it("flags a meta tag and root div sharing the same data-composition-id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="composition-id" data-composition-id="x">
+</head>
+<body>
+  <div data-composition-id="x" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not flag a single valid composition id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag distinct composition ids in one file", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5" data-no-timeline>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="5"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("ignores composition ids inside inert template content", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <template><div data-composition-id="main"></div></template>
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("flags entity-equivalent composition ids", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <meta data-composition-id="&#109;ain">
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+    });
+
+    it("uses the browser's first value for duplicate attributes", async () => {
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+  <meta data-composition-id="main" data-composition-id="other">
+</body></html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
     });
   });
 
@@ -1587,6 +1713,213 @@ describe("composition rules", () => {
       </body></html>`;
       const result = await lintHyperframeHtml(html);
       expect(find(result.findings)).toBeUndefined();
+    });
+  });
+
+  // composition_heavy_overlay_count_high — field signal ts=1784040753.
+  // See rule comments in ../rules/composition.ts for the black-frame repro
+  // story. Threshold: WARN at 25+ elements with filter:blur / clip-path
+  // (non-none) / radial-gradient. Presence-based: opacity:0 and
+  // visibility:hidden are counted-in, display:none is counted-out.
+  describe("composition_heavy_overlay_count_high", () => {
+    const wrap = (bodyInner: string, headInner = ""): string =>
+      `<!DOCTYPE html><html><head>${headInner}</head><body>
+        <div data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+          ${bodyInner}
+        </div>
+      </body></html>`;
+
+    const repeat = (n: number, template: (i: number) => string): string =>
+      Array.from({ length: n }, (_, i) => template(i)).join("\n");
+
+    it("warns when a composition has 40 blur-filtered overlays", async () => {
+      const overlays = repeat(
+        40,
+        (i) => `<div id="ov-${i}" style="filter: blur(6px); opacity: 0.6"></div>`,
+      );
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toMatch(/40 elements/);
+      expect(finding?.message).toMatch(/filter:blur/);
+      expect(finding?.fixHint).toMatch(/ts=1784040753/);
+    });
+
+    it("warns when 30 elements share a clip-path class defined in a <style> block", async () => {
+      const head = `<style>.clipped { clip-path: circle(50%); }</style>`;
+      const overlays = repeat(30, (i) => `<div id="c-${i}" class="clipped"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays, head));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.message).toMatch(/30 elements/);
+    });
+
+    it("warns when 25 mixed heavy overlays are present (blur + clip-path + radial-gradient)", async () => {
+      const head = `<style>.clipped { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }</style>`;
+      const blur = repeat(9, (i) => `<div id="b-${i}" style="filter: blur(4px)"></div>`);
+      const clip = repeat(8, (i) => `<div id="c-${i}" class="clipped"></div>`);
+      const radial = repeat(
+        8,
+        (i) => `<div id="r-${i}" style="background: radial-gradient(circle, red, blue)"></div>`,
+      );
+      const result = await lintHyperframeHtml(wrap(blur + clip + radial, head));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.message).toMatch(/25 elements/);
+    });
+
+    it("does not warn when only 5 blur overlays are present (well below threshold)", async () => {
+      const overlays = repeat(5, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not warn on 40 plain non-overlay divs (no heavy CSS anywhere)", async () => {
+      const overlays = repeat(40, (i) => `<div id="p-${i}">plain ${i}</div>`);
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("counts opacity:0 blur overlays IN (presence alone matters per field signal)", async () => {
+      const overlays = repeat(
+        30,
+        (i) => `<div id="hidden-${i}" style="filter: blur(6px); opacity: 0"></div>`,
+      );
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.message).toMatch(/30 elements/);
+    });
+
+    it("counts visibility:hidden blur overlays IN (presence alone matters)", async () => {
+      const overlays = repeat(
+        30,
+        (i) => `<div id="hidden-${i}" style="filter: blur(6px); visibility: hidden"></div>`,
+      );
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+    });
+
+    it("counts display:none blur overlays OUT (element removed from render tree)", async () => {
+      const overlays = repeat(
+        40,
+        (i) => `<div id="gone-${i}" style="filter: blur(6px); display: none"></div>`,
+      );
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not warn on registry source files (block library authoring surface)", async () => {
+      const overlays = repeat(40, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays), {
+        filePath: "/project/registry/blocks/blur-hero/blur-hero.html",
+      });
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not warn on registry-installed block files (`hyperframes-registry-item` marker)", async () => {
+      const overlays = repeat(40, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const html =
+        "<!-- hyperframes-registry-item: blur-hero -->\n" +
+        `<!DOCTYPE html><html><body>
+          <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+            ${overlays}
+          </div>
+        </body></html>`;
+      const result = await lintHyperframeHtml(html, {
+        filePath: "/project/compositions/blur-hero.html",
+      });
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not warn when 24 heavy overlays are present (just below threshold)", async () => {
+      const overlays = repeat(24, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("ignores `clip-path: none` (does not count as a heavy overlay)", async () => {
+      const overlays = repeat(40, (i) => `<div id="none-${i}" style="clip-path: none"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeUndefined();
+    });
+
+    it("matches heavy selectors by leftmost id (e.g. `#hero { clip-path: ... }`)", async () => {
+      const head = `<style>#hero-${0} { clip-path: circle(30%); }</style>`;
+      // Single id selector wouldn't match 30 elements meaningfully, so use a
+      // class-based repro plus one id-hit to prove the id lookup runs.
+      const clipHead = `<style>.clipped { clip-path: circle(50%); }</style>${head}`;
+      const clipped = repeat(29, (i) => `<div id="c-${i}" class="clipped"></div>`);
+      const idHit = `<div id="hero-0"></div>`;
+      const result = await lintHyperframeHtml(wrap(clipped + idHit, clipHead));
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.message).toMatch(/30 elements/);
+    });
+
+    it("uses sub-composition-flavored fix hint when isSubComposition is set", async () => {
+      const overlays = repeat(30, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const result = await lintHyperframeHtml(wrap(overlays), {
+        isSubComposition: true,
+      });
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.fixHint).toMatch(/sub-composition further/);
+    });
+
+    it("does not double-count the composition root itself (only overlay children)", async () => {
+      // 25 blur overlays live inside a root that itself has `filter: blur(...)`.
+      // If we counted the root too, the count would be 26 (still fires); the
+      // message must report 25 to prove the root skip is working.
+      const overlays = repeat(25, (i) => `<div id="ov-${i}" style="filter: blur(6px)"></div>`);
+      const html = `<!DOCTYPE html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080" style="filter: blur(8px)">
+          ${overlays}
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "composition_heavy_overlay_count_high",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.message).toMatch(/25 elements/);
     });
   });
 });

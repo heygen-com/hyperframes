@@ -3,6 +3,7 @@ import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { computePinnedZoomPercent } from "../components/timelineZoom";
 
 /** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
 export interface KeyframeCacheEntry {
@@ -28,11 +29,22 @@ export interface TimelineElement {
   start: number;
   duration: number;
   track: number;
+  /**
+   * The data-track-index as written in the source file. Set at the manifest
+   * translation boundary (createTimelineElementFromManifestClip) from the
+   * runtime clip's verbatim track, and preserved through display-lane remaps
+   * (normalizeToZones packs sparse authored tracks onto contiguous display
+   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
+   * must persist THIS space — writing a display-lane number into a sparse file
+   * re-targets the wrong track. For an expanded child the value is in its OWN
+   * source file's coordinate space, not the host timeline's.
+   */
+  authoredTrack?: number;
   /** Resolved z-index for stacking-aware timeline ordering. */
   zIndex?: number;
   /** True when the effective z-index was authored inline or through CSS, not auto. */
   hasExplicitZIndex?: boolean;
-  /** Stacking context this element belongs to; root clips use the root composition id. */
+  /** Canonical CSS stacking context this element's z-index participates in. */
   stackingContextId?: string | null;
   /** Nearest parent composition context, matching RuntimeTimelineClip. */
   parentCompositionId?: string | null;
@@ -75,6 +87,10 @@ export interface TimelineElement {
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
 
+export interface SelectElementOptions {
+  preserveSet?: boolean;
+}
+
 function resolveElementSelection(
   ids: Iterable<string>,
   anchor?: string | null,
@@ -108,6 +124,13 @@ interface PlayerState {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  /**
+   * Bumped on every live z-index edit (handleDomZIndexReorderCommit apply AND
+   * rollback). Flashless z commits (skipReload) never reload the iframe or
+   * bump refreshKey, so DOM-derived views (the Layers panel's z-sorted tree)
+   * subscribe to this to re-read the live DOM while playback is paused.
+   */
+  zEditVersion: number;
   /** Work-area in-point (seconds). When set, loop starts here and A jumps here. */
   inPoint: number | null;
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
@@ -142,6 +165,28 @@ interface PlayerState {
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
+  clearSelectedElementIds: () => void;
+  /** Replace the whole multi-selection at once (marquee live updates). */
+  setSelectedElementIds: (ids: Set<string>) => void;
+  /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
+  timelineSnapEnabled: boolean;
+  setTimelineSnapEnabled: (enabled: boolean) => void;
+  /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
+  timeDisplayMode: "time" | "frame";
+  setTimeDisplayMode: (mode: "time" | "frame") => void;
+  /**
+   * Pin the timeline zoom to its current visual scale before a duration-changing
+   * edit, so a subsequent duration change (which recomputes fit-pps) stops
+   * rescaling every clip. No-op once already pinned (mode is "manual").
+   */
+  pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
+  /**
+   * The timeline's live pixels-per-second + fit basis, published by <Timeline> on
+   * every render. Non-reactive scratch state (never read as a render input).
+   */
+  timelinePps: number;
+  timelineFitPps: number;
+  setTimelineScale: (pps: number, fitPps: number) => void;
   setSelection: (ids: Iterable<string>, anchor?: string | null) => void;
   addSelectedElementId: (id: string) => void;
   toggleSelectedElementId: (id: string) => void;
@@ -160,7 +205,7 @@ interface PlayerState {
   setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
-  setSelectedElementId: (id: string | null) => void;
+  setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
   updateElement: (
@@ -174,6 +219,7 @@ interface PlayerState {
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
+  bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
   setOutPoint: (time: number | null) => void;
   reset: () => void;
@@ -185,6 +231,16 @@ interface PlayerState {
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
+
+  /**
+   * Request the timeline to scroll a clip into view (e.g. clicking an
+   * already-added asset card in the sidebar). Consumed and cleared by
+   * useTimelineRevealClip. The nonce makes repeat requests for the same
+   * clip observable so a second click re-reveals after the user scrolls away.
+   */
+  clipRevealRequest: { elementId: string; nonce: number } | null;
+  requestClipReveal: (elementId: string) => void;
+  clearClipRevealRequest: () => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
@@ -226,6 +282,7 @@ export interface DomClipChild {
   /** The manifest sub-comp host clip id this descendant ultimately lives under. */
   hostId: string;
   label: string;
+  stackingContextId: string;
 }
 
 interface BeatHistoryEntry {
@@ -260,6 +317,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  zEditVersion: 0,
+  timelinePps: 100,
+  timelineFitPps: 100,
   inPoint: null,
   outPoint: null,
 
@@ -314,6 +374,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+
+  clipRevealRequest: null,
+  requestClipReveal: (elementId) =>
+    set((s) => ({
+      clipRevealRequest: { elementId, nonce: (s.clipRevealRequest?.nonce ?? 0) + 1 },
+    })),
+  clearClipRevealRequest: () => set({ clipRevealRequest: null }),
 
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
@@ -383,6 +450,37 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
+  clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
+  setSelectedElementIds: (ids: Set<string>) => set({ selectedElementIds: new Set(ids) }),
+  timelineSnapEnabled: readStudioUiPreferences().timelineSnapEnabled ?? true,
+  setTimelineSnapEnabled: (enabled) => {
+    writeStudioUiPreferences({ timelineSnapEnabled: enabled });
+    set({ timelineSnapEnabled: enabled });
+  },
+  timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
+  setTimeDisplayMode: (mode) => {
+    writeStudioUiPreferences({ timeDisplayMode: mode });
+    set({ timeDisplayMode: mode });
+  },
+  pinTimelineZoom: (currentPixelsPerSecond, fitPixelsPerSecond) =>
+    set((s) => {
+      // Already pinned (or the user manually zoomed) — never clobber that.
+      if (s.zoomMode === "manual") return {};
+      const percent = computePinnedZoomPercent(currentPixelsPerSecond, fitPixelsPerSecond);
+      writeStudioUiPreferences({
+        timelineZoomMode: "manual",
+        timelineManualZoomPercent: percent,
+      });
+      return { zoomMode: "manual", manualZoomPercent: percent };
+    }),
+  setTimelineScale: (pps, fitPps) => {
+    // Non-reactive publish: mutate in place + reuse the same object identity so no
+    // subscriber re-renders (these fields are never a render input, only read
+    // imperatively before pinning).
+    const state = get();
+    state.timelinePps = pps;
+    state.timelineFitPps = fitPps;
+  },
   setInPoint: (time) =>
     set((state) => {
       const t = time !== null && Number.isFinite(time) ? time : null;
@@ -406,6 +504,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
   setManualZoomPercent: (percent) =>
     set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
+  bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
@@ -414,9 +513,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // A genuine single selection: always collapse the set to just this element. User
   // intent (timeline click, preview click via applyDomSelection) flows here; DOM sync
   // echoes that must preserve a group go through setSelectionAnchor instead.
-  setSelectedElementId: (id) =>
+  setSelectedElementId: (id, options) =>
     set((s) => {
-      const selectedElementIds = id ? new Set([id]) : new Set<string>();
+      const preserveSet = Boolean(options?.preserveSet && id && s.selectedElementIds.has(id));
+      const selectedElementIds = preserveSet
+        ? new Set(s.selectedElementIds)
+        : options?.preserveSet
+          ? new Set<string>()
+          : id
+            ? new Set([id])
+            : new Set<string>();
       // Selecting a different element drops any active keyframe selection — otherwise
       // a stale activeKeyframePct from a prior diamond click would force the next drag
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
@@ -463,6 +569,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       activeTool: "select",
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
+      clipRevealRequest: null,
       keyframeCache: new Map(),
       beatAnalysis: null,
       beatEdits: null,

@@ -11,7 +11,6 @@ import { useCallback, useEffect, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
-import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import { useGsapAnimationsForElement, usePopulateKeyframeCacheForFile } from "./useGsapTweenCache";
 import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
@@ -56,24 +55,24 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     animId: string,
     updates: { duration?: number; ease?: string; position?: number },
-  ) => void;
-  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => void;
-  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => void;
+  ) => Promise<void>;
+  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => Promise<void>;
+  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => Promise<void>;
   addGsapAnimation: (
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
   ) => Promise<void>;
-  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   updateGsapFromProperty: (
     sel: DomEditSelection,
     animId: string,
     prop: string,
     value: number | string,
-  ) => void;
-  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  ) => Promise<void>;
+  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   addKeyframe: (
     sel: DomEditSelection,
     animId: string,
@@ -106,7 +105,7 @@ export interface UseDomEditWiringParams {
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
-  removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
+  removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
 }
 
@@ -171,14 +170,13 @@ export function useDomEditWiring({
 
   useEffect(() => {
     if (!domEditSelection?.id) return;
-    const { selectedElementId, elements, setSelectionAnchor } = usePlayerStore.getState();
-    // Resolve through the canonical resolver (source-file + ancestor + active-comp
-    // fallback) rather than a narrow domId/id match, so a sub-composition selection
-    // maps to the same clip the rest of the selection pipeline picks. Use the
-    // anchor-only setter: this is a DOM->store echo and must not collapse a group.
-    const key = resolveTimelineIdForSelection(domEditSelection, elements, activeCompPath);
-    if (key && key !== selectedElementId) setSelectionAnchor(key);
-  }, [domEditSelection, activeCompPath]);
+    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
+    const matchKey = elements.find(
+      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
+    );
+    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
+    if (key && key !== selectedElementId) setSelectedElementId(key);
+  }, [domEditSelection?.id]);
 
   // ── GSAP cache sync ──
 
@@ -247,6 +245,7 @@ export function useDomEditWiring({
     removeAllKeyframes,
     handleDomManualEditsReset,
     selectedGsapAnimations,
+    showToast,
   });
 
   // ── Preview sync side-effects ──

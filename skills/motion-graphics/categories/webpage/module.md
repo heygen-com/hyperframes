@@ -1,6 +1,6 @@
 # webpage — category module (search-driven)
 
-**Animate a webpage / link** (the "website animation" use case). Search-driven: the user gives or names a URL → fetch/capture it → animate it (scroll-through, UI reveal, cursor demo, region callouts). Distinct from captioning an existing _video file_ (that's `/embedded-captions`) and from a narrated video _of_ a site (that's `/website-to-video`); here the source is a _web page_ and the output is a short, unnarrated highlight shot.
+**Animate a webpage / link** (the "website animation" use case). Search-driven: the user gives or names a URL → fetch/capture it → animate it (scroll-through, UI reveal, cursor demo, region callouts). Distinct from captioning an existing _video file_ (that's `/embedded-captions`) and from a narrated video _of_ a site (that's a `/product-launch-video` site-tour ask); here the source is a _web page_ and the output is a short, unnarrated highlight shot.
 
 ## Source (Step 2)
 

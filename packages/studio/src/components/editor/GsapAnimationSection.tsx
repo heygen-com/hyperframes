@@ -4,7 +4,11 @@ import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import { AnimationCard } from "./AnimationCard";
-import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import {
+  trackAnimationMetaUpdate,
+  type GsapAnimationEditCallbacks,
+} from "./gsapAnimationCallbacks";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
   animations: GsapAnimation[];
@@ -34,7 +38,24 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onSetAllKeyframeEases,
   onUnroll,
 }: GsapAnimationSectionProps) {
+  const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const trackProperty = (property: string) => {
+    const control =
+      property === "visibility"
+        ? "toggle"
+        : property === "filter" || property === "clipPath"
+          ? "text"
+          : "metric";
+    track(control, property);
+  };
+  const updateMeta = (
+    animationId: string,
+    updates: { duration?: number; ease?: string; position?: number },
+  ) => {
+    trackAnimationMetaUpdate(track, updates);
+    onUpdateMeta(animationId, updates);
+  };
 
   return (
     <Section title="Animation" icon={<Film size={15} />}>
@@ -58,21 +79,94 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               key={anim.id}
               animation={anim}
               defaultExpanded={index === 0}
-              onUpdateProperty={onUpdateProperty}
-              onUpdateMeta={onUpdateMeta}
-              onDeleteAnimation={onDeleteAnimation}
-              onAddProperty={onAddProperty}
-              onRemoveProperty={onRemoveProperty}
-              onUpdateFromProperty={onUpdateFromProperty}
-              onAddFromProperty={onAddFromProperty}
-              onRemoveFromProperty={onRemoveFromProperty}
+              onUpdateProperty={(animationId, property, value) => {
+                trackProperty(property);
+                onUpdateProperty(animationId, property, value);
+              }}
+              onUpdateMeta={updateMeta}
+              onDeleteAnimation={(animationId) => {
+                track("button", "Remove animation");
+                onDeleteAnimation(animationId);
+              }}
+              onAddProperty={(animationId, property) => {
+                track("select", "Add effect property");
+                onAddProperty(animationId, property);
+              }}
+              onRemoveProperty={(animationId, property) => {
+                track("button", `Remove ${property}`);
+                onRemoveProperty(animationId, property);
+              }}
+              onUpdateFromProperty={
+                onUpdateFromProperty
+                  ? (animationId, property, value) => {
+                      trackProperty(property);
+                      onUpdateFromProperty(animationId, property, value);
+                    }
+                  : undefined
+              }
+              onAddFromProperty={
+                onAddFromProperty
+                  ? (animationId, property) => {
+                      track("select", "Add from property");
+                      onAddFromProperty(animationId, property);
+                    }
+                  : undefined
+              }
+              onRemoveFromProperty={
+                onRemoveFromProperty
+                  ? (animationId, property) => {
+                      track("button", `Remove from ${property}`);
+                      onRemoveFromProperty(animationId, property);
+                    }
+                  : undefined
+              }
               onLivePreview={onLivePreview}
               onLivePreviewEnd={onLivePreviewEnd}
-              onSetArcPath={onSetArcPath}
-              onUpdateArcSegment={onUpdateArcSegment}
-              onUpdateKeyframeEase={onUpdateKeyframeEase}
-              onSetAllKeyframeEases={onSetAllKeyframeEases}
-              onUnroll={onUnroll}
+              onSetArcPath={
+                onSetArcPath
+                  ? (animationId, config) => {
+                      track(
+                        "toggle",
+                        config.autoRotate !== undefined ? "Auto rotate" : "Arc motion",
+                      );
+                      onSetArcPath(animationId, config);
+                    }
+                  : undefined
+              }
+              onUpdateArcSegment={
+                onUpdateArcSegment
+                  ? (animationId, segmentIndex, update) => {
+                      if (update.curviness === undefined) {
+                        track("button", `Reset arc segment ${segmentIndex + 1}`);
+                      }
+                      onUpdateArcSegment(animationId, segmentIndex, update);
+                    }
+                  : undefined
+              }
+              onUpdateKeyframeEase={
+                onUpdateKeyframeEase
+                  ? (animationId, percentage, ease) => {
+                      track("select", "Keyframe ease");
+                      onUpdateKeyframeEase(animationId, percentage, ease);
+                    }
+                  : undefined
+              }
+              onSetAllKeyframeEases={
+                onSetAllKeyframeEases
+                  ? (animationId, ease) => {
+                      track("select", "All keyframe eases");
+                      onSetAllKeyframeEases(animationId, ease);
+                    }
+                  : undefined
+              }
+              onUnroll={
+                onUnroll
+                  ? (animationId) => {
+                      track("button", "Unroll animation");
+                      onUnroll(animationId);
+                    }
+                  : undefined
+              }
             />
           ))}
 
@@ -85,6 +179,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                     type="button"
                     title={METHOD_TOOLTIPS[method]}
                     onClick={() => {
+                      track("button", `Add ${method} animation`);
                       onAddAnimation(method);
                       setAddMenuOpen(false);
                     }}

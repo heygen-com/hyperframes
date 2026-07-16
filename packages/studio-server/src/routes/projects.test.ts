@@ -58,6 +58,50 @@ function createAdapter(projectDir: string): StudioApiAdapter {
   };
 }
 
+describe("GET /projects/:id/signature", () => {
+  it("returns the adapter's cached signature when provided", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerProjectRoutes(app, {
+      ...createAdapter(projectDir),
+      getProjectSignature: () => "cached-sig",
+    });
+
+    const response = await app.request("http://localhost/projects/demo/signature");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ signature: "cached-sig" });
+  });
+
+  it("computes a signature that moves when project files change", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+
+    const first = (await (
+      await app.request("http://localhost/projects/demo/signature")
+    ).json()) as {
+      signature: string;
+    };
+    expect(first.signature).toMatch(/^[0-9a-f]{24}$/);
+
+    writeFileSync(join(projectDir, "compositions", "scene.html"), "<html><body>new</body></html>");
+    const second = (await (
+      await app.request("http://localhost/projects/demo/signature")
+    ).json()) as { signature: string };
+    expect(second.signature).not.toBe(first.signature);
+  });
+
+  it("404s for an unknown project", async () => {
+    const app = new Hono();
+    registerProjectRoutes(app, {
+      ...createAdapter(createProjectDir()),
+      resolveProject: async () => null,
+    });
+    const response = await app.request("http://localhost/projects/nope/signature");
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("registerProjectRoutes — composition discovery (#1384)", () => {
   it("excludes HTML inside dot-directories from compositions", async () => {
     const projectDir = createProjectDir();

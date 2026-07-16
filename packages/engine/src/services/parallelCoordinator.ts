@@ -147,8 +147,49 @@ function compactDiagnosticLine(line: string): string {
   return line.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Expected frame count for a worker task, honoring its stride. Contiguous
+ * tasks (stride 1) expect `endFrame - startFrame`; interleaved tasks
+ * (stride > 1) expect `ceil((endFrame - startFrame) / stride)`, matching
+ * the loop shape in `captureFrameRange`.
+ */
+export function expectedFramesForTask(task: {
+  startFrame: number;
+  endFrame: number;
+  frameStride?: number;
+}): number {
+  const stride = task.frameStride ?? 1;
+  return Math.max(0, Math.ceil((task.endFrame - task.startFrame) / stride));
+}
+
+/**
+ * Synthetic terminal-error message for a worker whose exit didn't produce
+ * an explicit error string but under-captured its expected frame range.
+ * Field signal ts=1784042064: a 1292s Windows render hard-exited during
+ * capture with no final error string, leaving the operator with no
+ * actionable trace. This message surfaces the shortfall + reruns hint
+ * so downstream telemetry (and operators grepping logs) can classify the
+ * failure instead of it disappearing silently.
+ */
+export function synthesizeSilentWorkerExitError(
+  result: Pick<WorkerResult, "workerId" | "framesCaptured" | "startFrame" | "endFrame">,
+  expectedFrames: number,
+): string {
+  return (
+    `worker ${result.workerId} exited without terminal error string ` +
+    `(framesCaptured=${result.framesCaptured}, expected=${expectedFrames}, ` +
+    `range=[${result.startFrame}, ${result.endFrame})). ` +
+    `Field signal ts=1784042064 — this class of failure has been reported; ` +
+    `consider re-run with --workers=1 to isolate.`
+  );
+}
+
 export function formatWorkerFailure(result: WorkerResult): string {
-  const base = `Worker ${result.workerId}: ${result.error ?? "unknown error"}`;
+  const errorText =
+    result.error && result.error.length > 0
+      ? result.error
+      : synthesizeSilentWorkerExitError(result, expectedFramesForTask(result));
+  const base = `Worker ${result.workerId}: ${errorText}`;
   if (!result.diagnostics || result.diagnostics.length === 0) return base;
 
   const diagnostics = result.diagnostics.map(compactDiagnosticLine).join(" | ");
@@ -160,6 +201,10 @@ export function calculateOptimalWorkers(
   requested?: number,
   config?: WorkerSizingConfig,
 ): number {
+  if (requested !== undefined) {
+    return Math.max(MIN_WORKERS, Math.min(ABSOLUTE_MAX_WORKERS, requested));
+  }
+
   // Resolve effective values: config overrides → DEFAULT_CONFIG fallback.
   const effectiveMaxWorkers = (() => {
     const concurrency = config?.concurrency ?? DEFAULT_CONFIG.concurrency;
@@ -173,10 +218,6 @@ export function calculateOptimalWorkers(
   const effectiveLargeRenderThreshold =
     config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
   const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);
-
-  if (requested !== undefined) {
-    return Math.max(MIN_WORKERS, Math.min(effectiveMaxWorkers, requested));
-  }
 
   if (totalFrames < MIN_FRAMES_PER_WORKER * 2) return 1;
 
@@ -459,6 +500,24 @@ async function executeWorkerTask(
   }
 }
 
+/**
+ * drawElement self-verify sample count for multi-worker capture. Each worker
+ * arms the same shared sample grid but drains only ~1/N of it, and N
+ * concurrent hardware-GPU browsers are exactly where compositor-tile damage
+ * shows up (wild 0.7.52 black-slab report) — so density rises with worker
+ * count: 4 base + 2 per extra worker, clamped to the verify path's max of 8.
+ * A caller-set value passes through untouched, and explicit HF_DE_VERIFY
+ * still overrides inside the session.
+ */
+export function resolveParallelDeVerifySamples(
+  callerValue: number | undefined,
+  workerCount: number,
+): number | undefined {
+  if (callerValue !== undefined) return callerValue;
+  if (workerCount <= 1) return undefined;
+  return Math.min(8, 4 + 2 * (workerCount - 1));
+}
+
 export async function executeParallelCapture(
   serverUrl: string,
   workDir: string,
@@ -499,12 +558,20 @@ export async function executeParallelCapture(
   };
 
   const parallel = tasks.length > 1;
+  const deVerifySamples = resolveParallelDeVerifySamples(
+    captureOptions.deVerifySamples,
+    tasks.length,
+  );
+  const workerCaptureOptions: CaptureOptions =
+    deVerifySamples === captureOptions.deVerifySamples
+      ? captureOptions
+      : { ...captureOptions, deVerifySamples };
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
         task,
         serverUrl,
-        captureOptions,
+        workerCaptureOptions,
         createBeforeCaptureHook,
         signal,
         onFrameCaptured,
@@ -514,6 +581,17 @@ export async function executeParallelCapture(
       ),
     ),
   );
+
+  // A worker may return without an error string yet with framesCaptured
+  // below the task's expected count — that's the silent-exit shape field
+  // signal ts=1784042064 called out. Synthesize a terminal error string
+  // in-place so the filter below treats it as a failure (and so the
+  // caller's failure message actually names what went wrong).
+  for (const r of results) {
+    if (!r.error && r.framesCaptured < expectedFramesForTask(r)) {
+      r.error = synthesizeSilentWorkerExitError(r, expectedFramesForTask(r));
+    }
+  }
 
   const errors = results.filter((r) => r.error);
   if (errors.length > 0) {

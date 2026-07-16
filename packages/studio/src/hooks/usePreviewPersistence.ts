@@ -10,6 +10,14 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
+import { usePlayerStore } from "../player";
+
+/** The restore payload the undo/redo preview-sync consumes (from the history store). */
+interface HistoryPreviewRestore {
+  paths?: string[];
+  files?: Record<string, UndoRestoreFile>;
+}
 
 // ── Types ──
 
@@ -105,13 +113,12 @@ export function usePreviewPersistence({
   writeProjectFile: _writeProjectFile,
   recordEdit: _recordEdit,
   previewIframeRef,
-  activeCompPathRef: _activeCompPathRef,
+  activeCompPathRef,
   domEditSaveTimestampRef,
   reloadPreview,
   pendingTimelineEditPathRef,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
-  void _activeCompPathRef;
 
   const [domEditSaveQueuePaused, setDomEditSaveQueuePaused] = useState<string | null>(null);
 
@@ -126,7 +133,10 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message = "Auto-save is paused. Check your connection.";
+        const message =
+          event.statusCode === 409
+            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+            : "Auto-save is paused. Check your connection.";
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
         trackStudioEvent("save_queue_paused", {
@@ -149,7 +159,7 @@ export function usePreviewPersistence({
 
   // ── Queue / drain helpers ──
 
-  const queueDomEditSave = useCallback((save: () => Promise<void>) => {
+  const queueDomEditSave = useCallback(<T>(save: () => Promise<T>): Promise<T> => {
     return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 
@@ -190,12 +200,23 @@ export function usePreviewPersistence({
   // ── Sync preview after undo/redo ──
 
   const syncHistoryPreviewAfterApply = useCallback(
-    async (_paths: string[] | undefined) => {
-      // Motion data is now stored in HTML attributes — any undo/redo that touches HTML
-      // files triggers a full reload which picks up the changes automatically.
-      reloadPreview();
+    async (restore: HistoryPreviewRestore) => {
+      // Prefer an in-place soft reload for a soft-reloadable restore (the change
+      // is confined to the active comp's element attributes / inline-style and/or
+      // its GSAP script) — a full iframe remount blanks the frame black and
+      // re-flashes the WebGL context. applyUndoRestoreToPreview syncs the reverted
+      // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
+      // falling back to reloadPreview for anything structural (split/delete undo),
+      // multi-file, sub-comp, or a permanent soft-reload failure.
+      applyUndoRestoreToPreview(
+        previewIframeRef.current,
+        activeCompPathRef.current,
+        restore.files,
+        usePlayerStore.getState().currentTime,
+        reloadPreview,
+      );
     },
-    [reloadPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview],
   );
 
   // ── Migrate legacy studio-motion.json ──

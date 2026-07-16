@@ -59,6 +59,19 @@ export function pushWorkerDedupPerfs(
  * render-level drawElement outcome. mode/gateReason |-join distinct values
  * across workers (bounded cardinality); counters SUM.
  */
+/**
+ * Round a dB value to 1 decimal and clamp at 999 (an `Infinity` PSNR — a
+ * bit-exact frame match — must not ship literally to telemetry). Single
+ * source of truth for every dB field crossing into `RenderPerfSummary` or
+ * `RenderCaptureObservability` — both must agree byte-for-byte so PostHog
+ * consumers joining `render_complete` against the crash-survival
+ * `render_error` mirror never see the same underlying score reported at two
+ * different precisions (review finding).
+ */
+export function roundDb(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : Math.round(Math.min(value, 999) * 10) / 10;
+}
+
 /** Orchestrator-supplied render-level drawElement outcome (one shape, used by
  * both the aggregate function and buildRenderPerfSummary's input). */
 export interface DrawElementPerfInput {
@@ -72,6 +85,12 @@ export interface DrawElementPerfInput {
   preRouterWorkers?: number;
   selfVerifyFallback: boolean;
   fallbackReason?: string;
+  /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for blank/oom/capture_error. */
+  fallbackFailedDb?: number;
+  /** Frame index the verification failure was detected at; set for both "psnr" and "blank". */
+  fallbackFrameIndex?: number;
+  /** The HF_DE_VERIFY_MIN_DB threshold the failing dB breached; only set alongside fallbackFailedDb. */
+  fallbackThresholdDb?: number;
   drainStats?: {
     verifyChecked: number;
     verifyMinDb?: number;
@@ -105,13 +124,13 @@ function aggregateDrawElement(
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
     verifyChecked: drain?.verifyChecked ?? 0,
-    verifyMinDb:
-      drain?.verifyMinDb === undefined
-        ? undefined
-        : Math.round(Math.min(drain.verifyMinDb, 999) * 10) / 10,
+    verifyMinDb: roundDb(drain?.verifyMinDb),
     verifyInitMs: perfs.reduce((sum, p) => sum + (p.deVerifyInitMs ?? 0), 0),
     selfVerifyFallback: de.selfVerifyFallback,
     fallbackReason: de.fallbackReason,
+    fallbackFailedDb: roundDb(de.fallbackFailedDb),
+    fallbackFrameIndex: de.fallbackFrameIndex,
+    fallbackThresholdDb: roundDb(de.fallbackThresholdDb),
     blankSuspects: drain?.blankSuspects ?? 0,
     blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
     blankRecaptures: drain?.blankRecaptures ?? 0,
@@ -139,6 +158,24 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
     skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
   };
+}
+
+/**
+ * Collapse per-session/per-worker BeginFrame damage counters into one
+ * render-level reuse outcome (SUM across workers — each worker ticks its own
+ * frame range). Both zero ⟺ no beginframe session ran (screenshot/drawElement
+ * sessions never increment these) → undefined, mirroring staticDedup's
+ * "undefined when it never engaged" contract. Also inherits `dedupPerfs`'
+ * retry semantics: a partial-capture retry resets the sink, so the sums cover
+ * only the final attempt's recaptured ranges (may be < totalFrames).
+ */
+function aggregateBeginFrameReuse(
+  perfs: CapturePerfSummary[],
+): RenderPerfSummary["beginFrameReuse"] {
+  const noDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameNoDamage ?? 0), 0);
+  const hasDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameHasDamage ?? 0), 0);
+  if (noDamageFrames + hasDamageFrames === 0) return undefined;
+  return { noDamageFrames, hasDamageFrames };
 }
 
 export function buildRenderPerfSummary(input: {
@@ -224,6 +261,7 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },

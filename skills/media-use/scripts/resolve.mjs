@@ -16,6 +16,7 @@ import { buildStats } from "./lib/stats.mjs";
 import { typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
+import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
@@ -29,9 +30,14 @@ import {
   HEYGEN_INSTALL_COMMAND,
   HEYGEN_MIN_VERSION,
   HEYGEN_UPDATE_COMMAND,
+  consumeHeygenRemediation,
   firstSemver,
+  flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
+import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
+
+const INGEST_TYPES = [...listTypes(), "video"];
 
 // resolve shells `fetch`/`freezeUrl` and modern ESM; 18 is the floor where those
 // exist without flags. Named so the --doctor node check verifies something real
@@ -169,6 +175,32 @@ if (args.from) {
   process.exit(0);
 }
 
+// Recipes: folder-based named bundles resolved by entity name — no providers,
+// no content hashing (an evolving versioned bundle, not an immutable file).
+// Delegates to lib/recipe-store.mjs the way grade/lut delegate to resolveColor;
+// freeze/list live in scripts/recipe.mjs.
+if (type === "recipe") {
+  const { useRecipe } = await import("./lib/recipe-store.mjs");
+  const name = (entity || intent || "").trim();
+  if (!name) exitError("--type recipe needs --entity <name> (or --intent <name>)", 2);
+  try {
+    const used = useRecipe({ projectDir, name });
+    if (args.json) {
+      console.log(JSON.stringify({ ok: true, ...used }));
+    } else {
+      console.log(
+        `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+      );
+      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
+      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
+      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+    }
+    process.exit(0);
+  } catch (err) {
+    exitError(err.message, 1);
+  }
+}
+
 if (args.params !== undefined) {
   if (type !== "lut" && type !== "grade") {
     exitError(
@@ -210,6 +242,15 @@ function recordAvailable(projectDir, record) {
   if (!record) return false;
   if (record.path) return existsSync(join(projectDir, record.path));
   return record.type === "grade" && record.grading;
+}
+
+// Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),
+// else `{}` — keeps auth_method telemetry absent for every non-heygen resolve
+// instead of implying an auth method that doesn't apply.
+function heygenAuthMethodFor(provider) {
+  if (!provider || !provider.startsWith("heygen.")) return {};
+  const authMethod = heygenAuthMethod();
+  return authMethod ? { authMethod } : {};
 }
 
 function localizeImportedRecord(record, localPath) {
@@ -325,9 +366,11 @@ async function run() {
 
   // 3. provider search — registry tries providers in order (heygen-CLI first)
   let searchResult = null;
+  let providerFailure = null;
   try {
     searchResult = await runCapability(type, "search", intent, ctx);
-  } catch {
+  } catch (error) {
+    providerFailure = error;
     // search failed, try generate
   }
 
@@ -335,10 +378,19 @@ async function run() {
   if (!searchResult) {
     try {
       searchResult = await runCapability(type, "generate", intent, ctx);
-    } catch {
+    } catch (error) {
+      providerFailure ??= error;
       // generate failed too
     }
   }
+
+  // A search/generate attempt against heygen may have fired a fire-and-forget
+  // media_use_provider_error track (reportHeygenFailure — heygen-search.mjs /
+  // voice-provider.mjs are sync call sites several layers below here and can't
+  // await it themselves). Join it now, before any process.exit() below can
+  // race it: both it and the miss/success telemetry below are separate,
+  // non-keepalive HTTP connections with no ordering guarantee otherwise.
+  await flushHeygenFailureTracking();
 
   if (!searchResult) {
     await track("media_use_resolve_miss", {
@@ -355,13 +407,23 @@ async function run() {
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
     const msg =
-      type === "brand"
-        ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
-        : args.provider
-          ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
-          : `no provider could resolve ${type}: "${intent}"`;
+      providerFailure instanceof BundledSfxAssetsError
+        ? providerFailure.message
+        : type === "brand"
+          ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
+          : args.provider
+            ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
+            : `no provider could resolve ${type}: "${intent}"`;
     if (args.json) {
-      console.log(JSON.stringify({ ok: false, error: msg }));
+      console.log(
+        JSON.stringify({
+          ok: false,
+          ...(providerFailure instanceof BundledSfxAssetsError
+            ? { code: providerFailure.code, fix: providerFailure.fix }
+            : {}),
+          error: msg,
+        }),
+      );
     } else {
       console.error(`error: ${msg}`);
     }
@@ -401,9 +463,24 @@ async function run() {
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
       prompt: intent,
+      // heygenAuthMethodFor spreads first so an explicit authMethod on a
+      // future provider's own metadata.provenance can still override it below
+      // -- safe today (no provider sets authMethod itself), but keep this
+      // ordering if that ever changes.
+      ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
     },
   };
+
+  const heygenRemediation = consumeHeygenRemediation();
+  if (
+    searchResult.metadata?.provider === "bundled.sfx" &&
+    !localOnly &&
+    !args.provider &&
+    heygenRemediation
+  ) {
+    record.advisory = heygenRemediation;
+  }
 
   appendRecord(projectDir, record);
   regenerateIndex(projectDir);
@@ -696,8 +773,8 @@ async function resolveColor(type, intent, options) {
 }
 
 async function ingest(src) {
-  if (!type || !listTypes().includes(type)) {
-    console.error(`error: --from requires --type (one of: ${listTypes().join(", ")})`);
+  if (!type || !INGEST_TYPES.includes(type)) {
+    console.error(`error: --from requires --type (one of: ${INGEST_TYPES.join(", ")})`);
     process.exit(2);
   }
   const isUrl = /^https?:\/\//i.test(src);
@@ -815,6 +892,13 @@ function heygenAuthCheck() {
 
 function runDoctor() {
   const checks = [];
+  const bundledSfx = inspectBundledSfxAssets();
+  checks.push({
+    name: "bundled SFX assets",
+    ok: bundledSfx.ok,
+    detail: bundledSfx.detail,
+    fix: bundledSfx.fix,
+  });
   const heygenVersionProbe = runCommand("heygen", ["--version"]);
   const heygenOnPath = heygenVersionProbe.status === 0;
   const heygenVersionText = commandText(heygenVersionProbe);
@@ -915,7 +999,7 @@ function runDoctor() {
   // missing and then break at the first probe call.
   const ffmpeg = checks.find((check) => check.name === "ffmpeg on PATH");
   const ffprobe = checks.find((check) => check.name === "ffprobe on PATH");
-  return { ok: !!ffmpeg?.ok && !!ffprobe?.ok, checks };
+  return { ok: bundledSfx.ok && !!ffmpeg?.ok && !!ffprobe?.ok, checks };
 }
 
 function printDoctor(checks) {
@@ -1056,6 +1140,13 @@ async function result(record, source) {
     // parametric), or "params" (offline). Surfaces silent CDN→params downgrades
     // in prod, which --doctor can't (it only answers "reachable now?").
     via: record.provenance?.via,
+    // Free (OAuth) vs. paid (API-key) heygen path — sparse: absent for every
+    // non-heygen provider (see heygenAuthMethodFor at construction time). On a
+    // cache/reuse hit this reports how the asset was ORIGINALLY fetched, not
+    // this resolve's own credential state — intentional: it's a conversion
+    // signal about the fetch that actually consumed a heygen credit, not
+    // about the (free, no-credential) act of copying a cached file.
+    auth_method: record.provenance?.authMethod,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
   });
@@ -1104,6 +1195,7 @@ const DEFAULT_EXT = {
   icon: ".svg",
   logo: ".svg",
   brand: ".png",
+  video: ".mp4",
   grade: ".cube",
   lut: ".cube",
 };

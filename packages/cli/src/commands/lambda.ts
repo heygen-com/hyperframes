@@ -10,11 +10,8 @@
 
 import { defineCommand } from "citty";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
-import {
-  type CanvasResolution,
-  VALID_CANVAS_RESOLUTIONS,
-  normalizeResolutionFlag,
-} from "@hyperframes/core";
+import { type CanvasResolution } from "@hyperframes/core";
+import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
@@ -307,6 +304,7 @@ export default defineCommand({
           process.exit(1);
         }
         const { runRender } = await import("./lambda/render.js");
+        const renderResolution = parseOutputResolution(args["output-resolution"]);
         await runRender({
           projectDir,
           stackName,
@@ -314,7 +312,8 @@ export default defineCommand({
           fps: fpsRaw,
           width,
           height,
-          outputResolution: parseOutputResolution(args["output-resolution"]),
+          outputResolution: renderResolution.outputResolution,
+          outputResolutionAspectAgnostic: renderResolution.outputResolutionAspectAgnostic,
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
@@ -362,6 +361,7 @@ export default defineCommand({
           process.exit(1);
         }
         const { runRenderBatch } = await import("./lambda/render-batch.js");
+        const batchResolution = parseOutputResolution(args["output-resolution"]);
         await runRenderBatch({
           projectDir,
           stackName,
@@ -370,7 +370,8 @@ export default defineCommand({
           fps: fpsRaw,
           width,
           height,
-          outputResolution: parseOutputResolution(args["output-resolution"]),
+          outputResolution: batchResolution.outputResolution,
+          outputResolutionAspectAgnostic: batchResolution.outputResolutionAspectAgnostic,
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
@@ -481,12 +482,23 @@ const parseQuality = (raw: unknown): (typeof QUALITIES)[number] | undefined =>
 const parseChromeSource = (raw: unknown): (typeof CHROME_SOURCES)[number] =>
   parseEnum(raw, CHROME_SOURCES, "[lambda deploy] --chrome-source", "sparticuz")!;
 
-function parseOutputResolution(raw: unknown): CanvasResolution | undefined {
-  if (raw == null || raw === "") return undefined;
-  const normalized = normalizeResolutionFlag(String(raw));
-  if (normalized) return normalized;
-  throw new Error(
-    `[lambda render] --output-resolution must be one of ${VALID_CANVAS_RESOLUTIONS.join("|")} ` +
-      `(or an alias: 1080p, 4k, uhd, hd, 1080p-portrait, portrait-1080p, 4k-portrait, 1080p-square, square-1080p, 4k-square); got ${String(raw)}`,
-  );
+/**
+ * Lambda flavor of the shared {@link parseOutputResolutionFlag} — same wire
+ * contract as the Cloud Run counterpart. Runtime work lives in the shared
+ * util; wire-config-level coverage lives at `./lambda/render.test.ts` /
+ * `./lambda/render-batch.test.ts`, and full input-space coverage at
+ * `../utils/parseOutputResolution.test.ts`.
+ */
+function parseOutputResolution(raw: unknown): {
+  outputResolution: CanvasResolution | undefined;
+  outputResolutionAspectAgnostic: boolean;
+} {
+  return parseOutputResolutionFlag(raw, {
+    surfaceLabel: "[lambda render]",
+    // The Lambda `--output-resolution` help text advertises the full alias
+    // list (tier-only + orientation-suffixed) — keep the error message
+    // faithful to that surface's docs.
+    aliasHint:
+      "1080p, 4k, uhd, hd, 1080p-portrait, portrait-1080p, 4k-portrait, 1080p-square, square-1080p, 4k-square",
+  });
 }

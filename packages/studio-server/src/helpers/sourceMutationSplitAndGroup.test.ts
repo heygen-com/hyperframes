@@ -12,8 +12,11 @@ describe("splitElementInHtml — hfId clone isolation", () => {
     const { html, matched } = splitElementInHtml(source, { id: "clip1" }, 5, "clip2");
 
     expect(matched).toBe(true);
+    const { document } = parseHTML(html);
     const occurrences = (html.match(/data-hf-id="hf-abc123"/g) ?? []).length;
     expect(occurrences).toBe(1);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).toMatch(/^hf-/);
+    expect(document.getElementById("clip2")?.getAttribute("data-hf-id")).not.toBe("hf-abc123");
   });
 });
 
@@ -26,6 +29,21 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain('data-duration="2"');
     expect(result.html).toContain('id="box-split"');
     expect(result.html).toContain('data-start="3"');
+    expect(result.html).toContain('data-duration="4"');
+  });
+
+  it("canonicalizes legacy timing attributes on both split halves", () => {
+    const legacy = source.replace(
+      'data-start="1" data-duration="6"',
+      'data-start="1" data-end="7" data-layer="3"',
+    );
+    const result = splitElementInHtml(legacy, { id: "box" }, 3, "box-split");
+
+    expect(result.matched).toBe(true);
+    expect(result.html).not.toContain("data-end=");
+    expect(result.html).not.toContain("data-layer=");
+    expect(result.html.match(/data-track-index="3"/g)).toHaveLength(2);
+    expect(result.html).toContain('data-duration="2"');
     expect(result.html).toContain('data-duration="4"');
   });
 

@@ -12,11 +12,13 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
     pause: () => {
       state.paused = true;
     },
-    seek: (time: number) => {
-      state.time = time;
+    seek: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
-    totalTime: (time: number) => {
-      state.time = time;
+    totalTime: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
     time: () => state.time,
     duration: () => state.duration,
@@ -323,6 +325,33 @@ describe("initSandboxRuntimeModular", () => {
     expect(child.style.visibility).toBe("hidden");
   });
 
+  it("uses a half-open interval around a timed element's end boundary", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "2.5");
+    root.appendChild(clip);
+
+    window.__timelines = { main: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(2.5 - 1e-9);
+    expect(clip.style.visibility).toBe("visible");
+
+    window.__player?.renderSeek(2.5);
+    expect(clip.style.visibility).toBe("hidden");
+
+    window.__player?.renderSeek(2.5 + 1e-9);
+    expect(clip.style.visibility).toBe("hidden");
+  });
+
   it("keeps external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -363,6 +392,43 @@ describe("initSandboxRuntimeModular", () => {
     player?.renderSeek(2);
 
     expect(child.style.visibility).toBe("visible");
+  });
+
+  it("removes external composition head links during runtime teardown", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "sub");
+    child.setAttribute("data-composition-src", "https://example.com/compositions/sub.html");
+    child.setAttribute("data-start", "0");
+    child.setAttribute("data-duration", "3");
+    root.appendChild(child);
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `<html><head><link rel="stylesheet" href="./sub.css"></head><body><template id="sub-template"><div data-composition-id="sub">Sub</div></template></body></html>`,
+        { status: 200 },
+      ),
+    );
+    window.__timelines = { main: createMockTimeline(3), sub: createMockTimeline(3) };
+
+    initSandboxRuntimeModular();
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    const injectedLink = document.head.querySelector<HTMLLinkElement>(
+      'link[href="https://example.com/compositions/sub.css"]',
+    );
+    expect(injectedLink).not.toBeNull();
+
+    window.__hfRuntimeTeardown?.();
+
+    expect(injectedLink?.isConnected).toBe(false);
   });
 
   it("keeps compiled external composition hosts visible through their authored duration", async () => {
@@ -1282,6 +1348,49 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 
+  it.each([24, 30, 60, 30_000 / 1_001])(
+    "preserves public playback state across keepPlaying seeks at %s fps",
+    (fps) => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+      document.body.innerHTML = `
+        <div
+          data-composition-id="main"
+          data-root="true"
+          data-start="0"
+          data-duration="10"
+          data-width="1920"
+          data-height="1080"
+        ></div>
+      `;
+      window.__timelines = { main: createMockTimeline(10) };
+      window.__HF_EXPORT_RENDER_SEEK_CONFIG = {
+        fps,
+        fpsSource: "render-options",
+      };
+
+      initSandboxRuntimeModular();
+
+      const player = window.__player;
+      player?.play();
+      raf.step(500);
+      player?.seek(2.07, { keepPlaying: true });
+
+      const quantized = Math.floor(2.07 * fps + 1e-9) / fps;
+      expect(player?.isPlaying()).toBe(true);
+      expect(player?.getTime()).toBeCloseTo(quantized, 6);
+
+      raf.step(500);
+      expect(player?.isPlaying()).toBe(true);
+      expect(player?.getTime()).toBeCloseTo(quantized + 0.5, 5);
+    },
+  );
+
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1324,6 +1433,36 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__playerReady).toBe(true);
     expect(window.__renderReady).toBe(false);
     expect(window.__player?.getDuration()).toBe(0);
+
+    timelineDuration = 10;
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(10);
+  });
+
+  it("resumes readiness when GSAP batching starts after runtime initialization", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    let timelineDuration = 0;
+    const timeline = createMockTimeline(0);
+    timeline.duration = () => timelineDuration;
+    window.__timelines = { main: timeline };
+    window.__hfTimelinesBuilding = false;
+
+    initSandboxRuntimeModular();
+    expect(window.__renderReady).toBe(true);
+
+    window.__hfTimelinesBuilding = true;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(window.__renderReady).toBe(false);
 
     timelineDuration = 10;
     window.__hfTimelinesBuilding = false;
@@ -1562,6 +1701,36 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
 
+  it("restores timed element visibility after a forced timeline rebind", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-root="true" data-duration="30" data-width="1920" data-height="1080">
+        <div class="clip" id="clip-expired" data-start="0" data-duration="15.234"></div>
+        <div class="clip" id="clip-future" data-start="20.83" data-duration="3"></div>
+        <div class="clip" id="clip-control" data-start="10" data-duration="10"></div>
+      </div>
+    `;
+    const clipExpired = document.querySelector<HTMLElement>("#clip-expired");
+    const clipFuture = document.querySelector<HTMLElement>("#clip-future");
+    const clipControl = document.querySelector<HTMLElement>("#clip-control");
+    window.__timelines = { root: createMockTimeline(30) };
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(16.2);
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+
+    if (clipExpired) clipExpired.style.visibility = "visible";
+    if (clipFuture) clipFuture.style.visibility = "visible";
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+  });
+
   it("onSetMuted preserves authored muted attribute on video elements", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");
@@ -1756,6 +1925,26 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
   });
 
+  it("keeps a usable bound timeline when the registry entry is replaced", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-start="0" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    const originalTimeline = createMockTimeline(5);
+    window.__timelines = { root: originalTimeline };
+    initSandboxRuntimeModular();
+
+    const replacementTimeline = createMockTimeline(8);
+    window.__timelines.root = replacementTimeline;
+    for (let frame = 0; frame < 60; frame += 1) raf.step(16);
+
+    expect(window.__player?.getDuration()).toBe(5);
+  });
+
   // applyClipLayout force-absolutizes authored root-level timed clips so they
   // stack as overlays. But in Studio/preview the runtime also stamps `data-start`
   // onto ID'd / GSAP-targeted *flow* children (a <header>/<footer> in a column)
@@ -1844,6 +2033,37 @@ describe("initSandboxRuntimeModular", () => {
       expect(footer.style.position).toBe("");
       expect(footer.style.top).toBe("");
       expect(footer.style.left).toBe("");
+    });
+  });
+  describe("partial registry timelines", () => {
+    it("survives play/pause/seek when the sole registered timeline lacks pause()", () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-duration", "10");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+
+      // An authored composition can register a PARTIAL timeline — duration/seek
+      // only. It renders fine (the render path never pauses), so the interactive
+      // transport must tolerate the missing pause() instead of throwing
+      // "tl.pause is not a function" (top recurring studio unhandled error).
+      const partial = createMockTimeline(10) as RuntimeTimelineLike & { pause?: unknown };
+      delete partial.pause;
+      window.__timelines = { main: partial as RuntimeTimelineLike };
+
+      initSandboxRuntimeModular();
+      const player = window.__player;
+      expect(player).toBeDefined();
+
+      expect(() => {
+        player?.play();
+        player?.pause();
+        player?.seek(1);
+        player?.renderSeek(2);
+      }).not.toThrow();
     });
   });
 });

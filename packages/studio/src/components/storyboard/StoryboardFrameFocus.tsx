@@ -19,6 +19,8 @@ export interface StoryboardFrameFocusProps {
   onSaved: () => void;
   /** Select a composition in the timeline (sets active comp + editing file + sidebar highlight). */
   onSelectComposition: (path: string) => void;
+  /** Project signature the board was loaded with (busts the poster cache). */
+  posterVersion?: string;
 }
 
 /**
@@ -39,6 +41,7 @@ export function StoryboardFrameFocus({
   onNavigate,
   onSaved,
   onSelectComposition,
+  posterVersion,
 }: StoryboardFrameFocusProps) {
   const { readProjectFile, writeProjectFile } = useFileManagerContext();
   const { setViewMode } = useViewMode();
@@ -151,6 +154,7 @@ export function StoryboardFrameFocus({
                 seconds={posterTime(frame)}
                 title={title}
                 fit="contain"
+                posterVersion={posterVersion}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-sm text-neutral-600">

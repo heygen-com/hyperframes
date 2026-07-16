@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { resolveCompositionPreviewScale, resolveThumbnailSeekTime } from "./CompositionsTab";
+import { describe, expect, it, vi } from "vitest";
+import {
+  resolveCompositionPreviewScale,
+  resolveThumbnailSeekTime,
+  syncIframePlayback,
+} from "./CompositionsTab";
 
 describe("resolveCompositionPreviewScale", () => {
   it("scales a 16:9 stage to fit the composition card", () => {
@@ -48,5 +52,27 @@ describe("resolveThumbnailSeekTime", () => {
   it("falls back to the default 3s frame when duration is unknown", () => {
     expect(resolveThumbnailSeekTime(null)).toBe(3);
     expect(resolveThumbnailSeekTime(Number.NaN)).toBe(3);
+  });
+});
+
+describe("syncIframePlayback", () => {
+  it("mutes a composition-card preview before playing it", () => {
+    const calls: string[] = [];
+    const postMessage = vi.fn(() => calls.push("mute"));
+    const player = {
+      play: vi.fn(() => calls.push("play")),
+    };
+    const iframe = {
+      contentWindow: { __player: player, postMessage },
+      getRootNode: () => ({}),
+    } as unknown as HTMLIFrameElement;
+
+    expect(syncIframePlayback(iframe, true)).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "set-muted", muted: true }),
+      "*",
+    );
+    expect(calls).toEqual(["mute", "play"]);
+    expect(player.play).toHaveBeenCalledOnce();
   });
 });

@@ -144,6 +144,18 @@ describe("resolveEditingAffordances — sections", () => {
     expect(s).toMatchObject({ media: true, colorGrading: false });
   });
 
+  it("audio: no layout or style — an audio element has no rendered box", () => {
+    const s = resolveEditingAffordances(baseFacts({ tag: "audio" })).sections;
+    expect(s).toMatchObject({ layout: false, style: false });
+  });
+
+  it("div/img/video: layout + style apply", () => {
+    for (const tag of ["div", "img", "video"]) {
+      const s = resolveEditingAffordances(baseFacts({ tag })).sections;
+      expect(s).toMatchObject({ layout: true, style: true });
+    }
+  });
+
   it("img: media + colorGrading", () => {
     const s = resolveEditingAffordances(baseFacts({ tag: "img" })).sections;
     expect(s).toMatchObject({ media: true, colorGrading: true });

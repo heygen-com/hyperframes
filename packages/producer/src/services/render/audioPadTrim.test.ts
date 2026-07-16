@@ -44,12 +44,28 @@ describe("buildPadTrimAudioArgs", () => {
     const concatArgs = plan.steps[1]!.args;
     expect(plan.steps[1]!.kind).toBe("pad-concat");
     expect(concatArgs).toContain("concat");
-    expect(concatArgs[concatArgs.indexOf("-i") + 1]).toBe("pipe:0");
+    // The concat script is passed via a real file (NOT `pipe:0`). Feeding
+    // it through stdin makes FFmpeg's URL joiner prepend `pipe:` to bare
+    // absolute paths in the script — the demuxer then tries to open e.g.
+    // `pipe:/tmp/foo.aac` and fails with "Impossible to open pipe:/…".
+    // Materializing to a file matches `assemble.ts`'s concat convention.
+    expect(plan.steps[1]!.concatListPath).toBe("/tmp/out.aac.concat-list.txt");
+    expect(concatArgs[concatArgs.indexOf("-i") + 1]).toBe("/tmp/out.aac.concat-list.txt");
     expect(concatArgs[concatArgs.indexOf("-c:a") + 1]).toBe("copy");
     expect(concatArgs[concatArgs.length - 1]).toBe("/tmp/out.aac");
-    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/in.aac'");
-    expect(plan.steps[1]!.stdin).toContain("file 'file:///tmp/out.aac.pad-silence.aac'");
-    expect(plan.cleanupPaths).toEqual(["/tmp/out.aac.pad-silence.aac"]);
+    // Concat script MUST use bare paths, NOT `file://` URLs. FFmpeg 8.x
+    // on Windows can't open `file:///C:/…` URLs from the concat demuxer
+    // (field-signal ts=1784169914 / 1784177061 / 1784177375). Regression
+    // pin: the `file://` scheme prefix must never appear in the concat
+    // list content.
+    expect(plan.steps[1]!.concatListContent).toContain("file '/tmp/in.aac'");
+    expect(plan.steps[1]!.concatListContent).toContain("file '/tmp/out.aac.pad-silence.aac'");
+    expect(plan.steps[1]!.concatListContent).not.toContain("file://");
+    // Cleanup includes BOTH the silence tail and the concat list script.
+    expect(plan.cleanupPaths).toEqual([
+      "/tmp/out.aac.pad-silence.aac",
+      "/tmp/out.aac.concat-list.txt",
+    ]);
 
     const reencodedSourceStep = plan.steps.find(
       (step) =>
@@ -105,6 +121,50 @@ describe("buildPadTrimAudioArgs", () => {
     expect(padNeeded.operation).toBe("pad");
     const trimNeeded = buildPadTrimAudioArgs("/tmp/a.aac", "/tmp/o.aac", 5.002, 5.0);
     expect(trimNeeded.operation).toBe("trim");
+  });
+
+  it("does not emit `file://` URLs in the pad-concat script (FFmpeg 8.x Windows compat)", () => {
+    // Regression pin for field-signal reports ts=1784169914 / 1784177061 /
+    // ts=1784177375 (win32/x64, CLI 0.7.59, ffmpeg 8.1.1-full_build). The
+    // concat demuxer's file open on Windows in FFmpeg 8.x rejects
+    // `file:///C:/…` URLs with "Impossible to open …". The concat script
+    // MUST use bare paths. Match sibling `assemble.ts` /
+    // `chunkEncoder.ts` conventions.
+    const winPlan = buildPadTrimAudioPlan(
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.aac",
+      "C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio-padded.aac",
+      4.0,
+      5.0,
+    );
+    expect(winPlan.operation).toBe("pad");
+    const concatStep = winPlan.steps.find((s) => s.kind === "pad-concat");
+    expect(concatStep).toBeDefined();
+    expect(concatStep!.concatListContent).toBeDefined();
+    expect(concatStep!.concatListContent).not.toContain("file://");
+    expect(concatStep!.concatListContent).not.toContain("file:\\\\");
+    // Bare Windows paths appear as-is in the concat directives.
+    expect(concatStep!.concatListContent).toContain(
+      "file 'C:\\Users\\alice\\AppData\\Local\\Temp\\hf-render-abc\\audio.aac'",
+    );
+  });
+
+  it("materializes the pad-concat script to a real file (not `pipe:0`)", () => {
+    // Regression pin for the Linux CI failure that surfaced when the
+    // fix originally dropped `file://` while still feeding the concat
+    // script via `pipe:0`. FFmpeg's URL joiner resolves bare absolute
+    // paths against the base `pipe:` URL, producing `pipe:/tmp/foo.aac`
+    // which the demuxer then tries to open as a pipe. Materializing to
+    // a real file makes the demuxer treat absolute paths as absolute.
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
+    const concatStep = plan.steps.find((s) => s.kind === "pad-concat");
+    expect(concatStep).toBeDefined();
+    // The concat script must NOT be piped in via stdin.
+    expect(concatStep!.args).not.toContain("pipe:0");
+    // The `-i` arg points at the materialized concat list file.
+    const iIdx = concatStep!.args.indexOf("-i");
+    expect(concatStep!.args[iIdx + 1]).toBe(concatStep!.concatListPath);
+    // The concat list file is cleaned up alongside the silence tail.
+    expect(plan.cleanupPaths).toContain(concatStep!.concatListPath!);
   });
 });
 

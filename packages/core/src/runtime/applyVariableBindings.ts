@@ -60,7 +60,8 @@ function isSafeMediaUrl(url: string): boolean {
   const normalized = url.replace(/[\u0000-\u0020]/g, "");
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(normalized);
   if (!scheme) return true;
-  const proto = scheme[1].toLowerCase();
+  const proto = scheme[1]?.toLowerCase();
+  if (!proto) return false;
   if (proto === "https" || proto === "http" || proto === "blob") return true;
   if (proto === "data") return /^data:image\//i.test(normalized);
   return false;

@@ -3,6 +3,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { buildAuthHeaders } from "../auth/client.js";
+import { tryResolveCredential } from "../auth/index.js";
+import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -24,6 +27,8 @@ export interface PublishedProjectResponse {
   fileCount: number;
   url: string;
   claimToken: string;
+  /** True when the project is owned by the authenticated publisher (created-and-owned or updated in place). */
+  claimed: boolean;
 }
 
 interface StagedUploadResponse {
@@ -56,9 +61,14 @@ function parsePublishedProjectResponse(payload: unknown): PublishedProjectRespon
   const projectId = stringField(data, "project_id");
   const title = stringField(data, "title");
   const url = stringField(data, "url");
-  const claimToken = stringField(data, "claim_token");
+  const claimToken = stringField(data, "claim_token") ?? "";
+  const claimed = data["claimed"] === true;
   const fileCount = data["file_count"];
-  if (!projectId || !title || !url || !claimToken || typeof fileCount !== "number") {
+  if (!projectId || !title || !url || typeof fileCount !== "number") {
+    return null;
+  }
+  // Anonymous publishes must return a claim token; owned (claimed) ones need none.
+  if (!claimed && !claimToken) {
     return null;
   }
   return {
@@ -67,6 +77,7 @@ function parsePublishedProjectResponse(payload: unknown): PublishedProjectRespon
     fileCount,
     url,
     claimToken,
+    claimed,
   };
 }
 
@@ -384,15 +395,19 @@ async function publishProjectArchiveDirect(
   title: string,
   archive: PublishArchiveResult,
   isPublic: boolean,
+  authHeaders: Record<string, string>,
+  projectId: string | undefined,
 ): Promise<PublishedProjectResponse> {
   const body = new FormData();
   body.set("title", title);
   if (isPublic) body.set("is_public", "true");
+  if (projectId) body.set("project_id", projectId);
   body.set(
     "file",
     new File([archiveArrayBuffer(archive)], `${title}.zip`, { type: PUBLISH_CONTENT_TYPE }),
   );
   const headers: Record<string, string> = {
+    ...authHeaders,
     heygen_route: "canary",
   };
 
@@ -412,11 +427,31 @@ async function publishProjectArchiveDirect(
   return publishedProject;
 }
 
+async function uploadArchiveToPresignedUrl(
+  stagedUpload: StagedUploadResponse,
+  archive: PublishArchiveResult,
+): Promise<void> {
+  const presignedUrlTtlMs = stagedUpload.expiresInSeconds * 1000 - PUBLISH_METADATA_TIMEOUT_MS;
+  const s3Response = await fetch(stagedUpload.uploadUrl, {
+    method: "PUT",
+    body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
+    headers: stagedUpload.uploadHeaders,
+    signal: AbortSignal.timeout(
+      Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
+    ),
+  });
+  if (!s3Response.ok) {
+    throw new Error(await readErrorMessage(s3Response, "Failed to upload project archive"));
+  }
+}
+
 async function publishProjectArchiveStaged(
   apiBaseUrl: string,
   title: string,
   archive: PublishArchiveResult,
   isPublic: boolean,
+  authHeaders: Record<string, string>,
+  projectId: string | undefined,
 ): Promise<PublishedProjectResponse | null> {
   const fileName = `${title}.zip`;
   const uploadResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/upload`, {
@@ -427,6 +462,7 @@ async function publishProjectArchiveStaged(
       content_length: archive.buffer.byteLength,
     }),
     headers: {
+      ...authHeaders,
       "content-type": "application/json",
       heygen_route: "canary",
     },
@@ -443,18 +479,7 @@ async function publishProjectArchiveStaged(
     throw new Error(await readErrorMessage(uploadResponse, "Failed to prepare project upload"));
   }
 
-  const presignedUrlTtlMs = stagedUpload.expiresInSeconds * 1000 - PUBLISH_METADATA_TIMEOUT_MS;
-  const s3Response = await fetch(stagedUpload.uploadUrl, {
-    method: "PUT",
-    body: new Blob([archiveArrayBuffer(archive)], { type: stagedUpload.contentType }),
-    headers: stagedUpload.uploadHeaders,
-    signal: AbortSignal.timeout(
-      Math.min(uploadTimeoutMs(archive.buffer.byteLength), presignedUrlTtlMs),
-    ),
-  });
-  if (!s3Response.ok) {
-    throw new Error(await readErrorMessage(s3Response, "Failed to upload project archive"));
-  }
+  await uploadArchiveToPresignedUrl(stagedUpload, archive);
 
   const completeResponse = await fetch(`${apiBaseUrl}/v1/hyperframes/projects/publish/complete`, {
     method: "POST",
@@ -463,8 +488,10 @@ async function publishProjectArchiveStaged(
       file_name: fileName,
       title,
       ...(isPublic ? { is_public: true } : {}),
+      ...(projectId ? { project_id: projectId } : {}),
     }),
     headers: {
+      ...authHeaders,
       "content-type": "application/json",
       heygen_route: "canary",
     },
@@ -482,6 +509,10 @@ async function publishProjectArchiveStaged(
 
 export interface PublishOptions {
   public?: boolean;
+  /** Stable project id to update in place. Only sent when authenticated. */
+  projectId?: string;
+  /** Shared team space id, sent as X-Space-Id so team members converge. Only when authenticated. */
+  spaceId?: string;
 }
 
 export async function publishProjectArchive(
@@ -492,7 +523,35 @@ export async function publishProjectArchive(
   const title = basename(projectDir);
   const archive = createPublishArchive(projectDir);
   const apiBaseUrl = getPublishApiBaseUrl();
-  const stagedResult = await publishProjectArchiveStaged(apiBaseUrl, title, archive, isPublic);
-  if (stagedResult) return stagedResult;
-  return publishProjectArchiveDirect(apiBaseUrl, title, archive, isPublic);
+  const credential = await tryResolveCredential();
+  const authHeaders = credential ? buildAuthHeaders(credential) : {};
+  // A stable id / team space only mean something to an authenticated owner — the server
+  // ignores them otherwise, and anonymous publishes always mint a fresh project.
+  const projectId = credential ? opts.projectId : undefined;
+  const spaceId = credential ? opts.spaceId : undefined;
+  // X-Space-Id rides with the auth headers on the metadata requests only (never the
+  // presigned S3 PUT), so the server resolves the shared team space instead of the personal one.
+  const metadataHeaders = spaceId ? { ...authHeaders, "x-space-id": spaceId } : authHeaders;
+  const result =
+    (await publishProjectArchiveStaged(
+      apiBaseUrl,
+      title,
+      archive,
+      isPublic,
+      metadataHeaders,
+      projectId,
+    )) ??
+    (await publishProjectArchiveDirect(
+      apiBaseUrl,
+      title,
+      archive,
+      isPublic,
+      metadataHeaders,
+      projectId,
+    ));
+  // Remember the server's id + url so the next publish of this directory updates in place.
+  if (credential) {
+    writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
+  }
+  return result;
 }

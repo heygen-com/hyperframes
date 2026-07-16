@@ -7,6 +7,15 @@ interface DomEditCommitRunnerConfig {
   onError: (error: unknown) => void;
   shouldResync: () => boolean;
   resync: () => void | Promise<void>;
+  /**
+   * Reports success/failure without changing this function's own resolve-
+   * always contract — `persist` failures are handled here (revert + onError)
+   * and never rethrown, so callers awaiting `runDomEditCommit` can't observe
+   * failure via rejection. A caller that needs to react to a specific
+   * commit's outcome (e.g. reverting its OWN optimistic state) can pass this
+   * instead of relying on a rejection that will never come.
+   */
+  onSettled?: (ok: boolean) => void;
 }
 
 interface CommitVersionRef {
@@ -34,11 +43,13 @@ export async function runDomEditCommit(config: DomEditCommitRunnerConfig): Promi
 
   try {
     await config.persist();
+    config.onSettled?.(true);
   } catch (error) {
     if (config.shouldRevert(error)) {
       config.revert();
     }
     config.onError(error);
+    config.onSettled?.(false);
   }
 
   if (!config.shouldResync()) return;

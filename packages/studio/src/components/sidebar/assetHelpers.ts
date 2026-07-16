@@ -30,6 +30,35 @@ export function ext(path: string): string {
   return dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
 }
 
+/**
+ * Truncate a string to at most `maxLen` chars, preserving the start and end.
+ * Middle characters are replaced with an ellipsis. If the string is short
+ * enough it is returned unchanged.
+ *
+ * @example truncateMiddle("2a37eabf-long-uuid-887d8.mp4", 20) → "2a37eabf-…887d8.mp4"
+ *
+ * Pure — unit-tested.
+ */
+export function truncateMiddle(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  const keep = maxLen - 1; // 1 char for ellipsis
+  const tail = Math.floor(keep / 3);
+  const head = keep - tail;
+  return str.slice(0, head) + "…" + str.slice(str.length - tail);
+}
+
+/**
+ * Format a duration in seconds as MM:SS. Returns an empty string for
+ * non-positive, NaN, or Infinity values. Pure — unit-tested.
+ */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const total = Math.round(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export const CATEGORY_LABELS: Record<MediaCategory, string> = {
   audio: "Audio",
   images: "Images",

@@ -16,6 +16,11 @@
       "path": "liquid-glass-context-menu.html",
       "target": "compositions/liquid-glass-context-menu.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "lib/liquid-glass.iife.js",
+      "target": "compositions/lib/liquid-glass.iife.js",
+      "type": "registry:asset"
     }
   ],
   "preview": {

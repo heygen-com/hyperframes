@@ -58,28 +58,29 @@ window.__contrastAuditPrepare = function () {
   }
 
   function parseColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return [0, 0, 0, 1];
-    var p = m[1].split(",").map(function (s) {
-      return parseFloat(s.trim());
-    });
-    return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
-  }
-
-  // Like parseColor, but returns null instead of defaulting to black when the
-  // value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords such as
-  // "none"/"context-fill", or a gradient/pattern reference like
-  // 'url("#grad")'. Callers should fall back to another source of truth
-  // rather than trust a fabricated black.
-  function tryParseSolidColor(c) {
-    var m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
+    var m = (c || "").match(/^rgba?\(([^)]+)\)$/i);
+    if (!m) {
+      var mix = (c || "").match(
+        /^color-mix\(\s*in\s+srgb\s*,\s*(rgba?\([^)]+\))\s+(\d+(?:\.\d+)?|\.\d+)%\s*,\s*(rgba?\([^)]+\))\s+(\d+(?:\.\d+)?|\.\d+)%\s*\)$/i,
+      );
+      if (!mix) return null;
+      var first = parseColor(mix[1]);
+      var second = parseColor(mix[3]);
+      var firstWeight = parseFloat(mix[2]);
+      var secondWeight = parseFloat(mix[4]);
+      var weightTotal = firstWeight + secondWeight;
+      if (!first || !second || !isFinite(weightTotal) || weightTotal <= 0) return null;
+      return first.map(function (channel, index) {
+        return (channel * firstWeight + second[index] * secondWeight) / weightTotal;
+      });
+    }
     var p = m[1].split(",").map(function (s) {
       return parseFloat(s.trim());
     });
     if (
+      (p.length !== 3 && p.length !== 4) ||
       p.some(function (v) {
-        return isNaN(v);
+        return !isFinite(v);
       })
     )
       return null;
@@ -131,6 +132,12 @@ window.__contrastAuditPrepare = function () {
     return !paintsAnyProbePoint(el, rect);
   }
 
+  function isIntentionallyOccluded(el, rect) {
+    if (typeof document.elementFromPoint !== "function") return false;
+    if (!el.closest || !el.closest("[data-layout-allow-occlusion]")) return false;
+    return !paintsAnyProbePoint(el, rect);
+  }
+
   var out = [];
   var restores = [];
   // Registered BEFORE the walk starts (not after it finishes) and pushed to
@@ -158,6 +165,22 @@ window.__contrastAuditPrepare = function () {
     }
     if (!hasText) continue;
 
+    // Same decorative opt-out the layout audit honors: text marked (or inside)
+    // data-layout-ignore is set dressing, not copy a viewer must read —
+    // deliberately dim rail labels, ghost typography, texture text.
+    if (el.closest && el.closest("[data-layout-ignore]")) continue;
+
+    // Text that has (nearly) left the canvas — a cursor exiting the frame, an
+    // element parked off-screen — is not readable content, and sampling its
+    // clamped edge reads whatever pixels happen to sit at the border (the
+    // classic false "white-on-white"). Require a minimally-visible on-canvas
+    // intersection before judging contrast; the layout audit separately owns
+    // off-canvas detection as its own finding class.
+    var vis = el.getBoundingClientRect();
+    var onX = Math.min(vis.right, window.innerWidth) - Math.max(vis.left, 0);
+    var onY = Math.min(vis.bottom, window.innerHeight) - Math.max(vis.top, 0);
+    if (onX < 8 || onY < 8) continue;
+
     var cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none") continue;
     if (parseFloat(cs.opacity) <= 0.01) continue;
@@ -184,6 +207,10 @@ window.__contrastAuditPrepare = function () {
     if (rect.width < 8 || rect.height < 8) continue;
     if (rect.right <= 0 || rect.bottom <= 0) continue;
     if (isClippedAway(el, rect)) continue;
+    // The layout audit's explicit occlusion opt-out means this text is allowed
+    // to sit behind another scene. Skip contrast only while every probe point
+    // is actually covered; the same copy is audited normally when visible.
+    if (isIntentionallyOccluded(el, rect)) continue;
 
     // For SVG text, `fill` is the paint that's actually rendered; `color` is
     // frequently just the inherited/initial value and unrelated to what's on
@@ -192,8 +219,12 @@ window.__contrastAuditPrepare = function () {
     // `color` rather than crashing parseColor or reporting a fabricated
     // black.
     var isSvgText = isSvgTextElement(el);
-    var fg = isSvgText ? tryParseSolidColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
+    var fg = isSvgText ? parseColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
+    if (!fg) continue;
     if (fg[3] <= 0.01) continue;
+    var strokeWidth = parseFloat(cs.webkitTextStrokeWidth || "0");
+    var stroke = strokeWidth > 0 ? parseColor(cs.webkitTextStrokeColor || "") : null;
+    if (stroke && stroke[3] <= 0.01) stroke = null;
 
     var fontSize = parseFloat(cs.fontSize);
     var fontWeight = Number(cs.fontWeight) || 400;
@@ -225,6 +256,13 @@ window.__contrastAuditPrepare = function () {
       origFillPriority = el.style.getPropertyPriority("fill");
       el.style.setProperty("fill", "transparent", "important");
     }
+    var origStrokeColor = null,
+      origStrokeColorPriority = null;
+    if (stroke) {
+      origStrokeColor = el.style.getPropertyValue("-webkit-text-stroke-color");
+      origStrokeColorPriority = el.style.getPropertyPriority("-webkit-text-stroke-color");
+      el.style.setProperty("-webkit-text-stroke-color", "transparent", "important");
+    }
     restores.push({
       el: el,
       origTransition: origTransition,
@@ -233,6 +271,9 @@ window.__contrastAuditPrepare = function () {
       origColorPriority: origColorPriority,
       origFill: origFill,
       origFillPriority: origFillPriority,
+      origStrokeColor: origStrokeColor,
+      origStrokeColorPriority: origStrokeColorPriority,
+      hasStroke: !!stroke,
       isSvgText: isSvgText,
     });
 
@@ -240,6 +281,7 @@ window.__contrastAuditPrepare = function () {
       selector: selectorOf(el),
       text: (el.textContent || "").trim().slice(0, 50),
       fg: fg,
+      stroke: stroke,
       fontSize: fontSize,
       fontWeight: fontWeight,
       large: large,
@@ -260,6 +302,15 @@ function __contrastAuditRestoreAll() {
     if (r.isSvgText) {
       if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
       else r.el.style.removeProperty("fill");
+    }
+    if (r.hasStroke) {
+      if (r.origStrokeColor)
+        r.el.style.setProperty(
+          "-webkit-text-stroke-color",
+          r.origStrokeColor,
+          r.origStrokeColorPriority,
+        );
+      else r.el.style.removeProperty("-webkit-text-stroke-color");
     }
     if (r.origTransition)
       r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
@@ -345,16 +396,24 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
     var stepY = Math.max(1, Math.floor((y1 - y0) / 6));
     var rr = [],
       gg = [],
-      bb = [];
+      bb = [],
+      aa = [];
     for (var y = y0; y <= y1; y += stepY) {
       for (var x = x0; x <= x1; x += stepX) {
         var idx = (y * w + x) * 4;
         rr.push(px[idx]);
         gg.push(px[idx + 1]);
         bb.push(px[idx + 2]);
+        aa.push(px[idx + 3]);
       }
     }
     if (rr.length === 0) continue;
+
+    // A transparent sampled backdrop is supplied by the downstream editor,
+    // not this composition. WCAG contrast cannot be inferred until that live
+    // video/image is known, so do not invent an opaque browser default and
+    // hard-fail an otherwise valid alpha overlay.
+    if (median(aa) < 255) continue;
 
     var bgR = median(rr),
       bgG = median(gg),
@@ -367,6 +426,23 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
     var compB = Math.round(fg[2] * fg[3] + bgB * (1 - fg[3]));
 
     var ratio = +wcagRatio(compR, compG, compB, bgR, bgG, bgB).toFixed(2);
+
+    // A solid text stroke is part of the visible glyph paint. Use whichever
+    // of fill or stroke provides the stronger edge contrast, rather than
+    // failing readable outlined captions based on fill alone.
+    if (c.stroke) {
+      var stroke = c.stroke;
+      var strokeR = Math.round(stroke[0] * stroke[3] + bgR * (1 - stroke[3]));
+      var strokeG = Math.round(stroke[1] * stroke[3] + bgG * (1 - stroke[3]));
+      var strokeB = Math.round(stroke[2] * stroke[3] + bgB * (1 - stroke[3]));
+      var strokeRatio = +wcagRatio(strokeR, strokeG, strokeB, bgR, bgG, bgB).toFixed(2);
+      if (strokeRatio > ratio) {
+        compR = strokeR;
+        compG = strokeG;
+        compB = strokeB;
+        ratio = strokeRatio;
+      }
+    }
 
     out.push({
       time: time,

@@ -483,7 +483,6 @@ export async function renderChunk(
 
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
       planVideos?.videos.length ?? 0,
-      "software",
     );
 
     // ── Per-chunk work + frames directories ──

@@ -408,10 +408,25 @@ export function wrapScopedCompositionScript(
     if (!__hfTimelineRegistryProxy) {
       __hfTimelineRegistryProxy = new Proxy(window.__timelines, {
         get: function(target, prop, receiver) {
-          return Reflect.get(target, prop === __hfCompId ? __hfTimelineCompId : prop, target);
+          if (prop !== __hfCompId) {
+            return Reflect.get(target, prop, target);
+          }
+          var authoredValue = Reflect.get(target, prop, target);
+          return authoredValue === undefined
+            ? Reflect.get(target, __hfTimelineCompId, target)
+            : authoredValue;
         },
         set: function(target, prop, value, receiver) {
-          return Reflect.set(target, prop === __hfCompId ? __hfTimelineCompId : prop, value, target);
+          if (prop !== __hfCompId) {
+            return Reflect.set(target, prop, value, target);
+          }
+          // The authored node remains in the compiled DOM when its local id
+          // differs from the runtime mount id, so readiness legitimately sees
+          // both compositions. Publish the same timeline under both identities
+          // instead of replacing one with the other.
+          var authoredSet = Reflect.set(target, __hfCompId, value, target);
+          var runtimeSet = Reflect.set(target, __hfTimelineCompId, value, target);
+          return authoredSet && runtimeSet;
         },
       });
     }
@@ -435,6 +450,11 @@ export function wrapScopedCompositionScript(
         },
         set: function(target, prop, value, receiver) {
           if (prop === "__timelines") {
+            // Common authoring boilerplate assigns the registry back to
+            // itself (window.__timelines = window.__timelines || {}). The
+            // getter above returns our proxy; do not replace the canonical
+            // registry with that proxy or later wrappers will stack proxies.
+            if (value === __hfTimelineRegistryProxy) return true;
             target.__timelines = value || {};
             __hfTimelineRegistryProxy = null;
             return true;

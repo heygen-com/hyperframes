@@ -12,7 +12,7 @@ import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gs
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
-import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
 import {
   resolveTweenStart,
   resolveTweenDuration,
@@ -21,6 +21,9 @@ import {
 import { POSITION_PROPS } from "./gsapRuntimeReaders";
 import { roundTo3 } from "../utils/rounding";
 import { nearestPointOnPath } from "../components/editor/motionPathGeometry";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+
+let enableKeyframesTransactionCounter = 0;
 
 export interface EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -30,16 +33,19 @@ export interface EnableKeyframesSession {
   handleGsapConvertToKeyframes: (
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
+    duration?: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => void | Promise<void>;
   handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
   handleGsapAddKeyframeBatch?: (
     animId: string,
     pct: number,
     properties: Record<string, number | string>,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => Promise<void>;
   commitMutation?: (
     mutation: Record<string, unknown>,
-    options: { label: string; softReload?: boolean },
+    options: CommitMutationOptions,
   ) => Promise<void>;
 }
 
@@ -105,6 +111,36 @@ export function buildExtendedKeyframes(
   const added: GsapPercentageKeyframe = { percentage: toPct(currentTime), properties: position };
   const keyframes = [...rescaled, added].sort((a, b) => a.percentage - b.percentage);
   return { position: roundTo3(newStart), duration: newDuration, keyframes };
+}
+
+async function replaceSetWithSingleKeyframe(
+  session: EnableKeyframesSession,
+  sel: DomEditSelection,
+  setAnim: GsapAnimation,
+  t: number,
+  iframe: HTMLIFrameElement | null,
+  selector: string,
+): Promise<void> {
+  const position = readElementPosition(iframe, sel, setAnim);
+  if (Object.keys(position).length === 0) {
+    for (const [key, held] of Object.entries(setAnim.properties ?? {})) {
+      if (typeof held === "number") position[key] = held;
+    }
+  }
+  if (Object.keys(position).length === 0 || !session.commitMutation) return;
+  const range = resolveNewTweenRange(sel.dataAttributes?.start, sel.dataAttributes?.duration, t);
+  await session.commitMutation(
+    {
+      type: "replace-with-keyframes",
+      animationId: setAnim.id,
+      targetSelector: selector,
+      position: roundTo3(range.start),
+      duration: roundTo3(range.duration),
+      keyframes: [{ percentage: 0, properties: position }],
+      ease: setAnim.ease,
+    },
+    { label: "Enable keyframes", softReload: true },
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -199,6 +235,7 @@ async function applyKeyframeAtPlayhead(
   kfAnim: GsapAnimation,
   t: number,
   iframe: HTMLIFrameElement | null,
+  commitOverrides?: Partial<CommitMutationOptions>,
 ): Promise<void> {
   if (!isPlayheadWithinTween(kfAnim, t)) {
     const position = readElementPosition(iframe, sel, kfAnim);
@@ -215,7 +252,11 @@ async function applyKeyframeAtPlayhead(
           keyframes: extended.keyframes,
           ease: kfAnim.ease,
         },
-        { label: "Add keyframe", softReload: true },
+        {
+          label: "Add keyframe",
+          softReload: true,
+          ...commitOverrides,
+        },
       );
     }
     return;
@@ -229,7 +270,7 @@ async function applyKeyframeAtPlayhead(
   if (session.handleGsapAddKeyframeBatch) {
     const position = readElementPosition(iframe, sel, kfAnim);
     if (Object.keys(position).length > 0) {
-      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position);
+      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position, commitOverrides);
     }
   }
 }
@@ -259,27 +300,7 @@ export async function promoteSetToKeyframes(
   // the set with a single keyframe at the playhead holding its value, matching the
   // no-animation branch: one diamond the user can build motion from.
   if (t <= setStart) {
-    const position = readElementPosition(iframe, sel, setAnim);
-    if (Object.keys(position).length === 0) {
-      for (const key of Object.keys(setAnim.properties ?? {})) {
-        const held = setAnim.properties?.[key];
-        if (typeof held === "number") position[key] = held;
-      }
-    }
-    if (Object.keys(position).length === 0) return;
-    const range = resolveNewTweenRange(sel.dataAttributes?.start, sel.dataAttributes?.duration, t);
-    await session.commitMutation(
-      {
-        type: "replace-with-keyframes",
-        animationId: setAnim.id,
-        targetSelector: selector,
-        position: roundTo3(range.start),
-        duration: roundTo3(range.duration),
-        keyframes: [{ percentage: 0, properties: position }],
-        ease: setAnim.ease,
-      },
-      { label: "Enable keyframes", softReload: true },
-    );
+    await replaceSetWithSingleKeyframe(session, sel, setAnim, t, iframe, selector);
     return;
   }
   const endPosition = readElementPosition(iframe, sel, setAnim);
@@ -395,8 +416,8 @@ export function useEnableKeyframes(
     // the curve.
     const arcAnim = anims.find((a) => a.arcPath);
     const kfAnim = anims.find((a) => a.keyframes && !a.arcPath);
-    const setAnim = anims.find((a) => a.method === "set" && !a.keyframes && !a.arcPath);
-    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && a.method !== "set");
+    const setAnim = anims.find((a) => isInstantHold(a) && !a.keyframes && !a.arcPath);
+    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && !isInstantHold(a));
 
     if (arcAnim) {
       await applyArcWaypointAtPlayhead(session, sel, arcAnim, t, iframe);
@@ -409,9 +430,32 @@ export function useEnableKeyframes(
       // resolvedFromValues, so the 0%/100% stops keep the real start→end motion
       // (passing the playhead value would flatten it). Then apply uniformly so an
       // out-of-range playhead extends the range just like a keyframe tween.
-      await session.handleGsapConvertToKeyframes(flatAnim.id);
+      enableKeyframesTransactionCounter += 1;
+      const coalesceKey = `enable-keyframes:${flatAnim.id}:${enableKeyframesTransactionCounter}`;
+      const convertCommitOverrides: Partial<CommitMutationOptions> = {
+        skipReload: true,
+        coalesceKey,
+        coalesceMs: Number.POSITIVE_INFINITY,
+      };
+      await session.handleGsapConvertToKeyframes(
+        flatAnim.id,
+        undefined,
+        undefined,
+        convertCommitOverrides,
+      );
       const converted = (await fetchAnimationsForElement(sel)).find((a) => a.keyframes);
-      if (converted) await applyKeyframeAtPlayhead(session, sel, converted, t, iframe);
+      if (converted) {
+        const applyCommitOverrides: Partial<CommitMutationOptions> = {
+          softReload: true,
+          coalesceKey,
+          // Must match the convert phase's window: editHistory keys coalescing
+          // off the incoming entry, so without Infinity here the apply (landing
+          // after two POSTs + a fetch) falls back to the 300ms default and the
+          // conversion splits into two undo entries under real latency.
+          coalesceMs: Number.POSITIVE_INFINITY,
+        };
+        await applyKeyframeAtPlayhead(session, sel, converted, t, iframe, applyCommitOverrides);
+      }
     } else {
       const position = readElementPosition(iframe, sel, null);
       const { start: elStart, duration: elDuration } = resolveNewTweenRange(

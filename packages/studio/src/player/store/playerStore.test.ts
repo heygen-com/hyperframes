@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { usePlayerStore, liveTime, type TimelineElement } from "./playerStore";
 
+/** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
+function expectResettableDefaults(state: ReturnType<typeof usePlayerStore.getState>): void {
+  expect(state.isPlaying).toBe(false);
+  expect(state.currentTime).toBe(0);
+  expect(state.duration).toBe(0);
+  expect(state.timelineReady).toBe(false);
+  expect(state.elements).toEqual([]);
+  expect(state.selectedElementId).toBeNull();
+}
+
 describe("usePlayerStore", () => {
   beforeEach(() => {
     usePlayerStore.getState().reset();
@@ -9,12 +19,7 @@ describe("usePlayerStore", () => {
   describe("initial state", () => {
     it("has correct defaults", () => {
       const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(false);
-      expect(state.currentTime).toBe(0);
-      expect(state.duration).toBe(0);
-      expect(state.timelineReady).toBe(false);
-      expect(state.elements).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+      expectResettableDefaults(state);
       expect(state.playbackRate).toBe(1);
       expect(state.audioMuted).toBe(false);
       expect(state.loopEnabled).toBe(false);
@@ -384,6 +389,32 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("clipRevealRequest", () => {
+    it("starts null and carries the requested element id", () => {
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+      usePlayerStore.getState().requestClipReveal("el-1");
+      expect(usePlayerStore.getState().clipRevealRequest?.elementId).toBe("el-1");
+    });
+
+    it("bumps the nonce on repeat requests for the same clip", () => {
+      usePlayerStore.getState().requestClipReveal("el-1");
+      const first = usePlayerStore.getState().clipRevealRequest;
+      usePlayerStore.getState().requestClipReveal("el-1");
+      const second = usePlayerStore.getState().clipRevealRequest;
+      expect(second?.nonce).not.toBe(first?.nonce);
+    });
+
+    it("clears via clearClipRevealRequest and on reset", () => {
+      usePlayerStore.getState().requestClipReveal("el-1");
+      usePlayerStore.getState().clearClipRevealRequest();
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+
+      usePlayerStore.getState().requestClipReveal("el-2");
+      usePlayerStore.getState().reset();
+      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+    });
+  });
+
   describe("reset", () => {
     it("resets all state to defaults", () => {
       // Mutate everything
@@ -398,13 +429,7 @@ describe("usePlayerStore", () => {
       // Reset
       usePlayerStore.getState().reset();
 
-      const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(false);
-      expect(state.currentTime).toBe(0);
-      expect(state.duration).toBe(0);
-      expect(state.timelineReady).toBe(false);
-      expect(state.elements).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+      expectResettableDefaults(usePlayerStore.getState());
     });
 
     it("does not reset playbackRate, audioMuted, loopEnabled, zoomMode, or manualZoomPercent", () => {

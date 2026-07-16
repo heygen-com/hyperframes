@@ -31,6 +31,13 @@ export interface EditingSectionApplicability {
   colorGrading: boolean;
   timing: boolean;
   animation: boolean;
+  /** Position/size/rotation/stacking — meaningless on an element with no
+   *  rendered box (e.g. `<audio>`, which never paints a visual frame). */
+  layout: boolean;
+  /** Fill/radius/stroke/shadow/blend-mode/clip — same "no rendered box" gate
+   *  as `layout`, kept separate since a future tag could need one without
+   *  the other. */
+  style: boolean;
 }
 
 export interface EditingAffordances {
@@ -193,12 +200,18 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
  * without re-running the capability geometry parse.
  */
 export function resolveEditingSections(facts: EditableElementFacts): EditingSectionApplicability {
+  // `<audio>` never paints a visual frame — position/size/rotation/stacking
+  // and fill/radius/stroke/shadow/etc. are all inert on it. Every other tag
+  // (div, img, video, svg, canvas, composition hosts) renders a real box.
+  const hasVisualBox = facts.tag !== "audio";
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
     media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
     colorGrading: facts.tag === "video" || facts.tag === "img",
     timing: facts.hasTimingStart || facts.animationCount > 0,
     animation: facts.animationCount > 0,
+    layout: hasVisualBox,
+    style: hasVisualBox,
   };
 }
 

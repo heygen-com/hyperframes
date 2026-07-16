@@ -7,7 +7,7 @@
  *
  * This file generates a DATA INVENTORY that tells the AI agent what files
  * exist and what they contain. The actual workflow lives in the
- * website-to-video skill — this file points agents there.
+ * product-launch-video skill — this file points agents there.
  */
 
 import { writeFileSync, readdirSync, existsSync } from "node:fs";
@@ -198,7 +198,7 @@ function buildPrompt(
 
 Source: ${url}
 
-To create a video from this capture, use the \`website-to-video\` skill.
+To create a video from this capture, use the \`product-launch-video\` skill.
 
 ## What's in This Capture
 

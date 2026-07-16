@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
+import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 
 describe("saveProjectFilesWithHistory", () => {
   it("reads before content, writes after content, and records a history entry", async () => {
@@ -152,5 +153,45 @@ describe("saveProjectFilesWithHistory", () => {
       ["scene.html", "scene-after"],
       ["index.html", "index-before"],
     ]);
+  });
+
+  it("reads and writes after an earlier same-file mutation completes", async () => {
+    let disk = "before";
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writeFile = vi.fn(async (_path: string, content: string) => {
+      disk = content;
+    });
+    const priorMutation = serializeStudioFileMutation(writeFile, "index.html", async () => {
+      await blocked;
+      disk = "sdk-after";
+    });
+    const readFile = vi.fn(async () => disk);
+    const recordEdit = vi.fn();
+
+    const save = saveProjectFilesWithHistory({
+      projectId: "project-1",
+      label: "Edit source",
+      kind: "source",
+      files: { "index.html": "editor-after" },
+      readFile,
+      writeFile,
+      recordEdit,
+    });
+
+    await Promise.resolve();
+    expect(readFile).not.toHaveBeenCalled();
+    release();
+    await priorMutation;
+    await save;
+
+    expect(disk).toBe("editor-after");
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: { "index.html": { before: "sdk-after", after: "editor-after" } },
+      }),
+    );
   });
 });

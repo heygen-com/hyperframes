@@ -10,6 +10,13 @@ function tempDir(): string {
 }
 
 describe("createContactSheet", () => {
+  // Sharp on Windows CI runners exercises a native-binary fork per operation
+  // and the runner's I/O throughput varies with concurrent-job pressure. The
+  // default 20s ceiling has landed just-over the wall clock repeatedly (see
+  // PR #2492's earlier lightweighting attempt); the actual work here — two
+  // 16×9 PNG writes + one contact-sheet composite + one metadata probe —
+  // is milliseconds of compute, so the extra ceiling only absorbs runner
+  // I/O jitter, it does not hide a real slowdown.
   it("writes PNG output when the output path uses a .png extension", async () => {
     const dir = tempDir();
     try {
@@ -39,6 +46,7 @@ describe("createContactSheet", () => {
 
       await createContactSheet([a, b], out, {
         cols: 2,
+        cellWidth: 16,
         labelMode: "custom",
         labels: ["A", "B"],
         maxImages: 2,
@@ -48,5 +56,5 @@ describe("createContactSheet", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

@@ -65,6 +65,13 @@ export interface RenderBatchArgs {
   height: number;
   /** See {@link RenderArgs.outputResolution}. */
   outputResolution?: CanvasResolution;
+  /**
+   * See {@link RenderArgs.outputResolutionAspectAgnostic}. Threaded through
+   * `SerializableDistributedRenderConfig` so the Lambda worker's compile
+   * stage remaps aspect-agnostic aliases (`1080p` / `hd` / `4k` / `uhd`) to
+   * the composition's orientation — same regression class as the local CLI.
+   */
+  outputResolutionAspectAgnostic?: boolean;
   format: DistributedFormat;
   codec?: "h264" | "h265";
   quality?: "draft" | "standard" | "high";
@@ -209,19 +216,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     process.exit(1);
   }
 
-  const config: SerializableDistributedRenderConfig = {
-    fps: args.fps,
-    width: args.width,
-    height: args.height,
-    outputResolution: args.outputResolution,
-    format: args.format,
-    codec: args.codec,
-    quality: args.quality,
-    chunkSize: args.chunkSize,
-    maxParallelChunks: args.maxParallelChunks,
-    targetChunkFrames: args.targetChunkFrames,
-    runtimeCap: "lambda",
-  };
+  const config: SerializableDistributedRenderConfig = buildLambdaBatchRenderConfig(args);
 
   // Deploy the site once and reuse it across every entry. --site-id and
   // --dry-run both skip the deploy via a synthesised handle.
@@ -348,6 +343,34 @@ function makePlaceholderSiteHandle(siteId: string, bucketName: string): SiteHand
     uploadedAt: "",
     uploaded: false,
   };
+}
+
+/**
+ * Build the shared wire {@link SerializableDistributedRenderConfig} used
+ * for every entry in a `hyperframes lambda render-batch` run. Extracted for
+ * boundary-test coverage of the aspect-agnostic flag threading (per-entry
+ * `variables` are still overlayed at dispatch time inside {@link runRenderBatch}).
+ */
+export function buildLambdaBatchRenderConfig(
+  args: RenderBatchArgs,
+): SerializableDistributedRenderConfig {
+  const config: SerializableDistributedRenderConfig = {
+    fps: args.fps,
+    width: args.width,
+    height: args.height,
+    outputResolution: args.outputResolution,
+    format: args.format,
+    codec: args.codec,
+    quality: args.quality,
+    chunkSize: args.chunkSize,
+    maxParallelChunks: args.maxParallelChunks,
+    targetChunkFrames: args.targetChunkFrames,
+    runtimeCap: "lambda",
+  };
+  if (args.outputResolutionAspectAgnostic) {
+    config.outputResolutionAspectAgnostic = true;
+  }
+  return config;
 }
 
 /**

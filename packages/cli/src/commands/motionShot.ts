@@ -10,7 +10,9 @@
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import {
   buildOnionSvg,
   ghostAlphas,
@@ -25,6 +27,10 @@ export interface ShotRequest {
   selector: string;
 }
 
+export function ensureShotOutputDir(outPath: string): void {
+  mkdirSync(dirname(outPath), { recursive: true });
+}
+
 /** Returned by the in-browser selector resolver: which animated selectors a
  *  `--selector SCOPE` actually resolves to (scope itself, or its descendants),
  *  plus diagnostic context when nothing under the scope animates. */
@@ -36,6 +42,8 @@ interface ScopeResolution {
 }
 
 export interface ShotOptions {
+  /** Project-relative HTML entry to render. Defaults to `index.html`. */
+  entryFile?: string;
   /** Equal-time samples across the (windowed) timeline. Default 9. */
   samples?: number;
   /** "path" = ghosts at real positions + path; "strip" = filmstrip by time. */
@@ -256,7 +264,8 @@ async function openCompositionPage(
     ],
   });
   const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+  const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   const size = await page.evaluate(() => {
     const root = document.querySelector("[data-composition-id][data-width][data-height]");
     const w = root ? parseInt(root.getAttribute("data-width") ?? "", 10) : 0;
@@ -267,7 +276,7 @@ async function openCompositionPage(
     };
   });
   await page.setViewport(size);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   await page
     .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
       timeout: 10000,
@@ -609,6 +618,7 @@ export async function captureMotionPathShot(
   outPath: string,
   opts: ShotOptions = {},
 ): Promise<string> {
+  ensureShotOutputDir(outPath);
   let requests = requestsIn;
   const samples = Math.max(1, Math.min(60, opts.samples ?? 9));
   const layout = opts.layout ?? "path";
@@ -619,7 +629,7 @@ export async function captureMotionPathShot(
   const { serveStaticProjectHtml } = await import("../utils/staticProjectServer.js");
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
 
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, { entryFile: opts.entryFile });
   const server = await serveStaticProjectHtml(
     projectDir,
     html,

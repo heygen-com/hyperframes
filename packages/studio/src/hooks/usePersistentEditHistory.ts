@@ -7,8 +7,10 @@ import {
   redoEditHistory,
   undoEditHistory,
   type BuildEditHistoryEntryInput,
+  type EditHistoryEntry,
   type EditHistoryKind,
   type EditHistoryState,
+  type EditHistoryTransitionResult,
 } from "../utils/editHistory";
 import {
   createIndexedDbEditHistoryStorage,
@@ -21,12 +23,14 @@ interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
+  coalesceMs?: number;
   files: BuildEditHistoryEntryInput["files"];
 }
 
 interface ApplyCallbacks {
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, content: string) => Promise<void>;
+  serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
 }
 
 interface UsePersistentEditHistoryOptions {
@@ -35,11 +39,24 @@ interface UsePersistentEditHistoryOptions {
   now?: () => number;
 }
 
+/**
+ * Per-file content the restore just applied. `restored` is the bytes written to
+ * disk (the undo/redo target); `previous` is what was on disk immediately before
+ * (the current live preview state). The undo preview-sync diffs these to decide
+ * whether the restore is soft-reloadable (attributes/style/GSAP-script only) or
+ * needs a full iframe reload.
+ */
+interface ApplyRestoredFile {
+  previous: string;
+  restored: string;
+}
+
 interface ApplyResult {
   ok: boolean;
   reason?: "empty" | "content-mismatch";
   label?: string;
   paths?: string[];
+  files?: Record<string, ApplyRestoredFile>;
 }
 
 interface PersistentEditHistoryStoreOptions {
@@ -54,6 +71,18 @@ type EditHistoryMutation<T> = (state: EditHistoryState) => Promise<{
   state: EditHistoryState;
   result: T;
 }>;
+
+/** Pair the just-written (`restored`) bytes with the pre-write (`previous`) bytes per path. */
+function restoredFilesMap(
+  filesToWrite: Record<string, string>,
+  currentFiles: Record<string, string>,
+): Record<string, ApplyRestoredFile> {
+  const out: Record<string, ApplyRestoredFile> = {};
+  for (const [path, restored] of Object.entries(filesToWrite)) {
+    out[path] = { previous: currentFiles[path] ?? "", restored };
+  }
+  return out;
+}
 
 function createEntryId(now: number): string {
   return `edit-${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -120,6 +149,53 @@ async function writeFilesWithRollback({
   }
 }
 
+/**
+ * Apply one undo/redo step: read current on-disk hashes, run the direction's
+ * transition, write the restored files with rollback, and shape the ApplyResult.
+ * `entry` is the stack top used to know which paths to hash before applying.
+ */
+async function applyHistoryStep(
+  currentState: EditHistoryState,
+  entry: EditHistoryEntry | undefined,
+  transition: (
+    state: EditHistoryState,
+    currentHashes: Record<string, string>,
+    now: number,
+  ) => EditHistoryTransitionResult,
+  now: () => number,
+  callbacks: ApplyCallbacks,
+): Promise<{ state: EditHistoryState; result: ApplyResult }> {
+  if (!entry) {
+    return { state: currentState, result: { ok: false, reason: "empty" } };
+  }
+  const paths = Object.keys(entry.files);
+  const apply = async (): Promise<{ state: EditHistoryState; result: ApplyResult }> => {
+    const { currentFiles, currentHashes } = await readCurrentFileHashes(paths, callbacks.readFile);
+    const result = transition(currentState, currentHashes, now());
+    if (!result.ok) {
+      return {
+        state: currentState,
+        result: { ok: false, reason: result.reason },
+      };
+    }
+    await writeFilesWithRollback({
+      files: result.filesToWrite,
+      rollbackFiles: currentFiles,
+      writeFile: callbacks.writeFile,
+    });
+    return {
+      state: result.state,
+      result: {
+        ok: true,
+        label: result.entry.label,
+        paths: Object.keys(result.entry.files),
+        files: restoredFilesMap(result.filesToWrite, currentFiles),
+      },
+    };
+  };
+  return callbacks.serialize ? callbacks.serialize(paths, apply) : apply();
+}
+
 export function createPersistentEditHistoryStore({
   projectId,
   storage,
@@ -171,66 +247,26 @@ export function createPersistentEditHistoryStore({
       });
     },
     async undo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
-      return mutate<ApplyResult>(async (currentState) => {
-        const entry = currentState.undo[currentState.undo.length - 1];
-        if (!entry) {
-          return {
-            state: currentState,
-            result: { ok: false, reason: "empty" },
-          };
-        }
-        const { currentFiles, currentHashes } = await readCurrentFileHashes(
-          Object.keys(entry.files),
-          callbacks.readFile,
-        );
-        const result = undoEditHistory(currentState, currentHashes, now());
-        if (!result.ok) {
-          return {
-            state: currentState,
-            result: { ok: false, reason: result.reason },
-          };
-        }
-        await writeFilesWithRollback({
-          files: result.filesToWrite,
-          rollbackFiles: currentFiles,
-          writeFile: callbacks.writeFile,
-        });
-        return {
-          state: result.state,
-          result: { ok: true, label: result.entry.label, paths: Object.keys(result.entry.files) },
-        };
-      });
+      return mutate<ApplyResult>((currentState) =>
+        applyHistoryStep(
+          currentState,
+          currentState.undo[currentState.undo.length - 1],
+          undoEditHistory,
+          now,
+          callbacks,
+        ),
+      );
     },
     async redo(callbacks: ApplyCallbacks): Promise<ApplyResult> {
-      return mutate<ApplyResult>(async (currentState) => {
-        const entry = currentState.redo[currentState.redo.length - 1];
-        if (!entry) {
-          return {
-            state: currentState,
-            result: { ok: false, reason: "empty" },
-          };
-        }
-        const { currentFiles, currentHashes } = await readCurrentFileHashes(
-          Object.keys(entry.files),
-          callbacks.readFile,
-        );
-        const result = redoEditHistory(currentState, currentHashes, now());
-        if (!result.ok) {
-          return {
-            state: currentState,
-            result: { ok: false, reason: result.reason },
-          };
-        }
-        await writeFilesWithRollback({
-          files: result.filesToWrite,
-          rollbackFiles: currentFiles,
-          writeFile: callbacks.writeFile,
-        });
-        return {
-          state: result.state,
-          result: { ok: true, label: result.entry.label, paths: Object.keys(result.entry.files) },
-        };
-      });
+      return mutate<ApplyResult>((currentState) =>
+        applyHistoryStep(
+          currentState,
+          currentState.redo[currentState.redo.length - 1],
+          redoEditHistory,
+          now,
+          callbacks,
+        ),
+      );
     },
   };
 }
@@ -271,11 +307,15 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
   const [loaded, setLoaded] = useState(false);
   const projectId = options.projectId;
   const storeRef = useRef<ReturnType<typeof createPersistentEditHistoryStore> | null>(null);
+  const storeProjectIdRef = useRef<string | null>(null);
+  const activeProjectIdRef = useRef(projectId);
+  activeProjectIdRef.current = projectId;
 
   useEffect(() => {
     let cancelled = false;
     const emptyState = createEmptyEditHistory();
     storeRef.current = null;
+    storeProjectIdRef.current = null;
     setState(emptyState);
     setLoaded(false);
     if (!projectId) {
@@ -293,6 +333,7 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
           now,
           onChange: setState,
         });
+        storeProjectIdRef.current = projectId;
         setState(loadedState);
       })
       .catch(() => {
@@ -304,6 +345,7 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
           now,
           onChange: setState,
         });
+        storeProjectIdRef.current = projectId;
         setState(emptyState);
       })
       .finally(() => {
@@ -315,17 +357,49 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
     };
   }, [now, projectId, storage]);
 
-  const recordEdit = useCallback(async (input: RecordEditInput) => {
-    await storeRef.current?.recordEdit(input);
-  }, []);
+  const recordEdit = useCallback(
+    async (input: RecordEditInput) => {
+      if (!projectId) return;
+      if (activeProjectIdRef.current !== projectId) {
+        throw new Error(`Cannot record an edit for inactive project ${projectId}`);
+      }
+      const store = storeRef.current;
+      if (!store) return;
+      if (storeProjectIdRef.current !== projectId) {
+        throw new Error(`Edit history store does not belong to project ${projectId}`);
+      }
+      await store.recordEdit(input);
+    },
+    [projectId],
+  );
 
-  const undo = useCallback(async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
-    return storeRef.current?.undo(callbacks) ?? { ok: false, reason: "empty" };
-  }, []);
+  const undo = useCallback(
+    async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
+      if (
+        !projectId ||
+        activeProjectIdRef.current !== projectId ||
+        storeProjectIdRef.current !== projectId
+      ) {
+        return { ok: false, reason: "empty" };
+      }
+      return storeRef.current?.undo(callbacks) ?? { ok: false, reason: "empty" };
+    },
+    [projectId],
+  );
 
-  const redo = useCallback(async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
-    return storeRef.current?.redo(callbacks) ?? { ok: false, reason: "empty" };
-  }, []);
+  const redo = useCallback(
+    async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
+      if (
+        !projectId ||
+        activeProjectIdRef.current !== projectId ||
+        storeProjectIdRef.current !== projectId
+      ) {
+        return { ok: false, reason: "empty" };
+      }
+      return storeRef.current?.redo(callbacks) ?? { ok: false, reason: "empty" };
+    },
+    [projectId],
+  );
 
   return {
     loaded,

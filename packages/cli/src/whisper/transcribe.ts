@@ -38,6 +38,160 @@ function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null 
   return null;
 }
 
+const WHISPER_TIMEOUT_FLOOR_MS = 300_000;
+const WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS = 10_000;
+const WHISPER_TIMEOUT_CAP_MS = 43_200_000;
+const AUDIO_PREPARATION_TIMEOUT_FLOOR_MS = 120_000;
+const AUDIO_PREPARATION_TIMEOUT_PER_MEDIA_SECOND_MS = 500;
+const AUDIO_PREPARATION_TIMEOUT_CAP_MS = 21_600_000;
+
+/**
+ * Model-specific slowdown factors relative to the `small.en` default. whisper.cpp's
+ * per-token inference cost scales with model size — `medium` runs ~2x slower than
+ * `small`, and the `large` family ~4x slower — so the 10x-realtime baseline that
+ * comfortably covers `small.en` can still time out on `medium.en`/`large-v3` when
+ * the CPU itself is slow. Applying the factor keeps the historical safety window
+ * for the default model while giving heavier models the headroom they need on
+ * emulated arm64/x64 hardware (field-signal ts=1784165471: Snapdragon emulating
+ * x64 saw ~13x realtime on medium.en for a 63s clip).
+ *
+ * Values are conservative bounds, not tight upper bounds — the auto-scaled
+ * timeout is still capped at 12h and gated by an explicit `--timeout` override.
+ */
+const WHISPER_MODEL_SLOWDOWN_FACTORS: Readonly<Record<string, number>> = {
+  tiny: 0.5,
+  "tiny.en": 0.5,
+  base: 0.7,
+  "base.en": 0.7,
+  small: 1,
+  "small.en": 1,
+  medium: 2,
+  "medium.en": 2,
+  "large-v1": 4,
+  "large-v2": 4,
+  "large-v3": 4,
+  "large-v3-turbo": 2,
+};
+
+// Unknown model names fall back to the `small.en` baseline so the returned
+// timeout never dips below the historical safe window for a novel/custom model.
+const DEFAULT_MODEL_SLOWDOWN_FACTOR = 1;
+
+/**
+ * Look up the auto-scale slowdown factor for a whisper model name. Case-
+ * insensitive. Unknown names fall back to the `small.en` baseline (factor 1)
+ * rather than a smaller factor so unknown models never accidentally shorten
+ * the safety window.
+ */
+export function whisperModelSlowdownFactor(model: string): number {
+  return WHISPER_MODEL_SLOWDOWN_FACTORS[model.toLowerCase()] ?? DEFAULT_MODEL_SLOWDOWN_FACTOR;
+}
+
+export interface ResolveWhisperTimeoutOptions {
+  /** Whisper model name (e.g. `small.en`, `medium.en`, `large-v3`). Selects the slowdown factor. */
+  model?: string;
+  /**
+   * Explicit override in milliseconds. Bypasses duration+model auto-scaling.
+   * Still clamped to the 12h cap so a runaway value can't hang the process
+   * indefinitely; validation of the lower bound is the caller's responsibility.
+   */
+  overrideMs?: number;
+}
+
+/**
+ * Give long recordings enough time to transcribe while retaining a bounded
+ * failure window. Short recordings keep the historical five-minute floor.
+ *
+ * Formula: `clamp(FLOOR, duration * PER_SECOND * modelFactor, CAP)`.
+ * An explicit `overrideMs` bypasses the formula entirely (still capped at 12h).
+ */
+export function resolveWhisperTimeoutMs(
+  durationSeconds: number | null,
+  options?: ResolveWhisperTimeoutOptions,
+): number {
+  // Explicit override wins — respect the caller's exact value (still capped at
+  // the 12h ceiling so a runaway value can't leave the process hung forever).
+  // We do NOT re-apply the floor here: a user who deliberately passed
+  // `--timeout 30000` on a 3s clip meant 30 seconds, not five minutes.
+  if (
+    options?.overrideMs != null &&
+    Number.isFinite(options.overrideMs) &&
+    options.overrideMs > 0
+  ) {
+    return Math.min(WHISPER_TIMEOUT_CAP_MS, options.overrideMs);
+  }
+
+  const factor = options?.model ? whisperModelSlowdownFactor(options.model) : 1;
+
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    // Duration unknown: keep the historical five-minute floor for the default
+    // model, but scale it up for heavier models so `medium`/`large` still get
+    // a proportionate window when ffprobe can't read the WAV header.
+    return Math.min(WHISPER_TIMEOUT_CAP_MS, Math.ceil(WHISPER_TIMEOUT_FLOOR_MS * factor));
+  }
+
+  return Math.min(
+    WHISPER_TIMEOUT_CAP_MS,
+    Math.max(
+      WHISPER_TIMEOUT_FLOOR_MS,
+      Math.ceil(durationSeconds * WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS * factor),
+    ),
+  );
+}
+
+/**
+ * Bound FFmpeg audio preparation while allowing long recordings to scale past
+ * the historical two-minute timeout. The half-realtime allowance is generous
+ * for audio-only extraction without inheriting Whisper's much larger window.
+ */
+export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null): number {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return AUDIO_PREPARATION_TIMEOUT_FLOOR_MS;
+  }
+
+  return Math.min(
+    AUDIO_PREPARATION_TIMEOUT_CAP_MS,
+    Math.max(
+      AUDIO_PREPARATION_TIMEOUT_FLOOR_MS,
+      Math.ceil(durationSeconds * AUDIO_PREPARATION_TIMEOUT_PER_MEDIA_SECOND_MS),
+    ),
+  );
+}
+
+function getMediaDurationSeconds(filePath: string): number | null {
+  try {
+    const ffprobePath = findFFprobe();
+    if (!ffprobePath) return null;
+    const raw = execFileSync(
+      ffprobePath,
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        filePath,
+      ],
+      { encoding: "utf-8", timeout: 10_000 },
+    );
+    const durationSeconds = Number.parseFloat(raw.trim());
+    return Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null;
+  } catch {
+    return null;
+  }
+}
+
+function getPreparedWavDurationSeconds(wavPath: string): number | null {
+  try {
+    const dataChunk = findWavDataChunk(readFileSync(wavPath));
+    if (!dataChunk) return null;
+    return dataChunk.size / (16_000 * 2);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Detect when speech begins in a 16kHz mono WAV by finding the first
  * sustained energy jump above the track's median RMS. Returns onset time in
@@ -107,6 +261,12 @@ export interface TranscribeOptions {
   model?: string;
   language?: string;
   onProgress?: (message: string) => void;
+  /**
+   * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
+   * scaled default. Callers that leave this undefined get the auto-scaled
+   * default derived from prepared WAV duration and the selected model.
+   */
+  timeoutMs?: number;
 }
 
 export interface TranscribeResult {
@@ -152,7 +312,10 @@ function extractAudio(videoPath: string): string {
   execFileSync(
     ffmpegPath,
     ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    { stdio: "ignore", timeout: 120_000 },
+    {
+      stdio: "ignore",
+      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
+    },
   );
   return wavPath;
 }
@@ -200,7 +363,10 @@ function prepareAudio(audioPath: string): string {
   execFileSync(
     ffmpegPath,
     ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    { stdio: "ignore", timeout: 120_000 },
+    {
+      stdio: "ignore",
+      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
+    },
   );
   return wavPath;
 }
@@ -304,7 +470,26 @@ export async function transcribe(
   }
   whisperArgs.push(wavPath);
 
-  execFileSync(whisper.executablePath, whisperArgs, { stdio: "ignore", timeout: 300_000 });
+  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath), {
+    model: effectiveModel,
+    overrideMs: options?.timeoutMs,
+  });
+  try {
+    execFileSync(whisper.executablePath, whisperArgs, {
+      stdio: "ignore",
+      timeout: whisperTimeoutMs,
+    });
+  } catch (err) {
+    // Surface the timeout knob when the child was killed by our own timeout —
+    // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
+    // `--timeout` even exists. Non-timeout errors flow through unchanged so the
+    // existing stderr-tail handling in `transcribeAudio` still applies.
+    throw wrapWhisperTimeoutError(err, {
+      effectiveTimeoutMs: whisperTimeoutMs,
+      model: effectiveModel,
+      wasOverride: options?.timeoutMs != null,
+    });
+  }
 
   // 6. Read and validate output
   const transcriptPath = `${outputBase}.json`;
@@ -344,4 +529,52 @@ export async function transcribe(
     durationSeconds: maxEnd / 1000,
     speechOnsetSeconds,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Timeout error discoverability
+// ---------------------------------------------------------------------------
+
+// Node's `execFileSync` kills the child with SIGTERM when its `timeout` option
+// fires, so the resulting Error carries `signal === "SIGTERM"`. On some platforms
+// / Node versions `code === "ETIMEDOUT"` is also set. Match either signal so we
+// don't miss a timeout on a platform we haven't validated.
+export function isWhisperTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const record = err as { signal?: unknown; code?: unknown };
+  return record.signal === "SIGTERM" || record.code === "ETIMEDOUT";
+}
+
+export interface WrapWhisperTimeoutOptions {
+  effectiveTimeoutMs: number;
+  model: string;
+  /** True when the timeout was set via `--timeout`; false when it was auto-scaled. */
+  wasOverride: boolean;
+}
+
+/**
+ * Wrap a whisper spawn error with a discoverability hint when the child was
+ * killed by our timeout. Names the effective timeout, the CLI flag, and the
+ * env var so slow-CPU users see the knob rather than a bare `ETIMEDOUT`.
+ * Non-timeout errors flow through unchanged (as `Error` for well-typed
+ * downstream handling).
+ */
+export function wrapWhisperTimeoutError(err: unknown, options: WrapWhisperTimeoutOptions): Error {
+  if (!isWhisperTimeoutError(err)) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+
+  const seconds = Math.round(options.effectiveTimeoutMs / 1000);
+  const source = options.wasOverride
+    ? `explicit --timeout ${options.effectiveTimeoutMs}ms`
+    : `auto-scaled default for model ${options.model}`;
+  const message =
+    `Whisper transcription exceeded ${seconds}s (${source}). ` +
+    `Raise --timeout <ms> or set HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS. ` +
+    `Slow CPUs (e.g. emulated arm64/x64, low-power laptops) may need many ` +
+    `multiples of realtime on heavier models — medium.en can run ~10-15x ` +
+    `realtime on constrained hardware.`;
+  const wrapped = new Error(message);
+  (wrapped as { cause?: unknown }).cause = err;
+  return wrapped;
 }

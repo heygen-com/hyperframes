@@ -58,7 +58,7 @@ tl.to(".bar", { scaleY: 1, duration: 0.7, ease: "power3.out", stagger: 0.08 }, 0
   overflow: hidden;
 }
 /* width:100% is REQUIRED — an absolutely-positioned fill with no width is 0px, and scaleX of 0 is
-   still 0 → the bar renders invisible (and no lint/inspect check catches a zero-width scaled element). */
+   still 0 → the bar renders invisible (automated gates may miss a zero-width scaled element). */
 .fill {
   width: 100%;
   height: 100%;

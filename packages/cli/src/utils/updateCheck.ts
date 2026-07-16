@@ -1,21 +1,14 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
 import { detectInstaller } from "./installerDetection.js";
+import { readPinnedHyperframesVersions } from "./projectPin.js";
+import { isSafeVersion } from "./safeVersion.js";
 
-/**
- * True when `v` is a strict semver-shaped string. Registry-supplied versions
- * flow into commands that are displayed AND executed (the `upgrade` command and
- * the background auto-installer both run them), so a poisoned `latest` carrying
- * shell metacharacters must never reach them. This is enforced at the registry
- * boundary in `checkForUpdate` — an unsafe `data.version` is never cached — so
- * every consumer (notice, upgrade, background auto-install, and any future one)
- * is covered by this single gate; the per-consumer checks are defense in depth.
- */
-export function isSafeVersion(v: string): boolean {
-  return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(v);
-}
+export { isSafeVersion } from "./safeVersion.js";
 
 const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -40,6 +33,8 @@ export interface UpdateMeta {
   version: string;
   latestVersion?: string;
   updateAvailable: boolean;
+  /** Present (and true) only for commands superseded by `check`; absent otherwise. */
+  deprecated?: boolean;
 }
 
 /**
@@ -130,9 +125,30 @@ export function getUpdateMeta(): UpdateMeta {
 /**
  * Wrap a JSON payload with the _meta version envelope.
  * Use this in all --json command outputs for consistent agent-friendly metadata.
+ *
+ * Pass `{ deprecated: true }` from a command superseded by `check` (validate,
+ * inspect, layout) to add `_meta.deprecated: true`; every other call site is
+ * unaffected — the key is only ever added, never set to `false`.
  */
-export function withMeta<T extends object>(data: T): T & { _meta: UpdateMeta } {
-  return { ...data, _meta: getUpdateMeta() };
+export function withMeta<T extends object>(
+  data: T,
+  options?: { deprecated?: boolean },
+): T & { _meta: UpdateMeta } {
+  const meta = getUpdateMeta();
+  if (options?.deprecated) meta.deprecated = true;
+  return { ...data, _meta: meta };
+}
+
+/**
+ * One-line deprecation notice for a command superseded by `check`. Always
+ * writes to stderr (never stdout), so a --json invocation's stdout stays
+ * pure, parseable JSON. Call once per invocation, before the command's own
+ * output.
+ */
+export function printDeprecationNotice(command: string): void {
+  process.stderr.write(
+    `'hyperframes ${command}' is deprecated and will be removed in a future release. Use 'hyperframes check' instead.\n`,
+  );
 }
 
 /**
@@ -170,5 +186,52 @@ export function printUpdateNotice(): void {
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +
       `  Run: ${command}\n\n`,
+  );
+}
+
+const STALE_PIN_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Actionable, throttled notice for a project whose package.json still pins an
+ * OLD hyperframes version. Unlike printUpdateNotice this DOES fire on non-TTY
+ * (agents render with piped stderr) \u2014 but only when there's a concrete stale
+ * pin to act on, at most once/24h per install, and never under --json/CI/dev/
+ * opt-out. The whole cli.ts update block is already skipped for --json, so a
+ * JSON stdout stays clean regardless.
+ */
+export function printStalePinNotice(cwd: string = process.cwd()): void {
+  if (isDevMode()) return;
+  if (process.env["CI"] === "true" || process.env["CI"] === "1") return;
+  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return;
+
+  const latest = getUpdateMeta().latestVersion;
+  if (!latest || !isSafeVersion(latest)) return;
+
+  let scripts: Record<string, string> = {};
+  try {
+    const pkgPath = join(cwd, "package.json");
+    if (!existsSync(pkgPath)) return;
+    scripts = (JSON.parse(readFileSync(pkgPath, "utf-8")).scripts ?? {}) as Record<string, string>;
+  } catch {
+    return;
+  }
+  const stale = readPinnedHyperframesVersions(scripts).filter((v) => {
+    try {
+      return compareVersions(latest, v) > 0;
+    } catch {
+      return false;
+    }
+  });
+  if (stale.length === 0) return;
+
+  const config = readConfig();
+  const last = config.lastStalePinNoticeAt ?? 0;
+  if (Date.now() - last < STALE_PIN_THROTTLE_MS) return;
+  config.lastStalePinNoticeAt = Date.now();
+  writeConfig(config);
+
+  process.stderr.write(
+    `\n  This project pins hyperframes@${stale.join(", ")} (latest ${latest}).\n` +
+      `  Bump it: npx hyperframes@latest upgrade --project\n\n`,
   );
 }

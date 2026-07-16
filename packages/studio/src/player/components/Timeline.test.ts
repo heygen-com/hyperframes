@@ -18,7 +18,17 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
-import { RULER_H, TRACK_H } from "./timelineLayout";
+import {
+  FIT_ZOOM_HEADROOM,
+  GUTTER,
+  MIN_TIMELINE_EXTENT_S,
+  PLAYHEAD_HEAD_W,
+  RULER_H,
+  TRACK_H,
+  TRACKS_LEFT_PAD,
+  getTimelineDisplayContentWidth,
+  getTimelineFitPps,
+} from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
@@ -143,7 +153,8 @@ describe("Timeline provider boundary", () => {
     });
 
     const row = button.parentElement?.parentElement;
-    const trackContent = row?.children.item(1);
+    // Row children: [sticky gutter, TRACKS_LEFT_PAD spacer, time-mapped content].
+    const trackContent = row?.children.item(2);
     expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);
     expect(trackContent).toBeInstanceOf(HTMLElement);
     if (!(trackContent instanceof HTMLElement)) {
@@ -320,33 +331,87 @@ describe("generateTicks", () => {
     const { major } = generateTicks(180, 80);
     expect(major[1] - major[0]).toBe(2);
   });
+
+  it("picks 'nice' NLE steps across zoom levels (no 7s-style intervals)", () => {
+    // step = first nice interval whose px spacing >= 88 at that pps.
+    const cases: Array<[number, number]> = [
+      [2, 60], // 60s * 2pps = 120px
+      [10, 10], // 10s * 10pps = 100px
+      [20, 5], // 5s * 20pps = 100px
+      [50, 2], // 2s * 50pps = 100px
+      [100, 1], // 1s * 100pps = 100px
+    ];
+    for (const [pps, expected] of cases) {
+      const { major } = generateTicks(600, pps);
+      expect(major[1] - major[0]).toBe(expected);
+    }
+  });
+
+  it("uses minute/hour steps when zoomed far out instead of colliding 10m labels", () => {
+    // 0.05 pps → 600s step would be 30px apart (labels collide); 1800s = 90px.
+    const { major } = generateTicks(7200, 0.05);
+    expect(major[1] - major[0]).toBe(1800);
+    expect(major).toContain(3600);
+  });
+
+  it("does not drift on long rulers (ticks are exact multiples of the step)", () => {
+    const { major } = generateTicks(600, 100); // 1s step, 601 ticks
+    expect(major[599]).toBe(599);
+  });
+
+  describe("frame display mode (frameRate provided)", () => {
+    it("snaps sub-frame steps up to one whole frame (no duplicate frame labels)", () => {
+      // 4400 pps would pick a 0.02s step = 0.6 frames at 30fps → snapped to 1 frame.
+      const { major } = generateTicks(2, 4400, 30);
+      const frames = major.map((t) => Math.round(t * 30));
+      // Frame labels are consecutive integers — no duplicates, no gaps.
+      frames.forEach((f, i) => expect(f).toBe(i));
+    });
+
+    it("keeps major AND minor ticks on whole frames", () => {
+      // 200 pps → 0.5s step (15 frames); quarters (3.75f) are rejected in
+      // frame mode in favour of fifths (3f).
+      const { major, minor } = generateTicks(20, 200, 30);
+      expect(major[1]).toBeCloseTo(0.5);
+      expect(minor).toContain(0.1); // 3 frames
+      for (const t of [...major, ...minor]) {
+        const frames = t * 30;
+        expect(Math.abs(frames - Math.round(frames))).toBeLessThan(1e-3);
+      }
+    });
+
+    it("leaves whole-second steps unchanged", () => {
+      const { major } = generateTicks(60, 100, 30);
+      expect(major[1] - major[0]).toBe(1);
+    });
+  });
 });
 
 describe("formatTime", () => {
-  it("formats 0 seconds as 0:00", () => {
-    expect(formatTime(0)).toBe("0:00");
+  it("formats 0 seconds as 00:00", () => {
+    expect(formatTime(0)).toBe("00:00");
   });
 
   // fallow-ignore-next-line code-duplication
   it("formats seconds below a minute", () => {
-    expect(formatTime(5)).toBe("0:05");
-    expect(formatTime(30)).toBe("0:30");
-    expect(formatTime(59)).toBe("0:59");
+    expect(formatTime(5)).toBe("00:05");
+    expect(formatTime(30)).toBe("00:30");
+    expect(formatTime(59)).toBe("00:59");
   });
 
   it("formats exactly one minute", () => {
-    expect(formatTime(60)).toBe("1:00");
+    expect(formatTime(60)).toBe("01:00");
   });
 
   it("formats minutes and seconds", () => {
-    expect(formatTime(90)).toBe("1:30");
-    expect(formatTime(125)).toBe("2:05");
+    expect(formatTime(90)).toBe("01:30");
+    expect(formatTime(125)).toBe("02:05");
   });
 
   it("floors fractional seconds", () => {
-    expect(formatTime(5.7)).toBe("0:05");
-    expect(formatTime(59.9)).toBe("0:59");
-    expect(formatTime(90.5)).toBe("1:30");
+    expect(formatTime(5.7)).toBe("00:05");
+    expect(formatTime(59.9)).toBe("00:59");
+    expect(formatTime(90.5)).toBe("01:30");
   });
 
   it("handles large values", () => {
@@ -354,16 +419,16 @@ describe("formatTime", () => {
     expect(formatTime(3661)).toBe("61:01");
   });
 
-  it("zero-pads seconds to two digits", () => {
-    expect(formatTime(1)).toBe("0:01");
-    expect(formatTime(9)).toBe("0:09");
-    expect(formatTime(61)).toBe("1:01");
+  it("zero-pads minutes and seconds to two digits", () => {
+    expect(formatTime(1)).toBe("00:01");
+    expect(formatTime(9)).toBe("00:09");
+    expect(formatTime(61)).toBe("01:01");
   });
 });
 
 describe("formatTimelineTickLabel", () => {
   it("uses minute-second labels for normal timeline intervals", () => {
-    expect(formatTimelineTickLabel(90, 180, 5)).toBe("1:30");
+    expect(formatTimelineTickLabel(90, 180, 5)).toBe("01:30");
   });
 
   it("uses hour labels for long timelines", () => {
@@ -371,7 +436,7 @@ describe("formatTimelineTickLabel", () => {
   });
 
   it("shows subsecond labels when the major ruler interval is below one second", () => {
-    expect(formatTimelineTickLabel(1.5, 3, 0.5)).toBe("0:01.5");
+    expect(formatTimelineTickLabel(1.5, 3, 0.5)).toBe("00:01.5");
   });
 });
 
@@ -387,6 +452,94 @@ describe("shouldAutoScrollTimeline", () => {
 
   it("auto-scrolls in manual mode when horizontal overflow exists", () => {
     expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
+  });
+});
+
+describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
+  const viewport = 632; // usable width = 632 - GUTTER - TRACKS_LEFT_PAD - 2
+
+  it("computes fit pps against the 60s floor for short compositions", () => {
+    // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
+    // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
+    const pps = getTimelineFitPps(viewport, 10);
+    expect(pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / 6);
+  });
+
+  it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
+    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo(
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (60 * FIT_ZOOM_HEADROOM),
+    );
+    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo(
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (120 * FIT_ZOOM_HEADROOM),
+    );
+  });
+
+  it("leaves CapCut-style trailing headroom: the comp ends at 1/1.2 of the usable width", () => {
+    const usable = viewport - GUTTER - TRACKS_LEFT_PAD - 2;
+    const pps = getTimelineFitPps(viewport, 120);
+    // Composition content occupies usable/1.2 px; the remaining ~17% is empty
+    // droppable ruler/lane surface past the end.
+    expect(120 * pps).toBeCloseTo(usable / FIT_ZOOM_HEADROOM);
+    expect(120 * pps).toBeLessThan(usable);
+  });
+
+  it("falls back to 100 pps before the viewport is measured", () => {
+    expect(getTimelineFitPps(0, 10)).toBe(100);
+    expect(getTimelineFitPps(GUTTER + TRACKS_LEFT_PAD, 10)).toBe(100);
+    expect(getTimelineFitPps(Number.NaN, 10)).toBe(100);
+  });
+
+  it("uses the floor for zero/invalid durations", () => {
+    expect(getTimelineFitPps(viewport, 0)).toBeCloseTo(
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+    expect(getTimelineFitPps(viewport, Number.NaN)).toBeCloseTo(
+      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+  });
+});
+
+describe("getTimelineDisplayContentWidth", () => {
+  it("always spans at least MIN_TIMELINE_EXTENT_S seconds of content", () => {
+    // 10s of content at 20 pps = 200px; the floor keeps 60s (1200px) rendered.
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 400, pps: 20 }),
+    ).toBe(MIN_TIMELINE_EXTENT_S * 20);
+  });
+
+  it("still fills the viewport when that is larger than the 60s floor", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 2000, pps: 5 }),
+    ).toBe(2000 - GUTTER - TRACKS_LEFT_PAD - 2);
+  });
+
+  it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        dragGhostEndPx: 5000,
+      }),
+    ).toBe(5000);
+  });
+
+  it("tracks a resize (trim) ghost past every other bound (trim-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        resizeGhostEndPx: 4200,
+      }),
+    ).toBe(4200);
+  });
+
+  it("keeps long content authoritative", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 9000, viewportWidth: 400, pps: 50 }),
+    ).toBe(9000);
   });
 });
 
@@ -448,13 +601,28 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
 });
 
 describe("getTimelinePlayheadLeft", () => {
-  it("converts time to a pixel offset from the gutter", () => {
-    expect(getTimelinePlayheadLeft(4, 20)).toBe(112);
+  it("offsets the wrapper by half the head width so the line CENTER = GUTTER + TRACKS_LEFT_PAD + t*pps", () => {
+    // Wrapper left + PLAYHEAD_HEAD_W/2 (where the 1px line is centered) must
+    // equal GUTTER + TRACKS_LEFT_PAD + t*pps at any zoom.
+    expect(getTimelinePlayheadLeft(4, 20) + PLAYHEAD_HEAD_W / 2).toBe(
+      GUTTER + TRACKS_LEFT_PAD + 4 * 20,
+    );
+    expect(getTimelinePlayheadLeft(10, 7.5) + PLAYHEAD_HEAD_W / 2).toBe(
+      GUTTER + TRACKS_LEFT_PAD + 75,
+    );
+  });
+
+  it("centers the line exactly on the left pad's end (the 00:00 tick) at t = 0", () => {
+    expect(getTimelinePlayheadLeft(0, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + TRACKS_LEFT_PAD);
   });
 
   it("guards invalid input", () => {
-    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(32);
-    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(32);
+    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(
+      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    );
+    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(
+      GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    );
   });
 });
 
@@ -523,8 +691,10 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        432,
-        310,
+        480, // rectLeft(100) + GUTTER + TRACKS_LEFT_PAD + 3s*100pps
+        // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
+        // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
+        368,
       ),
     ).toEqual({ start: 3, track: 3 });
   });
@@ -542,7 +712,7 @@ describe("resolveTimelineAssetDrop", () => {
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        250,
+        250 + TRACKS_LEFT_PAD,
         600,
       ),
     ).toEqual({ start: 1.18, track: 8 });

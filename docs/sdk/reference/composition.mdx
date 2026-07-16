@@ -117,7 +117,7 @@ comp.setVariableValue("heroImage", { url: "/assets/hero.jpg", fit: "cover" });
 ### `getVariableValue`
 
 ```typescript
-getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined
+getVariableValue(id: string, opts?: { base?: boolean }): string | number | boolean | FontValue | ImageValue | undefined
 ```
 
 Return a declared variable's current `default` value, or `undefined` if the id is undeclared or has no value set.
@@ -125,6 +125,12 @@ Return a declared variable's current `default` value, or `undefined` if the id i
 ```typescript
 const color = comp.getVariableValue("brandColor"); // "#6C5CE7"
 ```
+
+Pass `{ base: true }` to read the default **as authored at open** — before the
+T3 override-set or any `setVariableValue` folded into the declaration. This is
+the value to restore when a host replays an undo that removes a `var.<id>`
+override. For a variable declared mid-session, `{ base: true }` returns its
+live default (its declaration is its base).
 
 ### `listVariables`
 
@@ -753,4 +759,3 @@ comp.dispose();
     Template-driven products with host-owned history.
   </Card>
 </CardGroup>
-

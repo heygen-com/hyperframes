@@ -95,7 +95,7 @@ No REST equivalent exists. You drive the MCP tools, then hand output to the pure
    2b. **Validate against ground truth before calling it done — mandatory**: `export_video` on the cohort's `rootNodeId` gives Figma's own render of the timeline. Run `node skills/figma/scripts/verify-motion.mjs --reference <export.mp4> --render <render.mp4> --crop WxH+X+Y` — it compares motion-energy deltas (static import fidelity cancels out) and fails below 15dB min motion-PSNR (calibrated: faithful ≈ 20+, diverging ≈ 5). Measure `--crop` from the render's actual card edges, don't guess. FAIL means re-check the translation, not the threshold.
 3. `motionToGsap(doc)` → `emitTimelineScript(spec)` → inject as a `<script>` after the GSAP + CustomEase CDN tags. Paused, finite, registered on `window.__timelines` with a literal key.
 4. Untranslatable track (shader-driven, unsupported prop, complex masks) → bake: `export_video` → freeze MP4 → embed as `<video class="clip">`. Exception: shader-driven tracks — figma's export path flattens shaders to the base color (see Shaders below), so a bake there silently loses the shader; ask the user for a native figma export instead. Always say which path you used and why. Named eases outside the mapped set fall back to linear — the mapping table lives in `motionEase.ts`; flag the fallback to the user when it fires.
-5. Run `npx hyperframes lint && npx hyperframes validate` before calling it done.
+5. Run `npx hyperframes check` before calling it done.
 
 ## Shaders (Phase 5 — mostly manual)
 

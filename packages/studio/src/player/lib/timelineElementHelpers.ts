@@ -10,10 +10,63 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
+import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
+
+// ---------------------------------------------------------------------------
+// Layer-reveal lift transparency
+// ---------------------------------------------------------------------------
+
+/**
+ * Attributes carrying the pre-lift state of a Layers-panel selection reveal
+ * (useLayerRevealOverride): while a layer is selected it PAINTS on top via a
+ * temporary inline z-index, but the lift is a purely visual, ephemeral studio
+ * affordance — every z reader must keep reporting the element's TRUE z
+ * (stored here) so menus, badges, the lane mirror, and the panel sort never
+ * reason on the lifted value. A z-reorder commit removes the attributes (the
+ * commit is the new truth).
+ */
+export const LAYER_REVEAL_PRIOR_Z_ATTR = "data-hf-reveal-prior-z";
+export const LAYER_REVEAL_PRIOR_POSITION_ATTR = "data-hf-reveal-prior-pos";
+
+/** The lifted element's true (pre-lift) z, or null when no lift is active. */
+export function readLayerRevealPriorZ(el: Element): number | null {
+  const raw = el.getAttribute(LAYER_REVEAL_PRIOR_Z_ATTR);
+  if (raw == null) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
 
 // ---------------------------------------------------------------------------
 // Duration attribute helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Read a host element's effective CSS stacking order for the timeline's reverse
+ * z→lane mapping. Prefers the inline `style.zIndex` (what the canvas context
+ * menu and LayersPanel z-edits write via handleDomZIndexReorderCommit), falls
+ * back to computed style; "auto" / empty / unparseable ⇒ 0. Works with a
+ * detached parse Document (no defaultView) as well as a live iframe. Mirrors
+ * canvasContextMenuZOrder.parseZIndex semantics so the two directions agree.
+ * Reveal-lift transparent: an active lift reports the stored TRUE z.
+ */
+export function readTimelineElementZIndex(el: Element): number {
+  const prior = readLayerRevealPriorZ(el);
+  if (prior != null) return prior;
+  const html = el as HTMLElement;
+  const parseZ = (value: string | null | undefined): number | null => {
+    if (value == null || value === "" || value === "auto") return null;
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? n : null;
+  };
+  const fromInline = parseZ(html.style?.zIndex);
+  if (fromInline != null) return fromInline;
+  const view = el.ownerDocument?.defaultView;
+  if (view?.getComputedStyle) {
+    const fromComputed = parseZ(view.getComputedStyle(html).zIndex);
+    if (fromComputed != null) return fromComputed;
+  }
+  return 0;
+}
 
 function readDurationAttribute(el: Element | null | undefined): number {
   if (!el) return 0;
@@ -36,20 +89,44 @@ export function isTimelineIgnoredElement(el: Element): boolean {
   );
 }
 
-export function readTimelineDurationFromDocument(doc: Document | null | undefined): number {
+/**
+ * Furthest clip end (start + RAW `data-duration`) over every non-root clip in the
+ * document. Reads the authored attribute, NOT any runtime-computed value — so it
+ * is immune to the runtime's clamp that truncates a clip's live duration to the
+ * composition length. This is the source of truth for content-driven duration:
+ * computing it from the store instead would feed the truncated value back in and
+ * make the composition length ratchet down (research HANDOFF-3 §6.1 feedback loop).
+ */
+export function furthestClipEndFromDocument(doc: Document | null | undefined): number {
   if (!doc) return 0;
-  const rootDuration = readDurationAttribute(doc.querySelector("[data-composition-id]"));
-  if (rootDuration > 0) return rootDuration;
-
+  const root = doc.querySelector("[data-composition-id]");
   let maxEnd = 0;
   for (const node of Array.from(doc.querySelectorAll("[data-start]"))) {
-    if (isTimelineIgnoredElement(node)) continue;
+    if (node === root || isTimelineIgnoredElement(node)) continue;
     const start = Number.parseFloat(node.getAttribute("data-start") ?? "");
     const duration = readDurationAttribute(node);
     if (!Number.isFinite(start) || start < 0 || duration <= 0) continue;
     maxEnd = Math.max(maxEnd, start + duration);
   }
   return maxEnd;
+}
+
+export function readTimelineDurationFromDocument(doc: Document | null | undefined): number {
+  if (!doc) return 0;
+  const rootDuration = readDurationAttribute(doc.querySelector("[data-composition-id]"));
+  if (rootDuration > 0) return rootDuration;
+  return furthestClipEndFromDocument(doc);
+}
+
+/**
+ * Furthest clip end parsed straight from a composition SOURCE STRING (the HTML
+ * being saved). Uses raw `data-duration`, so it is the correct input for syncing
+ * the root duration after an edit — reading the store instead would use the
+ * runtime-truncated durations and shrink the composition (the feedback loop).
+ */
+export function furthestClipEndFromSource(source: string): number {
+  if (!source) return 0;
+  return furthestClipEndFromDocument(new DOMParser().parseFromString(source, "text/html"));
 }
 
 // ---------------------------------------------------------------------------
@@ -188,17 +265,13 @@ export function getTimelineElementSelectorIndex(
   el: Element,
   selector: string | undefined,
 ): number | undefined {
-  if (!selector || selector.startsWith("#") || selector.startsWith("[data-composition-id=")) {
-    return undefined;
-  }
-
-  try {
-    const matches = Array.from(doc.querySelectorAll(selector));
-    const matchIndex = matches.indexOf(el);
-    return matchIndex >= 0 ? matchIndex : undefined;
-  } catch {
-    return undefined;
-  }
+  return getSourceScopedSelectorIndex(
+    doc,
+    el,
+    selector,
+    getTimelineElementSourceFile(el),
+    getTimelineElementSourceFile,
+  );
 }
 
 export function buildTimelineElementKey(params: {
@@ -247,6 +320,25 @@ export function buildTimelineElementIdentity(params: {
 
 export function getTimelineElementIdentity(element: { key?: string | null; id: string }): string {
   return element.key ?? element.id;
+}
+
+/**
+ * Timeline store key for a z-reorder entry built OUTSIDE the timeline
+ * expansion (canvas context menu / LayersPanel), so the reorder commit can
+ * update the store's zIndex synchronously. Matches buildTimelineElementKey's
+ * stable branches (`sourceFile#domId`, else the selector-based key). Undefined
+ * when the element has neither a DOM id nor a selector — the timeline's
+ * fallback branch needs its own fallbackIndex, which these callers don't have,
+ * so such an entry simply skips the synchronous store update.
+ */
+export function deriveTimelineStoreKey(params: {
+  domId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
+}): string | undefined {
+  if (!params.domId && !params.selector) return undefined;
+  return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params });
 }
 
 // ---------------------------------------------------------------------------

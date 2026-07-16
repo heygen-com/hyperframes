@@ -1,3 +1,8 @@
+// The scaffolding command predates the complexity gate: run(), probeVideo,
+// handleVideoFile, and applyResolutionPreset carry its interactive branching.
+// This branch only repointed the scaffolded npm scripts; the refactor is its
+// own task.
+// fallow-ignore-file complexity
 import { defineCommand, runCommand } from "citty";
 import type { Example } from "./_examples.js";
 
@@ -9,10 +14,13 @@ export const examples: Example[] = [
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
-  ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
+  [
+    "Non-interactive mode (for CI or AI agents)",
+    "hyperframes init my-video --example blank --non-interactive",
+  ],
   [
     "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
+    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --example blank --non-interactive",
   ],
 ];
 import {
@@ -73,6 +81,22 @@ const TAILWIND_BROWSER_SRC = `https://cdn.jsdelivr.net/npm/@tailwindcss/browser@
 const TAILWIND_BROWSER_INTEGRITY =
   "sha384-v5YF9xS+gLRWdvrQ0u/WRbCkjSIH0NjHIPe8tBL1ZRrmI7PiSH6LLdzs0aAIMCuh";
 
+export function resolveVideoDurationSeconds({
+  streamDuration,
+  frameDuration,
+  formatDuration,
+}: {
+  streamDuration: number;
+  frameDuration: number;
+  formatDuration: number;
+}): number {
+  return (
+    [streamDuration, frameDuration, formatDuration].find(
+      (duration) => Number.isFinite(duration) && duration > 0,
+    ) ?? DEFAULT_META.durationSeconds
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ffprobe helper — shells out to ffprobe to avoid engine dependency
 // ---------------------------------------------------------------------------
@@ -95,6 +119,8 @@ function probeVideo(filePath: string): VideoMeta | undefined {
         height?: number;
         r_frame_rate?: string;
         avg_frame_rate?: string;
+        duration?: string;
+        nb_frames?: string;
       }[];
       format?: { duration?: string };
     } = JSON.parse(raw);
@@ -116,11 +142,18 @@ function probeVideo(filePath: string): VideoMeta | undefined {
       }
     }
 
-    const durationStr = parsed.format?.duration;
-    const durationSeconds = durationStr !== undefined ? parseFloat(durationStr) : 5;
+    const streamDuration = parseFloat(videoStream.duration ?? "");
+    const frameCount = parseInt(videoStream.nb_frames ?? "", 10);
+    const frameDuration = Number.isFinite(frameCount) && fps > 0 ? frameCount / fps : NaN;
+    const formatDuration = parseFloat(parsed.format?.duration ?? "");
+    const durationSeconds = resolveVideoDurationSeconds({
+      streamDuration,
+      frameDuration,
+      formatDuration,
+    });
 
     return {
-      durationSeconds: Number.isNaN(durationSeconds) ? 5 : durationSeconds,
+      durationSeconds,
       width: videoStream.width ?? 1920,
       height: videoStream.height ?? 1080,
       fps,
@@ -224,9 +257,7 @@ function hyperframesScript(command: string): string {
 function buildPackageScripts(): Record<string, string> {
   return {
     dev: hyperframesScript("preview"),
-    check:
-      `${hyperframesScript("lint")} && ${hyperframesScript("validate")} && ` +
-      `${hyperframesScript("inspect")}`,
+    check: hyperframesScript("check"),
     render: hyperframesScript("render"),
     publish: hyperframesScript("publish"),
   };
@@ -716,6 +747,10 @@ export default defineCommand({
       process.exit(1);
     }
     const exampleFlag = args.example;
+    if (exampleFlag?.startsWith("-")) {
+      console.error(c.error(`--example requires a value; received flag "${exampleFlag}" instead.`));
+      process.exit(1);
+    }
     const videoFlag = args.video;
     const audioFlag = args.audio;
     const skipTranscribe = args["skip-transcribe"] === true;
@@ -764,6 +799,16 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
+      if (!exampleFlag && !videoFlag && !audioFlag) {
+        console.error(
+          c.error(
+            "Non-interactive init requires --example, --video, or --audio. " +
+              "For an empty starter project, pass --example blank explicitly.",
+          ),
+        );
+        process.exit(1);
+      }
+
       const templateId = exampleFlag ?? "blank";
       const name = args.name ?? "my-video";
       const destDir = resolve(name);

@@ -11,10 +11,15 @@ export {
   createRenderJob,
   executeRenderJob,
   RenderCancelledError,
+  RenderQualityError,
+  applyRenderWarningPolicy,
   type RenderConfig,
   type RenderConfigInput,
   type RenderJob,
   type RenderStatus,
+  type RenderOutcome,
+  type RenderStrictness,
+  type RenderWarning,
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
@@ -45,6 +50,10 @@ export {
   captureFrameToBuffer,
   getCompositionDuration,
   getCapturePerfSummary,
+  // Transient-vs-genuine init failure classifier — re-exported so standalone
+  // skill helpers (animation-map, contrast-report) can reuse the render
+  // pipeline's canonical retry gating instead of re-deriving it.
+  isTransientBrowserError,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
   type CaptureSession,
@@ -86,6 +95,15 @@ export {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 export { normalizeErrorMessage } from "./utils/errorMessage.js";
+// Font localization: fetch + embed @font-face rules for requested families
+// (including those declared only via a remote <link>) so a bundled composition
+// renders with the real font instead of a fallback, regardless of network
+// timing. The render pipeline runs this in its compile stage; the CLI audit
+// paths (snapshot/check) reuse it so their captures match the render.
+export {
+  injectDeterministicFontFaces,
+  type InjectDeterministicFontFacesOptions,
+} from "./services/deterministicFonts.js";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 

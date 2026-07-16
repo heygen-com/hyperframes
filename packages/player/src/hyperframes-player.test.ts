@@ -418,6 +418,58 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.src).toBe("");
   });
 
+  it("owns exactly one controls, media, and listener set across ten reconnects", () => {
+    const reconnectingPlayer = player as PlayerElement & {
+      readonly iframeElement: HTMLIFrameElement;
+      readonly paused: boolean;
+      readonly _parentMedia: unknown[];
+      shadowRoot: ShadowRoot;
+    };
+    reconnectingPlayer.setAttribute("controls", "");
+    reconnectingPlayer.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    const windowRemove = vi.spyOn(window, "removeEventListener");
+    const iframeAdd = vi.spyOn(reconnectingPlayer.iframeElement, "addEventListener");
+    const iframeRemove = vi.spyOn(reconnectingPlayer.iframeElement, "removeEventListener");
+
+    for (let cycle = 0; cycle < 10; cycle++) {
+      document.body.appendChild(reconnectingPlayer);
+      expect(reconnectingPlayer.shadowRoot.querySelectorAll(".hfp-controls")).toHaveLength(1);
+      expect(reconnectingPlayer._parentMedia).toHaveLength(1);
+
+      reconnectingPlayer.remove();
+      expect(reconnectingPlayer.shadowRoot.querySelectorAll(".hfp-controls")).toHaveLength(0);
+      expect(reconnectingPlayer._parentMedia).toHaveLength(0);
+      expect(reconnectingPlayer.paused).toBe(true);
+    }
+
+    document.body.appendChild(reconnectingPlayer);
+
+    expect(reconnectingPlayer.shadowRoot.querySelectorAll(".hfp-controls")).toHaveLength(1);
+    expect(reconnectingPlayer._parentMedia).toHaveLength(1);
+    expect(
+      windowAdd.mock.calls.filter(([eventName]) => eventName === "message").length -
+        windowRemove.mock.calls.filter(([eventName]) => eventName === "message").length,
+    ).toBe(1);
+    expect(
+      iframeAdd.mock.calls.filter(([eventName]) => eventName === "load").length -
+        iframeRemove.mock.calls.filter(([eventName]) => eventName === "load").length,
+    ).toBe(1);
+  });
+
+  it("returns parent-media ownership to the runtime after reconnect", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+    player._promoteToParentProxy?.();
+    expect(player._audioOwner).toBe("parent");
+
+    player.remove();
+    document.body.appendChild(player);
+
+    expect(player._audioOwner).toBe("runtime");
+  });
+
   it("updates parent media when playback-rate changes after setup", () => {
     player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
     document.body.appendChild(player);
@@ -1008,7 +1060,27 @@ describe("HyperframesPlayer seek() sync path", () => {
         source: "hf-parent",
         type: "control",
         action: "seek",
-        frame: Math.round(12.5 * 30),
+        timeSeconds: 12.5,
+        frame: 375,
+        protocolVersion: 1,
+      }),
+      "*",
+    );
+  });
+
+  it("carries a frame fallback for accepted legacy cross-origin runtimes", () => {
+    // An older runtime ignores protocol-v1 metadata and reads only `frame`.
+    // Omitting it makes that bridge default every seek to frame zero.
+    const post = vi.fn();
+    stubContentWindow({ postMessage: post });
+
+    player.seek(7.5);
+
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "seek",
+        timeSeconds: 7.5,
+        frame: 225,
       }),
       "*",
     );
@@ -1162,7 +1234,15 @@ describe("HyperframesPlayer seek() sync path", () => {
 
     player.seek(7);
 
-    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "seek", frame: 210 }), "*");
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "seek",
+        timeSeconds: 7,
+        frame: 210,
+        protocolVersion: 1,
+      }),
+      "*",
+    );
   });
 
   it("does not throw when contentWindow access raises (cross-origin embed)", () => {

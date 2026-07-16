@@ -209,13 +209,18 @@ avatar upsell (decision X3).
   raw API. For a talking-head / avatar video, `heygen video create` (avatar
   engine IV by default) beats a generative clip when you want a real presenter.
   Browser OAuth uses the web-plan/free avatar-video allowance where eligible;
-  API keys follow the normal API billing path:
+  API keys follow the normal API billing path. Always pass
+  `--headers "X-HeyGen-Client-Source: media-use"` on any generating `heygen`
+  command (`video create`, `avatar create`, `video-translate`) — it's the
+  allowlisted attribution header (persistent flag, works on every subcommand) that
+  tags the usage as media-use in billing/resource meta so it shows up in the API
+  dashboards. Read-only discovery (`avatar list`, `voice list`) doesn't need it.
 
   ```bash
   # discover an avatar + a starfish voice, then create + wait
   heygen avatar list --ownership public --limit 5
   heygen voice list --engine starfish --limit 5
-  heygen video create --wait -d '{
+  heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
     "type": "avatar",
     "avatar_id": "<avatar-id>",
     "script": "Your narration here.",
@@ -226,3 +231,32 @@ avatar upsell (decision X3).
   Avatar videos are deterministic + script-driven (lip-sync from a script or a
   pre-recorded `audio_url`), distinct from the generative LTX clips. After it
   renders, `resolve --from <downloaded.mp4> --type video` to ledger it.
+
+### Image-to-video (animate any still into a talking clip)
+
+`heygen video create` takes the raw `POST /v3/videos` body, so switching `type`
+from `avatar` to `image` animates **any image of a person** into a lip-synced
+talking video, with no avatar/photo-avatar creation step first. Point `image` at a
+public URL or an uploaded `asset_id`, and drive speech with a `script`+`voice_id`
+or a pre-recorded `audio_url`:
+
+```bash
+heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
+  "type": "image",
+  "image": { "type": "url", "url": "https://example.com/person.jpg" },
+  "script": "Your narration here.",
+  "voice_id": "<voice-id>"
+}'
+```
+
+Common optional fields: `title`, `resolution` (`4k`/`1080p`/`720p`),
+`aspect_ratio`, `remove_background`, `background`, `voice_settings`,
+`motion_prompt` + `expressiveness` (photo-avatar animation), and
+`callback_url`/`callback_id` for webhooks. Don't hardcode these from memory: the
+CLI self-documents the full, current body with
+`heygen video create --request-schema` (a discriminated union keyed on `type`),
+so read the schema rather than trusting a stale field list. For a still you'll
+reuse across many scripts, create a reusable **Photo Avatar** once instead
+(`heygen avatar create`). Ledger the result with
+`resolve --from <downloaded.mp4> --type video`. Docs:
+<https://developers.heygen.com/image-to-video>.

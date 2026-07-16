@@ -8,6 +8,7 @@ import {
 import type { GsapAnimation } from "@hyperframes/parsers";
 import { serializeGsapAnimations, keyframesToGsapAnimations } from "@hyperframes/parsers";
 import { GSAP_CDN, BASE_STYLES, ZOOM_CONTAINER_STYLES } from "../templates/constants";
+import { COMPOSITION_ATTRIBUTES } from "../compositionContract.js";
 
 const GOOGLE_FONTS_BASE = "https://fonts.googleapis.com/css2";
 const FONT_WEIGHTS: Record<string, string> = {
@@ -446,9 +447,9 @@ function generateElementHtml(element: TimelineElement, keyframes?: Keyframe[]): 
   const baseAttrs = [
     `id="${element.id}"`,
     `data-hf-id="${element.id}"`,
-    `data-start="${element.startTime}"`,
-    `data-end="${element.startTime + element.duration}"`,
-    `data-layer="${element.zIndex}"`,
+    `${COMPOSITION_ATTRIBUTES.start}="${element.startTime}"`,
+    `${COMPOSITION_ATTRIBUTES.duration}="${element.duration}"`,
+    `${COMPOSITION_ATTRIBUTES.trackIndex}="${element.zIndex}"`,
     `data-name="${element.name}"`,
   ];
 

@@ -153,9 +153,21 @@ export function applyPositionEditToElement(el: HTMLElement, opts?: { force?: boo
 /**
  * Apply all pending position edits in the document. Returns the number of
  * elements updated.
+ *
+ * Runs the RESET path first: an element still carrying the captured pre-edit
+ * translate marker (EDIT_ORIGINAL_TRANSLATE_ATTR) but NO base attrs had its
+ * edit undone — the attrs were removed, so it no longer matches the apply
+ * selector, and the inline translate written by an earlier application would
+ * stay orphaned (the element visually displaced after its edit was reverted).
+ * Restore the captured translate and clear the marker so a later redo
+ * re-captures a clean baseline.
+ *
+ * `force` forwards to applyPositionEditToElement: re-apply even when the
+ * previously written translate was clobbered externally. Hosts replaying
+ * undo/redo should force — after a reset the fold-guard's bookkeeping no
+ * longer matches and the non-forced path would silently skip the redo.
  */
-export function applyPositionEdits(doc: Document): number {
-  const marked = doc.querySelectorAll(`[${EDIT_BASE_X_ATTR}], [${EDIT_BASE_Y_ATTR}]`);
+export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): number {
   // Not `instanceof HTMLElement`: `doc` is frequently an iframe's document (the
   // SDK's edit preview, a host embedding a composition), and its elements are
   // HTMLElement instances of THAT frame's realm — never this module's. A
@@ -163,14 +175,33 @@ export function applyPositionEdits(doc: Document): number {
   // cross-realm. Use the document's own realm's constructor; duck-type on
   // `.style` when defaultView is unavailable (a detached/synthetic document).
   const RealmHTMLElement = doc.defaultView?.HTMLElement;
+  const isStylable = (el: Element): el is HTMLElement =>
+    RealmHTMLElement
+      ? el instanceof RealmHTMLElement
+      : typeof (el as HTMLElement).style?.setProperty === "function";
+
+  const orphaned = doc.querySelectorAll(
+    `[${EDIT_ORIGINAL_TRANSLATE_ATTR}]:not([${EDIT_BASE_X_ATTR}]):not([${EDIT_BASE_Y_ATTR}])`,
+  );
+  for (let i = 0; i < orphaned.length; i++) {
+    const el = orphaned[i];
+    if (el === undefined || !isStylable(el)) continue;
+    const original = el.getAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR) ?? "";
+    if (original === "") {
+      el.style.removeProperty("translate");
+    } else {
+      el.style.setProperty("translate", original);
+    }
+    el.removeAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR);
+    lastAppliedTranslate.delete(el);
+  }
+
+  const marked = doc.querySelectorAll(`[${EDIT_BASE_X_ATTR}], [${EDIT_BASE_Y_ATTR}]`);
   let applied = 0;
   for (let i = 0; i < marked.length; i++) {
     const el = marked[i];
-    const isStylable = RealmHTMLElement
-      ? el instanceof RealmHTMLElement
-      : typeof (el as HTMLElement).style?.setProperty === "function";
-    if (!isStylable) continue;
-    applyPositionEditToElement(el as HTMLElement);
+    if (el === undefined || !isStylable(el)) continue;
+    applyPositionEditToElement(el, opts);
     applied += 1;
   }
   return applied;

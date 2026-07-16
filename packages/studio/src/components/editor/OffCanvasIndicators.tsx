@@ -7,6 +7,7 @@ export interface OffCanvasRect {
   top: number;
   width: number;
   height: number;
+  angle?: number;
 }
 
 interface OffCanvasIndicatorsProps {
@@ -19,6 +20,44 @@ interface OffCanvasIndicatorsProps {
   onSelectionChangeRef: React.MutableRefObject<
     (selection: DomEditSelection, options?: { revealPanel?: boolean; additive?: boolean }) => void
   >;
+}
+
+function clipOutsideCanvas(
+  rect: OffCanvasRect,
+  compRect: { left: number; top: number; width: number; height: number },
+): string | undefined {
+  const angle = rect.angle ?? 0;
+  if (!angle) {
+    const left = Math.max(0, compRect.left - rect.left);
+    const top = Math.max(0, compRect.top - rect.top);
+    const right = Math.min(rect.width, compRect.left + compRect.width - rect.left);
+    const bottom = Math.min(rect.height, compRect.top + compRect.height - rect.top);
+    if (left >= right || top >= bottom) return undefined;
+    return `polygon(evenodd, 0 0, ${rect.width}px 0, ${rect.width}px ${rect.height}px, 0 ${rect.height}px, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`;
+  }
+
+  const radians = (-angle * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const toLocal = (x: number, y: number) => {
+    const dx = x - centerX;
+    const dy = y - centerY;
+    return `${rect.width / 2 + dx * cos - dy * sin}px ${rect.height / 2 + dx * sin + dy * cos}px`;
+  };
+  const left = compRect.left;
+  const top = compRect.top;
+  const right = left + compRect.width;
+  const bottom = top + compRect.height;
+  const canvas = [
+    toLocal(left, top),
+    toLocal(right, top),
+    toLocal(right, bottom),
+    toLocal(left, bottom),
+    toLocal(left, top),
+  ].join(", ");
+  return `polygon(evenodd, 0 0, ${rect.width}px 0, ${rect.width}px ${rect.height}px, 0 ${rect.height}px, 0 0, ${canvas})`;
 }
 
 /**
@@ -49,15 +88,15 @@ export function OffCanvasIndicators({
           return !groupSelections.some((g) => g.element === el);
         })
         .map((r) => {
-          const pos = { left: r.left, top: r.top, width: r.width, height: r.height };
-          const cL = Math.max(0, compRect.left - r.left);
-          const cT = Math.max(0, compRect.top - r.top);
-          const cR = Math.min(r.width, compRect.left + compRect.width - r.left);
-          const cB = Math.min(r.height, compRect.top + compRect.height - r.top);
-          const hasInside = cL < cR && cT < cB;
-          const clipOutside = hasInside
-            ? `polygon(evenodd, 0 0, ${r.width}px 0, ${r.width}px ${r.height}px, 0 ${r.height}px, 0 0, ${cL}px ${cT}px, ${cR}px ${cT}px, ${cR}px ${cB}px, ${cL}px ${cB}px, ${cL}px ${cT}px)`
-            : undefined;
+          const pos = {
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+            transform: r.angle ? `rotate(${r.angle}deg)` : undefined,
+            transformOrigin: "center",
+          };
+          const clipOutside = clipOutsideCanvas(r, compRect);
           const selectOffCanvas = async () => {
             const el = elements.current.get(r.key);
             if (!el) return;
@@ -86,7 +125,7 @@ export function OffCanvasIndicators({
                 role="button"
                 tabIndex={0}
                 aria-label={`Select off-canvas element ${r.key}`}
-                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/60 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
+                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/10 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
                 style={clipOutside ? { clipPath: clipOutside } : undefined}
                 title={`Off-canvas: ${r.key} — click to select`}
                 onClick={handleClick}

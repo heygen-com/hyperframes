@@ -289,6 +289,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     | `--to` | Export transcript sidecar format: `srt` or `vtt` |
     | `--output, -o` | Output path for exported SRT/VTT sidecar |
     | `--preserve-cues` | Keep each transcript entry as its own caption cue (skip word-level grouping) |
+    | `--timeout` | Whisper spawn timeout in ms. Overrides the duration+model auto-scaled default. Increase on slow CPUs (e.g. emulated arm64/x64) where medium/large models take many seconds per audio second. Minimum 5000. Env: `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`. |
     | `--json` | Output result as JSON |
 
     The command auto-detects the input type. Audio/video files are transcribed with whisper.cpp. Transcript files (`.json`, `.srt`, `.vtt`) are normalized and imported. Pass `--to srt` or `--to vtt` with a transcript input to write a caption sidecar instead.
@@ -438,7 +439,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     The capture command extracts everything an AI agent needs to understand a website's visual identity: viewport screenshots at every scroll depth, color palette (pixel-sampled + DOM computed), font files, images with semantic names, SVGs, Lottie animations, video previews, WebGL shaders, visible text, and page structure.
 
-    Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/website-to-video` skill as step 1 of the video production pipeline.
+    Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/product-launch-video` workflow as step 1 of the video production pipeline.
 
     Set `GEMINI_API_KEY` in a `.env` file for AI-powered image descriptions via Gemini vision (~$0.001/image), or set `OPENROUTER_API_KEY` to use any vision model through [OpenRouter](https://openrouter.ai) instead (takes priority if both are set; override the model with `HYPERFRAMES_OPENROUTER_MODEL`). See the [Website to Video](/guides/website-to-video#enriching-captures-with-gemini-vision) guide for details.
 
@@ -520,6 +521,34 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
+    ### `check`
+
+    The browser verification gate: everything the old `validate` → `inspect` → `snapshot` loop did, in **one** command with one browser session:
+
+    ```bash
+    npx hyperframes check [dir]
+    npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+    npx hyperframes check [dir] --snapshots    # annotated overview frames + per-finding crops
+    npx hyperframes check [dir] --at 1.5,4,7.25
+    npx hyperframes check [dir] --strict       # exit non-zero on warnings too
+    ```
+
+    `check` runs the linter first (browser skipped entirely on lint errors), then loads the bundled composition once and sweeps one seek grid running every audit per sample: runtime console errors and failed requests, layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame drift), `*.motion.json` sidecar assertions, and WCAG AA contrast.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Aggregated machine-readable envelope; every finding carries selector, `data-*` identity, source file, bbox, and sample time |
+    | `--snapshots` | Write overview frames (annotated with labeled finding boxes when there are errors) plus `finding-NN-<code>.png` crops |
+    | `--samples` / `--at` / `--at-transitions` | Control the seek grid (default 9 samples; `--at-transitions` adds tween boundaries) |
+    | `--tolerance` | Allowed overflow in px before reporting (default 2) |
+    | `--timeout` | Initial settle budget in ms (default 3000) |
+    | `--no-contrast` | Skip the WCAG audit while iterating |
+    | `--strict` | Exit non-zero on warnings too (default: only errors) |
+    | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate: flags content whose center sits inside the fractional band (optional `severity`, `seek`) |
+    | `--frame-check` | Opt-in media out-of-frame detection (img/svg/video/canvas) |
+
+    Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static`.
+
     ### `beats`
 
     Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
@@ -548,6 +577,8 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
 
     ### `inspect`
+
+    <Warning>Deprecated: use [`check`](#check) — it covers this layout sweep plus runtime, motion, and contrast in one browser session. `inspect` keeps working and marks `_meta.deprecated: true` in JSON output.</Warning>
 
     Inspect rendered visual layout across the composition timeline:
 
@@ -688,6 +719,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--variables-file` | path | — | Path to a JSON file with variable overrides (alternative to `--variables`) |
     | `--strict-variables` | — | off | Fail render if any `--variables` key is undeclared or has a wrong type vs the composition's `data-composition-variables`. Without this flag, mismatches print as warnings and the render continues. |
     | `--browser-timeout` | seconds (0.001–86400) | 60 | Puppeteer page-navigation timeout for the entry HTML. Increase when heavy compositions (many videos, fonts, or asset requests) cannot reach `domcontentloaded` within the default 60 s. The flag takes **seconds**; the env fallback `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS` takes **milliseconds**. This controls `page.goto` only — very heavy compositions may also need `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` and/or `PRODUCER_PLAYER_READY_TIMEOUT_MS` bumped (post-navigation `window.__hf` readiness has its own 45 s budget). |
+    | `--protocol-timeout` | milliseconds (≥ 1000) | 300000 (5 min) | Puppeteer CDP protocol timeout — the per-call budget for `Runtime.callFunctionOn` seek/paint, `Page.captureScreenshot`, and other CDP round-trips. Raise on RAM-pressured hosts (≤ 8 GB), heavy-asset compositions (many videos + images), or when the render fails with `Runtime.callFunctionOn timed out` / `Target closed`. The default is auto-scaled per composition by output pixel area (a 4K comp bumps the ceiling proportionally, capped at 30 min); an explicit override sets the floor and disables scaling below it. Env fallback `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` (also **milliseconds**). |
 
     CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically. Use `--video-frame-format png` when source videos are UI recordings, screen captures, or other color-sensitive clips that should avoid JPEG frame extraction.
 
@@ -870,22 +902,22 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     ### `feedback`
 
-    Submit anonymous satisfaction feedback about your experience:
+    Submit anonymous recommendation feedback about your experience:
 
     ```bash
-    # Quick rating (1 = poor, 5 = great)
-    npx hyperframes feedback --rating 5
+    # Quick rating (0 = not likely, 10 = extremely likely)
+    npx hyperframes feedback --rating 10
 
     # Rating with optional details
-    npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
+    npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
 
     # Also file a pre-filled GitHub issue with a published minimal repro (opt-in, consented)
-    npx hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
+    npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
     ```
 
     | Flag | Description |
     |------|-------------|
-    | `--rating` | Satisfaction score, 1–5 (required) |
+    | `--rating` | Recommendation score, 0–10 (required) |
     | `--comment` | Optional free-text details |
     | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
     | `--dir` | Project directory to publish as the repro (default: current directory) |

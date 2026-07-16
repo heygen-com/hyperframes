@@ -101,6 +101,42 @@ describe("POST /projects/:id/render — outputResolution forwarding", () => {
     }
   });
 
+  // Contract pin per PR #2529 R2 review: the HTTP route accepts canonical
+  // presets only, not the CLI-side tier aliases (`1080p` / `hd` / `4k` /
+  // `uhd`, `landscape-4k` is already canonical). Miga asked that Studio
+  // Server's contract stay explicit here rather than silently extending it.
+  // Aliases fall through to the same `undefined` sink as any unknown value,
+  // which means the render falls back to composition dimensions — a safe,
+  // deliberate no-op rather than a portrait-1080p failure mode.
+  it.each(["1080p", "4k", "hd", "uhd"])(
+    "does NOT accept the CLI-side tier alias %s (canonical-only contract)",
+    async (alias) => {
+      const spy = vi.fn();
+      const { app, cleanup } = buildApp(spy);
+      try {
+        const res = await app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            fps: 30,
+            quality: "standard",
+            format: "mp4",
+            resolution: alias,
+          }),
+        });
+        expect(res.status).toBe(200);
+        // Alias falls through to undefined → render uses composition dims.
+        // If Studio Server ever extends its contract to accept aliases,
+        // it must also plumb `outputResolutionAspectAgnostic` alongside so
+        // the compile stage can remap orientation; today the surface is
+        // deliberately narrow.
+        expect(spy.mock.calls[0][0].outputResolution).toBeUndefined();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
   it("accepts each canonical preset value", async () => {
     for (const preset of VALID_CANVAS_RESOLUTIONS) {
       const spy = vi.fn();

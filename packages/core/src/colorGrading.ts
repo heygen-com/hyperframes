@@ -1,5 +1,17 @@
 export const HF_COLOR_GRADING_ATTR = "data-color-grading";
 
+// Runtime <-> studio contract attributes. The runtime grading engine writes
+// them; studio editing/soft-reload code reads them. Single owner — never
+// re-declare these literals elsewhere.
+/** Set on a graded source while its pixels render on the grading canvas. */
+export const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
+/**
+ * The element's AUTHORED inline opacity, stamped at document parse time before
+ * any animation engine mutates it ("" = authored none; attribute absent =
+ * never captured). See installAuthoredOpacityCapture in the runtime.
+ */
+export const COLOR_GRADING_AUTHORED_OPACITY_ATTR = "data-hf-authored-opacity";
+
 export const HF_COLOR_GRADING_CANVAS_ID_PREFIX = "__hf_color_grading_";
 
 export const HF_COLOR_GRADING_COLOR_SPACE = "rec709";

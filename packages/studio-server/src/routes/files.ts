@@ -5,9 +5,13 @@
 import type { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
+  closeSync,
   existsSync,
+  ftruncateSync,
+  openSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   mkdirSync,
   unlinkSync,
   rmSync,
@@ -22,6 +26,11 @@ import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
+import {
+  createWriteToken,
+  fileContentVersion,
+  recordFileWriteReceipt,
+} from "../helpers/fileVersion.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -103,7 +112,14 @@ interface RouteContext {
     path: string;
     query: (name: string) => string | undefined;
   };
+  header: (name: string, value: string) => void;
   json: (data: unknown, status?: number) => Response;
+}
+
+interface ResolvedGsapFile {
+  project: { dir: string };
+  filePath: string;
+  absPath: string;
 }
 
 /** Resolve project + safe absolute path for any project-scoped route. */
@@ -155,6 +171,178 @@ type MutationTarget = {
   selectorIndex?: number;
 };
 
+interface ElementPatchRequest {
+  target: MutationTarget;
+  operations: PatchOperation[];
+}
+
+interface ElementPatchBatchRequest {
+  sourceFile: string;
+  patches: ElementPatchRequest[];
+}
+
+interface ElementPatchBatchFileResult {
+  sourceFile: string;
+  changed: boolean;
+  matched: boolean[];
+  before: string;
+  after: string;
+  backupPath?: string | null;
+}
+
+function isElementPatchRequest(value: unknown): value is ElementPatchRequest {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("target" in value) || typeof value.target !== "object" || value.target === null) {
+    return false;
+  }
+  return "operations" in value && Array.isArray(value.operations) && value.operations.length > 0;
+}
+
+function isElementPatchBatchRequest(value: unknown): value is ElementPatchBatchRequest {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sourceFile" in value &&
+    typeof value.sourceFile === "string" &&
+    value.sourceFile.length > 0 &&
+    "patches" in value &&
+    Array.isArray(value.patches) &&
+    value.patches.length > 0 &&
+    value.patches.every(isElementPatchRequest)
+  );
+}
+
+function findUnsafeElementPatchBatchValues(
+  batches: readonly ElementPatchBatchRequest[],
+): UnsafeMutationValue[] {
+  return batches.flatMap((batch) =>
+    batch.patches.flatMap((patch) => findUnsafeDomPatchValues(patch)),
+  );
+}
+
+function foldElementPatches(
+  originalContent: string,
+  patches: ElementPatchRequest[],
+): { content: string; matched: boolean[] } {
+  let content = originalContent;
+  const matched: boolean[] = [];
+  for (const patch of patches) {
+    const result = patchElementInHtml(content, patch.target, patch.operations);
+    content = result.html;
+    matched.push(result.matched);
+  }
+  return { content, matched };
+}
+
+/**
+ * The single commit owner for element patch batches. All files are resolved,
+ * read, and folded before the first write; any unmatched target refuses the
+ * whole request. Studio Server is intentionally single-process; within that
+ * process the final snapshots/writes are synchronous, so another route cannot
+ * interleave once the commit section begins. A multi-process deployment must
+ * replace this process-local guarantee with a shared per-project file lock.
+ */
+export function commitElementPatchBatches(
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+  writeFile: (path: string, content: string, encoding: "utf-8") => void = writeFileSync,
+):
+  | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
+  | { durable: boolean; files: ElementPatchBatchFileResult[] } {
+  const resolvedPaths = new Set<string>();
+  const prepared: Array<{
+    sourceFile: string;
+    absPath: string;
+    before: string;
+    matched: boolean[];
+    after: string;
+  }> = [];
+
+  for (const batch of batches) {
+    const absPath = resolveWithinProject(projectDir, batch.sourceFile);
+    if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
+    if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
+    resolvedPaths.add(absPath);
+
+    let before: string;
+    try {
+      before = readFileSync(absPath, "utf-8");
+    } catch {
+      return { error: "not-found", sourceFile: batch.sourceFile };
+    }
+    const folded = foldElementPatches(before, batch.patches);
+    prepared.push({
+      sourceFile: batch.sourceFile,
+      absPath,
+      before,
+      matched: folded.matched,
+      after: folded.content,
+    });
+  }
+
+  const durable = prepared.every((file) => file.matched.every(Boolean));
+  if (!durable) {
+    return {
+      durable: false,
+      files: prepared.map((file) => ({
+        sourceFile: file.sourceFile,
+        changed: false,
+        matched: file.matched,
+        before: file.before,
+        after: file.before,
+      })),
+    };
+  }
+
+  const files: ElementPatchBatchFileResult[] = [];
+  const attemptedWrites: typeof prepared = [];
+  try {
+    for (const file of prepared) {
+      if (file.after === file.before) {
+        files.push({
+          sourceFile: file.sourceFile,
+          changed: false,
+          matched: file.matched,
+          before: file.before,
+          after: file.before,
+        });
+        continue;
+      }
+      const backup = snapshotBeforeWrite(projectDir, file.absPath);
+      if (backup.error) {
+        throw new Error(`Failed to create backup for ${file.sourceFile}: ${backup.error}`);
+      }
+      attemptedWrites.push(file);
+      writeFile(file.absPath, file.after, "utf-8");
+      files.push({
+        sourceFile: file.sourceFile,
+        changed: true,
+        matched: file.matched,
+        before: file.before,
+        after: file.after,
+        backupPath: backupPathForResponse(projectDir, backup.backupPath),
+      });
+    }
+  } catch (error) {
+    const rollbackErrors: unknown[] = [];
+    for (const file of attemptedWrites.reverse()) {
+      try {
+        writeFile(file.absPath, file.before, "utf-8");
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        "Element patch batch failed and rollback did not complete",
+      );
+    }
+    throw error;
+  }
+  return { durable: true, files };
+}
+
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(
   c: RouteContext,
@@ -191,6 +379,16 @@ function rejectUnsafeMutationValues(
     },
     400,
   );
+}
+
+function elementPatchBatchCommitErrorResponse(
+  c: RouteContext,
+  error: "duplicate" | "forbidden" | "not-found",
+  sourceFile: string,
+): Response {
+  if (error === "not-found") return c.json({ error, sourceFile }, 404);
+  if (error === "forbidden") return c.json({ error, sourceFile }, 403);
+  return c.json({ error: "duplicate source file", sourceFile }, 400);
 }
 
 /**
@@ -774,6 +972,13 @@ type GsapMutationRequest =
       delta: number;
     }
   | {
+      // Batched shift: fold shiftPositionsInScript over N selectors in one write.
+      // Lets a multi-clip timeline move (ripple / insert) shift every affected
+      // clip's tweens atomically instead of one racing server round-trip per clip.
+      type: "shift-positions-batch";
+      shifts: Array<{ targetSelector: string; delta: number }>;
+    }
+  | {
       type: "scale-positions";
       targetSelector: string;
       oldStart: number;
@@ -815,6 +1020,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   // Time-shift / time-scale tweens, which can move a keyframed position tween's start
   // across t=0, flipping hold need; stale holds are not repositioned by these ops.
   "shift-positions",
+  "shift-positions-batch",
   "scale-positions",
   // Retargets keyframed position tweens to a cloned element's selector; the old hold is
   // keyed to the prior selector, so holds must be rebuilt for the new target.
@@ -834,6 +1040,140 @@ async function executeGsapMutation(
     return executeGsapMutationRecast(body, block, respond);
   }
   return executeGsapMutationAcorn(body, block, respond);
+}
+
+function validateGsapMutationRequest(
+  c: RouteContext,
+  body: GsapMutationRequest | null,
+): Response | null {
+  if (!body || typeof body !== "object" || !("type" in body) || !body.type) {
+    return c.json({ error: "mutation type required" }, 400);
+  }
+  const unsafeFields = findUnsafeMutationValues(body);
+  if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
+  if (
+    body.type === "shift-positions-batch" &&
+    (!("shifts" in body) || !Array.isArray(body.shifts))
+  ) {
+    return c.json({ error: "shift-positions-batch requires a `shifts` array" }, 400);
+  }
+  return null;
+}
+
+async function prepareGsapMutationScript(
+  c: RouteContext,
+  res: ResolvedGsapFile,
+  firstMutation: GsapMutationRequest,
+): Promise<
+  | Response
+  | {
+      html: string;
+      beforeHtml: string;
+      block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>;
+    }
+> {
+  const beforeHtml = readFileSync(res.absPath, "utf-8");
+  let html = beforeHtml;
+  let block = extractGsapScriptBlock(html);
+  if (!block && (firstMutation.type === "add" || firstMutation.type === "add-with-keyframes")) {
+    const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
+    const { GSAP_CDN } = await import("@hyperframes/core");
+    const bootstrap = [
+      `<script src="${GSAP_CDN}"></script>`,
+      "<script>",
+      "window.__timelines = window.__timelines || {};",
+      "const tl = gsap.timeline({ paused: true });",
+      `window.__timelines["${compId}"] = tl;`,
+      "</script>",
+    ].join("\n");
+    html = html.includes("</body>")
+      ? html.replace("</body>", `${bootstrap}\n</body>`)
+      : `${html}\n${bootstrap}`;
+    block = extractGsapScriptBlock(html);
+  }
+  if (
+    !block &&
+    (firstMutation.type === "shift-positions" ||
+      firstMutation.type === "scale-positions" ||
+      firstMutation.type === "shift-positions-batch")
+  ) {
+    return c.json({
+      ok: true,
+      changed: false,
+      mutated: false,
+      parsed: { animations: [], timelineVar: "tl", preamble: "", postamble: "" },
+      before: html,
+      after: html,
+      scriptText: "",
+      path: res.filePath,
+      backupPath: null,
+    });
+  }
+  if (!block) return c.json({ error: "no GSAP script found in file" }, 400);
+  return { html, beforeHtml, block };
+}
+
+async function applyGsapMutations(
+  c: RouteContext,
+  res: ResolvedGsapFile,
+  mutations: GsapMutationRequest[],
+): Promise<Response> {
+  const firstMutation = mutations[0];
+  if (!firstMutation) return c.json({ error: "mutations array required" }, 400);
+  const prepared = await prepareGsapMutationScript(c, res, firstMutation);
+  if (prepared instanceof Response) return prepared;
+  const { html, beforeHtml, block } = prepared;
+
+  const initialScript = block.scriptText;
+  const skippedSelectors = new Set<string>();
+  const respond = (data: unknown, status?: number) =>
+    status ? c.json(data, status) : c.json(data);
+
+  for (const mutation of mutations) {
+    const result = await executeGsapMutation(mutation, block, respond);
+    if (result instanceof Response) return result;
+    let newScript = typeof result === "string" ? result : result.script;
+    if (typeof result !== "string") {
+      for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
+    }
+    if (HOLD_SYNC_MUTATION_TYPES.has(mutation.type)) {
+      const parser = await loadGsapParser();
+      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+    }
+    block.scriptText = newScript;
+  }
+
+  const changed = block.scriptText !== initialScript;
+  const newHtml = changed ? block.replaceScript(block.scriptText) : html;
+  let backupPath: string | null = null;
+  // Parsing can await lazy imports. Revalidate before EVERY successful response,
+  // including semantic no-ops: a stale no-op response would otherwise claim
+  // the old bytes and let the client keep a preview that missed a successor.
+  if (readFileSync(res.absPath, "utf-8") !== beforeHtml) {
+    return c.json({ error: "file changed during GSAP mutation", conflict: true }, 409);
+  }
+  if (changed) {
+    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+    backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
+    writeFileSync(res.absPath, newHtml, "utf-8");
+  }
+
+  const responsePayload: Record<string, unknown> = {
+    ok: true,
+    changed,
+    mutated: changed,
+    parsed: parseGsapScriptAcorn(block.scriptText),
+    before: beforeHtml,
+    after: newHtml,
+    scriptText: block.scriptText,
+    path: res.filePath,
+    version: fileContentVersion(newHtml),
+    backupPath,
+  };
+  if (skippedSelectors.size > 0) responsePayload.skippedSelectors = [...skippedSelectors];
+  c.header("ETag", responsePayload.version as string);
+  return c.json(responsePayload);
 }
 
 function executeGsapMutationAcorn(
@@ -1100,6 +1440,14 @@ function executeGsapMutationAcorn(
       const { targetSelector, delta } = body;
       if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
       return shiftPositionsInScript(block.scriptText, targetSelector, delta);
+    }
+    case "shift-positions-batch": {
+      let script = block.scriptText;
+      for (const s of body.shifts) {
+        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
+        script = shiftPositionsInScript(script, s.targetSelector, s.delta);
+      }
+      return script;
     }
     case "scale-positions": {
       const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
@@ -1463,6 +1811,15 @@ async function executeGsapMutationRecast(
       const { shiftPositionsInScript } = parser;
       return shiftPositionsInScript(block.scriptText, targetSelector, delta);
     }
+    case "shift-positions-batch": {
+      const { shiftPositionsInScript } = parser;
+      let script = block.scriptText;
+      for (const s of body.shifts) {
+        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
+        script = shiftPositionsInScript(script, s.targetSelector, s.delta);
+      }
+      return script;
+    }
     case "scale-positions": {
       const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
       if (
@@ -1594,7 +1951,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const content = readFileSync(res.absPath, "utf-8");
-    return c.json({ filename: res.filePath, content });
+    const version = fileContentVersion(content);
+    c.header("ETag", version);
+    return c.json({ filename: res.filePath, content, version });
   });
 
   // ── Write (overwrite) ──
@@ -1603,15 +1962,106 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    ensureDir(res.absPath);
     const body = await c.req.text();
-    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
-    writeFileSync(res.absPath, body, "utf-8");
+    const expectedVersion = c.req.header("If-Match")?.trim() ?? null;
+    const createOnly = c.req.header("If-None-Match")?.trim() === "*";
+    if (expectedVersion === null && !createOnly) {
+      let currentContent: string | null = null;
+      try {
+        currentContent = readFileSync(res.absPath, "utf-8");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+      return c.json(
+        {
+          error: "precondition required",
+          path: res.filePath,
+          currentVersion: currentContent === null ? null : fileContentVersion(currentContent),
+          currentContent,
+        },
+        428,
+      );
+    }
+
+    let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
+    if (createOnly) {
+      ensureDir(res.absPath);
+      let fd: number;
+      try {
+        fd = openSync(res.absPath, "wx");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
+          throw error;
+        }
+        const currentContent = readFileSync(res.absPath, "utf-8");
+        return c.json(
+          {
+            error: "file conflict",
+            path: res.filePath,
+            currentVersion: fileContentVersion(currentContent),
+            currentContent,
+          },
+          409,
+        );
+      }
+      try {
+        writeSync(fd, body, 0, "utf-8");
+      } finally {
+        closeSync(fd);
+      }
+    } else {
+      let fd: number;
+      try {
+        fd = openSync(res.absPath, "r+");
+      } catch (error) {
+        if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+          throw error;
+        }
+        return c.json(
+          {
+            error: "file conflict",
+            path: res.filePath,
+            currentVersion: null,
+            currentContent: null,
+          },
+          409,
+        );
+      }
+      try {
+        const currentContent = readFileSync(fd, "utf-8");
+        const currentVersion = fileContentVersion(currentContent);
+        if (expectedVersion !== currentVersion) {
+          return c.json(
+            {
+              error: "file conflict",
+              path: res.filePath,
+              currentVersion,
+              currentContent,
+            },
+            409,
+          );
+        }
+        backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+        if (backup.error)
+          console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+        ftruncateSync(fd, 0);
+        writeSync(fd, body, 0, "utf-8");
+      } finally {
+        closeSync(fd);
+      }
+    }
+    const version = fileContentVersion(body);
+    const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken });
+    c.header("ETag", version);
 
     return c.json({
       ok: true,
       path: res.filePath,
+      version,
+      writeToken,
       backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
     });
   });
@@ -1711,17 +2161,28 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       fallbackTiming,
     );
     if (!result.matched) {
-      return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
+      const version = fileContentVersion(originalContent);
+      c.header("ETag", version);
+      return c.json({
+        ok: false,
+        changed: false,
+        content: originalContent,
+        path: ctx.filePath,
+        version,
+      });
     }
     const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
     if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
     writeFileSync(ctx.absPath, result.html, "utf-8");
+    const version = fileContentVersion(result.html);
+    c.header("ETag", version);
     return c.json({
       ok: true,
       changed: true,
       content: result.html,
       newId: result.newId,
       path: ctx.filePath,
+      version,
       backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
   });
@@ -1773,6 +2234,68 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       content: patched,
       path: ctx.filePath,
       backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+    });
+  });
+
+  api.post("/projects/:id/file-mutations/patch-element-batches", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("batches" in body) ||
+      !Array.isArray(body.batches) ||
+      body.batches.length === 0 ||
+      !body.batches.every(isElementPatchBatchRequest)
+    ) {
+      return c.json({ error: "batches with sourceFile and patches required" }, 400);
+    }
+    const unsafeFields = findUnsafeElementPatchBatchValues(body.batches);
+    if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
+
+    const result = commitElementPatchBatches(project.dir, body.batches);
+    if ("error" in result) {
+      return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
+    }
+    return c.json(result);
+  });
+
+  api.post("/projects/:id/file-mutations/patch-elements-batch/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "patch-elements-batch");
+    if ("error" in ctx) return ctx.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      patches?: ElementPatchRequest[];
+    } | null;
+    if (
+      !body ||
+      !Array.isArray(body.patches) ||
+      body.patches.length === 0 ||
+      !body.patches.every(isElementPatchRequest)
+    ) {
+      return c.json({ error: "patches with target and operations required" }, 400);
+    }
+    const batch = { sourceFile: ctx.filePath, patches: body.patches };
+    const unsafeFields = findUnsafeElementPatchBatchValues([batch]);
+    if (unsafeFields.length > 0) {
+      return rejectUnsafeMutationValues(c, unsafeFields);
+    }
+
+    const result = commitElementPatchBatches(ctx.project.dir, [batch]);
+    if ("error" in result) {
+      return elementPatchBatchCommitErrorResponse(c, result.error, result.sourceFile);
+    }
+    const file = result.files[0];
+    if (!file) return c.json({ error: "empty element patch result" }, 500);
+    return c.json({
+      ok: true,
+      changed: file.changed,
+      matched: file.matched,
+      content: file.after,
+      path: file.sourceFile,
+      backupPath: file.backupPath,
     });
   });
 
@@ -2010,6 +2533,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
   // ── GSAP Mutations ──
 
+  api.get("/projects/:id/gsap-mutation-capabilities", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    return c.json({ atomicOwnershipPairs: true });
+  });
+
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
       mustExist: true,
@@ -2017,94 +2546,59 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as GsapMutationRequest | null;
-    if (!body || !body.type) {
-      return c.json({ error: "mutation type required" }, 400);
+    if (!body) return c.json({ error: "mutation type required" }, 400);
+    const error = validateGsapMutationRequest(c, body);
+    if (error) return error;
+    return applyGsapMutations(c, res, [body]);
+  });
+
+  api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
+    const res = await resolveProjectPath(
+      c,
+      adapter,
+      (id) => `/projects/${id}/gsap-mutations-batch/`,
+      { mustExist: true },
+    );
+    if ("error" in res) return res.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      mutations?: GsapMutationRequest[];
+    } | null;
+    if (!body || !Array.isArray(body.mutations) || body.mutations.length === 0) {
+      return c.json({ error: "mutations array required" }, 400);
     }
-    const unsafeFields = findUnsafeMutationValues(body);
-    if (unsafeFields.length > 0) {
-      return rejectUnsafeMutationValues(c, unsafeFields);
+    for (const mutation of body.mutations) {
+      const error = validateGsapMutationRequest(c, mutation);
+      if (error) return error;
+    }
+    return applyGsapMutations(c, res, body.mutations);
+  });
+
+  // A failed multi-step GSAP transaction may restore only the exact bytes its
+  // mutation wrote. Keep compare + write in this synchronous server section so
+  // another request cannot land between a client-side check and the restore.
+  api.post("/projects/:id/gsap-mutation-rollback/*", async (c) => {
+    const res = await resolveProjectPath(
+      c,
+      adapter,
+      (id) => `/projects/${id}/gsap-mutation-rollback/`,
+      { mustExist: true },
+    );
+    if ("error" in res) return res.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      expected?: unknown;
+      restore?: unknown;
+    } | null;
+    if (!body || typeof body.expected !== "string" || typeof body.restore !== "string") {
+      return c.json({ error: "expected and restore contents required" }, 400);
     }
 
-    let html = readFileSync(res.absPath, "utf-8");
-    let block = extractGsapScriptBlock(html);
-    if (!block && (body.type === "add" || body.type === "add-with-keyframes")) {
-      const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
-      const { GSAP_CDN } = await import("@hyperframes/core");
-      const gsapCdn = `<script src="${GSAP_CDN}"></script>`;
-      const bootstrap = [
-        gsapCdn,
-        "<script>",
-        "window.__timelines = window.__timelines || {};",
-        `const tl = gsap.timeline({ paused: true });`,
-        `window.__timelines["${compId}"] = tl;`,
-        "</script>",
-      ].join("\n");
-      if (html.includes("</body>")) {
-        html = html.replace("</body>", `${bootstrap}\n</body>`);
-      } else {
-        html += `\n${bootstrap}`;
-      }
-      block = extractGsapScriptBlock(html);
+    const current = readFileSync(res.absPath, "utf-8");
+    if (current !== body.expected) {
+      return c.json({ ok: true, restored: false, conflict: true });
     }
-    if (!block && (body.type === "shift-positions" || body.type === "scale-positions")) {
-      return c.json({
-        ok: true,
-        changed: false,
-        mutated: false,
-        parsed: { animations: [], timelineVar: "tl", preamble: "", postamble: "" },
-        before: html,
-        after: html,
-        scriptText: "",
-        path: res.filePath,
-        backupPath: null,
-      });
-    }
-    if (!block) {
-      return c.json({ error: "no GSAP script found in file" }, 400);
-    }
-
-    const respond = (data: unknown, status?: number) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bridge between generic status and Hono's literal union
-      status ? c.json(data, status as any) : c.json(data);
-
-    const result = await executeGsapMutation(body, block, respond);
-    if (result instanceof Response) return result;
-
-    let newScript = typeof result === "string" ? result : result.script;
-    // Keep the "hold before first keyframe" sets in sync after any mutation that can
-    // change a position tween's first keyframe or its existence. Without it, an
-    // element snaps to its CSS base before the tween starts instead of holding its
-    // first keyframe (the universal NLE behavior).
-    if (HOLD_SYNC_MUTATION_TYPES.has(body.type)) {
-      const parser = await loadGsapParser();
-      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
-    }
-    const changed = newScript !== block.scriptText;
-    const newHtml = changed ? block.replaceScript(newScript) : html;
-    let backupPath: string | null = null;
-    if (changed) {
-      const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-      if (backup.error)
-        console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
-      backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
-      writeFileSync(res.absPath, newHtml, "utf-8");
-    }
-
-    const freshParsed = parseGsapScriptAcorn(newScript);
-    const responsePayload: Record<string, unknown> = {
-      ok: true,
-      changed,
-      mutated: changed,
-      parsed: freshParsed,
-      before: html,
-      after: newHtml,
-      scriptText: newScript,
-      path: res.filePath,
-      backupPath,
-    };
-    if (typeof result !== "string" && result.skippedSelectors.length > 0) {
-      responsePayload.skippedSelectors = result.skippedSelectors;
-    }
-    return c.json(responsePayload);
+    writeFileSync(res.absPath, body.restore, "utf-8");
+    return c.json({ ok: true, restored: true, conflict: false });
   });
 }
