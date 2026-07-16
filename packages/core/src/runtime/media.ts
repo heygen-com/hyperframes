@@ -152,6 +152,33 @@ function clampVolume(volume: number): number {
   return Math.max(0, Math.min(1, volume));
 }
 
+/**
+ * Drop every per-source sync baseline tracked for `el` — offset drift
+ * samples, the seek-past-buffered-range retry latch, and the last
+ * runtime-applied volume — so the next `syncRuntimeMedia` tick treats it as
+ * a first tick (hard resync, fresh drift baseline) instead of comparing
+ * against state computed for a different file. Used both when a clip leaves
+ * its active window (below) and by the runtime's proxy-swap helper
+ * (mediaProxy.ts) right after an in-place `src` swap, which points the same
+ * element at a different file without ever leaving its active window.
+ */
+export function evictMediaSyncState(el: HTMLMediaElement): void {
+  lastOffset.delete(el);
+  strictDriftSamples.delete(el);
+  seekLoadRetried.delete(el);
+  lastRuntimeAppliedVolume.delete(el);
+}
+
+/** Test-only seam: whether any per-source sync state is still tracked for `el`. */
+export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
+  return (
+    lastOffset.has(el) ||
+    strictDriftSamples.has(el) ||
+    seekLoadRetried.has(el) ||
+    lastRuntimeAppliedVolume.has(el)
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -400,10 +427,7 @@ export function syncRuntimeMedia(params: {
     }
     // Clip left its active window — drop the offset baseline so the next
     // activation (e.g. re-entering a sub-composition) gets a hard resync.
-    lastOffset.delete(el);
-    strictDriftSamples.delete(el);
-    seekLoadRetried.delete(el);
-    lastRuntimeAppliedVolume.delete(el);
+    evictMediaSyncState(el);
     if (!el.paused) el.pause();
   }
 }
