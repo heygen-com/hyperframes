@@ -20,8 +20,6 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 
-// ── Types ──
-
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -71,8 +69,6 @@ export interface UseDomEditSessionParams {
   forceReloadSdkSession?: () => void;
 }
 
-// ── Hook ──
-
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -113,8 +109,6 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  // ── Selection ──
-
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -148,8 +142,6 @@ export function useDomEditSession({
     refreshKey,
     rightPanelTab,
   });
-
-  // ── Agent modal ──
 
   const {
     agentModalOpen,
