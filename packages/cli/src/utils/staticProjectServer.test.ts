@@ -1,8 +1,42 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveStaticProjectHtml, type StaticProjectServer } from "./staticProjectServer.js";
+import {
+  listenOnChromiumSafeEphemeralPort,
+  serveStaticProjectHtml,
+  type StaticProjectServer,
+} from "./staticProjectServer.js";
+
+class FakeServer extends EventEmitter {
+  private currentPort: number | undefined;
+  readonly listenCalls: number[] = [];
+  closeCalls = 0;
+
+  constructor(private readonly assignedPorts: readonly number[]) {
+    super();
+  }
+
+  listen(port: number, host: string, callback: () => void): this {
+    expect(host).toBe("127.0.0.1");
+    this.listenCalls.push(port);
+    this.currentPort = this.assignedPorts[this.listenCalls.length - 1];
+    queueMicrotask(callback);
+    return this;
+  }
+
+  address(): { port: number } | null {
+    return this.currentPort ? { port: this.currentPort } : null;
+  }
+
+  close(callback?: () => void): this {
+    this.closeCalls += 1;
+    this.currentPort = undefined;
+    queueMicrotask(() => callback?.());
+    return this;
+  }
+}
 
 let server: StaticProjectServer | undefined;
 let dir: string | undefined;
@@ -20,6 +54,38 @@ async function serveWith(bytes: Buffer): Promise<{ url: string }> {
   server = await serveStaticProjectHtml(dir, "<html></html>");
   return { url: server.url };
 }
+
+describe("listenOnChromiumSafeEphemeralPort", () => {
+  it("closes and rebinds when the OS assigns a Chromium-unsafe port", async () => {
+    const fake = new FakeServer([3659, 49_152]);
+
+    await expect(listenOnChromiumSafeEphemeralPort(fake, "bind failed")).resolves.toBe(49_152);
+    expect(fake.listenCalls).toEqual([0, 0]);
+    expect(fake.closeCalls).toBe(1);
+    expect(fake.listenerCount("error")).toBe(0);
+  });
+
+  it("keeps the first safe port without closing the listener", async () => {
+    const fake = new FakeServer([49_152]);
+
+    await expect(listenOnChromiumSafeEphemeralPort(fake, "bind failed")).resolves.toBe(49_152);
+    expect(fake.listenCalls).toEqual([0]);
+    expect(fake.closeCalls).toBe(0);
+    expect(fake.listenerCount("error")).toBe(0);
+  });
+
+  it("stops after bounded retries and leaves no listener open", async () => {
+    const fake = new FakeServer([3659, 3659, 3659]);
+
+    await expect(listenOnChromiumSafeEphemeralPort(fake, "bind failed", 3)).rejects.toThrow(
+      "bind failed",
+    );
+    expect(fake.listenCalls).toEqual([0, 0, 0]);
+    expect(fake.closeCalls).toBe(3);
+    expect(fake.address()).toBeNull();
+    expect(fake.listenerCount("error")).toBe(0);
+  });
+});
 
 describe("serveStaticProjectHtml range support", () => {
   it("answers a Range request with 206 + the requested byte slice", async () => {
