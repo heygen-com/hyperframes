@@ -429,6 +429,7 @@ export function useDomEditSession({
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
     resolveAllDomSelectionsFromPreviewPoint,
+    buildDomSelectionFromTarget,
     updateDomEditHoverSelection,
     setActiveGroupElement,
     onClickToSource,
