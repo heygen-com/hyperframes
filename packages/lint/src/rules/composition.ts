@@ -18,6 +18,46 @@ const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"])
 const CAPTION_CUE_TOKEN =
   /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
 
+// composition_heavy_overlay_count_high — warn when a composition carries this
+// many or more elements whose CSS uses filter:blur, clip-path (non-none), or
+// radial-gradient. Field signal ts=1784040753 (#hyperframes-cli-feedback):
+// a composition with ~40 such elements captures solid-black for the first
+// ~half of the render, recovering near the end. Presence alone matters —
+// opacity:0 and visibility:hidden overlays still contribute — so the rule
+// counts every one that isn't display:none-hidden. Threshold sits below the
+// observed 40-element repro (25) so authors get lead time; adjust here if
+// noise/signal shifts, since a per-rule config option would also require
+// plumbing through HyperframeLinterOptions across every embedder.
+const HEAVY_OVERLAY_ELEMENT_COUNT_WARN = 25;
+const HEAVY_OVERLAY_EXEMPT_TAGS = new Set([
+  "audio",
+  "body",
+  "br",
+  "defs",
+  "head",
+  "hr",
+  "html",
+  "link",
+  "meta",
+  "script",
+  "source",
+  "style",
+  "template",
+  "title",
+  "use",
+  "video",
+]);
+// Matches any of: `filter: <...>blur(...)`, `clip-path: <non-none-value>`,
+// or `radial-gradient(...)`. Property terminator is `;` or `}`; value class
+// excludes both so we don't over-match into the next declaration. `clip-path`
+// escapes when its value starts with a CSS-wide keyword that leaves the render
+// tree unaffected (none / inherit / initial / unset) — the whitespace-eating
+// `\s*` lives *inside* the negative lookahead so the engine can't backtrack
+// `\s*` from outside to 0-width and slip past the keyword guard.
+const HEAVY_OVERLAY_CSS_PATTERN =
+  /(?:filter\s*:[^;}]*\bblur\s*\()|(?:clip-path\s*:(?!\s*(?:none|inherit|initial|unset)\b)\s*[^;}]+)|(?:radial-gradient\s*\()/i;
+const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
+
 // `parseFloat("0.1") + parseFloat("0.2") = 0.30000000000000004`. Sub-second
 // authored adjacencies survive parse + add as a value a few ulps above the
 // next clip's start; a strict `>` fires the overlap rule on adjacencies that
@@ -104,6 +144,46 @@ function extractCssSelectors(css: string): string[] {
 function leftmostCompoundClasses(selector: string): string[] {
   const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
   return (leftmost.match(/\.([\w-]+)/g) ?? []).map((c) => c.slice(1));
+}
+
+// Id token in a selector's leftmost compound. `#hero .title` → "hero";
+// `.a#b > .c` → "b"; `.a .b` → null. Companion to leftmostCompoundClasses;
+// splits on the same combinator set so the two agree on where "leftmost" ends.
+function leftmostCompoundId(selector: string): string | null {
+  const leftmost = selector.trim().split(/[\s>+~]+/)[0] ?? "";
+  return leftmost.match(/#([\w-]+)/)?.[1] ?? null;
+}
+
+// Class tokens + ids whose rule body sets a "heavy overlay" property
+// (filter:blur, clip-path non-none, or radial-gradient). Only top-level rules
+// are scanned — the flat `[^{}]*` body class naturally skips @keyframes
+// bodies (which contain nested `{...}` stops) and other @-rules, so keyframe
+// selectors like `0%`/`100%` don't leak in.
+function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
+  classes: Set<string>;
+  ids: Set<string>;
+} {
+  const classes = new Set<string>();
+  const ids = new Set<string>();
+  for (const style of styles) {
+    const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
+    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = ruleWithBody.exec(noComments)) !== null) {
+      const header = (m[1] ?? "").trim();
+      const body = m[2] ?? "";
+      if (!header || header.startsWith("@")) continue;
+      if (!HEAVY_OVERLAY_CSS_PATTERN.test(body)) continue;
+      for (const sel of header.split(",")) {
+        const trimmed = sel.trim();
+        if (!trimmed) continue;
+        for (const cls of leftmostCompoundClasses(trimmed)) classes.add(cls);
+        const idToken = leftmostCompoundId(trimmed);
+        if (idToken) ids.add(idToken);
+      }
+    }
+  }
+  return { classes, ids };
 }
 
 // Distinct selectors across all <style> blocks whose leftmost compound keys off one
@@ -1078,5 +1158,88 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // duration from these at render time (see resolveAdapterDurationFloorSeconds
     // in runtime/init.ts). Not an error; data-duration is optional here.
     return [];
+  },
+
+  // composition_heavy_overlay_count_high
+  // Field signal ts=1784040753 (#hyperframes-cli-feedback): a composition
+  // with ~40 heavy overlay DOM elements — `filter:blur`, oversized
+  // `radial-gradient`, and `clip-path` animations — captures solid-black for
+  // the first ~half of the render, recovering near the end. Reproduces
+  // identically via drawElement AND forced --no-browser-gpu screenshot
+  // capture AND `snapshot`, so the offender is the capture layer itself, not
+  // encoder/mux. Independent of duration (padding the timeline grows the bad
+  // zone proportionally, doesn't shift it). Reporter's workaround was to
+  // split into per-transition mini compositions + FFmpeg concat.
+  //
+  // Presence alone matters: opacity:0 and visibility:hidden overlays still
+  // contribute to the capture-layer regression, so they're counted-in. The
+  // only escape hatch is `display: none` — an element removed from the render
+  // tree can't feed the compositor. Warn at 25, well below the observed
+  // 40-element repro, to give authors lead time before hitting the bug.
+  // fallow-ignore-next-line complexity
+  ({ tags, styles, rawSource, options }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
+
+    const { classes: heavyClassTokens, ids: heavyIds } = collectHeavyOverlayHooks(styles);
+
+    let heavyCount = 0;
+    for (const tag of tags) {
+      if (HEAVY_OVERLAY_EXEMPT_TAGS.has(tag.name)) continue;
+      // Structural containers (root + mounted sub-compositions) aren't overlay
+      // content — the heavy children live inside them, and each such child is
+      // its own tag entry that we score directly. Counting the container too
+      // would double-attribute the risk to one authoring surface.
+      if (isCompositionRootOrMount(tag.raw)) continue;
+
+      // readJsonAttr lets a `style` value carry the opposite quote character
+      // (inline `background: url("x.png")` etc.), which readAttr would truncate.
+      const styleAttr = readJsonAttr(tag.raw, "style") ?? "";
+      // display:none removes the element from the render tree, so the capture
+      // layer never sees it — the only reliable way to keep an "unused" heavy
+      // overlay in the source without paying the compositor cost.
+      if (styleAttr && INLINE_STYLE_DISPLAY_NONE_PATTERN.test(styleAttr)) continue;
+
+      let heavy = false;
+      if (styleAttr && HEAVY_OVERLAY_CSS_PATTERN.test(styleAttr)) heavy = true;
+
+      if (!heavy && (heavyClassTokens.size > 0 || heavyIds.size > 0)) {
+        const classList = (readAttr(tag.raw, "class") || "").split(/\s+/).filter(Boolean);
+        if (classList.some((cls) => heavyClassTokens.has(cls))) heavy = true;
+        if (!heavy) {
+          const idValue = readAttr(tag.raw, "id");
+          if (idValue && heavyIds.has(idValue)) heavy = true;
+        }
+      }
+
+      if (heavy) heavyCount += 1;
+    }
+
+    if (heavyCount < HEAVY_OVERLAY_ELEMENT_COUNT_WARN) return [];
+
+    const splitTarget = options.isSubComposition
+      ? "Split this sub-composition further into per-transition mini-compositions"
+      : "Split coherent scenes / transitions into separate .html files under compositions/";
+
+    return [
+      {
+        code: "composition_heavy_overlay_count_high",
+        severity: "warning",
+        message:
+          `This composition has ${heavyCount} elements carrying "heavy overlay" CSS ` +
+          `(filter:blur, radial-gradient, or clip-path). Field signal: a composition with ` +
+          `~40 such elements — including opacity:0 / visibility:hidden ones — captures ` +
+          `solid-black for the first ~half of the render, recovering near the end. Reproduces ` +
+          `identically via drawElement, forced screenshot capture, and snapshot, so the capture ` +
+          `layer itself is the offender (not encoder/mux). Independent of duration. Presence ` +
+          `alone matters; only display:none elements are excluded here.`,
+        fixHint:
+          `${splitTarget} and concat the pieces (FFmpeg or the runtime's slideshow) so each ` +
+          `capture only sees a small subset of heavy overlays at once. Even hidden overlays ` +
+          `(opacity:0 / visibility:hidden) contribute — either remove truly unused ones from ` +
+          `the source or scope them into their own per-transition sub-composition. If an ` +
+          `overlay is genuinely inert for the whole clip, use display:none so it never enters ` +
+          `the render tree. Field ref ts=1784040753 (#hyperframes-cli-feedback).`,
+      },
+    ];
   },
 ];
