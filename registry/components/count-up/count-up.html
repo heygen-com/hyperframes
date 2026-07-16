@@ -104,19 +104,22 @@
           }
 
           .cu-affix {
+            position: relative;
             flex: 0 0 auto;
             color: color-mix(in srgb, var(--cu-accent) 72%, var(--fg, #f8fafc));
-            font-size: 0.52em;
+            font-size: 0.55em;
             font-weight: 600;
             letter-spacing: -0.02em;
           }
 
+          /* Affix gaps are font-relative (em of the affix), never layout
+             spacing tokens, so the lockup scales with the figure. */
           .cu-prefix {
-            margin-right: var(--space-1, 1.2cqw);
+            margin-right: 0.14em;
           }
 
           .cu-suffix {
-            margin-left: var(--space-1, 1.2cqw);
+            margin-left: 0.14em;
           }
 
           .cu-affix:empty {
@@ -181,6 +184,20 @@
 
             prefixElement.textContent = prefix;
             suffixElement.textContent = suffix;
+
+            // Optical trim: flex baseline alignment is metric, not optical.
+            // At 0.55em a lone currency glyph hugs the baseline and a lone
+            // math-axis glyph (+, ~) sits below the figures' visual middle,
+            // so the two affixes land at different heights. Lift both onto
+            // the figures' optical center; full-height strings (%, letters,
+            // digits) stay on the shared baseline.
+            function affixLift(text) {
+              if (/^[$€£¥₹₩]$/.test(text)) return "-0.31em";
+              if (/^[+−±×=~<>-]+$/.test(text)) return "-0.36em";
+              return "";
+            }
+            prefixElement.style.top = affixLift(prefix);
+            suffixElement.style.top = affixLift(suffix);
             root.style.setProperty("--cu-accent", accentColors[accent]);
             stage.classList.toggle("cu-glow", glow);
 

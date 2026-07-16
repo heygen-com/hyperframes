@@ -3,9 +3,11 @@
   per-word-rise: HyperFrames video primitive (text effects / reveal)
 
   Words, or characters through the split variable, rise into place with a
-  controlled cascade and a small blur-to-sharp settle. The finished line
-  drifts gently during the hold, then holds until the frame cuts (exit none)
-  or departs with the optional exit variable.
+  controlled cascade and a small blur-to-sharp settle. Each unit lands with
+  a short overshoot-free settle tail (the final few pixels glide in over the
+  closing frames instead of stopping dead), then the finished line holds
+  truly still until the frame cuts (exit none) or departs with the optional
+  exit variable.
 
   Variables:
     - text (string, default "WORDS IN MOTION"): displayed text.
@@ -18,7 +20,7 @@
   Envelope, fixed IN and OUT with elastic HOLD only:
     IN_BASE  = 1.45s, the full staggered rise and sharp settle (cues can
                stretch the rise phase past IN_BASE when they land later)
-    HOLD     = max(0, D - IN - OUT), one finite drift away and back
+    HOLD     = max(0, D - IN - OUT), truly still: no drift
     OUT_BASE = 0.50s staggered departure when exit is fade or up, 0s when
                exit is none (the default: the line holds until the cut)
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
@@ -89,7 +91,6 @@
             line-height: 1.08;
             letter-spacing: -0.035em;
             text-align: center;
-            will-change: transform;
           }
 
           .pwr-stage.pwr-char {
@@ -196,11 +197,38 @@
             var EXIT_STAGGER = units.length > 1 ? EXIT_STAGGER_BASE * scale : 0;
             var EXIT_MOVE = Math.max(0.001, OUT - EXIT_STAGGER);
 
+            // Landing ease: overshoot-free decel with a settle tail. A plain
+            // power3.out slams from fast to imperceptible in ~2 frames and the
+            // words stop dead; this piecewise cubic keeps ~7% of the travel for
+            // the last 22% of the duration and is C1-continuous at the seam,
+            // so the word glides its final few pixels over the closing frames
+            // (a settle) with monotonic velocity: no stall, no hop, no
+            // overshoot. Pure function of progress, so it stays seek-safe.
+            var LAND_SPLIT = 0.78; // progress where the settle tail begins
+            var LAND_RESIDUAL = 0.07; // fraction of travel left for the tail
+            var LAND_SEAM_SLOPE =
+              ((1 - LAND_RESIDUAL) / LAND_SPLIT) * 0.5; // shared velocity at the seam
+            function landEase(p) {
+              if (p <= 0) return 0;
+              if (p >= 1) return 1;
+              if (p < LAND_SPLIT) {
+                var x = p / LAND_SPLIT;
+                var inv = 1 - x;
+                // Half cubic-out, half linear: keeps end velocity for the seam.
+                return (1 - LAND_RESIDUAL) * (0.5 * (1 - inv * inv * inv) + 0.5 * x);
+              }
+              var u = (p - LAND_SPLIT) / (1 - LAND_SPLIT);
+              var b = LAND_SEAM_SLOPE * (1 - LAND_SPLIT);
+              var c = 3 * LAND_RESIDUAL - 2 * b;
+              var d = b - 2 * LAND_RESIDUAL;
+              return 1 - LAND_RESIDUAL + b * u + c * u * u + d * u * u * u;
+            }
+
             // Cues own the word landings when provided; the authored cascade
             // otherwise. Landings beyond the cue list extrapolate at the cue
             // list's own gap, and every landing clamps ahead of any exit.
-            var landings = null;
             var riseEnd = IN;
+            var landings;
             if (cues.length > 0) {
               var lastCue = cues[cues.length - 1];
               var cueGap =
@@ -216,59 +244,40 @@
                 return Math.min(latestLanding, Math.max(0.05, landing));
               });
               riseEnd = Math.min(duration - OUT, Math.max(IN, Math.max.apply(null, landings)));
+            } else {
+              // Authored cascade: same left-to-right wave the stagger drew,
+              // expressed as explicit landings so every unit gets the settle.
+              var step = units.length > 1 ? STAGGER / (units.length - 1) : 0;
+              landings = units.map(function (unit, index) {
+                return index * step + RISE;
+              });
             }
             var HOLD_START = riseEnd;
             var HOLD = Math.max(0, duration - (HOLD_START + OUT));
             var OUT_START = HOLD_START + HOLD;
 
-            gsap.set(stage, { y: "0cqh" });
             gsap.set(units, { opacity: 0, y: "8cqh", "--pwr-blur": "1.4cqh" });
 
             var tl = gsap.timeline({ paused: true });
 
-            if (landings) {
-              units.forEach(function (unit, index) {
-                var startAt = Math.max(0, landings[index] - RISE);
-                tl.to(
-                  unit,
-                  {
-                    opacity: 1,
-                    y: "0cqh",
-                    "--pwr-blur": "0cqh",
-                    duration: Math.max(0.08, landings[index] - startAt),
-                    ease: "power3.out",
-                  },
-                  startAt,
-                );
-              });
-            } else {
+            units.forEach(function (unit, index) {
+              var landing = landings[index];
+              var startAt = Math.max(0, landing - RISE);
               tl.to(
-                units,
+                unit,
                 {
                   opacity: 1,
                   y: "0cqh",
                   "--pwr-blur": "0cqh",
-                  duration: RISE,
-                  stagger: { amount: STAGGER, from: "start" },
-                  ease: "power3.out",
+                  duration: Math.max(0.08, landing - startAt),
+                  ease: landEase,
                 },
-                0,
+                startAt,
               );
-            }
+            });
 
-            if (HOLD > 0) {
-              tl.to(
-                stage,
-                {
-                  y: "-0.55cqh",
-                  duration: HOLD / 2,
-                  ease: "sine.inOut",
-                  yoyo: true,
-                  repeat: 1,
-                },
-                HOLD_START,
-              );
-            }
+            // TRUE hold: the finished line is dead still until the exit or
+            // the cut. The old 0.55cqh drift was sub-perceptual at 1080p.
 
             // OUT: optional departure; exit none holds until the frame cuts.
             if (exit === "up") {

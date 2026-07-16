@@ -973,6 +973,7 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var root = document.getElementById("root");
           var compositionId = "before-after-wipe";
           var stage = root.querySelector(".baw-stage");
+          var divider = root.querySelector(".baw-divider");
           var chipA = root.querySelector(".baw-chip-a");
           var chipB = root.querySelector(".baw-chip-b");
           var vars = window2.__hyperframes && window2.__hyperframes.getVariables ? window2.__hyperframes.getVariables() : {};
@@ -988,6 +989,10 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             violet: "var(--accent-2, #c5a3ff)"
           };
           var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent) ? vars.accent : "green";
+          var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+          if (computedAccent === "green" || computedAccent === "blue" || computedAccent === "violet") {
+            accentColors.blue = "#38bdf8";
+          }
           var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
           chipA.textContent = labelA;
           chipB.textContent = labelB;
@@ -1013,11 +1018,23 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             );
           }
           gsap2.set(stage, { opacity: 0, y: 0, "--baw-split": 0 });
+          gsap2.set(divider, { autoAlpha: 0 });
           var tl = gsap2.timeline({ paused: true });
           tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
           tl.to(
             stage,
             { "--baw-split": restSplit, duration: WIPE_DURATION, ease: "sine.inOut" },
+            WIPE_AT
+          );
+          tl.fromTo(
+            divider,
+            { autoAlpha: 0 },
+            {
+              autoAlpha: 1,
+              duration: Math.min(0.22 * scale, WIPE_DURATION),
+              ease: "power1.out",
+              immediateRender: false
+            },
             WIPE_AT
           );
           tl.call(

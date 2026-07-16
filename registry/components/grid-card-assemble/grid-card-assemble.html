@@ -24,8 +24,10 @@
       and 9 items form 3x3.
     - cues (string, default ""): comma-separated per-item entrance times in
       seconds relative to mount start. A blank or invalid entry falls back to
-      that item's default cascade slot (~0.1s gap). Values are clamped so
-      every card lands before any exit begins.
+      that item's default cascade slot: the cascade spreads so the last card
+      lands near 60% of the authored duration (short mounts compress toward
+      ~0.1s gaps). Values are clamped so every card lands before any exit
+      begins.
     - accent (green | blue | violet, default green): icon stroke family.
       green -> --brand, blue -> --accent, violet -> --accent-2.
     - exit ("none" | "fade" | "up", default "none"): frame roots own
@@ -378,15 +380,26 @@
             var avail = duration - OUT;
             var TILE = Math.min(TILE_BASE, Math.max(0.2, avail - BASE_START));
             var latestStart = Math.max(0, avail - TILE);
-            // Compress the cascade together when the duration cannot fit it.
+            // Default cascade: the last card lands (settle included) around
+            // 60% of the authored duration, so the assembly occupies the
+            // shot instead of finishing in the first quarter and holding
+            // dead. Later cards land deeper, each icon drawing as its card
+            // arrives; the still hold begins after the final landing. Short
+            // mounts fall back to the compressed ~0.1s cascade, and nothing
+            // ever starts past latestStart (every card lands before OUT).
+            var firstStart = Math.min(BASE_START, latestStart);
+            var targetLastStart = Math.min(
+              latestStart,
+              Math.max(0.6 * duration - TILE, BASE_START + GAP * (count - 1)),
+            );
             var gap =
-              count > 1 ? Math.min(GAP, Math.max(0, latestStart - BASE_START) / (count - 1)) : GAP;
+              count > 1 ? Math.max(0, targetLastStart - firstStart) / (count - 1) : 0;
 
             var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
             var starts = cards.map(function (card, index) {
               var cue = Number((cueList[index] || "").trim());
               var hasCue = (cueList[index] || "").trim() !== "" && Number.isFinite(cue);
-              var start = hasCue ? cue : Math.min(BASE_START, latestStart) + gap * index;
+              var start = hasCue ? cue : firstStart + gap * index;
               return Math.max(0, Math.min(start, latestStart));
             });
 

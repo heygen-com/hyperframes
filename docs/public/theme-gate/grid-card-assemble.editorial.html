@@ -963,12 +963,17 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var avail = duration - OUT;
           var TILE = Math.min(TILE_BASE, Math.max(0.2, avail - BASE_START));
           var latestStart = Math.max(0, avail - TILE);
-          var gap = count > 1 ? Math.min(GAP, Math.max(0, latestStart - BASE_START) / (count - 1)) : GAP;
+          var firstStart = Math.min(BASE_START, latestStart);
+          var targetLastStart = Math.min(
+            latestStart,
+            Math.max(0.6 * duration - TILE, BASE_START + GAP * (count - 1))
+          );
+          var gap = count > 1 ? Math.max(0, targetLastStart - firstStart) / (count - 1) : 0;
           var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
           var starts = cards.map(function(card, index) {
             var cue = Number((cueList[index] || "").trim());
             var hasCue = (cueList[index] || "").trim() !== "" && Number.isFinite(cue);
-            var start = hasCue ? cue : Math.min(BASE_START, latestStart) + gap * index;
+            var start = hasCue ? cue : firstStart + gap * index;
             return Math.max(0, Math.min(start, latestStart));
           });
           var tl = gsap2.timeline({ paused: true });

@@ -156,7 +156,11 @@
               : "green";
             var accentColor = accentColors[accent];
             var inkColor = "var(--fg, #f8fafc)";
-            var mutedColor = "var(--muted, #94a3b8)";
+            // Label ink: raw --muted fails contrast on near-white hosts
+            // (#94a3b8 on #f8fafc is ~2.4:1). Pulling it halfway toward --fg
+            // stays quiet next to inkColor yet passes 4.5:1 on light AND
+            // dark hosts, since --fg is by definition high-contrast on --bg.
+            var mutedColor = "color-mix(in srgb, var(--fg, #f8fafc) 50%, var(--muted, #94a3b8))";
             var borderColor = "var(--border, #475569)";
             var baseSeries = "color-mix(in srgb, var(--fg, #f8fafc) 44%, var(--surface, #10161f))";
             var lineSeries = "color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--surface, #10161f))";
@@ -349,16 +353,25 @@
                 var height = Math.max((value / maxValue) * (base - top), 3);
                 var cx = left + band * (index + 0.5);
                 var at = BUILD_AT + stagger * index;
+                // Radius never exceeds half the bar height, so tiny data
+                // values render as clean low bars instead of radius-crushed
+                // slivers. Growth animates the rect geometry (not scaleY):
+                // the renderer re-clamps the corner radius against the
+                // current height every frame, so no growth frame shows a
+                // squashed pill either.
                 var bar = make("rect", {
                   x: cx - barWidth / 2,
-                  y: base - height,
+                  y: base,
                   width: barWidth,
-                  height: height,
-                  rx: Math.min(10, barWidth * 0.18),
+                  height: 0,
+                  rx: Math.min(10, barWidth * 0.18, height / 2),
                 });
                 bar.style.fill = index === emphasize ? accentColor : baseSeries;
-                gsap.set(bar, { scaleY: 0, transformOrigin: "50% 100%" });
-                tl.to(bar, { scaleY: 1, duration: 0.85 * s, ease: "power3.out" }, at * s);
+                tl.to(
+                  bar,
+                  { attr: { height: height, y: base - height }, duration: 0.85 * s, ease: "power3.out" },
+                  at * s,
+                );
 
                 var axisLabel = text(cx, base + 42, 26, mutedColor);
                 axisLabel.textContent = labels[index];
@@ -573,16 +586,22 @@
                 track.style.fill = trackColor;
                 fadeIn(track, AXIS_AT + index * 0.08);
 
+                // Same sliver guard as bars: radius clamped to half the fill
+                // width and growth via rect geometry, never scaleX.
+                var fillWidth = Math.max(trackWidth * fraction, 8);
                 var fill = make("rect", {
                   x: trackX,
                   y: cy - 10,
-                  width: Math.max(trackWidth * fraction, 8),
+                  width: 0,
                   height: 20,
-                  rx: 10,
+                  rx: Math.min(10, fillWidth / 2),
                 });
                 fill.style.fill = index === emphasize ? accentColor : baseSeries;
-                gsap.set(fill, { scaleX: 0, transformOrigin: "0% 50%" });
-                tl.to(fill, { scaleX: 1, duration: 0.9 * s, ease: "power3.out" }, at * s);
+                tl.to(
+                  fill,
+                  { attr: { width: fillWidth }, duration: 0.9 * s, ease: "power3.out" },
+                  at * s,
+                );
 
                 var rowLabel = text(80, cy + 9, 26, mutedColor, "start");
                 rowLabel.textContent = labels[index];

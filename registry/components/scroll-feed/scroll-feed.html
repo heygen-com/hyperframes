@@ -3,8 +3,10 @@
   scroll-feed: HyperFrames video primitive (effects / agitation / loop)
 
   Concept: a self-scrolling column of skeleton post cards recycles without
-  a visible seam. Two low-opacity copies trail the main column to suggest
-  motion blur while deterministic index math varies every card.
+  a visible seam. The default register is a doomscroll: distinct thumb
+  flicks (fast start, power3 decay to a settle) with a read pause between
+  them, one flick per card. Two low-opacity copies trail the main column to
+  suggest motion blur while deterministic index math varies every card.
 
   Variables:
     - speed (doom | frantic, default doom): changes the card pitch, so the
@@ -12,7 +14,8 @@
     - card_count (number, 4 to 10, default 6): cards in one repeated cycle.
     - cues (string, default ""): comma-separated seconds (from mount start);
       each cue advances the feed by exactly one card pitch (stepped rhythm).
-      Empty keeps the authored continuous scroll.
+      Empty synthesizes evenly spaced flicks, one per card, that still cover
+      exactly one full cycle.
     - exit (none | fade | up, default "none"): optional departure over a
       short reserved tail.
 
@@ -40,7 +43,7 @@
   data-composition-variables='[
     { "id": "speed", "type": "enum", "role": "timing", "label": "Scroll speed", "description": "Pace of the upward feed movement.", "default": "doom", "options": [{ "value": "doom", "label": "Doom" }, { "value": "frantic", "label": "Frantic" }] },
     { "id": "card_count", "type": "number", "role": "content", "label": "Card count", "description": "Number of skeleton posts in one repeated feed cycle.", "default": 6, "min": 4, "max": 10, "step": 1 },
-    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty keeps the continuous scroll.", "default": "" },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty synthesizes evenly spaced flicks, one per card.", "default": "" },
     { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the feed scrolls until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
@@ -74,6 +77,14 @@
             position: absolute;
             inset: 0;
             overflow: hidden;
+            /* Soft fade at both feed edges so cards never clip hard mid-media. */
+            mask-image: linear-gradient(
+              180deg,
+              transparent 0,
+              #000 7cqh,
+              #000 calc(100% - 7cqh),
+              transparent 100%
+            );
           }
 
           .sf-column {
@@ -98,10 +109,12 @@
             overflow: hidden;
             border: 0.12cqw solid var(--border, rgba(160, 174, 192, 0.2));
             border-radius: var(--radius, 2.2cqw);
+            /* Second stop derives from --surface so the gradient survives a
+               host theme instead of collapsing to a flat fill. */
             background: linear-gradient(
               145deg,
               var(--surface, #29303b) 0%,
-              var(--surface, #202630) 100%
+              color-mix(in srgb, var(--surface, #29303b) 76%, var(--bg, #0f1218)) 100%
             );
             box-shadow: 0 1.8cqh 4cqh rgba(0, 0, 0, 0.28);
           }
@@ -165,10 +178,12 @@
             min-height: 6cqh;
             overflow: hidden;
             border-radius: var(--radius, 1.4cqw);
+            /* The media block gets its own derivation (lifted toward --fg)
+               so card and media stay distinct under any --surface. */
             background: linear-gradient(
               135deg,
-              var(--surface, #374151) 0%,
-              var(--surface, #252c37) 100%
+              color-mix(in srgb, var(--surface, #29303b) 88%, var(--fg, #d8dee9)) 0%,
+              color-mix(in srgb, var(--surface, #29303b) 90%, var(--bg, #0f1218)) 100%
             );
           }
 
@@ -311,12 +326,21 @@
 
             var tl = gsap.timeline({ paused: true });
 
-            if (cues.length > 0) {
-              // Stepped rhythm: each cue advances the feed by exactly one
-              // card pitch. Three stacked cycles keep the viewport covered
-              // through two full cycles of steps.
-              var pitch = cardHeight + gap;
-              var steps = [];
+            // Stepped rhythm: each step advances the feed by exactly one
+            // card pitch (thumb flick: fast start, power3 decay, settle).
+            // Three stacked cycles keep the viewport covered through two
+            // full cycles of steps. Without cues the default doomscroll
+            // synthesizes one evenly spaced flick per card, so the column
+            // still travels exactly one full cycle by SCROLL_END and the
+            // first and final frames stay loop-compatible.
+            var pitch = cardHeight + gap;
+            var steps = [];
+            var autoFlick = cues.length === 0;
+            if (autoFlick) {
+              for (var step = 0; step < cardCount; step += 1) {
+                steps.push((SCROLL_END / cardCount) * step);
+              }
+            } else {
               cues.forEach(function (cueAt) {
                 if (steps.length >= cardCount * 2) return;
                 var at = Math.min(SCROLL_END, cueAt);
@@ -324,45 +348,31 @@
                   steps.push(at);
                 }
               });
-              finalY = -pitch * steps.length;
-              steps.forEach(function (cueAt, index) {
-                var next = index + 1 < steps.length ? steps[index + 1] : SCROLL_END;
-                var stepDuration = Math.max(
-                  0.05,
-                  Math.min(0.5, (next - cueAt) * 0.8, duration - cueAt),
-                );
-                var target = { y: -pitch * (index + 1) + "cqh" };
-                if (index === 0) {
-                  tl.fromTo(
-                    columns,
-                    { y: "0cqh" },
-                    {
-                      y: target.y,
-                      duration: stepDuration,
-                      ease: "power3.out",
-                    },
-                    cueAt,
-                  );
-                } else {
-                  tl.to(
-                    columns,
-                    { y: target.y, duration: stepDuration, ease: "power3.out" },
-                    cueAt,
-                  );
-                }
-              });
-            } else {
-              tl.fromTo(
-                columns,
-                { y: "0cqh" },
-                {
-                  y: -cycleDistance + "cqh",
-                  duration: SCROLL_END,
-                  ease: "sine.inOut",
-                },
-                0,
-              );
             }
+            finalY = -pitch * steps.length;
+            steps.forEach(function (cueAt, index) {
+              var next = index + 1 < steps.length ? steps[index + 1] : SCROLL_END;
+              // Auto flicks keep a longer rest so each card gets a read;
+              // explicit cues keep the documented cue-mode timing.
+              var stepDuration = autoFlick
+                ? Math.max(0.05, Math.min(0.45, (next - cueAt) * 0.6))
+                : Math.max(0.05, Math.min(0.5, (next - cueAt) * 0.8, duration - cueAt));
+              var target = { y: -pitch * (index + 1) + "cqh" };
+              if (index === 0) {
+                tl.fromTo(
+                  columns,
+                  { y: "0cqh" },
+                  {
+                    y: target.y,
+                    duration: stepDuration,
+                    ease: "power3.out",
+                  },
+                  cueAt,
+                );
+              } else {
+                tl.to(columns, { y: target.y, duration: stepDuration, ease: "power3.out" }, cueAt);
+              }
+            });
 
             // Optional departure; exit none scrolls until the frame cuts.
             if (exit === "fade") {

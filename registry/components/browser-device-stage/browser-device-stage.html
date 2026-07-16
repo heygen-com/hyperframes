@@ -4,7 +4,8 @@
 
   A generic app surface presented in token-native device chrome. One settle
   entrance (rise + soft scale), then a slow readable hold; optionally the
-  screen crossfades to a second screen at swap_at. The chrome is drawn
+  screen swaps to a second screen at swap_at via a brief fade through the
+  bare stage (never two screens at partial opacity). The chrome is drawn
   entirely from contract tokens: no traffic-light reds, no fake product
   branding, hairline borders and surface mixes only.
 
@@ -33,7 +34,7 @@
   Variables (declared in data-composition-variables below):
     - chrome ("browser" | "window" | "phone", default "browser")
     - title (string, default "app.example.com"): address pill / title bar text.
-    - swap_at (number seconds, default 0): crossfade to the second screen at
+    - swap_at (number seconds, default 0): swap to the second screen at
       this offset from mount start; 0 disables. Clamped inside the hold so
       the swap never fights the entrance or the exit.
     - accent ("green" | "blue" | "violet", default "green"): green rides
@@ -61,7 +62,7 @@
   data-composition-variables='[
     { "id": "chrome", "type": "enum", "role": "content", "label": "Chrome", "description": "Device frame drawn around the screen slot.", "default": "browser", "options": [{ "value": "browser", "label": "Browser" }, { "value": "window", "label": "Window" }, { "value": "phone", "label": "Phone" }] },
     { "id": "title", "type": "string", "role": "content", "label": "Title", "description": "Address pill text (browser) or title bar text (window).", "default": "app.example.com" },
-    { "id": "swap_at", "type": "number", "role": "content", "label": "Swap at", "description": "Seconds from mount start to crossfade to the second screen. 0 disables the swap.", "default": 0, "min": 0, "max": 30, "step": 0.1, "unit": "s" },
+    { "id": "swap_at", "type": "number", "role": "content", "label": "Swap at", "description": "Seconds from mount start to swap to the second screen. 0 disables the swap.", "default": 0, "min": 0, "max": 30, "step": 0.1, "unit": "s" },
     { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token the skeleton accent elements ride.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
     { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "Optional departure. None holds the final frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
@@ -135,7 +136,8 @@
             align-items: center;
             gap: var(--space-2, 2.2cqmin);
             padding: 1.5cqmin 2.4cqmin;
-            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 60%, transparent);
+            border-bottom: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 60%, transparent);
             background: color-mix(in srgb, var(--surface, #0b1016) 80%, var(--bg, #05070c));
           }
 
@@ -257,7 +259,8 @@
             align-items: center;
             gap: var(--space-1, 1.6cqmin);
             padding: 1.8cqmin 2.6cqmin;
-            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+            border-bottom: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 55%, transparent);
           }
 
           .bds-phone .bds-skel-top {
@@ -319,7 +322,8 @@
             flex-direction: column;
             gap: 2cqmin;
             padding: 2.6cqmin 2.6cqmin;
-            border-right: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+            border-right: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 55%, transparent);
           }
 
           .bds-phone .bds-skel-side {
@@ -606,19 +610,22 @@
               tl.to(stage, { y: "0cqh", duration: driftHalf, ease: "sine.inOut" }, IN + driftHalf);
             }
 
-            // Optional screen swap: restrained crossfade with a short slide,
-            // clamped inside [IN, D - OUT - SWAP] so it never fights the
-            // entrance or the exit.
+            // Optional screen swap: fade-through, clamped inside
+            // [IN, D - OUT - SWAP] so it never fights the entrance or the
+            // exit. Screen A empties completely onto the bare stage before
+            // screen B rises in, so every frame shows at most one screen
+            // (no double-exposure furniture on a paused frame).
             if (screenB) {
               var SWAP = SWAP_BASE * scale;
               var latest = Math.max(IN, duration - OUT - SWAP - 0.05);
               var swapStart = Math.min(Math.max(swapAt, IN), latest);
-              tl.to(screenA, { opacity: 0, duration: SWAP, ease: "power1.inOut" }, swapStart);
+              var swapHalf = SWAP / 2;
+              tl.to(screenA, { opacity: 0, duration: swapHalf, ease: "power1.in" }, swapStart);
               tl.fromTo(
                 screenB,
                 { opacity: 0, y: "1.6cqh" },
-                { opacity: 1, y: "0cqh", duration: SWAP, ease: "power2.out" },
-                swapStart,
+                { opacity: 1, y: "0cqh", duration: swapHalf, ease: "power2.out" },
+                swapStart + swapHalf,
               );
             }
 

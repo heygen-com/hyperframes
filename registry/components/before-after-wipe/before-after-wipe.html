@@ -30,6 +30,12 @@
     - exit (none | fade | up, default none): outgoing transition. none holds
       the final frame (frame roots own transitions; holds end films).
 
+  The divider (and its knob) stays hidden until the wipe starts, then fades in
+  as it departs the left edge: at split 0 the knob would straddle the frame
+  edge half-clipped, which reads as a rendering bug rather than a resting
+  state. One wipe pass, then the divider rests at rest_split for the whole
+  hold.
+
   Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
     IN       = wipe_at + 1.05s wipe travel (stage settles during the first 0.32s)
     HOLD     = elastic = max(0, D - (IN + OUT)); deliberately still so the
@@ -334,6 +340,7 @@
             // live root before this timeline registers.
             var compositionId = "before-after-wipe";
             var stage = root.querySelector(".baw-stage");
+            var divider = root.querySelector(".baw-divider");
             var chipA = root.querySelector(".baw-chip-a");
             var chipB = root.querySelector(".baw-chip-b");
 
@@ -359,6 +366,19 @@
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable shadows the contract
+            // --accent token inside the subtree ("blue" is a valid CSS color
+            // and would render pure blue). When the shadow is present, fall
+            // back to the literal contract value instead of var(--accent).
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#38bdf8";
+            }
             // INVARIANT: only none | fade | up reaches the timeline.
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
@@ -393,15 +413,30 @@
 
             // Explicit both-endpoints state makes tl.seek(0) deterministic.
             // --baw-split is the only owner of both clip and divider progress.
+            // The divider starts hidden: at split 0 its knob would render
+            // half-clipped at the frame edge for the whole lead-in.
             gsap.set(stage, { opacity: 0, y: 0, "--baw-split": 0 });
+            gsap.set(divider, { autoAlpha: 0 });
 
             var tl = gsap.timeline({ paused: true });
 
-            // IN: stage settle, then one shared wipe value travels to rest_split.
+            // IN: stage settle, then ONE wipe pass travels to rest_split and
+            // stays there. The divider fades in as it departs the left edge.
             tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
             tl.to(
               stage,
               { "--baw-split": restSplit, duration: WIPE_DURATION, ease: "sine.inOut" },
+              WIPE_AT,
+            );
+            tl.fromTo(
+              divider,
+              { autoAlpha: 0 },
+              {
+                autoAlpha: 1,
+                duration: Math.min(0.22 * scale, WIPE_DURATION),
+                ease: "power1.out",
+                immediateRender: false,
+              },
               WIPE_AT,
             );
             tl.call(

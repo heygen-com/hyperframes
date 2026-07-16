@@ -45,7 +45,7 @@
       "type": "string",
       "role": "timing",
       "label": "Cues",
-      "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty keeps the continuous scroll.",
+      "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty synthesizes evenly spaced flicks, one per card.",
       "default": ""
     },
     {

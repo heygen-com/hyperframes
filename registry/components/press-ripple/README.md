@@ -3,8 +3,10 @@
 Product demo payoff primitive: a cursor decel-arrives from off-stage (power2.out,
 it arrives, it never passes through), lands a few px off-center on a
 caller-positioned target zone, target and cursor compress in lockstep, release
-with two ink ripple rings, and the pressed state holds dead-still to the end of
-the clip. 3s authored, elastic HOLD (never time-scaled).
+with two ink ripple rings, then the cursor exits off-stage the way it came. The
+pressed state and the ripple aftermath hold dead-still to the end of the clip;
+the cursor never occludes the label during the hold. 3s authored, elastic HOLD
+(never time-scaled).
 
 ## Mounting
 
@@ -27,7 +29,7 @@ the clip. 3s authored, elastic HOLD (never time-scaled).
 | label    | string | "Get started" | Text in the default pill. Ignored when the slot is replaced.    |
 | target_x | number | 50            | Zone center, percent of host width (8 to 92).                   |
 | target_y | number | 50            | Zone center, percent of host height (8 to 92).                  |
-| press_at | number | 1.4           | Seconds from mount start when the compression begins. Clamped so the press tail and any exit stay inside the clip duration. |
+| press_at | number | 1.4           | Seconds from mount start when the compression begins. Clamped so the press tail (release, ripple, cursor exit, ~1.05s) and any exit stay inside the clip duration. |
 | cursor   | enum   | light         | light (white pointer, dark stroke) or dark (inverse).           |
 | accent   | enum   | green         | green maps to --brand, blue to --accent, violet to --accent-2. Colors the ripple ink and the pressed fill. |
 | exit     | enum   | none          | none holds the pressed state (frame roots own transitions); fade or up add a 0.45s departure. |
@@ -55,8 +57,12 @@ key its own pressed look off that attribute, mirroring the default rule:
 - press_at: target and cursor compress to 0.93 in lockstep (cursor scales
   about its tip).
 - press_at + 0.12s: pressed state lands; release springs back (back.out) while
-  two ink rings ripple out from under the slot, 0.09s apart.
-- HOLD: dead still on the pressed state, elastic with the clip duration.
+  two thick ink rings (accent mixed toward `--fg` for contrast) ripple out from
+  under the slot, 0.11s apart.
+- press_at + 0.5s: the cursor exits off-stage bottom-right (power2.in,
+  accelerating away), clearing the label before the hold begins.
+- HOLD: dead still on the pressed state, elastic with the clip duration; the
+  pressed control and the ripple aftermath carry the frame, cursor gone.
 
 Sync point `press` fires the moment compression starts; align SFX or a
 downstream reveal to it.

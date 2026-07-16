@@ -1,8 +1,10 @@
 <!doctype html>
 <!--
-  press-ripple demo. Full-bleed mount on a light editorial backdrop: the
-  primitive owns the whole 1920x1080 frame, proving the press gesture reads
-  at stage scale (dark cursor on light tokens, green accent, press at 1.2s).
+  press-ripple demo. Control-feedback story (distinct from oversized-cursor's
+  cursor-journey beat): the press happens early (0.9s), the cursor exits the
+  frame right after the release, and the pressed control + the ripple
+  aftermath carry the remaining hold. The subject is the control's state
+  change, not the pointer.
 -->
 <html lang="en">
   <head>
@@ -68,7 +70,7 @@
         class="mount-stage clip"
         data-composition-id="press-ripple"
         data-composition-src="./press-ripple.html"
-        data-variable-values='{"label":"Request a demo","target_x":50,"target_y":52,"press_at":1.2,"cursor":"dark","accent":"green"}'
+        data-variable-values='{"label":"Save changes","target_x":50,"target_y":52,"press_at":0.9,"cursor":"dark","accent":"green"}'
         data-start="0"
         data-duration="3"
         data-track-index="0"

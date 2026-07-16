@@ -1,6 +1,6 @@
 # per-word-rise
 
-Words or characters rise into place in a controlled blur-to-sharp cascade, drift gently during the hold, and stay put until the frame cuts.
+Words or characters rise into place in a controlled blur-to-sharp cascade, settle with a short decel tail on landing, and hold truly still until the frame cuts.
 
 3.5s authored, elastic HOLD, exit `none` by default.
 
@@ -33,4 +33,4 @@ Elastic root: no `data-width`/`data-height`; it fills whatever box the host clip
 ## Notes
 
 - Cues are landing times: each unit's rise ends on its cue (start compresses toward 0 for early cues). Landings clamp ahead of any exit.
-- Deterministic and seek-safe; the hold drift is one finite yoyo cycle, never a repeating tween.
+- Deterministic and seek-safe; the hold is truly still (no drift), and every landing ends with a short overshoot-free settle tail instead of a dead stop.

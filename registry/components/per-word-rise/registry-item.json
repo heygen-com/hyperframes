@@ -3,7 +3,7 @@
   "name": "per-word-rise",
   "type": "hyperframes:component",
   "title": "Per Word Rise",
-  "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, drift gently, and hold until the cut (optional fade or up exit).",
+  "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, settle softly on landing, and hold still until the cut (optional fade or up exit).",
   "tags": ["motion-primitive", "text-effects", "typography", "stagger", "reveal"],
   "jobs": ["reveal"],
   "family": "text-effects",

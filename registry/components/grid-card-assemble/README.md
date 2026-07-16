@@ -22,7 +22,7 @@ after it is still frame until the (optional) exit.
 | `items` | string | `Capture,Compose,Render,Publish` | Comma list of cards (3 to 12; extras past 12 are dropped). An entry formatted `Label: body text` renders a one-line muted body under the label; a plain entry is label-only. Body text must not contain commas. |
 | `layout` | enum `grid` \| `list` | `grid` | Grid wraps by `columns`; list stacks horizontal icon-left rows in one column. |
 | `columns` | number 0-4 | `0` | Grid only. `0` = auto: one row up to 3 items, then `ceil(sqrt(N))` (4 items form 2x2, 9 items form 3x3). |
-| `cues` | string | `""` | Comma-separated per-item entrance times in seconds relative to mount start. Blank or invalid entries fall back to that item's default cascade slot (~0.1s gap). Values are clamped so every card lands before any exit begins. |
+| `cues` | string | `""` | Comma-separated per-item entrance times in seconds relative to mount start. Blank or invalid entries fall back to that item's default cascade slot: the cascade spreads so the last card lands near 60% of the authored duration (short mounts compress toward ~0.1s gaps). Values are clamped so every card lands before any exit begins. |
 | `accent` | enum `green` \| `blue` \| `violet` | `green` | Icon stroke family: green rides `--brand`, blue `--accent`, violet `--accent-2`. |
 | `exit` | enum `none` \| `fade` \| `up` | `none` | Frame roots own transitions; the default hold ends the film. |
 

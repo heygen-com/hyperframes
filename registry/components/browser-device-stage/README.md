@@ -1,6 +1,6 @@
 # browser-device-stage
 
-A generic app surface presented in token-native device chrome. The stage settles in once (rise + soft scale, smooth ease-out), holds readable, and can optionally crossfade to a second screen at `swap_at`. The chrome is drawn entirely from contract tokens: hairline borders, surface mixes, muted dots, no traffic-light colors, no fake product branding.
+A generic app surface presented in token-native device chrome. The stage settles in once (rise + soft scale, smooth ease-out), holds readable, and can optionally swap to a second screen at `swap_at` (a brief fade through the bare stage, so no frame shows two screens at partial opacity). The chrome is drawn entirely from contract tokens: hairline borders, surface mixes, muted dots, no traffic-light colors, no fake product branding.
 
 - 5s authored, elastic HOLD (the envelope never time-scales).
 - Timeline registered at `window.__timelines["browser-device-stage"]`.
@@ -12,7 +12,7 @@ A generic app surface presented in token-native device chrome. The stage settles
 | --------- | ------ | ----------------- | -------------------------------------------------------------------------- |
 | `chrome`  | enum   | `browser`         | `browser` (toolbar dots + address pill), `window` (title bar), `phone` (notch, portrait inset, centered). |
 | `title`   | string | `app.example.com` | Address pill text (browser) or title bar text (window). Phone shows no title. |
-| `swap_at` | number | `0`               | Seconds from mount start to crossfade to the second screen. `0` disables. Clamped inside the hold so it never fights the entrance or exit. |
+| `swap_at` | number | `0`               | Seconds from mount start to swap to the second screen. `0` disables. Clamped inside the hold so it never fights the entrance or exit. |
 | `accent`  | enum   | `green`           | `green` rides `--brand`, `blue` rides `--accent`, `violet` rides `--accent-2`. Colors the skeleton mark, chip, and one card block. |
 | `exit`    | enum   | `none`            | `none` holds the final frame (frame roots own transitions), `fade`, or `up`. |
 
@@ -61,7 +61,7 @@ Mount host (any chrome):
 </template>
 ```
 
-Set `swap_at` to the moment the narration lands the change; the stage crossfades the screens with a restrained slide.
+Set `swap_at` to the moment the narration lands the change; the stage fades the first screen out, then rises the second in over the bare stage.
 
 ### window: custom HTML screen
 
@@ -89,5 +89,5 @@ Mount with `{"chrome":"phone"}`. The device renders portrait and centered with a
 
 - IN 0.9s: one settle (rise from 4.5cqh + scale 0.965 to 1 + fade, power ease-out).
 - HOLD: elastic; a barely-there vertical drift, then authored stillness.
-- Swap (optional): 0.55s crossfade + 1.6cqh slide at `swap_at`, clamped into the hold.
+- Swap (optional): 0.55s fade-through at `swap_at` (A empties, then B rises with a 1.6cqh slide), clamped into the hold.
 - OUT 0.5s only when `exit` is `fade` or `up`; the default `none` holds to the last frame.

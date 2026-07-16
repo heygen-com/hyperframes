@@ -43,7 +43,7 @@
       "type": "number",
       "role": "content",
       "label": "Swap at",
-      "description": "Seconds from mount start to crossfade to the second screen. 0 disables the swap.",
+      "description": "Seconds from mount start to swap to the second screen. 0 disables the swap.",
       "default": 0,
       "min": 0,
       "max": 30,

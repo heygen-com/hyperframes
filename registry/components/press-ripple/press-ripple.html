@@ -5,7 +5,8 @@
   A cursor decel-arrives from off-stage (power2.out, it arrives, never passes
   through), lands a few px off-center on a caller-positioned target zone, the
   target and cursor compress in lockstep, release with two ink ripple rings,
-  and the pressed state holds dead-still to the end.
+  then the cursor exits off-stage the way it came. The pressed state and the
+  ripple aftermath carry the hold; the cursor never camps on the label.
 
   The target is a slot: the element marked data-slot="target" is the press
   surface. Its default content is a token-styled pill carrying the label
@@ -22,7 +23,7 @@
     exit: none, fade, or up (default none; holds end films)
 
   Envelope (elastic HOLD, never time-scaled):
-    IN   = entrance settle, cursor arrival, press, release ripple
+    IN   = entrance settle, cursor arrival, press, release ripple, cursor exit
     HOLD = the rest of D, completely still on the pressed state
     OUT  = none by default; 0.45s fade or fade-up when exit is set
     press_at clamps into the window that keeps the whole gesture inside D.
@@ -93,7 +94,10 @@
             transform: translate(-50%, -50%);
           }
 
-          /* Ink ripple rings, centered under the slot, hidden until release. */
+          /* Ink ripple rings, centered under the slot, hidden until release.
+             The ink mixes the accent toward --fg so the rings carry real
+             weight against the host background on both light and dark
+             themes; thickness reads as drawn ink, not a hairline. */
           .pr-ring {
             position: absolute;
             left: 50%;
@@ -101,7 +105,8 @@
             width: 20cqmin;
             height: 20cqmin;
             margin: -10cqmin 0 0 -10cqmin;
-            border: 0.5cqmin solid var(--pr-accent, #71f5a7);
+            border: 0.85cqmin solid
+              color-mix(in srgb, var(--pr-accent, #71f5a7) 72%, var(--fg, #f8fafc));
             border-radius: 50%;
             opacity: 0;
             will-change: transform, opacity;
@@ -136,10 +141,14 @@
           }
 
           /* Pointer: SVG tip sits exactly at this box's top-left corner, so
-             left/top place the tip itself. GSAP tweens left/top (arrival) and
-             scale about the tip (press). */
+             the box position places the tip itself. GSAP moves it with x/y
+             transforms only (never left/top: layout props snap to integer
+             device pixels under the seek-by-frame capture engine) and scales
+             it about the tip (press). */
           .pr-cursor {
             position: absolute;
+            left: 0;
+            top: 0;
             width: 7cqmin;
             height: 7cqmin;
             transform-origin: 0 0;
@@ -255,14 +264,28 @@
 
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
             var OUT = exit === "none" ? 0 : 0.45;
-            // The whole press tail (compress + release ripple) is ~0.75s; keep
-            // it inside D, then keep the OUT window after it.
-            var pressAt = num(vars.press_at, 1.4, 0.9, Math.max(0.9, duration - 0.75 - OUT));
+            // The whole press tail (compress + release ripple + cursor exit)
+            // is ~1.05s; keep it inside D, then keep the OUT window after it.
+            var pressAt = num(vars.press_at, 1.4, 0.9, Math.max(0.9, duration - 1.05 - OUT));
             // Human aim: the tip lands a few px off the zone's true center.
             var landX = targetX + 0.55;
             var landY = targetY + 0.85;
             var arriveEnd = pressAt - 0.16;
             var arriveStart = Math.max(0, arriveEnd - 0.78);
+
+            // Motion runs on transforms only (x/y px), never left/top: layout
+            // props snap to integer device pixels under the seek-by-frame
+            // capture engine. Stage size is read once, synchronously, at load
+            // (deterministic: fixed viewport per render) to convert the
+            // percent-based land/off-stage positions into px.
+            var stageW = root.clientWidth || 1920;
+            var stageH = root.clientHeight || 1080;
+            function xAt(percent) {
+              return (percent / 100) * stageW;
+            }
+            function yAt(percent) {
+              return (percent / 100) * stageH;
+            }
 
             var tl = gsap.timeline({ paused: true });
 
@@ -278,10 +301,10 @@
             // an exact endpoint: it arrives, it never passes through.
             tl.fromTo(
               cursor,
-              { left: "114cqw", top: "112cqh" },
+              { x: xAt(114), y: yAt(112) },
               {
-                left: landX.toFixed(2) + "cqw",
-                top: landY.toFixed(2) + "cqh",
+                x: xAt(landX),
+                y: yAt(landY),
                 duration: arriveEnd - arriveStart,
                 ease: "power2.out",
               },
@@ -298,26 +321,44 @@
               pressAt + 0.14,
             );
 
-            // Ink ripple rings from under the slot.
+            // Ink ripple rings from under the slot: real weight (thick ink,
+            // fg-mixed contrast, wide travel), still just two rings.
             tl.fromTo(
               rings,
-              { scale: 0.16, autoAlpha: 0.9 },
+              { scale: 0.16, autoAlpha: 0.95 },
               {
-                scale: 2.3,
+                scale: 2.6,
                 autoAlpha: 0,
-                duration: 0.6,
+                duration: 0.66,
                 ease: "power2.out",
-                stagger: 0.09,
+                stagger: 0.11,
                 immediateRender: false,
               },
               pressAt + 0.1,
+            );
+
+            // The cursor exits off-stage after the release (accelerating,
+            // power2.in) so it never occludes the label during the hold; the
+            // pressed state and the ripple aftermath carry the frame. Both
+            // endpoints are explicit so reverse seeks restore the landing.
+            tl.fromTo(
+              cursor,
+              { x: xAt(landX), y: yAt(landY) },
+              {
+                x: xAt(112),
+                y: yAt(110),
+                duration: 0.55,
+                ease: "power2.in",
+                immediateRender: false,
+              },
+              pressAt + 0.5,
             );
 
             // HOLD: dead-still on the pressed state; elastic with D.
 
             // OUT: only when the host opts in; frame roots own transitions.
             if (exit !== "none") {
-              var outStart = Math.max(pressAt + 0.75, duration - OUT);
+              var outStart = Math.max(pressAt + 1.05, duration - OUT);
               var outVars = { opacity: 0, duration: OUT, ease: "power2.in" };
               if (exit === "up") outVars.y = "-4cqh";
               tl.to(stage, outVars, outStart);

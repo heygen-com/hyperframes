@@ -104,7 +104,10 @@
             display: flex;
             align-items: baseline;
             justify-content: center;
-            gap: var(--space-1, 1.2cqw);
+            /* Word gap must scale with the display type, never a host layout
+               spacing token: --space-* is chrome-scale and jams the sentence
+               ("Makemomentumvisible") when the type is auto-fitted large. */
+            gap: 0.26em;
             max-width: 94cqw;
             color: var(--fg, #f8fafc);
             font-size: var(--kts-font-size);
@@ -149,6 +152,7 @@
   --options: motion,meaning,momentum;
   --suffix: visible;
   --accent: violet;
+  --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
  `+N+r("^")}let S=i(x.replace(/\d/g," "))+c.slice(0,this.column-1).replace(/[^\t]/g," ");return r(">")+i(x)+o(c)+`
@@ -552,7 +556,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["kinetic-type-swap-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "kinetic-type-swap": { "prefix": "Make", "options": "motion,meaning,momentum", "suffix": "visible", "accent": "violet" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "kinetic-type-swap": { "prefix": "Make", "options": "motion,meaning,momentum", "suffix": "visible", "cues": "", "accent": "violet", "exit": "none" } });
 (function() {
   var __hfCompId = "kinetic-type-swap";
   var __hfTimelineCompId = "kinetic-type-swap";
@@ -847,6 +851,18 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             violet: "var(--accent-2, #c5a3ff)"
           };
           var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent) ? vars.accent : "green";
+          var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+          var cuesValue = vars.cues == null ? "" : String(vars.cues);
+          var cues = cuesValue.split(",").reduce(function(result, token) {
+            var trimmed = token.trim();
+            if (trimmed === "") return result;
+            var seconds = Number(trimmed);
+            if (!Number.isFinite(seconds) || seconds < 0) return result;
+            result.push(seconds);
+            return result;
+          }, []).sort(function(a, b) {
+            return a - b;
+          });
           root.style.setProperty("--kts-accent", accentColors[accent]);
           prefixElement.textContent = prefix;
           suffixElement.textContent = suffix;
@@ -872,13 +888,13 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             "min(" + fittedCqw.toFixed(3) + "cqw, 22cqh)"
           );
           var IN_BASE = 2.25;
-          var OUT_BASE = 0.45;
+          var OUT_BASE = exit === "none" ? 0 : 0.45;
           var ARRIVAL_BASE = 0.3;
           var SWAP_START_BASE = 0.48;
           var ROLL_BASE = 0.46;
           var SETTLE_TAIL_BASE = 0.18;
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "4"));
-          var totalBase = IN_BASE + OUT_BASE;
+          var totalBase = Math.max(1e-3, IN_BASE + OUT_BASE);
           var scale = duration < totalBase ? duration / totalBase : 1;
           var IN = IN_BASE * scale;
           var OUT = OUT_BASE * scale;
@@ -886,34 +902,64 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var SWAP_START = SWAP_START_BASE * scale;
           var ROLL = ROLL_BASE * scale;
           var SETTLE_TAIL = SETTLE_TAIL_BASE * scale;
-          var HOLD = Math.max(0, duration - (IN + OUT));
-          var HOLD_START = IN;
-          var OUT_START = IN + HOLD;
+          var swapCount = words.length - 1;
+          var swapTimes = [];
+          var rollDuration = ROLL;
+          if (swapCount > 0) {
+            if (cues.length > 0) {
+              var lastCue = cues[cues.length - 1];
+              var cueGap = cues.length >= 2 ? Math.max(0.05, (lastCue - cues[0]) / (cues.length - 1)) : ROLL;
+              var latestSwap = Math.max(0, duration - OUT - ROLL - SETTLE_TAIL);
+              for (var cueIndex = 0; cueIndex < swapCount; cueIndex += 1) {
+                var cueAt = cueIndex < cues.length ? cues[cueIndex] : lastCue + (cueIndex - (cues.length - 1)) * cueGap;
+                swapTimes.push(Math.min(latestSwap, Math.max(0, cueAt)));
+              }
+              var minGap = Infinity;
+              for (var gapIndex = 1; gapIndex < swapTimes.length; gapIndex += 1) {
+                minGap = Math.min(minGap, swapTimes[gapIndex] - swapTimes[gapIndex - 1]);
+              }
+              if (Number.isFinite(minGap)) {
+                rollDuration = Math.min(ROLL, Math.max(0.04, minGap * 0.72));
+              }
+            } else {
+              var lastSwapStart = Math.max(SWAP_START, IN - SETTLE_TAIL - ROLL);
+              var swapStep = swapCount === 1 ? 0 : (lastSwapStart - SWAP_START) / (swapCount - 1);
+              rollDuration = swapCount <= 2 ? ROLL : Math.min(ROLL, Math.max(0.04, swapStep * 0.72));
+              for (var index = 1; index <= swapCount; index += 1) {
+                swapTimes.push(
+                  swapCount === 1 ? lastSwapStart : SWAP_START + (index - 1) * swapStep
+                );
+              }
+            }
+          }
+          var swapsEnd = swapTimes.length > 0 ? swapTimes[swapTimes.length - 1] + rollDuration + SETTLE_TAIL : IN;
+          var HOLD_START = Math.min(Math.max(0, duration - OUT), Math.max(IN, swapsEnd));
+          var HOLD = Math.max(0, duration - (HOLD_START + OUT));
+          var OUT_START = HOLD_START + HOLD;
           gsap2.set(stage, { opacity: 0 });
           gsap2.set(words, { yPercent: 112, opacity: 0 });
           gsap2.set(words[0], { yPercent: 0, opacity: 1 });
           var tl = gsap2.timeline({ paused: true });
           tl.to(stage, { opacity: 1, duration: ARRIVAL, ease: "power2.out" }, 0);
-          var swapCount = words.length - 1;
-          if (swapCount > 0) {
-            var lastSwapStart = Math.max(SWAP_START, IN - SETTLE_TAIL - ROLL);
-            var swapStep = swapCount === 1 ? 0 : (lastSwapStart - SWAP_START) / (swapCount - 1);
-            var rollDuration = swapCount <= 2 ? ROLL : Math.min(ROLL, Math.max(0.04, swapStep * 0.72));
-            for (var index = 1; index < words.length; index += 1) {
-              var swapAt = swapCount === 1 ? lastSwapStart : SWAP_START + (index - 1) * swapStep;
-              var incomingEase = index === words.length - 1 ? "back.out(1.7)" : "power4.out";
-              tl.to(
-                words[index - 1],
-                { yPercent: -112, opacity: 0, duration: rollDuration, ease: "power4.in" },
-                swapAt
-              );
-              tl.to(
-                words[index],
-                { yPercent: 0, opacity: 1, duration: rollDuration, ease: incomingEase },
-                swapAt
-              );
-            }
-          }
+          swapTimes.forEach(function(swapAt, swapIndex) {
+            var wordIndex = swapIndex + 1;
+            var incomingEase = wordIndex === words.length - 1 ? "back.out(1.7)" : "power4.out";
+            var outDuration = rollDuration * 0.55;
+            var inDuration = rollDuration * 0.55;
+            var inStart = swapAt + rollDuration - inDuration;
+            tl.to(
+              words[wordIndex - 1],
+              { yPercent: -112, duration: outDuration, ease: "power4.in" },
+              swapAt
+            );
+            tl.set(words[wordIndex - 1], { opacity: 0 }, swapAt + outDuration);
+            tl.set(words[wordIndex], { opacity: 1 }, inStart);
+            tl.to(
+              words[wordIndex],
+              { yPercent: 0, duration: inDuration, ease: incomingEase },
+              inStart
+            );
+          });
           var finalWord = words[words.length - 1];
           var beat = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat")) || 0.5;
           var pulseHalf = Math.min(beat, HOLD / 2);
@@ -934,7 +980,15 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
               );
             }
           }
-          tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+          if (exit === "fade") {
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+          } else if (exit === "up") {
+            tl.to(
+              stage,
+              { opacity: 0, y: "-3cqh", duration: OUT, ease: "power2.in" },
+              OUT_START
+            );
+          }
           tl.seek(0);
           window2.__timelines = window2.__timelines || {};
           window2.__timelines["kinetic-type-swap"] = tl;

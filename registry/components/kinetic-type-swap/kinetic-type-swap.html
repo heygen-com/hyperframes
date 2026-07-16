@@ -94,7 +94,10 @@
             display: flex;
             align-items: baseline;
             justify-content: center;
-            gap: var(--space-1, 1.2cqw);
+            /* Word gap must scale with the display type, never a host layout
+               spacing token: --space-* is chrome-scale and jams the sentence
+               ("Makemomentumvisible") when the type is auto-fitted large. */
+            gap: 0.26em;
             max-width: 94cqw;
             color: var(--fg, #f8fafc);
             font-size: var(--kts-font-size);
@@ -308,19 +311,29 @@
             var tl = gsap.timeline({ paused: true });
             tl.to(stage, { opacity: 1, duration: ARRIVAL, ease: "power2.out" }, 0);
 
+            // Masked exchange: the outgoing word whips fully past the slot
+            // mask (power4.in) before the incoming word crosses center. The
+            // two phases overlap only for ~10% of the roll, while both words
+            // are opposite-edge slivers, so every frame shows at most one
+            // legible word at full ink and never a double exposure.
             swapTimes.forEach(function (swapAt, swapIndex) {
               var wordIndex = swapIndex + 1;
               var incomingEase = wordIndex === words.length - 1 ? "back.out(1.7)" : "power4.out";
+              var outDuration = rollDuration * 0.55;
+              var inDuration = rollDuration * 0.55;
+              var inStart = swapAt + rollDuration - inDuration;
 
               tl.to(
                 words[wordIndex - 1],
-                { yPercent: -112, opacity: 0, duration: rollDuration, ease: "power4.in" },
+                { yPercent: -112, duration: outDuration, ease: "power4.in" },
                 swapAt,
               );
+              tl.set(words[wordIndex - 1], { opacity: 0 }, swapAt + outDuration);
+              tl.set(words[wordIndex], { opacity: 1 }, inStart);
               tl.to(
                 words[wordIndex],
-                { yPercent: 0, opacity: 1, duration: rollDuration, ease: incomingEase },
-                swapAt,
+                { yPercent: 0, duration: inDuration, ease: incomingEase },
+                inStart,
               );
             });
 

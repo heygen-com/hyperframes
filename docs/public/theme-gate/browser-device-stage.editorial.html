@@ -112,7 +112,8 @@
             align-items: center;
             gap: var(--space-2, 2.2cqmin);
             padding: 1.5cqmin 2.4cqmin;
-            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 60%, transparent);
+            border-bottom: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 60%, transparent);
             background: color-mix(in srgb, var(--surface, #0b1016) 80%, var(--bg, #05070c));
           }
 
@@ -234,7 +235,8 @@
             align-items: center;
             gap: var(--space-1, 1.6cqmin);
             padding: 1.8cqmin 2.6cqmin;
-            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+            border-bottom: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 55%, transparent);
           }
 
           [data-composition-id="browser-device-stage"] .bds-phone .bds-skel-top {
@@ -296,7 +298,8 @@
             flex-direction: column;
             gap: 2cqmin;
             padding: 2.6cqmin 2.6cqmin;
-            border-right: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+            border-right: 0.14cqmin solid
+              color-mix(in srgb, var(--border, #475569) 55%, transparent);
           }
 
           [data-composition-id="browser-device-stage"] .bds-phone .bds-skel-side {
@@ -1220,12 +1223,13 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             var SWAP = SWAP_BASE * scale;
             var latest = Math.max(IN, duration - OUT - SWAP - 0.05);
             var swapStart = Math.min(Math.max(swapAt, IN), latest);
-            tl.to(screenA, { opacity: 0, duration: SWAP, ease: "power1.inOut" }, swapStart);
+            var swapHalf = SWAP / 2;
+            tl.to(screenA, { opacity: 0, duration: swapHalf, ease: "power1.in" }, swapStart);
             tl.fromTo(
               screenB,
               { opacity: 0, y: "1.6cqh" },
-              { opacity: 1, y: "0cqh", duration: SWAP, ease: "power2.out" },
-              swapStart
+              { opacity: 1, y: "0cqh", duration: swapHalf, ease: "power2.out" },
+              swapStart + swapHalf
             );
           }
           if (exitMode !== "none") {

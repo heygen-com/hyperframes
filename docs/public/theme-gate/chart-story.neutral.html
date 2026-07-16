@@ -800,7 +800,7 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent) ? vars.accent : "green";
           var accentColor = accentColors[accent];
           var inkColor = "var(--fg, #f8fafc)";
-          var mutedColor = "var(--muted, #94a3b8)";
+          var mutedColor = "color-mix(in srgb, var(--fg, #f8fafc) 50%, var(--muted, #94a3b8))";
           var borderColor = "var(--border, #475569)";
           var baseSeries = "color-mix(in srgb, var(--fg, #f8fafc) 44%, var(--surface, #10161f))";
           var lineSeries = "color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--surface, #10161f))";
@@ -954,14 +954,17 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
               var at = BUILD_AT + stagger * index;
               var bar = make("rect", {
                 x: cx - barWidth / 2,
-                y: base - height,
+                y: base,
                 width: barWidth,
-                height,
-                rx: Math.min(10, barWidth * 0.18)
+                height: 0,
+                rx: Math.min(10, barWidth * 0.18, height / 2)
               });
               bar.style.fill = index === emphasize ? accentColor : baseSeries;
-              gsap2.set(bar, { scaleY: 0, transformOrigin: "50% 100%" });
-              tl.to(bar, { scaleY: 1, duration: 0.85 * s, ease: "power3.out" }, at * s);
+              tl.to(
+                bar,
+                { attr: { height, y: base - height }, duration: 0.85 * s, ease: "power3.out" },
+                at * s
+              );
               var axisLabel = text(cx, base + 42, 26, mutedColor);
               axisLabel.textContent = labels[index];
               fadeIn(axisLabel, LABELS_AT + index * 0.12, true);
@@ -1134,16 +1137,20 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
               var track = make("rect", { x: trackX, y: cy - 10, width: trackWidth, height: 20, rx: 10 });
               track.style.fill = trackColor;
               fadeIn(track, AXIS_AT + index * 0.08);
+              var fillWidth = Math.max(trackWidth * fraction, 8);
               var fill = make("rect", {
                 x: trackX,
                 y: cy - 10,
-                width: Math.max(trackWidth * fraction, 8),
+                width: 0,
                 height: 20,
-                rx: 10
+                rx: Math.min(10, fillWidth / 2)
               });
               fill.style.fill = index === emphasize ? accentColor : baseSeries;
-              gsap2.set(fill, { scaleX: 0, transformOrigin: "0% 50%" });
-              tl.to(fill, { scaleX: 1, duration: 0.9 * s, ease: "power3.out" }, at * s);
+              tl.to(
+                fill,
+                { attr: { width: fillWidth }, duration: 0.9 * s, ease: "power3.out" },
+                at * s
+              );
               var rowLabel = text(80, cy + 9, 26, mutedColor, "start");
               rowLabel.textContent = labels[index];
               fadeIn(rowLabel, LABELS_AT + index * 0.12, true);

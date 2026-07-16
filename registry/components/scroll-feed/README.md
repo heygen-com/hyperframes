@@ -1,6 +1,6 @@
 # scroll-feed
 
-A self-scrolling column of skeleton post cards with two low-opacity trail copies suggesting motion blur. Card dimensions vary through deterministic index math only. By default the column covers exactly one card cycle over the mount, so the first and final frames are loop-compatible.
+A self-scrolling column of skeleton post cards with two low-opacity trail copies suggesting motion blur. The default register is a doomscroll: distinct thumb flicks (fast start, power3 decay to a settle) with a read pause between them, one flick per card. Card dimensions vary through deterministic index math only. By default the column covers exactly one card cycle over the mount, so the first and final frames are loop-compatible.
 
 4s authored; HOLD owns the whole scroll and is the only elastic phase.
 
@@ -10,7 +10,7 @@ A self-scrolling column of skeleton post cards with two low-opacity trail copies
 | --- | --- | --- | --- |
 | `speed` | enum | `doom` | `doom` or `frantic`: card pitch, so frantic covers more distance in the same time. |
 | `card_count` | number | `6` | Cards per repeated cycle (4 to 10). |
-| `cues` | string | `` (empty) | Comma-separated seconds (from mount start); each cue advances the feed by exactly one card pitch (stepped doom-scroll rhythm). Sorted ascending, capped at two full cycles of steps. Empty keeps the continuous scroll. |
+| `cues` | string | `` (empty) | Comma-separated seconds (from mount start); each cue advances the feed by exactly one card pitch (stepped doom-scroll rhythm). Sorted ascending, capped at two full cycles of steps. Empty synthesizes evenly spaced flicks, one per card, that still cover exactly one full cycle. |
 | `exit` | enum | `none` | `none` scrolls until the cut; `fade`/`up` depart over a reserved tail (min(0.4s, 15% of D)). |
 
 ## Mount

@@ -66,6 +66,14 @@
             position: absolute;
             inset: 0;
             overflow: hidden;
+            /* Soft fade at both feed edges so cards never clip hard mid-media. */
+            mask-image: linear-gradient(
+              180deg,
+              transparent 0,
+              #000 7cqh,
+              #000 calc(100% - 7cqh),
+              transparent 100%
+            );
           }
 
           [data-composition-id="scroll-feed"] .sf-column {
@@ -90,10 +98,12 @@
             overflow: hidden;
             border: 0.12cqw solid var(--border, rgba(160, 174, 192, 0.2));
             border-radius: var(--radius, 2.2cqw);
+            /* Second stop derives from --surface so the gradient survives a
+               host theme instead of collapsing to a flat fill. */
             background: linear-gradient(
               145deg,
               var(--surface, #29303b) 0%,
-              var(--surface, #202630) 100%
+              color-mix(in srgb, var(--surface, #29303b) 76%, var(--bg, #0f1218)) 100%
             );
             box-shadow: 0 1.8cqh 4cqh rgba(0, 0, 0, 0.28);
           }
@@ -157,10 +167,12 @@
             min-height: 6cqh;
             overflow: hidden;
             border-radius: var(--radius, 1.4cqw);
+            /* The media block gets its own derivation (lifted toward --fg)
+               so card and media stay distinct under any --surface. */
             background: linear-gradient(
               135deg,
-              var(--surface, #374151) 0%,
-              var(--surface, #252c37) 100%
+              color-mix(in srgb, var(--surface, #29303b) 88%, var(--fg, #d8dee9)) 0%,
+              color-mix(in srgb, var(--surface, #29303b) 90%, var(--bg, #0f1218)) 100%
             );
           }
 
@@ -213,6 +225,7 @@
 [data-composition-id="scroll-feed"] {
   --speed: frantic;
   --card-count: 8;
+  --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
  `+N+r("^")}let S=i(x.replace(/\d/g," "))+c.slice(0,this.column-1).replace(/[^\t]/g," ");return r(">")+i(x)+o(c)+`
@@ -612,7 +625,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["scroll-feed-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "scroll-feed": { "speed": "frantic", "card_count": 8 } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "scroll-feed": { "speed": "frantic", "card_count": 8, "cues": "", "exit": "none" } });
 (function() {
   var __hfCompId = "scroll-feed";
   var __hfTimelineCompId = "scroll-feed";
@@ -894,6 +907,18 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var speed = vars.speed === "frantic" ? "frantic" : "doom";
           var countValue = Number(vars.card_count);
           var cardCount = Number.isFinite(countValue) ? Math.max(4, Math.min(10, Math.round(countValue))) : 6;
+          var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+          var cuesValue = vars.cues == null ? "" : String(vars.cues);
+          var cues = cuesValue.split(",").reduce(function(result, token) {
+            var trimmed = token.trim();
+            if (trimmed === "") return result;
+            var seconds = Number(trimmed);
+            if (!Number.isFinite(seconds) || seconds < 0) return result;
+            result.push(seconds);
+            return result;
+          }, []).sort(function(a, b) {
+            return a - b;
+          });
           var cardHeight = speed === "frantic" ? 32 : 24;
           var gap = speed === "frantic" ? 4 : 3;
           var cycleDistance = cardCount * (cardHeight + gap);
@@ -919,22 +944,57 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           mainColumn.appendChild(cycle.cloneNode(true));
           blurA.innerHTML = mainColumn.innerHTML;
           blurB.innerHTML = mainColumn.innerHTML;
-          var IN = 0;
-          var OUT = 0;
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "4"));
-          var HOLD = Math.max(1e-3, duration - IN - OUT);
-          var HOLD_START = IN;
+          var EXIT = exit === "none" ? 0 : Math.min(0.4, duration * 0.15);
+          var SCROLL_END = Math.max(1e-3, duration - EXIT);
+          var finalY = -cycleDistance;
           var tl = gsap2.timeline({ paused: true });
-          tl.fromTo(
-            columns,
-            { y: "0cqh" },
-            {
-              y: -cycleDistance + "cqh",
-              duration: HOLD,
-              ease: "sine.inOut"
-            },
-            HOLD_START
-          );
+          var pitch = cardHeight + gap;
+          var steps = [];
+          var autoFlick = cues.length === 0;
+          if (autoFlick) {
+            for (var step = 0; step < cardCount; step += 1) {
+              steps.push(SCROLL_END / cardCount * step);
+            }
+          } else {
+            cues.forEach(function(cueAt) {
+              if (steps.length >= cardCount * 2) return;
+              var at = Math.min(SCROLL_END, cueAt);
+              if (steps.length === 0 || at > steps[steps.length - 1] + 0.01) {
+                steps.push(at);
+              }
+            });
+          }
+          finalY = -pitch * steps.length;
+          steps.forEach(function(cueAt, index2) {
+            var next = index2 + 1 < steps.length ? steps[index2 + 1] : SCROLL_END;
+            var stepDuration = autoFlick ? Math.max(0.05, Math.min(0.45, (next - cueAt) * 0.6)) : Math.max(0.05, Math.min(0.5, (next - cueAt) * 0.8, duration - cueAt));
+            var target = { y: -pitch * (index2 + 1) + "cqh" };
+            if (index2 === 0) {
+              tl.fromTo(
+                columns,
+                { y: "0cqh" },
+                {
+                  y: target.y,
+                  duration: stepDuration,
+                  ease: "power3.out"
+                },
+                cueAt
+              );
+            } else {
+              tl.to(columns, { y: target.y, duration: stepDuration, ease: "power3.out" }, cueAt);
+            }
+          });
+          if (exit === "fade") {
+            tl.to(columns, { opacity: 0, duration: EXIT, ease: "power2.in" }, SCROLL_END);
+          } else if (exit === "up") {
+            tl.to(columns, { opacity: 0, duration: EXIT, ease: "power2.in" }, SCROLL_END);
+            tl.to(
+              columns,
+              { y: finalY - 10 + "cqh", duration: EXIT, ease: "power2.in" },
+              SCROLL_END
+            );
+          }
           tl.seek(0);
           window2.__timelines = window2.__timelines || {};
           window2.__timelines["scroll-feed"] = tl;

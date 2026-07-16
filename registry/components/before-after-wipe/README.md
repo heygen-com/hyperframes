@@ -2,8 +2,10 @@
 
 Two full-bleed content panels compare a before and an after state. The before
 panel stays fully visible as the base layer; the after panel wipes over it from
-the left edge and the divider rests at `rest_split` percent. Label chips mark
-each side. This ports comparison-split's divider-wipe mechanic onto real
+the left edge in one pass and the divider rests at `rest_split` percent for the
+whole hold. The divider (and its knob) stays hidden until the wipe starts, then
+fades in as it departs the left edge, so the lead-in never shows a half-clipped
+handle. Label chips mark each side. This ports comparison-split's divider-wipe mechanic onto real
 content slots: you supply the two visuals, the primitive supplies the wipe.
 
 ## Files

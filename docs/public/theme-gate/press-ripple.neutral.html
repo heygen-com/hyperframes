@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <!--
-  press-ripple demo. Full-bleed mount on a light editorial backdrop: the
-  primitive owns the whole 1920x1080 frame, proving the press gesture reads
-  at stage scale (dark cursor on light tokens, green accent, press at 1.2s).
+  press-ripple demo. Control-feedback story (distinct from oversized-cursor's
+  cursor-journey beat): the press happens early (0.9s), the cursor exits the
+  frame right after the release, and the pressed control + the ripple
+  aftermath carry the remaining hold. The subject is the control's state
+  change, not the pointer.
 -->
 <html lang="en">
   <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
@@ -89,7 +91,10 @@
             transform: translate(-50%, -50%);
           }
 
-          /* Ink ripple rings, centered under the slot, hidden until release. */
+          /* Ink ripple rings, centered under the slot, hidden until release.
+             The ink mixes the accent toward --fg so the rings carry real
+             weight against the host background on both light and dark
+             themes; thickness reads as drawn ink, not a hairline. */
           [data-composition-id="press-ripple"] .pr-ring {
             position: absolute;
             left: 50%;
@@ -97,7 +102,8 @@
             width: 20cqmin;
             height: 20cqmin;
             margin: -10cqmin 0 0 -10cqmin;
-            border: 0.5cqmin solid var(--pr-accent, #71f5a7);
+            border: 0.85cqmin solid
+              color-mix(in srgb, var(--pr-accent, #71f5a7) 72%, var(--fg, #f8fafc));
             border-radius: 50%;
             opacity: 0;
             will-change: transform, opacity;
@@ -132,10 +138,14 @@
           }
 
           /* Pointer: SVG tip sits exactly at this box's top-left corner, so
-             left/top place the tip itself. GSAP tweens left/top (arrival) and
-             scale about the tip (press). */
+             the box position places the tip itself. GSAP moves it with x/y
+             transforms only (never left/top: layout props snap to integer
+             device pixels under the seek-by-frame capture engine) and scales
+             it about the tip (press). */
           [data-composition-id="press-ripple"] .pr-cursor {
             position: absolute;
+            left: 0;
+            top: 0;
             width: 7cqmin;
             height: 7cqmin;
             transform-origin: 0 0;
@@ -150,10 +160,10 @@
           }
 
 [data-composition-id="press-ripple"] {
-  --label: Request a demo;
+  --label: Save changes;
   --target-x: 50;
   --target-y: 52;
-  --press-at: 1.2;
+  --press-at: 0.9;
   --cursor: dark;
   --accent: green;
   --exit: none;
@@ -538,7 +548,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 </head>
   <body>
     <div id="root" data-composition-id="press-ripple-demo" data-start="0" data-width="1920" data-height="1080" data-duration="3" data-fps="30">
-      <div data-composition-file="./press-ripple.html" id="press-ripple-mount" class="mount-stage clip" data-composition-id="press-ripple" data-variable-values="{&quot;label&quot;:&quot;Request a demo&quot;,&quot;target_x&quot;:50,&quot;target_y&quot;:52,&quot;press_at&quot;:1.2,&quot;cursor&quot;:&quot;dark&quot;,&quot;accent&quot;:&quot;green&quot;}" data-start="0" data-duration="3" data-track-index="0" data-width="1920" data-height="1080"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
+      <div data-composition-file="./press-ripple.html" id="press-ripple-mount" class="mount-stage clip" data-composition-id="press-ripple" data-variable-values="{&quot;label&quot;:&quot;Save changes&quot;,&quot;target_x&quot;:50,&quot;target_y&quot;:52,&quot;press_at&quot;:0.9,&quot;cursor&quot;:&quot;dark&quot;,&quot;accent&quot;:&quot;green&quot;}" data-start="0" data-duration="3" data-track-index="0" data-width="1920" data-height="1080"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
         
 
         <div id="press-ripple-clip" class="pr-clip clip" data-start="0" data-duration="3" data-track-index="0">
@@ -569,7 +579,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["press-ripple-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "press-ripple": { "label": "Request a demo", "target_x": 50, "target_y": 52, "press_at": 1.2, "cursor": "dark", "accent": "green", "exit": "none" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "press-ripple": { "label": "Save changes", "target_x": 50, "target_y": 52, "press_at": 0.9, "cursor": "dark", "accent": "green", "exit": "none" } });
 (function() {
   var __hfCompId = "press-ripple";
   var __hfTimelineCompId = "press-ripple";
@@ -885,11 +895,19 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           }
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "3"));
           var OUT = exit === "none" ? 0 : 0.45;
-          var pressAt = num(vars.press_at, 1.4, 0.9, Math.max(0.9, duration - 0.75 - OUT));
+          var pressAt = num(vars.press_at, 1.4, 0.9, Math.max(0.9, duration - 1.05 - OUT));
           var landX = targetX + 0.55;
           var landY = targetY + 0.85;
           var arriveEnd = pressAt - 0.16;
           var arriveStart = Math.max(0, arriveEnd - 0.78);
+          var stageW = root.clientWidth || 1920;
+          var stageH = root.clientHeight || 1080;
+          function xAt(percent) {
+            return percent / 100 * stageW;
+          }
+          function yAt(percent) {
+            return percent / 100 * stageH;
+          }
           var tl = gsap2.timeline({ paused: true });
           tl.fromTo(
             actor,
@@ -899,10 +917,10 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           );
           tl.fromTo(
             cursor,
-            { left: "114cqw", top: "112cqh" },
+            { x: xAt(114), y: yAt(112) },
             {
-              left: landX.toFixed(2) + "cqw",
-              top: landY.toFixed(2) + "cqh",
+              x: xAt(landX),
+              y: yAt(landY),
               duration: arriveEnd - arriveStart,
               ease: "power2.out"
             },
@@ -917,19 +935,31 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           );
           tl.fromTo(
             rings,
-            { scale: 0.16, autoAlpha: 0.9 },
+            { scale: 0.16, autoAlpha: 0.95 },
             {
-              scale: 2.3,
+              scale: 2.6,
               autoAlpha: 0,
-              duration: 0.6,
+              duration: 0.66,
               ease: "power2.out",
-              stagger: 0.09,
+              stagger: 0.11,
               immediateRender: false
             },
             pressAt + 0.1
           );
+          tl.fromTo(
+            cursor,
+            { x: xAt(landX), y: yAt(landY) },
+            {
+              x: xAt(112),
+              y: yAt(110),
+              duration: 0.55,
+              ease: "power2.in",
+              immediateRender: false
+            },
+            pressAt + 0.5
+          );
           if (exit !== "none") {
-            var outStart = Math.max(pressAt + 0.75, duration - OUT);
+            var outStart = Math.max(pressAt + 1.05, duration - OUT);
             var outVars = { opacity: 0, duration: OUT, ease: "power2.in" };
             if (exit === "up") outVars.y = "-4cqh";
             tl.to(stage, outVars, outStart);

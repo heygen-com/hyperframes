@@ -107,7 +107,6 @@
             line-height: 1.08;
             letter-spacing: -0.035em;
             text-align: center;
-            will-change: transform;
           }
 
           [data-composition-id="per-word-rise"] .pwr-stage.pwr-char {
@@ -130,6 +129,7 @@
   --text: EVERY FRAME MATTERS;
   --split: char;
   --accent: violet;
+  --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
  `+N+r("^")}let S=i(x.replace(/\d/g," "))+c.slice(0,this.column-1).replace(/[^\t]/g," ");return r(">")+i(x)+o(c)+`
@@ -529,7 +529,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 tl.seek(0);
 window.__timelines = window.__timelines || {};
 window.__timelines["per-word-rise-demo"] = tl;
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "per-word-rise": { "text": "EVERY FRAME MATTERS", "split": "char", "accent": "violet" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "per-word-rise": { "text": "EVERY FRAME MATTERS", "split": "char", "cues": "", "accent": "violet", "exit": "none" } });
 (function() {
   var __hfCompId = "per-word-rise";
   var __hfTimelineCompId = "per-word-rise";
@@ -813,6 +813,16 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             violet: "var(--accent-2, #c5a3ff)"
           };
           var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent) ? vars.accent : "green";
+          var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+          var cuesValue = vars.cues == null ? "" : String(vars.cues);
+          var cues = cuesValue.split(",").reduce(function(result, token) {
+            var trimmed = token.trim();
+            if (trimmed === "") return result;
+            var seconds = Number(trimmed);
+            if (!Number.isFinite(seconds) || seconds < 0) return result;
+            result.push(seconds);
+            return result;
+          }, []);
           root.style.setProperty("--pwr-accent", accentColors[accent]);
           stage.classList.toggle("pwr-char", split === "char");
           stage.setAttribute("aria-label", text);
@@ -839,12 +849,12 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             return unit;
           });
           var IN_BASE = 1.45;
-          var OUT_BASE = 0.5;
+          var OUT_BASE = exit === "none" ? 0 : 0.5;
           var RISE_BASE = 0.74;
           var STAGGER_BASE = 0.62;
           var EXIT_STAGGER_BASE = 0.14;
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "3.5"));
-          var totalBase = IN_BASE + OUT_BASE;
+          var totalBase = Math.max(1e-3, IN_BASE + OUT_BASE);
           var scale = duration < totalBase ? duration / totalBase : 1;
           var IN = IN_BASE * scale;
           var OUT = OUT_BASE * scale;
@@ -852,49 +862,85 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var STAGGER = units.length > 1 ? STAGGER_BASE * scale : 0;
           var EXIT_STAGGER = units.length > 1 ? EXIT_STAGGER_BASE * scale : 0;
           var EXIT_MOVE = Math.max(1e-3, OUT - EXIT_STAGGER);
-          var HOLD = Math.max(0, duration - (IN + OUT));
-          var HOLD_START = IN;
-          var OUT_START = IN + HOLD;
-          gsap2.set(stage, { y: "0cqh" });
+          var LAND_SPLIT = 0.78;
+          var LAND_RESIDUAL = 0.07;
+          var LAND_SEAM_SLOPE = (1 - LAND_RESIDUAL) / LAND_SPLIT * 0.5;
+          function landEase(p) {
+            if (p <= 0) return 0;
+            if (p >= 1) return 1;
+            if (p < LAND_SPLIT) {
+              var x = p / LAND_SPLIT;
+              var inv = 1 - x;
+              return (1 - LAND_RESIDUAL) * (0.5 * (1 - inv * inv * inv) + 0.5 * x);
+            }
+            var u = (p - LAND_SPLIT) / (1 - LAND_SPLIT);
+            var b = LAND_SEAM_SLOPE * (1 - LAND_SPLIT);
+            var c = 3 * LAND_RESIDUAL - 2 * b;
+            var d = b - 2 * LAND_RESIDUAL;
+            return 1 - LAND_RESIDUAL + b * u + c * u * u + d * u * u * u;
+          }
+          var riseEnd = IN;
+          var landings;
+          if (cues.length > 0) {
+            var lastCue = cues[cues.length - 1];
+            var cueGap = cues.length >= 2 ? Math.max(0.05, (lastCue - cues[0]) / (cues.length - 1)) : RISE * 0.4;
+            var latestLanding = Math.max(RISE * 0.5, duration - OUT);
+            landings = units.map(function(unit, index) {
+              var landing = index < cues.length ? cues[index] : lastCue + (index - (cues.length - 1)) * cueGap;
+              return Math.min(latestLanding, Math.max(0.05, landing));
+            });
+            riseEnd = Math.min(duration - OUT, Math.max(IN, Math.max.apply(null, landings)));
+          } else {
+            var step = units.length > 1 ? STAGGER / (units.length - 1) : 0;
+            landings = units.map(function(unit, index) {
+              return index * step + RISE;
+            });
+          }
+          var HOLD_START = riseEnd;
+          var HOLD = Math.max(0, duration - (HOLD_START + OUT));
+          var OUT_START = HOLD_START + HOLD;
           gsap2.set(units, { opacity: 0, y: "8cqh", "--pwr-blur": "1.4cqh" });
           var tl2 = gsap2.timeline({ paused: true });
-          tl2.to(
-            units,
-            {
-              opacity: 1,
-              y: "0cqh",
-              "--pwr-blur": "0cqh",
-              duration: RISE,
-              stagger: { amount: STAGGER, from: "start" },
-              ease: "power3.out"
-            },
-            0
-          );
-          if (HOLD > 0) {
+          units.forEach(function(unit, index) {
+            var landing = landings[index];
+            var startAt = Math.max(0, landing - RISE);
             tl2.to(
-              stage,
+              unit,
               {
-                y: "-0.55cqh",
-                duration: HOLD / 2,
-                ease: "sine.inOut",
-                yoyo: true,
-                repeat: 1
+                opacity: 1,
+                y: "0cqh",
+                "--pwr-blur": "0cqh",
+                duration: Math.max(0.08, landing - startAt),
+                ease: landEase
               },
-              HOLD_START
+              startAt
+            );
+          });
+          if (exit === "up") {
+            tl2.to(
+              units,
+              {
+                opacity: 0,
+                y: "-4.5cqh",
+                "--pwr-blur": "0.7cqh",
+                duration: EXIT_MOVE,
+                stagger: { amount: EXIT_STAGGER, from: "start" },
+                ease: "power2.in"
+              },
+              OUT_START
+            );
+          } else if (exit === "fade") {
+            tl2.to(
+              units,
+              {
+                opacity: 0,
+                duration: EXIT_MOVE,
+                stagger: { amount: EXIT_STAGGER, from: "start" },
+                ease: "power2.in"
+              },
+              OUT_START
             );
           }
-          tl2.to(
-            units,
-            {
-              opacity: 0,
-              y: "-4.5cqh",
-              "--pwr-blur": "0.7cqh",
-              duration: EXIT_MOVE,
-              stagger: { amount: EXIT_STAGGER, from: "start" },
-              ease: "power2.in"
-            },
-            OUT_START
-          );
           tl2.seek(0);
           window2.__timelines = window2.__timelines || {};
           window2.__timelines["per-word-rise"] = tl2;

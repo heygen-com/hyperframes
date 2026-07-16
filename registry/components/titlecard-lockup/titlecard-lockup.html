@@ -6,9 +6,8 @@
   settles dead-center with ONE restrained move (scale 0.96 to 1, smooth
   ease-out), a hairline rule draws left to right beneath it, a mono label
   fades in under the rule, then the lockup holds truly still. Low motion is
-  the payload: no second development phase, no spring chains. During the hold
-  the rule carries at most a barely-there luminance breath that starts and
-  ends at zero.
+  the payload: no second development phase, no spring chains, and the hold
+  is dead still. The stillness is the confidence.
 
   Variables:
     - wordmark (string): the centered display wordmark.
@@ -20,8 +19,7 @@
 
   Envelope: fixed IN, optional OUT, elastic HOLD only.
     IN_BASE  = 1.80s  kicker, wordmark settle, rule draw, label, in sequence
-    HOLD     = max(0, D - IN - OUT), still except one sine luminance breath
-               on the rule that begins and ends at the settled value
+    HOLD     = max(0, D - IN - OUT), truly still: no drift, no breath
     OUT_BASE = 0.50s when exit is fade or up, otherwise 0
   If D is shorter than IN_BASE + OUT_BASE the phases compress together.
   Longer mounts stretch HOLD only. The timeline is never time-scaled.
@@ -97,7 +95,10 @@
           .tl-kicker {
             display: block;
             margin-bottom: var(--space-2, 3.4cqh);
-            color: var(--muted, #aeb7c5);
+            /* Light-safe ink derived from the host's own fg/bg instead of
+               --muted (whose fallback is dark-tuned and fails contrast on
+               light hosts). 62% fg clears 4.5:1 on both dark and light. */
+            color: color-mix(in srgb, var(--fg, #f8fafc) 62%, var(--bg, #0b0c0e));
             font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: 2.6cqmin;
             font-weight: 600;
@@ -127,7 +128,6 @@
             width: 34cqw;
             height: max(1px, 0.2cqmin);
             margin-top: var(--space-2, 4cqh);
-            will-change: opacity;
           }
 
           .tl-rule-svg line {
@@ -139,7 +139,8 @@
           .tl-label {
             display: block;
             margin-top: var(--space-2, 3.2cqh);
-            color: var(--muted, #aeb7c5);
+            /* Same fg/bg-derived ink as the kicker: contrast-safe on any host. */
+            color: color-mix(in srgb, var(--fg, #f8fafc) 62%, var(--bg, #0b0c0e));
             font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
             font-size: 2.2cqmin;
             font-weight: 600;
@@ -240,7 +241,6 @@
             var IN = IN_BASE * phaseScale;
             var OUT = OUT_BASE * phaseScale;
             var HOLD = Math.max(0, duration - IN - OUT);
-            var HOLD_START = IN;
             var OUT_START = IN + HOLD;
             var KICKER_IN = 0.45 * phaseScale;
             var WORD_AT = 0.25 * phaseScale;
@@ -295,22 +295,8 @@
               );
             }
 
-            // TRUE hold. At most one barely-there luminance breath on the rule:
-            // two mirrored sine halves start and end at the settled opacity, so
-            // the hold begins and ends at zero delta.
-            if (ruleShown && HOLD > 0.5) {
-              var breathHalf = HOLD / 2;
-              tl.to(
-                ruleSvg,
-                { opacity: 0.84, duration: breathHalf, ease: "sine.inOut" },
-                HOLD_START,
-              );
-              tl.to(
-                ruleSvg,
-                { opacity: 1, duration: breathHalf, ease: "sine.inOut" },
-                HOLD_START + breathHalf,
-              );
-            }
+            // TRUE hold: dead still. No drift, no breath; sub-perceptual
+            // motion reads as noise at 1080p, and the stillness is the point.
 
             // Optional exit. Frame roots own transitions; none is the default
             // and leaves the held lockup as the final frame.

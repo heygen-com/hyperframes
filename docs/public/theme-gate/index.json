@@ -1,33 +1,9 @@
 [
   {
-    "primitive": "cta-close",
-    "neutral": "cta-close.neutral.html",
-    "bold": "cta-close.bold.html",
-    "editorial": "cta-close.editorial.html"
-  },
-  {
-    "primitive": "logo-brand-close",
-    "neutral": "logo-brand-close.neutral.html",
-    "bold": "logo-brand-close.bold.html",
-    "editorial": "logo-brand-close.editorial.html"
-  },
-  {
-    "primitive": "grid-card-assemble",
-    "neutral": "grid-card-assemble.neutral.html",
-    "bold": "grid-card-assemble.bold.html",
-    "editorial": "grid-card-assemble.editorial.html"
-  },
-  {
-    "primitive": "press-ripple",
-    "neutral": "press-ripple.neutral.html",
-    "bold": "press-ripple.bold.html",
-    "editorial": "press-ripple.editorial.html"
-  },
-  {
-    "primitive": "typed-prompt",
-    "neutral": "typed-prompt.neutral.html",
-    "bold": "typed-prompt.bold.html",
-    "editorial": "typed-prompt.editorial.html"
+    "primitive": "kinetic-type-swap",
+    "neutral": "kinetic-type-swap.neutral.html",
+    "bold": "kinetic-type-swap.bold.html",
+    "editorial": "kinetic-type-swap.editorial.html"
   },
   {
     "primitive": "titlecard-lockup",
@@ -36,10 +12,40 @@
     "editorial": "titlecard-lockup.editorial.html"
   },
   {
+    "primitive": "per-word-rise",
+    "neutral": "per-word-rise.neutral.html",
+    "bold": "per-word-rise.bold.html",
+    "editorial": "per-word-rise.editorial.html"
+  },
+  {
+    "primitive": "before-after-wipe",
+    "neutral": "before-after-wipe.neutral.html",
+    "bold": "before-after-wipe.bold.html",
+    "editorial": "before-after-wipe.editorial.html"
+  },
+  {
+    "primitive": "press-ripple",
+    "neutral": "press-ripple.neutral.html",
+    "bold": "press-ripple.bold.html",
+    "editorial": "press-ripple.editorial.html"
+  },
+  {
+    "primitive": "scroll-feed",
+    "neutral": "scroll-feed.neutral.html",
+    "bold": "scroll-feed.bold.html",
+    "editorial": "scroll-feed.editorial.html"
+  },
+  {
     "primitive": "browser-device-stage",
     "neutral": "browser-device-stage.neutral.html",
     "bold": "browser-device-stage.bold.html",
     "editorial": "browser-device-stage.editorial.html"
+  },
+  {
+    "primitive": "count-up",
+    "neutral": "count-up.neutral.html",
+    "bold": "count-up.bold.html",
+    "editorial": "count-up.editorial.html"
   },
   {
     "primitive": "chart-story",
@@ -48,9 +54,9 @@
     "editorial": "chart-story.editorial.html"
   },
   {
-    "primitive": "before-after-wipe",
-    "neutral": "before-after-wipe.neutral.html",
-    "bold": "before-after-wipe.bold.html",
-    "editorial": "before-after-wipe.editorial.html"
+    "primitive": "grid-card-assemble",
+    "neutral": "grid-card-assemble.neutral.html",
+    "bold": "grid-card-assemble.bold.html",
+    "editorial": "grid-card-assemble.editorial.html"
   }
 ]
