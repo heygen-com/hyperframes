@@ -6,12 +6,13 @@ import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
 import { AnimationCard } from "./AnimationCard";
-import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import {
-  trackAnimationMetaUpdate,
   type GsapAnimationEditCallbacks,
+  withTrackedGsapAnimationCallbacks,
 } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import { usePlayerStore } from "../../player";
+import { GsapAddAnimationControl } from "./GsapAddAnimationControl";
 
 export function FlatTimingRow({
   element,
@@ -135,15 +136,18 @@ export function FlatMotionSection({
 } & GsapAnimationEditCallbacks) {
   const track = useTrackDesignInput();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const trackProperty = (property: string) => {
-    const control =
-      property === "visibility"
-        ? "toggle"
-        : property === "filter" || property === "clipPath"
-          ? "text"
-          : "metric";
-    track(control, property);
-  };
+  const trackedCallbacks = withTrackedGsapAnimationCallbacks(callbacks, track);
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
+  // Only consume a focus request aimed at the element THIS panel renders (not
+  // the store's selectedElementId, which flips synchronously during async
+  // selection resolution), so a shared class-selector animation id can't open
+  // the wrong element's editor.
+  const renderedElementId = `${element.sourceFile}#${element.id}`;
+  const focusedHere =
+    focusedEaseSegment && focusedEaseSegment.elementId === renderedElementId
+      ? focusedEaseSegment
+      : null;
 
   return (
     <div className="space-y-3">
@@ -172,140 +176,22 @@ export function FlatMotionSection({
             <div className="space-y-2">
               {animations.map((anim, index) => (
                 <AnimationCard
+                  {...trackedCallbacks}
                   key={anim.id}
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
-                  onUpdateProperty={(animationId, property, value) => {
-                    trackProperty(property);
-                    callbacks.onUpdateProperty(animationId, property, value);
-                  }}
-                  onUpdateMeta={(animationId, updates) => {
-                    trackAnimationMetaUpdate(track, updates);
-                    callbacks.onUpdateMeta(animationId, updates);
-                  }}
-                  onDeleteAnimation={(animationId) => {
-                    track("button", "Remove animation");
-                    callbacks.onDeleteAnimation(animationId);
-                  }}
-                  onAddProperty={(animationId, property) => {
-                    track("select", "Add effect property");
-                    callbacks.onAddProperty(animationId, property);
-                  }}
-                  onRemoveProperty={(animationId, property) => {
-                    track("button", `Remove ${property}`);
-                    callbacks.onRemoveProperty(animationId, property);
-                  }}
-                  onUpdateFromProperty={
-                    callbacks.onUpdateFromProperty
-                      ? (animationId, property, value) => {
-                          trackProperty(property);
-                          callbacks.onUpdateFromProperty?.(animationId, property, value);
-                        }
-                      : undefined
-                  }
-                  onAddFromProperty={
-                    callbacks.onAddFromProperty
-                      ? (animationId, property) => {
-                          track("select", "Add from property");
-                          callbacks.onAddFromProperty?.(animationId, property);
-                        }
-                      : undefined
-                  }
-                  onRemoveFromProperty={
-                    callbacks.onRemoveFromProperty
-                      ? (animationId, property) => {
-                          track("button", `Remove from ${property}`);
-                          callbacks.onRemoveFromProperty?.(animationId, property);
-                        }
-                      : undefined
-                  }
-                  onLivePreview={callbacks.onLivePreview}
-                  onLivePreviewEnd={callbacks.onLivePreviewEnd}
-                  onSetArcPath={
-                    callbacks.onSetArcPath
-                      ? (animationId, config) => {
-                          track(
-                            "toggle",
-                            config.autoRotate !== undefined ? "Auto rotate" : "Arc motion",
-                          );
-                          callbacks.onSetArcPath?.(animationId, config);
-                        }
-                      : undefined
-                  }
-                  onUpdateArcSegment={
-                    callbacks.onUpdateArcSegment
-                      ? (animationId, segmentIndex, update) => {
-                          if (update.curviness === undefined) {
-                            track("button", `Reset arc segment ${segmentIndex + 1}`);
-                          }
-                          callbacks.onUpdateArcSegment?.(animationId, segmentIndex, update);
-                        }
-                      : undefined
-                  }
-                  onUpdateKeyframeEase={
-                    callbacks.onUpdateKeyframeEase
-                      ? (animationId, percentage, ease) => {
-                          track("select", "Keyframe ease");
-                          callbacks.onUpdateKeyframeEase?.(animationId, percentage, ease);
-                        }
-                      : undefined
-                  }
-                  onSetAllKeyframeEases={
-                    callbacks.onSetAllKeyframeEases
-                      ? (animationId, ease) => {
-                          track("select", "All keyframe eases");
-                          callbacks.onSetAllKeyframeEases?.(animationId, ease);
-                        }
-                      : undefined
-                  }
-                  onUnroll={
-                    callbacks.onUnroll
-                      ? (animationId) => {
-                          track("button", "Unroll animation");
-                          callbacks.onUnroll?.(animationId);
-                        }
-                      : undefined
-                  }
+                  focusedSegment={focusedHere?.animationId === anim.id ? focusedHere : null}
+                  onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
                 />
               ))}
-              <div className="relative pt-1">
-                {addMenuOpen ? (
-                  <div className="flex gap-1.5">
-                    {ADD_METHODS.map((method) => (
-                      <button
-                        key={method}
-                        type="button"
-                        title={METHOD_TOOLTIPS[method]}
-                        onClick={() => {
-                          track("button", `Add ${method} animation`);
-                          onAddAnimation(method);
-                          setAddMenuOpen(false);
-                        }}
-                        className="rounded-lg border border-panel-border-input bg-panel-input px-2.5 py-1.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:border-panel-text-4 hover:text-panel-text-0"
-                      >
-                        {ADD_METHOD_LABELS[method] ?? method}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setAddMenuOpen(false)}
-                      className="px-1.5 text-[11px] text-panel-text-3 hover:text-panel-text-1"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAddMenuOpen(true)}
-                    className="text-[11px] font-medium text-panel-text-3 transition-colors hover:text-panel-text-1"
-                    title="Add a new animation effect to this element"
-                  >
-                    + Add effect
-                  </button>
-                )}
-              </div>
+              <GsapAddAnimationControl
+                open={addMenuOpen}
+                setOpen={setAddMenuOpen}
+                onAddAnimation={onAddAnimation}
+                track={track}
+                variant="flat"
+              />
             </div>
           )}
         </>
