@@ -241,12 +241,14 @@ export function EaseCurveSection({
   onCustomEaseCommit: (ease: string) => void;
   collidingAnimationIds?: string[];
 }) {
-  const springBounce = parseSpringBounce(ease);
+  const [pendingEase, setPendingEase] = useState<{ source: string; value: string } | null>(null);
+  const displayedEase = pendingEase?.source === ease ? pendingEase.value : ease;
+  const springBounce = parseSpringBounce(displayedEase);
   const isSpring = springBounce !== null;
-  const wiggleConfig = parseWiggleEase(ease);
+  const wiggleConfig = parseWiggleEase(displayedEase);
   const isWiggle = wiggleConfig !== null;
   const mode: EaseMode = isSpring ? "spring" : isWiggle ? "wiggle" : "curve";
-  const curve = resolveEditableCurve(ease, springBounce);
+  const curve = resolveEditableCurve(displayedEase, springBounce);
 
   const [draft, setDraft] = useState<Pts | null>(null);
   const [hover, setHover] = useState<"p1" | "p2" | null>(null);
@@ -260,7 +262,13 @@ export function EaseCurveSection({
   // `ease` changes, `curve` already equals the draft, so the handoff is seamless.
   useEffect(() => {
     setDraft(null);
+    setPendingEase(null);
   }, [ease]);
+
+  const commitEase = (nextEase: string) => {
+    setPendingEase({ source: ease, value: nextEase });
+    onCustomEaseCommit(nextEase);
+  };
 
   const activeTuple = draft ?? curve;
   const displayTuple = activeTuple ?? DEFAULT_CURVE;
@@ -272,7 +280,7 @@ export function EaseCurveSection({
   const a1 = { x: xToSvg(1), y: yToSvg(1) };
   const p1 = { x: xToSvg(x1), y: yToSvg(clampView(y1)) };
   const p2 = { x: xToSvg(x2), y: yToSvg(clampView(y2)) };
-  const curvePath = curvePathFor(ease, springBounce, wiggleConfig, displayTuple);
+  const curvePath = curvePathFor(displayedEase, springBounce, wiggleConfig, displayTuple);
   const showGraph = activeTuple !== null || isWiggle;
   const showHandles = !isSpring && !isWiggle;
 
@@ -310,24 +318,24 @@ export function EaseCurveSection({
     const path = `M0,0 C${draft[0]},${draft[1]} ${draft[2]},${draft[3]} 1,1`;
     // Commit only — the draft stays on screen and is cleared by the effect above
     // once the committed `ease` prop comes back, so the curve never flickers.
-    onCustomEaseCommit(`custom(${path})`);
+    commitEase(`custom(${path})`);
   };
 
   const top = yToSvg(1);
   const bottom = yToSvg(0);
   const left = xToSvg(0);
   const right = xToSvg(1);
-  const label = resolveEditorLabel(ease, springBounce, isWiggle);
+  const label = resolveEditorLabel(displayedEase, springBounce, isWiggle);
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
-      <EaseTypeDropdown kind={mode} ease={ease} label={label} onSelect={onCustomEaseCommit} />
+      <EaseTypeDropdown kind={mode} ease={displayedEase} label={label} onSelect={commitEase} />
       {collidingAnimationIds && collidingAnimationIds.length > 1 && (
         <p className="mb-1 text-[9px] text-neutral-500">
           Applies to {collidingAnimationIds.length} properties
         </p>
       )}
-      <EaseModeToggle mode={mode} onCommit={onCustomEaseCommit} />
+      <EaseModeToggle mode={mode} onCommit={commitEase} />
       {showGraph ? (
         <>
           <div
@@ -457,7 +465,7 @@ export function EaseCurveSection({
             springBounce={springBounce}
             wiggleConfig={wiggleConfig}
             tuple={displayTuple}
-            onCommit={onCustomEaseCommit}
+            onCommit={commitEase}
           />
         </>
       ) : (
