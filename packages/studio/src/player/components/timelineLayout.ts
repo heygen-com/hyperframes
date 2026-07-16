@@ -13,7 +13,6 @@ export const CLIP_HANDLE_W = 18;
 export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
-
 /**
  * Collapsed-row characterization value for the new-track INSERT band. Runtime
  * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
@@ -50,7 +49,7 @@ export const TRACKS_LEFT_PAD = 48;
  * placeholder/insertion top and every pointer-y→row inversion goes through this
  * (or its inverse in {@link getTimelineRowFromY}) so the pad can never drift.
  */
-interface TimelineTrackHeightClip {
+export interface TimelineTrackHeightClip {
   clipId: string;
   laneCount: number;
 }
@@ -307,12 +306,16 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
  * remaining ruler runs to 1:00.
  * Manual zoom multiplies this base, so the floor only anchors the default.
  */
-export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
+export function getTimelineFitPps(
+  viewportWidth: number,
+  effectiveDuration: number,
+  contentOrigin: number,
+): number {
   const safeDuration =
     Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
   const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
-  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER + TRACKS_LEFT_PAD) return 100;
-  return (viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2) / span;
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= contentOrigin) return 100;
+  return (viewportWidth - contentOrigin - 2) / span;
 }
 
 /**
@@ -325,6 +328,7 @@ export function getTimelineFitPps(viewportWidth: number, effectiveDuration: numb
 export function getTimelineDisplayContentWidth(input: {
   trackContentWidth: number;
   viewportWidth: number;
+  contentOrigin: number;
   pps: number;
   dragGhostEndPx?: number;
   resizeGhostEndPx?: number;
@@ -332,7 +336,7 @@ export function getTimelineDisplayContentWidth(input: {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
     input.trackContentWidth,
-    input.viewportWidth - GUTTER - TRACKS_LEFT_PAD - 2,
+    input.viewportWidth - input.contentOrigin - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,
     MIN_TIMELINE_EXTENT_S * safePps,
@@ -340,6 +344,15 @@ export function getTimelineDisplayContentWidth(input: {
 }
 
 /* ── Scroll / zoom helpers ────────────────────────────────────────── */
+export function getTimelineContentXFromClient(input: {
+  clientX: number;
+  rectLeft: number;
+  scrollLeft: number;
+  contentOrigin: number;
+}): number {
+  return input.clientX - input.rectLeft + input.scrollLeft - input.contentOrigin;
+}
+
 export function shouldAutoScrollTimeline(
   zoomMode: ZoomMode,
   scrollWidth: number,
@@ -362,7 +375,7 @@ export function getTimelineScrollLeftForZoomTransition(
 export function getTimelineScrollLeftForZoomAnchor(input: {
   pointerX: number;
   currentScrollLeft: number;
-  gutter: number;
+  contentOrigin: number;
   currentPixelsPerSecond: number;
   nextPixelsPerSecond: number;
   duration: number;
@@ -379,9 +392,17 @@ export function getTimelineScrollLeftForZoomAnchor(input: {
   ) {
     return Math.max(0, input.currentScrollLeft);
   }
-  const timelineX = Math.max(0, input.currentScrollLeft + input.pointerX - input.gutter);
+  const timelineX = Math.max(
+    0,
+    getTimelineContentXFromClient({
+      clientX: input.pointerX,
+      rectLeft: 0,
+      scrollLeft: input.currentScrollLeft,
+      contentOrigin: input.contentOrigin,
+    }),
+  );
   const timeAtPointer = Math.max(0, Math.min(input.duration, timelineX / currentPps));
-  return Math.max(0, input.gutter + timeAtPointer * nextPps - input.pointerX);
+  return Math.max(0, input.contentOrigin + timeAtPointer * nextPps - input.pointerX);
 }
 
 /* ── Playhead / canvas ────────────────────────────────────────────── */
@@ -390,26 +411,25 @@ export function getTimelineScrollLeftForZoomAnchor(input: {
  * width, which the wrapper shrink-wraps to). The 1px vertical line inside
  * PlayheadIndicator is centered at 50% of this wrapper, so the wrapper must be
  * shifted LEFT by half this width for the line's center to land exactly on
- * `GUTTER + time * pps` — see {@link getTimelinePlayheadLeft}.
+ * `contentOrigin + time * pps` — see {@link getTimelinePlayheadLeft}.
  */
 export const PLAYHEAD_HEAD_W = 9;
 
 /**
  * The `left` for the playhead WRAPPER such that the vertical line's CENTER
- * sits exactly on `GUTTER + time * pps` (the same x the ruler ticks center
+ * sits exactly on `contentOrigin + time * pps` (the same x the ruler ticks center
  * on) at every zoom level. Without the half-head offset the line sat
  * `PLAYHEAD_HEAD_W / 2` px to the right of its ruler tick.
  */
-export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): number {
+export function getTimelinePlayheadLeft(
+  time: number,
+  pixelsPerSecond: number,
+  contentOrigin: number,
+): number {
   if (!Number.isFinite(time) || !Number.isFinite(pixelsPerSecond)) {
-    return GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2;
+    return contentOrigin - PLAYHEAD_HEAD_W / 2;
   }
-  return (
-    GUTTER +
-    TRACKS_LEFT_PAD +
-    Math.max(0, time) * Math.max(0, pixelsPerSecond) -
-    PLAYHEAD_HEAD_W / 2
-  );
+  return contentOrigin + Math.max(0, time) * Math.max(0, pixelsPerSecond) - PLAYHEAD_HEAD_W / 2;
 }
 
 export function getTimelineCanvasHeight(trackCountOrHeights: number | readonly number[]): number {
@@ -477,15 +497,21 @@ export function resolveTimelineAssetDrop(
     rectTop: number;
     scrollLeft: number;
     scrollTop: number;
+    contentOrigin: number;
     pixelsPerSecond: number;
     duration: number;
-    trackHeight: number;
+    rowHeights?: readonly number[];
     trackOrder: number[];
   },
   clientX: number,
   clientY: number,
 ): { start: number; track: number } {
-  const x = clientX - input.rectLeft + input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+  const x = getTimelineContentXFromClient({
+    clientX,
+    rectLeft: input.rectLeft,
+    scrollLeft: input.scrollLeft,
+    contentOrigin: input.contentOrigin,
+  });
   const contentY = clientY - input.rectTop + input.scrollTop;
   const start = Math.max(
     0,
@@ -494,7 +520,7 @@ export function resolveTimelineAssetDrop(
   // Row from the shared row→y inverse so the top pad is honoured; a drop in the
   // pad above the first lane floors to row 0, a drop in the bottom pad rounds
   // past the last lane (getDefaultDroppedTrack then appends a new track).
-  const rowIndex = Math.floor(getTimelineRowFromY(contentY));
+  const rowIndex = Math.floor(getTimelineRowFromY(contentY, input.rowHeights));
   return {
     start,
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),

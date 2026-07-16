@@ -6,7 +6,6 @@ import {
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
   GUTTER,
-  TRACKS_LEFT_PAD,
   getTimelineRowTop,
   getTimelineRowFromY,
   getTimelineRowOffsets,
@@ -153,15 +152,16 @@ describe("track-area breathing pad y-math", () => {
       rectTop: 0,
       scrollLeft: 0,
       scrollTop: 0,
+      contentOrigin: GUTTER,
       pixelsPerSecond: 100,
       duration: 60,
-      trackHeight: TRACK_H,
+      rowHeights: trackHeights(3),
       trackOrder: [0, 1, 2],
     };
 
     it("drops onto lane 0 when the pointer is in the middle of the first lane", () => {
       const clientY = getTimelineRowTop(0) + TRACK_H / 2;
-      const clientX = GUTTER + TRACKS_LEFT_PAD + 100; // t = 1s
+      const clientX = GUTTER + 100; // t = 1s (contentOrigin = GUTTER)
       const { start, track } = resolveTimelineAssetDrop(base, clientX, clientY);
       expect(track).toBe(0);
       expect(start).toBe(1);
@@ -177,6 +177,13 @@ describe("track-area breathing pad y-math", () => {
       const clientY = getTimelineRowTop(2) + TRACK_H + 4; // in the bottom pad
       const { track } = resolveTimelineAssetDrop(base, GUTTER, clientY);
       expect(track).toBe(3); // max(trackOrder)+1
+    });
+
+    it("keeps a drop in an expanded lane region on that track", () => {
+      const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H, TRACK_H];
+      const clientY = getTimelineRowTop(0, rowHeights) + TRACK_H + LANE_H;
+      const { track } = resolveTimelineAssetDrop({ ...base, rowHeights }, GUTTER, clientY);
+      expect(track).toBe(0);
     });
   });
 });
