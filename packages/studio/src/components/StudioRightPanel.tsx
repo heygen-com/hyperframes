@@ -36,6 +36,7 @@ import {
   type ColorGradingScope,
 } from "./studioColorGradingScope";
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
+import { BatchStyleSections } from "./editor/BatchStyleSections";
 
 const MIN_INSPECTOR_SPLIT_PERCENT = 20;
 const MAX_INSPECTOR_SPLIT_PERCENT = 75;
@@ -98,6 +99,7 @@ export function StudioRightPanel({
     clearDomSelection,
     handleUngroupSelection,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -408,6 +410,15 @@ export function StudioRightPanel({
       />
     </DesignPanelPromoteProvider>
   );
+  const inspectorPropertyPanel =
+    domEditGroupSelections.length > 1 ? (
+      <BatchStyleSections
+        selections={domEditGroupSelections}
+        onBatchStyleCommit={handleDomStyleBatchCommit}
+      />
+    ) : (
+      propertyPanel
+    );
 
   const renderQueuePanel = (
     <RenderQueue
@@ -532,12 +543,12 @@ export function StudioRightPanel({
                   >
                     <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
                   </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
+                  <div className="min-h-0 flex-1 overflow-hidden">{inspectorPropertyPanel}</div>
                 </div>
               ) : layersPaneOpen ? (
                 <LayersPanel />
               ) : designPaneOpen ? (
-                propertyPanel
+                inspectorPropertyPanel
               ) : inspectorTabActive ? (
                 // Inspector tab selected but no pane can render (panes toggled
                 // off, or inspector inactive during playback/recording): show an
