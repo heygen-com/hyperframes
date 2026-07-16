@@ -3,6 +3,7 @@ import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
   clearAppliedCssVariables,
+  filterVariablesIfAbsent,
   parseHostVariableValues,
   readDeclaredDefaults,
   readRenderOverrides,
@@ -764,9 +765,11 @@ export async function loadExternalCompositions(
  * as CSS custom properties on the host so imported var(--slug, literal)
  * fills inside the sub-comp resolve per instance (cascade beats the document
  * root). Inline templates carry declared defaults on the content root;
- * external loads pass them explicitly. Render-time overrides (--variables)
- * always win. Stale custom properties from a previous mount are cleared
- * before (re)applying.
+ * external loads pass them explicitly. A composition variable, whether a
+ * declared default or an explicit data-variable-values value, never
+ * redefines a custom property already defined on the host. Render-time
+ * overrides (--variables) remain explicit user intent and always win. Stale
+ * custom properties from a previous mount are cleared before (re)applying.
  */
 function stashInstanceVariables(
   params: { host: Element; declaredVariableDefaults?: Record<string, unknown> },
@@ -784,7 +787,10 @@ function stashInstanceVariables(
   if (Object.keys(merged).length > 0) {
     if (!window.__hfVariablesByComp) window.__hfVariablesByComp = {};
     window.__hfVariablesByComp[runtimeScopeCompositionId] = merged;
-    applyCssVariables(params.host, { ...merged, ...readRenderOverrides() });
+    applyCssVariables(params.host, {
+      ...filterVariablesIfAbsent(params.host, merged, window),
+      ...readRenderOverrides(),
+    });
   } else if (window.__hfVariablesByComp) {
     delete window.__hfVariablesByComp[runtimeScopeCompositionId];
   }

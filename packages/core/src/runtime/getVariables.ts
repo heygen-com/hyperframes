@@ -99,6 +99,23 @@ export function applyCssVariables(target: Element, variables: Record<string, unk
   if (applied.length > 0) target.setAttribute(APPLIED_VARS_ATTR, applied.join(" "));
 }
 
+/** Keep only variables whose CSS custom property is not already defined. */
+export function filterVariablesIfAbsent(
+  target: Element,
+  variables: Record<string, unknown>,
+  view: Window | null,
+): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(variables)) {
+    const name = cssVariableName(id);
+    const existing =
+      (hasInlineStyle(target) ? target.style.getPropertyValue(name) : "") ||
+      (view ? view.getComputedStyle(target).getPropertyValue(name) : "");
+    if (existing.trim() === "") filtered[id] = value;
+  }
+  return filtered;
+}
+
 /** Remove custom properties a previous applyCssVariables call defined. */
 export function clearAppliedCssVariables(target: Element): void {
   if (!hasInlineStyle(target)) return;
