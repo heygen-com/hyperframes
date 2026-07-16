@@ -690,9 +690,14 @@ export async function muxVideoWithAudio(
       args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
     }
   }
+  const copiesContainerizedAac =
+    !isWebm && shouldCopyAudio && extname(audioPath).toLowerCase() === ".m4a";
   // PTS bases can diverge during mux and reintroduce negative DTS. See
   // buildEncoderArgs for the full reasoning on why that breaks playback.
-  args.push("-avoid_negative_ts", "make_zero");
+  // A freshly encoded M4A is the exception: its edit list already hides the
+  // AAC priming packet. `make_zero` discards that edit and shifts copied video
+  // forward by one AAC frame (~21ms), creating a visible first-frame offset.
+  if (!copiesContainerizedAac) args.push("-avoid_negative_ts", "make_zero");
   if (fps !== undefined) {
     // Set the exact output framerate so the muxer doesn't PTS-average a
     // fractional rational like `360000/12001` instead of `30/1` into the
