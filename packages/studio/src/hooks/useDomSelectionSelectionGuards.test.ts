@@ -49,6 +49,7 @@ interface HarnessProps {
   iframe: HTMLIFrameElement | null;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId?: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelection?: (ids: Iterable<string>, anchor?: string | null) => void;
 }
 
 function renderHarness(props: HarnessProps) {
@@ -67,6 +68,7 @@ function renderHarness(props: HarnessProps) {
       previewIframeRef: { current: props.iframe },
       timelineElements: props.timelineElements,
       setSelectedTimelineElementId: props.setSelectedTimelineElementId ?? vi.fn(),
+      setTimelineSelection: props.setTimelineSelection ?? vi.fn(),
       setRightCollapsed: vi.fn(),
       setRightPanelTab: props.setRightPanelTab,
       previewIframe: props.iframe,
@@ -192,6 +194,53 @@ describe("useDomSelection — marquee multi-select survives the late async prima
   function timelineEl(id: string): TimelineElement {
     return { id, domId: id, tag: "div", start: 0, duration: 1, track: 0 };
   }
+
+  it("keeps the store multi-selection when timeline sync applies the preview group", () => {
+    const selections = ["a", "b"].map((id) => {
+      const element = document.createElement("div");
+      element.id = id;
+      return makeSelection(id.toUpperCase(), element);
+    });
+    const store = usePlayerStore.getState();
+    store.setSelection(["a", "b"], "a");
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe: null,
+      timelineElements: [timelineEl("a"), timelineEl("b")],
+      setSelectedTimelineElementId: store.setSelectedElementId,
+      setTimelineSelection: store.setSelection,
+    });
+
+    act(() => harness.current().applyMarqueeSelection(selections, false));
+
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["a", "b"]));
+    expect(usePlayerStore.getState().selectedElementId).toBe("a");
+    harness.cleanup();
+  });
+
+  it("writes every canvas marquee member and its anchor to the store", () => {
+    const selections = ["a", "b"].map((id) => {
+      const element = document.createElement("div");
+      element.id = id;
+      return makeSelection(id.toUpperCase(), element);
+    });
+    const store = usePlayerStore.getState();
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe: null,
+      timelineElements: [timelineEl("a"), timelineEl("b")],
+      setSelectedTimelineElementId: store.setSelectedElementId,
+      setTimelineSelection: store.setSelection,
+    });
+
+    act(() => harness.current().applyMarqueeSelection(selections, false));
+
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["a", "b"]));
+    expect(usePlayerStore.getState().selectedElementId).toBe("a");
+    harness.cleanup();
+  });
 
   // Reproduces the reported regression: a marquee over N clips leaves N members in
   // selectedElementIds, then the inspector-open notify (finishMarquee →

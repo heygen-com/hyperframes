@@ -7,6 +7,7 @@ import {
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveTimelineIdForSelection,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
@@ -48,6 +49,7 @@ export interface UseDomSelectionParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelection: (ids: Iterable<string>, anchor?: string | null) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -110,6 +112,7 @@ export function useDomSelection({
   previewIframeRef,
   timelineElements,
   setSelectedTimelineElementId,
+  setTimelineSelection,
   setRightCollapsed,
   setRightPanelTab,
   previewIframe,
@@ -541,16 +544,19 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId =
-        findMatchingTimelineElementId(nextSelection, timelineElements) ??
-        findTimelineIdByAncestor(
-          nextSelection.element,
-          timelineElements,
-          nextSelection.sourceFile || "index.html",
-        );
-      setSelectedTimelineElementId(nextTimelineId);
+      const nextTimelineId = resolveTimelineIdForSelection(
+        nextSelection,
+        timelineElements,
+        activeCompPath,
+      );
+      const nextTimelineIds = nextGroup
+        .map((selection) =>
+          resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
+        )
+        .filter((id): id is string => id !== null);
+      setTimelineSelection(nextTimelineIds, nextTimelineId);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [activeCompPath, applyDomSelection, setTimelineSelection, timelineElements],
   );
 
   // Disabled inspector effect
