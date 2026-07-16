@@ -15,7 +15,11 @@ import {
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
-import { resolveProxy, ProxyTranscodeError } from "../helpers/proxyTranscoder.js";
+import {
+  resolveProxy,
+  ProxyCapacityError,
+  ProxyTranscodeError,
+} from "../helpers/proxyTranscoder.js";
 import { decideMediaProxyEligibility, probeAssetCodec } from "../helpers/mediaCodecMap.js";
 import {
   isAutoProxyEnabled,
@@ -574,6 +578,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       try {
         servedPath = await resolveProxy(project.dir, file);
       } catch (err) {
+        if (err instanceof ProxyCapacityError) {
+          return c.text(err.message, 503, { "Retry-After": "5" });
+        }
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }

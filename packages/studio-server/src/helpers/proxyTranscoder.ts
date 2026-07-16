@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 
@@ -31,9 +31,12 @@ const CACHE_DIR_NAME = ".transcode-cache";
 // typical dev laptop; raise this constant (or make it an env override) if
 // real usage shows queuing hurts.
 const MAX_CONCURRENT_TRANSCODES = 2;
+const MAX_QUEUED_TRANSCODES = 8;
 
 const STDERR_TAIL_MAX_CHARS = 4000;
 const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
+const FAILURE_CACHE_TTL_MS = 60 * 1000;
+const MAX_FAILURE_CACHE_ENTRIES = 128;
 
 export class ProxyTranscodeError extends Error {
   readonly exitCode: number | null;
@@ -56,6 +59,20 @@ class FfmpegUnavailableError extends ProxyTranscodeError {
   }
 }
 
+export class ProxyCapacityError extends ProxyTranscodeError {
+  constructor() {
+    super("media proxy queue is full; retry shortly", null, "");
+    this.name = "ProxyCapacityError";
+  }
+}
+
+export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
+  constructor() {
+    super("media proxy source must be inside the project", null, "");
+    this.name = "ProxySourceOutsideProjectError";
+  }
+}
+
 /**
  * Cache key inputs per the plan: source path relative to the project (so the
  * cache is portable across checkouts at different absolute locations), mtime
@@ -66,6 +83,13 @@ class FfmpegUnavailableError extends ProxyTranscodeError {
  */
 function buildProxyCacheKey(projectDir: string, absoluteSourcePath: string): string {
   const relPath = relative(projectDir, absoluteSourcePath);
+  if (
+    relPath === ".." ||
+    relPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+    isAbsolute(relPath)
+  ) {
+    throw new ProxySourceOutsideProjectError();
+  }
   const stat = statSync(absoluteSourcePath);
   return createHash("sha256")
     .update(`${relPath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}`)
@@ -91,12 +115,16 @@ let activeTranscodes = 0;
 const waitQueue: Array<() => void> = [];
 
 function acquireSlot(): Promise<void> {
-  return new Promise((resolveSlot) => {
+  return new Promise((resolveSlot, reject) => {
     const tryAcquire = (): void => {
       if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
         activeTranscodes++;
         resolveSlot();
       } else {
+        if (waitQueue.length >= MAX_QUEUED_TRANSCODES) {
+          reject(new ProxyCapacityError());
+          return;
+        }
         waitQueue.push(tryAcquire);
       }
     };
@@ -120,7 +148,22 @@ const inFlight = new Map<string, Promise<string>>();
 // naturally). Remembering the failure per key means repeated `?hf-proxy=`
 // requests for a broken asset rethrow instantly instead of respawning ffmpeg
 // on every retry the browser makes.
-const failedTranscodes = new Map<string, ProxyTranscodeError>();
+interface RememberedFailure {
+  error: ProxyTranscodeError;
+  expiresAt: number;
+}
+
+const failedTranscodes = new Map<string, RememberedFailure>();
+
+function rememberFailure(cachePath: string, error: ProxyTranscodeError): void {
+  failedTranscodes.delete(cachePath);
+  failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
+  while (failedTranscodes.size > MAX_FAILURE_CACHE_ENTRIES) {
+    const oldest = failedTranscodes.keys().next().value;
+    if (oldest === undefined) break;
+    failedTranscodes.delete(oldest);
+  }
+}
 
 /** Test hook: forget remembered transcode failures (module state persists
  * across tests that don't reload the module). */
@@ -250,15 +293,23 @@ export async function resolveProxy(
   if (existsSync(cachePath)) return cachePath;
 
   const rememberedFailure = failedTranscodes.get(cachePath);
-  if (rememberedFailure) throw rememberedFailure;
+  if (rememberedFailure) {
+    if (rememberedFailure.expiresAt > Date.now()) throw rememberedFailure.error;
+    failedTranscodes.delete(cachePath);
+  }
 
   const existing = inFlight.get(cachePath);
   if (existing) return existing;
 
   const promise = transcodeToCache(absoluteSourcePath, cachePath)
     .catch((err: unknown) => {
-      if (err instanceof ProxyTranscodeError && !(err instanceof FfmpegUnavailableError)) {
-        failedTranscodes.set(cachePath, err);
+      if (
+        err instanceof ProxyTranscodeError &&
+        !(err instanceof FfmpegUnavailableError) &&
+        !(err instanceof ProxyCapacityError) &&
+        !(err instanceof ProxySourceOutsideProjectError)
+      ) {
+        rememberFailure(cachePath, err);
       }
       throw err;
     })

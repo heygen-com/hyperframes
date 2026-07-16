@@ -8,6 +8,7 @@ const FFMPEG_PATH = "/usr/bin/ffmpeg";
 // Mirrors MAX_CONCURRENT_TRANSCODES in proxyTranscoder.ts (not exported —
 // this test file and the module are authored together).
 const MAX_CONCURRENT = 2;
+const MAX_QUEUED = 8;
 
 type FakeProc = EventEmitter & { stderr: EventEmitter };
 
@@ -214,6 +215,30 @@ describe("resolveProxy", () => {
     expect(calls.length).toBeLessThanOrEqual(sourcePaths.length);
   });
 
+  it("rejects excess queued work with a typed capacity error", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxyCapacityError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePaths = Array.from({ length: MAX_CONCURRENT + MAX_QUEUED + 1 }, (_, i) => {
+      const path = join(projectDir, `queued-${i}.mov`);
+      writeFileSync(path, `source-${i}`);
+      return path;
+    });
+
+    const accepted = sourcePaths.slice(0, -1).map((path) => resolveProxy(projectDir, path));
+    await expect(resolveProxy(projectDir, sourcePaths.at(-1)!)).rejects.toBeInstanceOf(
+      ProxyCapacityError,
+    );
+    await flush();
+    expect(calls).toHaveLength(MAX_CONCURRENT);
+
+    for (let index = 0; index < accepted.length; index += MAX_CONCURRENT) {
+      calls.slice(index, index + MAX_CONCURRENT).forEach((call) => succeed(call));
+      await flush();
+    }
+    await Promise.all(accepted);
+  });
+
   it("produces a new cache key when the source mtime changes", async () => {
     const { resolveProxy: _unused, getProxyCachePath } = await loadModule(
       () => createFakeProc(),
@@ -308,6 +333,41 @@ describe("resolveProxy", () => {
     expect(calls).toHaveLength(2);
     succeed(calls[1]!);
     await expect(retry).resolves.toBeTruthy();
+  });
+
+  it("expires remembered failures so transient environment errors can recover", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxyTranscodeError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "video.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const first = resolveProxy(projectDir, sourcePath);
+    await flush();
+    fail(calls[0]!, 137, "transient OOM");
+    await expect(first).rejects.toBeInstanceOf(ProxyTranscodeError);
+
+    now.mockReturnValue(1_000 + 60_001);
+    const retry = resolveProxy(projectDir, sourcePath);
+    await flush();
+    expect(calls).toHaveLength(2);
+    succeed(calls[1]!);
+    await expect(retry).resolves.toBeTruthy();
+  });
+
+  it("rejects sources outside the project before probing or spawning", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxySourceOutsideProjectError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const outsideDir = tmpProject();
+    const sourcePath = join(outsideDir, "outside.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    await expect(resolveProxy(projectDir, sourcePath)).rejects.toBeInstanceOf(
+      ProxySourceOutsideProjectError,
+    );
+    expect(calls).toHaveLength(0);
   });
 
   it("retries after the source file changes (mtime in the cache key invalidates the remembered failure)", async () => {

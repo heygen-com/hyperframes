@@ -665,6 +665,8 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     }
   }
 
+  class FakeProxyCapacityError extends FakeProxyTranscodeError {}
+
   type ScanMapImpl = (
     projectDir: string,
     htmlSources: Array<{ html: string; compSrcPath?: string }>,
@@ -703,6 +705,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
       ProxyTranscodeError: FakeProxyTranscodeError,
+      ProxyCapacityError: FakeProxyCapacityError,
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
@@ -909,6 +912,24 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
       expect(res.status).toBe(502);
       expect(await res.text()).toBe("ffmpeg exited with code 1");
+    });
+
+    it("maps a full proxy queue to a retryable 503", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: async () => {
+          throw new FakeProxyCapacityError("media proxy queue is full", null, "");
+        },
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("5");
     });
 
     it("rejects a path-traversal attempt through the proxied path (404, no transcode)", async () => {
