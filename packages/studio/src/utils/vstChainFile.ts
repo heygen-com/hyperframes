@@ -48,3 +48,36 @@ export function parseChainFile(text: string): ChainFileJson | null {
 export function serializeChainFile(chain: ChainFileJson): string {
   return JSON.stringify(chain, null, 2);
 }
+
+export interface CarveBand {
+  freq: number;
+  gainDb: number;
+  q: number;
+}
+
+/** Appends one PeakFilter built-in per carve band to a chain (existing plugins
+ *  preserved). A null/absent chain starts fresh. Pure — returns a new object. */
+export function appendCarveBands(chain: ChainFileJson | null, bands: CarveBand[]): ChainFileJson {
+  const base = chain?.plugins ?? [];
+  const carved: ChainPluginJson[] = bands.map((b) => ({
+    format: "builtin",
+    path: "PeakFilter",
+    pluginName: null,
+    name: `Carve ${Math.round(b.freq)}Hz`,
+    stateB64: btoa(JSON.stringify({ cutoff_frequency_hz: b.freq, gain_db: b.gainDb, q: b.q })),
+  }));
+  return { version: 1, plugins: [...base, ...carved] };
+}
+
+/** Project-relative asset path from a track `src`/preview URL: the part after
+ *  `/preview/` (decoded, query stripped), or the src minus a leading `./` when
+ *  it's already relative. Null only for empty input. */
+export function projectRelativeAssetPath(url: string): string | null {
+  if (!url) return null;
+  const marker = "/preview/";
+  const idx = url.indexOf(marker);
+  if (idx !== -1) {
+    return decodeURIComponent(url.slice(idx + marker.length).split("?")[0] ?? "");
+  }
+  return url.replace(/^\.\//, "").split("?")[0] ?? null;
+}
