@@ -110,7 +110,10 @@ export async function injectMediaCodecMapIntoHtml(
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
   // the injected tag, mirroring injectPreviewVariables in routes/preview.ts.
-  const json = JSON.stringify(map).replace(/</g, "\\u003c");
+  const json = JSON.stringify(map)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
   const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
   return injectScriptTagIntoHead(html, tag);
 }

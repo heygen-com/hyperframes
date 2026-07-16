@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import AdmZip from "adm-zip";
 
 const authMocks = vi.hoisted(() => ({
@@ -32,6 +34,58 @@ import {
 
 function makeProjectDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-publish-"));
+}
+
+function writeRealHevcFixture(outputPath: string): Buffer {
+  const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
+  const ffprobe = findFfBinary("ffprobe", { configuredMustExist: true });
+  if (!ffmpeg || !ffprobe) throw new Error("real HEVC archive guard requires ffmpeg and ffprobe");
+  const encoded = spawnSync(
+    ffmpeg,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=16x16:d=0.04",
+      "-frames:v",
+      "1",
+      "-c:v",
+      "libx265",
+      "-pix_fmt",
+      "yuv420p",
+      "-tag:v",
+      "hvc1",
+      "-x265-params",
+      "log-level=error:pools=1:frame-threads=1",
+      "-y",
+      outputPath,
+    ],
+    { encoding: "utf-8", timeout: 15_000 },
+  );
+  if (encoded.status !== 0) {
+    throw new Error(`failed to generate HEVC fixture: ${encoded.stderr || encoded.error?.message}`);
+  }
+  const probed = spawnSync(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      outputPath,
+    ],
+    { encoding: "utf-8", timeout: 5_000 },
+  );
+  expect(probed.status).toBe(0);
+  expect(probed.stdout.trim()).toBe("hevc");
+  return readFileSync(outputPath);
 }
 
 /** Writes an external asset and returns its path relative to `fromDir`, POSIX-slashed. */
@@ -216,7 +270,7 @@ describe("createPublishArchive (U6 cloud-render regression guard)", () => {
   // `createPublishArchive` is exactly the thin composition of
   // `buildPublishFileMap` + `zipPublishFileMap` with no baking hook, and that
   // a local video asset's original bytes/HTML pass through unmodified.
-  it("is the unbaked composition of buildPublishFileMap + zipPublishFileMap: original bytes and HTML pass through", () => {
+  it("keeps a real HEVC source byte-identical and excludes proxies from the cloud-render archive", () => {
     const dir = makeProjectDir();
     try {
       writeFileSync(
@@ -224,7 +278,7 @@ describe("createPublishArchive (U6 cloud-render regression guard)", () => {
         `<html><body><video src="clip.mp4"></video></body></html>`,
         "utf-8",
       );
-      writeFileSync(join(dir, "clip.mp4"), "ORIGINAL_HEVC_BYTES", "utf-8");
+      const originalHevc = writeRealHevcFixture(join(dir, "clip.mp4"));
 
       const direct = createPublishArchive(dir);
       const composed = zipPublishFileMap(buildPublishFileMap(dir));
@@ -236,7 +290,7 @@ describe("createPublishArchive (U6 cloud-render regression guard)", () => {
       const entries = zip.getEntries().map((e) => e.entryName);
       expect(entries).toEqual(expect.arrayContaining(["index.html", "clip.mp4"]));
       expect(entries.some((e) => e.startsWith("_proxy/"))).toBe(false);
-      expect(zip.readAsText("clip.mp4")).toBe("ORIGINAL_HEVC_BYTES");
+      expect(zip.readFile("clip.mp4")?.equals(originalHevc)).toBe(true);
       expect(zip.readAsText("index.html")).toContain('src="clip.mp4"');
     } finally {
       rmSync(dir, { recursive: true, force: true });

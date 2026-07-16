@@ -80,6 +80,34 @@ describe("probeMediaMetadata", () => {
     });
   });
 
+  it("ignores attached cover art and reads the real video stream", async () => {
+    const metadata = await probeMediaMetadata("/tmp/clip.mp4", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          {
+            codec_type: "video",
+            codec_name: "mjpeg",
+            pix_fmt: "yuvj420p",
+            disposition: { attached_pic: 1 },
+          },
+          {
+            codec_type: "video",
+            codec_name: "hevc",
+            pix_fmt: "yuv420p10le",
+            disposition: { attached_pic: 0 },
+          },
+        ],
+      }),
+      stderr: "",
+    }));
+
+    expect(metadata).toMatchObject({
+      kind: "video",
+      color: { codecName: "hevc", pixelFormat: "yuv420p10le" },
+    });
+  });
+
   it("returns unknown metadata when ffprobe is unavailable", async () => {
     await expect(
       probeMediaMetadata("/tmp/clip.mp4", () => ({

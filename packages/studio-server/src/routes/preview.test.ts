@@ -1016,6 +1016,30 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
     });
 
+    it("escapes script terminators and JavaScript line separators in codec-map keys", async () => {
+      const projectDir = createProjectDir();
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: async () => join(projectDir, ".transcode-cache", "x.mp4"),
+        scanMapImpl: async () => ({
+          "/videos/</script>\u2028\u2029.mp4": {
+            codecName: "hevc",
+            browserHostile: true,
+            representativeMime: null,
+          },
+        }),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+      const injected = /<script data-hf-media-codec-map>([\s\S]*?)<\/script>/.exec(html)?.[1];
+      expect(injected).toContain("\\u003c/script>");
+      expect(injected).toContain("\\u2028");
+      expect(injected).toContain("\\u2029");
+      expect(injected).not.toContain("</script>");
+    });
+
     it("does not inject the codec map (and 404s the proxy param) when auto-proxy is disabled", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "bytes");

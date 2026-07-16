@@ -78,6 +78,7 @@ interface FfprobeStream {
   color_transfer?: string;
   color_primaries?: string;
   bits_per_raw_sample?: string;
+  disposition?: { attached_pic?: number };
 }
 
 const VIDEO_EXT = new Set([
@@ -197,7 +198,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
       "-of",
       "json",
       filePath,
@@ -214,9 +215,10 @@ export async function probeMediaMetadata(
 
   try {
     const parsed = JSON.parse(String(result.stdout || "{}")) as { streams?: FfprobeStream[] };
-    const stream = parsed.streams?.find((item) =>
-      kind === "image" ? item.codec_type === "video" : item.codec_type === kind,
-    );
+    const stream = parsed.streams?.find((item) => {
+      if (kind === "image") return item.codec_type === "video";
+      return item.codec_type === kind && item.disposition?.attached_pic !== 1;
+    });
     return { kind, color: classifyMediaColor(stream) };
   } catch {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe returned invalid json" };
