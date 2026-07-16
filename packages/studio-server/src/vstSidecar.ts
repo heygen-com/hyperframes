@@ -54,11 +54,11 @@ let spawningChild: ChildProcess | null = null;
  * Duplicated from `@hyperframes/engine`'s `resolveVstHostCommand`
  * (packages/engine/src/services/vstBounce.ts) — that package doesn't export
  * it from its public entry point or a subpath, so this module carries its own
- * copy with a package-relative monorepo path. Not exported: nothing outside
- * this module needs it directly — `HF_VST_HOST_CMD` is the test seam (see
- * vstSidecar.test.ts), exercised indirectly through `startVstSidecar`.
+ * copy with a package-relative monorepo path. Exported for reuse by
+ * `vstCarve.ts`, which spawns the same sidecar's `carve` verb; `HF_VST_HOST_CMD`
+ * is the test seam (see vstSidecar.test.ts) for both call sites.
  */
-function resolveVstHostCommand(): string[] {
+export function resolveVstHostCommand(): string[] {
   const override = process.env.HF_VST_HOST_CMD;
   if (override && override.trim().length > 0) {
     return override.trim().split(/\s+/);
@@ -145,9 +145,15 @@ export function startVstSidecar(): Promise<{ port: number; token: string; stop: 
 
   pending = new Promise<{ port: number; token: string; stop: () => void }>(
     (resolvePromise, reject) => {
-      const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      // `--parent-pid` lets the sidecar self-reap if THIS process dies
+      // ungracefully (see server.py's _watch_parent_and_exit) — necessary
+      // because we launch it via `uv run`, so the sidecar's own getppid() is
+      // the intervening uv process, not us.
+      const child = spawn(
+        cmd,
+        [...baseArgs, "serve", "--port", "0", "--parent-pid", String(process.pid)],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
       spawningChild = child;
       let settled = false;
 
