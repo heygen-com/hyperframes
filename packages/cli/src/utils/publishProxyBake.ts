@@ -42,6 +42,7 @@ import {
   ProxyTranscodeError,
   resolveProxy,
   waitForProxy,
+  TRANSCODE_TIMEOUT_MS,
 } from "@hyperframes/studio-server/proxy-transcoder";
 import { rewriteHtmlAttributes } from "./publishProject.js";
 
@@ -123,7 +124,10 @@ export async function bakeMediaProxies(
     hostilePathnames.map(async (pathname) => {
       const absoluteSourcePath = resolve(absProjectDir, pathname.replace(/^\/+/, ""));
       try {
-        const proxyPath = await waitForProxy(resolveProxy(absProjectDir, absoluteSourcePath));
+        const proxyPath = await waitForProxy(
+          resolveProxy(absProjectDir, absoluteSourcePath),
+          TRANSCODE_TIMEOUT_MS,
+        );
         const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;
         fileContents.set(archivePath, await readFile(proxyPath));
         proxyByAbsolutePath.set(absoluteSourcePath, archivePath);

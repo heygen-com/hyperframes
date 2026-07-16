@@ -9,6 +9,10 @@ import {
   ProxyCapacityError,
   ProxyTranscodeError,
 } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  decideMediaProxyEligibility,
+  probeAssetCodec,
+} from "@hyperframes/studio-server/media-codec-map";
 
 export interface StaticProjectServer {
   url: string;
@@ -97,6 +101,12 @@ async function serveProxyRequest(
     return;
   }
   try {
+    const eligibility = decideMediaProxyEligibility(await probeAssetCodec(filePath));
+    if (!eligibility.eligible) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end(`media proxy unavailable: ${eligibility.reason}`);
+      return;
+    }
     const proxyPath = await resolveProxy(projectDir, filePath);
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;

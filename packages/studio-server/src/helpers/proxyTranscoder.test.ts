@@ -18,11 +18,12 @@ const FFMPEG_PATH = "/usr/bin/ffmpeg";
 const MAX_CONCURRENT = 2;
 const MAX_QUEUED = 8;
 
-type FakeProc = EventEmitter & { stderr: EventEmitter };
+type FakeProc = EventEmitter & { stderr: EventEmitter; stdout: EventEmitter };
 
 function createFakeProc(): FakeProc {
   const proc = new EventEmitter() as FakeProc;
   proc.stderr = new EventEmitter();
+  proc.stdout = new EventEmitter();
   return proc;
 }
 
@@ -183,13 +184,40 @@ describe("resolveProxy", () => {
     const result = resolveProxy(projectDir, sourcePath);
     await flush();
 
-    const filterIndex = calls[0]!.args.indexOf("-vf");
-    const filter = calls[0]!.args[filterIndex + 1];
+    expect(calls[0]!.args).toEqual(["-hide_banner", "-filters"]);
+    calls[0]!.proc.stdout.emit(
+      "data",
+      Buffer.from(" ..C zscale V->V zimg scale\n T.C tonemap V->V tone map\n"),
+    );
+    calls[0]!.proc.emit("close", 0);
+    await flush();
+
+    const filterIndex = calls[1]!.args.indexOf("-vf");
+    const filter = calls[1]!.args[filterIndex + 1];
     expect(filter).toContain("tonemap=");
     expect(filter).toContain("bt709");
 
-    succeed(calls[0]!);
+    succeed(calls[1]!);
     await result;
+  });
+
+  it("rejects HDR proxying with a typed actionable error when ffmpeg lacks zscale", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, FfmpegMissingFilterError } = await loadModule(spawn, FFMPEG_PATH, true);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "hdr.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+
+    expect(calls[0]!.args).toEqual(["-hide_banner", "-filters"]);
+    calls[0]!.proc.stdout.emit("data", Buffer.from(" T.C tonemap V->V tone map\n"));
+    calls[0]!.proc.emit("close", 0);
+
+    await expect(result).rejects.toBeInstanceOf(FfmpegMissingFilterError);
+    await expect(result).rejects.toThrow(/zscale.*libzimg/i);
+    expect(calls).toHaveLength(1);
   });
 
   it("dedupes two concurrent same-key calls to one spawn", async () => {

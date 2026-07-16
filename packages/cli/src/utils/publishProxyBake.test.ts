@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => {
       >
     >(),
     ProxyTranscodeError: FakeProxyTranscodeError,
-    waitForProxy: vi.fn(<T>(promise: Promise<T>) => promise),
+    waitForProxy: vi.fn(<T>(promise: Promise<T>, _timeoutMs?: number) => promise),
   };
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
@@ -44,6 +44,7 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
   waitForProxy: mocks.waitForProxy,
+  TRANSCODE_TIMEOUT_MS: 15 * 60 * 1000,
 }));
 
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
@@ -108,6 +109,7 @@ describe("bakeMediaProxies", () => {
     expect(html).not.toContain('src="clip.mp4"');
 
     expect(mocks.resolveProxy).toHaveBeenCalledWith(PROJECT_DIR, join(PROJECT_DIR, "clip.mp4"));
+    expect(mocks.waitForProxy).toHaveBeenCalledWith(expect.any(Promise), 15 * 60 * 1000);
     expect(manifest).toEqual({ proxied: ["/clip.mp4"], skippedAlpha: [], failed: [] });
   });
 

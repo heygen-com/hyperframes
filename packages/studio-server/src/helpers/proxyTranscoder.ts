@@ -49,7 +49,7 @@ const MAX_CONCURRENT_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_CONCU
 const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8, 0, 256);
 
 const STDERR_TAIL_MAX_CHARS = 4000;
-const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
+export const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 const MAX_FAILURE_CACHE_ENTRIES = 128;
 export const DEFAULT_PROXY_WAIT_TIMEOUT_MS = 2 * 60 * 1000;
@@ -72,6 +72,17 @@ export class ProxyTranscodeError extends Error {
 class FfmpegUnavailableError extends ProxyTranscodeError {
   constructor() {
     super("ffmpeg binary not found", null, "");
+  }
+}
+
+export class FfmpegMissingFilterError extends ProxyTranscodeError {
+  constructor() {
+    super(
+      "HDR proxying requires ffmpeg zscale/tonemap filters (libzimg); install an ffmpeg build with libzimg support",
+      null,
+      "",
+    );
+    this.name = "FfmpegMissingFilterError";
   }
 }
 
@@ -238,6 +249,31 @@ interface RememberedFailure {
 
 const failedTranscodes = new Map<string, RememberedFailure>();
 
+let hdrFilterCheck: { ffmpegPath: string; promise: Promise<void> } | undefined;
+
+function ensureHdrFilters(ffmpegPath: string): Promise<void> {
+  if (hdrFilterCheck?.ffmpegPath === ffmpegPath) return hdrFilterCheck.promise;
+  const promise = new Promise<void>((resolveCheck, rejectCheck) => {
+    const proc = spawn(ffmpegPath, ["-hide_banner", "-filters"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    proc.on("error", () => rejectCheck(new FfmpegMissingFilterError()));
+    proc.on("close", (code) => {
+      if (code !== 0 || !/\bzscale\b/.test(stdout) || !/\btonemap\b/.test(stdout)) {
+        rejectCheck(new FfmpegMissingFilterError());
+      } else {
+        resolveCheck();
+      }
+    });
+  });
+  hdrFilterCheck = { ffmpegPath, promise };
+  return promise;
+}
+
 function rememberFailure(cachePath: string, error: ProxyTranscodeError): void {
   failedTranscodes.delete(cachePath);
   failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
@@ -256,6 +292,11 @@ export function clearFailedTranscodesForTest(): void {
 
 async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
+  const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpegPath) {
+    throw new FfmpegUnavailableError();
+  }
+  if (metadata.color.isHdr) await ensureHdrFilters(ffmpegPath);
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
   const videoFilter = metadata.color.isHdr
     ? [
@@ -268,12 +309,6 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
     : [evenScale, "format=yuv420p"].join(",");
 
   return new Promise((resolvePromise, reject) => {
-    const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
-    if (!ffmpegPath) {
-      reject(new FfmpegUnavailableError());
-      return;
-    }
-
     const args = [
       "-y",
       "-i",
@@ -395,6 +430,7 @@ export async function resolveProxy(
       if (
         err instanceof ProxyTranscodeError &&
         !(err instanceof FfmpegUnavailableError) &&
+        !(err instanceof FfmpegMissingFilterError) &&
         !(err instanceof ProxyCapacityError) &&
         !(err instanceof ProxySourceOutsideProjectError)
       ) {

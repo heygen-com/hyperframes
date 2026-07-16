@@ -98,6 +98,12 @@ export function createCheckCommand(
         description: "Exit non-zero on warnings too",
         default: false,
       },
+      proxy: {
+        type: "boolean",
+        description:
+          "Auto-transcode browser-hostile video codecs for browser checks (default: on; overrides hyperframes.json media.autoProxy)",
+        default: undefined,
+      },
       snapshots: {
         type: "boolean",
         description: "Save the five contrast-pass PNGs under snapshots/",
@@ -161,6 +167,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     snapshots: args.snapshots === true,
     captionZone: parseCaptionZone(args["caption-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
+    autoProxy: args.proxy as boolean | undefined,
   };
 }
 

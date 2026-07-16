@@ -101,8 +101,9 @@ interface FinishedContrast {
 export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
+  autoProxyOverride?: boolean,
 ): Promise<void> {
-  if (!resolveAutoProxy(projectDir, undefined)) return;
+  if (!resolveAutoProxy(projectDir, autoProxyOverride)) return;
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
@@ -131,8 +132,14 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  await preResolveHostileMediaProxies(project.dir, html);
-  const server = await serveStaticProjectHtml(project.dir, html, "Failed to bind check server");
+  await preResolveHostileMediaProxies(project.dir, html, options.autoProxy);
+  const server = await serveStaticProjectHtml(
+    project.dir,
+    html,
+    "Failed to bind check server",
+    [],
+    options.autoProxy,
+  );
   const drafts: RuntimeDraft[] = [];
   let currentTime = 0;
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
@@ -189,7 +196,13 @@ export async function captureFindingCrops(
   if (requests.length === 0) return [];
   const { bundleWithLocalizedFonts } = await import("./bundleWithLocalizedFonts.js");
   const html = await bundleWithLocalizedFonts(project.dir);
-  const server = await serveStaticProjectHtml(project.dir, html, "Failed to bind check server");
+  const server = await serveStaticProjectHtml(
+    project.dir,
+    html,
+    "Failed to bind check server",
+    [],
+    options.autoProxy,
+  );
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   const written: string[] = [];
   try {

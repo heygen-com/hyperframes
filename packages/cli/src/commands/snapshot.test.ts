@@ -34,6 +34,13 @@ describe("transparent snapshot capture", () => {
       'page.screenshot({ path: framePath, type: "png", omitBackground: true })',
     );
   });
+
+  it("exposes --proxy/--no-proxy and forwards the override to the static server", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("proxy: {");
+    expect(source).toContain("autoProxy: args.proxy as boolean | undefined");
+    expect(source).toContain("opts.autoProxy");
+  });
 });
 
 describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {

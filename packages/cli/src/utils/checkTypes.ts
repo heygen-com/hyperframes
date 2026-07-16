@@ -18,6 +18,8 @@ export interface CheckOptions {
   snapshots: boolean;
   captionZone?: CaptionZoneOptions;
   frameCheck?: FrameCheckOptions;
+  /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
+  autoProxy?: boolean;
 }
 
 export interface CaptionZoneOptions {

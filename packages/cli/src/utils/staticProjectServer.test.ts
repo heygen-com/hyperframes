@@ -45,6 +45,16 @@ const mocks = vi.hoisted(() => {
         >
       >
     >(async () => ({})),
+    probeAssetCodec: vi.fn(async () => ({
+      codecName: "prores",
+      pixelFormat: "yuva444p10le",
+      hasAlpha: true,
+      browserHostile: true,
+      representativeMime: null,
+    })),
+    decideMediaProxyEligibility: vi.fn<
+      () => { eligible: true } | { eligible: false; reason: "alpha_source" }
+    >(() => ({ eligible: true })),
     ProxyTranscodeError: FakeProxyTranscodeError,
     ProxyCapacityError: FakeProxyCapacityError,
   };
@@ -55,6 +65,11 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
   ProxyCapacityError: mocks.ProxyCapacityError,
+}));
+
+vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
+  probeAssetCodec: mocks.probeAssetCodec,
+  decideMediaProxyEligibility: mocks.decideMediaProxyEligibility,
 }));
 
 // The shared injection helper ships as a self-contained dist bundle (its copy
@@ -86,6 +101,9 @@ afterEach(async () => {
   mocks.resolveProxy.mockResolvedValue("/unused-prewarm-proxy-path");
   mocks.scanProjectMediaCodecMap.mockReset();
   mocks.scanProjectMediaCodecMap.mockResolvedValue({});
+  mocks.probeAssetCodec.mockClear();
+  mocks.decideMediaProxyEligibility.mockClear();
+  mocks.decideMediaProxyEligibility.mockReturnValue({ eligible: true });
 });
 
 async function serveWith(bytes: Buffer): Promise<{ url: string }> {
@@ -259,6 +277,23 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
     expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
+  });
+
+  it("rejects an alpha-bearing video before attempting a static-server proxy transcode", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mov"), "prores-4444-alpha-bytes");
+    mocks.decideMediaProxyEligibility.mockReturnValueOnce({
+      eligible: false,
+      reason: "alpha_source",
+    });
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const res = await fetch(`${server.url}clip.mov?hf-proxy=h264`);
+
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("alpha_source");
+    expect(mocks.probeAssetCodec).toHaveBeenCalledWith(join(projectDir, "clip.mov"));
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("answers 502 when the proxy transcode fails", async () => {
