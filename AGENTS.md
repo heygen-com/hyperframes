@@ -4,10 +4,11 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
+This repo ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** — the `/hyperframes` router installs each creation workflow on demand; install everything only when the user explicitly asks for the full set.
 
 ```bash
-npx skills add heygen-com/hyperframes
+npx hyperframes skills update                        # default: installs/refreshes the core set — workflows install on demand
+npx skills add heygen-com/hyperframes --full-depth   # interactive picker (terminal only — non-interactive without --skill installs everything)
 ```
 
 **Creation workflows** route through one entry skill — read `/hyperframes` first: it orients you to the whole surface, confirms the brief up front (the intent layer), and maps "make me a…" intent — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`) — to a concrete workflow. Consult it before invoking a specific workflow:
