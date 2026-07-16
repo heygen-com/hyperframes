@@ -12,6 +12,7 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 
 export interface StudioHeaderProps {
+  storyboardAvailable: boolean;
   captureFrameHref: string;
   captureFrameFilename: string;
   handleCaptureFrameClick: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -148,13 +149,17 @@ const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
   { mode: "storyboard", label: "Storyboard" },
   { mode: "timeline", label: "Preview" },
 ];
+const STORYBOARD_UNAVAILABLE_TITLE =
+  "No storyboard yet, add a STORYBOARD.md at the project root to use this view.";
 
 /** Segmented control switching the main stage between storyboard and preview. */
-function ViewModeToggle() {
+function ViewModeToggle({ storyboardAvailable }: { storyboardAvailable: boolean }) {
   const { viewMode, setViewMode } = useViewMode();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const isModeAvailable = (mode: StudioViewMode) => mode !== "storyboard" || storyboardAvailable;
 
   const selectMode = (mode: StudioViewMode) => {
+    if (!isModeAvailable(mode)) return;
     if (mode === viewMode) return;
     trackStudioEvent("view_mode_toggle", { mode });
     setViewMode(mode);
@@ -165,9 +170,14 @@ function ViewModeToggle() {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const dir = e.key === "ArrowLeft" ? -1 : 1;
-    const next = (index + dir + VIEW_MODE_OPTIONS.length) % VIEW_MODE_OPTIONS.length;
-    tabRefs.current[next]?.focus();
-    selectMode(VIEW_MODE_OPTIONS[next].mode);
+    for (let offset = 1; offset <= VIEW_MODE_OPTIONS.length; offset += 1) {
+      const next = (index + dir * offset + VIEW_MODE_OPTIONS.length) % VIEW_MODE_OPTIONS.length;
+      const nextMode = VIEW_MODE_OPTIONS[next].mode;
+      if (!isModeAvailable(nextMode)) continue;
+      tabRefs.current[next]?.focus();
+      selectMode(nextMode);
+      return;
+    }
   };
 
   return (
@@ -178,7 +188,8 @@ function ViewModeToggle() {
     >
       {VIEW_MODE_OPTIONS.map(({ mode, label }, index) => {
         const active = viewMode === mode;
-        return (
+        const disabled = !isModeAvailable(mode);
+        const button = (
           <button
             key={mode}
             ref={(el) => {
@@ -187,7 +198,9 @@ function ViewModeToggle() {
             type="button"
             role="tab"
             aria-selected={active}
-            tabIndex={active ? 0 : -1}
+            aria-label={disabled ? STORYBOARD_UNAVAILABLE_TITLE : undefined}
+            disabled={disabled}
+            tabIndex={active && !disabled ? 0 : -1}
             onClick={() => selectMode(mode)}
             onKeyDown={(e) => handleKeyDown(e, index)}
             className={`rounded px-3 py-1 text-[11px] font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
@@ -197,6 +210,13 @@ function ViewModeToggle() {
             {label}
           </button>
         );
+        return disabled ? (
+          <Tooltip key={mode} label={STORYBOARD_UNAVAILABLE_TITLE} side="bottom">
+            {button}
+          </Tooltip>
+        ) : (
+          button
+        );
       })}
     </div>
   );
@@ -204,6 +224,7 @@ function ViewModeToggle() {
 
 // fallow-ignore-next-line complexity
 export function StudioHeader({
+  storyboardAvailable,
   captureFrameHref,
   captureFrameFilename,
   handleCaptureFrameClick,
@@ -265,7 +286,7 @@ export function StudioHeader({
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
       {/* Center: storyboard / preview toggle */}
-      <ViewModeToggle />
+      <ViewModeToggle storyboardAvailable={storyboardAvailable} />
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <Tooltip
