@@ -7,6 +7,7 @@ import {
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
 const INSPECTOR_COMMIT_DELAY_MS = 350;
+export const LIVE_PREVIEW_COMMIT_DELAY_MS = 40;
 
 export function FieldLabel({
   label,
@@ -58,14 +59,22 @@ export function useDebouncedCommit<T>({
   delayMs?: number;
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<{ value: T; commit: (nextValue: T) => void } | null>(null);
+  const sourceValueRef = useRef(sourceValue);
+  const pendingRef = useRef<{
+    value: T;
+    sourceValue: T;
+    commit: (nextValue: T) => void;
+  } | null>(null);
+  sourceValueRef.current = sourceValue;
 
   const flush = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
     const pending = pendingRef.current;
     pendingRef.current = null;
-    if (pending) pending.commit(pending.value);
+    if (pending && Object.is(pending.sourceValue, sourceValueRef.current)) {
+      pending.commit(pending.value);
+    }
   }, []);
 
   useEffect(() => flush, [flush, onCommit, sourceValue]);
@@ -79,7 +88,7 @@ export function useDebouncedCommit<T>({
         pendingRef.current = null;
         return;
       }
-      pendingRef.current = { value: nextValue, commit: onCommit };
+      pendingRef.current = { value: nextValue, sourceValue, commit: onCommit };
       timerRef.current = setTimeout(flush, delayMs);
     },
     [delayMs, flush, onCommit, onPreview, sourceValue],
@@ -367,6 +376,7 @@ export function SliderControl({
     sourceValue: value,
     onPreview: setDraft,
     onCommit: commitDraft,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
   });
 
   useEffect(() => {
@@ -387,8 +397,8 @@ export function SliderControl({
           interactionChangedRef.current = true;
           previewDraft(n);
         }}
-        onMouseUp={flush}
-        onTouchEnd={flush}
+        onPointerUp={flush}
+        onPointerCancel={flush}
         onBlur={flush}
         className="h-4 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />

@@ -144,7 +144,7 @@ describe("classic property-panel primitive telemetry", () => {
     expectTracked("metric", "opacity");
   });
 
-  it("tracks SliderControl on settle, not on its scheduled commit tick", () => {
+  it("tracks SliderControl once when the 40ms scheduled commit settles", () => {
     vi.useFakeTimers();
     const onCommit = vi.fn();
     const host = render(
@@ -167,10 +167,11 @@ describe("classic property-panel primitive telemetry", () => {
       changeInput(input, "40");
     });
     act(() => vi.advanceTimersByTime(40));
-    expect(trackStudioEvent).not.toHaveBeenCalled();
-
-    act(() => input.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
     expectTracked("slider", "opacity");
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
+
+    act(() => input.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
   });
 
   it("tracks SelectField with its label", () => {

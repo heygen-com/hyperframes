@@ -23,6 +23,7 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRunner";
+import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../utils/authoredOpacity";
 
 interface DomStyleCommitPlan {
   operations: PatchOperation[];
@@ -33,6 +34,12 @@ export interface DomStyleCommitHistoryOptions {
   coalesceKey: string;
   coalesceMs: number;
 }
+
+export type DomStyleUpdate = [property: string, value: string | null];
+export type DomStyleBatchUpdateBuilder = (selection: DomEditSelection) => DomStyleUpdate[];
+export type DomStyleBatchCommitArgs =
+  | [selections: DomEditSelection[], property: string, value: string | null]
+  | [selections: DomEditSelection[], buildUpdates: DomStyleBatchUpdateBuilder];
 
 interface RunDomStyleCommitParams {
   selection: DomEditSelection;
@@ -103,6 +110,14 @@ function applyNullableStyleValue(
   if (value !== null) {
     element.style.setProperty(property, value);
     computedStyles[property] = value;
+    return;
+  }
+
+  const authoredOpacity = property === "opacity" ? readStampedAuthoredOpacity(element) : null;
+  if (authoredOpacity !== null) {
+    applyAuthoredInlineOpacity(element.style, authoredOpacity);
+    if (authoredOpacity === "") delete computedStyles[property];
+    else computedStyles[property] = authoredOpacity;
     return;
   }
 

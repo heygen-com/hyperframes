@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LABEL } from "./propertyPanelHelpers";
-import { useDebouncedCommit } from "./propertyPanelPrimitives";
+import { LIVE_PREVIEW_COMMIT_DELAY_MS, useDebouncedCommit } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const SLIDER_THUMB_SIZE = 10;
@@ -101,6 +101,7 @@ export function ColorGradingSliderControl({
     sourceValue: value,
     onPreview: setLocalDraft,
     onCommit: commitTrackedValue,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
   });
 
   const commitDraft = useCallback(
@@ -221,8 +222,8 @@ export function ColorGradingSliderControl({
             interactionChangedRef.current = true;
             scheduleCommit(Number(event.currentTarget.value));
           }}
-          onMouseUp={flush}
-          onTouchEnd={flush}
+          onPointerUp={flush}
+          onPointerCancel={flush}
           onBlur={flush}
           className="hf-color-grading-range absolute left-0 right-0 top-1/2 z-30 min-w-0 w-full -translate-y-1/2"
           title={displayValue}

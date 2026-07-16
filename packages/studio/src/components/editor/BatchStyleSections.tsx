@@ -1,5 +1,7 @@
 import type { DomEditSelection } from "./domEditingTypes";
 import {
+  buildStrokeStyleUpdates,
+  buildStrokeWidthStyleUpdates,
   formatNumericValue,
   formatPxMetricValue,
   normalizePanelPxValue,
@@ -15,6 +17,7 @@ import {
   SelectField,
   SliderControl,
 } from "./propertyPanelPrimitives";
+import type { DomStyleBatchCommitArgs } from "../../hooks/domStyleCommit";
 
 const MIXED_VALUE = "Mixed";
 
@@ -33,11 +36,7 @@ export function BatchStyleSections({
   onBatchStyleCommit,
 }: {
   selections: DomEditSelection[];
-  onBatchStyleCommit: (
-    selections: DomEditSelection[],
-    property: string,
-    value: string | null,
-  ) => void | Promise<void>;
+  onBatchStyleCommit: (...args: DomStyleBatchCommitArgs) => void | Promise<void>;
 }) {
   const editableSelections = selections.filter((selection) => selection.capabilities.canEditStyles);
   const opacity = getSharedValue(
@@ -128,7 +127,8 @@ export function BatchStyleSections({
           <Section title="Fill">
             <ColorField
               label="Fill color"
-              value={fillColor.mixed ? MIXED_VALUE : fillColor.value}
+              value={fillColor.value}
+              mixed={fillColor.mixed}
               onCommit={(next) =>
                 void onBatchStyleCommit(editableSelections, "background-color", next)
               }
@@ -149,7 +149,13 @@ export function BatchStyleSections({
                       fallback: parsePxMetricValue(strokeWidth.value) ?? 0,
                     });
                     if (normalized) {
-                      void onBatchStyleCommit(editableSelections, "border-width", normalized);
+                      void onBatchStyleCommit(editableSelections, (selection) =>
+                        buildStrokeWidthStyleUpdates(
+                          normalized,
+                          selection.computedStyles["border-style"] ||
+                            selection.computedStyles["border-top-style"],
+                        ),
+                      );
                     }
                   }}
                 />
@@ -158,14 +164,21 @@ export function BatchStyleSections({
                   value={strokeStyle.mixed ? MIXED_VALUE : strokeStyle.value}
                   disableUnlistedValue
                   onChange={(next) =>
-                    void onBatchStyleCommit(editableSelections, "border-style", next)
+                    void onBatchStyleCommit(editableSelections, (selection) =>
+                      buildStrokeStyleUpdates(
+                        next,
+                        selection.computedStyles["border-width"] ||
+                          selection.computedStyles["border-top-width"],
+                      ),
+                    )
                   }
                   options={["none", "solid", "dashed", "dotted", "double"]}
                 />
               </div>
               <ColorField
                 label="Stroke color"
-                value={strokeColor.mixed ? MIXED_VALUE : strokeColor.value}
+                value={strokeColor.value}
+                mixed={strokeColor.mixed}
                 onCommit={(next) =>
                   void onBatchStyleCommit(editableSelections, "border-color", next)
                 }

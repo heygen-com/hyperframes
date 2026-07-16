@@ -1185,6 +1185,62 @@ describe("useDomEditCommits batch style commit", () => {
     }
   });
 
+  it("pairs batch stroke width per target and coalesces all planned updates", async () => {
+    const harness = renderBatchStyleCommit();
+    const [noneSelection, dashedSelection] = harness.selections;
+    const [noneElement, dashedElement] = harness.elements;
+    if (!noneSelection || !dashedSelection || !noneElement || !dashedElement) {
+      throw new Error("Expected two batch targets");
+    }
+    noneSelection.computedStyles["border-style"] = "none";
+    dashedSelection.computedStyles["border-style"] = "dashed";
+    noneElement.style.borderStyle = "none";
+    dashedElement.style.borderStyle = "dashed";
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(
+          [noneSelection, dashedSelection],
+          (selection) =>
+            buildStrokeWidthStyleUpdates("4px", selection.computedStyles["border-style"]),
+        );
+      });
+
+      expect(noneElement.style.borderWidth).toBe("4px");
+      expect(noneElement.style.borderStyle).toBe("solid");
+      expect(dashedElement.style.borderWidth).toBe("4px");
+      expect(dashedElement.style.borderStyle).toBe("dashed");
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "border-width", value: "4px" })],
+        [expect.objectContaining({ property: "border-style", value: "solid" })],
+        [expect.objectContaining({ property: "border-width", value: "4px" })],
+      ]);
+
+      const records = harness.rendered.recordEdit.mock.calls.map(([entry]) => entry);
+      expect(records).toHaveLength(3);
+      expect(new Set(records.map((entry) => entry.coalesceKey)).size).toBe(1);
+      let history = createEmptyEditHistory();
+      records.forEach((entry, index) => {
+        history = pushEditHistoryEntry(
+          history,
+          buildEditHistoryEntry({
+            id: `planned-batch-${index}`,
+            projectId: "p1",
+            label: entry.label,
+            kind: entry.kind,
+            coalesceKey: entry.coalesceKey,
+            coalesceMs: entry.coalesceMs,
+            now: index * 1_000_000,
+            files: entry.files,
+          }),
+        );
+      });
+      expect(history.undo).toHaveLength(1);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it("forwards the infinite coalesce window through the SDK persist path", async () => {
     const capturedOptions: unknown[] = [];
     vi.stubGlobal(

@@ -3,9 +3,13 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
+  HF_COLOR_GRADING_ATTR,
+} from "@hyperframes/core/color-grading";
 import type { DomEditSelection } from "./domEditingTypes";
 import { getInlineStyles } from "./domEditingDom";
-import { SelectField, SliderControl } from "./propertyPanelPrimitives";
+import { CommitField, MetricField, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { StyleSections } from "./propertyPanelStyleSections";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
@@ -144,6 +148,52 @@ describe("SelectField unlisted values", () => {
 });
 
 describe("SliderControl commit contract", () => {
+  it("commits drag feedback after 40ms", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "25"));
+    act(() => vi.advanceTimersByTime(39));
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith(25);
+  });
+
+  it("flushes drag feedback on pointerup", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "25");
+      input.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(25);
+  });
+
+  it("drops a pending value when the source changes externally", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const root = roots.at(-1);
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "35"));
+    act(() => root.render(slider(80, onCommit)));
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it("flushes the last pending value on unmount", () => {
     vi.useFakeTimers();
     const onCommit = vi.fn();
@@ -199,6 +249,48 @@ describe("SliderControl commit contract", () => {
 
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenCalledWith(30);
+  });
+});
+
+describe("inspector commit delays", () => {
+  it("keeps CommitField live commits at 120ms", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(<CommitField value="0" liveCommit onCommit={onCommit} />);
+    const input = host.querySelector<HTMLInputElement>('input[type="text"]');
+    if (!input) throw new Error("Commit field was not rendered");
+
+    act(() => setInputValue(input, "12"));
+    act(() => vi.advanceTimersByTime(119));
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith("12");
+  });
+
+  it("keeps MetricField scrubs at the 350ms default", () => {
+    vi.useFakeTimers();
+    const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
+    HTMLElement.prototype.setPointerCapture = () => undefined;
+    const onCommit = vi.fn();
+    const host = render(<MetricField label="Width" value="10" scrub onCommit={onCommit} />);
+    const label = Array.from(host.querySelectorAll("span")).find(
+      (candidate) => candidate.textContent === "Width" && candidate.className.includes("cursor"),
+    );
+    if (!label) throw new Error("Metric scrub label was not rendered");
+
+    act(() => {
+      label.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 10 }),
+      );
+      label.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 20 }),
+      );
+    });
+    act(() => vi.advanceTimersByTime(349));
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith("20");
+    HTMLElement.prototype.setPointerCapture = originalSetPointerCapture;
   });
 });
 
@@ -263,6 +355,70 @@ describe("StyleSections curated options", () => {
 });
 
 describe("StyleSections inline style reset", () => {
+  it.each([HF_COLOR_GRADING_ATTR, COLOR_GRADING_SOURCE_HIDDEN_ATTR])(
+    "does not offer an opacity reset when the element has %s",
+    (attribute) => {
+      const element = createSelection();
+      element.element.setAttribute(attribute, "true");
+      element.inlineStyles = { opacity: "0" };
+      const host = render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ opacity: "0" }}
+          assets={[]}
+          onSetStyle={() => undefined}
+        />,
+      );
+      expandSection(host, "transparency");
+
+      expect(host.querySelector('[aria-label="Reset Opacity"]')).toBeNull();
+    },
+  );
+
+  it("keeps an immediate opacity reset from being overwritten by a pending slider value", () => {
+    vi.useFakeTimers();
+    const element = createSelection();
+    element.inlineStyles = { opacity: "0.8" };
+    const onSetStyle = vi.fn<(property: string, value: string | null) => void>();
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={element}
+        styles={{ opacity: "0.8" }}
+        assets={[]}
+        onSetStyle={onSetStyle}
+      />,
+    );
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    expandSection(host, "transparency");
+    const input = host.querySelector<HTMLInputElement>(
+      '[data-panel-section="transparency"] input[type="range"]',
+    );
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Opacity"]');
+    if (!input || !reset) throw new Error("Opacity controls were not rendered");
+
+    act(() => setInputValue(input, "40"));
+    act(() => reset.click());
+    element.inlineStyles = {};
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ opacity: "1" }}
+          assets={[]}
+          onSetStyle={onSetStyle}
+        />,
+      ),
+    );
+    act(() => vi.runAllTimers());
+
+    expect(onSetStyle).toHaveBeenCalledTimes(1);
+    expect(onSetStyle).toHaveBeenCalledWith("opacity", null);
+  });
+
   it("detects inline corner-radius longhands from the canonical style snapshot", () => {
     const element = document.createElement("div");
     element.style.setProperty("border-top-left-radius", "12px");

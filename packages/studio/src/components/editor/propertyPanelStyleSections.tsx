@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
+  HF_COLOR_GRADING_ATTR,
+} from "@hyperframes/core/color-grading";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
@@ -108,6 +112,9 @@ export function StyleSections({
   const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
+  const gradingOwnsOpacity =
+    element.element.hasAttribute(HF_COLOR_GRADING_ATTR) ||
+    element.element.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR);
   const resetInlineStyle = (...properties: string[]): (() => void) | undefined => {
     const property = properties.find((candidate) => Object.hasOwn(element.inlineStyles, candidate));
     if (property === undefined) return undefined;
@@ -482,7 +489,7 @@ export function StyleSections({
             <FieldLabel
               label="Opacity"
               disabled={styleEditingDisabled}
-              onReset={resetInlineStyle("opacity")}
+              onReset={gradingOwnsOpacity ? undefined : resetInlineStyle("opacity")}
             />
             <SliderControl
               trackName="Opacity"

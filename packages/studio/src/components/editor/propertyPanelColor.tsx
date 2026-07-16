@@ -11,7 +11,11 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
-import { FieldLabel, useDebouncedCommit } from "./propertyPanelPrimitives";
+import {
+  FieldLabel,
+  LIVE_PREVIEW_COMMIT_DELAY_MS,
+  useDebouncedCommit,
+} from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
@@ -31,6 +35,7 @@ function ColorSlider({
   thumbColor,
   disabled,
   onPreview,
+  onInteractionEnd,
 }: {
   label: string;
   value: number;
@@ -42,6 +47,7 @@ function ColorSlider({
   thumbColor: string;
   disabled?: boolean;
   onPreview: (nextValue: number) => void;
+  onInteractionEnd: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const percent = ((value - min) / (max - min)) * 100;
@@ -83,8 +89,10 @@ function ColorSlider({
           previewFromClientX(event.clientX);
         }}
         onPointerUp={(event) => {
+          onInteractionEnd();
           event.currentTarget.blur();
         }}
+        onPointerCancel={onInteractionEnd}
         onPointerMove={(event) => {
           if (disabled || event.buttons !== 1) return;
           previewFromClientX(event.clientX);
@@ -125,6 +133,7 @@ export function ColorField({
   disabled,
   onReset,
   flat,
+  mixed,
   onCommit,
 }: {
   label: string;
@@ -132,6 +141,7 @@ export function ColorField({
   disabled?: boolean;
   onReset?: () => void;
   flat?: boolean;
+  mixed?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -173,6 +183,7 @@ export function ColorField({
     sourceValue: value,
     onPreview: updateColorDraft,
     onCommit: persistColorValue,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
   });
 
   useEffect(() => {
@@ -292,6 +303,8 @@ export function ColorField({
                 if (event.buttons !== 1) return;
                 updateSaturationValue(event.clientX, event.clientY, event.currentTarget);
               }}
+              onPointerUp={flushColor}
+              onPointerCancel={flushColor}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
               <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
@@ -339,6 +352,7 @@ export function ColorField({
               thumbColor={hueColor}
               disabled={disabled}
               onPreview={(nextHue) => commitHsv({ hue: nextHue })}
+              onInteractionEnd={flushColor}
             />
 
             <ColorSlider
@@ -352,6 +366,7 @@ export function ColorField({
               thumbColor={currentColor}
               disabled={disabled}
               onPreview={(nextAlpha) => previewColor({ ...draftColor, alpha: nextAlpha })}
+              onInteractionEnd={flushColor}
             />
 
             <label className="grid gap-1.5">
@@ -399,6 +414,14 @@ export function ColorField({
             style={{ backgroundColor: value || "transparent" }}
           />
           <span className="font-mono text-[11px] text-panel-text-0">{value}</span>
+          {mixed && (
+            <span
+              data-color-mixed-indicator="true"
+              className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+            >
+              Mixed
+            </span>
+          )}
         </button>
         {picker}
       </div>
@@ -423,6 +446,14 @@ export function ColorField({
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-100">
           {value}
         </span>
+        {mixed && (
+          <span
+            data-color-mixed-indicator="true"
+            className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+          >
+            Mixed
+          </span>
+        )}
       </button>
       {picker}
     </div>

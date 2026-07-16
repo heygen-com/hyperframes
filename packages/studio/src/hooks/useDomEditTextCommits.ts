@@ -26,6 +26,8 @@ import {
   resolveNullableDomStyleValue,
   runDomStyleSelectionCommit,
   type DomStyleCommitHistoryOptions,
+  type DomStyleBatchCommitArgs,
+  type DomStyleUpdate,
 } from "./domStyleCommit";
 
 // ── Types ──
@@ -180,16 +182,25 @@ export function useDomEditTextCommits({
   );
 
   const handleDomStyleBatchCommit = useCallback(
-    async (selections: DomEditSelection[], property: string, value: string | null) => {
+    async (...args: DomStyleBatchCommitArgs) => {
+      const [selections] = args;
       const historyOptions = {
         coalesceKey: nextDomStyleBatchCoalesceKey(),
         coalesceMs: Number.POSITIVE_INFINITY,
       };
-      await Promise.all(
-        selections.map((selection) =>
-          commitDomStyleSelection(selection, property, value, historyOptions),
-        ),
-      );
+      const commits: Array<Promise<void>> = [];
+      for (const selection of selections) {
+        let updates: DomStyleUpdate[];
+        if (args.length === 2) {
+          updates = args[1](selection);
+        } else {
+          updates = [[args[1], args[2]]];
+        }
+        for (const [property, value] of updates) {
+          commits.push(commitDomStyleSelection(selection, property, value, historyOptions));
+        }
+      }
+      await Promise.all(commits);
     },
     [commitDomStyleSelection],
   );

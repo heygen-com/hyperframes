@@ -168,6 +168,32 @@ describe("TimelineLanes selection", () => {
     act(() => harness.root.unmount());
   });
 
+  it("does not seek when the playhead is exactly at the clip start", () => {
+    const harness = renderLanes({
+      elements: [laterClip],
+      selectedElementId: null,
+      currentTime: laterClip.start,
+    });
+
+    clickClip(harness.host, laterClip.id);
+
+    expect(harness.onSeek).not.toHaveBeenCalled();
+    act(() => harness.root.unmount());
+  });
+
+  it("seeks when the playhead is exactly at the clip end", () => {
+    const harness = renderLanes({
+      elements: [laterClip],
+      selectedElementId: null,
+      currentTime: laterClip.start + laterClip.duration,
+    });
+
+    clickClip(harness.host, laterClip.id);
+
+    expect(harness.onSeek).toHaveBeenCalledWith(laterClip.start);
+    act(() => harness.root.unmount());
+  });
+
   it("does not seek when reclicking a selected clip that contains the playhead", () => {
     usePlayerStore.getState().setSelectedElementId(firstClip.id);
     const harness = renderLanes({

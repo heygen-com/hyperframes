@@ -255,7 +255,8 @@ async function dragCanvasMarquee({
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+  const iframe: HTMLIFrameElement | null = document.createElement("iframe");
+  const iframeRef = { current: iframe };
   const onMarqueeSelect = vi.fn();
 
   act(() => {
@@ -355,7 +356,8 @@ describe("DomEditOverlay", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const iframe: HTMLIFrameElement | null = document.createElement("iframe");
+    const iframeRef = { current: iframe };
     const onCanvasMouseDown = vi.fn();
     const onMarqueeSelect = vi.fn();
 
