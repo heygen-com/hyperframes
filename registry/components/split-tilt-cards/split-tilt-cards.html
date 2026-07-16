@@ -1,0 +1,563 @@
+<!doctype html>
+<!--
+  split-tilt-cards: HyperFrames video primitive (layout / compare / holdable)
+
+  Concept: two equal-weight cards arrive from opposite wings, each carrying a
+  mirrored 3D rotateY book-open tilt (+18deg left, -18deg right) under one
+  shared stage perspective, with box-shadows falling outward from the tilt.
+  A pill badge spring-pops at each card's inner edge (left then right, the
+  one sanctioned overshoot, kept small), then the pair holds with a
+  barely-there phase-opposed idle float and settles dead still. Card bodies
+  are content slots with token skeleton defaults.
+
+  Realizes the comparison-split blueprint's signature move as its own unit
+  and resolves the blueprint's name collision (Wave J2, J2-10).
+
+  Slots (see README.md for a worked example):
+    - [data-slot="card-a"]: left card body. Replace the children of this
+      element in your installed copy. Default: a muted token wireframe.
+    - [data-slot="card-b"]: right card body. Same mechanism. Default: an
+      accent-tinted version of the wireframe.
+    Direct img/video children of a slot are sized to cover the slot area.
+
+  Variables (declared in data-composition-variables below):
+    - label_a (string, default "Before"): mono header on the left card.
+      Empty hides it.
+    - label_b (string, default "After"): mono header on the right card.
+      Empty hides it.
+    - badge_a (string, default "v1"): inner-edge pill on the left card.
+      Empty disables that badge pop.
+    - badge_b (string, default "v2"): inner-edge pill on the right card.
+      Empty disables that badge pop.
+    - accent (green | blue | violet, default green): right-card tint, right
+      badge, and right ambient glow. green maps to --brand, blue to
+      --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none holds
+      the final frame (frame roots own transitions; holds end films).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN       = 2.15s: left card lands 0 to 1.1s, right card 0.2 to 1.3s,
+               badge A pops at 1.45s, badge B at 1.75s (+0.40s spring)
+    HOLD     = elastic = max(0, D - (IN + OUT)); whole 2.0s idle-float
+               cycles fit inside HOLD minus a 0.30s closing stillness; each
+               cycle starts and ends at rest (explicit tweens, no
+               repeat/yoyo), left and right phase-opposed
+    OUT      = 0.50s when exit is fade or up, 0 when exit is none
+    If D < IN + OUT, IN and OUT scale down together so IN + OUT == D.
+
+  Sync points (fixed offsets inside IN, never in elastic HOLD): badge-pop-a
+  lands at 1.85s, badge-pop-b at 2.15s.
+
+  Sound cue: dispatches a bubbling `hf:sfx` CustomEvent with id
+  "badge-pop-soft" at each badge landing. This primitive never plays audio.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset:0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "split-tilt-cards" key (mount flattening strips
+  data-composition-id from the live root). Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="split-tilt-cards"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "label_a", "type": "string", "role": "content", "label": "Left label", "description": "Mono header on the left card. Blank hides it.", "default": "Before" },
+    { "id": "label_b", "type": "string", "role": "content", "label": "Right label", "description": "Mono header on the right card. Blank hides it.", "default": "After" },
+    { "id": "badge_a", "type": "string", "role": "content", "label": "Left badge", "description": "Pill badge that spring-pops at the left card inner edge. Blank disables it.", "default": "v1" },
+    { "id": "badge_b", "type": "string", "role": "content", "label": "Right badge", "description": "Pill badge that spring-pops at the right card inner edge. Blank disables it.", "default": "v2" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Right-card tint, right badge, and right ambient glow color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. None holds the final spread.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Split Tilt Cards</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="split-tilt-cards" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host-owned box. Internal measurements use cqw/cqh
+             and every painted color comes from a contract token. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #0b1016);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .stc-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          /* Two faint ambient side glows: each wing owns a color identity
+             across the 50% symmetry axis. Static by design. */
+          .stc-clip::before,
+          .stc-clip::after {
+            content: "";
+            position: absolute;
+            top: 14cqh;
+            width: 52cqw;
+            height: 72cqh;
+            border-radius: 50%;
+            filter: blur(6cqmin);
+            pointer-events: none;
+          }
+
+          .stc-clip::before {
+            left: 2cqw;
+            background: radial-gradient(
+              ellipse at 50% 50%,
+              color-mix(in srgb, var(--muted, #94a3b8) 11%, transparent) 0%,
+              transparent 70%
+            );
+          }
+
+          .stc-clip::after {
+            right: 2cqw;
+            background: radial-gradient(
+              ellipse at 50% 50%,
+              color-mix(in srgb, var(--stc-accent, #22c55e) 13%, transparent) 0%,
+              transparent 70%
+            );
+          }
+
+          /* One shared perspective so both tilts converge on the same
+             vanishing point; wings and floats preserve 3D so the card
+             rotateY reads through their own gsap transforms. */
+          .stc-stage {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-3, 5cqw);
+            align-items: center;
+            justify-items: center;
+            padding: 0 8cqw;
+            perspective: 120cqw;
+          }
+
+          /* No opacity (or other grouping property) may ever land on the
+             wing/float/stage chain: it forces transform-style flat and
+             squashes the card rotateY. Fades ride the cards and the clip. */
+          .stc-wing {
+            position: relative;
+            width: 100%;
+            max-width: 38cqw;
+            height: 58cqh;
+            transform-style: preserve-3d;
+            will-change: transform;
+          }
+
+          .stc-float {
+            position: absolute;
+            inset: 0;
+            transform-style: preserve-3d;
+            will-change: transform;
+          }
+
+          .stc-card {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: var(--space-3, 3.6cqh) var(--space-3, 2.4cqw);
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 90%, var(--bg, #0b1016));
+            will-change: opacity;
+          }
+
+          /* Static book-open tilts: +18deg left, -18deg right, with the
+             box-shadow falling outward from the tilt (left shadow right,
+             right shadow left). The tilt is carried, never tweened. */
+          .stc-card-a {
+            transform: rotateY(18deg);
+            box-shadow: 2.4cqw 3cqh 7cqh color-mix(in srgb, var(--bg, #0b1016) 52%, transparent);
+          }
+
+          .stc-card-b {
+            transform: rotateY(-18deg);
+            border-color: color-mix(in srgb, var(--stc-accent, #22c55e) 46%, var(--border, #334155));
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--stc-accent, #22c55e));
+            box-shadow: -2.4cqw 3cqh 7cqh color-mix(in srgb, var(--bg, #0b1016) 52%, transparent);
+          }
+
+          .stc-label {
+            flex: 0 0 auto;
+            margin-bottom: var(--space-2, 2.4cqh);
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: min(2.1cqw, 3.4cqh);
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .stc-card-b .stc-label {
+            color: color-mix(in srgb, var(--stc-accent, #22c55e) 72%, var(--fg, #f8fafc));
+          }
+
+          .stc-label:empty {
+            display: none;
+          }
+
+          .stc-slot {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            border-radius: calc(var(--radius, 2.4cqmin) * 0.6);
+          }
+
+          /* Caller-supplied media covers its slot edge to edge. */
+          .stc-slot > img,
+          .stc-slot > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          /* Token-styled default slot content: a wireframe that reads muted
+             on the left card and accent-tinted on the right. Callers
+             replacing slot children never see any of this. */
+          .stc-default {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: var(--space-2, 2cqh) var(--space-1, 1cqw);
+          }
+
+          .stc-bar {
+            width: 42%;
+            height: 4cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.5;
+          }
+
+          .stc-line {
+            height: 2.2cqh;
+            margin-bottom: var(--space-1, 1.8cqh);
+            border-radius: 1.1cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.38;
+          }
+
+          .stc-line:nth-of-type(2) {
+            width: 88%;
+          }
+
+          .stc-line:nth-of-type(3) {
+            width: 64%;
+          }
+
+          .stc-line:nth-of-type(4) {
+            width: 42%;
+          }
+
+          .stc-card-b .stc-bar {
+            background: var(--stc-accent, #22c55e);
+            opacity: 0.9;
+          }
+
+          .stc-card-b .stc-line {
+            background: color-mix(in srgb, var(--stc-accent, #22c55e) 62%, var(--fg, #f8fafc));
+            opacity: 0.66;
+          }
+
+          /* Badge positioners own the inner-edge placement (CSS translate);
+             gsap scales only the inner pill, so the two transforms never
+             collide on one element. */
+          .stc-badge-pos {
+            position: absolute;
+            top: 50%;
+            z-index: 3;
+            display: flex;
+          }
+
+          .stc-badge-pos-a {
+            right: 0;
+            transform: translate(32%, -50%);
+          }
+
+          .stc-badge-pos-b {
+            left: 0;
+            transform: translate(-32%, -50%);
+          }
+
+          .stc-badge {
+            padding: var(--space-1, 1.4cqh) var(--space-2, 1.8cqw);
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: 999cqw;
+            background: color-mix(in srgb, var(--surface, #172033) 82%, var(--bg, #0b1016));
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: min(2.2cqw, 3.6cqh);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            white-space: nowrap;
+            will-change: transform, opacity;
+          }
+
+          .stc-badge-b {
+            border-color: color-mix(in srgb, var(--stc-accent, #22c55e) 62%, var(--border, #334155));
+            background: color-mix(in srgb, var(--stc-accent, #22c55e) 26%, var(--surface, #172033));
+          }
+        </style>
+
+        <div
+          id="split-tilt-cards-clip"
+          class="stc-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="stc-stage">
+            <div class="stc-wing stc-wing-a">
+              <div class="stc-float stc-float-a">
+                <section class="stc-card stc-card-a" aria-label="Left card">
+                  <div class="stc-label stc-label-a"></div>
+                  <div class="stc-slot" data-slot="card-a">
+                    <!-- SLOT "card-a": replace the children of this element
+                         with your own content (img, video, or HTML). -->
+                    <div class="stc-default" aria-hidden="true">
+                      <div class="stc-bar"></div>
+                      <div class="stc-line"></div>
+                      <div class="stc-line"></div>
+                      <div class="stc-line"></div>
+                    </div>
+                  </div>
+                </section>
+                <div class="stc-badge-pos stc-badge-pos-a">
+                  <div class="stc-badge stc-badge-a"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stc-wing stc-wing-b">
+              <div class="stc-float stc-float-b">
+                <section class="stc-card stc-card-b" aria-label="Right card">
+                  <div class="stc-label stc-label-b"></div>
+                  <div class="stc-slot" data-slot="card-b">
+                    <!-- SLOT "card-b": replace the children of this element
+                         with your own content (img, video, or HTML). -->
+                    <div class="stc-default" aria-hidden="true">
+                      <div class="stc-bar"></div>
+                      <div class="stc-line"></div>
+                      <div class="stc-line"></div>
+                      <div class="stc-line"></div>
+                    </div>
+                  </div>
+                </section>
+                <div class="stc-badge-pos stc-badge-pos-b">
+                  <div class="stc-badge stc-badge-b"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "split-tilt-cards";
+            var clip = root.querySelector(".stc-clip");
+            var wingA = root.querySelector(".stc-wing-a");
+            var cardA = root.querySelector(".stc-card-a");
+            var cardB = root.querySelector(".stc-card-b");
+            var wingB = root.querySelector(".stc-wing-b");
+            var floatA = root.querySelector(".stc-float-a");
+            var floatB = root.querySelector(".stc-float-b");
+            var labelA = root.querySelector(".stc-label-a");
+            var labelB = root.querySelector(".stc-label-b");
+            var badgeA = root.querySelector(".stc-badge-a");
+            var badgeB = root.querySelector(".stc-badge-b");
+            var badgePosA = root.querySelector(".stc-badge-pos-a");
+            var badgePosB = root.querySelector(".stc-badge-pos-b");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var labelAText = vars.label_a == null ? "Before" : String(vars.label_a);
+            var labelBText = vars.label_b == null ? "After" : String(vars.label_b);
+            var badgeAText = vars.badge_a == null ? "v1" : String(vars.badge_a);
+            var badgeBText = vars.badge_b == null ? "v2" : String(vars.badge_b);
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // INVARIANT: only none | fade | up reaches the timeline.
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            labelA.textContent = labelAText;
+            labelB.textContent = labelBText;
+            badgeA.textContent = badgeAText;
+            badgeB.textContent = badgeBText;
+            if (badgeAText === "") badgePosA.style.display = "none";
+            if (badgeBText === "") badgePosB.style.display = "none";
+            root.style.setProperty("--stc-accent", accentColors[accent]);
+
+            // RETIME RANGE: fixed IN and OUT scale together only when D is too
+            // short. HOLD is the sole elastic phase. Never use timeScale().
+            var CARD_DUR_BASE = 1.1;
+            var CARD_B_DELAY_BASE = 0.2;
+            var FADE_DUR_BASE = 0.5;
+            var BADGE_A_AT_BASE = 1.45;
+            var BADGE_B_AT_BASE = 1.75;
+            var BADGE_DUR_BASE = 0.4;
+            var IN_BASE = BADGE_B_AT_BASE + BADGE_DUR_BASE;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+            var STILLNESS = 0.3;
+            var FLOAT_CYCLE = 2.0;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit both-endpoints state makes tl.seek(0) deterministic.
+            // Fades ride the cards and the clip, never the wing/float/stage
+            // chain: opacity there would flatten the 3D tilt.
+            gsap.set(clip, { opacity: 1, y: 0 });
+            gsap.set(wingA, { x: "-26cqw", scale: 0.85 });
+            gsap.set(wingB, { x: "26cqw", scale: 0.85 });
+            gsap.set([cardA, cardB], { opacity: 0 });
+            gsap.set([floatA, floatB], { y: "0cqh" });
+            gsap.set([badgeA, badgeB], { opacity: 0, scale: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: mirrored opposite-wing entries, right ~0.2s behind, each
+            // carrying its static book-open tilt; only x/scale/opacity move.
+            [
+              { wing: wingA, card: cardA, at: 0 },
+              { wing: wingB, card: cardB, at: CARD_B_DELAY_BASE * scale },
+            ].forEach(function (entry) {
+              tl.to(
+                entry.card,
+                { opacity: 1, duration: 0.5 * scale, ease: "power2.out" },
+                entry.at,
+              );
+              tl.to(
+                entry.wing,
+                { x: "0cqw", duration: CARD_DUR_BASE * scale, ease: "power3.out" },
+                entry.at,
+              );
+              tl.to(
+                entry.wing,
+                { scale: 1, duration: CARD_DUR_BASE * scale, ease: "power3.out" },
+                entry.at,
+              );
+            });
+
+            // Badges: the one sanctioned overshoot, kept small. Left lands
+            // first, right ~0.3s behind, both inside fixed IN.
+            [
+              { badge: badgeA, text: badgeAText, at: BADGE_A_AT_BASE * scale },
+              { badge: badgeB, text: badgeBText, at: BADGE_B_AT_BASE * scale },
+            ].forEach(function (pop) {
+              if (pop.text === "") return;
+              tl.to(
+                pop.badge,
+                { opacity: 1, scale: 1, duration: BADGE_DUR_BASE * scale, ease: "back.out(1.9)" },
+                pop.at,
+              );
+              var land = pop.at + BADGE_DUR_BASE * scale;
+              tl.call(
+                function () {
+                  fireSfx("badge-pop-soft", land);
+                },
+                [],
+                land,
+              );
+            });
+
+            // HOLD: phase-opposed barely-there idle float. Only whole cycles
+            // fit; each is authored as explicit half-cycle tweens (never
+            // repeat/yoyo) so every cycle starts and ends at rest, and the
+            // closing STILLNESS window stays dead still.
+            var floatWindow = Math.max(0, HOLD - STILLNESS);
+            var cycles = Math.floor(floatWindow / FLOAT_CYCLE);
+            var half = FLOAT_CYCLE / 2;
+            for (var i = 0; i < cycles; i += 1) {
+              var t0 = IN + i * FLOAT_CYCLE;
+              tl.to(floatA, { y: "-0.6cqh", duration: half, ease: "sine.inOut" }, t0);
+              tl.to(floatA, { y: "0cqh", duration: half, ease: "sine.inOut" }, t0 + half);
+              tl.to(floatB, { y: "0.6cqh", duration: half, ease: "sine.inOut" }, t0);
+              tl.to(floatB, { y: "0cqh", duration: half, ease: "sine.inOut" }, t0 + half);
+            }
+
+            // OUT: only when the exit variable asks for one; exit none holds
+            // the final spread (frame roots own transitions).
+            if (exit !== "none") {
+              tl.to(
+                clip,
+                { opacity: 0, duration: FADE_DUR_BASE * scale, ease: "power2.in" },
+                OUT_START,
+              );
+              if (exit === "up") {
+                tl.to(
+                  clip,
+                  { y: "-6cqh", duration: FADE_DUR_BASE * scale, ease: "power2.in" },
+                  OUT_START,
+                );
+              }
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

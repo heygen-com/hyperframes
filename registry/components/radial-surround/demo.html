@@ -1,14 +1,15 @@
 <!doctype html>
 <!--
-  before-after-wipe demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  radial-surround demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default center label, chips, cues, and
+  accent prove the variable path; close_in stays at its default (true) so the
+  signature converge plus edge dim is what QA surfaces render.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>before-after-wipe Demo</title>
+    <title>Radial Surround Demo</title>
     <style>
       * {
         margin: 0;
@@ -30,7 +31,8 @@
         --surface: #14171c;
         --border: #343a46;
         --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
@@ -44,15 +46,15 @@
       }
 
       .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+        width: 88%;
+        height: 86%;
+        left: 6%;
+        top: 7%;
         container-type: size;
         overflow: hidden;
         border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
         border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
+        background: color-mix(in srgb, var(--surface, #101318) 60%, transparent);
         box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
@@ -60,31 +62,31 @@
   <body>
     <div
       id="root"
-      data-composition-id="before-after-wipe-demo"
+      data-composition-id="radial-surround-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="4"
+      data-duration="5"
       data-fps="30"
     >
       <div
-        id="before-after-wipe-mount"
+        id="radial-surround-mount"
         class="mount-card clip"
-        data-composition-id="before-after-wipe"
-        data-composition-src="./before-after-wipe.html"
-        data-variable-values='{"label_a":"BEFORE","label_b":"AFTER","rest_split":55,"wipe_at":0.8,"accent":"violet"}'
+        data-composition-id="radial-surround"
+        data-composition-src="./radial-surround.html"
+        data-variable-values='{"center_label":"One workspace","chips":"Slack,Email,CRM,Tickets,Docs,Sheets","cues":"0.8,1.05,1.3,1.55,1.8,2.05","accent":"blue"}'
         data-start="0"
-        data-duration="4"
+        data-duration="5"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="1690"
+        data-height="929"
       ></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       window.__timelines = window.__timelines || {};
-      window.__timelines["before-after-wipe-demo"] = gsap.timeline({ paused: true });
+      window.__timelines["radial-surround-demo"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>

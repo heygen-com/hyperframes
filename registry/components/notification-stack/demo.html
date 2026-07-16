@@ -1,14 +1,15 @@
 <!doctype html>
 <!--
-  before-after-wipe demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  notification-stack demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default titles, bodies, expand, cues,
+  and accent values prove the variable path while the primitive remains
+  elastic to its host.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>before-after-wipe Demo</title>
+    <title>notification-stack Demo</title>
     <style>
       * {
         margin: 0;
@@ -27,11 +28,13 @@
       #root {
         --bg: #0b0c0e;
         --fg: #f8fafc;
+        --muted: #8b95a6;
         --surface: #14171c;
         --border: #343a46;
         --brand: #71f5a7;
-        --accent: #c5a3ff;
-        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
         position: relative;
         width: 1920px;
         height: 1080px;
@@ -44,10 +47,10 @@
       }
 
       .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+        width: 42%;
+        height: 76%;
+        left: 29%;
+        top: 12%;
         container-type: size;
         overflow: hidden;
         border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
@@ -60,7 +63,7 @@
   <body>
     <div
       id="root"
-      data-composition-id="before-after-wipe-demo"
+      data-composition-id="notification-stack-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
@@ -68,23 +71,23 @@
       data-fps="30"
     >
       <div
-        id="before-after-wipe-mount"
+        id="notification-stack-mount"
         class="mount-card clip"
-        data-composition-id="before-after-wipe"
-        data-composition-src="./before-after-wipe.html"
-        data-variable-values='{"label_a":"BEFORE","label_b":"AFTER","rest_split":55,"wipe_at":0.8,"accent":"violet"}'
+        data-composition-id="notification-stack"
+        data-composition-src="./notification-stack.html"
+        data-variable-values='{"titles":"Upload received,Transcode started,Scenes detected,Draft ready","bodies":"clip_final_v3.mp4 landed in the inbox,1080p and 4K renditions in flight,14 scenes cut on speech pauses,Storyboard open for review","expand":1,"cues":"0.2,0.8,1.4,2.0","accent":"blue"}'
         data-start="0"
         data-duration="4"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="806"
+        data-height="821"
       ></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       window.__timelines = window.__timelines || {};
-      window.__timelines["before-after-wipe-demo"] = gsap.timeline({ paused: true });
+      window.__timelines["notification-stack-demo"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>

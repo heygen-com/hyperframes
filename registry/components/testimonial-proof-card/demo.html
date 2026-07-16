@@ -1,14 +1,15 @@
 <!doctype html>
 <!--
-  before-after-wipe demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  testimonial-proof-card demo. This standalone composition mounts the
+  primitive through data-composition-src. Non-default quote, attribution,
+  emphasis, and accent values prove the variable path while the primitive
+  remains elastic to its host.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>before-after-wipe Demo</title>
+    <title>Testimonial Proof Card Demo</title>
     <style>
       * {
         margin: 0;
@@ -27,64 +28,63 @@
       #root {
         --bg: #0b0c0e;
         --fg: #f8fafc;
+        --muted: #94a3b8;
         --surface: #14171c;
         --border: #343a46;
         --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
+          ellipse at 50% 42%,
           var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          var(--bg, #0b0c0e) 74%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 66%;
+        height: 72%;
+        left: 17%;
+        top: 14%;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
   </head>
   <body>
     <div
       id="root"
-      data-composition-id="before-after-wipe-demo"
+      data-composition-id="testimonial-proof-card-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="4"
+      data-duration="4.5"
       data-fps="30"
     >
       <div
-        id="before-after-wipe-mount"
-        class="mount-card clip"
-        data-composition-id="before-after-wipe"
-        data-composition-src="./before-after-wipe.html"
-        data-variable-values='{"label_a":"BEFORE","label_b":"AFTER","rest_split":55,"wipe_at":0.8,"accent":"violet"}'
+        id="testimonial-proof-card-mount"
+        class="mount-stage clip"
+        data-composition-id="testimonial-proof-card"
+        data-composition-src="./testimonial-proof-card.html"
+        data-variable-values='{"quote":"The render pipeline paid for itself in one week","emphasis":"one week","name":"Ana Ferreira","role":"VP Engineering","company":"LUMENWORKS","accent":"violet"}'
         data-start="0"
-        data-duration="4"
+        data-duration="4.5"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="1267"
+        data-height="778"
       ></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       window.__timelines = window.__timelines || {};
-      window.__timelines["before-after-wipe-demo"] = gsap.timeline({ paused: true });
+      window.__timelines["testimonial-proof-card-demo"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>

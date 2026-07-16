@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "testimonial-proof-card",
+  "type": "hyperframes:component",
+  "title": "Testimonial Proof Card",
+  "description": "A quote card whose testimonial reveals per-line through a soft mask, with an avatar disc (initials default, image slot), mono name and role, an optional company text mark, and one emphasis substring underlined in accent ink after the quote lands.",
+  "tags": ["motion-primitive", "proof", "testimonial", "quote", "social-proof", "deterministic"],
+  "jobs": ["prove"],
+  "family": "proof-stats",
+  "profile": "testimonial",
+  "evidence": "Wave J2 J2-8 spec: proof-and-stats quote card with per-line masked reveal and accent emphasis underline",
+  "syncPoints": [{ "id": "underline-landed", "phase": "in", "offset": 1.6 }],
+  "files": [
+    {
+      "path": "testimonial-proof-card.html",
+      "target": "compositions/components/testimonial-proof-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "quote",
+      "type": "string",
+      "role": "content",
+      "label": "Quote",
+      "description": "The testimonial line. Wraps inside the card; each rendered line reveals through its own mask.",
+      "default": "We shipped our launch video in a single afternoon"
+    },
+    {
+      "id": "name",
+      "type": "string",
+      "role": "content",
+      "label": "Name",
+      "description": "Attribution name in mono. Also seeds the avatar initials.",
+      "default": "Maya Chen"
+    },
+    {
+      "id": "role",
+      "type": "string",
+      "role": "content",
+      "label": "Role",
+      "description": "Attribution role in muted mono. Empty hides the line.",
+      "default": "Head of Product"
+    },
+    {
+      "id": "company",
+      "type": "string",
+      "role": "content",
+      "label": "Company",
+      "description": "Company mark as wide-tracked mono text at the byline end. Empty hides it.",
+      "default": "NORTHWIND"
+    },
+    {
+      "id": "emphasis",
+      "type": "string",
+      "role": "content",
+      "label": "Emphasis",
+      "description": "First case-insensitive substring match in quote, expanded to whole words, gets the accent underline. Empty disables the draw.",
+      "default": "single afternoon"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Underline and glyph ink from the contract token map.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the card holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

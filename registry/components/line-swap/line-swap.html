@@ -1,0 +1,317 @@
+<!doctype html>
+<!--
+  line-swap: HyperFrames video primitive (text effects / beat replacement)
+
+  A masked full-line beat replacement, generalizing flagship frame 01: line_a
+  rises into an overflow-hidden mask and holds center, then on the swap beat
+  it exits up through the mask as line_b enters bottom-up on the same beat.
+  One restrained slam, smooth ease, no overshoot. Optionally an accent
+  underline draws left to right beneath underline_word of line_b after it
+  lands (scaleX from a left origin, the flagship bar draw).
+
+  Variables:
+    line_a (string): the first line, replaced on the beat.
+    line_b (string): the line that lands and holds.
+    swap_at (seconds): the beat, relative to mount start. Clamped so line_a
+      finishes entering first and line_b plus the underline complete before
+      any exit begins.
+    underline_word (string): first case-insensitive substring match inside
+      line_b gets the underline. Empty or unmatched disables it.
+    accent (green | blue | violet): underline color via the contract token map.
+    exit (none | fade | up, default none): frame roots own transitions;
+      holds end films.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never time-scaled):
+    IN_A_BASE  = 0.50s  line_a enters bottom-up through the mask
+    SWAP span  = 0.72s  line_a up-and-out (0.35s) overlapping line_b in
+                        (starts 0.22s after the beat, lands 0.50s later)
+    UL span    = 0.60s  0.15s beat after the land, then a 0.45s draw
+                        (0 when underline_word is empty or unmatched)
+    HOLD       = max(0, D - phases), completely still
+    OUT_BASE   = 0s for exit none, otherwise 0.45s
+    If D is shorter than the fixed phases, they compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the literal
+  line-swap key.
+-->
+<html
+  lang="en"
+  data-composition-id="line-swap"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "line_a", "type": "string", "role": "content", "label": "Line A", "description": "First line; holds center inside the mask, then exits up on the swap beat.", "default": "Everyone promised you AI." },
+    { "id": "line_b", "type": "string", "role": "content", "label": "Line B", "description": "Replacement line; enters bottom-up on the swap beat and holds.", "default": "Almost nobody promised you control." },
+    { "id": "swap_at", "type": "number", "role": "timing", "label": "Swap at", "description": "Second (from mount start) of the beat replacement. Clamped so the swap and underline complete before any exit.", "default": 1.5, "min": 0, "step": 0.1, "unit": "s" },
+    { "id": "underline_word", "type": "string", "role": "content", "label": "Underline word", "description": "First case-insensitive substring match in line B gets the accent underline after landing. Empty disables it.", "default": "control" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Underline color from the contract token map.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the landed line holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Line Swap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="line-swap" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .ls-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .ls-stage {
+            width: 94cqw;
+            will-change: transform, opacity;
+          }
+
+          /* Beat mask: both lines live inside; the swap slides through it. */
+          .ls-mask {
+            position: relative;
+            width: 100%;
+            height: calc(var(--ls-font-size, min(7cqw, 16cqh)) * 1.42);
+            overflow: hidden;
+          }
+
+          .ls-line {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--ls-font-size, min(7cqw, 16cqh));
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+            will-change: transform;
+          }
+
+          /* One inline wrapper per line: a bare text node next to the
+             underline span would become separate flex items and the boundary
+             space would collapse ("youcontrol."). */
+          .ls-line-inner {
+            display: inline;
+          }
+
+          .ls-ul-wrap {
+            position: relative;
+            display: inline-block;
+            white-space: nowrap;
+          }
+
+          .ls-underline {
+            position: absolute;
+            left: 0.02em;
+            right: 0.02em;
+            bottom: -0.14em;
+            height: 0.055em;
+            border-radius: 0.03em;
+            transform-origin: left center;
+          }
+        </style>
+
+        <div
+          id="line-swap-clip"
+          class="ls-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="ls-stage" role="img">
+            <div class="ls-mask">
+              <div class="ls-line ls-line-a"><span class="ls-line-inner"></span></div>
+              <div class="ls-line ls-line-b"><span class="ls-line-inner"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal key: the flattening step strips data-composition-id off
+            // the mounted root, so reading it back would register "null".
+            var compositionId = "line-swap";
+            var stage = root.querySelector(".ls-stage");
+            var lineAEl = root.querySelector(".ls-line-a");
+            var lineBEl = root.querySelector(".ls-line-b");
+            var lineAInner = lineAEl.querySelector(".ls-line-inner");
+            var lineBInner = lineBEl.querySelector(".ls-line-inner");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function asLine(value, fallback) {
+              return value == null ? fallback : String(value).trim().replace(/\s+/g, " ");
+            }
+            var lineA = asLine(vars.line_a, "Everyone promised you AI.");
+            var lineB = asLine(vars.line_b, "Almost nobody promised you control.");
+            var underlineWord = asLine(vars.underline_word, "control");
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            lineAInner.textContent = lineA;
+
+            // Split line_b around the first case-insensitive underline match.
+            // textContent nodes only, never innerHTML.
+            var matchIndex =
+              underlineWord.length > 0
+                ? lineB.toLowerCase().indexOf(underlineWord.toLowerCase())
+                : -1;
+            var underlineEl = null;
+            if (matchIndex >= 0) {
+              var before = lineB.slice(0, matchIndex);
+              var matched = lineB.slice(matchIndex, matchIndex + underlineWord.length);
+              var after = lineB.slice(matchIndex + underlineWord.length);
+              if (before) lineBInner.appendChild(document.createTextNode(before));
+
+              var wrap = document.createElement("span");
+              wrap.className = "ls-ul-wrap";
+              wrap.appendChild(document.createTextNode(matched));
+              underlineEl = document.createElement("span");
+              underlineEl.className = "ls-underline";
+              underlineEl.setAttribute("aria-hidden", "true");
+              // style.background, not a class: var() resolves at point of use.
+              underlineEl.style.background = accentColors[accent];
+              wrap.appendChild(underlineEl);
+              lineBInner.appendChild(wrap);
+              if (after) lineBInner.appendChild(document.createTextNode(after));
+            } else {
+              lineBInner.textContent = lineB;
+            }
+            stage.setAttribute("aria-label", lineA + " " + lineB);
+
+            // Deterministic character-count fit against the longer line; both
+            // lines are nowrap, so the fit keeps them inside the stage.
+            var characters = Math.max(
+              1,
+              Array.from(lineA).length,
+              Array.from(lineB).length,
+            );
+            var fitted = Math.max(3.4, Math.min(9, 168 / characters));
+            root.style.setProperty("--ls-font-size", "min(" + fitted.toFixed(3) + "cqw, 16cqh)");
+
+            // RETIME RANGE: fixed phases; HOLD is the only elastic span.
+            var IN_A_BASE = 0.5;
+            var EXIT_A_BASE = 0.35;
+            var LAG_BASE = 0.22; // line_b starts this long after the beat
+            var IN_B_BASE = 0.5;
+            var UL_BEAT_BASE = 0.15;
+            var UL_BASE = underlineEl ? 0.45 : 0;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var swapSpanBase = LAG_BASE + IN_B_BASE;
+            var ulSpanBase = underlineEl ? UL_BEAT_BASE + UL_BASE : 0;
+            var totalBase = IN_A_BASE + swapSpanBase + ulSpanBase + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN_A = IN_A_BASE * scale;
+            var EXIT_A = EXIT_A_BASE * scale;
+            var LAG = LAG_BASE * scale;
+            var IN_B = IN_B_BASE * scale;
+            var UL_BEAT = UL_BEAT_BASE * scale;
+            var UL = UL_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var OUT_START = duration - OUT;
+
+            var swapAtRaw = Number(vars.swap_at);
+            var swapAt = Number.isFinite(swapAtRaw) ? Math.max(0, swapAtRaw) : 1.5;
+            // line_a fully arrives before the beat; the swap and the
+            // underline always complete before the exit begins.
+            swapAt = Math.min(swapAt, Math.max(IN_A, OUT_START - (LAG + IN_B + UL_BEAT + UL)));
+            swapAt = Math.max(swapAt, IN_A);
+            var landB = swapAt + LAG + IN_B;
+
+            gsap.set(lineBEl, { yPercent: 115 });
+            if (underlineEl) gsap.set(underlineEl, { scaleX: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: line_a enters bottom-up through the mask. One move.
+            tl.fromTo(
+              lineAEl,
+              { yPercent: 115 },
+              { yPercent: 0, duration: IN_A, ease: "power4.out" },
+              0,
+            );
+
+            // SWAP: the beat replacement. line_a exits up through the mask as
+            // line_b slides in bottom-up. Single restrained slam, smooth ease.
+            tl.fromTo(
+              lineAEl,
+              { yPercent: 0 },
+              { yPercent: -115, duration: EXIT_A, ease: "power2.in", immediateRender: false },
+              swapAt,
+            );
+            tl.fromTo(
+              lineBEl,
+              { yPercent: 115 },
+              { yPercent: 0, duration: IN_B, ease: "power4.out" },
+              swapAt + LAG,
+            );
+
+            // UNDERLINE: accent bar draws left to right after line_b lands.
+            if (underlineEl) {
+              tl.fromTo(
+                underlineEl,
+                { scaleX: 0 },
+                { scaleX: 1, duration: UL, ease: "power2.out" },
+                landB + UL_BEAT,
+              );
+            }
+
+            // HOLD: completely still.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(
+                stage,
+                { opacity: 0, y: "-7cqh", duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

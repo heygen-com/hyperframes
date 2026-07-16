@@ -1,0 +1,83 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "state-chip-rail",
+  "type": "hyperframes:component",
+  "title": "State Chip Rail",
+  "description": "A rail of mono status chips advances a seek-safe data-state snap machine on a cue schedule: active chip ink on surface, done chips dim, pending chips hollow, optional badges pop beside one state.",
+  "tags": ["motion-primitive", "product-demo", "state-machine", "status", "chips", "rail"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "state-machine",
+  "evidence": "Wave J J2-3: generalizes the flagship agent-console status rail (cohere-north frame 04 data-state snap machine)",
+  "syncPoints": [{ "id": "first-advance", "phase": "in", "offset": 1.0 }],
+  "files": [
+    {
+      "path": "state-chip-rail.html",
+      "target": "compositions/components/state-chip-rail.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "states",
+      "type": "string",
+      "role": "content",
+      "label": "States",
+      "description": "Comma-separated chip labels in machine order (2 to 8 states).",
+      "default": "Queued,Reading,Drafting,Done"
+    },
+    {
+      "id": "times",
+      "type": "string",
+      "role": "timing",
+      "label": "Times",
+      "description": "Comma-separated activation times in seconds, one per advance (state 1 onward). Blank entries use the default even rhythm.",
+      "default": ""
+    },
+    {
+      "id": "badge_state",
+      "type": "number",
+      "role": "content",
+      "label": "Badge state",
+      "description": "Index of the state the badges pop beside.",
+      "default": 1,
+      "min": 0,
+      "max": 7,
+      "step": 1
+    },
+    {
+      "id": "badges",
+      "type": "string",
+      "role": "content",
+      "label": "Badges",
+      "description": "Comma-separated badge labels shown beside the badge state. Empty disables.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used by the active chip.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the rail leaves the frame. Default none: the hold ends the film.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

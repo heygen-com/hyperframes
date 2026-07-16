@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-terminal-run",
+  "type": "hyperframes:component",
+  "title": "Code Terminal Run",
+  "description": "A token-chrome terminal panel runs one command: the prompt line types deterministically behind an integer-cycle caret, executes after a beat, and output lines print one per cue before a fresh prompt appears.",
+  "tags": ["motion-primitive", "product-demo", "terminal", "typing", "deterministic"],
+  "jobs": ["demonstrate"],
+  "family": "ui-props",
+  "profile": "typing",
+  "evidence": "Wave J2 J2-7 code-terminal-run specification; the typed-prompt text-at-time law generalized to rich authored spans (character reveal across text nodes preserves token coloring)",
+  "syncPoints": [{ "id": "command-run", "phase": "in", "offset": 3.1 }],
+  "files": [
+    {
+      "path": "code-terminal-run.html",
+      "target": "compositions/components/code-terminal-run.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "prompt_glyph",
+      "type": "string",
+      "role": "style",
+      "label": "Prompt glyph",
+      "description": "Leading glyph before the command and the trailing prompt. Empty string hides it.",
+      "default": "$"
+    },
+    {
+      "id": "cadence",
+      "type": "enum",
+      "role": "timing",
+      "label": "Cadence",
+      "description": "Keystroke rhythm: uniform fixed steps or seeded human chunks.",
+      "default": "human",
+      "options": [
+        { "value": "uniform", "label": "Uniform" },
+        { "value": "human", "label": "Human" }
+      ]
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds relative to mount start; cue N sets when output line N prints. Empty uses the authored rhythm.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color of the prompt glyph and caret.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. Frame roots own transitions; none holds the end frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

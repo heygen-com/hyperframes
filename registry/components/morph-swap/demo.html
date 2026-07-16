@@ -1,14 +1,14 @@
 <!doctype html>
 <!--
-  before-after-wipe demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
+  morph-swap demo. This standalone composition mounts the primitive through
+  data-composition-src. Non-default register, swap timing, and accent values
   prove the variable path while the primitive remains elastic to its host.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>before-after-wipe Demo</title>
+    <title>morph-swap Demo</title>
     <style>
       * {
         margin: 0;
@@ -44,10 +44,10 @@
       }
 
       .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+        width: 52%;
+        height: 66%;
+        left: 24%;
+        top: 17%;
         container-type: size;
         overflow: hidden;
         border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
@@ -60,31 +60,31 @@
   <body>
     <div
       id="root"
-      data-composition-id="before-after-wipe-demo"
+      data-composition-id="morph-swap-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="4"
+      data-duration="3.5"
       data-fps="30"
     >
       <div
-        id="before-after-wipe-mount"
+        id="morph-swap-mount"
         class="mount-card clip"
-        data-composition-id="before-after-wipe"
-        data-composition-src="./before-after-wipe.html"
-        data-variable-values='{"label_a":"BEFORE","label_b":"AFTER","rest_split":55,"wipe_at":0.8,"accent":"violet"}'
+        data-composition-id="morph-swap"
+        data-composition-src="./morph-swap.html"
+        data-variable-values='{"register":"reshape","swap_at":0.9,"accent":"violet"}'
         data-start="0"
-        data-duration="4"
+        data-duration="3.5"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="998"
+        data-height="713"
       ></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
       window.__timelines = window.__timelines || {};
-      window.__timelines["before-after-wipe-demo"] = gsap.timeline({ paused: true });
+      window.__timelines["morph-swap-demo"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>
