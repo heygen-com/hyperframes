@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: "Bebas Neue";
+    src: url("assets/fonts/BebasNeue.woff2") format("woff2");
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  [data-composition-id="vox-beat1"] {
+    background: #E7D7B5;
+    overflow: hidden;
+    position: relative;
+    font-family: "Bebas Neue", sans-serif;
+  }
+  #push { position: absolute; inset: 0; }
+  /* paper grain + crease */
+  .grain {
+    position: absolute; inset: -20px; opacity: 0.5; pointer-events: none; z-index: 9;
+  }
+  .crease {
+    position: absolute; left: -20px; right: -20px; top: 46%; height: 3px; z-index: 1;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.10), rgba(255,255,255,0.25) 70%, transparent);
+    transform: rotate(-0.4deg);
+  }
+  .block-purple {
+    position: absolute; z-index: 2;
+    width: 300px; height: 420px; left: 38px; top: 96px;
+    background: #3a2a55; transform: rotate(2.5deg);
+    box-shadow: 5px 6px 0 rgba(0,0,0,0.18);
+  }
+  .block-red-wrap { position: absolute; z-index: 3; left: 110px; top: 170px; }
+  .block-red {
+    width: 480px; height: 780px;
+    background: #D2382B; transform: rotate(-2.6deg);
+    box-shadow: 6px 7px 0 rgba(0,0,0,0.20);
+  }
+  .card-wrap { position: absolute; z-index: 4; left: 128px; top: 236px; }
+  .card {
+    width: 464px; padding: 16px 16px 18px;
+    background: #fdfaf2;
+    clip-path: polygon(1.2% 0.8%, 8% 0.2%, 16% 1.1%, 25% 0.4%, 34% 1.3%, 44% 0.3%, 55% 1.2%, 66% 0.5%, 76% 1.4%, 86% 0.4%, 94% 1.2%, 99% 0.6%, 99.4% 9%, 98.8% 19%, 99.6% 30%, 98.9% 41%, 99.5% 53%, 98.8% 64%, 99.6% 75%, 99% 86%, 99.5% 94%, 98.9% 99.2%, 91% 99.6%, 81% 98.9%, 70% 99.7%, 59% 99%, 48% 99.6%, 37% 98.9%, 26% 99.5%, 15% 99%, 6% 99.6%, 0.9% 99%, 0.4% 90%, 1.1% 79%, 0.3% 68%, 1.2% 56%, 0.5% 45%, 1.3% 34%, 0.4% 23%, 1.1% 12%);
+    filter: drop-shadow(6px 8px 0 rgba(0,0,0,0.22));
+    transform: rotate(-2deg);
+  }
+  .card img { display: block; width: 100%; height: 620px; object-fit: cover; }
+  .tape {
+    position: absolute; z-index: 5;
+    width: 150px; height: 42px;
+    background: rgba(210, 56, 43, 0.85);
+    mix-blend-mode: multiply;
+    box-shadow: 2px 3px 0 rgba(0,0,0,0.10);
+  }
+  #tape1 { left: 96px; top: 218px; transform: rotate(-38deg); }
+  #tape2 { left: 520px; top: 960px; transform: rotate(43deg); }
+  .label-wrap { position: absolute; z-index: 6; left: 0; right: 0; top: 1000px; display: flex; justify-content: center; }
+  .label {
+    background: #f2ecd9;
+    padding: 6px 44px 0;
+    font-size: 172px; line-height: 0.98; letter-spacing: 3px; color: #0c0c0c;
+    clip-path: polygon(0.8% 2%, 12% 0.5%, 30% 2.5%, 52% 0.8%, 73% 2.8%, 90% 0.6%, 99.3% 2.2%, 99.7% 50%, 99.1% 97%, 84% 99.4%, 62% 97.5%, 40% 99.6%, 18% 97.8%, 0.5% 99.2%, 1.2% 55%);
+    filter: drop-shadow(5px 6px 0 rgba(0,0,0,0.25));
+    transform: rotate(-1.6deg);
+  }
+</style>
+</head>
+<body>
+  <div data-composition-id="vox-beat1" data-width="720" data-height="1280" data-start="0" data-duration="6.1">
+    <div id="push">
+      <div class="crease"></div>
+      <div class="block-purple" id="blockPurple"></div>
+      <div class="block-red-wrap" id="blockRedWrap"><div class="block-red"></div></div>
+      <div class="card-wrap" id="cardWrap">
+        <div class="card" id="card"><img src="assets/eel.jpg" alt=""></div>
+      </div>
+      <div class="tape" id="tape1"></div>
+      <div class="tape" id="tape2"></div>
+      <div class="label-wrap" id="labelWrap"><div class="label" id="label">UNSEEN</div></div>
+    </div>
+    <svg class="grain" width="100%" height="100%">
+      <filter id="paperNoise">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" stitchTiles="stitch"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 0.36  0 0 0 0 0.30  0 0 0 0 0.20  0 0 0 0.16 0"/>
+      </filter>
+      <rect width="100%" height="100%" filter="url(#paperNoise)"/>
+    </svg>
+    <audio id="vo" src="assets/vo1.mp3" data-start="0.4" data-track-index="2" data-volume="1"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const DUR = 6.1;
+
+      // seeded PRNG for deterministic boil
+      function mulberry32(a) {
+        return function () {
+          a |= 0; a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      // entrances (build: 0-1.9s)
+      tl.fromTo("#blockPurple", { x: -520, opacity: 0 }, { x: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 0.15);
+      tl.fromTo("#blockRedWrap", { x: 720, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 0.3);
+      tl.fromTo("#cardWrap",
+        { scale: 0.25, rotation: -10, opacity: 0, transformOrigin: "50% 60%" },
+        { scale: 1, rotation: 0, opacity: 1, duration: 0.7, ease: "back.out(2)" }, 0.55);
+      tl.fromTo("#tape1", { scale: 2.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: "power4.out" }, 1.05);
+      tl.fromTo("#tape2", { scale: 2.2, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.24, ease: "power4.out" }, 1.22);
+      tl.fromTo("#labelWrap",
+        { y: 300, scale: 1.35, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" }, 1.9);
+
+      // breathe: stop-motion boil at 6fps on card + label (deterministic tl.set steps)
+      const rnd = mulberry32(20260716);
+      for (let i = 0; i * (1 / 6) < DUR; i++) {
+        const t = i / 6;
+        if (t > 1.35) {
+          tl.set("#card", {
+            x: (rnd() - 0.5) * 4, y: (rnd() - 0.5) * 4,
+            rotation: -2 + (rnd() - 0.5) * 1.1,
+          }, t);
+        } else { rnd(); rnd(); rnd(); }
+        if (t > 2.5) {
+          tl.set("#label", {
+            x: (rnd() - 0.5) * 3, y: (rnd() - 0.5) * 3,
+            rotation: -1.6 + (rnd() - 0.5) * 0.9,
+          }, t);
+        } else { rnd(); rnd(); rnd(); }
+      }
+
+      // slow push-in on wrapper across full beat (resolve: settles as static hold)
+      tl.fromTo("#push",
+        { scale: 1.0, transformOrigin: "50% 42%" },
+        { scale: 1.065, duration: DUR, ease: "none" }, 0);
+
+      // pin timeline length
+      tl.set({}, {}, DUR);
+
+      window.__timelines["vox-beat1"] = tl;
+    </script>
+  </div>
+</body>
+</html>
