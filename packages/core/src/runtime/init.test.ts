@@ -115,7 +115,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
-    delete (window as { __hfCustomEaseRegistered?: boolean }).__hfCustomEaseRegistered;
+    delete window.__hfCustomEaseRegistered;
     delete window.gsap;
     vi.restoreAllMocks();
     window.requestAnimationFrame = originalRequestAnimationFrame;
@@ -240,7 +240,7 @@ describe("initSandboxRuntimeModular", () => {
     initSandboxRuntimeModular();
     expect(window.gsap.parseEase).toBe(installedParseEase);
 
-    delete (window as { __hfCustomEaseRegistered?: boolean }).__hfCustomEaseRegistered;
+    delete window.__hfCustomEaseRegistered;
     window.gsap = {
       timeline: () => createMockTimeline(1),
       parseEase: vi.fn(() => defaultEase),

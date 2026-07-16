@@ -176,10 +176,9 @@ export function initSandboxRuntimeModular(): void {
   };
   const ensureStudioCustomEase = (): void => {
     const g = window.gsap;
-    const w = window as Window & { __hfCustomEaseRegistered?: boolean };
-    if (!g || w.__hfCustomEaseRegistered) return;
+    if (!g || window.__hfCustomEaseRegistered) return;
     try {
-      if (installStudioCustomEase(g)) w.__hfCustomEaseRegistered = true;
+      if (installStudioCustomEase(g)) window.__hfCustomEaseRegistered = true;
     } catch {
       // falling back to GSAP's default ease is preferable to a broken runtime
     }
