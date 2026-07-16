@@ -462,6 +462,14 @@
       // rest pose). Each asserts a distinct keyframe shape; collapsing the shared
       // parse/keyframes-extraction scaffold would obscure what each case verifies.
       "packages/core/src/parsers/gsapParserAcorn.motionEval.test.ts",
+      // Studio interaction-consolidation stack: per-unit test files share
+      // arrange/act/assert harness boilerplate (store seeding + render scaffold
+      // per case). Each unit's tests were reviewed individually in the stack;
+      // collapsing the scaffolds would obscure what each case verifies.
+      "packages/studio/src/player/components/TimelineLanes.test.tsx",
+      "packages/studio/src/components/editor/useDomEditNudge.test.tsx",
+      "packages/studio/src/components/sidebar/LeftSidebar.test.tsx",
+      "packages/studio/src/hooks/useStartRender.test.tsx",
       // Studio UX-review sweep (148 findings fixed across ~90 studio files):
       // heavily-edited files re-flag line-shifted inherited complexity, and the
       // new small handlers (a11y keydown/menu/dialog/error-state paths, mostly

@@ -1,20 +1,9 @@
 import { useCallback, useRef } from "react";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { ensureImportedFontFace } from "../utils/studioFontHelpers";
 import {
-  isImageBackgroundValue,
-  isManualGeometryStyleProperty,
-  normalizeDomEditStyleValue,
-} from "../utils/studioHelpers";
-import {
-  injectPreviewGoogleFont,
-  injectPreviewImportedFont,
-  ensureImportedFontFace,
-} from "../utils/studioFontHelpers";
-import {
-  buildDomEditStylePatchOperation,
   buildDomEditTextPatchOperation,
   findElementForSelection,
-  getDomEditTargetKey,
   isTextEditableSelection,
   serializeDomEditTextFields,
   buildDefaultDomEditTextField,
@@ -28,12 +17,16 @@ import {
   DomEditPersistUnsupportedTextStructureError,
   reportDomEditPersistFailure,
 } from "./domEditPersistFailure";
-import {
-  bumpDomEditCommitMapVersion,
-  bumpDomEditCommitVersion,
-  runDomEditCommit,
-} from "./domEditCommitRunner";
+import { bumpDomEditCommitVersion, runDomEditCommit } from "./domEditCommitRunner";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
+import {
+  buildNextDomTextFieldStyle,
+  injectPreviewFontForStyle,
+  nextDomStyleBatchCoalesceKey,
+  resolveNullableDomStyleValue,
+  runDomStyleSelectionCommit,
+  type DomStyleCommitHistoryOptions,
+} from "./domStyleCommit";
 
 // ── Types ──
 
@@ -61,93 +54,6 @@ interface DomTextCommitPlan {
   nextContent: string;
   childOperations: PatchOperation[] | null;
   operations: PatchOperation[];
-}
-
-interface DomStyleCommitPlan {
-  operations: PatchOperation[];
-  isImageBackgroundCommit: boolean;
-}
-
-function buildDomStyleCommitPlan(property: string, value: string | null): DomStyleCommitPlan {
-  const isImageBackgroundCommit =
-    value !== null && property === "background-image" && isImageBackgroundValue(value);
-  const operations: PatchOperation[] = [buildDomEditStylePatchOperation(property, value)];
-  if (isImageBackgroundCommit) {
-    operations.push(
-      buildDomEditStylePatchOperation("background-position", "center"),
-      buildDomEditStylePatchOperation("background-repeat", "no-repeat"),
-      buildDomEditStylePatchOperation("background-size", "contain"),
-    );
-  }
-  return { operations, isImageBackgroundCommit };
-}
-
-function resolveNullableDomStyleValue(
-  property: string,
-  value: string | null,
-  resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null,
-): { normalizedValue: string | null; importedFont: ImportedFontAsset | null } {
-  return {
-    normalizedValue: value === null ? null : normalizeDomEditStyleValue(property, value),
-    importedFont:
-      property === "font-family" && value !== null ? resolveImportedFontAsset(value) : null,
-  };
-}
-
-function injectPreviewFontForStyle(
-  doc: Document | null | undefined,
-  property: string,
-  value: string | null,
-  importedFont: ImportedFontAsset | null,
-): void {
-  if (!doc || property !== "font-family" || value === null) return;
-
-  injectPreviewGoogleFont(doc, value);
-  if (importedFont) injectPreviewImportedFont(doc, importedFont);
-}
-
-function applyNullableStyleValue(
-  element: HTMLElement,
-  property: string,
-  value: string | null,
-  computedStyles: Record<string, string>,
-  doc: Document | null | undefined,
-): void {
-  if (value !== null) {
-    element.style.setProperty(property, value);
-    computedStyles[property] = value;
-    return;
-  }
-
-  element.style.removeProperty(property);
-  // The panel reads this exact snapshot synchronously, so keep coupled
-  // style builders fresh while persistence is still pending.
-  const authoredValue = doc?.defaultView?.getComputedStyle(element).getPropertyValue(property);
-  if (authoredValue === undefined) {
-    delete computedStyles[property];
-    return;
-  }
-  computedStyles[property] = authoredValue;
-}
-
-function buildNextDomTextFieldStyle(
-  field: DomEditTextField,
-  fieldKey: string,
-  property: string,
-  value: string | null,
-): DomEditTextField {
-  if (field.key !== fieldKey) return field;
-
-  const inlineStyles = { ...field.inlineStyles };
-  const computedStyles = { ...field.computedStyles };
-  if (value === null) {
-    delete inlineStyles[property];
-    delete computedStyles[property];
-  } else {
-    inlineStyles[property] = value;
-    computedStyles[property] = value;
-  }
-  return { ...field, inlineStyles, computedStyles };
 }
 
 function buildNextDomTextFields(
@@ -231,99 +137,57 @@ export function useDomEditTextCommits({
       persistDomEditOperations: queuedPersistDomEditOperations,
     });
 
-  const handleDomStyleCommit = useCallback(
-    async (property: string, value: string | null) => {
-      if (!domEditSelection) return;
-      if (isManualGeometryStyleProperty(property)) return;
-      if (!domEditSelection.capabilities.canEditStyles) return;
-      const styleCommitKey = `${getDomEditTargetKey(domEditSelection)}:${property}`;
-      const isLatestStyleCommit = bumpDomEditCommitMapVersion(
-        domStyleCommitVersionRef.current,
-        styleCommitKey,
-      );
-      const { normalizedValue, importedFont } = resolveNullableDomStyleValue(
+  const commitDomStyleSelection = useCallback(
+    (
+      selection: DomEditSelection,
+      property: string,
+      value: string | null,
+      historyOptions?: DomStyleCommitHistoryOptions,
+    ) =>
+      runDomStyleSelectionCommit({
+        selection,
         property,
         value,
+        activeCompPath,
+        doc: previewIframeRef.current?.contentDocument,
+        commitVersions: domStyleCommitVersionRef.current,
+        persistDomEditOperations: queuedPersistDomEditOperations,
+        refreshDomEditSelectionFromPreview,
         resolveImportedFontAsset,
-      );
-      const iframe = previewIframeRef.current;
-      const doc = iframe?.contentDocument;
-      let editedElement: HTMLElement | null = null;
-      let previousInlineValue: string | null = null;
-      let previousComputedValue: string | undefined;
-      const { operations, isImageBackgroundCommit } = buildDomStyleCommitPlan(
-        property,
-        normalizedValue,
-      );
-      // Inline-style commits never full-reload the preview (that blanks the iframe
-      // until it re-renders): the live element was already mutated optimistically in
-      // apply(). z-index is no exception — setting `element.style.zIndex` restacks the
-      // element in-browser immediately, so a reload would only cost a black blink.
-      const skipRefresh = true;
-
-      await runDomEditCommit({
-        capture: () => {
-          if (!doc) return;
-          const el = findElementForSelection(doc, domEditSelection, activeCompPath);
-          if (!el) return;
-          editedElement = el;
-          previousInlineValue = el.style.getPropertyValue(property);
-          previousComputedValue = domEditSelection.computedStyles[property];
-        },
-        apply: () => {
-          if (!editedElement) return;
-          applyNullableStyleValue(
-            editedElement,
-            property,
-            normalizedValue,
-            domEditSelection.computedStyles,
-            doc,
-          );
-          injectPreviewFontForStyle(doc, property, value, importedFont);
-          if (isImageBackgroundCommit) {
-            editedElement.style.setProperty("background-position", "center");
-            editedElement.style.setProperty("background-repeat", "no-repeat");
-            editedElement.style.setProperty("background-size", "contain");
-          }
-        },
-        persist: () =>
-          queuedPersistDomEditOperations(domEditSelection, operations, {
-            label: "Edit layer style",
-            skipRefresh,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
-          }),
-        shouldRevert: () => isLatestStyleCommit(),
-        revert: () => {
-          if (!editedElement || previousInlineValue === null) return;
-          // ponytail: background-image side-effect styles are not reverted here.
-          if (previousInlineValue === "") {
-            editedElement.style.removeProperty(property);
-          } else {
-            editedElement.style.setProperty(property, previousInlineValue);
-          }
-          if (previousComputedValue === undefined) {
-            delete domEditSelection.computedStyles[property];
-          } else {
-            domEditSelection.computedStyles[property] = previousComputedValue;
-          }
-        },
-        onError: (error) =>
-          reportDomEditPersistFailure(domEditSelection, operations, error, showToast),
-        shouldResync: isLatestStyleCommit,
-        resync: () => refreshDomEditSelectionFromPreview(domEditSelection),
-      });
-    },
+        showToast,
+        historyOptions,
+      }),
     [
       activeCompPath,
-      domEditSelection,
+      previewIframeRef,
       queuedPersistDomEditOperations,
       refreshDomEditSelectionFromPreview,
       resolveImportedFontAsset,
       showToast,
-      previewIframeRef,
     ],
+  );
+
+  const handleDomStyleCommit = useCallback(
+    async (property: string, value: string | null) => {
+      if (!domEditSelection) return;
+      await commitDomStyleSelection(domEditSelection, property, value);
+    },
+    [commitDomStyleSelection, domEditSelection],
+  );
+
+  const handleDomStyleBatchCommit = useCallback(
+    async (selections: DomEditSelection[], property: string, value: string | null) => {
+      const historyOptions = {
+        coalesceKey: nextDomStyleBatchCoalesceKey(),
+        coalesceMs: Number.POSITIVE_INFINITY,
+      };
+      await Promise.all(
+        selections.map((selection) =>
+          commitDomStyleSelection(selection, property, value, historyOptions),
+        ),
+      );
+    },
+    [commitDomStyleSelection],
   );
 
   const handleDomTextCommit = useCallback(
@@ -548,6 +412,7 @@ export function useDomEditTextCommits({
 
   return {
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,

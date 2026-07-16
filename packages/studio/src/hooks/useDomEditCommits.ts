@@ -123,7 +123,7 @@ export interface UseDomEditCommitsParams {
     operations: PatchOperation[],
     originalContent: string,
     targetPath: string,
-    options?: { label?: string; coalesceKey?: string; skipRefresh?: boolean },
+    options?: { label?: string; coalesceKey?: string; coalesceMs?: number; skipRefresh?: boolean },
   ) => Promise<boolean>;
   /** Stage 7 §3.1: called before the server-side delete path; returns true if SDK handled it. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
@@ -227,6 +227,7 @@ export function useDomEditCommits({
         (await onTrySdkPersist(selection, operations, originalContent, targetPath, {
           label: options?.label,
           coalesceKey: options?.coalesceKey,
+          coalesceMs: options?.coalesceMs,
           skipRefresh: options?.skipRefresh,
         }))
       ) {
@@ -393,6 +394,7 @@ export function useDomEditCommits({
 
   const {
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -456,6 +458,7 @@ export function useDomEditCommits({
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,

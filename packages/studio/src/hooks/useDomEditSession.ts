@@ -226,6 +226,7 @@ export function useDomEditSession({
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -522,6 +523,7 @@ export function useDomEditSession({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
