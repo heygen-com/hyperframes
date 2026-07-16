@@ -12,7 +12,51 @@ vi.mock("../utils/updateCheck.js", async (orig) => ({
   })),
 }));
 
-import { upgradeProjectPins } from "./upgrade.js";
+import { resolveProjectArgs, upgradeProjectPins } from "./upgrade.js";
+
+describe("resolveProjectArgs", () => {
+  it("reclaims a flag eaten as the --project value", () => {
+    expect(resolveProjectArgs("--check", { check: false, json: false })).toEqual({
+      dir: ".",
+      check: true,
+      json: false,
+    });
+    expect(resolveProjectArgs("--json", { check: false, json: false })).toEqual({
+      dir: ".",
+      check: false,
+      json: true,
+    });
+  });
+
+  it("defaults to the current directory for a bare or boolean --project", () => {
+    expect(resolveProjectArgs(true, { check: true, json: false })).toEqual({
+      dir: ".",
+      check: true,
+      json: false,
+    });
+    expect(resolveProjectArgs("", { check: false, json: false })).toEqual({
+      dir: ".",
+      check: false,
+      json: false,
+    });
+  });
+
+  it("passes a real directory through untouched", () => {
+    expect(resolveProjectArgs("apps/site", { check: false, json: true })).toEqual({
+      dir: "apps/site",
+      check: false,
+      json: true,
+    });
+  });
+
+  it("drops an unrelated eaten flag instead of treating it as a directory", () => {
+    expect(resolveProjectArgs("--yes", { check: false, json: false })).toEqual({
+      dir: ".",
+      check: false,
+      json: false,
+    });
+  });
+});
 
 describe("upgradeProjectPins", () => {
   const dirs: string[] = [];
