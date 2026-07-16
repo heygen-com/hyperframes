@@ -65,6 +65,7 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
 function normalizeUsedFontName(part: string): string | null {
   const name = part
     .trim()
+    .replace(/\s*!important\s*$/i, "")
     .replace(/^['"]|['"]$/g, "")
     .trim()
     .toLowerCase();

@@ -178,6 +178,14 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
+    it("does not treat !important as part of a generic font family", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Inter', cursive !important; }</style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
     it("reports multiple missing families in one finding", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>
