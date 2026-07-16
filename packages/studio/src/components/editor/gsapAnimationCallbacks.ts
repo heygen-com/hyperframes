@@ -122,6 +122,7 @@ export function withTrackedGsapAnimationCallbacks(
       : undefined,
     onLivePreview: callbacks.onLivePreview,
     onLivePreviewEnd: callbacks.onLivePreviewEnd,
+    onUpdateSegmentEase: callbacks.onUpdateSegmentEase,
     onSetArcPath: callbacks.onSetArcPath
       ? (animationId, config) => {
           track("toggle", config.autoRotate !== undefined ? "Auto rotate" : "Arc motion");

@@ -58,7 +58,6 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                 focusedEaseSegment?.animationId === anim.id ? focusedEaseSegment : null
               }
               onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
-              onUpdateSegmentEase={callbacks.onUpdateSegmentEase}
             />
           ))}
 

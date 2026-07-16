@@ -466,7 +466,7 @@ export const Timeline = memo(function Timeline({
         onPointerDown={(e) => {
           // Let interactive controls (keyframe nav/toggle, caret, inputs) handle
           // their own clicks — scrubbing here would preventDefault and eat them.
-          if ((e.target as HTMLElement).closest("button, input, select, a")) return;
+          if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
             const x = getTimelineContentXFromClient({
