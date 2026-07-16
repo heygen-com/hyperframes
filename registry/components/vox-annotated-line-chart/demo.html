@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Annotated Line Chart demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#1E1B18;display:grid;place-items:center}</style></head>
+<body>
+<style>
+  .vlc { position: relative; width: 640px; height: 440px; font-family: "Bebas Neue", sans-serif; color: #f4f1e8; }
+  .vlc svg { position: absolute; inset: 0; overflow: visible; }
+  .vlc .vlc-grid { stroke: rgba(244,241,232,.12); stroke-width: 1; }
+  .vlc .vlc-axis { stroke: rgba(244,241,232,.5); stroke-width: 2; }
+  .vlc .vlc-line { fill: none; stroke: #FFD21E; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+  .vlc .vlc-dot { fill: #FFD21E; }
+  .vlc .vlc-ylabel, .vlc .vlc-xlabel { fill: rgba(244,241,232,.6); font-size: 24px; letter-spacing: 1px; }
+  .vlc .vlc-callout { position: absolute; transform: translate(-50%, -100%); background: #D2382B; color: #f4f1e8;
+    font-size: 26px; letter-spacing: 1.5px; text-transform: uppercase; padding: 9px 14px 8px; white-space: nowrap;
+    box-shadow: 3px 4px 0 rgba(0,0,0,.3); }
+  .vlc .vlc-callout::after { content: ""; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    border: 6px solid transparent; border-top-color: #D2382B; }
+</style>
+<div class="vlc">
+  <svg viewBox="0 0 900 560" preserveAspectRatio="none">
+    <line class="vlc-grid" x1="90" y1="120" x2="880" y2="120"/>
+    <line class="vlc-grid" x1="90" y1="280" x2="880" y2="280"/>
+    <line class="vlc-grid" x1="90" y1="440" x2="880" y2="440"/>
+    <line class="vlc-axis" x1="90" y1="20" x2="90" y2="500"/>
+    <line class="vlc-axis" x1="90" y1="500" x2="880" y2="500"/>
+    <text class="vlc-ylabel" x="30" y="128">HIGH</text>
+    <text class="vlc-xlabel" x="120" y="535">2015</text>
+    <text class="vlc-xlabel" x="760" y="535">2026</text>
+    <polyline class="vlc-line" points="120,440 250,400 380,300 500,340 620,180 760,120"/>
+    <circle class="vlc-dot" cx="620" cy="180" r="8"/>
+  </svg>
+  <div class="vlc-callout" style="left:68.9%; top:32%;">A SINGLE TWEET</div>
+</div>
+</body></html>

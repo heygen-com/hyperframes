@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Highlight Row Table demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#EFE6CE;display:grid;place-items:center}</style></head>
+<body>
+<style>
+  .vrt { font-family: "Courier Prime", "Courier New", monospace; color: #14110e;
+    border-top: 2px solid #14110e; border-bottom: 2px solid #14110e; min-width: 560px; }
+  .vrt table { border-collapse: collapse; width: 100%; }
+  .vrt th { font-family: "Bebas Neue", sans-serif; font-size: 22px; letter-spacing: 2px; text-transform: uppercase;
+    text-align: left; padding: 10px 18px; border-bottom: 1px solid rgba(20,17,14,.4); }
+  .vrt td { font-size: 22px; padding: 12px 18px; position: relative; }
+  .vrt .vrt-bar { position: absolute; inset: 0; background: #FFD21E; transform: scaleX(1); transform-origin: 0 50%; z-index: 0; }
+  .vrt td span { position: relative; z-index: 1; }
+  .vrt td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+<div class="vrt">
+  <table>
+    <thead><tr><th>Year</th><th>Event</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td><span>1914</span></td><td><span>War breaks out</span></td><td><span>—</span></td></tr>
+      <tr><td><span>1917</span></td><td><span>First facial plates</span></td><td><span>~200</span></td></tr>
+      <tr><td><div class="vrt-bar"></div><span>1918</span></td><td><span>Studio at scale</span></td><td><span>2,000+</span></td></tr>
+      <tr><td><span>1919</span></td><td><span>War ends</span></td><td><span>—</span></td></tr>
+    </tbody>
+  </table>
+</div>
+</body></html>

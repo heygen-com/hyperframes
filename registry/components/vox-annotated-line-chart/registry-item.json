@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-annotated-line-chart",
+  "type": "hyperframes:component",
+  "title": "Vox Annotated Line Chart",
+  "description": "Dark-data line chart: single-color line on an axis grid with an event callout chip pinned to an inflection point. Seek-safe draw-on helper voxLineDraw. The Vox data-journalism move.",
+  "tags": [
+    "vox",
+    "chart",
+    "data",
+    "line",
+    "dark-data",
+    "annotation"
+  ],
+  "files": [
+    {
+      "path": "vox-annotated-line-chart.html",
+      "target": "compositions/components/vox-annotated-line-chart.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

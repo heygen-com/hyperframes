@@ -1,0 +1,41 @@
+<!-- vox-pie-callout: dark-data grammar. A two-tone pie with one hero wedge and a big percentage
+     figure. Seek-safe wedge sweep via a rotating conic-gradient masked reveal is fragile under
+     frame-seek, so we draw the wedge as an SVG arc and animate stroke-dashoffset (deterministic).
+       voxPieReveal(tl, selector, fromT, dur, pct)  — sweep the wedge to pct (0-100) + count the figure
+     Set the initial data-pct on .vpc and the arc length is computed from it. -->
+<style>
+  .vpc { position: relative; width: 620px; height: 460px; font-family: "Bebas Neue", sans-serif;
+    color: #f4f1e8; display: flex; align-items: center; gap: 40px; }
+  .vpc svg { width: 300px; height: 300px; transform: rotate(-90deg); }
+  .vpc .vpc-track { fill: none; stroke: #4a463f; stroke-width: 34; }
+  .vpc .vpc-wedge { fill: none; stroke: #FFD21E; stroke-width: 34; stroke-linecap: butt; }
+  .vpc .vpc-fig { font-size: 130px; line-height: .9; }
+  .vpc .vpc-fig .u { font-size: 64px; }
+  .vpc .vpc-cap { display: block; font-size: 26px; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(244,241,232,.7); margin-top: 6px; }
+</style>
+<div class="vpc" data-pct="61">
+  <svg viewBox="0 0 120 120">
+    <circle class="vpc-track" cx="60" cy="60" r="42"/>
+    <circle class="vpc-wedge" cx="60" cy="60" r="42"/>
+  </svg>
+  <div><span class="vpc-fig"><span class="vpc-num">61</span><span class="u">%</span></span>
+    <span class="vpc-cap">Starlink revenue</span></div>
+</div>
+<script>
+  function voxPieReveal(tl, selector, fromT, dur, pct) {
+    var root = document.querySelector(selector);
+    pct = pct != null ? pct : parseFloat(root.dataset.pct || "50");
+    var wedge = root.querySelector(".vpc-wedge");
+    var C = 2 * Math.PI * 42;
+    tl.set(wedge, { strokeDasharray: C, strokeDashoffset: C }, 0);
+    tl.fromTo(wedge, { strokeDashoffset: C },
+      { strokeDashoffset: C * (1 - pct / 100), duration: dur, ease: "power2.inOut" }, fromT);
+    var num = root.querySelector(".vpc-num");
+    if (num) {
+      var box = { v: 0 };
+      tl.to(box, { v: pct, duration: dur, ease: "power2.inOut",
+        onUpdate: function () { num.textContent = Math.round(box.v); } }, fromT);
+    }
+  }
+</script>

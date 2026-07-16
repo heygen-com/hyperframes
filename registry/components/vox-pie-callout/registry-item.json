@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-pie-callout",
+  "type": "hyperframes:component",
+  "title": "Vox Pie Callout",
+  "description": "Two-tone pie with one hero wedge and a big count-up percentage figure (dark-data grammar). Seek-safe SVG-arc sweep + figure count via voxPieReveal.",
+  "tags": [
+    "vox",
+    "chart",
+    "data",
+    "pie",
+    "dark-data"
+  ],
+  "files": [
+    {
+      "path": "vox-pie-callout.html",
+      "target": "compositions/components/vox-pie-callout.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

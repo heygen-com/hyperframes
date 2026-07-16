@@ -1,0 +1,52 @@
+<!-- vox-annotated-line-chart: dark-data grammar. A single-color line on an axis grid with an
+     event callout chip pinned to one inflection point (the Vox "Trump's tweet" move).
+     Seek-safe: the line draws on via stroke-dashoffset, the callout pops after.
+       voxLineDraw(tl, selector, fromT, dur)  — draw the line, then pop its callout
+     Author the polyline `points` and place .vlc-callout at the inflection via left/top %. -->
+<style>
+  .vlc { position: relative; width: 900px; height: 620px; font-family: "Bebas Neue", sans-serif;
+    color: #f4f1e8; }
+  .vlc svg { position: absolute; inset: 0; overflow: visible; }
+  .vlc .vlc-grid { stroke: rgba(244,241,232,.12); stroke-width: 1; }
+  .vlc .vlc-axis { stroke: rgba(244,241,232,.5); stroke-width: 2; }
+  .vlc .vlc-line { fill: none; stroke: #FFD21E; stroke-width: 5; stroke-linecap: round;
+    stroke-linejoin: round; }
+  .vlc .vlc-dot { fill: #FFD21E; }
+  .vlc .vlc-ylabel, .vlc .vlc-xlabel { fill: rgba(244,241,232,.6); font-size: 24px; letter-spacing: 1px; }
+  .vlc .vlc-callout { position: absolute; transform: translate(-50%, -100%);
+    background: #111; color: #f4f1e8; font-size: 26px; letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 9px 14px 8px; white-space: nowrap; box-shadow: 3px 4px 0 rgba(0,0,0,.3); }
+  .vlc .vlc-callout::after { content: ""; position: absolute; left: 50%; top: 100%;
+    transform: translateX(-50%); border: 6px solid transparent; border-top-color: #111; }
+  .vlc .vlc-callout.accent { background: #D2382B; }
+  .vlc .vlc-callout.accent::after { border-top-color: #D2382B; }
+</style>
+<div class="vlc">
+  <svg viewBox="0 0 900 560" preserveAspectRatio="none">
+    <line class="vlc-grid" x1="90" y1="120" x2="880" y2="120"/>
+    <line class="vlc-grid" x1="90" y1="280" x2="880" y2="280"/>
+    <line class="vlc-grid" x1="90" y1="440" x2="880" y2="440"/>
+    <line class="vlc-axis" x1="90" y1="20" x2="90" y2="500"/>
+    <line class="vlc-axis" x1="90" y1="500" x2="880" y2="500"/>
+    <text class="vlc-ylabel" x="30" y="128">HIGH</text>
+    <text class="vlc-xlabel" x="120" y="535">2015</text>
+    <text class="vlc-xlabel" x="760" y="535">2026</text>
+    <polyline class="vlc-line" points="120,440 250,400 380,300 500,340 620,180 760,120"/>
+    <circle class="vlc-dot" cx="620" cy="180" r="8"/>
+  </svg>
+  <div class="vlc-callout accent" style="left:68.9%; top:32%;">A SINGLE TWEET</div>
+</div>
+<script>
+  function voxLineDraw(tl, selector, fromT, dur) {
+    var line = document.querySelector(selector + " .vlc-line");
+    var len = line.getTotalLength();
+    tl.set(selector + " .vlc-line", { strokeDasharray: len, strokeDashoffset: len }, 0);
+    tl.set(selector + " .vlc-dot", { scale: 0, transformOrigin: "50% 50%" }, 0);
+    tl.set(selector + " .vlc-callout", { opacity: 0, y: 8 }, 0);
+    tl.fromTo(selector + " .vlc-line", { strokeDashoffset: len },
+      { strokeDashoffset: 0, duration: dur * 0.7, ease: "none" }, fromT);
+    tl.fromTo(selector + " .vlc-dot", { scale: 0 }, { scale: 1, duration: 0.3, ease: "back.out(3)" }, fromT + dur * 0.55);
+    tl.fromTo(selector + " .vlc-callout", { opacity: 0, y: 8 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2)" }, fromT + dur * 0.7);
+  }
+</script>

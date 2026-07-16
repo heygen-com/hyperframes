@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-highlight-row-table",
+  "type": "hyperframes:component",
+  "title": "Vox Highlight Row Table",
+  "description": "Compact data table with one focal row inverting to draw the eye (archive/data grammar). Light and on-dark variants; seek-safe voxTableFocus.",
+  "tags": [
+    "vox",
+    "table",
+    "data",
+    "archive",
+    "highlight"
+  ],
+  "files": [
+    {
+      "path": "vox-highlight-row-table.html",
+      "target": "compositions/components/vox-highlight-row-table.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
