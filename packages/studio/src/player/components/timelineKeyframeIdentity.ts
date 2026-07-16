@@ -3,6 +3,7 @@ export interface TimelineKeyframeTarget {
   tweenPercentage?: number;
   propertyGroup?: string;
   animationId?: string;
+  collidingAnimationIds?: string[];
 }
 
 export function timelineKeyframeSelectionKey(

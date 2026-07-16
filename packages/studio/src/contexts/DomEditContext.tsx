@@ -71,6 +71,7 @@ export interface DomEditActionsValue extends Pick<
   | "commitMutation"
   | "applyMarqueeSelection"
   | "handleUpdateKeyframeEase"
+  | "handleUpdateSegmentEase"
   | "handleSetAllKeyframeEases"
 > {}
 
@@ -199,6 +200,7 @@ export function DomEditProvider({
     commitMutation,
     applyMarqueeSelection,
     handleUpdateKeyframeEase,
+    handleUpdateSegmentEase,
     handleSetAllKeyframeEases,
   },
   children,
@@ -281,6 +283,7 @@ export function DomEditProvider({
       commitMutation: stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleUpdateSegmentEase,
       handleSetAllKeyframeEases,
     }),
     [
@@ -349,6 +352,7 @@ export function DomEditProvider({
       stableCommitMutation,
       applyMarqueeSelection,
       handleUpdateKeyframeEase,
+      handleUpdateSegmentEase,
       handleSetAllKeyframeEases,
     ],
   );

@@ -358,7 +358,13 @@ describe("TimelineClipDiamonds", () => {
         <TimelineDiamondLane
           keyframesData={{
             format: "percentage",
-            keyframes: [kf(0), kf(50), kf(100, { easeAmbiguous: lastAmbiguous })],
+            keyframes: [
+              kf(0),
+              kf(50),
+              kf(100, {
+                collidingAnimationIds: lastAmbiguous ? ["anim-1", "anim-2"] : undefined,
+              }),
+            ],
           }}
           clipWidthPx={200}
           clipHeightPx={48}
@@ -375,15 +381,16 @@ describe("TimelineClipDiamonds", () => {
     return { host, root };
   };
 
-  it("hides the inline ease button on an ambiguous merged segment", () => {
-    // Segments 0->50 and 50->100; the 50->100 segment ends on the ambiguous
-    // keyframe, so its hover/ease-button area is not rendered.
+  it("shows the inline ease button on a colliding merged segment (bulk edit)", () => {
+    // Both segments (0->50, 50->100) render their ease button; the 50->100
+    // segment ends on a keyframe shared by two animations and the button now
+    // bulk-edits both rather than being hidden.
     const { host, root } = renderSegmentLane(true);
-    expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(1);
+    expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
     act(() => root.unmount());
   });
 
-  it("keeps the inline ease button on unambiguous merged segments", () => {
+  it("shows the inline ease button on single-animation merged segments", () => {
     const { host, root } = renderSegmentLane(false);
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
     act(() => root.unmount());

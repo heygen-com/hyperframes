@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 
 export interface BackgroundRemovalProgress {
   status: "processing" | "complete" | "failed";
@@ -107,6 +108,7 @@ export interface PropertyPanelProps {
   ) => void;
   onRemoveKeyframe?: (animationId: string, percentage: number) => void;
   onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
+  onUpdateSegmentEase?: NonNullable<GsapAnimationEditCallbacks["onUpdateSegmentEase"]>;
   onSetAllKeyframeEases?: (animationId: string, ease: string) => void;
   onConvertToKeyframes?: (animationId: string, duration?: number) => void;
   onCommitAnimatedProperty?: (

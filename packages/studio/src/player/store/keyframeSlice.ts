@@ -14,9 +14,8 @@ export interface KeyframeCacheEntry {
     animationId?: string;
     properties: Record<string, number | string>;
     ease?: string;
-    /** Set when 2+ source animations collide at this percentage (a single inline
-     *  ease button can't target one): the collapsed row hides the button here. */
-    easeAmbiguous?: boolean;
+    /** Source animation ids that collide at this percentage, in first-seen order. */
+    collidingAnimationIds?: string[];
   }>;
   ease?: string;
   easeEach?: string;
@@ -37,9 +36,19 @@ export interface KeyframeSlice {
 
   /** elementId scopes the request to one element so a shared (class-selector)
    * animation id can't open the ease editor on the wrong element. */
-  focusedEaseSegment: { animationId: string; tweenPercentage: number; elementId: string } | null;
+  focusedEaseSegment: {
+    animationId: string;
+    collidingAnimationIds?: string[];
+    tweenPercentage: number;
+    elementId: string;
+  } | null;
   setFocusedEaseSegment: (
-    target: { animationId: string; tweenPercentage: number; elementId: string } | null,
+    target: {
+      animationId: string;
+      collidingAnimationIds?: string[];
+      tweenPercentage: number;
+      elementId: string;
+    } | null,
   ) => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */

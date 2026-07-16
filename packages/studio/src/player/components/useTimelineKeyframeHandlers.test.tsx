@@ -36,6 +36,11 @@ const FLAT_TWEEN_TARGET: TimelineKeyframeTarget = {
   animationId: "position-tween",
 };
 
+const COLLIDING_TARGET: TimelineKeyframeTarget = {
+  ...FLAT_TWEEN_TARGET,
+  collidingAnimationIds: ["position-tween", "scale-tween"],
+};
+
 afterEach(() => {
   document.body.innerHTML = "";
   trackStudioSegmentEaseEdit.mockClear();
@@ -62,6 +67,32 @@ describe("useTimelineKeyframeHandlers", () => {
 
     expect(trackStudioSegmentEaseEdit).toHaveBeenCalledOnce();
     expect(trackStudioSegmentEaseEdit).toHaveBeenCalledWith({ action: "open" });
+    act(() => root.unmount());
+  });
+
+  it("focuses a merged segment with its colliding animation ids", () => {
+    let onSelectSegment: ((elementId: string, target: TimelineKeyframeTarget) => void) | undefined;
+
+    function Harness() {
+      ({ onSelectSegment } = useTimelineKeyframeHandlers({
+        expandedElements: [ELEMENT],
+        keyframeCache: new Map(),
+        setSelectedElementId: vi.fn(),
+        setKfContextMenu: vi.fn(),
+        toggleSelectedKeyframe: vi.fn(),
+      }));
+      return null;
+    }
+
+    const root = mountReactHarness(<Harness />);
+    act(() => onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));
+
+    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+      animationId: "position-tween",
+      collidingAnimationIds: ["position-tween", "scale-tween"],
+      tweenPercentage: 100,
+      elementId: ELEMENT.id,
+    });
     act(() => root.unmount());
   });
 
@@ -97,6 +128,7 @@ describe("useTimelineKeyframeHandlers", () => {
       tweenPercentage: 100,
       elementId: ELEMENT.id,
     });
+    expect(usePlayerStore.getState().focusedEaseSegment?.collidingAnimationIds).toBeUndefined();
     expect(setSelectedElementId).toHaveBeenCalledWith(ELEMENT.id);
     expect(onSelectElement).toHaveBeenCalledWith(ELEMENT);
 

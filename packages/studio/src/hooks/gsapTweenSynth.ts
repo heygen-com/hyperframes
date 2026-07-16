@@ -5,26 +5,38 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
+export function accumulateCollidingAnimationIds(
+  keyframe: { animationId?: string; collidingAnimationIds?: string[] },
+  incomingAnimationId: string | undefined,
+): void {
+  const primaryId = keyframe.animationId;
+  if (
+    primaryId === undefined ||
+    incomingAnimationId === undefined ||
+    primaryId === incomingAnimationId
+  ) {
+    return;
+  }
+  const collisionIds = keyframe.collidingAnimationIds;
+  if (collisionIds?.includes(incomingAnimationId)) return;
+  keyframe.collidingAnimationIds = [
+    ...(collisionIds === undefined || collisionIds.length === 0 ? [primaryId] : collisionIds),
+    incomingAnimationId,
+  ];
+}
+
 export function deduplicateKeyframes<
-  T extends GsapPercentageKeyframe & { animationId?: string; easeAmbiguous?: boolean },
+  T extends GsapPercentageKeyframe & {
+    animationId?: string;
+    collidingAnimationIds?: string[];
+  },
 >(keyframes: T[]): T[] {
   const byPct = new Map<number, T>();
   for (const kf of keyframes) {
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
-      // Two DIFFERENT source animations with a keyframe at the same clip %: a
-      // single inline ease button can only target one of them, and which one is
-      // arbitrary (each may also inherit a different easeEach/animation ease, so
-      // comparing raw keyframe eases isn't enough). Flag it so the collapsed row
-      // hides the button there and the user edits per-lane instead.
-      if (
-        existing.animationId !== undefined &&
-        kf.animationId !== undefined &&
-        existing.animationId !== kf.animationId
-      ) {
-        existing.easeAmbiguous = true;
-      }
+      accumulateCollidingAnimationIds(existing, kf.animationId);
       if (kf.ease) existing.ease = kf.ease;
     } else {
       byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
