@@ -398,12 +398,14 @@ export function useDomSelection({
 
       const element = findElementForSelection(doc, selection, activeCompPath);
       if (!element) {
-        applyDomSelection(null, { revealPanel: false });
+        if (domEditSelectionsTargetSame(selection, domEditSelectionRef.current)) {
+          applyDomSelection(null, { revealPanel: false });
+        }
         return;
       }
 
       const nextSelection = await buildDomSelectionFromTarget(element);
-      if (nextSelection) {
+      if (nextSelection && domEditSelectionsTargetSame(selection, domEditSelectionRef.current)) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
           preserveGroup: true,
