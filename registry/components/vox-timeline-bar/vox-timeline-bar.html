@@ -54,7 +54,10 @@
       { left: voxTimelineX(root, year1) + "%", duration: t1 - t0, ease: "power1.inOut" }, t0);
   }
   function voxTimelineEvent(tl, selector, idx, atT) {
-    var ev = selector + " .vt-event:nth-of-type(" + (idx + 1) + ")";
+    // NB: index into the matched set — :nth-of-type counts element type among siblings, and
+    // .vt-event is not the only div in the bar (axis/playhead are too), so nth-of-type misses.
+    var ev = document.querySelectorAll(selector + " .vt-event")[idx];
+    if (!ev) return;
     tl.fromTo(ev, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2.5)" }, atT);
   }
 </script>
