@@ -119,7 +119,9 @@ export function useTimelineSelectionPreviewSync({
       if (selections.length === 0) {
         applyDomSelection(null, { revealPanel: false });
       } else if (selections.length === 1) {
-        applyDomSelection(selections[0], { revealPanel: false });
+        // Match the legacy timeline-select behavior: a clip click reveals the
+        // inspector (revealPanel defaults on); only clears stay panel-neutral.
+        applyDomSelection(selections[0]);
       } else {
         applyMarqueeSelection(selections, false);
       }

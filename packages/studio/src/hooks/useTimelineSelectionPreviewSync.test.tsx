@@ -219,7 +219,7 @@ describe("useTimelineSelectionPreviewSync", () => {
     });
 
     expect(applyDomSelection).toHaveBeenCalledTimes(1);
-    expect(applyDomSelection).toHaveBeenCalledWith(secondSelection, { revealPanel: false });
+    expect(applyDomSelection).toHaveBeenCalledWith(secondSelection);
     harness.cleanup();
   });
 
