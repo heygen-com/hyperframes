@@ -1,5 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { StoreApi } from "zustand";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 /** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
 export interface KeyframeCacheEntry {
@@ -14,8 +15,8 @@ export interface KeyframeCacheEntry {
     animationId?: string;
     properties: Record<string, number | string>;
     ease?: string;
-    /** Source animation ids that collide at this percentage, in first-seen order. */
-    collidingAnimationIds?: string[];
+    /** Source animation/keyframe targets that collide at this clip percentage. */
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
   }>;
   ease?: string;
   easeEach?: string;
@@ -38,14 +39,14 @@ export interface KeyframeSlice {
    * animation id can't open the ease editor on the wrong element. */
   focusedEaseSegment: {
     animationId: string;
-    collidingAnimationIds?: string[];
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
     tweenPercentage: number;
     elementId: string;
   } | null;
   setFocusedEaseSegment: (
     target: {
       animationId: string;
-      collidingAnimationIds?: string[];
+      collidingAnimationTargets?: AnimationKeyframeTarget[];
       tweenPercentage: number;
       elementId: string;
     } | null,

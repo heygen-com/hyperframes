@@ -7,6 +7,7 @@ import { parseSpringBounce } from "@hyperframes/core/spring-ease";
 import { parseWiggleEase } from "@hyperframes/core/wiggle-ease";
 import { EaseCurveSection, MiniCurveSvg } from "./EaseCurveSection";
 import { resolveEaseCurveTuple } from "./gsapAnimationConstants";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,7 +18,7 @@ afterEach(() => {
 function renderSection(
   ease = "none",
   onCustomEaseCommit = vi.fn(),
-  collidingAnimationIds?: string[],
+  collidingAnimationTargets?: AnimationKeyframeTarget[],
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -27,7 +28,7 @@ function renderSection(
       <EaseCurveSection
         ease={ease}
         onCustomEaseCommit={onCustomEaseCommit}
-        collidingAnimationIds={collidingAnimationIds}
+        collidingAnimationTargets={collidingAnimationTargets}
       />,
     );
   });
@@ -109,17 +110,21 @@ function editorLabel(host: HTMLElement): string | null {
 
 describe("EaseCurveSection preset grid", () => {
   it("shows the number of properties for a multi-id segment", () => {
-    const { host, root } = renderSection("power2.out", vi.fn(), ["move-x", "move-y", "fade"]);
+    const { host, root } = renderSection("power2.out", vi.fn(), [
+      { animationId: "move-x", tweenPercentage: 20 },
+      { animationId: "move-y", tweenPercentage: 50 },
+      { animationId: "fade", tweenPercentage: 80 },
+    ]);
 
     expect(host.textContent).toContain("Applies to 3 properties");
 
     act(() => root.unmount());
   });
 
-  it.each([undefined, ["move-x"]])(
+  it.each([undefined, [{ animationId: "move-x", tweenPercentage: 20 }]])(
     "does not show a property count for a non-colliding segment",
-    (collidingAnimationIds) => {
-      const { host, root } = renderSection("power2.out", vi.fn(), collidingAnimationIds);
+    (collidingAnimationTargets) => {
+      const { host, root } = renderSection("power2.out", vi.fn(), collidingAnimationTargets);
 
       expect(host.textContent).not.toContain("Applies to");
 

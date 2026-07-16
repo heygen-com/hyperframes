@@ -94,14 +94,14 @@ export function useGsapSelectionHandlers({
     animId: string,
     fromPercentage: number,
     toPercentage: number,
-  ) => void;
+  ) => Promise<boolean>;
   resizeKeyframedTween: (
     sel: DomEditSelection,
     animId: string,
     position: number,
     duration: number,
     pctRemap: Array<{ from: number; to: number }>,
-  ) => void;
+  ) => Promise<boolean>;
   convertToKeyframes: (
     sel: DomEditSelection,
     animId: string,
@@ -326,15 +326,20 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapMoveKeyframeToPlayhead = useCallback(
-    (animId: string, fromPercentage: number, selectionOverride?: DomEditSelection | null) => {
+    (
+      animId: string,
+      fromPercentage: number,
+      selectionOverride?: DomEditSelection | null,
+      animationOverride?: GsapAnimation,
+    ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
       // Retime the keyframe to the playhead, preserving its value + ease. The
       // playhead's tween-relative percentage is the move target.
-      const anim = selectedGsapAnimations.find((a) => a.id === animId);
+      const anim = animationOverride ?? selectedGsapAnimations.find((a) => a.id === animId);
       const toPercentage = computeCurrentPercentage(sel, anim);
       trackStudioEvent("keyframe", { action: "move_to_playhead" });
-      moveKeyframe(sel, animId, fromPercentage, toPercentage);
+      void moveKeyframe(sel, animId, fromPercentage, toPercentage);
     },
     [domEditSelection, selectedGsapAnimations, moveKeyframe],
   );
@@ -347,13 +352,13 @@ export function useGsapSelectionHandlers({
       selectionOverride?: DomEditSelection | null,
     ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
-      if (!sel) return;
+      if (!sel) return Promise.resolve(false);
       // Atomic retime: preserves the keyframe's value + per-keyframe ease. Both
       // percentages are tween-relative (the drag handler converts the drop
       // position before calling). No optimistic runtime hold — the soft-reload
       // re-keys the diamond from source.
       trackStudioEvent("keyframe", { action: "retime" });
-      moveKeyframe(sel, animId, fromPercentage, toPercentage);
+      return moveKeyframe(sel, animId, fromPercentage, toPercentage);
     },
     [domEditSelection, moveKeyframe],
   );
@@ -367,11 +372,11 @@ export function useGsapSelectionHandlers({
       selectionOverride?: DomEditSelection | null,
     ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
-      if (!sel) return;
+      if (!sel) return Promise.resolve(false);
       // Boundary drag-to-retime: grows/shifts the tween window + re-keys keyframes
       // in place. Distinct telemetry action so resize is separable from in-window move.
       trackStudioEvent("keyframe", { action: "retime_resize" });
-      resizeKeyframedTween(sel, animId, position, duration, pctRemap);
+      return resizeKeyframedTween(sel, animId, position, duration, pctRemap);
     },
     [domEditSelection, resizeKeyframedTween],
   );
@@ -403,11 +408,12 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapRemoveAllKeyframes = useCallback(
-    (animId: string) => {
-      if (!domEditSelection) return;
+    (animId: string, selectionOverride?: DomEditSelection | null) => {
+      const selection = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!selection) return;
       observeGsapMutation(
-        removeAllKeyframes(domEditSelection, animId),
-        domEditSelection,
+        removeAllKeyframes(selection, animId),
+        selection,
         "remove-all-keyframes",
         "Remove all keyframes",
       );

@@ -96,7 +96,7 @@ export interface TimelineLaneBaseProps {
     propertyGroup?: string,
     tweenPercentage?: number,
     animationId?: string,
-  ) => void;
+  ) => Promise<boolean>;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   /**
    * Right-click on EMPTY lane space (not on a clip — those preventDefault
@@ -564,7 +564,7 @@ export function TimelineLanes({
                             target.propertyGroup,
                             target.tweenPercentage,
                             target.animationId,
-                          )
+                          ) ?? Promise.resolve(false)
                         }
                         suppressClickRef={suppressClickRef}
                       />

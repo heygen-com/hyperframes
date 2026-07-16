@@ -107,7 +107,7 @@ export function TimelineOverlays({
           state={kfContextMenu}
           onClose={() => setKfContextMenu(null)}
           onDelete={(...args) => onDeleteKeyframe?.(...args)}
-          onDeleteAll={(elId) => onDeleteAllKeyframes?.(elId)}
+          onDeleteAll={(element) => onDeleteAllKeyframes?.(element)}
           onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
           onMoveToPlayhead={
             onMoveKeyframeToPlayhead ? (...args) => onMoveKeyframeToPlayhead(...args) : undefined

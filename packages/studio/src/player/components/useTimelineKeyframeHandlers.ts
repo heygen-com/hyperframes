@@ -65,7 +65,7 @@ export function useTimelineKeyframeHandlers({
       if (target.animationId !== undefined && target.tweenPercentage !== undefined) {
         usePlayerStore.getState().setFocusedEaseSegment({
           animationId: target.animationId,
-          collidingAnimationIds: target.collidingAnimationIds,
+          collidingAnimationTargets: target.collidingAnimationTargets,
           tweenPercentage: target.tweenPercentage,
           elementId: elId,
         });
@@ -78,10 +78,9 @@ export function useTimelineKeyframeHandlers({
   const onContextMenuKeyframe = useCallback(
     (e: ReactMouseEvent, elId: string, target: TimelineKeyframeTarget) => {
       const el = expandedElements.find((item) => (item.key ?? item.id) === elId);
-      if (el) {
-        setSelectedElementId(elId);
-        onSelectElement?.(el);
-      }
+      if (!el) return;
+      setSelectedElementId(elId);
+      onSelectElement?.(el);
       const kfData = keyframeCache.get(elId);
       const kf = kfData?.keyframes.find(
         (item) => Math.abs(item.percentage - target.percentage) < 0.2,
@@ -89,6 +88,7 @@ export function useTimelineKeyframeHandlers({
       setKfContextMenu({
         x: e.clientX + 4,
         y: e.clientY + 2,
+        element: el,
         elementId: elId,
         percentage: target.percentage,
         tweenPercentage: target.tweenPercentage ?? kf?.tweenPercentage,

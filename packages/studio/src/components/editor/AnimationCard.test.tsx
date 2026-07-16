@@ -6,6 +6,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnimationCard } from "./AnimationCard";
 import { EASE_PRESETS } from "./easePresetLibrary";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 const trackStudioSegmentEaseEdit = vi.hoisted(() => vi.fn());
 vi.mock("../../telemetry/events", () => ({ trackStudioSegmentEaseEdit }));
@@ -42,7 +43,10 @@ afterEach(() => {
 });
 
 function renderCard(
-  focusedSegment: { tweenPercentage: number; collidingAnimationIds?: string[] } | null,
+  focusedSegment: {
+    tweenPercentage: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+  } | null,
   onEaseCommit = vi.fn(),
   defaultExpanded = false,
   animation = ANIMATION,
@@ -147,9 +151,13 @@ describe("AnimationCard", () => {
   it("commits a focused multi-id segment ease through the bulk callback", () => {
     const onUpdateKeyframeEase = vi.fn();
     const onUpdateSegmentEase = vi.fn();
-    const collidingAnimationIds = [ANIMATION.id, "scale-tween", "opacity-tween"];
+    const collidingAnimationTargets = [
+      { animationId: ANIMATION.id, tweenPercentage: 50 },
+      { animationId: "scale-tween", tweenPercentage: 75 },
+      { animationId: "opacity-tween", tweenPercentage: 25 },
+    ];
     const view = renderCard(
-      { tweenPercentage: 50, collidingAnimationIds },
+      { tweenPercentage: 50, collidingAnimationTargets },
       onUpdateKeyframeEase,
       false,
       ANIMATION,
@@ -158,7 +166,7 @@ describe("AnimationCard", () => {
     );
     const ease = selectPreset(view.host, "quad-out");
 
-    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(collidingAnimationIds, 50, ease);
+    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(collidingAnimationTargets, ease);
     expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
     act(() => view.root.unmount());
   });
@@ -167,7 +175,10 @@ describe("AnimationCard", () => {
     const onUpdateKeyframeEase = vi.fn();
     const onUpdateSegmentEase = vi.fn();
     const view = renderCard(
-      { tweenPercentage: 50, collidingAnimationIds: [ANIMATION.id] },
+      {
+        tweenPercentage: 50,
+        collidingAnimationTargets: [{ animationId: ANIMATION.id, tweenPercentage: 50 }],
+      },
       onUpdateKeyframeEase,
       false,
       ANIMATION,

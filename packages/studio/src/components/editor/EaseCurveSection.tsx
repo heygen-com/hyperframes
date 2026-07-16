@@ -10,6 +10,7 @@ import { holdCurvePath, MiniCurveSvg, sampledPath } from "./easeCurveSvg";
 import { EaseBezierField, SpringBounceField, WiggleField } from "./EaseParamFields";
 import { EASE_CURVES, EASE_LABELS, resolveEaseCurveTuple } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 export { MiniCurveSvg } from "./easeCurveSvg";
 
@@ -235,11 +236,11 @@ function EaseParameterField({
 export function EaseCurveSection({
   ease,
   onCustomEaseCommit,
-  collidingAnimationIds,
+  collidingAnimationTargets,
 }: {
   ease: string;
   onCustomEaseCommit: (ease: string) => void;
-  collidingAnimationIds?: string[];
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
 }) {
   const [pendingEase, setPendingEase] = useState<{ source: string; value: string } | null>(null);
   const displayedEase = pendingEase?.source === ease ? pendingEase.value : ease;
@@ -330,9 +331,9 @@ export function EaseCurveSection({
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
       <EaseTypeDropdown kind={mode} ease={displayedEase} label={label} onSelect={commitEase} />
-      {collidingAnimationIds && collidingAnimationIds.length > 1 && (
+      {collidingAnimationTargets && collidingAnimationTargets.length > 1 && (
         <p className="mb-1 text-[9px] text-neutral-500">
-          Applies to {collidingAnimationIds.length} properties
+          Applies to {collidingAnimationTargets.length} properties
         </p>
       )}
       <EaseModeToggle mode={mode} onCommit={commitEase} />

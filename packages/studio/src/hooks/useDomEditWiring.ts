@@ -92,14 +92,14 @@ export interface UseDomEditWiringParams {
     animId: string,
     fromPercentage: number,
     toPercentage: number,
-  ) => void;
+  ) => Promise<boolean>;
   resizeKeyframedTween: (
     sel: DomEditSelection,
     animId: string,
     position: number,
     duration: number,
     pctRemap: Array<{ from: number; to: number }>,
-  ) => void;
+  ) => Promise<boolean>;
   convertToKeyframes: (
     sel: DomEditSelection,
     animId: string,

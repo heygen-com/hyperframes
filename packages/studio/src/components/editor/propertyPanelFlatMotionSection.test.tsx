@@ -280,7 +280,10 @@ describe("FlatMotionSection", () => {
         elementId: "index.html#hero",
         animationId: "a1",
         tweenPercentage: 50,
-        collidingAnimationIds: ["a1", "a2"],
+        collidingAnimationTargets: [
+          { animationId: "a1", tweenPercentage: 50 },
+          { animationId: "a2", tweenPercentage: 75 },
+        ],
       },
     });
     const { host, root } = renderInto(
@@ -323,7 +326,13 @@ describe("FlatMotionSection", () => {
     expect(preset).not.toBeNull();
     act(() => preset?.click());
 
-    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(["a1", "a2"], 50, "power2.out");
+    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(
+      [
+        { animationId: "a1", tweenPercentage: 50 },
+        { animationId: "a2", tweenPercentage: 75 },
+      ],
+      "power2.out",
+    );
     expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
     act(() => root.unmount());
   });

@@ -146,7 +146,7 @@ describe("TimelineClipDiamonds", () => {
   // to. Select it at its NEW position too.
   it("reselects a retimed keyframe with its post-move tween percentage", () => {
     const onClickKeyframe = vi.fn();
-    const onMoveKeyframe = vi.fn();
+    const onMoveKeyframe = vi.fn().mockResolvedValue(true);
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -221,7 +221,7 @@ describe("TimelineClipDiamonds", () => {
   });
 
   it("composes a rapid second retime from the pending position", () => {
-    const onMoveKeyframe = vi.fn();
+    const onMoveKeyframe = vi.fn().mockResolvedValue(true);
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -299,6 +299,86 @@ describe("TimelineClipDiamonds", () => {
     act(() => root.unmount());
   });
 
+  it.each([
+    ["returns false", () => Promise.resolve(false)],
+    ["rejects", () => Promise.reject(new Error("retime failed"))],
+  ])("clears a failed pending retime when the callback %s", async (_label, settle) => {
+    const onMoveKeyframe = vi.fn().mockImplementationOnce(settle).mockResolvedValue(true);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [
+              {
+                percentage: 0,
+                tweenPercentage: 0,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 0 },
+              },
+              {
+                percentage: 50,
+                tweenPercentage: 50,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 100 },
+              },
+              {
+                percentage: 100,
+                tweenPercentage: 100,
+                propertyGroup: "position",
+                animationId: "anim-1",
+                properties: { x: 200 },
+              },
+            ],
+          }}
+          clipWidthPx={200}
+          clipHeightPx={48}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={0}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          onMoveKeyframe={onMoveKeyframe}
+          groupAware
+        />,
+      );
+    });
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    await act(async () => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 150 }));
+      await Promise.resolve();
+    });
+
+    act(() => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120 }));
+    });
+
+    expect(onMoveKeyframe).toHaveBeenNthCalledWith(
+      2,
+      {
+        percentage: 50,
+        tweenPercentage: 50,
+        propertyGroup: "position",
+        animationId: "anim-1",
+      },
+      60,
+    );
+    act(() => root.unmount());
+  });
+
   // Regression: onClickKeyframe's state updates can re-render the diamond
   // button out from under the gesture before the browser auto-synthesizes the
   // "click" event that follows a button's pointerdown+pointerup. That orphaned
@@ -362,7 +442,12 @@ describe("TimelineClipDiamonds", () => {
               kf(0),
               kf(50),
               kf(100, {
-                collidingAnimationIds: lastAmbiguous ? ["anim-1", "anim-2"] : undefined,
+                collidingAnimationTargets: lastAmbiguous
+                  ? [
+                      { animationId: "anim-1", tweenPercentage: 100 },
+                      { animationId: "anim-2", tweenPercentage: 75 },
+                    ]
+                  : undefined,
               }),
             ],
           }}

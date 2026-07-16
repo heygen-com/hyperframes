@@ -5,30 +5,44 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
-export function accumulateCollidingAnimationIds(
-  keyframe: { animationId?: string; collidingAnimationIds?: string[] },
-  incomingAnimationId: string | undefined,
+export interface AnimationKeyframeTarget {
+  animationId: string;
+  tweenPercentage: number;
+}
+
+export function accumulateCollidingAnimationTargets(
+  keyframe: {
+    animationId?: string;
+    tweenPercentage?: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+  },
+  incoming: { animationId?: string; tweenPercentage?: number },
 ): void {
   const primaryId = keyframe.animationId;
   if (
     primaryId === undefined ||
-    incomingAnimationId === undefined ||
-    primaryId === incomingAnimationId
+    keyframe.tweenPercentage === undefined ||
+    incoming.animationId === undefined ||
+    incoming.tweenPercentage === undefined ||
+    primaryId === incoming.animationId
   ) {
     return;
   }
-  const collisionIds = keyframe.collidingAnimationIds;
-  if (collisionIds?.includes(incomingAnimationId)) return;
-  keyframe.collidingAnimationIds = [
-    ...(collisionIds === undefined || collisionIds.length === 0 ? [primaryId] : collisionIds),
-    incomingAnimationId,
+  const collisionTargets = keyframe.collidingAnimationTargets;
+  if (collisionTargets?.some((target) => target.animationId === incoming.animationId)) return;
+  keyframe.collidingAnimationTargets = [
+    ...(collisionTargets === undefined || collisionTargets.length === 0
+      ? [{ animationId: primaryId, tweenPercentage: keyframe.tweenPercentage }]
+      : collisionTargets),
+    { animationId: incoming.animationId, tweenPercentage: incoming.tweenPercentage },
   ];
 }
 
 export function deduplicateKeyframes<
   T extends GsapPercentageKeyframe & {
     animationId?: string;
-    collidingAnimationIds?: string[];
+    tweenPercentage?: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
   },
 >(keyframes: T[]): T[] {
   const byPct = new Map<number, T>();
@@ -36,7 +50,7 @@ export function deduplicateKeyframes<
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
-      accumulateCollidingAnimationIds(existing, kf.animationId);
+      accumulateCollidingAnimationTargets(existing, kf);
       if (kf.ease) existing.ease = kf.ease;
     } else {
       byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
