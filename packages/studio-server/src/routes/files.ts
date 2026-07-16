@@ -936,6 +936,7 @@ type GsapMutationRequest =
         auto?: boolean;
       }>;
       ease?: string;
+      easeEach?: string;
     }
   | {
       type: "split-animations";
@@ -990,6 +991,18 @@ type GsapMutationRequest =
 // ── GSAP mutation executor ──────────────────────────────────────────────────
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
+
+function resolveReplacementEaseEach(
+  scriptText: string,
+  request: { animationId: string; easeEach?: string },
+): string | undefined {
+  if (request.easeEach !== undefined) return request.easeEach;
+  const original = parseGsapScriptAcorn(scriptText).animations.find(
+    (animation) => animation.id === request.animationId,
+  );
+  if (!original?.arcPath?.enabled) return undefined;
+  return original?.keyframes?.easeEach ?? original?.ease;
+}
 
 // Mutations that can change a position tween's first keyframe (value/existence/timing)
 // and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
@@ -1396,6 +1409,7 @@ function executeGsapMutationAcorn(
         body.duration,
         body.keyframes,
         body.ease,
+        resolveReplacementEaseEach(block.scriptText, body),
       );
       return added.script;
     }
@@ -1750,6 +1764,7 @@ async function executeGsapMutationRecast(
         body.duration,
         body.keyframes,
         body.ease,
+        body.easeEach,
       );
       return result.script;
     }
@@ -1765,6 +1780,7 @@ async function executeGsapMutationRecast(
         body.duration,
         body.keyframes,
         body.ease,
+        resolveReplacementEaseEach(block.scriptText, body),
       );
       return added.script;
     }

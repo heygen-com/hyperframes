@@ -280,3 +280,103 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
     expect(types).not.toContain("replace-with-keyframes");
   });
 });
+
+describe("tryGsapDragIntercept — motion paths", () => {
+  const motionPathAnim = {
+    id: "#puck-b-to-12170-position",
+    targetSelector: "#puck-b",
+    propertyGroup: "position",
+    method: "to",
+    position: 12.17,
+    resolvedStart: 12.17,
+    duration: 16.055,
+    ease: "power1.inOut",
+    properties: {},
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { x: -184, y: 326 } },
+        { percentage: 50, properties: { x: 416, y: 804 } },
+        { percentage: 100, properties: { x: 796, y: 237 } },
+      ],
+    },
+    arcPath: {
+      enabled: true,
+      autoRotate: false,
+      segments: [{ curviness: 1 }, { curviness: 1 }],
+    },
+  } as unknown as GsapAnimation;
+  const liveTween = {
+    targets: () => [{ id: "puck-b" }],
+    vars: { motionPath: { path: [] }, duration: 16.055 },
+    duration: () => 16.055,
+    startTime: () => 12.17,
+  };
+
+  async function dragMotionPath(activeKeyframePct: number | null) {
+    usePlayerStore.setState({
+      autoKeyframeEnabled: true,
+      activeKeyframePct,
+      currentTime: 15.9,
+    });
+    const commitMutation = vi.fn();
+    const handled = await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      [motionPathAnim],
+      fakeIframe("puck-b", [liveTween]),
+      commitMutation,
+    );
+    return { commitMutation, handled };
+  }
+
+  afterEach(() => {
+    usePlayerStore.setState({ activeKeyframePct: null });
+  });
+
+  it("creates a temporal keyframe at the exact playhead instead of redistributing path waypoints", async () => {
+    const { commitMutation, handled } = await dragMotionPath(null);
+
+    expect(handled).toBe(true);
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      {
+        type: "replace-with-keyframes",
+        animationId: motionPathAnim.id,
+        targetSelector: "#puck-b",
+        position: 12.17,
+        duration: 16.055,
+        keyframes: [
+          { percentage: 0, properties: { x: -184, y: 326 } },
+          { percentage: 23.2, properties: { x: -50, y: 30 } },
+          { percentage: 50, properties: { x: 416, y: 804 } },
+          { percentage: 100, properties: { x: 796, y: 237 } },
+        ],
+        ease: "none",
+      },
+      expect.objectContaining({ label: "Move layer (new keyframe)", softReload: true }),
+    );
+    expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).not.toContain(
+      "add-motion-path-point",
+    );
+  });
+
+  it("keeps an explicitly selected path waypoint as a spatial edit", async () => {
+    const { commitMutation, handled } = await dragMotionPath(50);
+
+    expect(handled).toBe(true);
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      {
+        type: "update-motion-path-point",
+        animationId: motionPathAnim.id,
+        pointIndex: 1,
+        x: -50,
+        y: 30,
+      },
+      expect.objectContaining({ label: "Move layer (waypoint)", softReload: true }),
+    );
+    expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).not.toContain(
+      "replace-with-keyframes",
+    );
+  });
+});
