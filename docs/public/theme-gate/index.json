@@ -1,69 +1,9 @@
 [
   {
-    "primitive": "comparison-split",
-    "neutral": "comparison-split.neutral.html",
-    "bold": "comparison-split.bold.html",
-    "editorial": "comparison-split.editorial.html"
-  },
-  {
-    "primitive": "cut-the-curve",
-    "neutral": "cut-the-curve.neutral.html",
-    "bold": "cut-the-curve.bold.html",
-    "editorial": "cut-the-curve.editorial.html"
-  },
-  {
-    "primitive": "multiplayer-cursors",
-    "neutral": "multiplayer-cursors.neutral.html",
-    "bold": "multiplayer-cursors.bold.html",
-    "editorial": "multiplayer-cursors.editorial.html"
-  },
-  {
-    "primitive": "OffsetPathTraveler",
-    "neutral": "OffsetPathTraveler.neutral.html",
-    "bold": "OffsetPathTraveler.bold.html",
-    "editorial": "OffsetPathTraveler.editorial.html"
-  },
-  {
-    "primitive": "oversized-cursor",
-    "neutral": "oversized-cursor.neutral.html",
-    "bold": "oversized-cursor.bold.html",
-    "editorial": "oversized-cursor.editorial.html"
-  },
-  {
-    "primitive": "per-word-rise",
-    "neutral": "per-word-rise.neutral.html",
-    "bold": "per-word-rise.bold.html",
-    "editorial": "per-word-rise.editorial.html"
-  },
-  {
     "primitive": "scramble-reveal",
     "neutral": "scramble-reveal.neutral.html",
     "bold": "scramble-reveal.bold.html",
     "editorial": "scramble-reveal.editorial.html"
-  },
-  {
-    "primitive": "scroll-feed",
-    "neutral": "scroll-feed.neutral.html",
-    "bold": "scroll-feed.bold.html",
-    "editorial": "scroll-feed.editorial.html"
-  },
-  {
-    "primitive": "SplitTypeReveal",
-    "neutral": "SplitTypeReveal.neutral.html",
-    "bold": "SplitTypeReveal.bold.html",
-    "editorial": "SplitTypeReveal.editorial.html"
-  },
-  {
-    "primitive": "SvgStrokeTrace",
-    "neutral": "SvgStrokeTrace.neutral.html",
-    "bold": "SvgStrokeTrace.bold.html",
-    "editorial": "SvgStrokeTrace.editorial.html"
-  },
-  {
-    "primitive": "vector-editor-rig",
-    "neutral": "vector-editor-rig.neutral.html",
-    "bold": "vector-editor-rig.bold.html",
-    "editorial": "vector-editor-rig.editorial.html"
   },
   {
     "primitive": "velocity-throw-snap",
@@ -76,36 +16,6 @@
     "neutral": "beat-pulse-background.neutral.html",
     "bold": "beat-pulse-background.bold.html",
     "editorial": "beat-pulse-background.editorial.html"
-  },
-  {
-    "primitive": "constellation-hub",
-    "neutral": "constellation-hub.neutral.html",
-    "bold": "constellation-hub.bold.html",
-    "editorial": "constellation-hub.editorial.html"
-  },
-  {
-    "primitive": "count-up",
-    "neutral": "count-up.neutral.html",
-    "bold": "count-up.bold.html",
-    "editorial": "count-up.editorial.html"
-  },
-  {
-    "primitive": "kinetic-type-swap",
-    "neutral": "kinetic-type-swap.neutral.html",
-    "bold": "kinetic-type-swap.bold.html",
-    "editorial": "kinetic-type-swap.editorial.html"
-  },
-  {
-    "primitive": "marker-highlight",
-    "neutral": "marker-highlight.neutral.html",
-    "bold": "marker-highlight.bold.html",
-    "editorial": "marker-highlight.editorial.html"
-  },
-  {
-    "primitive": "text-shimmer",
-    "neutral": "text-shimmer.neutral.html",
-    "bold": "text-shimmer.bold.html",
-    "editorial": "text-shimmer.editorial.html"
   },
   {
     "primitive": "tracing-beam",
