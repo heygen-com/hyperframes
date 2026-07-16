@@ -3,12 +3,12 @@
   "name": "whiteboard-ink",
   "type": "hyperframes:component",
   "title": "Whiteboard Ink",
-  "description": "A hand-authored whiteboard sketch draws one measured stroke at a time while a pen nib follows the active tip.",
-  "tags": ["motion-primitive", "intro", "reveal", "svg", "whiteboard", "line-draw"],
+  "description": "A whiteboard sketch draws one measured stroke at a time while a pen nib follows the active tip. Preset sketches (bulb, flow, rocket) or your own multi-stroke SVG paths via the strokes slot; a path marked data-ink=accent rides the accent token.",
+  "tags": ["motion-primitive", "intro", "reveal", "svg", "whiteboard", "line-draw", "slot"],
   "jobs": ["reveal"],
   "family": "intros-and-reveals",
   "profile": "ink-draw",
-  "evidence": "Video Primitives Wave I I8 whiteboard-ink contract",
+  "evidence": "Video Primitives Wave I I8 whiteboard-ink contract; Wave J U-W strokes slot",
   "syncPoints": [{ "id": "ink-complete", "phase": "in", "offset": 3.3 }],
   "files": [
     {
@@ -23,7 +23,7 @@
       "type": "enum",
       "role": "content",
       "label": "Sketch",
-      "description": "Authored whiteboard sketch to draw.",
+      "description": "Authored preset sketch to draw. Ignored when the strokes slot holds custom paths.",
       "default": "bulb",
       "options": [
         { "value": "bulb", "label": "Bulb" },
@@ -56,12 +56,25 @@
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Color used by one highlight stroke in the selected sketch.",
+      "description": "Color used by strokes marked data-ink=accent (one highlight stroke in each preset).",
       "default": "green",
       "options": [
         { "value": "green", "label": "Green" },
         { "value": "blue", "label": "Blue" },
         { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "How the completed lockup leaves. none holds the final frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
       ]
     }
   ]

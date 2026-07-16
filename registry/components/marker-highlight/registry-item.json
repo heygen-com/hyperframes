@@ -3,8 +3,13 @@
   "name": "marker-highlight",
   "type": "hyperframes:component",
   "title": "Marker Highlight",
-  "description": "A marker block draws behind a phrase as the text color shifts.",
-  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "description": "Display text settles in, then one hand-drawn marker stroke (highlight, circle, underline, or scribble) draws over the emphasized word on cue.",
+  "tags": ["motion-primitive", "typography", "emphasis", "marker", "deterministic"],
+  "jobs": ["emphasize"],
+  "family": "typography",
+  "profile": "emphasis",
+  "evidence": "Wave J U-M rebuild: corpus emphasis unit, getTotalLength dash draw over a substring-matched word",
+  "syncPoints": [{ "id": "marker-draw", "phase": "in", "offset": 0.9 }],
   "files": [
     {
       "path": "marker-highlight.html",
@@ -12,7 +17,73 @@
       "type": "hyperframes:snippet"
     }
   ],
-  "preview": {
-    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-highlight.png"
-  }
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Full line of display text.",
+      "default": "Ship it with confidence"
+    },
+    {
+      "id": "emphasis_word",
+      "type": "string",
+      "role": "content",
+      "label": "Emphasis word",
+      "description": "First case-insensitive substring match in text receives the marker. Empty or unmatched draws no marker.",
+      "default": "confidence"
+    },
+    {
+      "id": "style",
+      "type": "enum",
+      "role": "style",
+      "label": "Marker style",
+      "description": "Shape of the hand-drawn marker stroke.",
+      "default": "highlight",
+      "options": [
+        { "value": "highlight", "label": "Highlight" },
+        { "value": "circle", "label": "Circle" },
+        { "value": "underline", "label": "Underline" },
+        { "value": "scribble", "label": "Scribble" }
+      ]
+    },
+    {
+      "id": "draw_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Draw at",
+      "description": "Second (from mount start) the marker starts drawing. Clamped so the stroke completes before any exit.",
+      "default": 0.9,
+      "min": 0,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Marker ink color from the contract token map.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the lockup holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
 }

@@ -1,0 +1,435 @@
+<!doctype html>
+<!--
+  before-after-wipe: HyperFrames video primitive (ui-props / holdable / compare)
+
+  Concept: two full-bleed CONTENT SLOTS share one frame. The before slot stays
+  fully visible as the base layer while the after slot wipes over it from the
+  left edge, and a persistent divider rests at rest_split percent. Callers fill
+  the two named slot panels with their own content (screenshots, video, HTML);
+  when a slot is left untouched, a tasteful token-styled default renders
+  instead. One mechanic, one job: compare two visual states.
+
+  Ports the divider-wipe mechanic from comparison-split, with real content
+  slots instead of baked demo art (Wave J, U-B).
+
+  Slots (see README.md for a worked example):
+    - [data-slot="before"]: base layer content. Replace the children of this
+      element in your installed copy. Default: a muted token wireframe.
+    - [data-slot="after"]:  revealed layer content. Same mechanism. Default:
+      a brand-tinted version of the wireframe.
+    Direct img/video children of a slot are sized to cover the panel.
+
+  Variables (declared in data-composition-variables below):
+    - label_a (string, default "Before"): chip on the base panel. Empty hides it.
+    - label_b (string, default "After"): chip on the revealed panel. Empty hides it.
+    - rest_split (number, default 50, 0 to 100%): divider resting position.
+    - wipe_at (number, seconds, default 0.25): when the wipe starts, relative
+      to mount start. Clamped so the wipe always completes inside IN.
+    - accent (green | blue | violet, default green): divider handle and after
+      chip color. green maps to --brand, blue to --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none holds
+      the final frame (frame roots own transitions; holds end films).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN       = wipe_at + 1.05s wipe travel (stage settles during the first 0.32s)
+    HOLD     = elastic = max(0, D - (IN + OUT)); deliberately still so the
+               comparison stays easy to inspect
+    OUT      = 0.50s when exit is fade or up, 0 when exit is none
+    If D < IN + OUT, IN and OUT scale down together so IN + OUT == D.
+
+  Sync point: wipe-land at wipe_at + 1.05s inside IN (1.30s at defaults). It
+  never moves into elastic HOLD.
+
+  Sound cue: dispatches a bubbling `hf:sfx` CustomEvent with id
+  "wipe-land-soft" at wipe-land. This primitive never plays audio.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset:0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "before-after-wipe" key (mount flattening strips
+  data-composition-id from the live root). Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="before-after-wipe"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "label_a", "type": "string", "role": "content", "label": "Before label", "description": "Chip shown on the base before panel. Blank hides the chip.", "default": "Before" },
+    { "id": "label_b", "type": "string", "role": "content", "label": "After label", "description": "Chip shown on the revealed after panel. Blank hides the chip.", "default": "After" },
+    { "id": "rest_split", "type": "number", "role": "layout", "label": "Resting split", "description": "Divider resting position after the wipe lands.", "default": 50, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "wipe_at", "type": "number", "role": "timing", "label": "Wipe start", "description": "Seconds after mount start when the wipe begins.", "default": 0.25, "min": 0, "max": 8, "step": 0.05, "unit": "s" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Divider handle and after chip color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. None holds the final comparison frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Before After Wipe</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="before-after-wipe" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host-owned box. Internal measurements use cqw/cqh
+             and every painted color comes from a contract token. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .baw-clip,
+          .baw-stage,
+          .baw-panel,
+          .baw-slot {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .baw-clip {
+            overflow: hidden;
+          }
+
+          .baw-stage {
+            --baw-split: 0;
+            opacity: 0;
+          }
+
+          .baw-panel {
+            overflow: hidden;
+          }
+
+          /* The after layer wipes over the base via one clip-path driven by
+             --baw-split, the single owner of wipe progress. */
+          .baw-after {
+            z-index: 2;
+            clip-path: inset(0 calc((100 - var(--baw-split)) * 1%) 0 0);
+          }
+
+          /* Caller-supplied media covers its panel edge to edge. */
+          .baw-slot > img,
+          .baw-slot > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          /* Token-styled default slot content: a wireframe card that reads
+             muted on the before layer and brand-tinted on the after layer.
+             Callers replacing slot children never see any of this. */
+          .baw-default {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+          }
+
+          .baw-before .baw-default {
+            background:
+              linear-gradient(
+                  color-mix(in srgb, var(--border, #334155) 34%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              linear-gradient(
+                  90deg,
+                  color-mix(in srgb, var(--border, #334155) 34%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              var(--surface, #172033);
+          }
+
+          .baw-after .baw-default {
+            background: linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--brand, #22c55e) 32%, var(--surface, #172033)) 0%,
+              var(--surface, #172033) 58%,
+              color-mix(in srgb, var(--baw-accent, #22c55e) 22%, var(--surface, #172033)) 100%
+            );
+          }
+
+          .baw-card {
+            width: 56cqw;
+            height: 56cqh;
+            padding: var(--space-3, 4cqh) var(--space-3, 4cqw);
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--bg, #07111f));
+            box-shadow: 0 2cqh 5cqw color-mix(in srgb, var(--bg, #07111f) 45%, transparent);
+          }
+
+          .baw-after .baw-card {
+            border-color: color-mix(in srgb, var(--baw-accent, #22c55e) 52%, var(--border, #334155));
+            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--brand, #22c55e));
+          }
+
+          .baw-bar {
+            width: 34%;
+            height: 4.4cqh;
+            margin-bottom: var(--space-3, 4cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.5;
+          }
+
+          .baw-after .baw-bar {
+            background: var(--baw-accent, #22c55e);
+            opacity: 0.92;
+          }
+
+          .baw-line {
+            height: 2.4cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.4;
+          }
+
+          .baw-line:nth-of-type(2) {
+            width: 92%;
+          }
+
+          .baw-line:nth-of-type(3) {
+            width: 68%;
+          }
+
+          .baw-line:nth-of-type(4) {
+            width: 44%;
+          }
+
+          .baw-after .baw-line {
+            background: color-mix(in srgb, var(--brand, #22c55e) 70%, var(--fg, #f8fafc));
+            opacity: 0.75;
+          }
+
+          /* Label chips live outside the slots so they always render above
+             caller content. The after chip is clipped with its own panel, so
+             it appears only once the wipe has passed it. */
+          .baw-chip {
+            position: absolute;
+            z-index: 4;
+            top: var(--space-3, 4cqh);
+            padding: var(--space-1, 1.2cqh) var(--space-2, 2.2cqw);
+            border: 0.14cqw solid var(--border, #334155);
+            border-radius: 999cqw;
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--bg, #07111f));
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: min(3cqw, 4.2cqh);
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .baw-chip:empty {
+            display: none;
+          }
+
+          .baw-before .baw-chip {
+            right: var(--space-3, 4cqw);
+          }
+
+          .baw-after .baw-chip {
+            left: var(--space-3, 4cqw);
+            border-color: color-mix(in srgb, var(--baw-accent, #22c55e) 62%, var(--border, #334155));
+            color: var(--fg, #f8fafc);
+          }
+
+          .baw-divider {
+            position: absolute;
+            z-index: 5;
+            top: 0;
+            bottom: 0;
+            left: calc(var(--baw-split) * 1%);
+            width: 0.4cqw;
+            transform: translateX(-50%);
+            background: var(--fg, #f8fafc);
+            pointer-events: none;
+          }
+
+          .baw-divider::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: min(5cqw, 7cqh);
+            aspect-ratio: 1;
+            transform: translate(-50%, -50%);
+            border: 0.3cqw solid var(--baw-accent, #22c55e);
+            border-radius: 50%;
+            background: var(--fg, #f8fafc);
+          }
+        </style>
+
+        <div
+          id="before-after-wipe-clip"
+          class="baw-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="baw-stage">
+            <section class="baw-panel baw-before" aria-label="Before panel">
+              <div class="baw-slot" data-slot="before">
+                <!-- SLOT "before": replace the children of this element with
+                     your own content (img, video, or HTML). -->
+                <div class="baw-default" aria-hidden="true">
+                  <div class="baw-card">
+                    <div class="baw-bar"></div>
+                    <div class="baw-line"></div>
+                    <div class="baw-line"></div>
+                    <div class="baw-line"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="baw-chip baw-chip-a"></div>
+            </section>
+
+            <section class="baw-panel baw-after" aria-label="After panel">
+              <div class="baw-slot" data-slot="after">
+                <!-- SLOT "after": replace the children of this element with
+                     your own content (img, video, or HTML). -->
+                <div class="baw-default" aria-hidden="true">
+                  <div class="baw-card">
+                    <div class="baw-bar"></div>
+                    <div class="baw-line"></div>
+                    <div class="baw-line"></div>
+                    <div class="baw-line"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="baw-chip baw-chip-b"></div>
+            </section>
+
+            <div class="baw-divider" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "before-after-wipe";
+            var stage = root.querySelector(".baw-stage");
+            var chipA = root.querySelector(".baw-chip-a");
+            var chipB = root.querySelector(".baw-chip-b");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var labelA = vars.label_a == null ? "Before" : String(vars.label_a);
+            var labelB = vars.label_b == null ? "After" : String(vars.label_b);
+            var rawSplit = vars.rest_split == null ? 50 : Number(vars.rest_split);
+            // INVARIANT: rest_split always clamps into the declared 0-100 range.
+            var restSplit = Number.isFinite(rawSplit) ? Math.max(0, Math.min(100, rawSplit)) : 50;
+            var rawWipeAt = vars.wipe_at == null ? 0.25 : Number(vars.wipe_at);
+            var wipeAt = Number.isFinite(rawWipeAt) ? Math.max(0, Math.min(8, rawWipeAt)) : 0.25;
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // INVARIANT: only none | fade | up reaches the timeline.
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            chipA.textContent = labelA;
+            chipB.textContent = labelB;
+            root.style.setProperty("--baw-accent", accentColors[accent]);
+
+            // RETIME RANGE: fixed IN and OUT scale together only when D is too
+            // short. HOLD is the sole elastic phase. Never use timeScale().
+            var STAGE_IN_BASE = 0.32;
+            var WIPE_DURATION_BASE = 1.05;
+            var IN_BASE = wipeAt + WIPE_DURATION_BASE;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = Math.min(STAGE_IN_BASE * scale, IN);
+            var WIPE_AT = wipeAt * scale;
+            var WIPE_DURATION = WIPE_DURATION_BASE * scale;
+            var WIPE_END = IN;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // Explicit both-endpoints state makes tl.seek(0) deterministic.
+            // --baw-split is the only owner of both clip and divider progress.
+            gsap.set(stage, { opacity: 0, y: 0, "--baw-split": 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: stage settle, then one shared wipe value travels to rest_split.
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+            tl.to(
+              stage,
+              { "--baw-split": restSplit, duration: WIPE_DURATION, ease: "sine.inOut" },
+              WIPE_AT,
+            );
+            tl.call(
+              function () {
+                fireSfx("wipe-land-soft", WIPE_END);
+              },
+              [],
+              WIPE_END,
+            );
+
+            // HOLD: deliberately steady at the resting split.
+
+            // OUT: only when the exit variable asks for one; exit none holds
+            // the final comparison frame (frame roots own transitions).
+            if (exit !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-6cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

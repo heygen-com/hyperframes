@@ -6,17 +6,28 @@
   samples the active path tip. The nib follows getPointAtLength during each
   draw and takes a short lifted hop between strokes.
 
+  Strokes slot: the SVG ships an empty <g data-slot="strokes"> group. Fill it
+  with your own <path> elements (in your installed copy) and those paths
+  become the drawing; the sketch enum is ignored while the slot has paths.
+  Mark one path data-ink="accent" to route it through the accent token map.
+  Nib riding, per-stroke cadence, and the ink law are identical for slot
+  strokes and presets.
+
   Variables:
-    - sketch (bulb / flow / rocket): authored multi-stroke sketch.
+    - sketch (bulb / flow / rocket): authored preset sketch; ignored when the
+      strokes slot holds paths.
     - caption (string): short line shown after the drawing completes.
     - pen (show / hide): visibility of the traveling nib actor.
     - accent (green / blue / violet): one highlight stroke routed through a
       distinct contract token.
+    - exit (none / fade / up): how the completed lockup leaves. none holds
+      the final frame (frame roots own transitions); fade releases opacity
+      only; up adds the small upward drift.
 
   Envelope, fixed IN and OUT with elastic HOLD only:
     IN_BASE  = 3.55s, 3.25s sequential draw phase, then pen exit and caption
     HOLD     = max(0, D - IN - OUT), dead-calm completed lockup
-    OUT_BASE = 0.45s, completed sketch and caption fade together
+    OUT_BASE = 0.45s when exit is fade or up, otherwise 0 (hold to the end)
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
     The timeline is never time-scaled.
 
@@ -33,10 +44,11 @@
   data-composition-id="whiteboard-ink"
   data-composition-duration="5"
   data-composition-variables='[
-    { "id": "sketch", "type": "enum", "role": "content", "label": "Sketch", "description": "Authored whiteboard sketch to draw.", "default": "bulb", "options": [{ "value": "bulb", "label": "Bulb" }, { "value": "flow", "label": "Flow" }, { "value": "rocket", "label": "Rocket" }] },
+    { "id": "sketch", "type": "enum", "role": "content", "label": "Sketch", "description": "Authored preset sketch to draw. Ignored when the strokes slot holds custom paths.", "default": "bulb", "options": [{ "value": "bulb", "label": "Bulb" }, { "value": "flow", "label": "Flow" }, { "value": "rocket", "label": "Rocket" }] },
     { "id": "caption", "type": "string", "role": "content", "label": "Caption", "description": "Short line shown after the sketch completes.", "default": "Draw the idea" },
     { "id": "pen", "type": "enum", "role": "style", "label": "Pen", "description": "Show or hide the pen nib actor.", "default": "show", "options": [{ "value": "show", "label": "Show" }, { "value": "hide", "label": "Hide" }] },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by one highlight stroke in the selected sketch.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by strokes marked data-ink=accent (one highlight stroke in each preset).", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "How the completed lockup leaves. none holds the final frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -116,6 +128,21 @@
           }
 
           .wbi-stroke.wbi-accent {
+            stroke: var(--wbi-accent);
+          }
+
+          /* Custom strokes-slot paths inherit the same ink treatment without
+             needing any class; data-ink="accent" routes through the accent
+             token map exactly like a preset's highlight stroke. */
+          [data-slot="strokes"] path {
+            fill: none;
+            stroke: var(--fg, #20242b);
+            stroke-width: 6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          [data-slot="strokes"] path[data-ink="accent"] {
             stroke: var(--wbi-accent);
           }
 
@@ -245,6 +272,14 @@
                   <path class="wbi-stroke" d="M 548 431 C 567 451 573 475 567 500"></path>
                 </g>
 
+                <!--
+                  Strokes slot. Fill this group with your own <path> elements
+                  (installed copy) to replace the preset sketches; paths draw
+                  in document order in the 0 0 1000 560 viewBox space. Mark a
+                  path data-ink="accent" for the accent token. Ships empty.
+                -->
+                <g class="wbi-sketch" data-slot="strokes" data-sketch="custom" hidden></g>
+
                 <g class="wbi-pen" aria-hidden="true">
                   <g class="wbi-pen-art">
                     <path class="wbi-pen-body" d="M 0 0 L -43 -11 L -52 0 L -43 11 Z"></path>
@@ -290,23 +325,44 @@
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var exitModes = { none: true, fade: true, up: true };
+            var exitMode = Object.prototype.hasOwnProperty.call(exitModes, vars.exit)
+              ? vars.exit
+              : "none";
+
+            // Strokes slot: user-supplied paths replace the preset sketches.
+            var strokesSlot = root.querySelector('[data-slot="strokes"]');
+            var slotPaths = strokesSlot ? strokesSlot.querySelectorAll("path") : [];
+            var hasCustomStrokes = slotPaths.length > 0;
+            if (hasCustomStrokes) {
+              Array.prototype.forEach.call(slotPaths, function (path) {
+                // CSS beats SVG presentation attributes; promote an authored
+                // stroke-width to inline style so it wins over the slot rule.
+                var strokeWidth = path.getAttribute("stroke-width");
+                if (strokeWidth) path.style.strokeWidth = strokeWidth;
+              });
+            }
 
             Object.keys(sketchGroups).forEach(function (name) {
               // SVG <g> has no `hidden` IDL property (assignment is a dead
               // expando); toggle the attribute so the [hidden] CSS applies.
-              if (name !== sketch) sketchGroups[name].setAttribute("hidden", "");
+              if (hasCustomStrokes || name !== sketch) sketchGroups[name].setAttribute("hidden", "");
               else sketchGroups[name].removeAttribute("hidden");
             });
+            if (hasCustomStrokes) strokesSlot.removeAttribute("hidden");
+            var activeGroup = hasCustomStrokes ? strokesSlot : sketchGroups[sketch];
             root.style.setProperty("--wbi-accent", accentColors[accent]);
             captionElement.textContent = caption;
             penElement.style.display = penVisible ? "" : "none";
             stage.setAttribute(
               "aria-label",
-              sketch.charAt(0).toUpperCase() + sketch.slice(1) + " sketch. " + caption,
+              (hasCustomStrokes
+                ? "Custom sketch. "
+                : sketch.charAt(0).toUpperCase() + sketch.slice(1) + " sketch. ") + caption,
             );
 
-            var groupTransform = sketchGroups[sketch].transform.baseVal.consolidate();
-            var strokes = Array.from(sketchGroups[sketch].querySelectorAll(".wbi-stroke")).map(
+            var groupTransform = activeGroup.transform.baseVal.consolidate();
+            var strokes = Array.from(activeGroup.querySelectorAll("path")).map(
               function (path) {
                 var length = path.getTotalLength();
                 path.style.strokeDasharray = length + " " + length;
@@ -355,7 +411,7 @@
             var DRAW_PHASE_BASE = 3.25;
             var CAPTION_BASE = 0.3;
             var IN_BASE = DRAW_PHASE_BASE + CAPTION_BASE;
-            var OUT_BASE = 0.45;
+            var OUT_BASE = exitMode === "none" ? 0 : 0.45;
             var resolvedDuration =
               window.__hyperframes && window.__hyperframes.getDuration
                 ? window.__hyperframes.getDuration()
@@ -376,8 +432,17 @@
             var hopCount = strokes.length - 1;
             var HOP = 0.1 * phaseScale;
             var MIN_DRAW = 0.26 * phaseScale;
+            // Custom slots can hold many strokes; when the fixed per-stroke
+            // floors alone would overrun the draw phase, shrink them together
+            // so the cadence stays sequential and the phase never overflows.
+            var fixedNeed = MIN_DRAW * strokes.length + HOP * hopCount;
+            if (fixedNeed > DRAW_PHASE) {
+              var crowd = DRAW_PHASE / fixedNeed;
+              HOP *= crowd;
+              MIN_DRAW *= crowd;
+            }
             var DRAW_BUDGET = DRAW_PHASE - HOP * hopCount;
-            var LENGTH_BUDGET = DRAW_BUDGET - MIN_DRAW * strokes.length;
+            var LENGTH_BUDGET = Math.max(0, DRAW_BUDGET - MIN_DRAW * strokes.length);
             var OUT_START = IN + HOLD;
             var cursor = 0;
 
@@ -457,8 +522,13 @@
             // HOLD: the completed lockup stays dead calm. Duration changes
             // stretch only this gap between the caption reveal and OUT.
 
-            // OUT: the completed drawing leaves as one subject.
-            tl.to(stage, { opacity: 0, y: "-1.8cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+            // OUT: only when an exit is requested; exit none holds the final
+            // frame to the end (frame roots own transitions).
+            if (exitMode !== "none") {
+              var exitTween = { opacity: 0, duration: OUT, ease: "power2.in" };
+              if (exitMode === "up") exitTween.y = "-1.8cqh";
+              tl.to(stage, exitTween, OUT_START);
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

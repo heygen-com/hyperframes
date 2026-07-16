@@ -24,15 +24,19 @@
       incoming distance is derived from this fraction so seam velocity stays
       matched. At 0 or 1, the corresponding zero-duration half collapses.
     - blurPx (number, default 12) sets blur at the cut seam.
+    - exit ("none" | "fade" | "up", default "none") optionally departs the
+      incoming subject at the end. Enabling it reserves a short tail window
+      (min(0.35s, 25% of D)) after the incoming subject lands.
 
-  Envelope (transition profile, no elastic HOLD):
-    OUT = D * cutFraction, power4.in
-    IN  = D * (1 - cutFraction), power4.out
+  Envelope (transition profile, no elastic HOLD; T = D minus the exit tail,
+  which is 0 when exit is none):
+    OUT = T * cutFraction, power4.in
+    IN  = T * (1 - cutFraction), power4.out
     The default 0.33 split is approximately 1:2 in time. Incoming distance is
     derived from OUT distance and the duration ratio, preserving the same
     approximately 1:2 spatial split and matching velocity at the cut.
 
-  Sync point: CUT_AT = D * cutFraction, the fixed boundary between OUT and
+  Sync point: CUT_AT = T * cutFraction, the fixed boundary between OUT and
   IN. It never lands in a HOLD because this profile has no HOLD phase.
 
   Sound cue: a short whip cut fires at CUT_AT. The primitive never plays
@@ -61,7 +65,8 @@
     { "id": "subject", "type": "enum", "role": "content", "label": "Subject", "description": "Visual payload used on both sides of the cut.", "default": "cursor", "options": [{ "value": "cursor", "label": "Cursor" }, { "value": "card", "label": "Card" }, { "value": "scene", "label": "Scene" }] },
     { "id": "direction", "type": "enum", "role": "motion", "label": "Direction", "description": "Shared screen direction for outgoing and incoming travel.", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "up", "label": "Up" }, { "value": "down", "label": "Down" }] },
     { "id": "cutFraction", "type": "number", "role": "timing", "label": "Cut fraction", "description": "Normalized point where the hard cut swaps subjects.", "default": 0.33, "min": 0, "max": 1, "step": 0.01 },
-    { "id": "blurPx", "type": "number", "role": "style", "label": "Cut blur", "description": "Blur in pixels shared by both subjects at the cut seam.", "default": 12, "min": 0, "max": 40, "step": 1, "unit": "px" }
+    { "id": "blurPx", "type": "number", "role": "style", "label": "Cut blur", "description": "Blur in pixels shared by both subjects at the cut seam.", "default": 12, "min": 0, "max": 40, "step": 1, "unit": "px" },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure of the incoming subject. Default none: it rests until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -396,6 +401,7 @@
             var cutFraction = Number.isFinite(rawCut) ? Math.max(0, Math.min(1, rawCut)) : 0.33;
             var rawBlur = Number(vars.blurPx);
             var blurPx = Number.isFinite(rawBlur) ? Math.max(0, rawBlur) : 12;
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             root.dataset.subject = subject;
 
@@ -408,8 +414,12 @@
             };
             var vector = vectors[direction];
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "1"));
-            var CUT_AT = duration * cutFraction;
-            var ENTRY_DURATION = duration - CUT_AT;
+            // Exit none keeps the whole duration for the cut profile. An
+            // enabled exit reserves a short tail after the incoming lands.
+            var EXIT = exit === "none" ? 0 : Math.min(0.35, duration * 0.25);
+            var TRAVEL = Math.max(0.001, duration - EXIT);
+            var CUT_AT = TRAVEL * cutFraction;
+            var ENTRY_DURATION = TRAVEL - CUT_AT;
             var entryDistance =
               CUT_AT > 0 ? vector.distance * (ENTRY_DURATION / CUT_AT) : vector.distance * 2;
             var seamBlur = "blur(" + blurPx + "px)";
@@ -465,6 +475,17 @@
               );
             } else {
               tl.set(incoming, incomingEnd, CUT_AT);
+            }
+
+            // Optional departure; exit none rests until the frame cuts.
+            if (exit === "fade") {
+              tl.to(incoming, { opacity: 0, duration: EXIT, ease: "power2.in" }, TRAVEL);
+            } else if (exit === "up") {
+              tl.to(
+                incoming,
+                { opacity: 0, y: "-6cqh", duration: EXIT, ease: "power2.in" },
+                TRAVEL,
+              );
             }
 
             tl.seek(0);

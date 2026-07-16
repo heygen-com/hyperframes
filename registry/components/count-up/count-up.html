@@ -12,11 +12,14 @@
     - prefix (string, default ""): optional text before the value.
     - suffix (string, default "%"): optional text after the value.
     - accent (green | blue | violet, default "green"): count color.
+    - glow (boolean, default false): optional accent glow under the count.
+    - exit (none | fade | up, default "none"): optional departure.
 
   Envelope, fixed IN and OUT with elastic HOLD only:
     IN_BASE  = 2.05s, stage arrival, eased count, and landing pulse
     HOLD     = max(0, D - IN - OUT), subtle drift then 0.25s stillness
-    OUT_BASE = 0.45s, upward release and fade
+    OUT_BASE = 0.45s departure when exit is fade or up, 0s when exit is
+               none (the default: the landed value holds until the cut)
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
     The timeline is never time-scaled.
 
@@ -37,7 +40,9 @@
     { "id": "end", "type": "number", "role": "content", "label": "End value", "description": "Final value where the count lands.", "default": 100, "step": 1 },
     { "id": "prefix", "type": "string", "role": "content", "label": "Prefix", "description": "Optional text shown before the value.", "default": "" },
     { "id": "suffix", "type": "string", "role": "content", "label": "Suffix", "description": "Optional text shown after the value.", "default": "%" },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the count.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the count.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "glow", "type": "boolean", "role": "style", "label": "Glow", "description": "Optional soft accent glow under the count. Off by default.", "default": false },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the landed value holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -84,21 +89,25 @@
             font-size: var(--cu-font-size);
             font-variant-numeric: tabular-nums;
             font-feature-settings: "tnum" 1;
-            font-weight: 800;
+            font-weight: 600;
             line-height: 1;
             letter-spacing: -0.045em;
             text-align: center;
-            text-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--cu-accent) 24%, transparent);
             transform-origin: 50% 58%;
             white-space: nowrap;
             will-change: transform, opacity;
+          }
+
+          /* Glow is opt-in via the glow variable; the register ships flat. */
+          .cu-stage.cu-glow {
+            text-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--cu-accent) 24%, transparent);
           }
 
           .cu-affix {
             flex: 0 0 auto;
             color: color-mix(in srgb, var(--cu-accent) 72%, var(--fg, #f8fafc));
             font-size: 0.52em;
-            font-weight: 720;
+            font-weight: 600;
             letter-spacing: -0.02em;
           }
 
@@ -163,6 +172,8 @@
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var glow = vars.glow === true || vars.glow === "true";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             function formatValue(value) {
               return Math.round(value).toLocaleString("en-US");
@@ -171,6 +182,7 @@
             prefixElement.textContent = prefix;
             suffixElement.textContent = suffix;
             root.style.setProperty("--cu-accent", accentColors[accent]);
+            stage.classList.toggle("cu-glow", glow);
 
             var startText = prefix + formatValue(start) + suffix;
             var endText = prefix + formatValue(end) + suffix;
@@ -184,14 +196,14 @@
             stage.setAttribute("aria-label", endText);
 
             var IN_BASE = 2.05;
-            var OUT_BASE = 0.45;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
             var COUNT_BASE = 1.72;
             var PULSE_HALF_BASE = 0.165;
             var ARRIVAL_BASE = 0.38;
             var STILLNESS = 0.25;
             var FPS = 30;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
-            var totalBase = IN_BASE + OUT_BASE;
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
             var scale = duration < totalBase ? duration / totalBase : 1;
             var IN = IN_BASE * scale;
             var OUT = OUT_BASE * scale;
@@ -245,8 +257,17 @@
               );
             }
 
-            tl.to(stage, { y: "-2.2cqh", duration: OUT, ease: "power2.in" }, OUT_START);
-            tl.to(stage, { opacity: 0, scale: 0.985, duration: OUT, ease: "power2.in" }, OUT_START);
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-2.2cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(
+                stage,
+                { opacity: 0, scale: 0.985, duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

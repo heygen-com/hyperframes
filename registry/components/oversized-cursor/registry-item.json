@@ -56,6 +56,19 @@
       "role": "content",
       "label": "Click label",
       "default": "Generate"
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
     }
   ]
 }

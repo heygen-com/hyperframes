@@ -1,0 +1,634 @@
+<!doctype html>
+<!--
+  chart-story: HyperFrames video primitive (proof and stats / prove)
+
+  One chart builds from data in reading order and lands the exact supplied
+  values. Bars grow staggered from the baseline, a line draws left to right
+  with an optional translucent area fill, a donut ring sweeps segment by
+  segment, or horizontal progress bars fill top to bottom. Axis and data
+  labels fade in reading order; the emphasized datum takes the accent color
+  and a value callout that pops and settles on the exact value plus unit.
+
+  Variables:
+    - type (bars | line | donut | progress, default "bars"): chart form.
+    - data (string, default "12, 28, 45, 64"): comma-separated numbers.
+    - labels (string, default "Q1, Q2, Q3, Q4"): comma-separated labels.
+    - emphasize (number, default 3): index of the accented datum, clamped.
+    - unit (string, default "%"): suffix appended to every value.
+    - accent (green | blue | violet, default "green"): emphasis color.
+    - exit (none | fade | up, default none): films end on the hold.
+
+  Envelope, fixed IN with elastic HOLD only (OUT exists only when exit is
+  fade or up):
+    IN_BASE  = 3.3s, stage arrival, axis draw, data build, labels, callout
+    HOLD     = max(0, D - IN - OUT), one finite drift then 0.3s stillness
+    OUT_BASE = 0.5s only when exit is fade or up, otherwise 0
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Determinism: the whole SVG is built synchronously from the variables, all
+  dash lengths come from getTotalLength (never the pathLength attribute, no
+  vector-effect on dashed paths), and the callout number rows are authored
+  frame sets, so repeated or reverse seeks always show the same pixels. The
+  final displayed values are the raw supplied tokens, never re-rounded.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal chart-story key.
+-->
+<html
+  lang="en"
+  data-composition-id="chart-story"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "type", "type": "enum", "role": "content", "label": "Chart type", "description": "Chart form the data builds into.", "default": "bars", "options": [{ "value": "bars", "label": "Bars" }, { "value": "line", "label": "Line" }, { "value": "donut", "label": "Donut" }, { "value": "progress", "label": "Progress" }] },
+    { "id": "data", "type": "string", "role": "content", "label": "Data", "description": "Comma-separated numbers; the chart lands exactly on these values.", "default": "12, 28, 45, 64" },
+    { "id": "labels", "type": "string", "role": "content", "label": "Labels", "description": "Comma-separated labels, one per datum.", "default": "Q1, Q2, Q3, Q4" },
+    { "id": "emphasize", "type": "number", "role": "content", "label": "Emphasize", "description": "Index of the datum that takes the accent and the value callout. Clamped to the data range.", "default": 3, "step": 1 },
+    { "id": "unit", "type": "string", "role": "content", "label": "Unit", "description": "Suffix appended to every displayed value.", "default": "%" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color used by the emphasized datum and its callout.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "Optional departure. Proof stats end on the still hold, so the default is none.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chart Story</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="chart-story" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cs-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .cs-stage {
+            position: relative;
+            width: 92cqw;
+            height: 88cqh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-2, 2cqmin);
+            will-change: transform, opacity;
+          }
+
+          .cs-stage svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            overflow: visible;
+          }
+
+          .cs-mono {
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            letter-spacing: 0.03em;
+          }
+
+          .cs-display {
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+          }
+        </style>
+
+        <div
+          id="chart-story-clip"
+          class="cs-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <div class="cs-stage" role="img"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var NS = "http://www.w3.org/2000/svg";
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".cs-stage");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var typeOptions = { bars: 1, line: 1, donut: 1, progress: 1 };
+            var type = Object.prototype.hasOwnProperty.call(typeOptions, vars.type)
+              ? vars.type
+              : "bars";
+            var unit = vars.unit == null ? "%" : String(vars.unit);
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var accentColor = accentColors[accent];
+            var inkColor = "var(--fg, #f8fafc)";
+            var mutedColor = "var(--muted, #94a3b8)";
+            var borderColor = "var(--border, #475569)";
+            var baseSeries = "color-mix(in srgb, var(--fg, #f8fafc) 44%, var(--surface, #10161f))";
+            var lineSeries = "color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--surface, #10161f))";
+            var trackColor = "color-mix(in srgb, var(--border, #475569) 55%, transparent)";
+
+            // Values keep their raw tokens: the displayed final numbers are
+            // the exact supplied strings, never a re-rounded float.
+            var tokens = String(vars.data == null ? "" : vars.data)
+              .split(",")
+              .map(function (token) {
+                return token.trim();
+              })
+              .filter(function (token) {
+                return token !== "" && Number.isFinite(Number(token));
+              });
+            if (tokens.length === 0) tokens = ["12", "28", "45", "64"];
+            var values = tokens.map(Number);
+            var n = values.length;
+
+            var labels = String(vars.labels == null ? "Q1, Q2, Q3, Q4" : vars.labels)
+              .split(",")
+              .map(function (label) {
+                return label.trim();
+              });
+            while (labels.length < n) labels.push("");
+
+            var emphasize = Math.round(Number(vars.emphasize));
+            if (!Number.isFinite(emphasize)) emphasize = n - 1;
+            emphasize = Math.min(Math.max(emphasize, 0), n - 1);
+
+            var displays = tokens.map(function (token) {
+              return token + unit;
+            });
+            var emphasizedValue = values[emphasize];
+            var emphasizedDecimals = (tokens[emphasize].split(".")[1] || "").length;
+
+            var maxValue = Math.max(1e-9, Math.max.apply(null, values));
+            var FPS = 30;
+
+            stage.setAttribute(
+              "aria-label",
+              labels
+                .slice(0, n)
+                .map(function (label, index) {
+                  return (label ? label + " " : "") + displays[index];
+                })
+                .join(", "),
+            );
+
+            var svg = document.createElementNS(NS, "svg");
+            svg.setAttribute("viewBox", "0 0 1000 560");
+            svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            stage.appendChild(svg);
+
+            function make(name, attrs, parent) {
+              var node = document.createElementNS(NS, name);
+              for (var key in attrs) node.setAttribute(key, String(attrs[key]));
+              (parent || svg).appendChild(node);
+              return node;
+            }
+
+            function text(x, y, size, fill, anchor, parent) {
+              var node = make(
+                "text",
+                { x: x, y: y, "font-size": size, "text-anchor": anchor || "middle", class: "cs-mono" },
+                parent,
+              );
+              node.style.fill = fill;
+              return node;
+            }
+
+            // Dashed draw setup: length comes from getTotalLength, never the
+            // pathLength attribute, and dashed strokes never use
+            // vector-effect: non-scaling-stroke.
+            function dashPrepare(node) {
+              var length = node.getTotalLength();
+              node.style.strokeDasharray = length + " " + length;
+              gsap.set(node, { strokeDashoffset: length });
+              return length;
+            }
+
+            // Envelope (base seconds, all scaled together, never timeScaled)
+            var IN_BASE = 3.3;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+            var STILLNESS = 0.3;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var s = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * s;
+            var OUT = OUT_BASE * s;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var AXIS_AT = 0.15;
+            var AXIS_DUR = 0.5;
+            var BUILD_AT = 0.55;
+            var BUILD_DUR = 1.6;
+            var LABELS_AT = 0.85;
+            var CALLOUT_AT = 2.35;
+            var POP_DUR = 0.45;
+            var ROLL_DUR = 0.7;
+
+            var tl = gsap.timeline({ paused: true });
+
+            gsap.set(stage, { opacity: 0, y: "2.4cqh" });
+            tl.to(stage, { opacity: 1, duration: 0.5 * s, ease: "power2.out" }, 0);
+            tl.to(stage, { y: "0cqh", duration: 0.5 * s, ease: "power3.out" }, 0);
+
+            function fadeIn(node, at, rise) {
+              gsap.set(node, rise ? { opacity: 0, y: 8 } : { opacity: 0 });
+              tl.to(
+                node,
+                rise
+                  ? { opacity: 1, y: 0, duration: 0.4 * s, ease: "power2.out" }
+                  : { opacity: 1, duration: 0.4 * s, ease: "power2.out" },
+                at * s,
+              );
+            }
+
+            function drawBaseline(x0, x1, y) {
+              var baseline = make("path", {
+                d: "M " + x0 + " " + y + " L " + x1 + " " + y,
+                fill: "none",
+                "stroke-width": 3,
+                "stroke-linecap": "round",
+              });
+              baseline.style.stroke = borderColor;
+              var length = dashPrepare(baseline);
+              tl.to(
+                baseline,
+                { strokeDashoffset: 0, duration: AXIS_DUR * s, ease: "power2.inOut" },
+                AXIS_AT * s,
+              );
+              return length;
+            }
+
+            // Callout chip: pops with a smooth settle, number rows are
+            // authored frames that land on the exact supplied token.
+            function makeCallout(anchorX, bottomY) {
+              var label = displays[emphasize];
+              var width = Math.max(96, Array.from(label).length * 17 + 44);
+              var height = 52;
+              var cx = Math.min(Math.max(anchorX, width / 2 + 8), 1000 - width / 2 - 8);
+              var group = make("g", {});
+              var chip = make("rect", {
+                x: cx - width / 2,
+                y: bottomY - height,
+                width: width,
+                height: height,
+                rx: 12,
+              }, group);
+              chip.style.fill = accentColor;
+              var valueNode = text(cx, bottomY - height / 2 + 10, 29, "var(--bg, #05070b)", "middle", group);
+              valueNode.setAttribute("font-weight", "600");
+              popAndRoll(group, valueNode, "50% 100%");
+            }
+
+            function popAndRoll(group, valueNode, origin) {
+              gsap.set(group, { opacity: 0, scale: 0.6, transformOrigin: origin });
+              tl.to(group, { opacity: 1, duration: 0.25 * s, ease: "power2.out" }, CALLOUT_AT * s);
+              tl.to(
+                group,
+                { scale: 1, duration: POP_DUR * s, ease: "back.out(1.7)" },
+                CALLOUT_AT * s,
+              );
+              var frames = Math.max(1, Math.round(ROLL_DUR * s * FPS));
+              var ease = gsap.parseEase("power2.out");
+              var suffix = valueNode.__rollUnitless ? "" : unit;
+              for (var frame = 0; frame <= frames; frame += 1) {
+                var row =
+                  frame === frames
+                    ? tokens[emphasize] + suffix
+                    : (emphasizedValue * ease(frame / frames)).toFixed(emphasizedDecimals) + suffix;
+                tl.set(valueNode, { textContent: row }, (CALLOUT_AT + ROLL_DUR * (frame / frames)) * s);
+              }
+            }
+
+            function buildBars() {
+              var left = 80;
+              var right = 920;
+              var base = 470;
+              var top = 120;
+              var band = (right - left) / n;
+              var barWidth = Math.min(band * 0.62, 150);
+              drawBaseline(left, right, base);
+              var stagger = n > 1 ? (BUILD_DUR - 0.85) / (n - 1) : 0;
+
+              values.forEach(function (value, index) {
+                var height = Math.max((value / maxValue) * (base - top), 3);
+                var cx = left + band * (index + 0.5);
+                var at = BUILD_AT + stagger * index;
+                var bar = make("rect", {
+                  x: cx - barWidth / 2,
+                  y: base - height,
+                  width: barWidth,
+                  height: height,
+                  rx: Math.min(10, barWidth * 0.18),
+                });
+                bar.style.fill = index === emphasize ? accentColor : baseSeries;
+                gsap.set(bar, { scaleY: 0, transformOrigin: "50% 100%" });
+                tl.to(bar, { scaleY: 1, duration: 0.85 * s, ease: "power3.out" }, at * s);
+
+                var axisLabel = text(cx, base + 42, 26, mutedColor);
+                axisLabel.textContent = labels[index];
+                fadeIn(axisLabel, LABELS_AT + index * 0.12, true);
+
+                if (index !== emphasize) {
+                  var valueLabel = text(cx, base - height - 16, 27, inkColor);
+                  valueLabel.textContent = displays[index];
+                  fadeIn(valueLabel, at + 0.65, true);
+                }
+              });
+
+              var emphasizedHeight = Math.max((values[emphasize] / maxValue) * (base - top), 3);
+              makeCallout(left + band * (emphasize + 0.5), base - emphasizedHeight - 20);
+            }
+
+            function buildLine() {
+              var left = 80;
+              var right = 920;
+              var base = 470;
+              var top = 120;
+              drawBaseline(left, right, base);
+
+              var points = values.map(function (value, index) {
+                return {
+                  x: left + (right - left) * (n === 1 ? 0.5 : index / (n - 1)),
+                  y: base - (value / maxValue) * (base - top),
+                };
+              });
+              var lineD = points
+                .map(function (point, index) {
+                  return (index === 0 ? "M " : "L ") + point.x + " " + point.y;
+                })
+                .join(" ");
+
+              // Translucent area fill fades in after the stroke finishes.
+              var area = make("path", {
+                d: lineD + " L " + points[n - 1].x + " " + base + " L " + points[0].x + " " + base + " Z",
+                stroke: "none",
+              });
+              area.style.fill = accentColor;
+              gsap.set(area, { opacity: 0 });
+              tl.to(
+                area,
+                { opacity: 0.14, duration: 0.45 * s, ease: "power2.out" },
+                (BUILD_AT + BUILD_DUR - 0.05) * s,
+              );
+
+              var line = make("path", {
+                d: lineD,
+                fill: "none",
+                "stroke-width": 6,
+                "stroke-linecap": "round",
+                "stroke-linejoin": "round",
+              });
+              line.style.stroke = lineSeries;
+              dashPrepare(line);
+              // ease "none" keeps the dash front aligned with the per-point
+              // cumulative-length timings below.
+              tl.to(
+                line,
+                { strokeDashoffset: 0, duration: (BUILD_DUR - 0.1) * s, ease: "none" },
+                BUILD_AT * s,
+              );
+
+              var cumulative = [0];
+              for (var index = 1; index < n; index += 1) {
+                cumulative.push(
+                  cumulative[index - 1] +
+                    Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y),
+                );
+              }
+              var totalLength = Math.max(cumulative[n - 1], 1e-9);
+
+              points.forEach(function (point, index) {
+                var at = BUILD_AT + (BUILD_DUR - 0.1) * (cumulative[index] / totalLength);
+                var dot = make("circle", {
+                  cx: point.x,
+                  cy: point.y,
+                  r: index === emphasize ? 11 : 7,
+                });
+                dot.style.fill = index === emphasize ? accentColor : inkColor;
+                gsap.set(dot, { scale: 0, transformOrigin: "50% 50%" });
+                tl.to(dot, { scale: 1, duration: 0.35 * s, ease: "back.out(2)" }, at * s);
+
+                var axisLabel = text(point.x, base + 42, 26, mutedColor);
+                axisLabel.textContent = labels[index];
+                fadeIn(axisLabel, LABELS_AT + index * 0.12, true);
+
+                if (index !== emphasize) {
+                  var valueLabel = text(point.x, point.y - 20, 25, inkColor);
+                  valueLabel.textContent = displays[index];
+                  fadeIn(valueLabel, at + 0.2, true);
+                }
+              });
+
+              makeCallout(points[emphasize].x, points[emphasize].y - 24);
+            }
+
+            function polar(cx, cy, radius, degrees) {
+              var radians = ((degrees - 90) * Math.PI) / 180;
+              return { x: cx + radius * Math.cos(radians), y: cy + radius * Math.sin(radians) };
+            }
+
+            function arcPath(cx, cy, radius, startDeg, endDeg) {
+              var start = polar(cx, cy, radius, startDeg);
+              var end = polar(cx, cy, radius, endDeg);
+              var large = endDeg - startDeg > 180 ? 1 : 0;
+              return (
+                "M " + start.x + " " + start.y +
+                " A " + radius + " " + radius + " 0 " + large + " 1 " + end.x + " " + end.y
+              );
+            }
+
+            function buildDonut() {
+              var cx = 500;
+              var cy = 252;
+              var radius = 168;
+              var strokeWidth = 54;
+              var total = Math.max(
+                values.reduce(function (sum, value) {
+                  return sum + value;
+                }, 0),
+                1e-9,
+              );
+              var ladder = [72, 50, 36, 26, 18];
+
+              var track = make("circle", { cx: cx, cy: cy, r: radius, fill: "none", "stroke-width": strokeWidth });
+              track.style.stroke = trackColor;
+              fadeIn(track, AXIS_AT);
+
+              var gap = n > 1 ? 3 : 0;
+              var cursor = 0;
+              values.forEach(function (value, index) {
+                var share = value / total;
+                var startDeg = cursor * 360;
+                var endDeg = (cursor + share) * 360;
+                cursor += share;
+                if (endDeg - startDeg <= gap * 2 + 0.05) return;
+                var segment = make("path", {
+                  d: arcPath(cx, cy, radius, startDeg + gap / 2, Math.min(endDeg - gap / 2, 359.98)),
+                  fill: "none",
+                  "stroke-width": strokeWidth,
+                });
+                segment.style.stroke =
+                  index === emphasize
+                    ? accentColor
+                    : "color-mix(in srgb, var(--fg, #f8fafc) " + ladder[index % ladder.length] + "%, var(--surface, #10161f))";
+                dashPrepare(segment);
+                tl.to(
+                  segment,
+                  { strokeDashoffset: 0, duration: Math.max(BUILD_DUR * share, 0.05) * s, ease: "none" },
+                  (BUILD_AT + BUILD_DUR * (cursor - share)) * s,
+                );
+              });
+
+              // Legend row beneath, reading order left to right.
+              var itemWidth = Math.min(230, 880 / n);
+              var startX = 500 - (itemWidth * n) / 2;
+              values.forEach(function (value, index) {
+                var x = startX + itemWidth * index;
+                var group = make("g", {});
+                var swatch = make("rect", { x: x, y: 506, width: 20, height: 20, rx: 5 }, group);
+                swatch.style.fill =
+                  index === emphasize
+                    ? accentColor
+                    : "color-mix(in srgb, var(--fg, #f8fafc) " + ladder[index % ladder.length] + "%, var(--surface, #10161f))";
+                var entry = text(x + 32, 523, 24, mutedColor, "start", group);
+                entry.textContent = labels[index] ? labels[index] + " " : "";
+                var valueSpan = document.createElementNS(NS, "tspan");
+                valueSpan.style.fill = inkColor;
+                valueSpan.textContent = displays[index];
+                entry.appendChild(valueSpan);
+                fadeIn(group, LABELS_AT + index * 0.14, true);
+              });
+
+              // Center callout: the emphasized value rolls to the exact token.
+              var center = make("g", {});
+              var valueText = make("text", { x: cx, y: cy + 14, "font-size": 84, "text-anchor": "middle", class: "cs-display" }, center);
+              valueText.style.fill = accentColor;
+              var numberSpan = document.createElementNS(NS, "tspan");
+              numberSpan.__rollUnitless = true;
+              valueText.appendChild(numberSpan);
+              var unitSpan = document.createElementNS(NS, "tspan");
+              unitSpan.setAttribute("font-size", 44);
+              unitSpan.style.fill = mutedColor;
+              unitSpan.textContent = unit;
+              valueText.appendChild(unitSpan);
+              if (labels[emphasize]) {
+                var centerLabel = text(cx, cy + 62, 26, mutedColor, "middle", center);
+                centerLabel.textContent = labels[emphasize];
+              }
+              popAndRoll(center, numberSpan, "50% 50%");
+            }
+
+            function buildProgress() {
+              var rowHeight = Math.min(92, 440 / n);
+              var top = Math.max(90, 285 - (rowHeight * n) / 2);
+              var trackX = 300;
+              var trackWidth = 560;
+              // Percent-flavored data fills against 100; otherwise the
+              // largest value owns the full track.
+              var denominator = unit.trim() === "%" ? Math.max(100, maxValue) : maxValue;
+              var stagger = n > 1 ? (BUILD_DUR - 0.9) / (n - 1) : 0;
+
+              values.forEach(function (value, index) {
+                var cy = top + rowHeight * (index + 0.5);
+                var at = BUILD_AT + stagger * index;
+                var fraction = Math.min(Math.max(value / denominator, 0), 1);
+
+                var track = make("rect", { x: trackX, y: cy - 10, width: trackWidth, height: 20, rx: 10 });
+                track.style.fill = trackColor;
+                fadeIn(track, AXIS_AT + index * 0.08);
+
+                var fill = make("rect", {
+                  x: trackX,
+                  y: cy - 10,
+                  width: Math.max(trackWidth * fraction, 8),
+                  height: 20,
+                  rx: 10,
+                });
+                fill.style.fill = index === emphasize ? accentColor : baseSeries;
+                gsap.set(fill, { scaleX: 0, transformOrigin: "0% 50%" });
+                tl.to(fill, { scaleX: 1, duration: 0.9 * s, ease: "power3.out" }, at * s);
+
+                var rowLabel = text(80, cy + 9, 26, mutedColor, "start");
+                rowLabel.textContent = labels[index];
+                fadeIn(rowLabel, LABELS_AT + index * 0.12, true);
+
+                if (index !== emphasize) {
+                  var valueLabel = text(884, cy + 9, 27, inkColor, "start");
+                  valueLabel.textContent = displays[index];
+                  fadeIn(valueLabel, at + 0.65, true);
+                }
+              });
+
+              var emphasizedFraction = Math.min(Math.max(values[emphasize] / denominator, 0), 1);
+              makeCallout(
+                trackX + trackWidth * emphasizedFraction,
+                top + rowHeight * (emphasize + 0.5) - 26,
+              );
+            }
+
+            if (type === "bars") buildBars();
+            else if (type === "line") buildLine();
+            else if (type === "donut") buildDonut();
+            else buildProgress();
+
+            // HOLD: one finite drift, authored as two explicit tweens, then
+            // stillness to the end (or to the exit).
+            var driftDuration = Math.max(0, HOLD - STILLNESS);
+            if (driftDuration > 0.1) {
+              var half = driftDuration / 2;
+              tl.to(stage, { y: "-0.5cqh", duration: half, ease: "sine.inOut" }, HOLD_START);
+              tl.to(stage, { y: "0cqh", duration: half, ease: "sine.inOut" }, HOLD_START + half);
+            }
+
+            if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { y: "-3cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["chart-story"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

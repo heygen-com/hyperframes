@@ -43,6 +43,14 @@
       "default": ""
     },
     {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread.",
+      "default": ""
+    },
+    {
       "id": "accent",
       "type": "enum",
       "role": "style",
@@ -53,6 +61,19 @@
         { "value": "green", "label": "Green" },
         { "value": "blue", "label": "Blue" },
         { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the sentence holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
       ]
     }
   ]

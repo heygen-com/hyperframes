@@ -9,13 +9,14 @@
     action_line: two to four word closing action
     button_label: capsule label
     accent: green, blue, or violet capsule color
+    exit: none, fade, or up (default none; this primitive closes films)
 
   Envelope:
     IN_BASE = 1.32s, action rise followed by capsule pop
     HOLD = the rest of D, completely still
-    OUT = none
-    If D is shorter than IN_BASE, IN compresses to fit. The timeline is never
-    time-scaled.
+    OUT = none by default; 0.45s lockup departure when exit is fade or up
+    If D is shorter than the fixed phases, they compress to fit. The timeline
+    is never time-scaled.
 
   Mount contract: the runtime clones only this template. #root fills the host
   box, establishes the container query basis, has no data-width or data-height,
@@ -28,7 +29,8 @@
   data-composition-variables='[
     { "id": "action_line", "type": "string", "role": "content", "label": "Action line", "description": "Two to four word action that closes the film.", "default": "Make it happen" },
     { "id": "button_label", "type": "string", "role": "content", "label": "Button label", "description": "Text displayed inside the single CTA capsule.", "default": "Start now" },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color used by the CTA capsule.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color used by the CTA capsule.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the lockup holds until the frame cuts (this primitive closes films).", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -128,6 +130,7 @@
             "use strict";
 
             var root = document.getElementById("root");
+            var lockup = root.querySelector(".cc-lockup");
             var actionLine = root.querySelector(".cc-action");
             var button = root.querySelector(".cc-button");
             var vars =
@@ -151,6 +154,7 @@
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             actionLine.textContent = actionText;
             actionLine.setAttribute("aria-label", actionText);
@@ -173,12 +177,15 @@
             );
 
             var IN_BASE = 1.32;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
-            var envelopeScale = Math.min(1, duration / IN_BASE);
+            var envelopeScale = Math.min(1, duration / (IN_BASE + OUT_BASE));
             var ACTION_DURATION = 0.7 * envelopeScale;
             var BUTTON_AT = 0.64 * envelopeScale;
             var BUTTON_DURATION = 0.68 * envelopeScale;
             var BUTTON_FADE = 0.22 * envelopeScale;
+            var OUT = OUT_BASE * envelopeScale;
+            var OUT_START = duration - OUT;
 
             var tl = gsap.timeline({ paused: true });
 
@@ -200,6 +207,18 @@
               { opacity: 1, duration: BUTTON_FADE, ease: "power2.out" },
               BUTTON_AT,
             );
+
+            // OUT: optional departure; exit none holds the still lockup
+            // until the frame cuts (this primitive closes films).
+            if (exit === "fade") {
+              tl.to(lockup, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(
+                lockup,
+                { opacity: 0, y: "-5cqh", duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

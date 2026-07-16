@@ -39,6 +39,27 @@
       "min": 4,
       "max": 10,
       "step": 1
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty keeps the continuous scroll.",
+      "default": ""
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the feed scrolls until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
     }
   ]
 }

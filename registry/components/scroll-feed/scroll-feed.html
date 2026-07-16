@@ -10,11 +10,19 @@
     - speed (doom | frantic, default doom): changes the card pitch, so the
       column covers more distance during the same duration in frantic mode.
     - card_count (number, 4 to 10, default 6): cards in one repeated cycle.
+    - cues (string, default ""): comma-separated seconds (from mount start);
+      each cue advances the feed by exactly one card pitch (stepped rhythm).
+      Empty keeps the authored continuous scroll.
+    - exit (none | fade | up, default "none"): optional departure over a
+      short reserved tail.
 
-  Envelope: IN = 0s, HOLD = D, OUT = 0s. HOLD owns the complete scroll and
-  is the only elastic phase. A longer mount stretches HOLD directly, never
-  through timeScale. Zero-length IN and OUT keep the first and final frames
-  loop-compatible. Each column moves exactly one complete card cycle.
+  Envelope: IN = 0s, HOLD = D minus any exit tail, OUT = 0s or the exit
+  tail. HOLD owns the complete scroll and is the only elastic phase. A
+  longer mount stretches HOLD directly, never through timeScale. With no
+  cues and exit none, zero-length IN and OUT keep the first and final
+  frames loop-compatible and each column moves exactly one complete card
+  cycle. Cues or an enabled exit trade that loop guarantee for the cue
+  rhythm or the departure.
 
   Determinism: cards are created synchronously. Their dimensions vary only
   through index arithmetic. No clocks, random values, timers, or CSS
@@ -31,7 +39,9 @@
   data-composition-duration="4"
   data-composition-variables='[
     { "id": "speed", "type": "enum", "role": "timing", "label": "Scroll speed", "description": "Pace of the upward feed movement.", "default": "doom", "options": [{ "value": "doom", "label": "Doom" }, { "value": "frantic", "label": "Frantic" }] },
-    { "id": "card_count", "type": "number", "role": "content", "label": "Card count", "description": "Number of skeleton posts in one repeated feed cycle.", "default": 6, "min": 4, "max": 10, "step": 1 }
+    { "id": "card_count", "type": "number", "role": "content", "label": "Card count", "description": "Number of skeleton posts in one repeated feed cycle.", "default": 6, "min": 4, "max": 10, "step": 1 },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated seconds (from mount start); each cue advances the feed by one card. Empty keeps the continuous scroll.", "default": "" },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the feed scrolls until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -241,6 +251,21 @@
             var cardCount = Number.isFinite(countValue)
               ? Math.max(4, Math.min(10, Math.round(countValue)))
               : 6;
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+            var cuesValue = vars.cues == null ? "" : String(vars.cues);
+            var cues = cuesValue
+              .split(",")
+              .reduce(function (result, token) {
+                var trimmed = token.trim();
+                if (trimmed === "") return result;
+                var seconds = Number(trimmed);
+                if (!Number.isFinite(seconds) || seconds < 0) return result;
+                result.push(seconds);
+                return result;
+              }, [])
+              .sort(function (a, b) {
+                return a - b;
+              });
 
             // Frantic mode travels farther in the same HOLD while still
             // completing exactly one full cycle at the final frame.
@@ -277,24 +302,79 @@
             blurA.innerHTML = mainColumn.innerHTML;
             blurB.innerHTML = mainColumn.innerHTML;
 
-            // IN and OUT remain zero for a clean loop. Only HOLD stretches.
-            var IN = 0;
-            var OUT = 0;
+            // IN stays zero. Exit none keeps OUT at zero for a clean loop;
+            // an enabled exit reserves a short tail after the scroll.
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
-            var HOLD = Math.max(0.001, duration - IN - OUT);
-            var HOLD_START = IN;
+            var EXIT = exit === "none" ? 0 : Math.min(0.4, duration * 0.15);
+            var SCROLL_END = Math.max(0.001, duration - EXIT);
+            var finalY = -cycleDistance;
 
             var tl = gsap.timeline({ paused: true });
-            tl.fromTo(
-              columns,
-              { y: "0cqh" },
-              {
-                y: -cycleDistance + "cqh",
-                duration: HOLD,
-                ease: "sine.inOut",
-              },
-              HOLD_START,
-            );
+
+            if (cues.length > 0) {
+              // Stepped rhythm: each cue advances the feed by exactly one
+              // card pitch. Three stacked cycles keep the viewport covered
+              // through two full cycles of steps.
+              var pitch = cardHeight + gap;
+              var steps = [];
+              cues.forEach(function (cueAt) {
+                if (steps.length >= cardCount * 2) return;
+                var at = Math.min(SCROLL_END, cueAt);
+                if (steps.length === 0 || at > steps[steps.length - 1] + 0.01) {
+                  steps.push(at);
+                }
+              });
+              finalY = -pitch * steps.length;
+              steps.forEach(function (cueAt, index) {
+                var next = index + 1 < steps.length ? steps[index + 1] : SCROLL_END;
+                var stepDuration = Math.max(
+                  0.05,
+                  Math.min(0.5, (next - cueAt) * 0.8, duration - cueAt),
+                );
+                var target = { y: -pitch * (index + 1) + "cqh" };
+                if (index === 0) {
+                  tl.fromTo(
+                    columns,
+                    { y: "0cqh" },
+                    {
+                      y: target.y,
+                      duration: stepDuration,
+                      ease: "power3.out",
+                    },
+                    cueAt,
+                  );
+                } else {
+                  tl.to(
+                    columns,
+                    { y: target.y, duration: stepDuration, ease: "power3.out" },
+                    cueAt,
+                  );
+                }
+              });
+            } else {
+              tl.fromTo(
+                columns,
+                { y: "0cqh" },
+                {
+                  y: -cycleDistance + "cqh",
+                  duration: SCROLL_END,
+                  ease: "sine.inOut",
+                },
+                0,
+              );
+            }
+
+            // Optional departure; exit none scrolls until the frame cuts.
+            if (exit === "fade") {
+              tl.to(columns, { opacity: 0, duration: EXIT, ease: "power2.in" }, SCROLL_END);
+            } else if (exit === "up") {
+              tl.to(columns, { opacity: 0, duration: EXIT, ease: "power2.in" }, SCROLL_END);
+              tl.to(
+                columns,
+                { y: finalY - 10 + "cqh", duration: EXIT, ease: "power2.in" },
+                SCROLL_END,
+              );
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

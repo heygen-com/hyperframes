@@ -3,7 +3,7 @@
   "name": "per-word-rise",
   "type": "hyperframes:component",
   "title": "Per Word Rise",
-  "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, drift gently, and leave with a clean upward fade.",
+  "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, drift gently, and hold until the cut (optional fade or up exit).",
   "tags": ["motion-primitive", "text-effects", "typography", "stagger", "reveal"],
   "jobs": ["reveal"],
   "family": "text-effects",
@@ -39,6 +39,14 @@
       ]
     },
     {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds (from mount start) for each unit landing. Empty keeps the authored cascade rhythm.",
+      "default": ""
+    },
+    {
       "id": "accent",
       "type": "enum",
       "role": "style",
@@ -49,6 +57,19 @@
         { "value": "green", "label": "Green" },
         { "value": "blue", "label": "Blue" },
         { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the line holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
       ]
     }
   ]

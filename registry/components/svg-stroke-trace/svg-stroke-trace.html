@@ -10,11 +10,13 @@
     - path (string): SVG path data for the traced mark.
     - stroke_width (number, default 12): stroke width in viewBox units.
     - accent (green | blue | violet, default green): trace and fill color.
+    - exit (none | fade | up, default "none"): optional departure.
 
   Envelope, fixed IN and OUT with elastic HOLD only:
     IN_BASE  = 1.85s, stroke draw followed by optional closed-path fill
     HOLD     = max(0, D - IN - OUT), one subtle vertical drift cycle
-    OUT_BASE = 0.45s, clean upward fade
+    OUT_BASE = 0.45s departure when exit is fade or up, 0s when exit is
+               none (the default: the finished mark holds until the cut)
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
     The timeline is never time-scaled.
 
@@ -29,7 +31,8 @@
   data-composition-variables='[
     { "id": "path", "type": "string", "role": "content", "label": "Path", "description": "SVG path data for the authored mark.", "default": "M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194" },
     { "id": "stroke_width", "type": "number", "role": "style", "label": "Stroke width", "description": "Width of the traced stroke in SVG viewBox units.", "default": 12, "min": 2, "max": 32, "step": 1 },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the trace and optional fill.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the trace and optional fill.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the finished mark holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -148,6 +151,7 @@
             var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
               ? vars.accent
               : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             root.style.setProperty("--sst-accent", accentColors[accent]);
             fillPath.setAttribute("d", pathData);
@@ -164,10 +168,10 @@
             var fillEnabled = /[zZ]\s*$/.test(pathData);
 
             var IN_BASE = 1.85;
-            var OUT_BASE = 0.45;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
             var DRAW_SHARE = 0.84;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
-            var fixedTotal = IN_BASE + OUT_BASE;
+            var fixedTotal = Math.max(0.001, IN_BASE + OUT_BASE);
             var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
             var IN = IN_BASE * phaseScale;
             var OUT = OUT_BASE * phaseScale;
@@ -203,8 +207,16 @@
               );
             }
 
-            // OUT: the completed mark exits as one subject.
-            tl.to(stage, { opacity: 0, y: "-2.4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(
+                stage,
+                { opacity: 0, y: "-2.4cqh", duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

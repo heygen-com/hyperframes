@@ -1,0 +1,297 @@
+<!doctype html>
+<!--
+  grid-card-assemble: HyperFrames video primitive (layout / feature tour)
+
+  N labeled tiles stagger-assemble into a grid or a vertical list. Every tile
+  is a token card (surface fill, hairline border, contract radius) carrying a
+  wide-tracked mono label plus an accent dot. Each tile enters with a fade and
+  a SHORT slide directly into its own slot: no scatter from center, no
+  overshoot, a smooth long-tail settle (power3.out). Once the layout resolves
+  the frame holds perfectly STILL: no float, no push-in.
+
+  Variables (declared in data-composition-variables below):
+    - items (string, default "Capture,Compose,Render,Publish"): comma list of
+      tile labels. 3 to 12 items render gracefully; extras past 12 are dropped.
+    - layout ("grid" | "list", default "grid"): grid wraps by columns, list
+      stacks vertically.
+    - columns (number, default 0 = auto): grid column count, grid layout only.
+      0 picks one row up to 3 items, then ceil(sqrt(N)) so 4 items form 2x2
+      and 9 items form 3x3.
+    - cues (string, default ""): comma-separated per-item entrance times in
+      seconds relative to mount start. A blank or invalid entry falls back to
+      that item's default cascade slot (~0.06s gap). Values are clamped so
+      every tile lands before any exit begins.
+    - accent (green | blue | violet, default green): dot color family.
+      green -> --brand, blue -> --accent, violet -> --accent-2.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions; the default hold-ends-the-film.
+
+  Envelope, fixed IN with elastic HOLD (never gsap.timeScale()):
+    IN    = last entrance start + 0.65s tile settle (default 4 items ~0.98s)
+    HOLD  = still, elastic: everything after IN until OUT (or until D)
+    OUT   = 0 when exit is "none"; else 0.45s fade / fade-up of the stage.
+    Entrance starts compress together when D is too short for the cascade.
+
+  Content override: the runtime clones only this template. A fork that wants
+  custom tile content places its own children inside the
+  [data-slot="items"] grid element; when that element already has children
+  the script animates them as the tiles instead of generating token cards
+  from the items variable (layout, cues, and exit still apply).
+
+  Mount contract: elastic root, no data-width/data-height, styled via #root
+  only, container-type: size, one paused timeline registered under the
+  literal "grid-card-assemble" key. Deterministic and seek-safe: fromTo
+  entrances, no CSS transitions, no Date.now, no randomness.
+-->
+<html
+  lang="en"
+  data-composition-id="grid-card-assemble"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "items", "type": "string", "role": "content", "label": "Items", "description": "Comma-separated tile labels (3 to 12 items).", "default": "Capture,Compose,Render,Publish" },
+    { "id": "layout", "type": "enum", "role": "layout", "label": "Layout", "description": "Grid wraps by columns; list stacks vertically.", "default": "grid", "options": [{ "value": "grid", "label": "Grid" }, { "value": "list", "label": "List" }] },
+    { "id": "columns", "type": "number", "role": "layout", "label": "Columns", "description": "Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)).", "default": 0, "min": 0, "max": 4, "step": 1 },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated per-item entrance times in seconds. Blank entries use the default cascade.", "default": "" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used by the tile dots.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "How the assembled layout leaves the frame. Default none: the hold ends the film.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Grid Card Assemble</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="grid-card-assemble" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, transparent);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            pointer-events: none;
+          }
+
+          .gca-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .gca-stage {
+            display: grid;
+            width: var(--gca-stage-w, 84cqw);
+            grid-auto-rows: var(--gca-row-h, 16cqh);
+            gap: var(--space-2, 2.2cqmin);
+            will-change: transform, opacity;
+          }
+
+          .gca-card {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1, 1.4cqmin);
+            min-width: 0;
+            padding: 0 var(--space-2, 2.2cqmin);
+            overflow: hidden;
+            border: 0.16cqmin solid var(--border, #334155);
+            border-radius: var(--radius, 1.8cqmin);
+            background: var(--surface, #131a24);
+            will-change: transform, opacity;
+          }
+
+          .gca-dot {
+            flex: 0 0 auto;
+            width: 1cqmin;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: var(--gca-accent, var(--brand, #71f5a7));
+          }
+
+          .gca-label {
+            min-width: 0;
+            overflow: hidden;
+            color: var(--fg, #f8fafc);
+            font-size: var(--gca-font, 3cqmin);
+            font-weight: 500;
+            line-height: 1.2;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+        </style>
+
+        <div
+          id="grid-card-assemble-clip"
+          class="gca-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="gca-stage" data-slot="items" role="list"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            // Literal id, never read off the DOM: the flattening step strips
+            // data-composition-id from the mounted root (see toggle-flip).
+            var compositionId = "grid-card-assemble";
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".gca-stage");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var itemsValue =
+              vars.items == null || String(vars.items).trim() === ""
+                ? "Capture,Compose,Render,Publish"
+                : String(vars.items);
+            var items = itemsValue
+              .split(",")
+              .map(function (token) {
+                return token.trim();
+              })
+              .filter(function (token) {
+                return token !== "";
+              })
+              .slice(0, 12);
+            if (items.length === 0) items = ["Capture", "Compose", "Render", "Publish"];
+
+            var layout = vars.layout === "list" ? "list" : "grid";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            root.style.setProperty("--gca-accent", accentColors[accent]);
+
+            // Content override: a fork may author its own tiles inside the
+            // [data-slot="items"] element; then the items variable only
+            // supplies labels for accessibility, not markup.
+            var cards = Array.prototype.slice.call(stage.children);
+            if (cards.length === 0) {
+              cards = items.map(function (label) {
+                var card = document.createElement("div");
+                card.className = "gca-card";
+                card.setAttribute("role", "listitem");
+                var dot = document.createElement("span");
+                dot.className = "gca-dot";
+                dot.setAttribute("aria-hidden", "true");
+                var text = document.createElement("span");
+                text.className = "gca-label";
+                text.textContent = label;
+                card.appendChild(dot);
+                card.appendChild(text);
+                stage.appendChild(card);
+                return card;
+              });
+            }
+            var count = cards.length;
+            stage.setAttribute("aria-label", items.join(", "));
+
+            // Layout geometry: columns wrap the grid; list is one column.
+            // 3 or fewer sit on one row; beyond that ceil(sqrt(N)) keeps the
+            // grid near-square (4 -> 2x2, 9 -> 3x3, 12 -> 4x3).
+            var autoColumns = count <= 3 ? count : Math.ceil(Math.sqrt(count));
+            var requested = Math.round(Number(vars.columns)) || 0;
+            var columns =
+              layout === "list" ? 1 : Math.max(1, Math.min(4, requested > 0 ? requested : autoColumns));
+            var rows = Math.ceil(count / columns);
+            stage.style.gridTemplateColumns = "repeat(" + columns + ", minmax(0, 1fr))";
+
+            var stageW = layout === "list" ? 52 : 84; // cqw
+            var rowH = Math.min(layout === "list" ? 11 : 16, 66 / rows); // cqh
+            root.style.setProperty("--gca-stage-w", stageW + "cqw");
+            root.style.setProperty("--gca-row-h", rowH.toFixed(3) + "cqh");
+
+            // Deterministic label fitting: wide-tracked mono at ~0.78em per
+            // glyph, dot + padding eat ~26% of the cell width.
+            var maxChars = items.reduce(function (max, label) {
+              return Math.max(max, Array.from(label).length);
+            }, 1);
+            var cellW = stageW / columns;
+            var fontCqw = Math.min(3.4, (cellW * 0.74) / (maxChars * 0.78));
+            var fontCqh = rowH * 0.32;
+            root.style.setProperty(
+              "--gca-font",
+              "min(" + fontCqw.toFixed(3) + "cqw, " + fontCqh.toFixed(3) + "cqh)",
+            );
+
+            // RETIME RANGE: fixed IN cascade, elastic still HOLD, optional OUT.
+            var BASE_START = 0.15;
+            var GAP = 0.06;
+            var TILE_BASE = 0.65;
+            var OUT_BASE = 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var OUT = exit === "none" ? 0 : Math.min(OUT_BASE, duration * 0.25);
+            var avail = duration - OUT;
+            var TILE = Math.min(TILE_BASE, Math.max(0.2, avail - BASE_START));
+            var latestStart = Math.max(0, avail - TILE);
+            // Compress the cascade together when the duration cannot fit it.
+            var gap =
+              count > 1 ? Math.min(GAP, Math.max(0, latestStart - BASE_START) / (count - 1)) : GAP;
+
+            var cueList = String(vars.cues == null ? "" : vars.cues).split(",");
+            var starts = cards.map(function (card, index) {
+              var cue = Number((cueList[index] || "").trim());
+              var hasCue = (cueList[index] || "").trim() !== "" && Number.isFinite(cue);
+              var start = hasCue ? cue : Math.min(BASE_START, latestStart) + gap * index;
+              return Math.max(0, Math.min(start, latestStart));
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: fade + short slide directly into the slot, long-tail settle,
+            // no overshoot. Explicit both-endpoints state so any seek is exact.
+            cards.forEach(function (card, index) {
+              gsap.set(card, { opacity: 0, y: "3cqh" });
+              tl.fromTo(
+                card,
+                { opacity: 0, y: "3cqh" },
+                { opacity: 1, y: "0cqh", duration: TILE, ease: "power3.out" },
+                starts[index],
+              );
+            });
+
+            // HOLD: intentionally still. Nothing floats, nothing pushes in.
+
+            // OUT: whole assembled stage leaves together.
+            if (exit !== "none") {
+              var OUT_START = duration - OUT;
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-3cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

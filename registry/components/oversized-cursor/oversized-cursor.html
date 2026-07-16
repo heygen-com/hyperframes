@@ -29,11 +29,14 @@
     cursor_variant (enum light|dark)  pointer fill/stroke pairing, pick per scene contrast
     target_x, target_y (number, percent of the HOST box)  the tip's landing point
     click_label (string)  label on the target the cursor clicks
+    exit (enum none|fade|up, default none)  optional whole-stage departure during
+      OUT; the cursor's own off-screen exit always plays (it is the mechanic)
 
   envelope (of data-composition-duration, default 4.2s):
     IN   0.00s to 1.17s (fixed)     off-screen entry glide (0.85s) then click tap (0.32s)
     HOLD 1.17s to D-0.60s (elastic) click ignition plays, cursor drifts aside, then dwells
-    OUT  D-0.60s to D (fixed)       cursor accelerates off-screen
+    OUT  D-0.60s to D (fixed)       cursor accelerates off-screen; with exit fade|up the
+                                    whole stage (target included) also departs
 
   sound: one click tap SFX (soft UI click) fires at the click moment, the fixed
   offset into IN documented below as SYNC POINT. This file never plays audio: it
@@ -47,7 +50,8 @@
     { "id": "cursor_variant", "type": "enum", "role": "style", "label": "Cursor fill", "default": "light", "options": [ { "value": "light", "label": "Light (white body)" }, { "value": "dark", "label": "Dark (near-black body)" } ] },
     { "id": "target_x", "type": "number", "role": "layout", "label": "Target X", "default": 55, "min": 15, "max": 85, "step": 1, "unit": "%" },
     { "id": "target_y", "type": "number", "role": "layout", "label": "Target Y", "default": 55, "min": 15, "max": 85, "step": 1, "unit": "%" },
-    { "id": "click_label", "type": "string", "role": "content", "label": "Click label", "default": "Generate" }
+    { "id": "click_label", "type": "string", "role": "content", "label": "Click label", "default": "Generate" },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.", "default": "none", "options": [ { "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" } ] }
   ]'
 >
   <head>
@@ -274,6 +278,8 @@
           var targetX = clampPercent(vars.target_x, 55);
           var targetY = clampPercent(vars.target_y, 55);
           var clickLabel = String(vars.click_label || "Generate");
+          var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+          var stage = root.querySelector(".oc-stage");
 
           cursor.setAttribute("data-variant", variant);
           targetLabel.textContent = clickLabel;
@@ -397,6 +403,18 @@
             { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" },
             OUT_AT,
           );
+
+          // Optional whole-stage departure on top of the cursor's own exit;
+          // exit none leaves the ignited target until the frame cuts.
+          if (exit === "fade") {
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_AT);
+          } else if (exit === "up") {
+            tl.to(
+              stage,
+              { opacity: 0, y: "-4cqh", duration: OUT, ease: "power2.in" },
+              OUT_AT,
+            );
+          }
 
           tl.seek(0);
           window.__timelines = window.__timelines || {};

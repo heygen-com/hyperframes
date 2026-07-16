@@ -67,6 +67,19 @@
       "max": 40,
       "step": 1,
       "unit": "px"
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure of the incoming subject. Default none: it rests until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
     }
   ]
 }

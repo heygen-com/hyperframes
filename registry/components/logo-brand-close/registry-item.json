@@ -1,0 +1,72 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "logo-brand-close",
+  "type": "hyperframes:component",
+  "title": "Logo Brand Close",
+  "description": "Wordmark letters cascade left to right into a centered lockup, an optional tagline and mono URL line settle beneath, and the finished identity holds dead still to the end of the film.",
+  "tags": ["motion-primitive", "typography", "brand", "logo", "end-card", "close"],
+  "jobs": ["celebrate"],
+  "family": "typography",
+  "profile": "holdable",
+  "evidence": "Wave J J1-4 logo-brand-close specification",
+  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 1.9 }],
+  "files": [
+    {
+      "path": "logo-brand-close.html",
+      "target": "compositions/components/logo-brand-close.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "wordmark",
+      "type": "string",
+      "role": "content",
+      "label": "Wordmark",
+      "description": "Brand name whose letters cascade into the centered lockup.",
+      "default": "HYPERFRAMES"
+    },
+    {
+      "id": "tagline",
+      "type": "string",
+      "role": "content",
+      "label": "Tagline",
+      "description": "Optional tagline that settles beneath the wordmark. Empty hides it.",
+      "default": "Write HTML. Render video."
+    },
+    {
+      "id": "url",
+      "type": "string",
+      "role": "content",
+      "label": "URL",
+      "description": "Optional mono URL line beneath the tagline. Empty hides it.",
+      "default": "hyperframes.heygen.com"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract color used by the brand period at the end of the wordmark.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. Films end on the still hold, so the default is none.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

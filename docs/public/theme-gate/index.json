@@ -1,32 +1,62 @@
 [
   {
-    "primitive": "scramble-reveal",
-    "neutral": "scramble-reveal.neutral.html",
-    "bold": "scramble-reveal.bold.html",
-    "editorial": "scramble-reveal.editorial.html"
+    "primitive": "press-ripple",
+    "neutral": "press-ripple.neutral.html",
+    "bold": "press-ripple.bold.html",
+    "editorial": "press-ripple.editorial.html"
   },
   {
-    "primitive": "velocity-throw-snap",
-    "neutral": "velocity-throw-snap.neutral.html",
-    "bold": "velocity-throw-snap.bold.html",
-    "editorial": "velocity-throw-snap.editorial.html"
+    "primitive": "typed-prompt",
+    "neutral": "typed-prompt.neutral.html",
+    "bold": "typed-prompt.bold.html",
+    "editorial": "typed-prompt.editorial.html"
   },
   {
-    "primitive": "beat-pulse-background",
-    "neutral": "beat-pulse-background.neutral.html",
-    "bold": "beat-pulse-background.bold.html",
-    "editorial": "beat-pulse-background.editorial.html"
+    "primitive": "titlecard-lockup",
+    "neutral": "titlecard-lockup.neutral.html",
+    "bold": "titlecard-lockup.bold.html",
+    "editorial": "titlecard-lockup.editorial.html"
   },
   {
-    "primitive": "tracing-beam",
-    "neutral": "tracing-beam.neutral.html",
-    "bold": "tracing-beam.bold.html",
-    "editorial": "tracing-beam.editorial.html"
+    "primitive": "logo-brand-close",
+    "neutral": "logo-brand-close.neutral.html",
+    "bold": "logo-brand-close.bold.html",
+    "editorial": "logo-brand-close.editorial.html"
   },
   {
-    "primitive": "confetti-burst",
-    "neutral": "confetti-burst.neutral.html",
-    "bold": "confetti-burst.bold.html",
-    "editorial": "confetti-burst.editorial.html"
+    "primitive": "browser-device-stage",
+    "neutral": "browser-device-stage.neutral.html",
+    "bold": "browser-device-stage.bold.html",
+    "editorial": "browser-device-stage.editorial.html"
+  },
+  {
+    "primitive": "grid-card-assemble",
+    "neutral": "grid-card-assemble.neutral.html",
+    "bold": "grid-card-assemble.bold.html",
+    "editorial": "grid-card-assemble.editorial.html"
+  },
+  {
+    "primitive": "chart-story",
+    "neutral": "chart-story.neutral.html",
+    "bold": "chart-story.bold.html",
+    "editorial": "chart-story.editorial.html"
+  },
+  {
+    "primitive": "trust-strip",
+    "neutral": "trust-strip.neutral.html",
+    "bold": "trust-strip.bold.html",
+    "editorial": "trust-strip.editorial.html"
+  },
+  {
+    "primitive": "before-after-wipe",
+    "neutral": "before-after-wipe.neutral.html",
+    "bold": "before-after-wipe.bold.html",
+    "editorial": "before-after-wipe.editorial.html"
+  },
+  {
+    "primitive": "marker-highlight",
+    "neutral": "marker-highlight.neutral.html",
+    "bold": "marker-highlight.bold.html",
+    "editorial": "marker-highlight.editorial.html"
   }
 ]

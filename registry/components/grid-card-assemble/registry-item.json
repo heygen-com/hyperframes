@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "grid-card-assemble",
+  "type": "hyperframes:component",
+  "title": "Grid Card Assemble",
+  "description": "N labeled token cards stagger-assemble into a grid or vertical list with a fade plus short slide into slot, then hold perfectly still.",
+  "tags": ["motion-primitive", "layout", "grid", "list", "stagger", "assemble"],
+  "jobs": ["reveal", "tour"],
+  "family": "layout",
+  "profile": "assemble",
+  "evidence": "Wave J J1-6: hero-shelf layout / feature-tour unit per the adversarial panel recompose",
+  "syncPoints": [{ "id": "grid-assembled", "phase": "in", "offset": 1.0 }],
+  "files": [
+    {
+      "path": "grid-card-assemble.html",
+      "target": "compositions/components/grid-card-assemble.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "items",
+      "type": "string",
+      "role": "content",
+      "label": "Items",
+      "description": "Comma-separated tile labels (3 to 12 items).",
+      "default": "Capture,Compose,Render,Publish"
+    },
+    {
+      "id": "layout",
+      "type": "enum",
+      "role": "layout",
+      "label": "Layout",
+      "description": "Grid wraps by columns; list stacks vertically.",
+      "default": "grid",
+      "options": [
+        { "value": "grid", "label": "Grid" },
+        { "value": "list", "label": "List" }
+      ]
+    },
+    {
+      "id": "columns",
+      "type": "number",
+      "role": "layout",
+      "label": "Columns",
+      "description": "Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)).",
+      "default": 0,
+      "min": 0,
+      "max": 4,
+      "step": 1
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated per-item entrance times in seconds. Blank entries use the default cascade.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Accent token family used by the tile dots.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the assembled layout leaves the frame. Default none: the hold ends the film.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "press-ripple",
+  "type": "hyperframes:component",
+  "title": "Press Ripple",
+  "description": "A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, and holds the pressed state.",
+  "tags": ["motion-primitive", "product-demo", "cursor", "press", "ripple", "payoff"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "payoff",
+  "evidence": "Wave J J1-1: the recurring launch-film press mechanic (decelerating cursor arrival, lockstep compression, ink ripple release) generalized behind a target slot",
+  "syncPoints": [{ "id": "press", "phase": "in", "offset": 1.4 }],
+  "files": [
+    {
+      "path": "press-ripple.html",
+      "target": "compositions/components/press-ripple.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "role": "content",
+      "label": "Label",
+      "description": "Text inside the default pill target.",
+      "default": "Get started"
+    },
+    {
+      "id": "target_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Target X",
+      "description": "Zone center, percent of host width.",
+      "default": 50,
+      "min": 8,
+      "max": 92,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "target_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Target Y",
+      "description": "Zone center, percent of host height.",
+      "default": 50,
+      "min": 8,
+      "max": 92,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "press_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Press at",
+      "description": "Seconds from mount start when the press begins.",
+      "default": 1.4,
+      "min": 0.9,
+      "max": 10,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "cursor",
+      "type": "enum",
+      "role": "style",
+      "label": "Cursor",
+      "description": "Pointer tone.",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract color for the ripple ink and pressed fill.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "How the frame leaves. None holds the pressed state.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Fade up" }
+      ]
+    }
+  ]
+}

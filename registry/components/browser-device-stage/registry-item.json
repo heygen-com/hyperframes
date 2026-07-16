@@ -1,0 +1,80 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "browser-device-stage",
+  "type": "hyperframes:component",
+  "title": "Browser Device Stage",
+  "description": "A generic app surface in token-native device chrome (browser, window, or phone). The screen is a slot for caller img/video/HTML with a token-styled skeleton default; one settle entrance, a readable hold, and an optional screen swap.",
+  "tags": ["stage", "product-demo", "device", "browser", "phone", "slot", "chrome"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "stage",
+  "evidence": "Wave J J1-5: adversarial panel hero shelf, generic app stage with content slots over canned art",
+  "files": [
+    {
+      "path": "browser-device-stage.html",
+      "target": "compositions/components/browser-device-stage.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "chrome",
+      "type": "enum",
+      "role": "content",
+      "label": "Chrome",
+      "description": "Device frame drawn around the screen slot.",
+      "default": "browser",
+      "options": [
+        { "value": "browser", "label": "Browser" },
+        { "value": "window", "label": "Window" },
+        { "value": "phone", "label": "Phone" }
+      ]
+    },
+    {
+      "id": "title",
+      "type": "string",
+      "role": "content",
+      "label": "Title",
+      "description": "Address pill text (browser) or title bar text (window).",
+      "default": "app.example.com"
+    },
+    {
+      "id": "swap_at",
+      "type": "number",
+      "role": "content",
+      "label": "Swap at",
+      "description": "Seconds from mount start to crossfade to the second screen. 0 disables the swap.",
+      "default": 0,
+      "min": 0,
+      "max": 30,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Token the skeleton accent elements ride.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. None holds the final frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

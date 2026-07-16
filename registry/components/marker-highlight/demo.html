@@ -1,101 +1,80 @@
 <!doctype html>
+<!--
+  marker-highlight demo. This standalone composition mounts the primitive
+  through data-composition-src. Non-default text, style, and accent values
+  prove the variable path while the primitive stays elastic to its host box.
+-->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Marker Highlight - Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <title>Marker Highlight Demo</title>
     <style>
       * {
+        margin: 0;
+        padding: 0;
         box-sizing: border-box;
       }
+
       html,
       body {
-        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
       }
-      #demo {
-        width: 1920px;
-        height: 1080px;
-        display: grid;
-        place-items: center;
-        background: var(--bg, #f7f7f8);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
-      }
-      .demo-frame {
-        display: grid;
-        place-items: center;
-        min-width: 900px;
-        min-height: 500px;
-        padding: 64px;
-        /* ponytail: scale wrapper only - GSAP targets children, not this element */
-        transform: scale(3.5);
-      }
-      .hf-remocn-marker-highlight {
-        color: var(--fg, #18181b);
-        font-family: var(--font-display, Inter, system-ui, sans-serif);
-        font-weight: 900;
-        letter-spacing: -0.04em;
-      }
-      .hf-remocn-marker-highlight {
-        position: relative;
-        display: inline-grid;
-        padding: 8px 12px;
-        font-size: 64px;
-      }
-      .hf-remocn-marker-highlight mark {
+
+      .mount-box {
         position: absolute;
-        inset: auto 0 9px;
-        height: 24px;
-        border-radius: 4px;
-        background: var(--accent, #fde047);
-        transform: scaleX(var(--hf-marker-progress, 1));
-        transform-origin: left center;
-      }
-      .hf-remocn-marker-highlight span {
-        --mh-ink: 1;
-        position: relative;
-        color: color-mix(
-          in srgb,
-          var(--muted, #71717a) calc((1 - var(--mh-ink)) * 100%),
-          var(--fg, #18181b) calc(var(--mh-ink) * 100%)
-        );
+        width: 80%;
+        height: 56%;
+        left: 10%;
+        top: 22%;
+        container-type: size;
+        overflow: hidden;
       }
     </style>
   </head>
   <body>
     <div
-      id="demo"
+      id="root"
       data-composition-id="marker-highlight-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="5"
+      data-duration="3.5"
+      data-fps="30"
     >
-      <div class="demo-frame">
-        <div class="hf-remocn-marker-highlight"><mark></mark><span>Launch ready</span></div>
-      </div>
-      <script>
-        const tl = gsap.timeline({ paused: true });
-        const startTime = 0.5;
-        tl.fromTo(
-          ".hf-remocn-marker-highlight mark",
-          { "--hf-marker-progress": 0 },
-          { "--hf-marker-progress": 1, duration: 0.42, ease: "power2.out" },
-          startTime,
-        );
-        tl.fromTo(
-          ".hf-remocn-marker-highlight span",
-          { "--mh-ink": 0 },
-          { "--mh-ink": 1, duration: 0.28 },
-          startTime + 0.16,
-        );
-        tl.set({}, {}, 5);
-        window.__timelines = window.__timelines || {};
-        window.__timelines["marker-highlight-demo"] = tl;
-      </script>
+      <div
+        id="marker-highlight-mount"
+        class="mount-box clip"
+        data-composition-id="marker-highlight"
+        data-composition-src="./marker-highlight.html"
+        data-variable-values='{"text":"Zero render surprises","emphasis_word":"Zero","style":"circle","accent":"violet","draw_at":1.1}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1536"
+        data-height="605"
+      ></div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["marker-highlight-demo"] = gsap.timeline({ paused: true });
+    </script>
   </body>
 </html>

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chart-story",
+  "type": "hyperframes:component",
+  "title": "Chart Story",
+  "description": "One chart builds from data in reading order and lands the exact supplied values: staggered bars, a left-to-right line with area fill, a sweeping donut, or filling progress bars, with an accented value callout on the emphasized datum.",
+  "tags": ["motion-primitive", "proof", "stats", "chart", "bars", "line", "donut", "progress", "deterministic"],
+  "jobs": ["prove"],
+  "family": "proof-stats",
+  "profile": "chart",
+  "evidence": "Wave J J1-7 spec: proof-and-stats chart unit with exact-value landings and an emphasized callout",
+  "syncPoints": [{ "id": "callout-landed", "phase": "in", "offset": 3.05 }],
+  "files": [
+    {
+      "path": "chart-story.html",
+      "target": "compositions/components/chart-story.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "type",
+      "type": "enum",
+      "role": "content",
+      "label": "Chart type",
+      "description": "Chart form the data builds into.",
+      "default": "bars",
+      "options": [
+        { "value": "bars", "label": "Bars" },
+        { "value": "line", "label": "Line" },
+        { "value": "donut", "label": "Donut" },
+        { "value": "progress", "label": "Progress" }
+      ]
+    },
+    {
+      "id": "data",
+      "type": "string",
+      "role": "content",
+      "label": "Data",
+      "description": "Comma-separated numbers; the chart lands exactly on these values.",
+      "default": "12, 28, 45, 64"
+    },
+    {
+      "id": "labels",
+      "type": "string",
+      "role": "content",
+      "label": "Labels",
+      "description": "Comma-separated labels, one per datum.",
+      "default": "Q1, Q2, Q3, Q4"
+    },
+    {
+      "id": "emphasize",
+      "type": "number",
+      "role": "content",
+      "label": "Emphasize",
+      "description": "Index of the datum that takes the accent and the value callout. Clamped to the data range.",
+      "default": 3,
+      "step": 1
+    },
+    {
+      "id": "unit",
+      "type": "string",
+      "role": "content",
+      "label": "Unit",
+      "description": "Suffix appended to every displayed value.",
+      "default": "%"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract color used by the emphasized datum and its callout.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "style",
+      "label": "Exit",
+      "description": "Optional departure. Proof stats end on the still hold, so the default is none.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

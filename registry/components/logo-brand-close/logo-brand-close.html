@@ -1,0 +1,306 @@
+<!doctype html>
+<!--
+  logo-brand-close: HyperFrames video primitive (brand close)
+
+  The identity close that ends films. Wordmark letters cascade left to right
+  into a centered lockup (per-letter fade plus a short rise with a smooth
+  long-tail settle, no overshoot), an optional tagline settles beneath, an
+  optional URL line fades in below in mono, then the finished lockup holds
+  dead still to the end. Distinct from cta-close: identity, not action.
+  No button, no cursor.
+
+  Variables:
+    - wordmark (string): the brand name that cascades into place.
+    - tagline (string): optional line beneath the wordmark; empty hides it.
+    - url (string): optional mono URL line; empty hides it.
+    - accent (green | blue | violet): color of the brand period.
+    - exit (none | fade | up, default none): films end on the hold.
+
+  Envelope, fixed IN with elastic HOLD only (OUT exists only when exit is
+  not none):
+    IN_BASE  = 1.9s, letter cascade, tagline settle, URL fade
+    HOLD     = max(0, D - IN - OUT), completely still
+    OUT_BASE = 0.5s only when exit is fade or up, otherwise 0
+    If D is shorter than IN_BASE + OUT_BASE, both compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal logo-brand-close key.
+-->
+<html
+  lang="en"
+  data-composition-id="logo-brand-close"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "wordmark", "type": "string", "role": "content", "label": "Wordmark", "description": "Brand name whose letters cascade into the centered lockup.", "default": "HYPERFRAMES" },
+    { "id": "tagline", "type": "string", "role": "content", "label": "Tagline", "description": "Optional tagline that settles beneath the wordmark. Empty hides it.", "default": "Write HTML. Render video." },
+    { "id": "url", "type": "string", "role": "content", "label": "URL", "description": "Optional mono URL line beneath the tagline. Empty hides it.", "default": "hyperframes.heygen.com" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color used by the brand period at the end of the wordmark.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "Optional departure. Films end on the still hold, so the default is none.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Logo Brand Close</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="logo-brand-close" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .lbc-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+          }
+
+          .lbc-lockup {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 92cqw;
+            gap: var(--space-2, 3.4cqh);
+            text-align: center;
+            will-change: transform, opacity;
+          }
+
+          .lbc-wordmark {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            margin: 0;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: var(--lbc-wordmark-size, min(13cqw, 22cqh));
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: -0.03em;
+            white-space: nowrap;
+          }
+
+          .lbc-letter {
+            display: inline-block;
+            flex: 0 0 auto;
+            will-change: transform, opacity;
+          }
+
+          .lbc-space {
+            width: 0.32em;
+          }
+
+          .lbc-period {
+            color: var(--lbc-accent);
+          }
+
+          .lbc-tagline {
+            max-width: 86cqw;
+            margin: 0;
+            color: color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--muted, #94a3b8));
+            font-size: var(--lbc-tagline-size, min(3.4cqw, 5.4cqh));
+            font-weight: 500;
+            line-height: 1.3;
+            letter-spacing: 0.01em;
+            will-change: transform, opacity;
+          }
+
+          .lbc-url {
+            margin: 0;
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: var(--lbc-url-size, min(2.5cqw, 4.2cqh));
+            font-weight: 500;
+            line-height: 1;
+            letter-spacing: 0.12em;
+            will-change: opacity;
+          }
+        </style>
+
+        <div
+          id="logo-brand-close-clip"
+          class="lbc-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="lbc-lockup">
+            <h2 class="lbc-wordmark"></h2>
+            <p class="lbc-tagline"></p>
+            <p class="lbc-url"></p>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var lockup = root.querySelector(".lbc-lockup");
+            var wordmarkElement = root.querySelector(".lbc-wordmark");
+            var taglineElement = root.querySelector(".lbc-tagline");
+            var urlElement = root.querySelector(".lbc-url");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var wordmark =
+              vars.wordmark == null
+                ? "HYPERFRAMES"
+                : String(vars.wordmark).trim().replace(/\s+/g, " ");
+            if (wordmark.length === 0) wordmark = "HYPERFRAMES";
+            var tagline =
+              vars.tagline == null
+                ? "Write HTML. Render video."
+                : String(vars.tagline).trim().replace(/\s+/g, " ");
+            var url =
+              vars.url == null ? "hyperframes.heygen.com" : String(vars.url).trim();
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--lbc-accent", accentColors[accent]);
+            wordmarkElement.setAttribute("aria-label", wordmark);
+            wordmarkElement.setAttribute("role", "img");
+
+            // The brand period: an accent dot ends the wordmark. If the
+            // wordmark already ends with "." that period takes the accent
+            // instead of appending a second one.
+            var characters = Array.from(wordmark);
+            if (characters[characters.length - 1] !== ".") characters.push(".");
+
+            var letters = characters.map(function (character, index) {
+              var letter = document.createElement("span");
+              letter.id = "logo-brand-close-letter-" + index;
+              letter.className = "lbc-letter";
+              if (/\s/.test(character)) {
+                letter.classList.add("lbc-space");
+                letter.textContent = " ";
+              } else {
+                letter.textContent = character;
+              }
+              if (index === characters.length - 1) letter.classList.add("lbc-period");
+              letter.setAttribute("aria-hidden", "true");
+              wordmarkElement.appendChild(letter);
+              return letter;
+            });
+
+            // Deterministic character-count fitting before layout, matching
+            // the cta-close heuristic. The 84cqw target keeps air both sides.
+            var wordmarkSize = Math.min(13, 84 / (characters.length * 0.62));
+            root.style.setProperty(
+              "--lbc-wordmark-size",
+              "min(" + wordmarkSize.toFixed(3) + "cqw, 22cqh)",
+            );
+
+            if (tagline.length === 0) taglineElement.remove();
+            else taglineElement.textContent = tagline;
+            if (url.length === 0) urlElement.remove();
+            else urlElement.textContent = url;
+
+            var IN_BASE = 1.9;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+            var RISE_BASE = 0.9;
+            var STAGGER_BASE = 0.55;
+            var TAGLINE_AT_BASE = 0.85;
+            var TAGLINE_DURATION_BASE = 0.7;
+            var URL_AT_BASE = 1.2;
+            var URL_DURATION_BASE = 0.7;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var RISE = RISE_BASE * scale;
+            var STAGGER = letters.length > 1 ? STAGGER_BASE * scale : 0;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: per-letter fade plus short rise, expo.out for the smooth
+            // long-tail settle. No overshoot anywhere in this close.
+            tl.fromTo(
+              letters,
+              { opacity: 0, y: "5.5cqh" },
+              {
+                opacity: 1,
+                y: "0cqh",
+                duration: RISE,
+                stagger: { amount: STAGGER, from: "start" },
+                ease: "expo.out",
+              },
+              0,
+            );
+
+            if (taglineElement.isConnected) {
+              tl.fromTo(
+                taglineElement,
+                { opacity: 0, y: "2.4cqh" },
+                {
+                  opacity: 1,
+                  y: "0cqh",
+                  duration: TAGLINE_DURATION_BASE * scale,
+                  ease: "power3.out",
+                },
+                TAGLINE_AT_BASE * scale,
+              );
+            }
+
+            if (urlElement.isConnected) {
+              tl.fromTo(
+                urlElement,
+                { opacity: 0 },
+                { opacity: 1, duration: URL_DURATION_BASE * scale, ease: "power2.out" },
+                URL_AT_BASE * scale,
+              );
+            }
+
+            // HOLD: dead still. No drift, no breath; the confidence is the
+            // stillness, and by default the film ends here.
+
+            if (exit === "fade") {
+              tl.to(lockup, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(
+                lockup,
+                { opacity: 0, y: "-5cqh", duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["logo-brand-close"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

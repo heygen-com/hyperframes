@@ -10,11 +10,13 @@
     - text (string, default "HYPERFRAMES"): the target string.
     - accent (green | blue | violet, default "green"): text and frame color.
     - style (terminal | clean, default "terminal"): optional terminal frame.
+    - exit (none | fade | up, default "none"): optional departure.
 
   Envelope, fixed IN and OUT with elastic HOLD only:
     IN_BASE  = 1.65s, curved arrival and the complete left-to-right lock
     HOLD     = max(0, D - IN - OUT), subtle drift followed by 0.30s stillness
-    OUT_BASE = 0.45s, curved departure and fade
+    OUT_BASE = 0.45s departure when exit is fade or up, 0s when exit is
+               none (the default: the locked string holds until the cut)
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
     The timeline is never time-scaled.
 
@@ -34,7 +36,8 @@
   data-composition-variables='[
     { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Target string that resolves from deterministic wrong glyphs.", "default": "HYPERFRAMES" },
     { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the text, prefix, and optional terminal frame.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
-    { "id": "style", "type": "enum", "role": "style", "label": "Style", "description": "Terminal frame or clean text-only presentation.", "default": "terminal", "options": [{ "value": "terminal", "label": "Terminal" }, { "value": "clean", "label": "Clean" }] }
+    { "id": "style", "type": "enum", "role": "style", "label": "Style", "description": "Terminal frame or clean text-only presentation.", "default": "terminal", "options": [{ "value": "terminal", "label": "Terminal" }, { "value": "clean", "label": "Clean" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the locked string holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -172,6 +175,7 @@
               ? vars.accent
               : "green";
             var style = vars.style === "clean" ? "clean" : "terminal";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             root.style.setProperty("--sr-accent", accentColors[accent]);
             stage.classList.toggle("sr-clean", style === "clean");
@@ -182,13 +186,13 @@
             root.style.setProperty("--sr-font-size", "min(" + fittedCqw.toFixed(3) + "cqw, 24cqh)");
 
             var IN_BASE = 1.65;
-            var OUT_BASE = 0.45;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
             var ARRIVAL_BASE = 0.42;
             var LOCK_TAIL_BASE = 0.15;
             var STILLNESS = 0.3;
             var FPS = 30;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
-            var totalBase = IN_BASE + OUT_BASE;
+            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
             var scale = duration < totalBase ? duration / totalBase : 1;
             var IN = IN_BASE * scale;
             var OUT = OUT_BASE * scale;
@@ -264,10 +268,15 @@
               );
             }
 
-            // OUT: different axis eases bend the departure into an arc.
-            tl.to(stage, { x: "5cqw", duration: OUT, ease: "power2.in" }, OUT_START);
-            tl.to(stage, { y: "-3.5cqh", duration: OUT, ease: "sine.inOut" }, OUT_START);
-            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            // OUT: optional departure; exit none holds until the frame cuts.
+            // The up exit keeps the original curved arc departure.
+            if (exit === "up") {
+              tl.to(stage, { x: "5cqw", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { y: "-3.5cqh", duration: OUT, ease: "sine.inOut" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
 
             tl.seek(0);
             window.__timelines = window.__timelines || {};

@@ -1,0 +1,641 @@
+<!doctype html>
+<!--
+  browser-device-stage -- HyperFrames video primitive (product demo / stage)
+
+  A generic app surface presented in token-native device chrome. One settle
+  entrance (rise + soft scale), then a slow readable hold; optionally the
+  screen crossfades to a second screen at swap_at. The chrome is drawn
+  entirely from contract tokens: no traffic-light reds, no fake product
+  branding, hairline borders and surface mixes only.
+
+  Chrome (enum):
+    - browser: toolbar with three muted dots and a centered address pill
+      showing `title` in mono type.
+    - window: slim title bar with three muted dots and `title` centered in
+      body type.
+    - phone: portrait device, dark notch pill, bezel inset, centered.
+
+  The screen is a SLOT. Callers supply content by placing inert templates
+  anywhere in the HOST page (templates never render, and the runtime wipes
+  the host clip's own children on mount, so the slot lives at document
+  level):
+
+    <template data-slot="browser-device-stage-screen"> ... </template>
+    <template data-slot="browser-device-stage-screen-b"> ... </template>
+
+  Slot content may be an <img>, a muted <video>, or arbitrary HTML; direct
+  img/video children are stretched to cover the screen. When no screen slot
+  exists, the primitive renders a tasteful token-styled skeleton app (header
+  bar, sidebar, content cards; hairline borders, surface tokens, one accent
+  element). With swap_at > 0 and no screen-b slot, the second screen is a
+  rearranged skeleton state so the swap still reads.
+
+  Variables (declared in data-composition-variables below):
+    - chrome ("browser" | "window" | "phone", default "browser")
+    - title (string, default "app.example.com"): address pill / title bar text.
+    - swap_at (number seconds, default 0): crossfade to the second screen at
+      this offset from mount start; 0 disables. Clamped inside the hold so
+      the swap never fights the entrance or the exit.
+    - accent ("green" | "blue" | "violet", default "green"): green rides
+      --brand, blue rides --accent, violet rides --accent-2.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions; the default holds the final frame to the last pixel.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    IN_BASE  = 0.90s  one settle: rise + soft scale + fade, smooth ease-out
+    HOLD     = max(0, D - IN - OUT); a barely-there vertical drift, then
+               authored stillness
+    OUT_BASE = 0.50s  only when exit != none
+    If D < IN_BASE + OUT_BASE, IN and OUT compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin units),
+  is styled via #root only, and registers one paused timeline under the
+  LITERAL "browser-device-stage" key. All state is set with explicit
+  endpoints (gsap.set + fromTo) so any seek order lands identical frames.
+-->
+<html
+  lang="en"
+  data-composition-id="browser-device-stage"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "chrome", "type": "enum", "role": "content", "label": "Chrome", "description": "Device frame drawn around the screen slot.", "default": "browser", "options": [{ "value": "browser", "label": "Browser" }, { "value": "window", "label": "Window" }, { "value": "phone", "label": "Phone" }] },
+    { "id": "title", "type": "string", "role": "content", "label": "Title", "description": "Address pill text (browser) or title bar text (window).", "default": "app.example.com" },
+    { "id": "swap_at", "type": "number", "role": "content", "label": "Swap at", "description": "Seconds from mount start to crossfade to the second screen. 0 disables the swap.", "default": 0, "min": 0, "max": 30, "step": 0.1, "unit": "s" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Token the skeleton accent elements ride.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "style", "label": "Exit", "description": "Optional departure. None holds the final frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Browser Device Stage</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="browser-device-stage" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, ui-sans-serif, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .bds-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .bds-stage {
+            will-change: transform, opacity;
+          }
+
+          .bds-device {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            overflow: hidden;
+            border: 0.16cqmin solid color-mix(in srgb, var(--border, #475569) 85%, transparent);
+            border-radius: calc(var(--radius, 2cqmin) * 1.3);
+            background: color-mix(in srgb, var(--surface, #0b1016) 96%, var(--bds-accent));
+            box-shadow: 0 3cqh 9cqh color-mix(in srgb, var(--bg, #000000) 45%, transparent);
+          }
+
+          .bds-browser,
+          .bds-window {
+            width: min(82cqw, 126cqh);
+            aspect-ratio: 16 / 10;
+          }
+
+          .bds-phone {
+            position: relative;
+            grid-template-rows: minmax(0, 1fr);
+            height: min(86cqh, 168cqw);
+            aspect-ratio: 9 / 19;
+            padding: 1.7cqmin;
+            border-radius: 7cqmin;
+          }
+
+          /* chrome bar (browser toolbar / window title bar) */
+          .bds-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2, 2.2cqmin);
+            padding: 1.5cqmin 2.4cqmin;
+            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 60%, transparent);
+            background: color-mix(in srgb, var(--surface, #0b1016) 80%, var(--bg, #05070c));
+          }
+
+          .bds-phone .bds-bar {
+            display: none;
+          }
+
+          .bds-dots,
+          .bds-bar::after {
+            display: flex;
+            flex: 0 0 5.5cqmin;
+            gap: 0.95cqmin;
+          }
+
+          .bds-bar::after {
+            content: "";
+          }
+
+          .bds-dots i {
+            width: 1.15cqmin;
+            height: 1.15cqmin;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 26%, transparent);
+          }
+
+          .bds-pill {
+            display: block;
+            min-width: 36%;
+            max-width: 62%;
+            margin: 0 auto;
+            padding: 0.75cqmin 2.6cqmin;
+            overflow: hidden;
+            border: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 50%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg, #05070c) 55%, var(--surface, #0b1016));
+            color: var(--muted, #8b93a3);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            font-size: 2cqmin;
+            line-height: 1.5;
+            white-space: nowrap;
+            text-align: center;
+            text-overflow: ellipsis;
+          }
+
+          .bds-bartitle {
+            display: block;
+            margin: 0 auto;
+            padding: 0.4cqmin 0;
+            overflow: hidden;
+            color: color-mix(in srgb, var(--fg, #f8fafc) 78%, transparent);
+            font-size: 2.15cqmin;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            line-height: 1.5;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+
+          .bds-browser .bds-bartitle,
+          .bds-window .bds-pill {
+            display: none;
+          }
+
+          .bds-notch {
+            display: none;
+          }
+
+          .bds-phone .bds-notch {
+            display: block;
+            position: absolute;
+            z-index: 2;
+            top: 3cqmin;
+            left: 50%;
+            width: 26%;
+            height: 2.2cqmin;
+            transform: translateX(-50%);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg, #05070c) 72%, #000000);
+          }
+
+          /* screen area: stacked slot layers */
+          .bds-screen {
+            position: relative;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--surface, #0b1016) 86%, var(--bg, #05070c));
+          }
+
+          .bds-phone .bds-screen {
+            border-radius: 5.4cqmin;
+          }
+
+          .bds-screen-a,
+          .bds-screen-b {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .bds-screen-a > img,
+          .bds-screen-a > video,
+          .bds-screen-b > img,
+          .bds-screen-b > video {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          /* default skeleton screen: pure token furniture, no branding */
+          .bds-skel {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+          }
+
+          .bds-skel-top {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1, 1.6cqmin);
+            padding: 1.8cqmin 2.6cqmin;
+            border-bottom: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+          }
+
+          .bds-phone .bds-skel-top {
+            padding-top: 6.4cqmin;
+          }
+
+          .bds-skel-mark {
+            width: 2.6cqmin;
+            height: 2.6cqmin;
+            border-radius: 0.8cqmin;
+            background: color-mix(in srgb, var(--bds-accent) 74%, var(--surface, #0b1016));
+          }
+
+          .bds-skel-line {
+            height: 1.25cqmin;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 13%, transparent);
+          }
+
+          .bds-skel-top .bds-skel-line:nth-of-type(1) {
+            width: 9cqmin;
+          }
+
+          .bds-skel-top .bds-skel-line:nth-of-type(2) {
+            width: 6.5cqmin;
+          }
+
+          .bds-skel-spring {
+            flex: 1;
+          }
+
+          .bds-skel-chip {
+            width: 8.5cqmin;
+            height: 2.9cqmin;
+            border: 0.14cqmin solid color-mix(in srgb, var(--bds-accent) 55%, transparent);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bds-accent) 28%, transparent);
+          }
+
+          .bds-skel-avatar {
+            width: 2.8cqmin;
+            height: 2.8cqmin;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 18%, transparent);
+          }
+
+          .bds-skel-body {
+            display: grid;
+            grid-template-columns: 24% minmax(0, 1fr);
+            min-height: 0;
+          }
+
+          .bds-phone .bds-skel-body {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .bds-skel-side {
+            display: flex;
+            flex-direction: column;
+            gap: 2cqmin;
+            padding: 2.6cqmin 2.6cqmin;
+            border-right: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 55%, transparent);
+          }
+
+          .bds-phone .bds-skel-side {
+            display: none;
+          }
+
+          .bds-skel-side .bds-skel-line:nth-child(1) {
+            width: 78%;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 22%, transparent);
+          }
+
+          .bds-skel-side .bds-skel-line:nth-child(2) {
+            width: 56%;
+          }
+
+          .bds-skel-side .bds-skel-line:nth-child(3) {
+            width: 66%;
+          }
+
+          .bds-skel-side .bds-skel-line:nth-child(4) {
+            width: 44%;
+          }
+
+          .bds-skel-side .bds-skel-line:nth-child(5) {
+            width: 60%;
+          }
+
+          .bds-skel-main {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2, 1.8cqmin);
+            min-height: 0;
+            padding: var(--space-3, 2.8cqmin);
+          }
+
+          .bds-skel-heading {
+            width: 34%;
+            height: 2.5cqmin;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 21%, transparent);
+          }
+
+          .bds-skel-sub {
+            width: 52%;
+            height: 1.25cqmin;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--fg, #f8fafc) 9%, transparent);
+          }
+
+          .bds-skel-cards {
+            display: grid;
+            flex: 1;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 2.1cqmin;
+            min-height: 0;
+            margin-top: 0.8cqmin;
+          }
+
+          .bds-phone .bds-skel-cards {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .bds-skel-card {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5cqmin;
+            min-height: 0;
+            padding: 2.1cqmin;
+            border: 0.14cqmin solid color-mix(in srgb, var(--border, #475569) 60%, transparent);
+            border-radius: var(--radius, 1.6cqmin);
+            background: color-mix(in srgb, var(--bg, #05070c) 30%, transparent);
+          }
+
+          .bds-skel-card .bds-skel-line {
+            width: 55%;
+          }
+
+          .bds-skel-block {
+            flex: 1;
+            min-height: 3cqmin;
+            border-radius: calc(var(--radius, 1.6cqmin) * 0.6);
+            background: color-mix(in srgb, var(--fg, #f8fafc) 7%, transparent);
+          }
+
+          .bds-skel-card:nth-child(1) .bds-skel-block {
+            background: color-mix(in srgb, var(--bds-accent) 17%, transparent);
+          }
+
+          /* skeleton state B: rearranged furniture so the swap reads */
+          .bds-skel-b .bds-skel-heading {
+            width: 24%;
+          }
+
+          .bds-skel-b .bds-skel-sub {
+            width: 38%;
+          }
+
+          .bds-skel-b .bds-skel-cards {
+            grid-template-columns: 2fr 1fr;
+          }
+
+          .bds-phone .bds-skel-b .bds-skel-cards {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .bds-skel-b .bds-skel-card:nth-child(3) {
+            grid-column: 1 / -1;
+          }
+
+          .bds-skel-b .bds-skel-card:nth-child(1) .bds-skel-block {
+            background: color-mix(in srgb, var(--fg, #f8fafc) 7%, transparent);
+          }
+
+          .bds-skel-b .bds-skel-card:nth-child(2) .bds-skel-block {
+            background: color-mix(in srgb, var(--bds-accent) 17%, transparent);
+          }
+        </style>
+
+        <div
+          id="browser-device-stage-clip"
+          class="bds-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <div class="bds-stage">
+            <div class="bds-device" role="img" aria-label="App screen in device chrome">
+              <div class="bds-bar">
+                <span class="bds-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="bds-pill"></span>
+                <span class="bds-bartitle"></span>
+              </div>
+              <span class="bds-notch" aria-hidden="true"></span>
+              <div class="bds-screen">
+                <div class="bds-screen-a">
+                  <div class="bds-skel" aria-hidden="true">
+                    <div class="bds-skel-top">
+                      <span class="bds-skel-mark"></span>
+                      <span class="bds-skel-line"></span>
+                      <span class="bds-skel-line"></span>
+                      <span class="bds-skel-spring"></span>
+                      <span class="bds-skel-chip"></span>
+                      <span class="bds-skel-avatar"></span>
+                    </div>
+                    <div class="bds-skel-body">
+                      <div class="bds-skel-side">
+                        <span class="bds-skel-line"></span>
+                        <span class="bds-skel-line"></span>
+                        <span class="bds-skel-line"></span>
+                        <span class="bds-skel-line"></span>
+                        <span class="bds-skel-line"></span>
+                      </div>
+                      <div class="bds-skel-main">
+                        <span class="bds-skel-heading"></span>
+                        <span class="bds-skel-sub"></span>
+                        <div class="bds-skel-cards">
+                          <div class="bds-skel-card">
+                            <span class="bds-skel-line"></span>
+                            <span class="bds-skel-block"></span>
+                          </div>
+                          <div class="bds-skel-card">
+                            <span class="bds-skel-line"></span>
+                            <span class="bds-skel-block"></span>
+                          </div>
+                          <div class="bds-skel-card">
+                            <span class="bds-skel-line"></span>
+                            <span class="bds-skel-block"></span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".bds-stage");
+            var device = root.querySelector(".bds-device");
+            var screen = root.querySelector(".bds-screen");
+            var screenA = root.querySelector(".bds-screen-a");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var chromeKind =
+              vars.chrome === "window" || vars.chrome === "phone" ? vars.chrome : "browser";
+            var title = vars.title == null ? "app.example.com" : String(vars.title);
+            var swapAt = parseFloat(vars.swap_at);
+            if (!isFinite(swapAt) || swapAt <= 0) swapAt = 0;
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exitMode = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.style.setProperty("--bds-accent", accentColors[accent]);
+            device.classList.add("bds-" + chromeKind);
+            root.querySelector(".bds-pill").textContent = title;
+            root.querySelector(".bds-bartitle").textContent = title;
+
+            // SLOTS. Caller templates live at HOST DOCUMENT level (the mount
+            // wipes host-clip children, and templates never render). The
+            // scoped `document` proxy filters queries to this composition's
+            // subtree, so the lookup deliberately goes through ownerDocument.
+            var hostDoc = root.ownerDocument;
+            function slotContent(name) {
+              var tpl = null;
+              try {
+                tpl = hostDoc.querySelector(
+                  'template[data-slot="browser-device-stage-' + name + '"]',
+                );
+              } catch (error) {
+                tpl = null;
+              }
+              return tpl ? hostDoc.importNode(tpl.content, true) : null;
+            }
+
+            var skeleton = screenA.querySelector(".bds-skel");
+            var slotA = slotContent("screen");
+            var screenB = null;
+            if (swapAt > 0) {
+              screenB = hostDoc.createElement("div");
+              screenB.className = "bds-screen-b";
+              var slotB = slotContent("screen-b");
+              if (slotB) {
+                screenB.appendChild(slotB);
+              } else {
+                var skeletonB = skeleton.cloneNode(true);
+                skeletonB.classList.add("bds-skel-b");
+                screenB.appendChild(skeletonB);
+              }
+              screen.appendChild(screenB);
+            }
+            if (slotA) {
+              skeleton.remove();
+              screenA.appendChild(slotA);
+            }
+
+            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled.
+            var IN_BASE = 0.9;
+            var OUT_BASE = exitMode === "none" ? 0 : 0.5;
+            var SWAP_BASE = 0.55;
+            var STILLNESS = 0.35;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            // Explicit both-endpoint state so a seek to t=0 is always correct.
+            gsap.set(stage, { opacity: 0, y: "4.5cqh", scale: 0.965, transformOrigin: "50% 60%" });
+            if (screenB) gsap.set(screenB, { opacity: 0, y: "1.6cqh" });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: one settle. Rise + soft scale + fade, smooth ease-out.
+            tl.to(stage, { opacity: 1, duration: IN * 0.66, ease: "power2.out" }, 0);
+            tl.to(stage, { y: "0cqh", duration: IN, ease: "power3.out" }, 0);
+            tl.to(stage, { scale: 1, duration: IN, ease: "power2.out" }, 0);
+
+            // HOLD: barely-there drift as two explicit tweens (no yoyo
+            // re-tweens), then authored stillness until OUT.
+            var driftHalf = Math.max(0, HOLD - STILLNESS) / 2;
+            if (driftHalf >= 0.25) {
+              driftHalf = Math.min(driftHalf, 1.6);
+              tl.to(stage, { y: "-0.5cqh", duration: driftHalf, ease: "sine.inOut" }, IN);
+              tl.to(stage, { y: "0cqh", duration: driftHalf, ease: "sine.inOut" }, IN + driftHalf);
+            }
+
+            // Optional screen swap: restrained crossfade with a short slide,
+            // clamped inside [IN, D - OUT - SWAP] so it never fights the
+            // entrance or the exit.
+            if (screenB) {
+              var SWAP = SWAP_BASE * scale;
+              var latest = Math.max(IN, duration - OUT - SWAP - 0.05);
+              var swapStart = Math.min(Math.max(swapAt, IN), latest);
+              tl.to(screenA, { opacity: 0, duration: SWAP, ease: "power1.inOut" }, swapStart);
+              tl.fromTo(
+                screenB,
+                { opacity: 0, y: "1.6cqh" },
+                { opacity: 1, y: "0cqh", duration: SWAP, ease: "power2.out" },
+                swapStart,
+              );
+            }
+
+            // OUT: only when exit != none; the default holds the last frame.
+            if (exitMode !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exitMode === "up") {
+                tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["browser-device-stage"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

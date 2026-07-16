@@ -64,6 +64,27 @@
         { "value": "blue", "label": "Blue" },
         { "value": "violet", "label": "Violet" }
       ]
+    },
+    {
+      "id": "glow",
+      "type": "boolean",
+      "role": "style",
+      "label": "Glow",
+      "description": "Optional soft accent glow under the count. Off by default.",
+      "default": false
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the landed value holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
     }
   ]
 }

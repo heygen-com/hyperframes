@@ -1,46 +1,369 @@
+<!doctype html>
 <!--
-  Marker Highlight - remocn typography primitive for HyperFrames.
+  marker-highlight: HyperFrames video primitive (typography / emphasis)
 
-  Paste the markup and CSS into a composition. Drive the timeline integration
-  from a paused GSAP timeline so renders remain deterministic.
+  The corpus emphasis unit: a short line of display text settles in, then ONE
+  hand-drawn marker stroke draws over the emphasized word on cue. Four marker
+  styles share the same mechanic: an SVG path revealed by a getTotalLength
+  dash tween (never the pathLength attribute, never non-scaling-stroke on a
+  dashed path; the anisotropic viewBox stretch is what gives the ink its
+  hand-swiped weight).
+
+  Variables:
+    text (string): the full line.
+    emphasis_word (string): first case-insensitive substring match inside
+      text gets the marker. Empty or unmatched renders the line with no
+      marker. Keep it a word or short phrase; it stays on one line.
+    style (highlight | circle | underline | scribble): marker shape.
+    draw_at (seconds): cue for the draw, relative to mount start. Clamped so
+      the stroke always completes before any exit begins.
+    accent (green | blue | violet): ink color via the contract token map.
+    exit (none | fade | up, default none): frame roots own transitions;
+      holds end films.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never time-scaled):
+    IN_BASE   = 0.55s  text rises into place
+    DRAW_BASE = 0.60s  marker stroke, anchored at draw_at, plus a small
+                       settle pop on the emphasized word
+    HOLD      = max(0, D - phases), completely still
+    OUT_BASE  = 0s for exit none, otherwise 0.45s
+    If D is shorter than the fixed phases, they compress together.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or
+  data-height, and registers one paused timeline under the literal
+  marker-highlight key.
 -->
+<html
+  lang="en"
+  data-composition-id="marker-highlight"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Full line of display text.", "default": "Ship it with confidence" },
+    { "id": "emphasis_word", "type": "string", "role": "content", "label": "Emphasis word", "description": "First case-insensitive substring match in text receives the marker. Empty or unmatched draws no marker.", "default": "confidence" },
+    { "id": "style", "type": "enum", "role": "style", "label": "Marker style", "description": "Shape of the hand-drawn marker stroke.", "default": "highlight", "options": [{ "value": "highlight", "label": "Highlight" }, { "value": "circle", "label": "Circle" }, { "value": "underline", "label": "Underline" }, { "value": "scribble", "label": "Scribble" }] },
+    { "id": "draw_at", "type": "number", "role": "timing", "label": "Draw at", "description": "Second (from mount start) the marker starts drawing. Clamped so the stroke completes before any exit.", "default": 0.9, "min": 0, "step": 0.1, "unit": "s" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Marker ink color from the contract token map.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the lockup holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Marker Highlight</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="marker-highlight" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
 
-<div class="hf-remocn-marker-highlight"><mark></mark><span>Launch ready</span></div>
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #0b0c0e);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
 
-<style>
-  .hf-remocn-marker-highlight {
-    color: var(--fg, #18181b);
-    font-family: var(--font-display, Inter, system-ui, sans-serif);
-    font-weight: 900;
-    letter-spacing: -0.04em;
-  }
-  .hf-remocn-marker-highlight {
-    position: relative;
-    display: inline-grid;
-    padding: var(--space-1, 8px) var(--space-2, 12px);
-    font-size: 64px;
-  }
-  .hf-remocn-marker-highlight mark {
-    position: absolute;
-    inset: auto 0 var(--space-1, 9px);
-    height: 24px;
-    border-radius: var(--radius, 4px);
-    background: var(--accent, #fde047);
-    transform: scaleX(var(--hf-marker-progress, 1));
-    transform-origin: left center;
-  }
-  .hf-remocn-marker-highlight span {
-    --mh-ink: 1;
-    position: relative;
-    color: color-mix(
-      in srgb,
-      var(--muted, #71717a) calc((1 - var(--mh-ink)) * 100%),
-      var(--fg, #18181b) calc(var(--mh-ink) * 100%)
-    );
-  }
-</style>
+          .mh-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
 
-<!--
-  Timeline integration:
-  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { '--mh-ink': 0 }, { '--mh-ink': 1, duration: 0.28 }, startTime + 0.16);
--->
+          .mh-stage {
+            max-width: 86cqw;
+            text-align: center;
+            will-change: transform, opacity;
+          }
+
+          .mh-text {
+            margin: 0;
+            font-size: var(--mh-font-size, min(8cqw, 15cqh));
+            font-weight: 600;
+            line-height: 1.14;
+            letter-spacing: -0.03em;
+          }
+
+          .mh-em {
+            position: relative;
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform;
+          }
+
+          .mh-em-text {
+            position: relative;
+            z-index: 1;
+          }
+
+          .mh-mark {
+            position: absolute;
+            z-index: 0;
+            overflow: visible;
+          }
+
+          /* Per-style marker box around the emphasized word. Explicit
+             width/height (svg is a replaced element: inset-stretching would
+             fall back to its intrinsic viewBox ratio); then
+             preserveAspectRatio="none" stretches the authored path (and its
+             stroke) into the box, which is exactly the marker-nib distortion
+             we want on a dashed path. */
+          .mh-em[data-marker-style="highlight"] .mh-mark {
+            left: -3%;
+            top: 14%;
+            width: 106%;
+            height: 76%;
+          }
+
+          .mh-em[data-marker-style="underline"] .mh-mark {
+            left: -2%;
+            bottom: -14%;
+            width: 105%;
+            height: 22%;
+            z-index: 2;
+          }
+
+          .mh-em[data-marker-style="circle"] .mh-mark {
+            left: -13%;
+            top: -26%;
+            width: 126%;
+            height: 152%;
+            z-index: 2;
+          }
+
+          .mh-em[data-marker-style="scribble"] .mh-mark {
+            left: -2%;
+            top: 12%;
+            width: 104%;
+            height: 76%;
+            z-index: 2;
+          }
+        </style>
+
+        <div
+          id="marker-highlight-clip"
+          class="mh-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="mh-stage">
+            <p class="mh-text"></p>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal key: the flattening step strips data-composition-id off
+            // the mounted root, so reading it back would register "null".
+            var compositionId = "marker-highlight";
+            var stage = root.querySelector(".mh-stage");
+            var textEl = root.querySelector(".mh-text");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text =
+              vars.text == null
+                ? "Ship it with confidence"
+                : String(vars.text).trim().replace(/\s+/g, " ");
+            var emphasis =
+              vars.emphasis_word == null
+                ? "confidence"
+                : String(vars.emphasis_word).trim().replace(/\s+/g, " ");
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Hand-drawn stroke library. Paths are authored in a fixed viewBox
+            // and stretched into the word box; wobble is baked into the
+            // control points, never randomized.
+            var markerStyles = {
+              highlight: {
+                viewBox: "0 0 100 40",
+                d: "M 3 24 C 22 20.5, 47 25.5, 68 22.5 C 79 21, 90 23, 97 21.5",
+                strokeWidth: 26,
+                opacity: 0.5,
+              },
+              circle: {
+                viewBox: "0 0 100 40",
+                d: "M 22 7 C 58 1, 95 8, 97 20 C 99 31, 74 38, 44 37 C 16 36, 2 29, 3 19 C 4 10, 22 4, 52 4.5",
+                strokeWidth: 2.8,
+                opacity: 1,
+              },
+              underline: {
+                viewBox: "0 0 100 12",
+                d: "M 2 7 C 20 4.5, 46 8.5, 66 6 C 80 4.5, 92 7.5, 98 5.5",
+                strokeWidth: 4.5,
+                opacity: 1,
+              },
+              scribble: {
+                viewBox: "0 0 100 40",
+                d: "M 6 13 C 34 9.5, 66 11, 94 9 C 60 15, 26 16, 7 20 C 36 18, 68 21, 93 18 C 62 25, 28 27, 8 29",
+                strokeWidth: 5,
+                opacity: 0.65,
+              },
+            };
+            var styleName = Object.prototype.hasOwnProperty.call(markerStyles, vars.style)
+              ? vars.style
+              : "highlight";
+            var marker = markerStyles[styleName];
+
+            // Split text around the first case-insensitive emphasis match.
+            // textContent nodes only, never innerHTML.
+            var matchIndex =
+              emphasis.length > 0 ? text.toLowerCase().indexOf(emphasis.toLowerCase()) : -1;
+            var emEl = null;
+            var pathEl = null;
+            if (matchIndex >= 0) {
+              var before = text.slice(0, matchIndex);
+              var matched = text.slice(matchIndex, matchIndex + emphasis.length);
+              var after = text.slice(matchIndex + emphasis.length);
+              if (before) textEl.appendChild(document.createTextNode(before));
+
+              emEl = document.createElement("span");
+              emEl.className = "mh-em";
+              emEl.setAttribute("data-marker-style", styleName);
+
+              var svgNS = "http://www.w3.org/2000/svg";
+              var svg = document.createElementNS(svgNS, "svg");
+              svg.setAttribute("class", "mh-mark");
+              svg.setAttribute("viewBox", marker.viewBox);
+              svg.setAttribute("preserveAspectRatio", "none");
+              svg.setAttribute("aria-hidden", "true");
+              pathEl = document.createElementNS(svgNS, "path");
+              pathEl.setAttribute("d", marker.d);
+              pathEl.setAttribute("fill", "none");
+              pathEl.setAttribute("stroke-width", String(marker.strokeWidth));
+              pathEl.setAttribute("stroke-linecap", "round");
+              pathEl.setAttribute("stroke-linejoin", "round");
+              // style.stroke, not the presentation attribute: var() only
+              // resolves as a CSS value.
+              pathEl.style.stroke = accentColors[accent];
+              svg.appendChild(pathEl);
+
+              var emText = document.createElement("span");
+              emText.className = "mh-em-text";
+              emText.textContent = matched;
+
+              emEl.appendChild(svg);
+              emEl.appendChild(emText);
+              textEl.appendChild(emEl);
+              if (after) textEl.appendChild(document.createTextNode(after));
+            } else {
+              textEl.textContent = text;
+            }
+            textEl.setAttribute("aria-label", text);
+
+            // Deterministic character-count fit; the line may wrap, the
+            // emphasized phrase never wraps internally.
+            var characters = Math.max(1, Array.from(text).length);
+            var fitted = Math.max(4.2, Math.min(9.5, 185 / characters));
+            root.style.setProperty("--mh-font-size", "min(" + fitted.toFixed(3) + "cqw, 16cqh)");
+
+            // RETIME RANGE: fixed phases; HOLD is the only elastic span.
+            var IN_BASE = 0.55;
+            var DRAW_BASE = 0.6;
+            var POP_BASE = 0.32;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var totalBase = IN_BASE + DRAW_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var DRAW = DRAW_BASE * scale;
+            var POP = POP_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var OUT_START = duration - OUT;
+
+            var drawAtRaw = Number(vars.draw_at);
+            var drawAt = Number.isFinite(drawAtRaw) ? Math.max(0, drawAtRaw) : 0.9;
+            // The stroke and its settle pop always land before the exit.
+            drawAt = Math.min(drawAt, Math.max(0, OUT_START - (DRAW + POP)));
+
+            gsap.set(stage, { opacity: 0, y: "6cqh" });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: the line rises into place.
+            tl.fromTo(
+              stage,
+              { opacity: 0, y: "6cqh" },
+              { opacity: 1, y: "0cqh", duration: IN, ease: "power3.out" },
+              0,
+            );
+
+            // DRAW: dash reveal from measured length; both endpoints explicit
+            // so any seek is correct without playing through.
+            if (pathEl) {
+              var length = pathEl.getTotalLength();
+              pathEl.style.strokeDasharray = String(length);
+              // Hidden until the cue: at dashoffset == length the round cap
+              // still paints a dot at the path start, so the ink is opacity 0
+              // until the exact frame the draw begins.
+              gsap.set(pathEl, { strokeDashoffset: length, opacity: 0 });
+              tl.set(pathEl, { opacity: marker.opacity }, drawAt);
+              tl.fromTo(
+                pathEl,
+                { strokeDashoffset: length },
+                { strokeDashoffset: 0, duration: DRAW, ease: "power2.inOut" },
+                drawAt,
+              );
+              // Settle pop on the emphasized word as the ink lands.
+              tl.fromTo(
+                emEl,
+                { scale: 1 },
+                {
+                  scale: 1.045,
+                  duration: POP / 2,
+                  ease: "power1.out",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                drawAt + DRAW * 0.7,
+              );
+            }
+
+            // HOLD: completely still.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "up") {
+              tl.to(
+                stage,
+                { opacity: 0, y: "-7cqh", duration: OUT, ease: "power2.in" },
+                OUT_START,
+              );
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
