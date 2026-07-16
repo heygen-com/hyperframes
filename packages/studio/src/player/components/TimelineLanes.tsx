@@ -70,6 +70,7 @@ export interface TimelineLaneBaseProps {
   keyframeCache?: Map<string, KeyframeCacheEntry>;
   selectedKeyframes: Set<string>;
   currentTime: number;
+  onSeek?: (time: number) => void;
   onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
@@ -126,6 +127,7 @@ export function TimelineLanes({
   keyframeCache,
   selectedKeyframes,
   currentTime,
+  onSeek,
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
@@ -264,6 +266,9 @@ export function TimelineLanes({
                     const selectClip = () => {
                       usePlayerStore.getState().clearSelectedElementIds();
                       setSelectedElementId(elementKey);
+                      const playheadInWindow =
+                        currentTime >= el.start && currentTime < el.start + el.duration;
+                      if (!playheadInWindow) onSeek?.(el.start);
                     };
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT
