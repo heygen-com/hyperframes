@@ -42,6 +42,10 @@ import {
   ProxyCapacityError,
   ProxyTranscodeError,
 } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  decideMediaProxyEligibility,
+  probeAssetCodec,
+} from "@hyperframes/studio-server/media-codec-map";
 
 export default defineCommand({
   meta: { name: "play", description: "Play a composition in a lightweight browser player" },
@@ -229,6 +233,10 @@ export async function registerCompositionRoute(
       // transcode; a missing asset already 404'd above.
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
       try {
+        const eligibility = decideMediaProxyEligibility(await probeAssetCodec(filePath));
+        if (!eligibility.eligible) {
+          return ctx.text(`Media proxy unavailable: ${eligibility.reason}`, 422);
+        }
         const proxyPath = await resolveProxy(project.dir, filePath);
         // The proxy IS an mp4 regardless of the source's extension (.mov,
         // .mkv, ...) — serve its real type, matching the preview route.

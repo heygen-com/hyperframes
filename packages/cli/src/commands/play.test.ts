@@ -52,11 +52,25 @@ const mocks = vi.hoisted(() => {
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 
+const mediaMocks = vi.hoisted(() => ({
+  probeAssetCodec: vi.fn(async () => ({
+    codecName: "hevc",
+    browserHostile: true,
+    representativeMime: "video/mp4",
+    hasAlpha: false,
+  })),
+  decideMediaProxyEligibility: vi.fn(
+    (facts: { hasAlpha: boolean; browserHostile: boolean } | null) =>
+      facts?.hasAlpha ? { eligible: false, reason: "alpha_source" } : { eligible: true },
+  ),
+}));
+
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
   ProxyCapacityError: mocks.ProxyCapacityError,
 }));
+vi.mock("@hyperframes/studio-server/media-codec-map", () => mediaMocks);
 
 // The shared injection helper ships as a self-contained dist bundle (its copy
 // of scanProjectMediaCodecMap is inlined), so it must be mocked wholesale —
@@ -88,9 +102,33 @@ afterEach(() => {
   mocks.resolveProxy.mockReset();
   mocks.resolveProxy.mockResolvedValue("/unused-prewarm-proxy-path");
   mocks.scanProjectMediaCodecMap.mockReset();
+  mediaMocks.probeAssetCodec.mockClear();
+  mediaMocks.decideMediaProxyEligibility.mockClear();
   mocks.scanProjectMediaCodecMap.mockResolvedValue({});
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
+});
+
+it("rejects direct proxy requests for alpha sources", async () => {
+  const project = tmpProject();
+  writeFileSync(join(project.dir, "clip.mov"), "alpha-prores");
+  mediaMocks.probeAssetCodec.mockResolvedValueOnce({
+    codecName: "prores",
+    browserHostile: true,
+    representativeMime: "video/quicktime",
+    hasAlpha: true,
+  });
+  mediaMocks.decideMediaProxyEligibility.mockReturnValueOnce({
+    eligible: false,
+    reason: "alpha_source",
+  });
+  const app = await buildApp(project, true);
+
+  const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+
+  expect(res.status).toBe(422);
+  expect(await res.text()).toContain("alpha_source");
+  expect(mocks.resolveProxy).not.toHaveBeenCalled();
 });
 
 async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> {
