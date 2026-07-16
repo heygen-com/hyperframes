@@ -105,16 +105,54 @@ describe("useTimelineSelectionPreviewSync", () => {
     harness.cleanup();
   });
 
-  it("clears preview selection when the timeline selection set is empty", async () => {
+  it("preserves an unmapped canvas selection while the timeline selection stays empty", async () => {
+    const { timelineElements, selectionById } = makeSyncFixture();
+    const canvasChip = document.createElement("button");
+    canvasChip.id = "canvas-chip";
+    const canvasSelection = makeSelection("Canvas chip", canvasChip);
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const emptySelectedElementIds = new Set<string>();
+    const harness = renderHarness();
+    const baseProps = {
+      selectedElementId: null,
+      selectedElementIds: emptySelectedElementIds,
+      timelineElements,
+      buildDomSelectionForTimelineElement: vi.fn(async (element: TimelineElement) => {
+        return selectionById.get(element.id) ?? null;
+      }),
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    };
+
+    await harness.rerender({
+      ...baseProps,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+    });
+    await harness.rerender({
+      ...baseProps,
+      selectedElementIds: new Set<string>(),
+      domEditSelection: canvasSelection,
+      domEditGroupSelections: [canvasSelection],
+    });
+
+    expect(applyDomSelection).not.toHaveBeenCalled();
+    expect(applyMarqueeSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
+  it("clears preview selection when the timeline selection transitions to empty", async () => {
     const { firstSelection, timelineElements, selectionById } = makeSyncFixture();
+    const matchingTimelineElements = timelineElements.map((element) =>
+      element.id === "clip-1" ? { ...element, domId: "clip-1" } : element,
+    );
     const applyDomSelection = vi.fn();
     const applyMarqueeSelection = vi.fn();
     const harness = renderHarness();
-
-    await harness.rerender({
-      selectedElementId: null,
-      selectedElementIds: new Set(),
-      timelineElements,
+    const baseProps = {
+      timelineElements: matchingTimelineElements,
       domEditSelection: firstSelection,
       domEditGroupSelections: [firstSelection],
       buildDomSelectionForTimelineElement: vi.fn(async (element: TimelineElement) => {
@@ -123,8 +161,20 @@ describe("useTimelineSelectionPreviewSync", () => {
       applyDomSelection,
       applyMarqueeSelection,
       onSelectionNotFound: vi.fn(),
+    };
+
+    await harness.rerender({
+      ...baseProps,
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+    });
+    await harness.rerender({
+      ...baseProps,
+      selectedElementId: null,
+      selectedElementIds: new Set(),
     });
 
+    expect(applyDomSelection).toHaveBeenCalledOnce();
     expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
     expect(applyMarqueeSelection).not.toHaveBeenCalled();
     harness.cleanup();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
@@ -64,25 +64,36 @@ export function useTimelineSelectionPreviewSync({
     [selectedElementId, selectedElementIds],
   );
   const selectedKey = selectedIds.join("\0");
+  const domEditSelectionRef = useRef(domEditSelection);
+  const domEditGroupSelectionsRef = useRef(domEditGroupSelections);
+  const lastSyncedSelectedKeyRef = useRef("");
+  domEditSelectionRef.current = domEditSelection;
+  domEditGroupSelectionsRef.current = domEditGroupSelections;
 
   useEffect(() => {
+    const previousSelectedKey = lastSyncedSelectedKeyRef.current;
+    lastSyncedSelectedKeyRef.current = selectedKey;
+    const currentDomEditSelection = domEditSelectionRef.current;
+    const currentDomEditGroupSelections = domEditGroupSelectionsRef.current;
     const currentSelections =
-      domEditGroupSelections.length > 1
-        ? domEditGroupSelections
-        : domEditSelection
-          ? [domEditSelection]
+      currentDomEditGroupSelections.length > 1
+        ? currentDomEditGroupSelections
+        : currentDomEditSelection
+          ? [currentDomEditSelection]
           : [];
     const currentIds = currentSelections
       .map((selection) =>
         resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
       )
       .filter((id): id is string => Boolean(id));
-    const currentAnchor = domEditSelection
-      ? resolveTimelineIdForSelection(domEditSelection, timelineElements, activeCompPath)
+    const currentAnchor = currentDomEditSelection
+      ? resolveTimelineIdForSelection(currentDomEditSelection, timelineElements, activeCompPath)
       : null;
 
     if (selectedIds.length === 0) {
-      if (currentSelections.length > 0) applyDomSelection(null, { revealPanel: false });
+      if (previousSelectedKey.length > 0 && currentSelections.length > 0) {
+        applyDomSelection(null, { revealPanel: false });
+      }
       return;
     }
     if (selectionIdsMatch(currentIds, selectedIds, currentAnchor, selectedElementId)) return;
@@ -118,13 +129,12 @@ export function useTimelineSelectionPreviewSync({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeCompPath,
     applyDomSelection,
     applyMarqueeSelection,
     buildDomSelectionForTimelineElement,
-    domEditGroupSelections,
-    domEditSelection,
     onSelectionNotFound,
     selectedElementId,
     selectedIds,
