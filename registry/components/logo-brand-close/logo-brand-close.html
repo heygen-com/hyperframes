@@ -2,12 +2,14 @@
 <!--
   logo-brand-close: HyperFrames video primitive (brand close)
 
-  The identity close that ends films. Wordmark letters cascade left to right
-  into a centered lockup (per-letter fade plus a short rise with a smooth
-  long-tail settle, no overshoot), an optional tagline settles beneath, an
-  optional URL line fades in below in mono, then the finished lockup holds
-  dead still to the end. Distinct from cta-close: identity, not action.
-  No button, no cursor.
+  The identity close that ends films. The wordmark lands at display scale,
+  a chars-aware fit sizing it to roughly three quarters of the frame width.
+  Letters cascade left to right (per-letter fade plus rise with a long
+  expo tail) while the whole wordmark settles from a slightly larger scale,
+  the accent brand period arrives last with a decisive pop, a readable
+  tagline settles beneath, a wide-tracked mono URL breathes in below, then
+  the finished lockup holds dead still to the end. Distinct from cta-close:
+  identity, not action. No button, no cursor.
 
   Variables:
     - wordmark (string): the brand name that cascades into place.
@@ -18,7 +20,8 @@
 
   Envelope, fixed IN with elastic HOLD only (OUT exists only when exit is
   not none):
-    IN_BASE  = 1.9s, letter cascade, tagline settle, URL fade
+    IN_BASE  = 2.6s, letter cascade + scale settle, period pop, tagline
+               settle, URL tracking settle
     HOLD     = max(0, D - IN - OUT), completely still
     OUT_BASE = 0.5s only when exit is fade or up, otherwise 0
     If D is shorter than IN_BASE + OUT_BASE, both compress together.
@@ -78,12 +81,13 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 92cqw;
-            gap: var(--space-2, 3.4cqh);
+            width: 100cqw;
             text-align: center;
             will-change: transform, opacity;
           }
 
+          /* Display scale: the JS chars-aware fit targets ~76cqw of set
+             width; 40cqh caps it in short, wide mounts. */
           .lbc-wordmark {
             display: flex;
             align-items: baseline;
@@ -91,11 +95,12 @@
             margin: 0;
             color: var(--fg, #f8fafc);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
-            font-size: var(--lbc-wordmark-size, min(13cqw, 22cqh));
+            font-size: var(--lbc-wordmark-size, min(10.5cqw, 40cqh));
             font-weight: 600;
-            line-height: 1;
-            letter-spacing: -0.03em;
+            line-height: 1.04;
+            letter-spacing: -0.035em;
             white-space: nowrap;
+            will-change: transform;
           }
 
           .lbc-letter {
@@ -105,7 +110,7 @@
           }
 
           .lbc-space {
-            width: 0.32em;
+            width: 0.34em;
           }
 
           .lbc-period {
@@ -113,10 +118,10 @@
           }
 
           .lbc-tagline {
-            max-width: 86cqw;
-            margin: 0;
-            color: color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--muted, #94a3b8));
-            font-size: var(--lbc-tagline-size, min(3.4cqw, 5.4cqh));
+            max-width: 88cqw;
+            margin: var(--space-2, 3cqmin) 0 0;
+            color: var(--fg, #f8fafc);
+            font-size: min(3.4cqw, 5.4cqmin);
             font-weight: 500;
             line-height: 1.3;
             letter-spacing: 0.01em;
@@ -124,13 +129,13 @@
           }
 
           .lbc-url {
-            margin: 0;
+            margin: var(--space-3, 4.6cqmin) 0 0;
             color: var(--muted, #94a3b8);
             font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-            font-size: var(--lbc-url-size, min(2.5cqw, 4.2cqh));
+            font-size: min(2.4cqw, 3.2cqmin);
             font-weight: 500;
             line-height: 1;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.28em;
             will-change: opacity;
           }
         </style>
@@ -201,7 +206,7 @@
               letter.className = "lbc-letter";
               if (/\s/.test(character)) {
                 letter.classList.add("lbc-space");
-                letter.textContent = " ";
+                letter.textContent = " ";
               } else {
                 letter.textContent = character;
               }
@@ -210,13 +215,36 @@
               wordmarkElement.appendChild(letter);
               return letter;
             });
+            var periodLetter = letters[letters.length - 1];
+            var cascadeLetters = letters.slice(0, -1);
 
-            // Deterministic character-count fitting before layout, matching
-            // the cta-close heuristic. The 84cqw target keeps air both sides.
-            var wordmarkSize = Math.min(13, 84 / (characters.length * 0.62));
+            // Deterministic chars-aware fit: probe the set width at a fixed
+            // 100px font (letter-spacing rides in em, so the em ratio is a
+            // pure font metric), then size the wordmark so it lands at
+            // ~76cqw. The 40cqh term caps it in short, wide mounts. If the
+            // probe cannot measure (detached render), fall back to a
+            // per-glyph advance estimate.
+            wordmarkElement.style.fontSize = "100px";
+            var probedWidth = wordmarkElement.getBoundingClientRect().width;
+            wordmarkElement.style.fontSize = "";
+            var setWidthEm;
+            if (probedWidth > 0) {
+              setWidthEm = probedWidth / 100;
+            } else {
+              setWidthEm = characters.reduce(function (total, character) {
+                if (/\s/.test(character)) return total + 0.34;
+                if (/[.,:;!'’|]/.test(character)) return total + 0.3;
+                if (/[Iijlftr]/.test(character)) return total + 0.42;
+                if (/[MWmw@]/.test(character)) return total + 0.92;
+                return total + 0.64;
+              }, 0);
+              setWidthEm -= characters.length * 0.035;
+            }
+            setWidthEm = Math.max(0.3, setWidthEm);
+            var wordmarkSize = 76 / setWidthEm;
             root.style.setProperty(
               "--lbc-wordmark-size",
-              "min(" + wordmarkSize.toFixed(3) + "cqw, 22cqh)",
+              "min(" + wordmarkSize.toFixed(3) + "cqw, 40cqh)",
             );
 
             if (tagline.length === 0) taglineElement.remove();
@@ -224,48 +252,73 @@
             if (url.length === 0) urlElement.remove();
             else urlElement.textContent = url;
 
-            var IN_BASE = 1.9;
+            var IN_BASE = 2.6;
             var OUT_BASE = exit === "none" ? 0 : 0.5;
-            var RISE_BASE = 0.9;
-            var STAGGER_BASE = 0.55;
-            var TAGLINE_AT_BASE = 0.85;
-            var TAGLINE_DURATION_BASE = 0.7;
-            var URL_AT_BASE = 1.2;
-            var URL_DURATION_BASE = 0.7;
+            var CASCADE_RISE_BASE = 1.15;
+            var CASCADE_STAGGER_BASE = 0.7;
+            var SETTLE_BASE = 2.4;
+            var PERIOD_AT_BASE = 0.95;
+            var PERIOD_DURATION_BASE = 0.9;
+            var TAGLINE_AT_BASE = 1.35;
+            var TAGLINE_DURATION_BASE = 0.9;
+            var URL_AT_BASE = 1.7;
+            var URL_DURATION_BASE = 0.85;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
             var totalBase = IN_BASE + OUT_BASE;
             var scale = duration < totalBase ? duration / totalBase : 1;
             var IN = IN_BASE * scale;
             var OUT = OUT_BASE * scale;
-            var RISE = RISE_BASE * scale;
-            var STAGGER = letters.length > 1 ? STAGGER_BASE * scale : 0;
+            var STAGGER = cascadeLetters.length > 1 ? CASCADE_STAGGER_BASE * scale : 0;
             var HOLD = Math.max(0, duration - (IN + OUT));
             var OUT_START = IN + HOLD;
 
             var tl = gsap.timeline({ paused: true });
 
-            // IN: per-letter fade plus short rise, expo.out for the smooth
-            // long-tail settle. No overshoot anywhere in this close.
+            // IN: per-letter fade plus rise with a long expo tail, while the
+            // whole wordmark settles down from a slightly larger scale.
+            if (cascadeLetters.length > 0) {
+              tl.fromTo(
+                cascadeLetters,
+                { opacity: 0, y: "0.62em" },
+                {
+                  opacity: 1,
+                  y: "0em",
+                  duration: CASCADE_RISE_BASE * scale,
+                  stagger: { amount: STAGGER, from: "start" },
+                  ease: "expo.out",
+                },
+                0,
+              );
+            }
+
             tl.fromTo(
-              letters,
-              { opacity: 0, y: "5.5cqh" },
+              wordmarkElement,
+              { scale: 1.04, transformOrigin: "50% 100%" },
+              { scale: 1, duration: SETTLE_BASE * scale, ease: "expo.out" },
+              0,
+            );
+
+            // The brand period lands last: a decisive accent pop.
+            tl.fromTo(
+              periodLetter,
+              { opacity: 0, scale: 0.2, y: "0.08em", transformOrigin: "50% 65%" },
               {
                 opacity: 1,
-                y: "0cqh",
-                duration: RISE,
-                stagger: { amount: STAGGER, from: "start" },
-                ease: "expo.out",
+                scale: 1,
+                y: "0em",
+                duration: PERIOD_DURATION_BASE * scale,
+                ease: "back.out(1.8)",
               },
-              0,
+              PERIOD_AT_BASE * scale,
             );
 
             if (taglineElement.isConnected) {
               tl.fromTo(
                 taglineElement,
-                { opacity: 0, y: "2.4cqh" },
+                { opacity: 0, y: "0.9em" },
                 {
                   opacity: 1,
-                  y: "0cqh",
+                  y: "0em",
                   duration: TAGLINE_DURATION_BASE * scale,
                   ease: "power3.out",
                 },
@@ -276,8 +329,13 @@
             if (urlElement.isConnected) {
               tl.fromTo(
                 urlElement,
-                { opacity: 0 },
-                { opacity: 1, duration: URL_DURATION_BASE * scale, ease: "power2.out" },
+                { opacity: 0, letterSpacing: "0.46em" },
+                {
+                  opacity: 1,
+                  letterSpacing: "0.28em",
+                  duration: URL_DURATION_BASE * scale,
+                  ease: "power2.out",
+                },
                 URL_AT_BASE * scale,
               );
             }

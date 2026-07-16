@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  press-ripple demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  press-ripple demo. Full-bleed mount on a light editorial backdrop: the
+  primitive owns the whole 1920x1080 frame, proving the press gesture reads
+  at stage scale (dark cursor on light tokens, green accent, press at 1.2s).
 -->
 <html lang="en">
   <head>
@@ -21,39 +21,35 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #f4f6f9);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --bg: #f4f6f9;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #dfe4ec;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 40%,
+          #ffffff 0%,
+          var(--bg, #f4f6f9) 70%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
   </head>
@@ -69,15 +65,15 @@
     >
       <div
         id="press-ripple-mount"
-        class="mount-card clip"
+        class="mount-stage clip"
         data-composition-id="press-ripple"
         data-composition-src="./press-ripple.html"
-        data-variable-values='{"label":"Get started","accent":"blue","press_at":1.3}'
+        data-variable-values='{"label":"Request a demo","target_x":50,"target_y":52,"press_at":1.2,"cursor":"dark","accent":"green"}'
         data-start="0"
         data-duration="3"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="1920"
+        data-height="1080"
       ></div>
     </div>
 

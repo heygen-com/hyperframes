@@ -3,7 +3,7 @@
   "name": "cta-close",
   "type": "hyperframes:component",
   "title": "CTA Close",
-  "description": "An oversized action line rises into frame, one CTA capsule pops beneath it, and the finished close holds completely still.",
+  "description": "A display-scale action line lands per word and fills the frame with air, one generous CTA capsule pops beneath it with a single overshoot, and the finished close holds completely still.",
   "tags": ["motion-primitive", "ui-props", "cta", "end-card", "close", "ask"],
   "jobs": ["ask"],
   "family": "ui-props",

@@ -3,8 +3,8 @@
   "name": "grid-card-assemble",
   "type": "hyperframes:component",
   "title": "Grid Card Assemble",
-  "description": "N labeled token cards stagger-assemble into a grid or vertical list with a fade plus short slide into slot, then hold perfectly still.",
-  "tags": ["motion-primitive", "layout", "grid", "list", "stagger", "assemble"],
+  "description": "N capability cards (thin-line icon that draws on, mono label, optional muted body) stagger-assemble into a grid or vertical list with a fade plus short slide into slot, then hold perfectly still.",
+  "tags": ["motion-primitive", "layout", "grid", "list", "stagger", "assemble", "feature-tour"],
   "jobs": ["reveal", "tour"],
   "family": "layout",
   "profile": "assemble",
@@ -23,7 +23,7 @@
       "type": "string",
       "role": "content",
       "label": "Items",
-      "description": "Comma-separated tile labels (3 to 12 items).",
+      "description": "Comma-separated cards (3 to 12). \"Label: body\" adds a one-line muted body under the label.",
       "default": "Capture,Compose,Render,Publish"
     },
     {
@@ -62,7 +62,7 @@
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Accent token family used by the tile dots.",
+      "description": "Accent token family used by the card icons.",
       "default": "green",
       "options": [
         { "value": "green", "label": "Green" },

@@ -1,6 +1,6 @@
 # logo-brand-close
 
-The brand close that ends films. Wordmark letters cascade left to right into a centered lockup (per-letter fade plus a short rise with a smooth long-tail settle, no overshoot), an optional tagline settles beneath, an optional URL line fades in below in mono, then the finished identity holds dead still to the end.
+The brand close that ends films. The wordmark lands at display scale (a chars-aware fit sizes it to roughly three quarters of the frame width), letters cascade left to right (per-letter fade plus rise with a long expo tail) while the whole wordmark settles from a slightly larger scale, the accent brand period arrives last with a decisive pop, a readable tagline settles beneath, a wide-tracked mono URL breathes in below, then the finished identity holds dead still to the end.
 
 Distinct job from `cta-close`: identity, not action. No button, no cursor, no ask. If the film should end on an action, use `cta-close`; if it should end on who made it, use this.
 
@@ -18,12 +18,18 @@ Distinct job from `cta-close`: identity, not action. No button, no cursor, no as
 
 Authored at 4s. Fixed IN with elastic HOLD; OUT exists only when `exit` is not `none`.
 
-- IN_BASE = 1.9s: letter cascade (0.9s rise per letter, 0.55s stagger spread, `expo.out`), tagline settle at 0.85s, URL fade at 1.2s.
+- IN_BASE = 2.6s: letter cascade (1.15s rise per letter, 0.7s stagger spread, `expo.out`) under a 2.4s whole-wordmark scale settle (1.04 to 1), accent period pop at 0.95s (`back.out(1.8)`), tagline settle at 1.35s, URL fade plus tracking settle at 1.7s.
 - HOLD = `max(0, D - IN - OUT)`: completely still, no drift, no breath.
 - OUT_BASE = 0.5s only for `exit: fade` (opacity) or `exit: up` (opacity plus rise); otherwise 0.
 - Shorter durations compress IN and OUT proportionally. The timeline is never time-scaled.
 
-Sync point: `lockup-settled` at 1.9s (end of IN at authored duration).
+Sync point: `lockup-settled` at 2.6s (end of IN at authored duration).
+
+## Scale
+
+- Wordmark: chars-aware fit targeting ~76cqw of set width (a one-shot 100px probe measures the real font's em ratio; a per-glyph advance table is the fallback), capped at 40cqh for short, wide mounts.
+- Tagline: `min(3.4cqw, 5.4cqmin)`, a clearly readable secondary scale.
+- URL: `min(2.4cqw, 3.2cqmin)` mono at 0.28em tracking, legible at 1080p even inside a mounted card.
 
 ## Mount contract
 

@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  cta-close demo. This standalone composition mounts cta-close.html through
-  data-composition-src. Non-default copy and accent values prove the variable
-  path while the primitive remains elastic to its host.
+  cta-close demo. Full-bleed mount on a light editorial token backdrop: the
+  close owns the whole 1920x1080 frame, proving the display line lands at
+  monumental scale with non-default copy and the violet accent capsule.
 -->
 <html lang="en">
   <head>
@@ -21,45 +21,44 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #08090b;
+        background: #faf8f3;
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --muted: #aeb7c5;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #61a8ff;
-        --accent-2: #c5a3ff;
-        --font-display: Inter, system-ui, sans-serif;
-        --font-body: Inter, system-ui, sans-serif;
+        --bg: #faf8f3;
+        --fg: #191713;
+        --muted: #6f695d;
+        --surface: #f1ede3;
+        --border: #e2dccd;
+        --brand: #0d7a4f;
+        --accent: #1d4ed8;
+        --accent-2: #6d3ae0;
+        --font-display: Georgia, "Times New Roman", serif;
+        --font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-        --radius: 2.4cqmin;
-        --space-1: 1.8cqmin;
-        --space-2: 3cqmin;
-        --space-3: 5cqmin;
-        --dur-beat: 0.5s;
-        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
-        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        --radius: 0.9cqmin;
+        --space-1: 1.1cqmin;
+        --space-2: 2.2cqmin;
+        --space-3: 3.8cqmin;
+        --dur-beat: 0.48s;
+        --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: #08090b;
+        border-top: 1px solid var(--border, #e2dccd);
+        border-bottom: 1px solid var(--border, #e2dccd);
+        background: var(--bg, #faf8f3);
       }
 
-      .mount-card {
-        width: 82%;
-        height: 64%;
-        left: 9%;
-        top: 18%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #343a46) 56%, transparent);
-        border-radius: var(--radius, 26px);
-        background: var(--bg, #0b0c0e);
       }
     </style>
   </head>
@@ -75,15 +74,15 @@
     >
       <div
         id="cta-close-mount"
-        class="mount-card clip"
+        class="mount-stage clip"
         data-composition-id="cta-close"
         data-composition-src="./cta-close.html"
-        data-variable-values='{"action_line":"Make it matter","button_label":"Start now","accent":"violet"}'
+        data-variable-values='{"action_line":"Ship your first film","button_label":"Get started free","accent":"violet"}'
         data-start="0"
         data-duration="3.5"
         data-track-index="0"
-        data-width="1574"
-        data-height="691"
+        data-width="1920"
+        data-height="1080"
       ></div>
     </div>
 

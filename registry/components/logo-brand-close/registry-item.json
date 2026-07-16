@@ -3,13 +3,13 @@
   "name": "logo-brand-close",
   "type": "hyperframes:component",
   "title": "Logo Brand Close",
-  "description": "Wordmark letters cascade left to right into a centered lockup, an optional tagline and mono URL line settle beneath, and the finished identity holds dead still to the end of the film.",
+  "description": "A display-scale wordmark cascades letter by letter into a centered lockup, the accent brand period lands last, an optional tagline and wide-tracked mono URL settle beneath, and the finished identity holds dead still to the end of the film.",
   "tags": ["motion-primitive", "typography", "brand", "logo", "end-card", "close"],
   "jobs": ["celebrate"],
   "family": "typography",
   "profile": "holdable",
   "evidence": "Wave J J1-4 logo-brand-close specification",
-  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 1.9 }],
+  "syncPoints": [{ "id": "lockup-settled", "phase": "in", "offset": 2.6 }],
   "files": [
     {
       "path": "logo-brand-close.html",

@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  browser-device-stage demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  browser-device-stage demo. Large centered mount (90% x 88%) on a light token
+  block (near-white bg, white surface, hairline borders) so the skeleton
+  chrome reads at app scale; browser chrome, screen swap at 2.2s, violet accent.
 -->
 <html lang="en">
   <head>
@@ -21,39 +21,35 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #eef0f3);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --bg: #eef0f3;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #d3d8e0;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 40%,
+          #f7f8fa 0%,
+          var(--bg, #eef0f3) 70%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 90%;
+        height: 88%;
+        left: 5%;
+        top: 6%;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
   </head>
@@ -69,15 +65,15 @@
     >
       <div
         id="browser-device-stage-mount"
-        class="mount-card clip"
+        class="mount-stage clip"
         data-composition-id="browser-device-stage"
         data-composition-src="./browser-device-stage.html"
-        data-variable-values='{"chrome":"browser","title":"app.example.com","accent":"blue"}'
+        data-variable-values='{"chrome":"browser","title":"app.example.com","swap_at":2.2,"accent":"violet"}'
         data-start="0"
         data-duration="5"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="1728"
+        data-height="950"
       ></div>
     </div>
 

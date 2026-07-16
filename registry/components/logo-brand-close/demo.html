@@ -1,8 +1,9 @@
 <!doctype html>
 <!--
-  logo-brand-close demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  logo-brand-close demo. Full-bleed mount on the light editorial token set:
+  the brand close owns the whole 1920x1080 frame, proving the display-scale
+  wordmark, readable tagline, and mono url land with end-card presence.
+  Non-default text and a violet accent prove the variable path.
 -->
 <html lang="en">
   <head>
@@ -21,39 +22,46 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #e9e1d2);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
-        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --bg: #e9e1d2;
+        --fg: #202725;
+        --muted: #6c746f;
+        --surface: #f8f1e5;
+        --border: #c9bfad;
+        --brand: #246b63;
+        --accent: #31776f;
+        --accent-2: #8a6549;
+        --font-display: Georgia, "Times New Roman", serif;
+        --font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+        --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --radius: 0.9cqmin;
+        --space-1: 1.1cqmin;
+        --space-2: 2.2cqmin;
+        --space-3: 3.8cqmin;
+        --dur-beat: 0.48s;
+        --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 42%,
+          var(--surface, #f8f1e5) 0%,
+          var(--bg, #e9e1d2) 72%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
     </style>
   </head>
@@ -69,15 +77,15 @@
     >
       <div
         id="logo-brand-close-mount"
-        class="mount-card clip"
+        class="mount-stage clip"
         data-composition-id="logo-brand-close"
         data-composition-src="./logo-brand-close.html"
-        data-variable-values='{"wordmark":"Hyperframes.","tagline":"Write HTML, render video","url":"hyperframes.dev","accent":"blue"}'
+        data-variable-values='{"wordmark":"FIELDNOTE","tagline":"Slow journalism for fast times.","url":"fieldnote.press","accent":"violet"}'
         data-start="0"
         data-duration="4"
         data-track-index="0"
-        data-width="1459"
-        data-height="432"
+        data-width="1920"
+        data-height="1080"
       ></div>
     </div>
 

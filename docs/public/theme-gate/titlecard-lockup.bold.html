@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-  titlecard-lockup demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  titlecard-lockup demo. Full-bleed mount on a light editorial backdrop: the
+  NORTH lockup owns the whole 1920x1080 frame, proving the titlecard carries
+  a full-frame open rather than floating as a small strip.
 -->
 <html lang="en">
   <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
@@ -20,39 +20,35 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #f4f6f9);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --bg: #f4f6f9;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #dfe4ec;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 40%,
+          #ffffff 0%,
+          var(--bg, #f4f6f9) 70%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
 
 *,
@@ -538,7 +534,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 </head>
   <body>
     <div id="root" data-composition-id="titlecard-lockup-demo" data-start="0" data-width="1920" data-height="1080" data-duration="4" data-fps="30">
-      <div data-composition-file="./titlecard-lockup.html" id="titlecard-lockup-mount" class="mount-card clip" data-composition-id="titlecard-lockup" data-variable-values="{&quot;wordmark&quot;:&quot;NORTH&quot;,&quot;label&quot;:&quot;SECURE AGENTS PLATFORM&quot;,&quot;kicker&quot;:&quot;MEET&quot;,&quot;accent&quot;:&quot;green&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1459" data-height="432"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
+      <div data-composition-file="./titlecard-lockup.html" id="titlecard-lockup-mount" class="mount-stage clip" data-composition-id="titlecard-lockup" data-variable-values="{&quot;wordmark&quot;:&quot;NORTH&quot;,&quot;label&quot;:&quot;SECURE AGENTS PLATFORM&quot;,&quot;kicker&quot;:&quot;MEET&quot;,&quot;accent&quot;:&quot;green&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1920" data-height="1080"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
         
 
         <div id="titlecard-lockup-clip" class="tl-clip clip" data-start="0" data-duration="4" data-track-index="0">

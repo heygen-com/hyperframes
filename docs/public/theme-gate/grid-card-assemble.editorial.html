@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-  grid-card-assemble demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  grid-card-assemble demo. Large centered mount (88% x 78%) on a light
+  editorial backdrop: the six-card grid gets room to assemble at real scale
+  instead of being crushed into a text strip.
 -->
 <html lang="en">
   <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
@@ -20,39 +20,35 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #f4f6f9);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --bg: #f4f6f9;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #dfe4ec;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 40%,
+          #ffffff 0%,
+          var(--bg, #f4f6f9) 70%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 88%;
+        height: 78%;
+        left: 6%;
+        top: 11%;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
 
 *,
@@ -83,50 +79,89 @@
 
           [data-composition-id="grid-card-assemble"] .gca-stage {
             display: grid;
-            width: var(--gca-stage-w, 84cqw);
-            grid-auto-rows: var(--gca-row-h, 16cqh);
+            width: var(--gca-stage-w, 88cqw);
+            grid-auto-rows: var(--gca-row-h, 34cqh);
             gap: var(--space-2, 2.2cqmin);
             will-change: transform, opacity;
           }
 
           [data-composition-id="grid-card-assemble"] .gca-card {
             display: flex;
-            align-items: center;
-            gap: var(--space-1, 1.4cqmin);
+            flex-direction: column;
+            justify-content: space-between;
             min-width: 0;
-            padding: 0 var(--space-2, 2.2cqmin);
+            min-height: 0;
+            padding: var(--gca-pad, 4cqh);
             overflow: hidden;
-            border: 0.16cqmin solid var(--border, #334155);
+            border: 1px solid var(--border, #38404e);
             border-radius: var(--radius, 1.8cqmin);
-            background: var(--surface, #131a24);
+            /* Token surface with a subtle top light so the card reads as a
+               real plane against the stage (no color-mix: keeps the
+               contrast auditor honest). */
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.01) 60%),
+              var(--surface, #141a23);
             will-change: transform, opacity;
           }
 
-          [data-composition-id="grid-card-assemble"] .gca-dot {
+          [data-composition-id="grid-card-assemble"] .gca-icon {
             flex: 0 0 auto;
-            width: 1cqmin;
-            aspect-ratio: 1;
-            border-radius: 50%;
-            background: var(--gca-accent, var(--brand, #71f5a7));
+            width: var(--gca-icon, 7cqh);
+            height: var(--gca-icon, 7cqh);
+          }
+
+          [data-composition-id="grid-card-assemble"] .gca-icon path {
+            fill: none;
+            stroke: var(--gca-accent, var(--brand, #71f5a7));
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          [data-composition-id="grid-card-assemble"] .gca-text {
+            min-width: 0;
           }
 
           [data-composition-id="grid-card-assemble"] .gca-label {
-            min-width: 0;
             overflow: hidden;
             color: var(--fg, #f8fafc);
-            font-size: var(--gca-font, 3cqmin);
+            font-size: var(--gca-font, 2.2cqh);
             font-weight: 500;
-            line-height: 1.2;
-            letter-spacing: 0.14em;
+            line-height: 1.25;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
             white-space: nowrap;
+          }
+
+          [data-composition-id="grid-card-assemble"] .gca-body {
+            margin-top: var(--gca-body-gap, 1.1cqh);
+            overflow: hidden;
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-body, system-ui, -apple-system, "Segoe UI", sans-serif);
+            font-size: var(--gca-body-font, 2.6cqh);
+            font-weight: 400;
+            line-height: 1.4;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+          }
+
+          /* List rows read horizontally: icon left, text block beside it. */
+          [data-composition-id="grid-card-assemble"] .gca-stage[data-layout="list"] .gca-card {
+            flex-direction: row;
+            align-items: center;
+            justify-content: flex-start;
+            gap: var(--space-2, 2.2cqmin);
+          }
+
+          [data-composition-id="grid-card-assemble"] .gca-stage[data-layout="list"] .gca-body {
+            margin-top: var(--gca-body-gap, 0.6cqh);
           }
 
 [data-composition-id="grid-card-assemble"] {
   --items: Permissions,Audit trail,Deploy,Search,Drafts,Citations;
   --layout: grid;
   --columns: 3;
-  --accent: blue;
+  --accent: violet;
   --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
@@ -509,7 +544,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 </head>
   <body>
     <div id="root" data-composition-id="grid-card-assemble-demo" data-start="0" data-width="1920" data-height="1080" data-duration="4.5" data-fps="30">
-      <div data-composition-file="./grid-card-assemble.html" id="grid-card-assemble-mount" class="mount-card clip" data-composition-id="grid-card-assemble" data-variable-values="{&quot;items&quot;:&quot;Permissions,Audit trail,Deploy,Search,Drafts,Citations&quot;,&quot;layout&quot;:&quot;grid&quot;,&quot;columns&quot;:3,&quot;accent&quot;:&quot;blue&quot;}" data-start="0" data-duration="4.5" data-track-index="0" data-width="1459" data-height="432"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
+      <div data-composition-file="./grid-card-assemble.html" id="grid-card-assemble-mount" class="mount-stage clip" data-composition-id="grid-card-assemble" data-variable-values="{&quot;items&quot;:&quot;Permissions,Audit trail,Deploy,Search,Drafts,Citations&quot;,&quot;layout&quot;:&quot;grid&quot;,&quot;columns&quot;:3,&quot;accent&quot;:&quot;violet&quot;}" data-start="0" data-duration="4.5" data-track-index="0" data-width="1690" data-height="842"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
         
 
         <div id="grid-card-assemble-clip" class="gca-clip clip" data-start="0" data-duration="4.5" data-track-index="0">
@@ -525,7 +560,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["grid-card-assemble-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "grid-card-assemble": { "items": "Permissions,Audit trail,Deploy,Search,Drafts,Citations", "layout": "grid", "columns": 3, "cues": "", "accent": "blue", "exit": "none" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "grid-card-assemble": { "items": "Permissions,Audit trail,Deploy,Search,Drafts,Citations", "layout": "grid", "columns": 3, "cues": "", "accent": "violet", "exit": "none" } });
 (function() {
   var __hfCompId = "grid-card-assemble";
   var __hfTimelineCompId = "grid-card-assemble";
@@ -803,13 +838,24 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           var stage = root.querySelector(".gca-stage");
           var vars = window2.__hyperframes && window2.__hyperframes.getVariables ? window2.__hyperframes.getVariables() : {};
           var itemsValue = vars.items == null || String(vars.items).trim() === "" ? "Capture,Compose,Render,Publish" : String(vars.items);
-          var items = itemsValue.split(",").map(function(token) {
+          var rawItems = itemsValue.split(",").map(function(token) {
             return token.trim();
           }).filter(function(token) {
             return token !== "";
           }).slice(0, 12);
-          if (items.length === 0) items = ["Capture", "Compose", "Render", "Publish"];
+          if (rawItems.length === 0) rawItems = ["Capture", "Compose", "Render", "Publish"];
+          var entries = rawItems.map(function(raw) {
+            var split = raw.indexOf(":");
+            if (split > 0) {
+              return {
+                label: raw.slice(0, split).trim(),
+                body: raw.slice(split + 1).trim()
+              };
+            }
+            return { label: raw, body: "" };
+          });
           var layout = vars.layout === "list" ? "list" : "grid";
+          var isList = layout === "list";
           var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
           var accentColors = {
             green: "var(--brand, #71f5a7)",
@@ -818,47 +864,98 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           };
           var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent) ? vars.accent : "green";
           root.style.setProperty("--gca-accent", accentColors[accent]);
+          var ICONS = [
+            ["M24 44s16-8 16-20V10L24 4 8 10v14c0 12 16 20 16 20z", "M17 23l5 5 10-10"],
+            ["M8 6v34h34", "M16 30l8-9 6 5 10-12"],
+            ["M36 20h-2.5A16 16 0 1 0 18 40h18a10 10 0 0 0 0-20z"],
+            ["M26 4L10 27h10l-3 17 17-24H23l3-16z"],
+            ["M24 6L4 16l20 10 20-10L24 6z", "M4 24l20 10 20-10", "M4 32l20 10 20-10"],
+            ["M14 4h14l8 8v32H14z", "M28 4v8h8", "M20 24h10", "M20 31h7"]
+          ];
+          var SVG_NS = "http://www.w3.org/2000/svg";
           var cards = Array.prototype.slice.call(stage.children);
           if (cards.length === 0) {
-            cards = items.map(function(label) {
+            cards = entries.map(function(entry, index) {
               var card = document.createElement("div");
               card.className = "gca-card";
               card.setAttribute("role", "listitem");
-              var dot = document.createElement("span");
-              dot.className = "gca-dot";
-              dot.setAttribute("aria-hidden", "true");
-              var text = document.createElement("span");
-              text.className = "gca-label";
-              text.textContent = label;
-              card.appendChild(dot);
+              var icon = document.createElementNS(SVG_NS, "svg");
+              icon.setAttribute("class", "gca-icon");
+              icon.setAttribute("viewBox", "0 0 48 48");
+              icon.setAttribute("aria-hidden", "true");
+              ICONS[index % ICONS.length].forEach(function(d) {
+                var path = document.createElementNS(SVG_NS, "path");
+                path.setAttribute("d", d);
+                icon.appendChild(path);
+              });
+              card.appendChild(icon);
+              var text = document.createElement("div");
+              text.className = "gca-text";
+              var label = document.createElement("div");
+              label.className = "gca-label";
+              label.textContent = entry.label;
+              text.appendChild(label);
+              if (entry.body !== "") {
+                var body = document.createElement("div");
+                body.className = "gca-body";
+                body.textContent = entry.body;
+                text.appendChild(body);
+              }
               card.appendChild(text);
               stage.appendChild(card);
               return card;
             });
           }
           var count = cards.length;
-          stage.setAttribute("aria-label", items.join(", "));
+          stage.setAttribute("data-layout", layout);
+          stage.setAttribute(
+            "aria-label",
+            entries.map(function(entry) {
+              return entry.label;
+            }).join(", ")
+          );
           var autoColumns = count <= 3 ? count : Math.ceil(Math.sqrt(count));
           var requested = Math.round(Number(vars.columns)) || 0;
           var columns = layout === "list" ? 1 : Math.max(1, Math.min(4, requested > 0 ? requested : autoColumns));
           var rows = Math.ceil(count / columns);
           stage.style.gridTemplateColumns = "repeat(" + columns + ", minmax(0, 1fr))";
-          var stageW = layout === "list" ? 52 : 84;
-          var rowH = Math.min(layout === "list" ? 11 : 16, 66 / rows);
+          var hasBodies = entries.some(function(entry) {
+            return entry.body !== "";
+          });
+          var stageW = isList ? 64 : 88;
+          var rowCap = isList ? 15 : hasBodies ? 38 : 30;
+          var rowH = Math.max(6, Math.min(rowCap, (76 - 3 * (rows - 1)) / rows));
           root.style.setProperty("--gca-stage-w", stageW + "cqw");
           root.style.setProperty("--gca-row-h", rowH.toFixed(3) + "cqh");
-          var maxChars = items.reduce(function(max, label) {
-            return Math.max(max, Array.from(label).length);
+          var pad = rowH * (isList ? 0.16 : 0.12);
+          var iconSize = isList ? rowH * 0.5 : Math.min(rowH * 0.3, 9.5);
+          root.style.setProperty("--gca-pad", pad.toFixed(3) + "cqh");
+          root.style.setProperty("--gca-icon", iconSize.toFixed(3) + "cqh");
+          root.style.setProperty("--gca-body-gap", (rowH * (isList ? 0.03 : 0.035)).toFixed(3) + "cqh");
+          var maxChars = entries.reduce(function(max, entry) {
+            return Math.max(max, Array.from(entry.label).length);
           }, 1);
+          var maxBody = entries.reduce(function(max, entry) {
+            return Math.max(max, Array.from(entry.body).length);
+          }, 0);
           var cellW = stageW / columns;
-          var fontCqw = Math.min(3.4, cellW * 0.74 / (maxChars * 0.78));
-          var fontCqh = rowH * 0.32;
+          var textW = isList ? cellW * 0.62 : cellW * 0.78;
+          var labelCqw = Math.min(2.6, textW / (maxChars * 0.75));
+          var labelCqh = rowH * (isList ? 0.23 : 0.09);
           root.style.setProperty(
             "--gca-font",
-            "min(" + fontCqw.toFixed(3) + "cqw, " + fontCqh.toFixed(3) + "cqh)"
+            "min(" + labelCqw.toFixed(3) + "cqw, " + labelCqh.toFixed(3) + "cqh)"
           );
+          if (maxBody > 0) {
+            var bodyCqw = Math.min(2.2, textW / (maxBody * 0.56));
+            var bodyCqh = rowH * (isList ? 0.19 : 0.095);
+            root.style.setProperty(
+              "--gca-body-font",
+              "min(" + bodyCqw.toFixed(3) + "cqw, " + bodyCqh.toFixed(3) + "cqh)"
+            );
+          }
           var BASE_START = 0.15;
-          var GAP = 0.06;
+          var GAP = 0.1;
           var TILE_BASE = 0.65;
           var OUT_BASE = 0.45;
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "4.5"));
@@ -883,6 +980,25 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
               { opacity: 1, y: "0cqh", duration: TILE, ease: "power3.out" },
               starts[index]
             );
+            var paths = card.querySelectorAll(".gca-icon path");
+            var iconStart = TILE * 0.25;
+            var iconAvail = TILE * 0.7;
+            paths.forEach(function(path, j) {
+              var len = path.getTotalLength();
+              path.setAttribute("stroke-dasharray", String(len));
+              path.setAttribute("stroke-dashoffset", String(len));
+              tl.fromTo(
+                path,
+                { attr: { "stroke-dashoffset": len } },
+                {
+                  attr: { "stroke-dashoffset": 0 },
+                  duration: iconAvail * 0.55,
+                  ease: "power2.out",
+                  immediateRender: false
+                },
+                starts[index] + iconStart + j / paths.length * iconAvail * 0.45
+              );
+            });
           });
           if (exit !== "none") {
             var OUT_START = duration - OUT;

@@ -2,57 +2,68 @@
 <!--
   grid-card-assemble: HyperFrames video primitive (layout / feature tour)
 
-  N labeled tiles stagger-assemble into a grid or a vertical list. Every tile
-  is a token card (surface fill, hairline border, contract radius) carrying a
-  wide-tracked mono label plus an accent dot. Each tile enters with a fade and
-  a SHORT slide directly into its own slot: no scatter from center, no
-  overshoot, a smooth long-tail settle (power3.out). Once the layout resolves
-  the frame holds perfectly STILL: no float, no push-in.
+  N capability cards stagger-assemble into a grid or a vertical list. Every
+  card is a real token card: surface fill with a subtle top light, hairline
+  border, contract radius, generous padding, a thin-line icon that draws on
+  as the card lands (getTotalLength dash), a wide-tracked mono label, and an
+  optional one-line muted body. Each card enters with a fade and a SHORT
+  slide directly into its own slot: no scatter from center, no overshoot, a
+  smooth long-tail settle (power3.out). Once the layout resolves the frame
+  holds perfectly STILL: no float, no push-in.
 
   Variables (declared in data-composition-variables below):
     - items (string, default "Capture,Compose,Render,Publish"): comma list of
-      tile labels. 3 to 12 items render gracefully; extras past 12 are dropped.
+      cards. An entry formatted "Label: body text" renders the label plus a
+      one-line muted body; a plain entry renders label only. 3 to 12 items
+      render gracefully; extras past 12 are dropped. Body text must not
+      contain commas (the comma is the item separator).
     - layout ("grid" | "list", default "grid"): grid wraps by columns, list
-      stacks vertically.
+      stacks horizontal rows vertically.
     - columns (number, default 0 = auto): grid column count, grid layout only.
       0 picks one row up to 3 items, then ceil(sqrt(N)) so 4 items form 2x2
       and 9 items form 3x3.
     - cues (string, default ""): comma-separated per-item entrance times in
       seconds relative to mount start. A blank or invalid entry falls back to
-      that item's default cascade slot (~0.06s gap). Values are clamped so
-      every tile lands before any exit begins.
-    - accent (green | blue | violet, default green): dot color family.
+      that item's default cascade slot (~0.1s gap). Values are clamped so
+      every card lands before any exit begins.
+    - accent (green | blue | violet, default green): icon stroke family.
       green -> --brand, blue -> --accent, violet -> --accent-2.
     - exit ("none" | "fade" | "up", default "none"): frame roots own
       transitions; the default hold-ends-the-film.
 
+  Icons: six generic thin-line glyphs (shield, chart, cloud, bolt, layers,
+  doc) cycled deterministically by item index. Each path is dash-primed at
+  mount and draws on inside its card's settle window.
+
   Envelope, fixed IN with elastic HOLD (never gsap.timeScale()):
-    IN    = last entrance start + 0.65s tile settle (default 4 items ~0.98s)
+    IN    = last entrance start + 0.65s card settle (icon draws fit inside)
     HOLD  = still, elastic: everything after IN until OUT (or until D)
     OUT   = 0 when exit is "none"; else 0.45s fade / fade-up of the stage.
     Entrance starts compress together when D is too short for the cascade.
 
   Content override: the runtime clones only this template. A fork that wants
-  custom tile content places its own children inside the
+  custom card content places its own children inside the
   [data-slot="items"] grid element; when that element already has children
-  the script animates them as the tiles instead of generating token cards
-  from the items variable (layout, cues, and exit still apply).
+  the script animates them as the cards instead of generating capability
+  cards from the items variable (layout, cues, and exit still apply, and any
+  .gca-icon paths inside slotted cards still dash-draw).
 
   Mount contract: elastic root, no data-width/data-height, styled via #root
   only, container-type: size, one paused timeline registered under the
   literal "grid-card-assemble" key. Deterministic and seek-safe: fromTo
-  entrances, no CSS transitions, no Date.now, no randomness.
+  entrances, immediateRender: false on post-entrance tweens, no CSS
+  transitions, no Date.now, no randomness.
 -->
 <html
   lang="en"
   data-composition-id="grid-card-assemble"
   data-composition-duration="4.5"
   data-composition-variables='[
-    { "id": "items", "type": "string", "role": "content", "label": "Items", "description": "Comma-separated tile labels (3 to 12 items).", "default": "Capture,Compose,Render,Publish" },
+    { "id": "items", "type": "string", "role": "content", "label": "Items", "description": "Comma-separated cards (3 to 12). \"Label: body\" adds a one-line muted body under the label.", "default": "Capture,Compose,Render,Publish" },
     { "id": "layout", "type": "enum", "role": "layout", "label": "Layout", "description": "Grid wraps by columns; list stacks vertically.", "default": "grid", "options": [{ "value": "grid", "label": "Grid" }, { "value": "list", "label": "List" }] },
     { "id": "columns", "type": "number", "role": "layout", "label": "Columns", "description": "Grid column count (grid layout only). 0 picks automatically: one row up to 3 items, then ceil(sqrt(N)).", "default": 0, "min": 0, "max": 4, "step": 1 },
     { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated per-item entrance times in seconds. Blank entries use the default cascade.", "default": "" },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used by the tile dots.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Accent token family used by the card icons.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
     { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "How the assembled layout leaves the frame. Default none: the hold ends the film.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
@@ -92,43 +103,82 @@
 
           .gca-stage {
             display: grid;
-            width: var(--gca-stage-w, 84cqw);
-            grid-auto-rows: var(--gca-row-h, 16cqh);
+            width: var(--gca-stage-w, 88cqw);
+            grid-auto-rows: var(--gca-row-h, 34cqh);
             gap: var(--space-2, 2.2cqmin);
             will-change: transform, opacity;
           }
 
           .gca-card {
             display: flex;
-            align-items: center;
-            gap: var(--space-1, 1.4cqmin);
+            flex-direction: column;
+            justify-content: space-between;
             min-width: 0;
-            padding: 0 var(--space-2, 2.2cqmin);
+            min-height: 0;
+            padding: var(--gca-pad, 4cqh);
             overflow: hidden;
-            border: 0.16cqmin solid var(--border, #334155);
+            border: 1px solid var(--border, #38404e);
             border-radius: var(--radius, 1.8cqmin);
-            background: var(--surface, #131a24);
+            /* Token surface with a subtle top light so the card reads as a
+               real plane against the stage (no color-mix: keeps the
+               contrast auditor honest). */
+            background:
+              linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.01) 60%),
+              var(--surface, #141a23);
             will-change: transform, opacity;
           }
 
-          .gca-dot {
+          .gca-icon {
             flex: 0 0 auto;
-            width: 1cqmin;
-            aspect-ratio: 1;
-            border-radius: 50%;
-            background: var(--gca-accent, var(--brand, #71f5a7));
+            width: var(--gca-icon, 7cqh);
+            height: var(--gca-icon, 7cqh);
+          }
+
+          .gca-icon path {
+            fill: none;
+            stroke: var(--gca-accent, var(--brand, #71f5a7));
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          .gca-text {
+            min-width: 0;
           }
 
           .gca-label {
-            min-width: 0;
             overflow: hidden;
             color: var(--fg, #f8fafc);
-            font-size: var(--gca-font, 3cqmin);
+            font-size: var(--gca-font, 2.2cqh);
             font-weight: 500;
-            line-height: 1.2;
-            letter-spacing: 0.14em;
+            line-height: 1.25;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
             white-space: nowrap;
+          }
+
+          .gca-body {
+            margin-top: var(--gca-body-gap, 1.1cqh);
+            overflow: hidden;
+            color: var(--muted, #94a3b8);
+            font-family: var(--font-body, system-ui, -apple-system, "Segoe UI", sans-serif);
+            font-size: var(--gca-body-font, 2.6cqh);
+            font-weight: 400;
+            line-height: 1.4;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+          }
+
+          /* List rows read horizontally: icon left, text block beside it. */
+          .gca-stage[data-layout="list"] .gca-card {
+            flex-direction: row;
+            align-items: center;
+            justify-content: flex-start;
+            gap: var(--space-2, 2.2cqmin);
+          }
+
+          .gca-stage[data-layout="list"] .gca-body {
+            margin-top: var(--gca-body-gap, 0.6cqh);
           }
         </style>
 
@@ -161,7 +211,7 @@
               vars.items == null || String(vars.items).trim() === ""
                 ? "Capture,Compose,Render,Publish"
                 : String(vars.items);
-            var items = itemsValue
+            var rawItems = itemsValue
               .split(",")
               .map(function (token) {
                 return token.trim();
@@ -170,9 +220,23 @@
                 return token !== "";
               })
               .slice(0, 12);
-            if (items.length === 0) items = ["Capture", "Compose", "Render", "Publish"];
+            if (rawItems.length === 0) rawItems = ["Capture", "Compose", "Render", "Publish"];
+
+            // "Label: body" entries carry a one-line muted body; plain
+            // entries are label-only cards.
+            var entries = rawItems.map(function (raw) {
+              var split = raw.indexOf(":");
+              if (split > 0) {
+                return {
+                  label: raw.slice(0, split).trim(),
+                  body: raw.slice(split + 1).trim(),
+                };
+              }
+              return { label: raw, body: "" };
+            });
 
             var layout = vars.layout === "list" ? "list" : "grid";
+            var isList = layout === "list";
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
             // Each enum choice routes to a DIFFERENT contract token so the
@@ -187,29 +251,65 @@
               : "green";
             root.style.setProperty("--gca-accent", accentColors[accent]);
 
-            // Content override: a fork may author its own tiles inside the
+            // Six generic thin-line glyphs cycled by index (48-box paths).
+            var ICONS = [
+              ["M24 44s16-8 16-20V10L24 4 8 10v14c0 12 16 20 16 20z", "M17 23l5 5 10-10"],
+              ["M8 6v34h34", "M16 30l8-9 6 5 10-12"],
+              ["M36 20h-2.5A16 16 0 1 0 18 40h18a10 10 0 0 0 0-20z"],
+              ["M26 4L10 27h10l-3 17 17-24H23l3-16z"],
+              ["M24 6L4 16l20 10 20-10L24 6z", "M4 24l20 10 20-10", "M4 32l20 10 20-10"],
+              ["M14 4h14l8 8v32H14z", "M28 4v8h8", "M20 24h10", "M20 31h7"],
+            ];
+            var SVG_NS = "http://www.w3.org/2000/svg";
+
+            // Content override: a fork may author its own cards inside the
             // [data-slot="items"] element; then the items variable only
             // supplies labels for accessibility, not markup.
             var cards = Array.prototype.slice.call(stage.children);
             if (cards.length === 0) {
-              cards = items.map(function (label) {
+              cards = entries.map(function (entry, index) {
                 var card = document.createElement("div");
                 card.className = "gca-card";
                 card.setAttribute("role", "listitem");
-                var dot = document.createElement("span");
-                dot.className = "gca-dot";
-                dot.setAttribute("aria-hidden", "true");
-                var text = document.createElement("span");
-                text.className = "gca-label";
-                text.textContent = label;
-                card.appendChild(dot);
+
+                var icon = document.createElementNS(SVG_NS, "svg");
+                icon.setAttribute("class", "gca-icon");
+                icon.setAttribute("viewBox", "0 0 48 48");
+                icon.setAttribute("aria-hidden", "true");
+                ICONS[index % ICONS.length].forEach(function (d) {
+                  var path = document.createElementNS(SVG_NS, "path");
+                  path.setAttribute("d", d);
+                  icon.appendChild(path);
+                });
+                card.appendChild(icon);
+
+                var text = document.createElement("div");
+                text.className = "gca-text";
+                var label = document.createElement("div");
+                label.className = "gca-label";
+                label.textContent = entry.label;
+                text.appendChild(label);
+                if (entry.body !== "") {
+                  var body = document.createElement("div");
+                  body.className = "gca-body";
+                  body.textContent = entry.body;
+                  text.appendChild(body);
+                }
                 card.appendChild(text);
                 stage.appendChild(card);
                 return card;
               });
             }
             var count = cards.length;
-            stage.setAttribute("aria-label", items.join(", "));
+            stage.setAttribute("data-layout", layout);
+            stage.setAttribute(
+              "aria-label",
+              entries
+                .map(function (entry) {
+                  return entry.label;
+                })
+                .join(", "),
+            );
 
             // Layout geometry: columns wrap the grid; list is one column.
             // 3 or fewer sit on one row; beyond that ceil(sqrt(N)) keeps the
@@ -221,27 +321,56 @@
             var rows = Math.ceil(count / columns);
             stage.style.gridTemplateColumns = "repeat(" + columns + ", minmax(0, 1fr))";
 
-            var stageW = layout === "list" ? 52 : 84; // cqw
-            var rowH = Math.min(layout === "list" ? 11 : 16, 66 / rows); // cqh
+            var hasBodies = entries.some(function (entry) {
+              return entry.body !== "";
+            });
+
+            // The assembled wall fills the mount with intent: ~76cqh of
+            // vertical budget split across rows (gap approximated at 3cqh).
+            // Label-only grids take shorter rows so cards stay proportioned.
+            var stageW = isList ? 64 : 88;
+            var rowCap = isList ? 15 : hasBodies ? 38 : 30;
+            var rowH = Math.max(6, Math.min(rowCap, (76 - 3 * (rows - 1)) / rows));
             root.style.setProperty("--gca-stage-w", stageW + "cqw");
             root.style.setProperty("--gca-row-h", rowH.toFixed(3) + "cqh");
 
-            // Deterministic label fitting: wide-tracked mono at ~0.78em per
-            // glyph, dot + padding eat ~26% of the cell width.
-            var maxChars = items.reduce(function (max, label) {
-              return Math.max(max, Array.from(label).length);
+            // Card internals scale off the row height (set once at mount,
+            // never tweened: cq-unit custom-property tweens break seeks).
+            var pad = rowH * (isList ? 0.16 : 0.12);
+            var iconSize = isList ? rowH * 0.5 : Math.min(rowH * 0.3, 9.5);
+            root.style.setProperty("--gca-pad", pad.toFixed(3) + "cqh");
+            root.style.setProperty("--gca-icon", iconSize.toFixed(3) + "cqh");
+            root.style.setProperty("--gca-body-gap", (rowH * (isList ? 0.03 : 0.035)).toFixed(3) + "cqh");
+
+            // Deterministic text fitting: wide-tracked mono label at ~0.75em
+            // per glyph, sans body at ~0.52em; each also bounded by row
+            // height so short mounts stay composed.
+            var maxChars = entries.reduce(function (max, entry) {
+              return Math.max(max, Array.from(entry.label).length);
             }, 1);
+            var maxBody = entries.reduce(function (max, entry) {
+              return Math.max(max, Array.from(entry.body).length);
+            }, 0);
             var cellW = stageW / columns;
-            var fontCqw = Math.min(3.4, (cellW * 0.74) / (maxChars * 0.78));
-            var fontCqh = rowH * 0.32;
+            var textW = isList ? cellW * 0.62 : cellW * 0.78;
+            var labelCqw = Math.min(2.6, textW / (maxChars * 0.75));
+            var labelCqh = rowH * (isList ? 0.23 : 0.09);
             root.style.setProperty(
               "--gca-font",
-              "min(" + fontCqw.toFixed(3) + "cqw, " + fontCqh.toFixed(3) + "cqh)",
+              "min(" + labelCqw.toFixed(3) + "cqw, " + labelCqh.toFixed(3) + "cqh)",
             );
+            if (maxBody > 0) {
+              var bodyCqw = Math.min(2.2, textW / (maxBody * 0.56));
+              var bodyCqh = rowH * (isList ? 0.19 : 0.095);
+              root.style.setProperty(
+                "--gca-body-font",
+                "min(" + bodyCqw.toFixed(3) + "cqw, " + bodyCqh.toFixed(3) + "cqh)",
+              );
+            }
 
             // RETIME RANGE: fixed IN cascade, elastic still HOLD, optional OUT.
             var BASE_START = 0.15;
-            var GAP = 0.06;
+            var GAP = 0.1;
             var TILE_BASE = 0.65;
             var OUT_BASE = 0.45;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
@@ -273,6 +402,31 @@
                 { opacity: 1, y: "0cqh", duration: TILE, ease: "power3.out" },
                 starts[index],
               );
+
+              // The icon outline draws on inside the card's settle window
+              // (dash-primed inline so a seek to 0 shows it undrawn).
+              // Attribute-driven (not style): CSS strokeDashoffset changes
+              // under-invalidate the path region in Chrome, leaving stale
+              // stroke fragments on reverse seeks; attributes repaint fully.
+              var paths = card.querySelectorAll(".gca-icon path");
+              var iconStart = TILE * 0.25;
+              var iconAvail = TILE * 0.7;
+              paths.forEach(function (path, j) {
+                var len = path.getTotalLength();
+                path.setAttribute("stroke-dasharray", String(len));
+                path.setAttribute("stroke-dashoffset", String(len));
+                tl.fromTo(
+                  path,
+                  { attr: { "stroke-dashoffset": len } },
+                  {
+                    attr: { "stroke-dashoffset": 0 },
+                    duration: iconAvail * 0.55,
+                    ease: "power2.out",
+                    immediateRender: false,
+                  },
+                  starts[index] + iconStart + (j / paths.length) * iconAvail * 0.45,
+                );
+              });
             });
 
             // HOLD: intentionally still. Nothing floats, nothing pushes in.

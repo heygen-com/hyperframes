@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <!--
-  logo-brand-close demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  logo-brand-close demo. Full-bleed mount on the light editorial token set:
+  the brand close owns the whole 1920x1080 frame, proving the display-scale
+  wordmark, readable tagline, and mono url land with end-card presence.
+  Non-default text and a violet accent prove the variable path.
 -->
 <html lang="en">
   <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
@@ -20,39 +21,46 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #e9e1d2);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
-        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --bg: #e9e1d2;
+        --fg: #202725;
+        --muted: #6c746f;
+        --surface: #f8f1e5;
+        --border: #c9bfad;
+        --brand: #246b63;
+        --accent: #31776f;
+        --accent-2: #8a6549;
+        --font-display: Georgia, "Times New Roman", serif;
+        --font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+        --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --radius: 0.9cqmin;
+        --space-1: 1.1cqmin;
+        --space-2: 2.2cqmin;
+        --space-3: 3.8cqmin;
+        --dur-beat: 0.48s;
+        --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 42%,
+          var(--surface, #f8f1e5) 0%,
+          var(--bg, #e9e1d2) 72%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
 
 *,
@@ -85,12 +93,13 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 92cqw;
-            gap: var(--space-2, 3.4cqh);
+            width: 100cqw;
             text-align: center;
             will-change: transform, opacity;
           }
 
+          /* Display scale: the JS chars-aware fit targets ~76cqw of set
+             width; 40cqh caps it in short, wide mounts. */
           [data-composition-id="logo-brand-close"] .lbc-wordmark {
             display: flex;
             align-items: baseline;
@@ -98,11 +107,12 @@
             margin: 0;
             color: var(--fg, #f8fafc);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
-            font-size: var(--lbc-wordmark-size, min(13cqw, 22cqh));
+            font-size: var(--lbc-wordmark-size, min(10.5cqw, 40cqh));
             font-weight: 600;
-            line-height: 1;
-            letter-spacing: -0.03em;
+            line-height: 1.04;
+            letter-spacing: -0.035em;
             white-space: nowrap;
+            will-change: transform;
           }
 
           [data-composition-id="logo-brand-close"] .lbc-letter {
@@ -112,7 +122,7 @@
           }
 
           [data-composition-id="logo-brand-close"] .lbc-space {
-            width: 0.32em;
+            width: 0.34em;
           }
 
           [data-composition-id="logo-brand-close"] .lbc-period {
@@ -120,10 +130,10 @@
           }
 
           [data-composition-id="logo-brand-close"] .lbc-tagline {
-            max-width: 86cqw;
-            margin: 0;
-            color: color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--muted, #94a3b8));
-            font-size: var(--lbc-tagline-size, min(3.4cqw, 5.4cqh));
+            max-width: 88cqw;
+            margin: var(--space-2, 3cqmin) 0 0;
+            color: var(--fg, #f8fafc);
+            font-size: min(3.4cqw, 5.4cqmin);
             font-weight: 500;
             line-height: 1.3;
             letter-spacing: 0.01em;
@@ -131,21 +141,21 @@
           }
 
           [data-composition-id="logo-brand-close"] .lbc-url {
-            margin: 0;
+            margin: var(--space-3, 4.6cqmin) 0 0;
             color: var(--muted, #94a3b8);
             font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-            font-size: var(--lbc-url-size, min(2.5cqw, 4.2cqh));
+            font-size: min(2.4cqw, 3.2cqmin);
             font-weight: 500;
             line-height: 1;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.28em;
             will-change: opacity;
           }
 
 [data-composition-id="logo-brand-close"] {
-  --wordmark: Hyperframes.;
-  --tagline: Write HTML, render video;
-  --url: hyperframes.dev;
-  --accent: blue;
+  --wordmark: FIELDNOTE;
+  --tagline: Slow journalism for fast times.;
+  --url: fieldnote.press;
+  --accent: violet;
   --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
@@ -528,7 +538,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 </head>
   <body>
     <div id="root" data-composition-id="logo-brand-close-demo" data-start="0" data-width="1920" data-height="1080" data-duration="4" data-fps="30">
-      <div data-composition-file="./logo-brand-close.html" id="logo-brand-close-mount" class="mount-card clip" data-composition-id="logo-brand-close" data-variable-values="{&quot;wordmark&quot;:&quot;Hyperframes.&quot;,&quot;tagline&quot;:&quot;Write HTML, render video&quot;,&quot;url&quot;:&quot;hyperframes.dev&quot;,&quot;accent&quot;:&quot;blue&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1459" data-height="432"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
+      <div data-composition-file="./logo-brand-close.html" id="logo-brand-close-mount" class="mount-stage clip" data-composition-id="logo-brand-close" data-variable-values="{&quot;wordmark&quot;:&quot;FIELDNOTE&quot;,&quot;tagline&quot;:&quot;Slow journalism for fast times.&quot;,&quot;url&quot;:&quot;fieldnote.press&quot;,&quot;accent&quot;:&quot;violet&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1920" data-height="1080"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
         
 
         <div id="logo-brand-close-clip" class="lbc-clip clip" data-start="0" data-duration="4" data-track-index="0">
@@ -548,7 +558,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["logo-brand-close-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "logo-brand-close": { "wordmark": "Hyperframes.", "tagline": "Write HTML, render video", "url": "hyperframes.dev", "accent": "blue", "exit": "none" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "logo-brand-close": { "wordmark": "FIELDNOTE", "tagline": "Slow journalism for fast times.", "url": "fieldnote.press", "accent": "violet", "exit": "none" } });
 (function() {
   var __hfCompId = "logo-brand-close";
   var __hfTimelineCompId = "logo-brand-close";
@@ -849,7 +859,7 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             letter.className = "lbc-letter";
             if (/\s/.test(character)) {
               letter.classList.add("lbc-space");
-              letter.textContent = "\xA0";
+              letter.textContent = " ";
             } else {
               letter.textContent = character;
             }
@@ -858,52 +868,93 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
             wordmarkElement.appendChild(letter);
             return letter;
           });
-          var wordmarkSize = Math.min(13, 84 / (characters.length * 0.62));
+          var periodLetter = letters[letters.length - 1];
+          var cascadeLetters = letters.slice(0, -1);
+          wordmarkElement.style.fontSize = "100px";
+          var probedWidth = wordmarkElement.getBoundingClientRect().width;
+          wordmarkElement.style.fontSize = "";
+          var setWidthEm;
+          if (probedWidth > 0) {
+            setWidthEm = probedWidth / 100;
+          } else {
+            setWidthEm = characters.reduce(function(total, character) {
+              if (/\s/.test(character)) return total + 0.34;
+              if (/[.,:;!'’|]/.test(character)) return total + 0.3;
+              if (/[Iijlftr]/.test(character)) return total + 0.42;
+              if (/[MWmw@]/.test(character)) return total + 0.92;
+              return total + 0.64;
+            }, 0);
+            setWidthEm -= characters.length * 0.035;
+          }
+          setWidthEm = Math.max(0.3, setWidthEm);
+          var wordmarkSize = 76 / setWidthEm;
           root.style.setProperty(
             "--lbc-wordmark-size",
-            "min(" + wordmarkSize.toFixed(3) + "cqw, 22cqh)"
+            "min(" + wordmarkSize.toFixed(3) + "cqw, 40cqh)"
           );
           if (tagline.length === 0) taglineElement.remove();
           else taglineElement.textContent = tagline;
           if (url.length === 0) urlElement.remove();
           else urlElement.textContent = url;
-          var IN_BASE = 1.9;
+          var IN_BASE = 2.6;
           var OUT_BASE = exit === "none" ? 0 : 0.5;
-          var RISE_BASE = 0.9;
-          var STAGGER_BASE = 0.55;
-          var TAGLINE_AT_BASE = 0.85;
-          var TAGLINE_DURATION_BASE = 0.7;
-          var URL_AT_BASE = 1.2;
-          var URL_DURATION_BASE = 0.7;
+          var CASCADE_RISE_BASE = 1.15;
+          var CASCADE_STAGGER_BASE = 0.7;
+          var SETTLE_BASE = 2.4;
+          var PERIOD_AT_BASE = 0.95;
+          var PERIOD_DURATION_BASE = 0.9;
+          var TAGLINE_AT_BASE = 1.35;
+          var TAGLINE_DURATION_BASE = 0.9;
+          var URL_AT_BASE = 1.7;
+          var URL_DURATION_BASE = 0.85;
           var duration = Math.max(1e-3, parseFloat(root.dataset.duration || "4"));
           var totalBase = IN_BASE + OUT_BASE;
           var scale = duration < totalBase ? duration / totalBase : 1;
           var IN = IN_BASE * scale;
           var OUT = OUT_BASE * scale;
-          var RISE = RISE_BASE * scale;
-          var STAGGER = letters.length > 1 ? STAGGER_BASE * scale : 0;
+          var STAGGER = cascadeLetters.length > 1 ? CASCADE_STAGGER_BASE * scale : 0;
           var HOLD = Math.max(0, duration - (IN + OUT));
           var OUT_START = IN + HOLD;
           var tl = gsap2.timeline({ paused: true });
+          if (cascadeLetters.length > 0) {
+            tl.fromTo(
+              cascadeLetters,
+              { opacity: 0, y: "0.62em" },
+              {
+                opacity: 1,
+                y: "0em",
+                duration: CASCADE_RISE_BASE * scale,
+                stagger: { amount: STAGGER, from: "start" },
+                ease: "expo.out"
+              },
+              0
+            );
+          }
           tl.fromTo(
-            letters,
-            { opacity: 0, y: "5.5cqh" },
+            wordmarkElement,
+            { scale: 1.04, transformOrigin: "50% 100%" },
+            { scale: 1, duration: SETTLE_BASE * scale, ease: "expo.out" },
+            0
+          );
+          tl.fromTo(
+            periodLetter,
+            { opacity: 0, scale: 0.2, y: "0.08em", transformOrigin: "50% 65%" },
             {
               opacity: 1,
-              y: "0cqh",
-              duration: RISE,
-              stagger: { amount: STAGGER, from: "start" },
-              ease: "expo.out"
+              scale: 1,
+              y: "0em",
+              duration: PERIOD_DURATION_BASE * scale,
+              ease: "back.out(1.8)"
             },
-            0
+            PERIOD_AT_BASE * scale
           );
           if (taglineElement.isConnected) {
             tl.fromTo(
               taglineElement,
-              { opacity: 0, y: "2.4cqh" },
+              { opacity: 0, y: "0.9em" },
               {
                 opacity: 1,
-                y: "0cqh",
+                y: "0em",
                 duration: TAGLINE_DURATION_BASE * scale,
                 ease: "power3.out"
               },
@@ -913,8 +964,13 @@ window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {},
           if (urlElement.isConnected) {
             tl.fromTo(
               urlElement,
-              { opacity: 0 },
-              { opacity: 1, duration: URL_DURATION_BASE * scale, ease: "power2.out" },
+              { opacity: 0, letterSpacing: "0.46em" },
+              {
+                opacity: 1,
+                letterSpacing: "0.28em",
+                duration: URL_DURATION_BASE * scale,
+                ease: "power2.out"
+              },
               URL_AT_BASE * scale
             );
           }

@@ -2,8 +2,11 @@
 <!--
   cta-close: HyperFrames video primitive (call to action / close)
 
-  One oversized action line rises into place, then one capsule pops beneath
-  it with a single overshoot. The finished lockup stays completely still.
+  The action-only close. A display-scale action line lands per word, sized by
+  a character-aware fit so it fills 70 to 85 percent of the frame width with
+  real air above and below. One generous button capsule pops beneath it with
+  a single restrained overshoot, then the finished lockup holds dead still
+  until the frame cuts. Monotone: ink on ground, accent only on the capsule.
 
   Variables:
     action_line: two to four word closing action
@@ -12,7 +15,7 @@
     exit: none, fade, or up (default none; this primitive closes films)
 
   Envelope:
-    IN_BASE = 1.32s, action rise followed by capsule pop
+    IN_BASE = 1.32s, per-word landing followed by the capsule pop
     HOLD = the rest of D, completely still
     OUT = none by default; 0.45s lockup departure when exit is fade or up
     If D is shorter than the fixed phases, they compress to fit. The timeline
@@ -68,43 +71,43 @@
           }
 
           .cc-lockup {
-            width: 92cqw;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: var(--space-3, 7cqh);
+            gap: 7cqh;
+            max-width: 96cqw;
             text-align: center;
           }
 
           .cc-action {
-            max-width: 92cqw;
             margin: 0;
             color: var(--fg, #f8fafc);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
-            font-size: var(--cc-action-size, min(17cqw, 27cqh));
-            font-weight: 850;
-            line-height: 0.92;
-            letter-spacing: -0.055em;
+            font-size: var(--cc-action-size, min(10.4cqw, 30cqh));
+            font-weight: 600;
+            line-height: 1.02;
+            letter-spacing: -0.035em;
             white-space: nowrap;
+          }
+
+          .cc-w {
+            display: inline-block;
             will-change: transform, opacity;
           }
 
           .cc-button {
-            min-width: 24cqw;
-            max-width: 82cqw;
             margin: 0;
-            padding: var(--space-2, 2.7cqh) var(--space-3, 5cqw);
+            padding: 2.9cqh 5cqw;
             overflow: hidden;
-            border: 0.14cqmin solid color-mix(in srgb, var(--cc-accent) 72%, var(--fg, #f8fafc));
+            border: 0;
             border-radius: 999px;
             background: var(--cc-accent);
             color: var(--bg, #0b0c0e);
-            font: inherit;
-            font-family: var(--font-display, Inter, system-ui, sans-serif);
-            font-size: var(--cc-button-size, min(4.4cqw, 7cqh));
-            font-weight: 760;
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            font-size: var(--cc-button-size, min(3.4cqw, 6cqh));
+            font-weight: 600;
             line-height: 1;
-            letter-spacing: -0.025em;
+            letter-spacing: -0.01em;
             white-space: nowrap;
             transform-origin: 50% 50%;
             will-change: transform, opacity;
@@ -156,49 +159,75 @@
               : "green";
             var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
 
-            actionLine.textContent = actionText;
+            // The line lands per word: one span per word, natural spaces kept
+            // between them so the display tracking never crushes word gaps.
             actionLine.setAttribute("aria-label", actionText);
+            var words = actionText ? actionText.split(" ") : [];
+            words.forEach(function (word, index) {
+              if (index > 0) actionLine.appendChild(document.createTextNode(" "));
+              var span = document.createElement("span");
+              span.className = "cc-w";
+              span.setAttribute("aria-hidden", "true");
+              span.textContent = word;
+              actionLine.appendChild(span);
+            });
+            var wordEls = actionLine.querySelectorAll(".cc-w");
             button.textContent = buttonText;
             root.style.setProperty("--cc-accent", accentColors[accent]);
 
             // Character-count fitting is deterministic before the template is
-            // laid out. The 84cqw target preserves air on both sides.
+            // laid out. The 0.47em advance estimate lands common display faces
+            // at 70 to 85 percent of the frame width; short lines cap on
+            // height instead so two-word closes stay monumental without
+            // touching the edges.
             var actionCharacters = Math.max(1, Array.from(actionText).length);
-            var actionSize = Math.min(17, 84 / (actionCharacters * 0.62));
+            var actionSize = Math.min(24, 76 / (actionCharacters * 0.47));
             var buttonCharacters = Math.max(1, Array.from(buttonText).length);
-            var buttonSize = Math.min(4.4, 62 / (buttonCharacters * 0.58));
+            var buttonSize = Math.min(3.5, 50 / (buttonCharacters * 0.5));
             root.style.setProperty(
               "--cc-action-size",
-              "min(" + actionSize.toFixed(3) + "cqw, 27cqh)",
+              "min(" + actionSize.toFixed(3) + "cqw, 30cqh)",
             );
             root.style.setProperty(
               "--cc-button-size",
-              "min(" + buttonSize.toFixed(3) + "cqw, 7cqh)",
+              "min(" + buttonSize.toFixed(3) + "cqw, 6cqh)",
             );
 
             var IN_BASE = 1.32;
             var OUT_BASE = exit === "none" ? 0 : 0.45;
             var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
             var envelopeScale = Math.min(1, duration / (IN_BASE + OUT_BASE));
-            var ACTION_DURATION = 0.7 * envelopeScale;
-            var BUTTON_AT = 0.64 * envelopeScale;
-            var BUTTON_DURATION = 0.68 * envelopeScale;
+            var WORDS_AT = 0.06 * envelopeScale;
+            var WORD_DURATION = 0.62 * envelopeScale;
+            var WORD_STAGGER = 0.1 * envelopeScale;
+            var BUTTON_AT = 0.72 * envelopeScale;
+            var BUTTON_DURATION = 0.6 * envelopeScale;
             var BUTTON_FADE = 0.22 * envelopeScale;
             var OUT = OUT_BASE * envelopeScale;
             var OUT_START = duration - OUT;
 
             var tl = gsap.timeline({ paused: true });
 
+            // IN, phase one: the action line lands per word at display scale.
             tl.fromTo(
-              actionLine,
+              wordEls,
               { opacity: 0, y: "8cqh" },
-              { opacity: 1, y: 0, duration: ACTION_DURATION, ease: "power3.out" },
-              0,
+              {
+                opacity: 1,
+                y: 0,
+                duration: WORD_DURATION,
+                ease: "power3.out",
+                stagger: WORD_STAGGER,
+              },
+              WORDS_AT,
             );
+
+            // IN, phase two: the capsule pops beneath with ONE restrained
+            // overshoot (back.out), a real button under a monumental line.
             tl.fromTo(
               button,
-              { scale: 0.72, y: "2.4cqh" },
-              { scale: 1, y: 0, duration: BUTTON_DURATION, ease: "back.out(1.7)" },
+              { scale: 0.85, y: "3cqh" },
+              { scale: 1, y: 0, duration: BUTTON_DURATION, ease: "back.out(1.5)" },
               BUTTON_AT,
             );
             tl.fromTo(
@@ -207,6 +236,10 @@
               { opacity: 1, duration: BUTTON_FADE, ease: "power2.out" },
               BUTTON_AT,
             );
+
+            // HOLD: dead still. The empty set pins the timeline to the full
+            // mount duration so seeks inside the hold land on the held pose.
+            tl.set({}, {}, duration);
 
             // OUT: optional departure; exit none holds the still lockup
             // until the frame cuts (this primitive closes films).

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-  before-after-wipe demo. This standalone composition mounts the primitive
-  through data-composition-src. Non-default text, accent, and style values
-  prove the variable path while the primitive remains elastic to its host.
+  before-after-wipe demo. Full-bleed mount on a light editorial backdrop: the
+  wipe sweeps the entire 1920x1080 frame, proving the before/after reveal
+  works as a full-frame transition rather than inside a small card.
 -->
 <html lang="en">
   <head><style data-hyperframes-text-rendering="true">html,body,*{text-rendering:geometricPrecision}</style>
@@ -20,39 +20,35 @@
         width: 1920px;
         height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b0c0e);
+        background: var(--bg, #f4f6f9);
       }
 
       #root {
-        --bg: #0b0c0e;
-        --fg: #f8fafc;
-        --surface: #14171c;
-        --border: #343a46;
-        --brand: #71f5a7;
-        --accent: #c5a3ff;
+        --bg: #f4f6f9;
+        --fg: #14161b;
+        --surface: #ffffff;
+        --border: #dfe4ec;
+        --brand: #1d4ed8;
+        --accent: #0284c7;
         --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         position: relative;
         width: 1920px;
         height: 1080px;
         overflow: hidden;
         background: radial-gradient(
-          ellipse at 50% 44%,
-          var(--bg, #171a20) 0%,
-          var(--bg, #0b0c0e) 72%
+          ellipse at 50% 40%,
+          #ffffff 0%,
+          var(--bg, #f4f6f9) 70%
         );
       }
 
-      .mount-card {
-        width: 76%;
-        height: 40%;
-        left: 12%;
-        top: 30%;
+      .mount-stage {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
         container-type: size;
         overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--border, #94a3b8) 20%, transparent);
-        border-radius: 30px;
-        background: color-mix(in srgb, var(--surface, #101318) 72%, transparent);
-        box-shadow: 0 40px 100px color-mix(in srgb, var(--bg, #000000) 48%, transparent);
       }
 
 *,
@@ -268,7 +264,7 @@
   --label-b: AFTER;
   --rest-split: 55;
   --wipe-at: 0.8;
-  --accent: blue;
+  --accent: violet;
   --exit: none;
 }</style>
   <script data-hyperframes-preview-runtime="1">"use strict";(()=>{var Fl=Object.create;var ri=Object.defineProperty;var _l=Object.getOwnPropertyDescriptor;var vl=Object.getOwnPropertyNames;var Ml=Object.getPrototypeOf,Tl=Object.prototype.hasOwnProperty;var Nl=(e,t,n)=>t in e?ri(e,t,{enumerable:!0,configurable:!0,writable:!0,value:n}):e[t]=n;var te=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports);var Ll=(e,t,n,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of vl(t))!Tl.call(e,r)&&r!==n&&ri(e,r,{get:()=>t[r],enumerable:!(i=_l(t,r))||i.enumerable});return e};var Rl=(e,t,n)=>(n=e!=null?Fl(Ml(e)):{},Ll(t||!e||!e.__esModule?ri(n,"default",{value:e,enumerable:!0}):n,e));var be=(e,t,n)=>Nl(e,typeof t!="symbol"?t+"":t,n);var Ao=te((Kp,yi)=>{var X=String,Eo=function(){return{isColorSupported:!1,reset:X,bold:X,dim:X,italic:X,underline:X,inverse:X,hidden:X,strikethrough:X,black:X,red:X,green:X,yellow:X,blue:X,magenta:X,cyan:X,white:X,gray:X,bgBlack:X,bgRed:X,bgGreen:X,bgYellow:X,bgBlue:X,bgMagenta:X,bgCyan:X,bgWhite:X,blackBright:X,redBright:X,greenBright:X,yellowBright:X,blueBright:X,magentaBright:X,cyanBright:X,whiteBright:X,bgBlackBright:X,bgRedBright:X,bgGreenBright:X,bgYellowBright:X,bgBlueBright:X,bgMagentaBright:X,bgCyanBright:X,bgWhiteBright:X}};yi.exports=Eo();yi.exports.createColors=Eo});var Si=te(()=>{});var yn=te((Yp,Fo)=>{"use strict";var wo=Ao(),Co=Si(),Gt=class e extends Error{constructor(t,n,i,r,o,s){super(t),this.name="CssSyntaxError",this.reason=t,o&&(this.file=o),r&&(this.source=r),s&&(this.plugin=s),typeof n<"u"&&typeof i<"u"&&(typeof n=="number"?(this.line=n,this.column=i):(this.line=n.line,this.column=n.column,this.endLine=i.line,this.endColumn=i.column)),this.setMessage(),Error.captureStackTrace&&Error.captureStackTrace(this,e)}setMessage(){this.message=this.plugin?this.plugin+": ":"",this.message+=this.file?this.file:"<css input>",typeof this.line<"u"&&(this.message+=":"+this.line+":"+this.column),this.message+=": "+this.reason}showSourceCode(t){if(!this.source)return"";let n=this.source;t==null&&(t=wo.isColorSupported);let i=c=>c,r=c=>c,o=c=>c;if(t){let{bold:c,gray:p,red:f}=wo.createColors(!0);r=x=>c(f(x)),i=x=>p(x),Co&&(o=x=>Co(x))}let s=n.split(/\r?\n/),l=Math.max(this.line-3,0),a=Math.min(this.line+2,s.length),u=String(a).length;return s.slice(l,a).map((c,p)=>{let f=l+1+p,x=" "+(" "+f).slice(-u)+" | ";if(f===this.line){if(c.length>160){let y=20,g=Math.max(0,this.column-y),A=Math.max(this.column+y,this.endColumn+y),_=c.slice(g,A),N=i(x.replace(/\d/g," "))+c.slice(0,Math.min(this.column-1,y-1)).replace(/[^\t]/g," ");return r(">")+i(x)+o(_)+`
@@ -651,7 +647,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
 </head>
   <body>
     <div id="root" data-composition-id="before-after-wipe-demo" data-start="0" data-width="1920" data-height="1080" data-duration="4" data-fps="30">
-      <div data-composition-file="./before-after-wipe.html" id="before-after-wipe-mount" class="mount-card clip" data-composition-id="before-after-wipe" data-variable-values="{&quot;label_a&quot;:&quot;BEFORE&quot;,&quot;label_b&quot;:&quot;AFTER&quot;,&quot;rest_split&quot;:55,&quot;wipe_at&quot;:0.8,&quot;accent&quot;:&quot;blue&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1459" data-height="432"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
+      <div data-composition-file="./before-after-wipe.html" id="before-after-wipe-mount" class="mount-stage clip" data-composition-id="before-after-wipe" data-variable-values="{&quot;label_a&quot;:&quot;BEFORE&quot;,&quot;label_b&quot;:&quot;AFTER&quot;,&quot;rest_split&quot;:55,&quot;wipe_at&quot;:0.8,&quot;accent&quot;:&quot;violet&quot;}" data-start="0" data-duration="4" data-track-index="0" data-width="1920" data-height="1080"><div style="width:100%;height:100%" data-hf-inner-root="true" data-hf-authored-id="root" data-fps="30">
         
 
         <div id="before-after-wipe-clip" class="baw-clip clip" data-start="0" data-duration="4" data-track-index="0">
@@ -701,7 +697,7 @@ ${e.replace(/<\/(script)/gi,"<\\/$1")}
     
   <script>window.__timelines = window.__timelines || {};
 window.__timelines["before-after-wipe-demo"] = gsap.timeline({ paused: true });
-window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "before-after-wipe": { "label_a": "BEFORE", "label_b": "AFTER", "rest_split": 55, "wipe_at": 0.8, "accent": "blue", "exit": "none" } });
+window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, { "before-after-wipe": { "label_a": "BEFORE", "label_b": "AFTER", "rest_split": 55, "wipe_at": 0.8, "accent": "violet", "exit": "none" } });
 (function() {
   var __hfCompId = "before-after-wipe";
   var __hfTimelineCompId = "before-after-wipe";

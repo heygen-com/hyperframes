@@ -1,62 +1,56 @@
 [
   {
-    "primitive": "screen-flow-carousel",
-    "neutral": "screen-flow-carousel.neutral.html",
-    "bold": "screen-flow-carousel.bold.html",
-    "editorial": "screen-flow-carousel.editorial.html"
+    "primitive": "cta-close",
+    "neutral": "cta-close.neutral.html",
+    "bold": "cta-close.bold.html",
+    "editorial": "cta-close.editorial.html"
   },
   {
-    "primitive": "ui-focus-zoom",
-    "neutral": "ui-focus-zoom.neutral.html",
-    "bold": "ui-focus-zoom.bold.html",
-    "editorial": "ui-focus-zoom.editorial.html"
+    "primitive": "logo-brand-close",
+    "neutral": "logo-brand-close.neutral.html",
+    "bold": "logo-brand-close.bold.html",
+    "editorial": "logo-brand-close.editorial.html"
   },
   {
-    "primitive": "state-chip-rail",
-    "neutral": "state-chip-rail.neutral.html",
-    "bold": "state-chip-rail.bold.html",
-    "editorial": "state-chip-rail.editorial.html"
+    "primitive": "grid-card-assemble",
+    "neutral": "grid-card-assemble.neutral.html",
+    "bold": "grid-card-assemble.bold.html",
+    "editorial": "grid-card-assemble.editorial.html"
   },
   {
-    "primitive": "morph-swap",
-    "neutral": "morph-swap.neutral.html",
-    "bold": "morph-swap.bold.html",
-    "editorial": "morph-swap.editorial.html"
+    "primitive": "press-ripple",
+    "neutral": "press-ripple.neutral.html",
+    "bold": "press-ripple.bold.html",
+    "editorial": "press-ripple.editorial.html"
   },
   {
-    "primitive": "line-swap",
-    "neutral": "line-swap.neutral.html",
-    "bold": "line-swap.bold.html",
-    "editorial": "line-swap.editorial.html"
+    "primitive": "typed-prompt",
+    "neutral": "typed-prompt.neutral.html",
+    "bold": "typed-prompt.bold.html",
+    "editorial": "typed-prompt.editorial.html"
   },
   {
-    "primitive": "radial-surround",
-    "neutral": "radial-surround.neutral.html",
-    "bold": "radial-surround.bold.html",
-    "editorial": "radial-surround.editorial.html"
+    "primitive": "titlecard-lockup",
+    "neutral": "titlecard-lockup.neutral.html",
+    "bold": "titlecard-lockup.bold.html",
+    "editorial": "titlecard-lockup.editorial.html"
   },
   {
-    "primitive": "code-terminal-run",
-    "neutral": "code-terminal-run.neutral.html",
-    "bold": "code-terminal-run.bold.html",
-    "editorial": "code-terminal-run.editorial.html"
+    "primitive": "browser-device-stage",
+    "neutral": "browser-device-stage.neutral.html",
+    "bold": "browser-device-stage.bold.html",
+    "editorial": "browser-device-stage.editorial.html"
   },
   {
-    "primitive": "testimonial-proof-card",
-    "neutral": "testimonial-proof-card.neutral.html",
-    "bold": "testimonial-proof-card.bold.html",
-    "editorial": "testimonial-proof-card.editorial.html"
+    "primitive": "chart-story",
+    "neutral": "chart-story.neutral.html",
+    "bold": "chart-story.bold.html",
+    "editorial": "chart-story.editorial.html"
   },
   {
-    "primitive": "notification-stack",
-    "neutral": "notification-stack.neutral.html",
-    "bold": "notification-stack.bold.html",
-    "editorial": "notification-stack.editorial.html"
-  },
-  {
-    "primitive": "split-tilt-cards",
-    "neutral": "split-tilt-cards.neutral.html",
-    "bold": "split-tilt-cards.bold.html",
-    "editorial": "split-tilt-cards.editorial.html"
+    "primitive": "before-after-wipe",
+    "neutral": "before-after-wipe.neutral.html",
+    "bold": "before-after-wipe.bold.html",
+    "editorial": "before-after-wipe.editorial.html"
   }
 ]

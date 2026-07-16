@@ -87,7 +87,7 @@ group: Proof and stats.
 what: A token-native stat counter that eases from start to end, lands on the exact final integer with one restrained scale pulse, and holds.
 use_when: One number is the proof: users, revenue, speedup, and it should land exactly as narration states it.
 avoid_when: The stat needs context or comparison; a lone number without a chart or label reads hollow, reach for chart-story.
-pairs_with: chart-story, marker-highlight, trust-strip.
+pairs_with: chart-story, marker-highlight, count-up.
 variables: start (number, default 0) and end (number, default 100): count range; always lands exactly on end. prefix (string, default empty) and suffix (string, default "%"): fixed text around the value. accent (enum green, blue, violet, default green): count color. glow (boolean, default false): opt-in soft accent glow. exit (enum none, fade, up, default none).
 
 ### chart-story
@@ -95,25 +95,15 @@ group: Proof and stats.
 what: One chart builds from data in reading order and lands the exact supplied values: staggered bars, a left-to-right line with area fill, a sweeping donut, or filling progress bars, with an accent callout on the emphasized datum.
 use_when: The proof is a trend or comparison across several values and one datum should carry the story.
 avoid_when: There is only one number to show (use count-up) or the data needs live interactivity; this is an authored build, not a chart widget.
-pairs_with: count-up, trust-strip, scroll-feed.
+pairs_with: count-up, chart-story, scroll-feed.
 variables: type (enum bars, line, donut, progress, default bars): chart form. data (string, default "12, 28, 45, 64"): comma numbers, landed exactly. labels (string, default "Q1, Q2, Q3, Q4"): comma labels per datum. emphasize (number index, default 3): accented datum with the callout. unit (string, default "%"): value suffix. accent (enum green, blue, violet, default green). exit (enum none, fade, up, default none).
-
-### trust-strip
-group: Proof and stats.
-what: A monochrome row of wide-tracked mono wordmarks fades in with an opacity-only left-to-right stagger, then holds dead still.
-use_when: A quiet credibility beat: "trusted by these teams" without stealing energy from the scenes around it.
-avoid_when: You have real logo image assets or want visual flourish; this unit is text wordmarks and stillness on purpose.
-pairs_with: count-up, logo-brand-close, titlecard-lockup.
-variables: marks (string, default "Northwind, Acme Corp, Globex, Initech, Umbra"): comma wordmark texts, 3 to 7 recommended. tone (enum muted or ink, default muted): mark color. cues (string, default empty): comma reveal starts. accent (enum green, blue, violet, default green): faint tint mixed into the mark color. exit (enum none, fade, up, default none).
-
-## Intros and reveals
 
 ### titlecard-lockup
 group: Intros and reveals.
 what: The calm breather titlecard: an optional mono kicker fades up, the wordmark settles dead-center with one restrained move, a hairline rule draws left to right, a mono label fades beneath, then a truly still hold.
 use_when: The film needs a breath: the opening card, a chapter break, or a name reveal where low motion IS the statement.
 avoid_when: The scene needs energy or a second development phase; this unit refuses spring chains by design (use per-word-rise or scramble-reveal).
-pairs_with: scramble-reveal, logo-brand-close, trust-strip.
+pairs_with: scramble-reveal, logo-brand-close, titlecard-lockup.
 variables: wordmark (string, default "HYPERFRAMES"): the centered display line. label (string, default "WRITE HTML. RENDER VIDEO."): mono caption under the rule; empty hides. kicker (string, default "INTRODUCING"): small mono label above; empty hides. rule (enum show or hide, default show): the hairline rule and its draw. accent (enum green, blue, violet, default green): carried by the rule. exit (enum none, fade, up, default none).
 
 ### svg-stroke-trace
@@ -147,7 +137,7 @@ group: Call to action.
 what: Wordmark letters cascade left to right into a centered lockup, an optional tagline and mono URL line settle beneath, then a dead-still identity hold ends the film.
 use_when: The final frame is the brand: name, tagline, URL, held to the last frame.
 avoid_when: The ending should push a button-press or signup; that is cta-close, which is action, not identity.
-pairs_with: cta-close, trust-strip, titlecard-lockup.
+pairs_with: cta-close, titlecard-lockup, count-up.
 variables: wordmark (string, default "HYPERFRAMES"): letters cascade individually; a brand period is appended in accent. tagline (string, default "Write HTML. Render video."): settles beneath; empty hides. url (string, default "hyperframes.heygen.com"): mono line below; empty hides. accent (enum green, blue, violet, default green): colors the brand period. exit (enum none, fade, up, default none): a film ender, keep none.
 
 ## Feature tour
