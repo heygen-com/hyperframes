@@ -30,7 +30,7 @@ bun run typecheck  # Type-check
 
 ## Tech stack
 
-- React 18/19, Zustand (state management)
+- React 19, Zustand 4/5 (state management; development uses Zustand 5)
 - CodeMirror 6 (editor)
 - Tailwind CSS (styling)
 - Vite (bundler)
