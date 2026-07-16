@@ -21,6 +21,10 @@ http://localhost:<port>/#project/<project-name>
 
 Use the actual port and project directory name; treat `index.html` as source-code context, not the preview surface. For example, after `npx hyperframes preview --port 3017` in `codex-openai-video`, report `http://localhost:3017/#project/codex-openai-video`.
 
+To land the user on the **Storyboard view** instead of the timeline, put `?view=storyboard` ahead of the hash: `http://localhost:<port>/?view=storyboard#project/<project-name>`. Hand this URL whenever the storyboard is the thing to review and nothing is assembled yet — before `index.html` exists, the timeline stage has nothing to show, so the bare project URL opens on an empty player.
+
+Two ways a handed URL turns out dead — check both before handing it back: the URL is missing its `#project/<project-name>` hash (Studio loads but has no project to open), or the server is not actually running. `preview` is a long-running process — start it from the project directory as a background task, and if that task reports it exited ("completed"), the server is down: restart it, don't hand out the link.
+
 ### Agent context from Studio selection
 
 `preview --context` and `preview --selection` are the agent bridge into a running Studio session. They do **not** start a new server; they find the active preview server for the current project, read agent-useful state from Studio, print it, and exit.
@@ -145,11 +149,21 @@ npx hyperframes render --docker                       # byte-identical
 After a render is verified, send one feedback line per task. This is the maintainers' primary signal — a render that finishes silently tells them nothing.
 
 ```bash
-npx hyperframes feedback --rating 5                              # clean run, no notes
-npx hyperframes feedback --rating 3 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
+npx hyperframes feedback --rating 10                              # clean run, no notes
+npx hyperframes feedback --rating 6 --comment "bg <video> renders grey in multi-scene; worked around with --format png-sequence"
 ```
 
-`--rating` is 1-5 (required); `--comment` is free text — use it for any bug, workaround, missing feature, or confusing behaviour. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat env in the comment. For a **bug**, a paraphrase can't be reproduced — give the maintainer: the **exact error string verbatim** and whether the render still produced output / silently fell back (`re-rendering via screenshot`) / hard-exited (`Killed: 9`, `Target closed`); the **isolated trigger** ("only at 4K", "only with a `<video>`", "only when the text uses `font-family: 苹方`"); the **exact command + `HF_*`/`PRODUCER_*` env**; and the **frame/timestamp + visual defect** vs. expected.
+`--rating` is an integer from 0-10 (required); `--comment` is free text. Feedback is anonymous and attaches a `doctorSummary` (OS/Node/CPU/mem/ffmpeg) automatically, so don't repeat those fields. A clean run needs only a short result. Before sending any bug, workaround, or confusing behavior, collect this compact reproduction packet:
+
+```text
+REPRO COMMAND: cd <project path> && <HF_*/PRODUCER_* env> npx hyperframes <exact command>
+EXPECTED / ACTUAL: <expected behavior> / <observed behavior and isolated trigger>
+EXACT ERROR: <verbatim error or warning; include frame/timestamp for visual defects>
+OUTCOME: <output correct | output corrupt | fallback succeeded | hard exit | command hung>
+WORKAROUND: <exact workaround, or none>
+```
+
+Preserve paths containing spaces, flags, and relevant `HF_*` / `PRODUCER_*` variables; redact secrets and credentials. If the failure no longer reproduces, include the last failing command and log excerpt. Share a project link only when one is already available and safe to share.
 
 Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--yes` for non-interactive shells) to also publish a minimal repro to a public URL and open a pre-filled GitHub `bug` issue draft for a maintainer to file. This publishes the project publicly, so it is opt-in and consent-gated; the issue is never auto-submitted.
 

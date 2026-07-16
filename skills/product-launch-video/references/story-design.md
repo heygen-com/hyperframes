@@ -332,6 +332,13 @@ The five registry types:
 
 Pick a small set and repeat them: default to `crossfade` (or `blur-crossfade` when the backgrounds clash), and reach for `zoom-through` at section boundaries. Frame 1's `transition_in` is a placeholder.
 
+## Music & silence
+
+The storyboard's top YAML block carries a `music:` field — the BGM mood the audio step retrieves against (e.g. `music: confident minimal tech underscore`). Omitting it falls back to `message:` → `arc:` → a neutral default, so BGM plays unless turned off explicitly.
+
+- **`music: none`** — BGM off (narration, if any, still runs).
+- **`music: none` + no `SCRIPT.md`** — the canonical **fully-silent marker**: no narration, no BGM, no SFX. `audio.mjs` generates nothing and Step 3.1 is a clean skip. Use exactly this spelling when the user asks for a silent / music-free video.
+
 ## Frame template
 
 Use the exact fields required by the core storyboard format. The narrative shape each frame satisfies:

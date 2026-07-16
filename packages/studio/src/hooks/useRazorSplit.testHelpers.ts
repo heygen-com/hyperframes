@@ -36,10 +36,11 @@ export function createSplitFetchMock(
       onSplit?.(path, JSON.parse(String(init?.body)) as SplitBody);
       // Return content that differs from the original so `changed` is true.
       const after = `${disk[path]}<!--split-->`;
+      const version = `"test-${path}-${after.length}"`;
       disk[path] = after; // server writes the split to disk
-      return new Response(JSON.stringify({ ok: true, changed: true, content: after }), {
+      return new Response(JSON.stringify({ ok: true, changed: true, content: after, version }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ETag: version },
       });
     }
     if (u.includes("/files/")) {

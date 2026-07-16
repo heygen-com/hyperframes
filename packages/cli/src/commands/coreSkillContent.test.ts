@@ -23,4 +23,16 @@ describe("hyperframes-core contract docs", () => {
     expect(brief).toContain("`hyperframes check`");
     expect(brief).not.toContain("`lint` / `validate` / `inspect`");
   });
+
+  it("requires actionable reproduction packets in CLI defect feedback", () => {
+    const skill = read("skills", "hyperframes-cli", "SKILL.md");
+    const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
+
+    expect(skill).toContain("reproduction packet");
+    expect(renderReference).toContain("REPRO COMMAND:");
+    expect(renderReference).toContain("EXPECTED / ACTUAL:");
+    expect(renderReference).toContain("EXACT ERROR:");
+    expect(renderReference).toContain("OUTCOME:");
+    expect(renderReference).toContain("WORKAROUND:");
+  });
 });

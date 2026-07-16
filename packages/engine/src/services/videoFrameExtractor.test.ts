@@ -143,6 +143,13 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
     );
   });
 
+  it("resolves a browser root-absolute URL from the project root", () => {
+    const projectDir = join(tmp, "project");
+    expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
+      join(projectDir, "assets/foo.mp4"),
+    );
+  });
+
   it("clamps a leading `../` so `../assets/foo.mp4` resolves to assets/foo.mp4", () => {
     const projectDir = join(tmp, "project");
     expect(resolveProjectRelativeSrc("../assets/foo.mp4", projectDir)).toBe(
@@ -382,7 +389,7 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
   });
 
-  it("does not hold stale frames for non-looping clips after extracted frames end", () => {
+  it("holds the last frame for a non-looping clip until its authored slot ends", () => {
     const table = createFrameLookupTable(
       [
         {
@@ -399,7 +406,31 @@ describe("FrameLookupTable", () => {
     );
 
     expect(table.getActiveFramePayloads(0.5).has("hero")).toBe(true);
-    expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
+    expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(29);
+    expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(29);
+    expect(table.getFrame("hero", 4.5)).toBeTruthy();
+    expect(table.getActiveFramePayloads(5.1).has("hero")).toBe(false);
+    expect(table.getFrame("hero", 5.1)).toBeNull();
+  });
+
+  it("does not invent a held frame when extraction produced no frames", () => {
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 0,
+          end: 5,
+          mediaStart: 0,
+          loop: false,
+          hasAudio: false,
+        },
+      ],
+      [fakeExtracted(0, 30)],
+    );
+
+    expect(table.getActiveFramePayloads(4.5).has("hero")).toBe(false);
+    expect(table.getFrame("hero", 4.5)).toBeNull();
   });
 
   it("places a relative-reference video in its resolved window end-to-end (was blank)", () => {
@@ -441,10 +472,9 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(2.5).get("hero")?.frameIndex).toBe(45);
   });
 
-  it("holds the last frame at the clip end even when the source is shorter than the window", () => {
-    // clip [0,5] with only 1s of source (30 @ 30fps). The mid-clip tail stays
-    // blank (source exhausted), but t === end still holds the last frame to
-    // match the runtime's inclusive visibility.
+  it("holds the last frame across the tail when the source is shorter than the window", () => {
+    // clip [0,5] with only 1s of source (30 @ 30fps). The authored slot is the
+    // visibility contract, so the final source frame fills its remaining tail.
     const table = createFrameLookupTable(
       [
         {
@@ -459,7 +489,7 @@ describe("FrameLookupTable", () => {
       ],
       [fakeExtracted(30, 30)],
     );
-    expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
+    expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(29);
     expect(table.getActiveFramePayloads(5.0).get("hero")?.frameIndex).toBe(29);
   });
 
@@ -959,6 +989,12 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       "smpte2084",
       "-colorspace",
       "bt2020nc",
+      // The -color_* flags above only tag the container/encoder context;
+      // whether they reach the H.264 VUI depends on the ffmpeg build (the
+      // pinned Windows CI build drops the transfer). Write the VUI directly
+      // so probing reports smpte2084 on every build (9/16/9 = bt2020/PQ/bt2020nc).
+      "-bsf:v",
+      "h264_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9",
       src,
     ]);
     if (!synth.success) {
@@ -1515,5 +1551,10 @@ describe("getFrameAtTime — IEEE 754 boundary precision", () => {
     const extracted = makeExtracted(25, 100);
     const frame = getFrameAtTime(extracted, 0, 0, false, 1.0);
     expect(frame).toBe("frame-0.jpg");
+  });
+
+  it("returns null after source exhaustion without an authored slot boundary", () => {
+    const extracted = makeExtracted(25, 25);
+    expect(getFrameAtTime(extracted, 3, 0)).toBeNull();
   });
 });

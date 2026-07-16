@@ -376,7 +376,7 @@ export async function resolveDomEditSelection(
         isCompositionRoot,
         isInsideLockedComposition: isInsideLocked,
         isMasterView: options.isMasterView,
-        existsInSource: sourceProbeEnabled ? existsInSource === true : true,
+        existsInSource: existsInSource !== false,
       }),
     ).capabilities;
     const rect = current.getBoundingClientRect();

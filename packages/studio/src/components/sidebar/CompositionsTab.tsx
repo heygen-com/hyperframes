@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -87,12 +88,13 @@ function resolveIframeDuration(iframe: HTMLIFrameElement | null): number | null 
   }
 }
 
-function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
+export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
   try {
     const player = (iframe?.contentWindow as PreviewWindow | null)?.__player;
     if (!player) return false;
 
     if (shouldPlay) {
+      setPreviewMediaMuted(iframe, true);
       player.play?.();
       return true;
     }

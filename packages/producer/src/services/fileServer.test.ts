@@ -315,6 +315,24 @@ describe("parseRangeHeader", () => {
 });
 
 describe("createFileServer", () => {
+  it("serves ES modules with a JavaScript MIME type", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mjs-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "scene.mjs"), "export const scene = true;");
+      const server = await createFileServer({ projectDir, preHeadScripts: [], headScripts: [] });
+      try {
+        const response = await fetch(`${server.url}/scene.mjs`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   async function expectInjectedRenderFps(
     fps: Parameters<typeof createFileServer>[0]["fps"],
     expected: {

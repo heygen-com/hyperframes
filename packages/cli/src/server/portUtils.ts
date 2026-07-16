@@ -97,6 +97,7 @@ export async function testPortOnAllHosts(
 
 interface HyperframesConfigResponse {
   isHyperframes: boolean;
+  pid?: number;
   projectName: string;
   projectDir: string;
   serverBuildSignature?: string | null;
@@ -278,7 +279,10 @@ export async function scanActiveServers(startPort = 3002): Promise<ActiveServer[
       ports.map(async (port) => {
         const config = await probePort(port);
         if (!config) return null;
-        const pid = await getProcessOnPort(port);
+        const pid =
+          Number.isInteger(config.pid) && Number(config.pid) > 0
+            ? String(config.pid)
+            : await getProcessOnPort(port);
         return {
           port,
           projectName: config.projectName,

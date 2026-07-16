@@ -26,6 +26,7 @@ const TYPE_DIRS = {
   video: "video",
   grade: "luts",
   lut: "luts",
+  recipe: "recipes",
 };
 
 export function mediaDir(projectDir) {

@@ -145,6 +145,29 @@ test("bundled SFX resolve without HeyGen on PATH", () => {
   cleanup();
 });
 
+test("missing bundled SFX install returns a typed recovery command", () => {
+  setup();
+  const missingLibrary = join(tmp, "missing-sfx-library");
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--local-only", "--json"],
+    {
+      env: {
+        HOME: tmp,
+        PATH: tmp,
+        HYPERFRAMES_MEDIA_USE_SFX_DIR: missingLibrary,
+      },
+    },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.code, "bundled_sfx_assets_missing");
+  assert.equal(parsed.fix, "npx hyperframes skills update media-use");
+  assert.match(parsed.error, /bundled SFX assets are missing or incomplete/);
+  assert.match(parsed.error, /manifest not found/);
+  cleanup();
+});
+
 function writeFakeHeygen(body, exitCode = 0) {
   const binDir = join(tmp, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -514,6 +537,7 @@ test("--doctor --json reports dependency checks and top-level ok requires ffmpeg
   assert.ok(Array.isArray(parsed.checks));
 
   const expected = [
+    "bundled SFX assets",
     "heygen on PATH",
     "heygen version",
     "heygen authenticated",
@@ -532,7 +556,9 @@ test("--doctor --json reports dependency checks and top-level ok requires ffmpeg
 
   const ffmpeg = byName.get("ffmpeg on PATH");
   const ffprobe = byName.get("ffprobe on PATH");
-  const strictOk = ffmpeg.ok && ffprobe.ok;
+  const bundledSfx = byName.get("bundled SFX assets");
+  assert.match(bundledSfx.detail, /bundled SFX assets available/);
+  const strictOk = bundledSfx.ok && ffmpeg.ok && ffprobe.ok;
   assert.equal(parsed.ok, strictOk);
   assert.equal(result.status, strictOk ? 0 : 1);
 });

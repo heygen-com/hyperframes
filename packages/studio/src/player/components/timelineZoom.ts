@@ -2,9 +2,13 @@ import type { ZoomMode } from "../store/playerStore";
 
 export const MIN_TIMELINE_ZOOM_PERCENT = 10;
 export const MAX_TIMELINE_ZOOM_PERCENT = 2000;
-const ZOOM_OUT_FACTOR = 0.8;
-const ZOOM_IN_FACTOR = 1.25;
-const PINCH_ZOOM_SENSITIVITY = 0.0035;
+// CapCut-strength steps: one button press / pinch gesture moves the zoom
+// meaningfully (user feedback, twice-doubled: 1.25×/0.8× + 0.0035 felt like
+// "zooming several times to get anywhere", then 1.5× + 0.007 still too soft).
+// Kept reciprocal (2 × 0.5 = 1) so in+out round-trips.
+const ZOOM_OUT_FACTOR = 0.5;
+const ZOOM_IN_FACTOR = 2;
+const PINCH_ZOOM_SENSITIVITY = 0.014;
 
 export function clampTimelineZoomPercent(percent: number): number {
   if (!Number.isFinite(percent)) return 100;

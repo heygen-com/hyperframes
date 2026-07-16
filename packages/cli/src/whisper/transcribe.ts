@@ -38,6 +38,84 @@ function findWavDataChunk(buf: Buffer): { offset: number; size: number } | null 
   return null;
 }
 
+const WHISPER_TIMEOUT_FLOOR_MS = 300_000;
+const WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS = 10_000;
+const WHISPER_TIMEOUT_CAP_MS = 43_200_000;
+const AUDIO_PREPARATION_TIMEOUT_FLOOR_MS = 120_000;
+const AUDIO_PREPARATION_TIMEOUT_PER_MEDIA_SECOND_MS = 500;
+const AUDIO_PREPARATION_TIMEOUT_CAP_MS = 21_600_000;
+
+/**
+ * Give long recordings enough time to transcribe while retaining a bounded
+ * failure window. Short recordings keep the historical five-minute timeout.
+ */
+export function resolveWhisperTimeoutMs(durationSeconds: number | null): number {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return WHISPER_TIMEOUT_FLOOR_MS;
+  }
+
+  return Math.min(
+    WHISPER_TIMEOUT_CAP_MS,
+    Math.max(
+      WHISPER_TIMEOUT_FLOOR_MS,
+      Math.ceil(durationSeconds * WHISPER_TIMEOUT_PER_AUDIO_SECOND_MS),
+    ),
+  );
+}
+
+/**
+ * Bound FFmpeg audio preparation while allowing long recordings to scale past
+ * the historical two-minute timeout. The half-realtime allowance is generous
+ * for audio-only extraction without inheriting Whisper's much larger window.
+ */
+export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null): number {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return AUDIO_PREPARATION_TIMEOUT_FLOOR_MS;
+  }
+
+  return Math.min(
+    AUDIO_PREPARATION_TIMEOUT_CAP_MS,
+    Math.max(
+      AUDIO_PREPARATION_TIMEOUT_FLOOR_MS,
+      Math.ceil(durationSeconds * AUDIO_PREPARATION_TIMEOUT_PER_MEDIA_SECOND_MS),
+    ),
+  );
+}
+
+function getMediaDurationSeconds(filePath: string): number | null {
+  try {
+    const ffprobePath = findFFprobe();
+    if (!ffprobePath) return null;
+    const raw = execFileSync(
+      ffprobePath,
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        filePath,
+      ],
+      { encoding: "utf-8", timeout: 10_000 },
+    );
+    const durationSeconds = Number.parseFloat(raw.trim());
+    return Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null;
+  } catch {
+    return null;
+  }
+}
+
+function getPreparedWavDurationSeconds(wavPath: string): number | null {
+  try {
+    const dataChunk = findWavDataChunk(readFileSync(wavPath));
+    if (!dataChunk) return null;
+    return dataChunk.size / (16_000 * 2);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Detect when speech begins in a 16kHz mono WAV by finding the first
  * sustained energy jump above the track's median RMS. Returns onset time in
@@ -152,7 +230,10 @@ function extractAudio(videoPath: string): string {
   execFileSync(
     ffmpegPath,
     ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    { stdio: "ignore", timeout: 120_000 },
+    {
+      stdio: "ignore",
+      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
+    },
   );
   return wavPath;
 }
@@ -200,7 +281,10 @@ function prepareAudio(audioPath: string): string {
   execFileSync(
     ffmpegPath,
     ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    { stdio: "ignore", timeout: 120_000 },
+    {
+      stdio: "ignore",
+      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
+    },
   );
   return wavPath;
 }
@@ -304,7 +388,11 @@ export async function transcribe(
   }
   whisperArgs.push(wavPath);
 
-  execFileSync(whisper.executablePath, whisperArgs, { stdio: "ignore", timeout: 300_000 });
+  const whisperTimeoutMs = resolveWhisperTimeoutMs(getPreparedWavDurationSeconds(wavPath));
+  execFileSync(whisper.executablePath, whisperArgs, {
+    stdio: "ignore",
+    timeout: whisperTimeoutMs,
+  });
 
   // 6. Read and validate output
   const transcriptPath = `${outputBase}.json`;

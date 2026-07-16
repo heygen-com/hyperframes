@@ -50,6 +50,8 @@ export function editabilityForProvenance(provenance?: GsapProvenance): KeyframeE
 export interface GsapAnimation {
   id: string;
   targetSelector: string;
+  /** Stable parser-only identity for non-DOM targets whose display label is not unique. */
+  targetIdentity?: string;
   method: GsapMethod;
   position: number | string;
   properties: Record<string, number | string>;

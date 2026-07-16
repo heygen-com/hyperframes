@@ -16,6 +16,7 @@ import {
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
 import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
+import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
 
@@ -368,6 +369,13 @@ export async function updateSkills(
     await installSkills(result.installed, { cwd: opts.cwd, strict });
     verifyInstalled(result.installed, { strict, cwd: opts.cwd });
   }
+  // The install (or the fresh canonical check confirming everything current)
+  // supersedes whatever the background nudge cached before it — drop the
+  // cached verdict so the next command re-checks instead of nagging from the
+  // pre-install snapshot for up to 24h. Deliberately NOT done on the offline
+  // (presence-only) path above: that run never learned anything about
+  // freshness, so the cached verdict is the best information we still have.
+  invalidateSkillsCache();
   return result;
 }
 
@@ -554,6 +562,11 @@ const checkCommand = defineCommand({
 
     if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));
     else renderCheck(result);
+
+    // This check just displayed a fresh verdict, superseding whatever the
+    // background nudge cached — invalidate so the next command's nudge agrees
+    // with what the user was just shown instead of a pre-check snapshot.
+    invalidateSkillsCache();
 
     // Exit non-zero when installed skills are stale, so agents and CI can gate:
     //   hyperframes skills check || npx hyperframes skills update
@@ -748,6 +761,11 @@ export default defineCommand({
     // citty runs this parent handler even when a subcommand matches; guard on
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
-    if (!args._?.[0]) await installSkills("*");
+    if (!args._?.[0]) {
+      await installSkills("*");
+      // Same as updateSkills: a full install supersedes the background
+      // nudge's cached pre-install verdict.
+      invalidateSkillsCache();
+    }
   },
 });

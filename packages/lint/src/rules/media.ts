@@ -1,5 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { readAttr, truncateSnippet, isMediaTag } from "../utils";
+import { readAttr, readDecodedAttr, truncateSnippet, isMediaTag } from "../utils";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -308,7 +308,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
       if (tag.name === "video" || tag.name === "audio") continue;
       if (voidElements.has(tag.name)) continue;
       // Skip the composition root — it uses data-start as a playback anchor, not as a clip timer
-      if (readAttr(tag.raw, "data-composition-id")) continue;
+      if (readDecodedAttr(tag.raw, "data-composition-id")) continue;
       if (readAttr(tag.raw, "data-start")) {
         timedTagPositions.push({
           name: tag.name,

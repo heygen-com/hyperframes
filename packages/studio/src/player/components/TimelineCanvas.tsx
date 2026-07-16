@@ -10,6 +10,9 @@ import {
   CLIP_Y,
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
+  TRACKS_LEFT_PAD,
+  PLAYHEAD_HEAD_W,
+  getTimelinePlayheadLeft,
   getTimelineRowTop,
 } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
@@ -20,6 +23,8 @@ import type { Rect } from "../../utils/marqueeGeometry";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes, type TimelineLaneBaseProps } from "./TimelineLanes";
 import { renderClipChildren } from "./timelineClipChildren";
+import { useTimelineRevealClip } from "./useTimelineRevealClip";
+import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -34,6 +39,8 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   /** Playhead is being actively scrubbed — fills the grab-handle head. */
   isScrubbing: boolean;
   playheadRef: React.RefObject<HTMLDivElement | null>;
+  /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
+  laneGapStrips: TimelineLaneGapStrips[];
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
@@ -41,6 +48,8 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   const { onResizeElement, onMoveElement, onToggleTrackHidden, onRazorSplit, onRazorSplitAll } =
     useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
+  // Scroll a clip into view when the sidebar (asset card) requests a reveal.
+  useTimelineRevealClip(scrollRef);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -92,7 +101,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   return (
     <div
       className="relative"
-      style={{ height: props.totalH, width: GUTTER + props.trackContentWidth }}
+      style={{ height: props.totalH, width: GUTTER + TRACKS_LEFT_PAD + props.trackContentWidth }}
     >
       <TimelineRuler
         major={props.major}
@@ -126,6 +135,31 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
       <div aria-hidden="true" style={{ height: TRACKS_BOTTOM_PAD }} />
 
+      {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
+          menu row would collapse; a quiet tint for every gap on the selected
+          clip's lane. Geometry mirrors the drop placeholder (row top + clip
+          inset) so strips sit exactly where a clip body would. */}
+      {props.laneGapStrips.map((strip) => {
+        const rowIndex = displayTrackOrder.indexOf(strip.track);
+        if (rowIndex < 0) return null;
+        const loud = strip.kind === "hover";
+        return strip.intervals.map((gap) => (
+          <div
+            key={`gap-${strip.kind}-${strip.track}-${gap.start}`}
+            className="pointer-events-none absolute"
+            style={{
+              top: getTimelineRowTop(rowIndex) + CLIP_Y,
+              left: GUTTER + TRACKS_LEFT_PAD + gap.start * props.pps,
+              width: Math.max((gap.end - gap.start) * props.pps, 2),
+              height: TRACK_H - CLIP_Y * 2,
+              background: loud ? "rgba(60,230,172,0.18)" : "rgba(60,230,172,0.055)",
+              borderRadius: 4,
+              zIndex: 25,
+            }}
+          />
+        ));
+      })}
+
       {/* Drop placeholder — a clip-sized slot at the exact landing spot (target
           lane + snapped start), parallel to the ghost. Hidden in insert mode. */}
       {draggedClip?.started && draggedClip.insertRow == null && draggedRowIndex >= 0 && (
@@ -133,7 +167,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             top: getTimelineRowTop(draggedRowIndex) + CLIP_Y,
-            left: GUTTER + draggedClip.previewStart * props.pps,
+            left: GUTTER + TRACKS_LEFT_PAD + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
             height: TRACK_H - CLIP_Y * 2,
             border: "1px solid rgba(60,230,172,0.55)",
@@ -151,7 +185,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             top: getTimelineRowTop(draggedClip.insertRow) - 0.5,
-            left: GUTTER,
+            left: GUTTER + TRACKS_LEFT_PAD,
             width: props.trackContentWidth,
             height: 1,
             background: "#3CE6AC",
@@ -166,7 +200,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         <div
           className="absolute pointer-events-none"
           style={{
-            left: GUTTER + draggedClip.snapTime * props.pps,
+            left: GUTTER + TRACKS_LEFT_PAD + draggedClip.snapTime * props.pps,
             top: RULER_H,
             bottom: 0,
             width: 1,
@@ -246,7 +280,9 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           className="absolute pointer-events-none"
           style={{
             left:
-              GUTTER + Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
+              GUTTER +
+              TRACKS_LEFT_PAD +
+              Math.min(props.rangeSelection.start, props.rangeSelection.end) * props.pps,
             width: Math.abs(props.rangeSelection.end - props.rangeSelection.start) * props.pps,
             top: RULER_H,
             bottom: 0,
@@ -259,12 +295,16 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
       )}
 
       {/* Playhead — hidden while dragging a beat so its guideline doesn't
-          track the scrub and clutter the beat being moved. */}
+          track the scrub and clutter the beat being moved. Explicit width +
+          the half-head offset baked into getTimelinePlayheadLeft keep the
+          inner 1px line's CENTER exactly on GUTTER + t * pps (the ruler
+          ticks' center), instead of relying on shrink-wrap sizing. */}
       <div
         ref={props.playheadRef}
         className="absolute top-0 bottom-0 pointer-events-none"
         style={{
-          left: `${GUTTER}px`,
+          left: `${getTimelinePlayheadLeft(0, 0)}px`,
+          width: PLAYHEAD_HEAD_W,
           zIndex: 100,
           display: beatDragging ? "none" : undefined,
         }}

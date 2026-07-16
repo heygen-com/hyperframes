@@ -92,7 +92,7 @@ Rules below came out of two independent website capture builds (2026-04-20) wher
 
 - **No iframes for captured content.** Iframes do not seek deterministically with the timeline — the capture engine cannot scrub inside them, so they appear frozen (or blank) in the rendered output. If the source you're stylizing is a live web app, use the screenshots from `capture/` as stacked panels or layered images, not live embeds.
 
-- **Never stack two transform tweens on the same element.** A common failure: a `y` entrance plus a `scale` Ken Burns on the same `<img>`. The second tween's `immediateRender: true` writes the element's initial state at construction time, overwriting whatever the first tween set — leaving the element invisible or offscreen with no lint warning. A secondary mechanism: `tl.from()` resets to its declared "from" state when the playhead is seeked past the timeline's end, so an element that looked correct in linear playback vanishes in the capture engine's non-linear seek. Fix one of two ways:
+- **Never overlap conflicting transform tweens on the same element.** Sequential, non-overlapping transform phases are valid. The dangerous case is concurrent tweens or `from()` tweens whose `immediateRender` states overwrite one another: for example, a `y` entrance plus a simultaneous `scale` Ken Burns tween on the same `<img>`. The element can remain invisible or offscreen with no lint warning. Fix the overlap in one of two ways:
 
   ```html
   <!-- BAD: two transforms on one element -->
@@ -115,7 +115,7 @@ Rules below came out of two independent website capture builds (2026-04-20) wher
   <!-- GOOD option B: split across parent + child -->
   <div class="hero-wrap"><img class="hero" src="..." /></div>
   <script>
-    tl.from(".hero-wrap", { y: 50, opacity: 0, duration: 0.6 }, 0); // entrance on parent
+    tl.fromTo(".hero-wrap", { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, 0); // entrance on parent
     tl.to(".hero", { scale: 1.04, duration: beat }, 0); // Ken Burns on child
   </script>
   ```
@@ -140,11 +140,11 @@ Rules below came out of two independent website capture builds (2026-04-20) wher
   tl.to(".aura", { scale: 1.08, yoyo: true, repeat: 5, duration: 1.2 }, 0);
   ```
 
-- **Hard-kill every scene boundary, not just captions.** The caption hard-kill rule above generalizes: any element whose visibility changes at a beat boundary needs a deterministic `tl.set()` kill after its fade, because later tweens on the same element (or `immediateRender` from a sibling tween) can resurrect it. Apply to every element with an exit animation:
+- **Hard-kill exiting inner elements at a scene boundary, not the `.clip` itself.** A non-clip element or wrapper whose visibility changes at a beat boundary may need a deterministic zero-duration `tl.set()` kill after its fade, because a later tween or sibling `immediateRender` can resurrect it. This is the explicit-boundary exception to the ban on raw `visibility` tweens. HyperFrames alone controls `.clip` lifecycle; never apply this pattern to the clip container.
 
   ```js
-  tl.to(el, { opacity: 0, duration: 0.3 }, beatEnd);
-  tl.set(el, { opacity: 0, visibility: "hidden" }, beatEnd + 0.3); // deterministic kill
+  tl.to(innerEl, { opacity: 0, duration: 0.3 }, beatEnd);
+  tl.set(innerEl, { opacity: 0, visibility: "hidden" }, beatEnd + 0.3); // non-clip kill
   ```
 
 These are the exact rules with the exact code examples — don't summarize or shorten them. They exist because compositions that lint clean still ship broken without them.

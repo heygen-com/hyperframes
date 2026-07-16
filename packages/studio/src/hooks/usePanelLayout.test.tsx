@@ -17,7 +17,14 @@ function mountPanelLayout() {
 
   function Probe() {
     layout = usePanelLayout();
-    return null;
+    return (
+      <div
+        aria-label="Resize test panel"
+        onPointerDown={(event) => layout?.handlePanelResizeStart("right", event)}
+        onPointerMove={(event) => layout?.handlePanelResizeMove(event)}
+        onPointerUp={() => layout?.handlePanelResizeEnd()}
+      />
+    );
   }
 
   const host = document.createElement("div");
@@ -25,6 +32,7 @@ function mountPanelLayout() {
   act(() => root.render(<Probe />));
 
   return {
+    host,
     getLayout() {
       if (!layout) throw new Error("panel layout did not initialize");
       return layout;
@@ -41,6 +49,47 @@ afterEach(() => {
 });
 
 describe("usePanelLayout persistence", () => {
+  it("persists a multi-move panel drag once at pointer end", () => {
+    const setItem = vi.spyOn(window.localStorage, "setItem");
+    const harness = mountPanelLayout();
+    const separator = harness.host.querySelector('[aria-label="Resize test panel"]');
+    if (!(separator instanceof HTMLElement)) throw new Error("resize separator did not render");
+
+    act(() => {
+      separator.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 500, pointerId: 1 }),
+      );
+      for (const clientX of [510, 520, 530]) {
+        separator.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, clientX, pointerId: 1 }),
+        );
+      }
+      separator.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientX: 530, pointerId: 1 }),
+      );
+    });
+
+    expect(harness.getLayout().rightWidth).toBe(370);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem("hf-studio-ui-preferences") ?? "{}")).toMatchObject({
+      rightPanelWidth: 370,
+    });
+    harness.unmount();
+  });
+
+  it("persists public width updates used by keyboard nudges", () => {
+    const setItem = vi.spyOn(window.localStorage, "setItem");
+    const harness = mountPanelLayout();
+
+    act(() => harness.getLayout().setRightWidth(416));
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem("hf-studio-ui-preferences") ?? "{}")).toMatchObject({
+      rightPanelWidth: 416,
+    });
+    harness.unmount();
+  });
+
   it("restores panel widths after a remount", () => {
     const first = mountPanelLayout();
 

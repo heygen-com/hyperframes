@@ -165,7 +165,7 @@ describe("resolveDomEditSelection, source probe truth", () => {
     });
   });
 
-  it("does not grant style editing when the probe response omits existence", async () => {
+  it("keeps style editing when the probe response omits existence", async () => {
     const element = document.createElement("div");
     element.id = "missing-probe-result";
     document.body.appendChild(element);
@@ -186,10 +186,10 @@ describe("resolveDomEditSelection, source probe truth", () => {
     });
     element.remove();
 
-    expect(selection?.capabilities.canEditStyles).toBe(false);
+    expect(selection?.capabilities.canEditStyles).toBe(true);
   });
 
-  it("does not grant style editing when the source probe fails", async () => {
+  it("keeps style editing when the source probe throws", async () => {
     const element = document.createElement("div");
     element.id = "failed-probe";
     document.body.appendChild(element);
@@ -207,7 +207,26 @@ describe("resolveDomEditSelection, source probe truth", () => {
     });
     element.remove();
 
-    expect(selection?.capabilities.canEditStyles).toBe(false);
+    expect(selection?.capabilities.canEditStyles).toBe(true);
+  });
+
+  it("keeps style editing when the source probe returns a non-ok response", async () => {
+    const element = document.createElement("div");
+    element.id = "failed-probe-response";
+    document.body.appendChild(element);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unavailable", { status: 500 })),
+    );
+
+    const selection = await resolveDomEditSelection(element, {
+      activeCompositionPath: "index.html",
+      isMasterView: true,
+      projectId: "project-1",
+    });
+    element.remove();
+
+    expect(selection?.capabilities.canEditStyles).toBe(true);
   });
 });
 

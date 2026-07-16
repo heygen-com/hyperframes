@@ -89,6 +89,19 @@ export interface EngineConfig {
    */
   pageSideCompositingAutoDisabled?: boolean;
   /**
+   * INTERNAL. Set to `true` by `resolveConfig` when the caller explicitly
+   * opted out of the software-GPU→screenshot clamp — either via env
+   * `PRODUCER_FORCE_SCREENSHOT=false` or programmatic
+   * `overrides.forceScreenshot === false`. The concrete-resolved-GPU helper
+   * (`shouldClampToScreenshotForConcreteGpu`) reads this so the
+   * `browserGpuMode:"auto"` → software probe path preserves the same
+   * escape hatch as literal `browserGpuMode:"software"` (the boolean
+   * `forceScreenshot === false` at that point is otherwise ambiguous —
+   * default vs explicit opt-out — because the config resolves before
+   * the runtime probe fires). Not intended to be set by callers.
+   */
+  forceScreenshotExplicitlyOptedOut?: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -137,6 +150,15 @@ export interface EngineConfig {
   enableChunkedEncode: boolean;
   chunkSizeFrames: number;
   enableStreamingEncode: boolean;
+  /**
+   * INTERNAL. Set by `resolveConfig` when the Windows software-GPU compound
+   * heuristic (`shouldAutoDisableStreamingEncodeOnWin32Compound`) turned
+   * `enableStreamingEncode` off on the caller's behalf. Not intended to be
+   * set by callers; surfaces the auto-decision for downstream observability
+   * (log lines, telemetry) so operators can tell an auto-disable apart from
+   * an explicit user opt-out.
+   */
+  streamingEncodeAutoDisabledOnWin32Compound?: boolean;
   /**
    * Max composition duration eligible for streaming encode (seconds).
    * Mirrors GSAP rendering's 4-minute streaming guard: production has seen
@@ -340,6 +362,62 @@ export function scaleProtocolTimeoutForComposition(
   // lowered (preserves the "only ever raise" contract for all callers).
   const ceiling = Math.max(baseTimeoutMs, MAX_SCALED_PROTOCOL_TIMEOUT_MS);
   return Math.min(ceiling, Math.max(baseTimeoutMs, scaled));
+}
+
+/**
+ * Auto-disable `enableStreamingEncode` on Windows software-GPU compound.
+ *
+ * Field signal (`ts=1784131903`, win32/x64, CLI 0.7.58, 156s UI-heavy
+ * composition): the render was stable ONLY with FOUR flags together —
+ * `--workers 1 --no-browser-gpu --low-memory-mode` + explicit
+ * `PRODUCER_ENABLE_STREAMING_ENCODE=false`. Every recent Windows-related
+ * fix (#2359, #2245, #2298, #2331) already shipped in 0.7.58; the residual
+ * failure is screenshot streaming-encode via CDP `Page.captureScreenshot`
+ * on Windows even after software fallback. Since `--low-memory-mode` and
+ * `--no-browser-gpu` already imply screenshot capture, three of the four
+ * flags are structurally coupled — auto-detect the compound and disable
+ * streaming-encode automatically so callers don't have to memorize the
+ * four-flag combination.
+ *
+ * Conservative gates (all must hold):
+ *   1. `platform === "win32"` — the failure is Windows-specific to CDP's
+ *      screenshot streaming path.
+ *   2. `softwareGpuForced` — the render is already on the SwiftShader /
+ *      forced-screenshot path (from `--no-browser-gpu`, `disableGpu`, or
+ *      `--low-memory-mode` implying screenshot capture).
+ *   3. `workers === 1` — the field signal reproduces on single-worker
+ *      captures; parallel workers have a different failure surface
+ *      (missing media frames) already handled by the worker-count route.
+ *   4. Composition duration >120s WHEN KNOWN. When unknown at the config
+ *      layer (composition duration is parsed downstream), the guard
+ *      reduces to the three-condition compound. Trade-off documented in
+ *      the PR body: false positives possible for short (~<120s) Windows
+ *      software-GPU single-worker renders. Mitigation: the explicit
+ *      opt-in escape hatch (`PRODUCER_ENABLE_STREAMING_ENCODE=true` or
+ *      `overrides.enableStreamingEncode !== undefined`) always wins.
+ *
+ * Pure function; exported for tests.
+ */
+export function shouldAutoDisableStreamingEncodeOnWin32Compound(opts: {
+  platform: NodeJS.Platform;
+  softwareGpuForced: boolean;
+  workers: number;
+  compositionDurationSec: number | undefined;
+  userExplicitlySet: boolean;
+}): boolean {
+  if (opts.userExplicitlySet) return false;
+  if (opts.platform !== "win32") return false;
+  if (!opts.softwareGpuForced) return false;
+  // Strict equality: NaN (concurrency: "auto") and fractional / zero worker
+  // counts do NOT match. The field-signal compound is `--workers 1`.
+  if (opts.workers !== 1) return false;
+  // Duration boundary: when known, only auto-disable if >120s (avoid
+  // over-triggering on short renders). When unknown, skip this check —
+  // the three conditions above are already conservative on their own.
+  if (opts.compositionDurationSec !== undefined && opts.compositionDurationSec <= 120) {
+    return false;
+  }
+  return true;
 }
 
 function memoryAdaptiveCacheLimit(): number {
@@ -554,6 +632,93 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     merged.useDrawElement = false;
   }
 
+  // Software GPU implies screenshot capture.
+  //
+  // Two existing platform gates already do most of the work: `browserManager`
+  // only launches BeginFrame on Linux + chrome-headless-shell + !forceScreenshot,
+  // and the DE clamp above turns off `useDrawElement` on non-(darwin +
+  // non-software) hosts. Setting `forceScreenshot` here layers defense-in-depth
+  // on top:
+  //
+  //   1. Linux + software (SwiftShader host): kicks the browser off BeginFrame,
+  //      which stalls the compositor on shader-heavy frames under CPU raster
+  //      (same motivation as the closed PR #822).
+  //   2. Observability truth: `renderOrchestrator`'s reported `captureMode`
+  //      field is derived from `cfg.forceScreenshot ? "screenshot" : "beginframe"`
+  //      — without this clamp it misreports `"beginframe"` for the actual
+  //      screenshot capture on darwin + software.
+  //   3. Future-proofing: any new BeginFrame or drawElement entry point that
+  //      forgets to gate on GPU mode still routes to screenshot here.
+  //
+  // Note this does NOT eliminate SwiftShader-on-darwin text-rasterization
+  // artifacts (an ANGLE-SwiftShader issue on macOS text — the fix there is to
+  // use `--browser-gpu`, which routes to `--use-angle=metal`). It only makes
+  // routing consistent + observability accurate.
+  //
+  // Explicit opt-out (env or programmatic override) is honored so BeginFrame-
+  // on-software debugging remains possible.
+  const explicitForceScreenshotOptOut =
+    env("PRODUCER_FORCE_SCREENSHOT") === "false" || overrides?.forceScreenshot === false;
+  // Persist provenance so the concrete-resolved-GPU helper can honor the
+  // programmatic opt-out too — at that point `forceScreenshot === false` is
+  // otherwise ambiguous between default and explicit opt-out.
+  if (explicitForceScreenshotOptOut) {
+    merged.forceScreenshotExplicitlyOptedOut = true;
+  }
+  if (
+    merged.browserGpuMode === "software" &&
+    !merged.forceScreenshot &&
+    !explicitForceScreenshotOptOut
+  ) {
+    merged.forceScreenshot = true;
+  }
+
+  // Windows software-GPU compound auto-disable for streaming-encode.
+  //
+  // Field signal ts=1784131903 (win32/x64, CLI 0.7.58, 156s UI-heavy):
+  // stable ONLY with FOUR flags — `--workers 1 --no-browser-gpu
+  // --low-memory-mode` + `PRODUCER_ENABLE_STREAMING_ENCODE=false`. Since
+  // `--no-browser-gpu` and `--low-memory-mode` already imply screenshot
+  // capture, three of the four flags are structurally coupled: auto-detect
+  // the compound and disable streaming-encode on the caller's behalf.
+  //
+  // Explicit user intent wins: if `PRODUCER_ENABLE_STREAMING_ENCODE` env
+  // is set to any value OR the caller passed `overrides.enableStreamingEncode`,
+  // this clamp is a no-op (the user's explicit choice — including
+  // `PRODUCER_ENABLE_STREAMING_ENCODE=true` — is preserved).
+  //
+  // Composition duration is not known at the config-resolution layer
+  // (the composition is parsed downstream of `resolveConfig`), so this
+  // wire-up passes `compositionDurationSec: undefined` and the helper
+  // reduces to the three-condition compound. Trade-off documented in the
+  // helper's JSDoc and the PR body: false positives possible for short
+  // Windows software-GPU single-worker renders; the explicit opt-in
+  // escape hatch is the mitigation.
+  const streamingEncodeUserExplicitlySet =
+    env("PRODUCER_ENABLE_STREAMING_ENCODE") !== undefined ||
+    overrides?.enableStreamingEncode !== undefined;
+  const softwareGpuForced =
+    merged.browserGpuMode === "software" || merged.disableGpu || merged.lowMemoryMode;
+  const resolvedWorkers = typeof merged.concurrency === "number" ? merged.concurrency : NaN;
+  if (
+    merged.enableStreamingEncode &&
+    shouldAutoDisableStreamingEncodeOnWin32Compound({
+      platform: process.platform,
+      softwareGpuForced,
+      workers: resolvedWorkers,
+      compositionDurationSec: undefined,
+      userExplicitlySet: streamingEncodeUserExplicitlySet,
+    })
+  ) {
+    merged.enableStreamingEncode = false;
+    merged.streamingEncodeAutoDisabledOnWin32Compound = true;
+    console.error(
+      "[hyperframes] Windows compound-workaround auto-detected — disabling streaming-encode " +
+        "(platform=win32, software-GPU forced, workers=1). Field signal ts=1784131903. " +
+        "Override: PRODUCER_ENABLE_STREAMING_ENCODE=true.",
+    );
+  }
+
   // drawElement capture and page-side shader compositing are mutually
   // incompatible capture strategies (drawElement reads paint records directly
   // and bypasses the page-side prepare→composite→resolve protocol). When
@@ -574,4 +739,64 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     ...merged,
     vp9CpuUsed: normalizeVp9CpuUsed(merged.vp9CpuUsed),
   };
+}
+
+/**
+ * Runtime-resolved companion to the software-GPU screenshot clamp in
+ * `resolveConfig`. Returns `true` iff callers should treat this render as
+ * `forceScreenshot=true` even though the config's stored `forceScreenshot`
+ * is `false`. Fires when the concrete resolved GPU is software AND neither
+ * the env opt-out (`PRODUCER_FORCE_SCREENSHOT=false`) nor the programmatic
+ * opt-out (`overrides.forceScreenshot === false`, carried via
+ * `cfg.forceScreenshotExplicitlyOptedOut`) is set.
+ *
+ * `resolveConfig`'s clamp only sees `browserGpuMode` as a string, so
+ * `"auto"` that runtime-probes to software slips through. This helper
+ * closes that gap at the concrete-resolution points (`frameCapture` and
+ * `renderOrchestrator`). Same invariant, same escape hatches, one predicate.
+ *
+ * Callers should skip when the invariant is already satisfied
+ * (`currentForceScreenshot === true`) to avoid redundant work. Pass
+ * `cfg.forceScreenshotExplicitlyOptedOut` via `opts.programmaticOptOut` so
+ * the `browserGpuMode:"auto"` → software probe path honors the same
+ * programmatic escape hatch as literal `browserGpuMode:"software"`.
+ */
+export function shouldClampToScreenshotForConcreteGpu(
+  resolvedGpuMode: "software" | "hardware",
+  currentForceScreenshot: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { programmaticOptOut?: boolean } = {},
+): boolean {
+  if (currentForceScreenshot) return false;
+  if (resolvedGpuMode !== "software") return false;
+  if (opts.programmaticOptOut) return false;
+  return env["PRODUCER_FORCE_SCREENSHOT"] !== "false";
+}
+
+/**
+ * Caller-facing pair to `shouldClampToScreenshotForConcreteGpu`: computes the
+ * value the *authoritative* `forceScreenshot` local should hold after the
+ * concrete-resolved-GPU decision fires. Returns the (possibly-promoted) new
+ * boolean, so the caller can assign it back to its local — driving both
+ * routing AND telemetry from one source of truth.
+ *
+ * Reads the programmatic opt-out from `cfg.forceScreenshotExplicitlyOptedOut`
+ * (set by `resolveConfig` when EITHER env `PRODUCER_FORCE_SCREENSHOT=false`
+ * OR programmatic `overrides.forceScreenshot === false` was present).
+ *
+ * Idempotent: `applyConcreteGpuScreenshotClamp(true, ...)` returns `true`
+ * without consulting anything else.
+ */
+export function applyConcreteGpuScreenshotClamp(
+  currentForceScreenshot: boolean,
+  resolvedGpuMode: "software" | "hardware",
+  cfg: Pick<EngineConfig, "forceScreenshotExplicitlyOptedOut"> | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    currentForceScreenshot ||
+    shouldClampToScreenshotForConcreteGpu(resolvedGpuMode, currentForceScreenshot, env, {
+      programmaticOptOut: cfg?.forceScreenshotExplicitlyOptedOut ?? false,
+    })
+  );
 }

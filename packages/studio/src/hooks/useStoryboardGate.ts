@@ -9,7 +9,8 @@ export function useStoryboardGate(
   setViewMode: (mode: StudioViewMode) => void,
 ) {
   const storyboard = useStoryboard(projectId);
-  const storyboardAvailable = storyboard.loading || Boolean(storyboard.data?.exists);
+  const storyboardAvailable =
+    storyboard.loading || Boolean(storyboard.data?.exists) || Boolean(storyboard.error);
 
   useEffect(() => {
     if (shouldFallbackToTimeline(viewMode, storyboard.loading, storyboard.data?.exists)) {

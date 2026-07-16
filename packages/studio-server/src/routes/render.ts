@@ -4,7 +4,7 @@ import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync 
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
-import { parseFps } from "@hyperframes/core";
+import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
@@ -107,11 +107,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       variables = body.variables;
     }
 
-    // fallow-ignore-next-line code-duplication
     const now = new Date();
-    const datePart = now.toISOString().slice(0, 10);
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
-    const jobId = `${project.id}_${datePart}_${timePart}`;
+    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) mkdirSync(rendersDir, { recursive: true });
     const ext = FORMAT_EXT[format] ?? ".mp4";

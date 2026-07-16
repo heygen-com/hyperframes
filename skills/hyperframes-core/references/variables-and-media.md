@@ -62,7 +62,7 @@ document.getElementById("title").textContent = title;
 
 ## Media
 
-**NON-NEGOTIABLE: `<video>`/`<audio>` must be a DIRECT child of the host composition root (`index.html`).** The runtime only registers + drives media that is a direct root child. Media placed inside a sub-composition `<template>`, or wrapped in any intermediate `<div>`, is never seeked/decoded → renders blank (paper/white) or black. `lint`/`validate`/`inspect` do not catch this; per-frame `snapshot` shows the blank panel.
+**NON-NEGOTIABLE: `<video>`/`<audio>` must be a DIRECT child of the host composition root (`index.html`).** The runtime only registers + drives media that is a direct root child. Media placed inside a sub-composition `<template>`, or wrapped in any intermediate `<div>`, is never seeked/decoded → renders blank (paper/white) or black. Do not rely on `lint` or `check` alone; a per-frame `snapshot` reveals the blank panel.
 
 Consequences:
 

@@ -96,6 +96,7 @@ function renderPanel() {
       <StudioRightPanel
         designPanelActive
         sdkSession={null}
+        publishSdkSession={() => "rejected-inactive-target"}
         reloadPreview={() => {}}
         domEditSaveTimestampRef={{ current: 0 }}
         recordEdit={async () => {}}
@@ -152,8 +153,9 @@ describe("StudioRightPanel layout", () => {
     act(() => root.unmount());
   });
 
-  it("persists inspector split changes", () => {
+  it("persists a multi-move inspector split drag once at pointer end", () => {
     panelLayout.rightPanelTab = "design";
+    const setItem = vi.spyOn(window.localStorage, "setItem");
     const { host, root } = renderPanel();
     const separator = host.querySelector('[aria-label="Resize Layers and Design panes"]');
     const container = separator?.parentElement;
@@ -174,10 +176,17 @@ describe("StudioRightPanel layout", () => {
       separator.dispatchEvent(
         new PointerEvent("pointermove", { bubbles: true, clientY: 40, pointerId: 1 }),
       );
+      separator.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientY: 60, pointerId: 1 }),
+      );
+      separator.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientY: 60, pointerId: 1 }),
+      );
     });
 
     const stored = JSON.parse(localStorage.getItem("hf-studio-ui-preferences") ?? "{}");
-    expect(stored).toMatchObject({ inspectorSplitPercent: 60 });
+    expect(stored).toMatchObject({ inspectorSplitPercent: 70 });
+    expect(setItem).toHaveBeenCalledTimes(1);
 
     act(() => root.unmount());
   });

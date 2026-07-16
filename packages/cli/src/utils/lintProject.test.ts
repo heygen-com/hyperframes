@@ -217,6 +217,21 @@ describe("lintProject", () => {
     expect(results).toHaveLength(1);
   });
 
+  it("ignores registry component templates under compositions/components", async () => {
+    const project = makeProject(validHtml());
+    const componentsDir = join(project, "compositions", "components", "unused-widget");
+    mkdirSync(componentsDir, { recursive: true });
+    writeFileSync(
+      join(componentsDir, "template.html"),
+      `<template><div data-duration="1">unused registry template</div></template>`,
+    );
+
+    const { results, totalErrors } = await lintProject(project);
+
+    expect(results.map((result) => result.file)).toEqual(["index.html"]);
+    expect(totalErrors).toBe(0);
+  });
+
   it("ignores non-HTML files in compositions/", async () => {
     const project = makeProject(validHtml(), {
       "captions.html": validHtml("captions"),

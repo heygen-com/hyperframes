@@ -8,6 +8,7 @@ import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   resolveTimelineIdForSelection,
+  timelineKeysForSelections,
   type RightPanelTab,
 } from "../utils/studioHelpers";
 import {
@@ -27,7 +28,6 @@ import {
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 
 // ── Types ──
-
 export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
@@ -102,7 +102,6 @@ export interface UseDomSelectionReturn {
 }
 
 // ── Hook ──
-
 export function useDomSelection({
   projectId,
   activeCompPath,
@@ -213,7 +212,7 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          // Keep the Variables tab in place — selecting elements is part of the bind
+          // Keep the Variables tab in place: selecting elements is part of the bind
           // flow there; yanking to Design would lose the context.
           if (rightPanelTabRef.current !== "variables") {
             setRightPanelTab("design");
@@ -380,7 +379,7 @@ export function useDomSelection({
       }
 
       const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
+      // A newer selection superseded this one while we were resolving, drop the stale result.
       if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
     },
@@ -401,12 +400,14 @@ export function useDomSelection({
 
       const element = findElementForSelection(doc, selection, activeCompPath);
       if (!element) {
-        applyDomSelection(null, { revealPanel: false });
+        if (domEditSelectionsTargetSame(selection, domEditSelectionRef.current)) {
+          applyDomSelection(null, { revealPanel: false });
+        }
         return;
       }
 
       const nextSelection = await buildDomSelectionFromTarget(element);
-      if (nextSelection) {
+      if (nextSelection && domEditSelectionsTargetSame(selection, domEditSelectionRef.current)) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
           preserveGroup: true,
@@ -549,11 +550,11 @@ export function useDomSelection({
         timelineElements,
         activeCompPath,
       );
-      const nextTimelineIds = nextGroup
-        .map((selection) =>
-          resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-        )
-        .filter((id): id is string => id !== null);
+      const nextTimelineIds = timelineKeysForSelections(
+        nextGroup,
+        timelineElements,
+        activeCompPath,
+      );
       setTimelineSelection(nextTimelineIds, nextTimelineId);
     },
     [activeCompPath, applyDomSelection, setTimelineSelection, timelineElements],

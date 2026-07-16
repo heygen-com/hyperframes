@@ -6,6 +6,7 @@ import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
   hasExplicitCompositionArg,
   parseBrowserTimeoutMsArg,
+  resolveDiagnosticNavigationTimeoutMs,
   parseCompositionEntryArg,
   parseGifLoopArg,
   resolveDefaultFpsArg,
@@ -101,6 +102,21 @@ describe("parseBrowserTimeoutMsArg", () => {
       ok: true,
       value: MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS * 1000,
     });
+  });
+});
+
+describe("resolveDiagnosticNavigationTimeoutMs", () => {
+  it("uses the render navigation timeout env override", () => {
+    expect(
+      resolveDiagnosticNavigationTimeoutMs({ PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "90000" }),
+    ).toBe(90_000);
+  });
+
+  it("falls back to ten seconds for missing or invalid values", () => {
+    expect(resolveDiagnosticNavigationTimeoutMs({})).toBe(10_000);
+    expect(
+      resolveDiagnosticNavigationTimeoutMs({ PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "invalid" }),
+    ).toBe(10_000);
   });
 });
 

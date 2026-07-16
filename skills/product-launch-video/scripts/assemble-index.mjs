@@ -177,7 +177,7 @@ function escapeHtmlAttr(value) {
 
 function approvedVideoAttrs(attrs) {
   const forwarded = [];
-  for (const name of ["id", "src", "poster", "preload", "aria-label"]) {
+  for (const name of ["id", "src", "poster", "preload", "aria-label", "data-media-start"]) {
     const value = attrValueFrom(attrs, name);
     if (value !== null) forwarded.push(`${name}="${escapeHtmlAttr(value)}"`);
   }
@@ -185,6 +185,42 @@ function approvedVideoAttrs(attrs) {
     if (attrPresent(attrs, name)) forwarded.push(name);
   }
   return forwarded.join(" ");
+}
+
+function approvedVideoLayout(attrs) {
+  const names = ["x", "y", "width", "height"];
+  const raw = Object.fromEntries(
+    names.map((name) => [name, attrValueFrom(attrs, `data-frame-video-${name}`)]),
+  );
+  const rawFit = attrValueFrom(attrs, "data-frame-video-fit");
+  const values = Object.fromEntries(names.map((name) => [name, Number(raw[name])]));
+  if (
+    names.some(
+      (name) => raw[name] === null || raw[name].trim() === "" || !Number.isFinite(values[name]),
+    ) ||
+    values.width <= 0 ||
+    values.height <= 0
+  ) {
+    return {
+      style: null,
+      error:
+        "approved frame video layout data-frame-video-x/y/width/height must all be finite numeric values, with positive width and height",
+    };
+  }
+
+  const fit = rawFit ?? "cover";
+  if (!["cover", "contain", "fill", "none", "scale-down"].includes(fit)) {
+    return {
+      style: null,
+      error:
+        'approved frame video layout data-frame-video-fit must be "cover", "contain", "fill", "none", or "scale-down"',
+    };
+  }
+
+  return {
+    style: `position:absolute;left:${values.x}px;top:${values.y}px;width:${values.width}px;height:${values.height}px;object-fit:${fit}`,
+    error: null,
+  };
 }
 
 function hoistApprovedVideos(html, label) {
@@ -221,7 +257,19 @@ function hoistApprovedVideos(html, label) {
       );
       return full;
     }
-    videos.push({ attrs: approvedVideoAttrs(attrs), inner, start, duration, track });
+    const layout = approvedVideoLayout(attrs);
+    if (layout.error) {
+      errors.push(`${label}: ${layout.error}`);
+      return full;
+    }
+    videos.push({
+      attrs: approvedVideoAttrs(attrs),
+      inner,
+      start,
+      duration,
+      track,
+      layoutStyle: layout.style,
+    });
     return "<!-- approved frame video hoisted by assemble-index -->";
   });
   return { html: repaired, videos, errors };
@@ -458,6 +506,7 @@ for (const [frameIndex, m] of mounted.entries()) {
     body.push(
       `      <video${id} ${video.attrs}`,
       `        class="clip"`,
+      ...(video.layoutStyle ? [`        style="${video.layoutStyle}"`] : []),
       `        data-start="${globalStart}"`,
       `        data-duration="${r3(video.duration)}"`,
       `        data-track-index="${track}"`,

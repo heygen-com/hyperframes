@@ -40,6 +40,8 @@ export type {
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
+  CaptureWarning,
+  CaptureWarningCode,
   SubTimelineWaitOutcome,
 } from "./types.js";
 
@@ -48,6 +50,8 @@ export {
   resolveConfig,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
+  shouldClampToScreenshotForConcreteGpu,
+  applyConcreteGpuScreenshotClamp,
   type EngineConfig,
 } from "./config.js";
 export {
@@ -75,6 +79,15 @@ export {
   type CaptureMode,
   type AcquiredBrowser,
 } from "./services/browserManager.js";
+export {
+  augmentProtocolTimeoutError,
+  isProtocolTimeoutError,
+} from "./services/protocolTimeoutErrorHint.js";
+export {
+  augmentPageNavigationTimeoutError,
+  isPageNavigationTimeoutError,
+  type NavigationTimeoutHintContext,
+} from "./services/pageNavigationTimeoutErrorHint.js";
 
 // ── Frame capture pipeline ──────────────────────────────────────────────────────
 export {
@@ -87,12 +100,15 @@ export {
   captureFramesBatchPipelined,
   DrawElementVerificationError,
   isDrawElementVerificationError,
+  getDrawElementVerificationDetails,
+  type DrawElementVerificationDetails,
   recaptureDrawElementFrameForVerify,
   completeDeferredDrawElementInit,
   writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,
   getCapturePerfSummary,
+  percentileOf,
   prepareCaptureSessionForReuse,
   type CaptureSession,
   isTransientBrowserError,
@@ -246,6 +262,17 @@ export {
 } from "./utils/alphaBlit.js";
 
 export { groupIntoLayers, type CompositeLayer } from "./utils/layerCompositor.js";
+
+export {
+  diffGpuParityFrames,
+  diffGpuParityPngs,
+  verifyGpuParity,
+  type RgbaFrame,
+  type GpuParityDiffOptions,
+  type GpuParityDiffResult,
+  type BlackOnlyInARegion,
+  type VerifyGpuParityResult,
+} from "./utils/gpuParityDiff.js";
 
 // ── Shader transitions ────────────────────────────────────────────────────────
 export {

@@ -37,6 +37,20 @@ import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
+interface StyleSectionsProps {
+  projectId: string;
+  element: DomEditSelection;
+  styles: Record<string, string>;
+  assets: string[];
+  onSetStyle(prop: string, value: string | null): void | Promise<void>;
+  onImportAssets?: (files: FileList) => Promise<string[]>;
+  gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  // When true, the Flex `Section` is suppressed. The flat inspector renders
+  // its own Flex controls inside the Layout group (LayoutFlexBlock), so the
+  // flat path passes this to avoid a double-render. Non-flat callers omit it.
+  hideFlex?: boolean;
+}
+
 // fallow-ignore-next-line complexity
 export function StyleSections({
   projectId,
@@ -46,15 +60,8 @@ export function StyleSections({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
-}: {
-  projectId: string;
-  element: DomEditSelection;
-  styles: Record<string, string>;
-  assets: string[];
-  onSetStyle: (prop: string, value: string | null) => void | Promise<void>;
-  onImportAssets?: (files: FileList) => Promise<string[]>;
-  gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
-}) {
+  hideFlex = false,
+}: StyleSectionsProps) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
@@ -151,7 +158,7 @@ export function StyleSections({
 
   return (
     <>
-      {isFlex && (
+      {isFlex && !hideFlex && (
         <Section
           title="Flex"
           disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
@@ -165,6 +172,7 @@ export function StyleSections({
                 onReset={resetInlineStyle("flex-direction")}
               />
               <SegmentedControl
+                trackName="Flex direction"
                 disabled={styleEditingDisabled}
                 value={styles["flex-direction"] || "row"}
                 onChange={(next) => onSetStyle("flex-direction", next)}
@@ -269,7 +277,7 @@ export function StyleSections({
                 if (!normalized) return;
                 for (const [property, value] of buildStrokeWidthStyleUpdates(
                   normalized,
-                  borderStyleValue,
+                  styles["border-style"] || styles["border-top-style"] || "none",
                 )) {
                   await onSetStyle(property, value);
                 }
@@ -283,7 +291,11 @@ export function StyleSections({
               onChange={async (next) => {
                 for (const [property, value] of buildStrokeStyleUpdates(
                   next,
-                  formatPxMetricValue(borderWidthValue),
+                  formatPxMetricValue(
+                    parsePxMetricValue(styles["border-width"] ?? "") ??
+                      parsePxMetricValue(styles["border-top-width"] ?? "") ??
+                      0,
+                  ),
                 )) {
                   await onSetStyle(property, value);
                 }
@@ -329,6 +341,7 @@ export function StyleSections({
                 onReset={resetInlineStyle("filter")}
               />
               <SliderControl
+                trackName="Layer blur"
                 value={filterBlurValue}
                 min={0}
                 max={Math.max(40, Math.ceil(filterBlurValue))}
@@ -348,6 +361,7 @@ export function StyleSections({
                 onReset={resetInlineStyle("backdrop-filter")}
               />
               <SliderControl
+                trackName="Backdrop blur"
                 value={backdropBlurValue}
                 min={0}
                 max={Math.max(60, Math.ceil(backdropBlurValue))}
@@ -408,6 +422,7 @@ export function StyleSections({
               onReset={resetInlineStyle("clip-path")}
             />
             <SliderControl
+              trackName="Mask inset"
               value={clipInsetValue}
               min={0}
               max={Math.max(120, Math.ceil(clipInsetValue))}
@@ -470,6 +485,7 @@ export function StyleSections({
               onReset={resetInlineStyle("opacity")}
             />
             <SliderControl
+              trackName="Opacity"
               value={opacityValue}
               min={0}
               max={100}
@@ -503,6 +519,7 @@ export function StyleSections({
               onReset={resetInlineStyle("background-image")}
             />
             <SegmentedControl
+              trackName="Fill type"
               disabled={styleEditingDisabled}
               value={preferredFillMode}
               onChange={handleFillModeChange}

@@ -63,9 +63,20 @@ function devProjectApi(): Plugin {
     name: "studio-dev-api",
     configureServer(server): void {
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
+      let _studioServerModule: {
+        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
+          fetch: (req: Request) => Promise<Response>;
+        };
+        consumeFileWriteReceipt?: (path: string) => {
+          path: string;
+          version: string;
+          writeToken: string;
+        } | null;
+      } | null = null;
       const getApi = async () => {
         if (!_api) {
           const mod = await server.ssrLoadModule("@hyperframes/studio-server");
+          _studioServerModule = mod as typeof _studioServerModule;
           const adapter = createViteAdapter(dataDir, server);
           _api = mod.createStudioApi(adapter);
         }
@@ -159,7 +170,12 @@ function devProjectApi(): Plugin {
             filePath.endsWith(".json"))
         ) {
           console.log(`[Studio] File changed: ${filePath}`);
-          server.ws.send({ type: "custom", event: "hf:file-change", data: { path: filePath } });
+          const receipt = _studioServerModule?.consumeFileWriteReceipt?.(filePath) ?? null;
+          server.ws.send({
+            type: "custom",
+            event: "hf:file-change",
+            data: receipt ?? { path: filePath },
+          });
         }
       });
     },

@@ -97,4 +97,13 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
+// flat identity header/footer/groups behind a flag for incremental review.
+// Default false; enable via VITE_STUDIO_FLAT_INSPECTOR_ENABLED=true.
+export const STUDIO_FLAT_INSPECTOR_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_FLAT_INSPECTOR", "VITE_STUDIO_FLAT_INSPECTOR_ENABLED"],
+  false,
+);
+
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";

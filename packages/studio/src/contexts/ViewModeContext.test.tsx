@@ -35,11 +35,14 @@ afterEach(() => {
 });
 
 describe("useViewModeState", () => {
-  it("honors a legacy top-level storyboard query on initial load", () => {
-    window.history.replaceState(null, "", "/?view=storyboard");
+  it("honors and consumes a legacy storyboard query while preserving the hash", () => {
+    window.history.replaceState(null, "", "/studio?keep=yes&view=storyboard#project/demo?v=1");
     const harness = mountViewMode();
 
     expect(harness.getValue().viewMode).toBe("storyboard");
+    expect(window.location.pathname).toBe("/studio");
+    expect(window.location.search).toBe("?keep=yes");
+    expect(window.location.hash).toBe("#project/demo?v=1");
     harness.unmount();
   });
 

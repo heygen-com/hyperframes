@@ -59,6 +59,7 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
+import { isActionableProbeFailure } from "./probeFailures.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -81,6 +82,16 @@ export interface ProbeStageInput {
   height: number;
   needsAlpha: boolean;
   deviceScaleFactor: number;
+}
+
+const FRAME_BOUNDARY_EPSILON = 1e-3;
+
+function durationToFrameCount(duration: number, fps: number): number {
+  const rawFrameCount = duration * fps;
+  const nearestFrame = Math.round(rawFrameCount);
+  return Math.abs(rawFrameCount - nearestFrame) <= FRAME_BOUNDARY_EPSILON
+    ? nearestFrame
+    : Math.ceil(rawFrameCount);
 }
 
 export interface ProbeStageResult {
@@ -135,6 +146,43 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+/**
+ * Variable-bound audio/video sources are resolved by the browser runtime, not
+ * the static compiler. Probe them whenever the current render overrides the
+ * referenced variable so media extraction follows the resolved row value.
+ */
+export function hasVariableBoundMedia(
+  html: string,
+  variables: Record<string, unknown> | undefined,
+): boolean {
+  if (!variables || Object.keys(variables).length === 0) return false;
+  const { document } = parseHTML(html);
+  return Array.from(
+    document.querySelectorAll("audio[data-var-src], video[data-var-src], source[data-var-src]"),
+  ).some((element) => {
+    const variableId = element.getAttribute("data-var-src")?.trim();
+    return Boolean(variableId && Object.hasOwn(variables, variableId));
+  });
+}
+
+/**
+ * Runtime-created media does not exist when the static compiler scans the HTML.
+ * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
+ * extraction, even when the root duration is already known. External script
+ * sources have no inline text to inspect and remain a known heuristic gap.
+ */
+function hasRuntimeInsertedMedia(html: string): boolean {
+  const { document } = parseHTML(html);
+  const scriptBodies = [...document.querySelectorAll("script")]
+    .map((script) => script.textContent ?? "")
+    .join("\n");
+  return (
+    /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(scriptBodies) ||
+    /\bnew\s+(?:Audio|Video)\s*\(/i.test(scriptBodies) ||
+    /<(?:video|audio)\b[^>]*>/i.test(scriptBodies)
+  );
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -166,11 +214,15 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
+  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
+  const hasInsertedMedia = hasRuntimeInsertedMedia(compiled.html);
   const needsBrowser =
     composition.duration <= 0 ||
     compiled.unresolvedCompositions.length > 0 ||
     hasAutoStart ||
-    hasScriptedAudio;
+    hasScriptedAudio ||
+    hasVariableMedia ||
+    hasInsertedMedia;
 
   if (needsBrowser) {
     const reasons = [];
@@ -179,6 +231,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
     if (hasAutoStart) reasons.push("auto-start video(s)");
     if (hasScriptedAudio) reasons.push("scripted audio volume");
+    if (hasInsertedMedia) reasons.push("runtime-inserted media");
+    if (hasVariableMedia) reasons.push("variable-bound media source(s)");
 
     log.info("Launching browser for composition probe...", {
       reasons,
@@ -199,6 +253,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       fps: job.config.fps,
       format: needsAlpha ? "png" : "jpeg",
       quality: needsAlpha ? undefined : 80,
+      variables: job.config.variables,
       deviceScaleFactor,
     };
 
@@ -536,7 +591,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const browserProbeMs = Date.now() - probeStart;
 
   const duration = composition.duration;
-  const totalFrames = Math.ceil(duration * fpsToNumber(job.config.fps));
+  const totalFrames = durationToFrameCount(duration, fpsToNumber(job.config.fps));
 
   if (duration <= 0) {
     // Gather diagnostics to help users understand why the render would produce a black video.
@@ -589,9 +644,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   // These don't block the render but indicate missing images, fonts, or
   // scripts that may produce unexpected visual artifacts.
   if (probeSession) {
-    const failedRequests = probeSession.browserConsoleBuffer.filter((line) =>
-      /404|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|net::ERR_/i.test(line),
-    );
+    const failedRequests = probeSession.browserConsoleBuffer.filter(isActionableProbeFailure);
     if (failedRequests.length > 0) {
       log.warn("Browser encountered network failures during page load:", {
         failures: failedRequests.slice(0, 10),

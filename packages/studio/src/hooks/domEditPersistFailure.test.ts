@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { DomEditSaveQueueOpenError } from "../utils/domEditSaveQueue";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   DomEditPersistUnsafeValueError,
@@ -94,6 +95,18 @@ describe("reportDomEditPersistFailure", () => {
       }),
     );
 
+    warnSpy.mockRestore();
+  });
+
+  it("does not toast repeated commits rejected while the save queue breaker is open", () => {
+    const showToast = vi.fn<(message: string, tone?: "error" | "info") => void>();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    reportDomEditPersistFailure(selection, operations, new DomEditSaveQueueOpenError(), showToast);
+    reportDomEditPersistFailure(selection, operations, new DomEditSaveQueueOpenError(), showToast);
+
+    expect(showToast).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(2);
     warnSpy.mockRestore();
   });
 });

@@ -60,6 +60,12 @@ export interface RenderCaptureObservability {
    * telemetry from one that never attempted any fallback.
    */
   deFallbackReason?: string;
+  /** The failing PSNR (dB) when `deFallbackReason === "psnr"`; undefined for blank/oom/capture_error (no score exists). */
+  deFallbackFailedDb?: number;
+  /** Frame index the verification failure was detected at; set for both "psnr" and "blank" fallback reasons. */
+  deFallbackFrameIndex?: number;
+  /** The HF_DE_VERIFY_MIN_DB threshold the failing dB breached; only set alongside deFallbackFailedDb (psnr reason). */
+  deFallbackThresholdDb?: number;
   /** Auto-parallel inversion outcome: "inverted" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
   deWorkerInversion?: "inverted" | "reverted";
   /** Worker count the resolver would have used absent the inversion; undefined if it never fired. */
@@ -103,6 +109,28 @@ export interface RenderExtractionObservability {
   vfrPreflightCount?: number;
   cacheHits?: number;
   cacheMisses?: number;
+  /**
+   * Per-clip captured-vs-expected-frame gauges. Emitted by the parity gate
+   * at extract finalization (see `videoFrameCoverage.ts`). Undefined when
+   * the render has no source videos to cover.
+   *
+   * • `minVideoFrameCoverageRatio` — worst clip's `captured / expected`
+   *   ratio (0 when a clip was never extracted; a strong "later-injected
+   *   clip silently dropped" signal per field ts=1784139267).
+   * • `coverageShortfallClipCount` — clips whose ratio fell below the
+   *   configured threshold (`HF_VIDEO_COVERAGE_THRESHOLD`, default 0.95).
+   *   Non-zero only ever accompanies a `VideoFrameCoverageError` throw.
+   */
+  minVideoFrameCoverageRatio?: number;
+  coverageShortfallClipCount?: number;
+  /**
+   * Count of authored `[data-start]` clip windows in the compiled HTML —
+   * a coarse proxy for the ts=1784144554 field signal shape (147-clip
+   * composition, 130 word-level caption divs authored-clip-count-scaled
+   * failure). Static scan; dynamic script-inserted timed clips land in
+   * the probe-stage's `hasRuntimeInsertedMedia` path (PR #2474).
+   */
+  authoredTimedClipCount?: number;
 }
 
 export interface RenderInitObservability {
@@ -136,6 +164,24 @@ const ALLOWED_STRING_DATA_KEYS = new Set([
   "renderJobId",
   "requestedHdrMode",
   "requestedWorkers",
+  // "calibrating" during pre-capture browser warm-up / calibration stages;
+  // "capturing" during capture_disk / capture_streaming / capture_hdr_*
+  // stages. Distinguishes healthy 0-frame heartbeats (browser starting up)
+  // from actual zero-frame stalls once capture is meant to be underway.
+  // Field signal ts=1784019503.
+  "stagePhase",
+  // Full-fidelity fast-capture fallback trigger — the specific reason
+  // drawElement gated off ("filter:blur", "filter:drop-shadow",
+  // "backdrop-filter", "clip-path", "at_risk_timeline", "swiftshader", …).
+  // Populated on the `capture_fallback_profile` checkpoint emitted by
+  // `fallbackCaptureProfile.ts` when the operator opts into
+  // `HF_PROFILE_FALLBACK_CAPTURE=true` so downstream metric consumers can
+  // characterize per-frame perf by the exact trigger. Complementary to
+  // `deGateReason`, which is the low-cardinality bucket for aggregation —
+  // this string preserves the fine-grained "which CSS property" for
+  // diagnostic reads. Sanitized like any observation message; low-cardinality
+  // by construction (bounded by the fallback-trigger enumeration).
+  "triggerReason",
 ]);
 const RESERVED_LOG_KEYS = new Set([
   "data",
@@ -388,12 +434,40 @@ function heartbeatTargetMs(index: number): number {
   return HEARTBEAT_RAMP_END_MS + overflow * HEARTBEAT_REPEAT_MS;
 }
 
+/**
+ * Options for `observeRenderStage` heartbeat behavior.
+ *
+ * The default heartbeat message is "stage still running", chosen for the
+ * capture stages where a live frame count in the observation data already
+ * communicates progress. Stages that run BEFORE any frame count is
+ * meaningful — the ~64s browser calibration path in particular — inherit
+ * that default and confusingly report "stage still running / framesCompleted:
+ * 0" to downstream consumers. Field signal ts=1784019503 captured exactly
+ * that read-as-broken shape on a healthy 64s calibration.
+ *
+ * `heartbeatMessage` lets the calibration call sites override the message
+ * to "browser calibrating" so operator-facing logs and downstream metrics
+ * can distinguish healthy pre-capture waits from actual zero-frame stalls
+ * mid-capture. The `data` payload also flows through (callers pass a
+ * `stagePhase: "calibrating" | "capturing"` field) so structured consumers
+ * don't have to string-match on the message.
+ */
+export interface ObserveRenderStageOptions {
+  /**
+   * Message to attach to each heartbeat checkpoint for this stage.
+   * Defaults to "stage still running".
+   */
+  heartbeatMessage?: string;
+}
+
 export async function observeRenderStage<T>(
   recorder: RenderObservabilityRecorder,
   phase: string,
   data: RenderObservationData | undefined,
   fn: () => Promise<T>,
+  options: ObserveRenderStageOptions = {},
 ): Promise<T> {
+  const heartbeatMessage = options.heartbeatMessage ?? "stage still running";
   const startedAt = recorder.stageStart(phase, data);
   let heartbeatCount = 0;
   let lastFiredAtMs = 0;
@@ -403,7 +477,7 @@ export async function observeRenderStage<T>(
     heartbeatTimer = setTimeout(() => {
       lastFiredAtMs = targetMs;
       heartbeatCount += 1;
-      recorder.checkpoint(phase, "stage still running", {
+      recorder.checkpoint(phase, heartbeatMessage, {
         ...data,
         heartbeatIndex: heartbeatCount,
         stageElapsedMs: Date.now() - startedAt,

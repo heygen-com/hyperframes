@@ -438,7 +438,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     The capture command extracts everything an AI agent needs to understand a website's visual identity: viewport screenshots at every scroll depth, color palette (pixel-sampled + DOM computed), font files, images with semantic names, SVGs, Lottie animations, video previews, WebGL shaders, visible text, and page structure.
 
-    Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/website-to-video` skill as step 1 of the video production pipeline.
+    Output is a self-contained directory with a `CLAUDE.md` file that any AI agent can read to understand the captured site. Used by the `/product-launch-video` workflow as step 1 of the video production pipeline.
 
     Set `GEMINI_API_KEY` in a `.env` file for AI-powered image descriptions via Gemini vision (~$0.001/image), or set `OPENROUTER_API_KEY` to use any vision model through [OpenRouter](https://openrouter.ai) instead (takes priority if both are set; override the model with `HYPERFRAMES_OPENROUTER_MODEL`). See the [Website to Video](/guides/website-to-video#enriching-captures-with-gemini-vision) guide for details.
 
@@ -718,6 +718,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--variables-file` | path | — | Path to a JSON file with variable overrides (alternative to `--variables`) |
     | `--strict-variables` | — | off | Fail render if any `--variables` key is undeclared or has a wrong type vs the composition's `data-composition-variables`. Without this flag, mismatches print as warnings and the render continues. |
     | `--browser-timeout` | seconds (0.001–86400) | 60 | Puppeteer page-navigation timeout for the entry HTML. Increase when heavy compositions (many videos, fonts, or asset requests) cannot reach `domcontentloaded` within the default 60 s. The flag takes **seconds**; the env fallback `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS` takes **milliseconds**. This controls `page.goto` only — very heavy compositions may also need `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` and/or `PRODUCER_PLAYER_READY_TIMEOUT_MS` bumped (post-navigation `window.__hf` readiness has its own 45 s budget). |
+    | `--protocol-timeout` | milliseconds (≥ 1000) | 300000 (5 min) | Puppeteer CDP protocol timeout — the per-call budget for `Runtime.callFunctionOn` seek/paint, `Page.captureScreenshot`, and other CDP round-trips. Raise on RAM-pressured hosts (≤ 8 GB), heavy-asset compositions (many videos + images), or when the render fails with `Runtime.callFunctionOn timed out` / `Target closed`. The default is auto-scaled per composition by output pixel area (a 4K comp bumps the ceiling proportionally, capped at 30 min); an explicit override sets the floor and disables scaling below it. Env fallback `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` (also **milliseconds**). |
 
     CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically. Use `--video-frame-format png` when source videos are UI recordings, screen captures, or other color-sensitive clips that should avoid JPEG frame extraction.
 
@@ -900,22 +901,22 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     ### `feedback`
 
-    Submit anonymous satisfaction feedback about your experience:
+    Submit anonymous recommendation feedback about your experience:
 
     ```bash
-    # Quick rating (1 = poor, 5 = great)
-    npx hyperframes feedback --rating 5
+    # Quick rating (0 = not likely, 10 = extremely likely)
+    npx hyperframes feedback --rating 10
 
     # Rating with optional details
-    npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
+    npx hyperframes feedback --rating 7 --comment "render succeeded but GSAP timeline didn't animate"
 
     # Also file a pre-filled GitHub issue with a published minimal repro (opt-in, consented)
-    npx hyperframes feedback --rating 2 --comment "GSAP timeline froze on seek" --file-issue
+    npx hyperframes feedback --rating 3 --comment "GSAP timeline froze on seek" --file-issue
     ```
 
     | Flag | Description |
     |------|-------------|
-    | `--rating` | Satisfaction score, 1–5 (required) |
+    | `--rating` | Recommendation score, 0–10 (required) |
     | `--comment` | Optional free-text details |
     | `--file-issue` | Also open a pre-filled GitHub issue with a published minimal repro (opt-in) |
     | `--dir` | Project directory to publish as the repro (default: current directory) |

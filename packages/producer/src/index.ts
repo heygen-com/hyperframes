@@ -11,10 +11,15 @@ export {
   createRenderJob,
   executeRenderJob,
   RenderCancelledError,
+  RenderQualityError,
+  applyRenderWarningPolicy,
   type RenderConfig,
   type RenderConfigInput,
   type RenderJob,
   type RenderStatus,
+  type RenderOutcome,
+  type RenderStrictness,
+  type RenderWarning,
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
@@ -45,6 +50,10 @@ export {
   captureFrameToBuffer,
   getCompositionDuration,
   getCapturePerfSummary,
+  // Transient-vs-genuine init failure classifier — re-exported so standalone
+  // skill helpers (animation-map, contrast-report) can reuse the render
+  // pipeline's canonical retry gating instead of re-deriving it.
+  isTransientBrowserError,
   prepareCaptureSessionForReuse,
   type CaptureOptions,
   type CaptureSession,

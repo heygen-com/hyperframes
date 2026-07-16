@@ -12,6 +12,7 @@ import {
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
 import { FieldLabel, useDebouncedCommit } from "./propertyPanelPrimitives";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
@@ -123,14 +124,17 @@ export function ColorField({
   value,
   disabled,
   onReset,
+  flat,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   onReset?: () => void;
+  flat?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -154,10 +158,21 @@ export function ColorField({
     setDraftColor(nextColor);
     setHexDraft(toHexColor(nextColor).toUpperCase());
   }, []);
-  const { preview: previewColorValue, flush: flushColor } = useDebouncedCommit({
+  const persistColorValue = useCallback(
+    (nextValue: string) => {
+      if (nextValue !== value) track("color", label);
+      onCommit(nextValue);
+    },
+    [label, onCommit, track, value],
+  );
+  const {
+    preview: previewColorValue,
+    commit: commitColorValue,
+    flush: flushColor,
+  } = useDebouncedCommit({
     sourceValue: value,
     onPreview: updateColorDraft,
-    onCommit,
+    onCommit: persistColorValue,
   });
 
   useEffect(() => {
@@ -238,7 +253,7 @@ export function ColorField({
     const normalized = nextHex.trim().startsWith("#") ? nextHex.trim() : `#${nextHex.trim()}`;
     const parsed = parseCssColor(normalized);
     if (!parsed) return;
-    previewColor({ ...parsed, alpha: draftColor.alpha });
+    commitColorValue(formatCssColor({ ...parsed, alpha: draftColor.alpha }));
   };
 
   const picker = open
@@ -365,6 +380,30 @@ export function ColorField({
       requestAnimationFrame(updatePanelPosition);
     }
   };
+
+  if (flat) {
+    return (
+      <div className="flex min-h-[30px] items-center justify-between">
+        <span className="text-[11px] text-panel-text-2">{label}</span>
+        <button
+          type="button"
+          data-flat-color-trigger="true"
+          disabled={disabled}
+          aria-label={`Pick ${label.toLowerCase()} color`}
+          ref={buttonRef}
+          onClick={openPicker}
+          className="flex items-center gap-2 disabled:cursor-not-allowed"
+        >
+          <span
+            className="h-4 w-4 flex-shrink-0 rounded-[4px]"
+            style={{ backgroundColor: value || "transparent" }}
+          />
+          <span className="font-mono text-[11px] text-panel-text-0">{value}</span>
+        </button>
+        {picker}
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-w-0 gap-1.5">

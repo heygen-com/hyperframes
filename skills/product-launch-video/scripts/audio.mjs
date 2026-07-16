@@ -21,7 +21,7 @@
 //   node audio.mjs fetch-sfx --storyboard ./STORYBOARD.md --hyperframes .
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseStoryboard } from "./lib/storyboard.mjs";
@@ -124,6 +124,7 @@ function runGenerate(argv) {
   const scriptPath = resolve(flag(argv, "script", join(hyperframesDir, "SCRIPT.md")));
   const outPath = resolve(flag(argv, "out", join(hyperframesDir, "audio_meta.json")));
   const userVoice = flag(argv, "voice", null);
+  const provider = flag(argv, "provider", process.env.HF_TTS_PROVIDER || "auto");
   const speed = Number(flag(argv, "speed", "1.0")) || 1.0;
 
   if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPath}`);
@@ -136,16 +137,34 @@ function runGenerate(argv) {
         text: l.text,
       }))
     : [];
+  // The canonical fully-silent marker (SKILL.md Step 3.1): `music: none` in
+  // the storyboard's top YAML block turns BGM off; combined with no SCRIPT.md
+  // the project is fully silent — generate nothing and remove any stale meta
+  // from a previous run (assemble treats an absent audio_meta.json as silent).
+  const bgmOff =
+    String(g.extra?.music ?? "")
+      .trim()
+      .toLowerCase() === "none";
+  if (bgmOff && !lines.length) {
+    rmSync(outPath, { force: true });
+    rmSync(neutralPath(outPath), { force: true });
+    console.log(
+      "✓ audio generate: project marked silent (music: none, no SCRIPT.md) — nothing to generate",
+    );
+    return;
+  }
   if (!lines.length) console.error("· no SCRIPT.md — silent film (BGM only)");
 
   // BGM mood: storyboard `music:` → message → arc → default. `mode: retrieve` is
   // strict here (no wait-bgm step downstream).
   const query = (g.extra && g.extra.music) || g.message || g.arc || "calm cinematic underscore";
   const request = {
-    provider: "auto",
+    provider,
     speed,
     lines,
-    bgm: { mode: "retrieve", query, blob: g.message || "", arc: g.arc || "" },
+    bgm: bgmOff
+      ? { mode: "none" }
+      : { mode: "retrieve", query, blob: g.message || "", arc: g.arc || "" },
   };
   if (userVoice) request.voice = userVoice;
 

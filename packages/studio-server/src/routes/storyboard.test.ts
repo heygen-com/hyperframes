@@ -106,4 +106,17 @@ Not built yet.
     const { body } = await getStoryboard(dir);
     expect(body.frames[0].srcExists).toBe(false);
   });
+
+  it("carries a project signature in both the absent and present branches", async () => {
+    const dir = makeProject();
+    const absent = await getStoryboard(dir);
+    expect(absent.body.exists).toBe(false);
+    expect(absent.body.signature).toMatch(/^[0-9a-f]{24}$/);
+
+    writeFileSync(join(dir, "STORYBOARD.md"), "## Frame 1\n\nHi.\n");
+    const present = await getStoryboard(dir);
+    expect(present.body.exists).toBe(true);
+    expect(present.body.signature).toMatch(/^[0-9a-f]{24}$/);
+    expect(present.body.signature).not.toBe(absent.body.signature);
+  });
 });

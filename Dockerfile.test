@@ -110,4 +110,14 @@ RUN cd packages/producer && bunx tsx scripts/generate-font-data.ts
 
 WORKDIR /app/packages/producer
 
-ENTRYPOINT ["bunx", "tsx", "src/regression-harness.ts", "--", "--sequential"]
+# Skip fixtures tagged `transparency` (Chrome alpha-channel PSNR quirks not
+# reproducible on the CI image) and `field-signal-reproducer` (known-broken
+# fixture per PR #2512 — codifies a real bug awaiting a fix). Mirrors the
+# `--exclude-tags` in the local `test:regression*` scripts in
+# packages/producer/package.json so `bun run docker:test*` and the aws-lambda
+# smoke tests skip the same set. Docker CMD args from `docker run <image> ...`
+# are appended after these flags, so positional test names (e.g. shard args
+# `hdr-regression style-5-prod ...` in .github/workflows/regression.yml) still
+# resolve normally; the harness applies excludeTags whether testNames is empty
+# or non-empty (see discoverTestSuites in src/regression-harness.ts).
+ENTRYPOINT ["bunx", "tsx", "src/regression-harness.ts", "--", "--sequential", "--exclude-tags", "transparency,field-signal-reproducer"]

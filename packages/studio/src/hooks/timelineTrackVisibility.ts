@@ -33,7 +33,8 @@ interface ToggleTimelineTrackHiddenInput {
 }
 
 interface ToggleTimelineElementHiddenInput extends Omit<ToggleTimelineTrackHiddenInput, "track"> {
-  elementKey: string;
+  /** One timeline key, or several to hide/show in a single atomic file write. */
+  elementKey: string | readonly string[];
 }
 
 interface SetElementsHiddenInput {
@@ -62,7 +63,7 @@ interface UseTimelineTrackVisibilityEditingInput extends Omit<
 
 interface UseTimelineElementVisibilityEditingInput extends Omit<
   ToggleTimelineElementHiddenInput,
-  "projectId" | "elementKey" | "hidden" | "previewIframe"
+  "projectId" | "elementKey" | "hidden" | "previewIframe" | "timelineElements"
 > {
   projectIdRef: ReadonlyRef<string | null>;
   previewIframeRef: ReadonlyRef<HTMLIFrameElement | null>;
@@ -82,9 +83,10 @@ function patchLiveHiddenState(
   iframe: HTMLIFrameElement | null,
   elements: readonly TimelineElement[],
   hidden: boolean,
+  activeCompPath: string | null,
 ): void {
   for (const element of elements) {
-    const target = findTimelineElementInIframe(iframe, element);
+    const target = findTimelineElementInIframe(iframe, element, activeCompPath);
     if (!target) continue;
     if (hidden) {
       target.setAttribute("data-hidden", "");
@@ -134,7 +136,7 @@ async function setElementsHidden({
 }: SetElementsHiddenInput): Promise<string[]> {
   if (elements.length === 0) return [];
 
-  patchLiveHiddenState(previewIframe, elements, hidden);
+  patchLiveHiddenState(previewIframe, elements, hidden, activeCompPath);
   reseekPreviewRuntime(previewIframe);
 
   const hiddenOperation: PatchOperation = {
@@ -188,7 +190,7 @@ async function setElementsHidden({
     // The optimistic live patch already ran; a patch-target/save failure here would
     // otherwise leave the preview showing the wrong visibility until a reload. Revert
     // the live DOM to the prior state so what's on screen matches what persisted.
-    patchLiveHiddenState(previewIframe, elements, !hidden);
+    patchLiveHiddenState(previewIframe, elements, !hidden, activeCompPath);
     reseekPreviewRuntime(previewIframe);
     throw error;
   }
@@ -232,13 +234,21 @@ export async function toggleTimelineElementHidden({
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
-  const element = timelineElements.find((item) => (item.key ?? item.id) === elementKey);
+  const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
+  const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
   return setElementsHidden({
     projectId,
     activeCompPath,
-    elements: element ? [element] : [],
+    elements,
     hidden,
-    label: hidden ? "Hide element" : "Show element",
+    label:
+      elements.length > 1
+        ? hidden
+          ? `Hide ${elements.length} elements`
+          : `Show ${elements.length} elements`
+        : hidden
+          ? "Hide element"
+          : "Show element",
     previewIframe,
     writeProjectFile,
     recordEdit,
@@ -312,7 +322,6 @@ export function useTimelineTrackVisibilityEditing({
 export function useTimelineElementVisibilityEditing({
   projectIdRef,
   activeCompPath,
-  timelineElements,
   showToast,
   writeProjectFile,
   recordEdit,
@@ -322,11 +331,20 @@ export function useTimelineElementVisibilityEditing({
   isRecordingRef,
   forceReloadSdkSession,
 }: UseTimelineElementVisibilityEditingInput): (
-  elementKey: string,
+  elementKey: string | readonly string[],
   hidden: boolean,
 ) => Promise<void> {
+  // Resolve against the EXPANDED rows, not the raw store list — a nested
+  // sub-composition child has no entry of its own in the raw list (only its
+  // host does), so an elementKey for such a child (the
+  // `sourceFile#domId`-shaped virtual key `resolveTimelineIdForSelection`
+  // falls back to) would never match anything there and Hide All would
+  // silently no-op for it. The expanded list synthesizes a real, patchable
+  // TimelineElement (with matching key/domId/sourceFile) for each visible
+  // child whenever its host is currently expanded.
+  const expandedElements = useExpandedTimelineElements();
   return useCallback(
-    async (elementKey: string, hidden: boolean) => {
+    async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
@@ -337,7 +355,7 @@ export function useTimelineElementVisibilityEditing({
         await toggleTimelineElementHidden({
           projectId: pid,
           activeCompPath,
-          timelineElements,
+          timelineElements: expandedElements,
           elementKey,
           hidden,
           previewIframe: previewIframeRef.current,
@@ -356,7 +374,7 @@ export function useTimelineElementVisibilityEditing({
     },
     [
       activeCompPath,
-      timelineElements,
+      expandedElements,
       previewIframeRef,
       writeProjectFile,
       recordEdit,

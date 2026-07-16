@@ -434,8 +434,16 @@ export interface Composition {
   /**
    * Current `default` value for a declared variable, or undefined if
    * undeclared/unset. Convenience over getVariableValues() (kept from #2098).
+   *
+   * `{ base: true }` returns the default as authored at open — BEFORE the
+   * T3 override-set or any setVariableValue folded into the declaration.
+   * Hosts replaying an undo that removes a `var.<id>` override should restore
+   * this value. Ids declared mid-session fall through to the live default.
    */
-  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined;
+  getVariableValue(
+    id: string,
+    opts?: { base?: boolean },
+  ): string | number | boolean | FontValue | ImageValue | undefined;
   /**
    * Every declared variable's full schema (id/type/label/default/…), or [] when
    * none. Alias of getVariableDeclarations() (kept from #2098's surface).

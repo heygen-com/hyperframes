@@ -51,7 +51,7 @@ function createSelection(): DomEditSelection {
 }
 
 describe("PropertyPanel3dTransform depth control", () => {
-  it("previews and commits only z when scrolling for depth", () => {
+  function renderDepthControl(gsapRuntimeValues: Record<string, number>) {
     vi.useFakeTimers();
     const previews: Array<Record<string, number>> = [];
     const commits: Array<Record<string, number | string>> = [];
@@ -62,13 +62,7 @@ describe("PropertyPanel3dTransform depth control", () => {
     act(() => {
       root.render(
         <PropertyPanel3dTransform
-          gsapRuntimeValues={{
-            rotationX: 0,
-            rotationY: 0,
-            rotationZ: 0,
-            transformPerspective: 0,
-            z: 0,
-          }}
+          gsapRuntimeValues={gsapRuntimeValues}
           gsapAnimId={null}
           gsapKeyframes={null}
           currentPct={0}
@@ -91,11 +85,38 @@ describe("PropertyPanel3dTransform depth control", () => {
     act(() => {
       cube.dispatchEvent(new WheelEvent("wheel", { deltaY: -400, cancelable: true }));
     });
-    expect(previews).toEqual([{ z: 100 }]);
-
     act(() => vi.advanceTimersByTime(160));
-    expect(commits).toEqual([{ z: 100 }]);
 
-    act(() => root.unmount());
+    return {
+      previews,
+      commits,
+      cleanup: () => act(() => root.unmount()),
+    };
+  }
+
+  it("initializes perspective when a fresh element is moved in depth", () => {
+    const result = renderDepthControl({ rotationZ: 0, z: 0 });
+
+    expect(result.previews).toEqual([{ z: 100, transformPerspective: 720 }]);
+    expect(result.commits).toEqual([{ z: 100, transformPerspective: 720 }]);
+    expect(result.previews[0]).not.toHaveProperty("rotationX");
+    expect(result.previews[0]).not.toHaveProperty("rotationY");
+    expect(result.commits[0]).not.toHaveProperty("rotationX");
+    expect(result.commits[0]).not.toHaveProperty("rotationY");
+    result.cleanup();
+  });
+
+  it("commits only z when the element already has perspective", () => {
+    const result = renderDepthControl({
+      rotationX: 0,
+      rotationY: 0,
+      rotationZ: 0,
+      transformPerspective: 900,
+      z: 0,
+    });
+
+    expect(result.previews).toEqual([{ z: 100 }]);
+    expect(result.commits).toEqual([{ z: 100 }]);
+    result.cleanup();
   });
 });

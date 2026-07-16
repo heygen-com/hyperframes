@@ -7,7 +7,10 @@ import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml } from "../helpers/subComposition.js";
-import { createProjectSignature } from "../helpers/projectSignature.js";
+import {
+  resolveProjectAndSignature,
+  resolveProjectSignature,
+} from "../helpers/projectSignature.js";
 import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
@@ -21,10 +24,6 @@ const GSAP_CDN_VERSION = "3.15.0";
 const GSAP_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/gsap.min.js"></script>`;
 const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/CustomEase.min.js"></script>`;
 const GSAP_MOTION_PATH_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/MotionPathPlugin.min.js"></script>`;
-
-function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
-  return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
-}
 
 function injectProjectSignature(html: string, signature: string): string {
   const tag = `<meta name="${PROJECT_SIGNATURE_META}" content="${signature}">`;
@@ -309,15 +308,15 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   // Bundled composition preview
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview", async (c) => {
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature } = resolved;
 
     // fallow-ignore-next-line code-duplication
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
 
-    const signature = resolveProjectSignature(adapter, project.dir);
     const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
@@ -422,15 +421,14 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   // Sub-composition preview
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/comp/*", async (c) => {
-    const project = await adapter.resolveProject(c.req.param("id"));
-    if (!project) return c.json({ error: "not found" }, 404);
+    const resolved = await resolveProjectAndSignature(adapter, c.req.param("id"));
+    if (!resolved) return c.json({ error: "not found" }, 404);
+    const { project, signature } = resolved;
 
     // fallow-ignore-next-line code-duplication
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
-
-    const signature = resolveProjectSignature(adapter, project.dir);
     const compPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/preview/comp/`, "").split("?")[0] ?? "",
     );

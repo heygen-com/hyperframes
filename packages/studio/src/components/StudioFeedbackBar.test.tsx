@@ -53,7 +53,7 @@ describe("StudioFeedbackBar", () => {
     act(() => vi.advanceTimersByTime(3000));
 
     const prompt = [...document.querySelectorAll("span")].find(
-      (element) => element.textContent === "How's the Studio experience?",
+      (element) => element.textContent === "Recommend HyperFrames?",
     );
     const feedbackBar = prompt?.parentElement;
     if (!feedbackBar) throw new Error("feedback bar not rendered");
@@ -74,7 +74,7 @@ describe("StudioFeedbackBar", () => {
     act(() => dismissButton.click());
     act(() => vi.advanceTimersByTime(300));
 
-    expect(document.body.textContent).not.toContain("How's the Studio experience?");
+    expect(document.body.textContent).not.toContain("Recommend HyperFrames?");
     expect({
       className: editingSurface.className,
       style: editingSurface.getAttribute("style"),

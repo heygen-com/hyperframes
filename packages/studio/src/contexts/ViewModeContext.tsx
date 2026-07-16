@@ -15,9 +15,17 @@ const VIEW_QUERY_PARAM = "view";
 
 function readLegacyViewModeFromUrl(): StudioViewMode | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get(VIEW_QUERY_PARAM) === "storyboard"
-    ? "storyboard"
-    : null;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has(VIEW_QUERY_PARAM)) return null;
+  const legacyViewMode = params.get(VIEW_QUERY_PARAM) === "storyboard" ? "storyboard" : null;
+  params.delete(VIEW_QUERY_PARAM);
+  const nextSearch = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`,
+  );
+  return legacyViewMode;
 }
 
 export interface ViewModeValue {

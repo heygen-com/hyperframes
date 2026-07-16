@@ -12,8 +12,36 @@ describe("compileHtml", () => {
     expect(compiled).toContain('data-end="4"');
   });
 
-  it("still clamps non-looping media durations to source duration", async () => {
+  it("preserves an explicit non-looping video slot past source end", async () => {
     const html = '<video id="hero" src="hero.webm" data-start="0" data-duration="4" data-end="4">';
+
+    const compiled = await compileHtml(html, "/project", async () => 3.125);
+
+    expect(compiled).toContain('data-duration="4"');
+    expect(compiled).toContain('data-end="4"');
+  });
+
+  it("uses natural duration for a video without an explicit slot inside a composition", async () => {
+    const html =
+      '<div data-composition-id="root" data-start="0" data-duration="5">' +
+      '<video id="hero" src="hero.webm" data-start="0">' +
+      "</div>";
+
+    const compiled = await compileHtml(html, "/project", async () => 1);
+
+    expect(compiled).toContain('data-duration="1"');
+    expect(compiled).toContain('data-end="1"');
+  });
+
+  it("uses natural duration for a standalone video without a composition window", async () => {
+    const html = '<video id="hero" src="hero.webm" data-start="0">';
+    const compiled = await compileHtml(html, "/project", async () => 1);
+    expect(compiled).toContain('data-duration="1"');
+    expect(compiled).toContain('data-end="1"');
+  });
+
+  it("still clamps non-looping audio durations to source duration", async () => {
+    const html = '<audio id="voice" src="voice.wav" data-start="0" data-duration="4" data-end="4">';
 
     const compiled = await compileHtml(html, "/project", async () => 3.125);
 

@@ -29,11 +29,22 @@ export interface TimelineElement {
   start: number;
   duration: number;
   track: number;
+  /**
+   * The data-track-index as written in the source file. Set at the manifest
+   * translation boundary (createTimelineElementFromManifestClip) from the
+   * runtime clip's verbatim track, and preserved through display-lane remaps
+   * (normalizeToZones packs sparse authored tracks onto contiguous display
+   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
+   * must persist THIS space — writing a display-lane number into a sparse file
+   * re-targets the wrong track. For an expanded child the value is in its OWN
+   * source file's coordinate space, not the host timeline's.
+   */
+  authoredTrack?: number;
   /** Resolved z-index for stacking-aware timeline ordering. */
   zIndex?: number;
   /** True when the effective z-index was authored inline or through CSS, not auto. */
   hasExplicitZIndex?: boolean;
-  /** Stacking context this element belongs to; root clips use the root composition id. */
+  /** Canonical CSS stacking context this element's z-index participates in. */
   stackingContextId?: string | null;
   /** Nearest parent composition context, matching RuntimeTimelineClip. */
   parentCompositionId?: string | null;
@@ -113,6 +124,13 @@ interface PlayerState {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  /**
+   * Bumped on every live z-index edit (handleDomZIndexReorderCommit apply AND
+   * rollback). Flashless z commits (skipReload) never reload the iframe or
+   * bump refreshKey, so DOM-derived views (the Layers panel's z-sorted tree)
+   * subscribe to this to re-read the live DOM while playback is paused.
+   */
+  zEditVersion: number;
   /** Work-area in-point (seconds). When set, loop starts here and A jumps here. */
   inPoint: number | null;
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
@@ -153,6 +171,9 @@ interface PlayerState {
   /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
   timelineSnapEnabled: boolean;
   setTimelineSnapEnabled: (enabled: boolean) => void;
+  /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
+  timeDisplayMode: "time" | "frame";
+  setTimeDisplayMode: (mode: "time" | "frame") => void;
   /**
    * Pin the timeline zoom to its current visual scale before a duration-changing
    * edit, so a subsequent duration change (which recomputes fit-pps) stops
@@ -198,6 +219,7 @@ interface PlayerState {
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
+  bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
   setOutPoint: (time: number | null) => void;
   reset: () => void;
@@ -209,6 +231,16 @@ interface PlayerState {
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
+
+  /**
+   * Request the timeline to scroll a clip into view (e.g. clicking an
+   * already-added asset card in the sidebar). Consumed and cleared by
+   * useTimelineRevealClip. The nonce makes repeat requests for the same
+   * clip observable so a second click re-reveals after the user scrolls away.
+   */
+  clipRevealRequest: { elementId: string; nonce: number } | null;
+  requestClipReveal: (elementId: string) => void;
+  clearClipRevealRequest: () => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
@@ -250,6 +282,7 @@ export interface DomClipChild {
   /** The manifest sub-comp host clip id this descendant ultimately lives under. */
   hostId: string;
   label: string;
+  stackingContextId: string;
 }
 
 interface BeatHistoryEntry {
@@ -284,6 +317,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  zEditVersion: 0,
   timelinePps: 100,
   timelineFitPps: 100,
   inPoint: null,
@@ -340,6 +374,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+
+  clipRevealRequest: null,
+  requestClipReveal: (elementId) =>
+    set((s) => ({
+      clipRevealRequest: { elementId, nonce: (s.clipRevealRequest?.nonce ?? 0) + 1 },
+    })),
+  clearClipRevealRequest: () => set({ clipRevealRequest: null }),
 
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
@@ -416,6 +457,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     writeStudioUiPreferences({ timelineSnapEnabled: enabled });
     set({ timelineSnapEnabled: enabled });
   },
+  timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
+  setTimeDisplayMode: (mode) => {
+    writeStudioUiPreferences({ timeDisplayMode: mode });
+    set({ timeDisplayMode: mode });
+  },
   pinTimelineZoom: (currentPixelsPerSecond, fitPixelsPerSecond) =>
     set((s) => {
       // Already pinned (or the user manually zoomed) — never clobber that.
@@ -458,6 +504,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
   setManualZoomPercent: (percent) =>
     set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
+  bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
@@ -522,6 +569,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       activeTool: "select",
       selectedKeyframes: new Set(),
       selectedElementIds: new Set(),
+      clipRevealRequest: null,
       keyframeCache: new Map(),
       beatAnalysis: null,
       beatEdits: null,

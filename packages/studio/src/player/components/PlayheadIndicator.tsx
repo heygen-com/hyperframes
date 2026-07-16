@@ -9,6 +9,8 @@
  * no matter how far the tracks are scrolled. The head is OUTLINE-only at rest and
  * FILLED while the playhead is actively held/scrubbed (`scrubbing`).
  */
+import { PLAYHEAD_HEAD_W } from "./timelineLayout";
+
 interface PlayheadIndicatorProps {
   /** CSS color, defaults to the HF accent variable */
   color?: string;
@@ -31,8 +33,11 @@ export function PlayheadIndicator({
 }: PlayheadIndicatorProps) {
   // Head chip dimensions — used to compute the centering offset and the
   // point where the vertical line starts (so it begins at the head's bottom
-  // edge rather than running through the hollow diamond center).
-  const HEAD_W = 9;
+  // edge rather than running through the hollow diamond center). The width is
+  // the shared PLAYHEAD_HEAD_W constant: getTimelinePlayheadLeft shifts the
+  // wrapper by -PLAYHEAD_HEAD_W/2 so the 1px line (centered at 50% of the
+  // wrapper) lands exactly on GUTTER + time * pps — the ruler ticks' center x.
+  const HEAD_W = PLAYHEAD_HEAD_W;
   const HEAD_H = 9;
   // marginTop(1) + HEAD_H = where the line should start.
   const HEAD_TOTAL_H = 1 + HEAD_H;

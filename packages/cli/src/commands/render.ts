@@ -76,8 +76,11 @@ import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { formatRenderOutputTimestamp } from "@hyperframes/core";
 import { runEnvironmentChecks } from "../browser/preflight.js";
+import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
+import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   MAX_VP9_CPU_USED,
@@ -266,6 +269,12 @@ export default defineCommand({
       description:
         "Write full render diagnostics and keep intermediate artifacts under the producer .debug directory.",
       default: false,
+    },
+    "best-effort": {
+      type: "boolean",
+      description:
+        "Allow output with structured capture-readiness warnings (default). Use --no-best-effort to fail on missing or unready media.",
+      default: true,
     },
     strict: {
       type: "boolean",
@@ -602,16 +611,14 @@ export default defineCommand({
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = FORMAT_EXT[format] ?? ".mp4";
-    // fallow-ignore-next-line code-duplication
     const now = new Date();
-    const datePart = now.toISOString().slice(0, 10);
-    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
+    const timestamp = formatRenderOutputTimestamp(now);
     const batchOutputTemplate = args.output
       ? args.output
-      : join(rendersDir, `${project.name}_${datePart}_${timePart}_{index}${ext}`);
+      : join(rendersDir, `${project.name}_${timestamp}_{index}${ext}`);
     const outputPath = args.output
       ? resolve(args.output)
-      : join(rendersDir, `${project.name}_${datePart}_${timePart}${ext}`);
+      : join(rendersDir, `${project.name}_${timestamp}${ext}`);
 
     // Ensure output directory exists
     if (!batchPath) mkdirSync(dirname(outputPath), { recursive: true });
@@ -622,6 +629,7 @@ export default defineCommand({
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
     const debug = args.debug ?? false;
+    const bestEffort = args["best-effort"] ?? true;
     const batchJson = args.json ?? false;
     const effectiveQuiet = quiet || (batchPath != null && batchJson);
     const strictAll = args["strict-all"] ?? false;
@@ -902,6 +910,7 @@ export default defineCommand({
         protocolTimeout,
         playerReadyTimeout,
         debug,
+        bestEffort,
         exitAfterComplete: false,
         throwOnError: true,
         skipFeedback: true,
@@ -960,6 +969,7 @@ export default defineCommand({
         videoFrameFormat,
         quiet,
         debug,
+        bestEffort,
         variables,
         entryFile,
         outputResolution,
@@ -988,6 +998,7 @@ export default defineCommand({
         quiet,
         browserPath,
         debug,
+        bestEffort,
         variables,
         entryFile,
         outputResolution,
@@ -1006,6 +1017,8 @@ export default defineCommand({
 export interface SingleRenderResult {
   durationMs?: number;
   renderTimeMs: number;
+  outcome?: "completed" | "completed_with_warnings";
+  warnings?: Array<{ code: string; message: string }>;
 }
 
 export function renderLintContinuationHint(strictErrors: boolean): string {
@@ -1036,6 +1049,7 @@ interface RenderOptions {
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   debug?: boolean;
+  bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -1370,6 +1384,7 @@ async function renderDocker(
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
       debug: options.debug,
+      bestEffort: options.bestEffort,
       experimentalFastCapture: options.experimentalFastCapture,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
@@ -1425,8 +1440,18 @@ export async function renderLocal(
   outputPath: string,
   options: RenderOptions,
 ): Promise<SingleRenderResult> {
+  const recoveredOrphanTrees = killOrphanedProcesses();
+  if (recoveredOrphanTrees > 0 && !options.quiet) {
+    console.warn(
+      c.warn(
+        `  Recovered ${recoveredOrphanTrees} orphaned browser process ${recoveredOrphanTrees === 1 ? "tree" : "trees"} from an interrupted render.`,
+      ),
+    );
+  }
+
   const preflight = await runEnvironmentChecks({
     projectDir,
+    diskPaths: [tmpdir(), dirname(outputPath)],
     browserPath: options.browserPath,
     includeBrowser: true,
     includeDisk: true,
@@ -1452,6 +1477,26 @@ export async function renderLocal(
   if (preflight.ffprobePath) process.env.HYPERFRAMES_FFPROBE_PATH = preflight.ffprobePath;
   if (preflight.browser?.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
     process.env.PRODUCER_HEADLESS_SHELL_PATH = preflight.browser.executablePath;
+  }
+
+  if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
+    let encoderMode: ReturnType<typeof detectH264EncoderMode> = "software";
+    try {
+      encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+    } catch (error) {
+      // Capability probing is advisory. Let the real encode surface the
+      // authoritative FFmpeg error instead of failing here with a bare stack.
+      if (!options.quiet) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+      }
+    }
+    if (encoderMode === "gpu") {
+      console.warn(
+        c.warn("  FFmpeg does not include libx264; falling back to VideoToolbox H.264 encoding."),
+      );
+      options = { ...options, gpu: true };
+    }
   }
 
   const producer = await loadProducer();
@@ -1490,6 +1535,7 @@ export async function renderLocal(
     entryFile: options.entryFile,
     outputResolution: options.outputResolution,
     debug: options.debug,
+    strictness: options.bestEffort === false ? "strict" : "best-effort",
   });
 
   const onProgress = options.quiet
@@ -1515,6 +1561,11 @@ export async function renderLocal(
 
   maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
   const elapsed = Date.now() - startTime;
+  if (job.outcome === "completed_with_warnings") {
+    for (const warning of job.warnings) {
+      console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
+    }
+  }
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(
     outputPath,
@@ -1534,7 +1585,14 @@ export async function renderLocal(
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
-  return { renderTimeMs: elapsed, durationMs };
+  const outcome =
+    job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
+  return {
+    renderTimeMs: elapsed,
+    durationMs,
+    outcome,
+    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+  };
 }
 
 type UnrefableTimer = {
@@ -2005,6 +2063,9 @@ function trackRenderMetrics(
     deVerifyInitMs: perf?.drawElement?.verifyInitMs,
     deSelfVerifyFallback: perf?.drawElement?.selfVerifyFallback,
     deFallbackReason: perf?.drawElement?.fallbackReason,
+    deFallbackFailedDb: perf?.drawElement?.fallbackFailedDb,
+    deFallbackFrameIndex: perf?.drawElement?.fallbackFrameIndex,
+    deFallbackThresholdDb: perf?.drawElement?.fallbackThresholdDb,
     deBlankSuspects: perf?.drawElement?.blankSuspects,
     deBlankDeterministicAccepts: perf?.drawElement?.blankDeterministicAccepts,
     deBlankRecaptures: perf?.drawElement?.blankRecaptures,

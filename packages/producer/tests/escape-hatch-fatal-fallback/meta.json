@@ -1,0 +1,13 @@
+{
+  "name": "escape-hatch-fatal-fallback",
+  "description": "Field-signal reproducer (ts=1784039841). Shifted-DOM-image-layer bug at frame 120 that reproduces with BOTH known escape hatches applied (PRODUCER_FORCE_SCREENSHOT=true AND HF_DE_PARALLEL_ROUTER=false — the conservative defaults). Standalone 1920x1080 GSAP paused timeline, absolute PNG layers, 4 independent scenes. NO ROOT CAUSE IDENTIFIED — this fixture codifies the failing composition shape so a future fix can be validated against a real repro. Tagged 'field-signal-reproducer' and 'known-broken' so the CI regression sweep and local `bun run test` both skip it via --exclude-tags; un-skip (drop the tag OR add the fixture id to a shard's args in .github/workflows/regression.yml) when a fix lands. See src/README.md for the field-signal envelope and the diagnostic starting points.",
+  "tags": ["regression", "field-signal-reproducer", "known-broken", "render-compat"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

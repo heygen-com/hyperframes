@@ -10,6 +10,7 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
+import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import {
   resolveMediaElement,
   applyMediaMetadataFromElement,
@@ -113,6 +114,15 @@ export function createTimelineElementFromManifestClip(params: {
     start: clip.start,
     duration: clip.duration,
     track: clip.track,
+    // clip.track IS the authored data-track-index verbatim (the runtime honors
+    // it; see parseAuthoredTrack in core/runtime/timeline.ts). Record it at this
+    // translation boundary so later display-lane remaps (normalizeToZones,
+    // expanded-child rows) can persist in AUTHORED space instead of
+    // reconstructing it from lane occupants.
+    authoredTrack: clip.track,
+    // Runtime-computed stacking context — authoritative; helpers read it, never
+    // re-derive it.
+    stackingContextId: clip.stackingContextId ?? null,
     domId,
     hfId,
     selector,
@@ -219,6 +229,7 @@ export function createImplicitTimelineLayersFromDOM(
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(child),
       start: 0,
       tag: child.tagName.toLowerCase(),
       timingSource: "implicit",
@@ -294,6 +305,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selector,
       selectorIndex,
       sourceFile,
+      stackingContextId: resolveCssStackingContextId(el),
       timingSource: "authored",
       zIndex: readTimelineElementZIndex(el),
     };

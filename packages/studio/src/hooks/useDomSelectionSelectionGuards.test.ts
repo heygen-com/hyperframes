@@ -92,7 +92,7 @@ function renderHarness(props: HarnessProps) {
   };
 }
 
-describe("useDomSelection — Variables tab preservation", () => {
+describe("useDomSelection: Variables tab preservation", () => {
   it("does not yank the user off the Variables tab when selecting on canvas", () => {
     const setRightPanelTab = vi.fn();
     const el = document.createElement("div");
@@ -128,7 +128,7 @@ describe("useDomSelection — Variables tab preservation", () => {
   });
 });
 
-describe("useDomSelection — timeline-select race guard", () => {
+describe("useDomSelection: timeline-select race guard", () => {
   beforeEach(() => deferreds.clear());
   afterEach(() => deferreds.clear());
 
@@ -177,7 +177,46 @@ describe("useDomSelection — timeline-select race guard", () => {
   });
 });
 
-describe("useDomSelection — marquee multi-select survives the late async primary", () => {
+describe("useDomSelection - post-persist resync guard", () => {
+  beforeEach(() => deferreds.clear());
+  afterEach(() => deferreds.clear());
+
+  it("does not snap back to selection A when the user selects B during resync", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    const elA = doc.createElement("div");
+    elA.id = "a";
+    const elB = doc.createElement("div");
+    elB.id = "b";
+    doc.body.append(elA, elB);
+    const selectionA = makeSelection("A", elA);
+    const selectionB = makeSelection("B", elB);
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe,
+      timelineElements: [],
+    });
+
+    act(() => harness.current().applyDomSelection(selectionA));
+    let resync: Promise<void> = Promise.resolve();
+    act(() => {
+      resync = harness.current().refreshDomEditSelectionFromPreview(selectionA);
+    });
+    act(() => harness.current().applyDomSelection(selectionB));
+    await act(async () => {
+      deferreds.get("a")?.resolve();
+      await resync;
+    });
+
+    expect(harness.current().domEditSelection?.id).toBe("b");
+    harness.cleanup();
+    iframe.remove();
+  });
+});
+
+describe("useDomSelection: marquee multi-select survives the late async primary", () => {
   beforeEach(() => {
     deferreds.clear();
     const store = usePlayerStore.getState();
@@ -218,7 +257,6 @@ describe("useDomSelection — marquee multi-select survives the late async prima
     expect(usePlayerStore.getState().selectedElementId).toBe("a");
     harness.cleanup();
   });
-
   it("writes every canvas marquee member and its anchor to the store", () => {
     const selections = ["a", "b"].map((id) => {
       const element = document.createElement("div");

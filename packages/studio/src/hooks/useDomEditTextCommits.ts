@@ -127,15 +127,19 @@ export function useDomEditTextCommits({
     [persistDomEditOperations, queueDomEditSave],
   );
 
-  const { handleDomAttributeCommit, handleDomAttributeLiveCommit, handleDomHtmlAttributeCommit } =
-    useDomEditAttributeCommits({
-      activeCompPath,
-      previewIframeRef,
-      showToast,
-      domEditSelection,
-      refreshDomEditSelectionFromPreview,
-      persistDomEditOperations: queuedPersistDomEditOperations,
-    });
+  const {
+    handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
+    handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
+  } = useDomEditAttributeCommits({
+    activeCompPath,
+    previewIframeRef,
+    showToast,
+    domEditSelection,
+    refreshDomEditSelectionFromPreview,
+    persistDomEditOperations: queuedPersistDomEditOperations,
+  });
 
   const commitDomStyleSelection = useCallback(
     (
@@ -416,6 +420,7 @@ export function useDomEditTextCommits({
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomTextCommit,
     commitDomTextFields,
     handleDomTextFieldStyleCommit,

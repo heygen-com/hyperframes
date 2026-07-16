@@ -6,6 +6,7 @@ import {
   injectDurations,
   extractResolvedMedia,
   clampDurations,
+  shouldClampResolvedMediaDuration,
 } from "./timingCompiler.js";
 
 // Raw 0x00 bytes in the HFMASK delimiters shipped once and broke every render
@@ -262,5 +263,12 @@ describe("clampDurations", () => {
 
     expect(result).toContain('data-duration="5"');
     expect(result).toContain('data-end="7"');
+  });
+});
+
+describe("shouldClampResolvedMediaDuration", () => {
+  it("preserves an explicit video slot but keeps audio source-bounded", () => {
+    expect(shouldClampResolvedMediaDuration("video", 5, 1)).toBe(false);
+    expect(shouldClampResolvedMediaDuration("audio", 5, 1)).toBe(true);
   });
 });

@@ -88,6 +88,13 @@ class CompositionImpl implements Composition {
   /** Accumulated override-set — T3 embedded mode fold contract. */
   private overrides: OverrideSet;
 
+  /**
+   * Declared variable defaults as authored at open — captured BEFORE the
+   * T3 override-set (and any later setVariableValue) folded into the
+   * declarations. Serves getVariableValue({ base: true }).
+   */
+  private readonly baseVariableDefaults: Record<string, unknown>;
+
   /** Lazily-built element snapshot, invalidated on every mutation. */
   private elementsCache: ElementSnapshot[] | null = null;
   /** Lazily-built root snapshot (getRootElements), invalidated alongside elementsCache. */
@@ -114,11 +121,16 @@ class CompositionImpl implements Composition {
   /** Override-set state at outermost batch entry — restored if the batch throws. */
   private batchOverridesSnapshot: OverrideSet = {};
 
-  constructor(parsed: ParsedDocument, opts: OpenCompositionOptions) {
+  constructor(
+    parsed: ParsedDocument,
+    opts: OpenCompositionOptions,
+    baseVariableDefaults: Record<string, unknown> = {},
+  ) {
     this.parsed = parsed;
     this.persist = opts.persist;
     this.preview = opts.preview;
     this.overrides = { ...(opts.overrides ?? {}) };
+    this.baseVariableDefaults = baseVariableDefaults;
     this.previewSelectionUnsubscribe =
       this.preview?.on("selection", (ids) => this.updateSelection(ids)) ?? null;
   }
@@ -169,14 +181,20 @@ class CompositionImpl implements Composition {
   // ── #2098 CRUD conveniences — thin aliases over the canonical surface below.
   // They delegate so the per-file declaration-element scope (template/fragment
   // sub-comps included) is resolved in exactly one place.
-  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined {
-    return this.getVariableValues()[id] as
-      | string
-      | number
-      | boolean
-      | FontValue
-      | ImageValue
-      | undefined;
+  getVariableValue(
+    id: string,
+    opts?: { base?: boolean },
+  ): string | number | boolean | FontValue | ImageValue | undefined {
+    // { base: true } reads the declaration default as authored at open —
+    // BEFORE the override-set / any setVariableValue folded into it. This
+    // is the value an undo-to-base must restore; the live default IS the
+    // override after a fold. Ids unseen at open (declared mid-session) fall
+    // through to the live default — their declaration is their base.
+    const source =
+      opts?.base && id in this.baseVariableDefaults
+        ? this.baseVariableDefaults
+        : this.getVariableValues();
+    return source[id] as string | number | boolean | FontValue | ImageValue | undefined;
   }
 
   listVariables(): CompositionVariable[] {
@@ -877,11 +895,19 @@ export async function openComposition(
   // the query API derives element snapshots from it lazily.
   const parsed = parseMutable(html);
 
+  // Pre-override declared defaults — applyOverrideSet below folds `var.<id>`
+  // overrides destructively into the declarations, so this is the last moment
+  // the authored base values are readable. getVariableValue({ base: true })
+  // serves them for the rest of the session (undo-to-base restores).
+  const baseVariableDefaults = readDeclaredDefaults(
+    declarationElement(parsed.document, parsed.wrapped),
+  );
+
   // T3 embedded: replay the stored override-set onto the base in one pass,
   // so the session exposes the user's exact edited state — not the template.
   if (opts?.overrides) applyOverrideSet(parsed, opts.overrides);
 
-  const session = new CompositionImpl(parsed, opts ?? {});
+  const session = new CompositionImpl(parsed, opts ?? {}, baseVariableDefaults);
 
   const isEmbedded = opts?.overrides !== undefined;
 

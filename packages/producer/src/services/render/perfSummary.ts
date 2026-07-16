@@ -59,6 +59,19 @@ export function pushWorkerDedupPerfs(
  * render-level drawElement outcome. mode/gateReason |-join distinct values
  * across workers (bounded cardinality); counters SUM.
  */
+/**
+ * Round a dB value to 1 decimal and clamp at 999 (an `Infinity` PSNR — a
+ * bit-exact frame match — must not ship literally to telemetry). Single
+ * source of truth for every dB field crossing into `RenderPerfSummary` or
+ * `RenderCaptureObservability` — both must agree byte-for-byte so PostHog
+ * consumers joining `render_complete` against the crash-survival
+ * `render_error` mirror never see the same underlying score reported at two
+ * different precisions (review finding).
+ */
+export function roundDb(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : Math.round(Math.min(value, 999) * 10) / 10;
+}
+
 /** Orchestrator-supplied render-level drawElement outcome (one shape, used by
  * both the aggregate function and buildRenderPerfSummary's input). */
 export interface DrawElementPerfInput {
@@ -72,6 +85,12 @@ export interface DrawElementPerfInput {
   preRouterWorkers?: number;
   selfVerifyFallback: boolean;
   fallbackReason?: string;
+  /** The failing PSNR (dB) when `fallbackReason === "psnr"`; undefined for blank/oom/capture_error. */
+  fallbackFailedDb?: number;
+  /** Frame index the verification failure was detected at; set for both "psnr" and "blank". */
+  fallbackFrameIndex?: number;
+  /** The HF_DE_VERIFY_MIN_DB threshold the failing dB breached; only set alongside fallbackFailedDb. */
+  fallbackThresholdDb?: number;
   drainStats?: {
     verifyChecked: number;
     verifyMinDb?: number;
@@ -105,13 +124,13 @@ function aggregateDrawElement(
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
     verifyChecked: drain?.verifyChecked ?? 0,
-    verifyMinDb:
-      drain?.verifyMinDb === undefined
-        ? undefined
-        : Math.round(Math.min(drain.verifyMinDb, 999) * 10) / 10,
+    verifyMinDb: roundDb(drain?.verifyMinDb),
     verifyInitMs: perfs.reduce((sum, p) => sum + (p.deVerifyInitMs ?? 0), 0),
     selfVerifyFallback: de.selfVerifyFallback,
     fallbackReason: de.fallbackReason,
+    fallbackFailedDb: roundDb(de.fallbackFailedDb),
+    fallbackFrameIndex: de.fallbackFrameIndex,
+    fallbackThresholdDb: roundDb(de.fallbackThresholdDb),
     blankSuspects: drain?.blankSuspects ?? 0,
     blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
     blankRecaptures: drain?.blankRecaptures ?? 0,
