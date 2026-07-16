@@ -21,9 +21,8 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
-  /** Set when 2+ source animations collide at this percentage (a single inline
-   *  ease button can't target one): the collapsed row hides the button here. */
-  easeAmbiguous?: boolean;
+  /** Source animation ids that collide at this percentage, in first-seen order. */
+  collidingAnimationIds?: string[];
 }
 
 interface KeyframeCacheEntry {
@@ -108,6 +107,7 @@ function keyframeTarget(
         tweenPercentage: keyframe.tweenPercentage,
         propertyGroup: keyframe.propertyGroup,
         animationId: keyframe.animationId,
+        collidingAnimationIds: keyframe.collidingAnimationIds,
       }
     : { percentage: keyframe.percentage };
 }
@@ -213,12 +213,11 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
         const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
         if (x2 - x1 < 1) return null;
-        // Group-aware target for the ease button: the segment ease is
-        // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
-        // On a merged inline row the button is hidden where the segment is
-        // ambiguous (two source animations collide at this % with different
-        // eases; see easeAmbiguous) or the keyframe has no source animation id
-        // (runtime-scanned) so there is no tween to target.
+        // Group-aware target for the ease button. On a merged inline row the
+        // button edits the ease of every animation colliding at this percentage
+        // at once (the collapsed row is the element's unified motion). It is only
+        // hidden when the keyframe has no source animation id (runtime-scanned),
+        // so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
         return (
@@ -237,7 +236,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && !kf.easeAmbiguous && kf.animationId !== undefined && (
+            {onSelectSegment && kf.animationId !== undefined && (
               <div
                 className="absolute"
                 data-keyframe-ease-segment=""

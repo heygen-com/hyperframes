@@ -23,7 +23,7 @@ interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
   flat?: boolean;
-  focusedSegment?: { tweenPercentage: number } | null;
+  focusedSegment?: { tweenPercentage: number; collidingAnimationIds?: string[] } | null;
   onFocusSegmentConsumed?: () => void;
 }
 
@@ -47,6 +47,7 @@ export const AnimationCard = memo(function AnimationCard({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onUpdateSegmentEase,
   onSetAllKeyframeEases,
   onUnroll,
 }: AnimationCardProps) {
@@ -54,6 +55,9 @@ export const AnimationCard = memo(function AnimationCard({
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
   const [expandedKfPct, setExpandedKfPct] = useState<number | null>(null);
+  const [focusedCollidingAnimationIds, setFocusedCollidingAnimationIds] = useState<
+    string[] | undefined
+  >();
   const cardRef = useRef<HTMLDivElement>(null);
   const pendingAutoScrollRef = useRef(false);
 
@@ -62,6 +66,7 @@ export const AnimationCard = memo(function AnimationCard({
     setExpanded(true);
     pendingAutoScrollRef.current = true;
     setExpandedKfPct(focusedSegment.tweenPercentage);
+    setFocusedCollidingAnimationIds(focusedSegment.collidingAnimationIds);
     onFocusSegmentConsumed?.();
   }, [focusedSegment, onFocusSegmentConsumed]);
 
@@ -288,9 +293,21 @@ export const AnimationCard = memo(function AnimationCard({
                     keyframes={animation.keyframes.keyframes}
                     globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
                     expandedPct={expandedKfPct}
-                    onToggle={setExpandedKfPct}
+                    collidingAnimationIds={focusedCollidingAnimationIds}
+                    onToggle={(pct) => {
+                      setExpandedKfPct(pct);
+                      setFocusedCollidingAnimationIds(undefined);
+                    }}
                     onEaseCommit={(pct, ease) => {
-                      onUpdateKeyframeEase(animation.id, pct, ease);
+                      if (
+                        focusedCollidingAnimationIds &&
+                        focusedCollidingAnimationIds.length > 1 &&
+                        onUpdateSegmentEase
+                      ) {
+                        onUpdateSegmentEase(focusedCollidingAnimationIds, pct, ease);
+                      } else {
+                        onUpdateKeyframeEase(animation.id, pct, ease);
+                      }
                       trackStudioSegmentEaseEdit({ action: "commit", ease });
                     }}
                     onApplyAll={

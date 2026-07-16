@@ -54,31 +54,35 @@ describe("synthesizeFlatTweenKeyframes", () => {
   });
 });
 
-describe("deduplicateKeyframes ease ambiguity", () => {
-  it("flags a same-% collision from different animations (different eases)", () => {
+describe("deduplicateKeyframes colliding animation ids", () => {
+  it("records different animations in first-seen order at the same percentage", () => {
     const merged = deduplicateKeyframes([
       { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
       { percentage: 45, properties: { opacity: 1 }, ease: "power2.out", animationId: "#a-visual" },
     ]);
     const kf = merged.find((k) => k.percentage === 45);
-    expect(kf?.easeAmbiguous).toBe(true);
+    expect(kf?.collidingAnimationIds).toEqual(["#a-position", "#a-visual"]);
   });
 
-  it("flags a cross-animation collision even when the raw eases match", () => {
-    // The button can still only target one arbitrary animation, and each may
-    // inherit a different easeEach/animation ease that raw comparison misses.
+  it("deduplicates three colliding animations while preserving first-seen order", () => {
     const merged = deduplicateKeyframes([
       { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
       { percentage: 45, properties: { opacity: 1 }, ease: "power2.in", animationId: "#a-visual" },
+      { percentage: 45, properties: { y: 20 }, ease: "power2.out", animationId: "#a-position" },
+      { percentage: 45, properties: { scale: 2 }, ease: "power2.in", animationId: "#a-scale" },
     ]);
-    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBe(true);
+    expect(merged.find((k) => k.percentage === 45)?.collidingAnimationIds).toEqual([
+      "#a-position",
+      "#a-visual",
+      "#a-scale",
+    ]);
   });
 
-  it("does not flag a same-% collision within a single animation", () => {
+  it("leaves the collision set undefined within a single animation", () => {
     const merged = deduplicateKeyframes([
       { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
       { percentage: 45, properties: { y: 20 }, ease: "power2.out", animationId: "#a-position" },
     ]);
-    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBeFalsy();
+    expect(merged.find((k) => k.percentage === 45)?.collidingAnimationIds).toBeUndefined();
   });
 });
