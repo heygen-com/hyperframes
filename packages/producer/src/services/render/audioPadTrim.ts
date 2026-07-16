@@ -14,8 +14,9 @@
  *     "audio cuts off early" or "video shows a frozen final frame" bugs.
  *
  * The fix: post-pad/trim audio to *exactly* `frameCount / fps` seconds at
- * assemble time. Pad by concat-copying a generated silence tail, trim with
- * `-t`, and avoid re-encoding the already mixed source AAC in either case.
+ * assemble time. Pad by concat-copying a generated silence tail. For trim,
+ * decode and filter to the exact target before re-encoding into an M4A
+ * container; packet-copying AAC can only cut on packet boundaries.
  */
 
 import { spawn } from "node:child_process";
@@ -121,8 +122,8 @@ export interface PadTrimAudioPlan {
  *     tail, then concat-copy the source AAC plus that tail. This avoids
  *     re-encoding the already mixed `audio.aac`; the pad branch remains the
  *     inverse of trim instead of becoming a second full-source AAC encode.
- *   - `sourceDuration > targetDuration` → trim with `-t target`. `-c:a copy`
- *     is preserved when the input is already AAC.
+ *   - `sourceDuration > targetDuration` → filter to the exact target and
+ *     re-encode AAC so packet padding cannot outlast the video.
  *   - `|Δ| < AUDIO_DURATION_TOLERANCE_SECONDS` → no-op `copy`, but we still
  *     run ffmpeg with `-c:a copy` to materialize the output path.
  */
@@ -187,13 +188,27 @@ export function buildPadTrimAudioPlan(
       cleanupPaths: [silencePath, concatListPath],
     };
   }
-  // Trim. `-t` truncates AAC without re-encoding because AAC frames are
-  // independently decodable; ffmpeg snaps the cut point to the nearest
-  // packet boundary, fine for the ±1ms tolerance we care about here.
+  // Packet-copy trimming snaps to AAC frame boundaries (typically 1024
+  // samples), which can leave ~20ms beyond the target. Decode/filter/re-encode
+  // into M4A so ffmpeg records the exact presentation duration.
   return {
     operation: "trim",
     steps: [
-      { kind: "trim", args: ["-i", audioPath, "-t", targetSec, "-c:a", "copy", "-y", outputPath] },
+      {
+        kind: "trim",
+        args: [
+          "-i",
+          audioPath,
+          "-af",
+          `atrim=duration=${targetSec},asetpts=PTS-STARTPTS`,
+          "-c:a",
+          "aac",
+          "-b:a",
+          "192k",
+          "-y",
+          outputPath,
+        ],
+      },
     ],
     cleanupPaths: [],
   };

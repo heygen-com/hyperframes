@@ -61,7 +61,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
     const audioStem = audioExtension
       ? audioOutputPath.slice(0, -audioExtension.length)
       : audioOutputPath;
-    const normalizedAudioPath = `${audioStem}.duration-normalized.aac`;
+    const normalizedAudioPath = `${audioStem}.duration-normalized.m4a`;
     const normalizeResult = await padOrTrimAudioToVideoFrameCount({
       videoPath: videoOnlyPath,
       audioPath: audioOutputPath,

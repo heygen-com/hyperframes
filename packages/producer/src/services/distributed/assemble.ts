@@ -291,7 +291,7 @@ export async function assemble(
     // ── 3. Audio: pad-or-trim then mux ────────────────────────────────────
     let audioForMux: string | null = null;
     if (audioPath !== null && existsSync(audioPath)) {
-      const paddedAudioPath = join(workDir, "audio-padded.aac");
+      const paddedAudioPath = join(workDir, "audio-padded.m4a");
       const padTrimResult = await padOrTrimAudioToVideoFrameCount({
         videoPath: postConcatPath,
         audioPath,

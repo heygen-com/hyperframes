@@ -81,15 +81,20 @@ describe("buildPadTrimAudioArgs", () => {
     expect(args[args.indexOf("-t") + 1]).toBe("1.000000");
   });
 
-  it("emits -t when audio is longer than target", () => {
-    const { args, operation } = buildPadTrimAudioArgs("/tmp/in.aac", "/tmp/out.aac", 6.123, 5.0);
+  it("filter-trims and re-encodes AAC packet padding beyond the target", () => {
+    const { args, operation } = buildPadTrimAudioArgs(
+      "/tmp/in.aac",
+      "/tmp/out.m4a",
+      15.018667,
+      15.0,
+    );
     expect(operation).toBe("trim");
-    const tIdx = args.indexOf("-t");
-    expect(tIdx).toBeGreaterThan(-1);
-    expect(args[tIdx + 1]).toBe("5.000000");
-    // Trim preserves AAC stream copy.
+    const filterIdx = args.indexOf("-af");
+    expect(args[filterIdx + 1]).toBe("atrim=duration=15.000000,asetpts=PTS-STARTPTS");
     const codecIdx = args.indexOf("-c:a");
-    expect(args[codecIdx + 1]).toBe("copy");
+    expect(args[codecIdx + 1]).toBe("aac");
+    expect(args[args.indexOf("-b:a") + 1]).toBe("192k");
+    expect(args.at(-1)).toBe("/tmp/out.m4a");
   });
 
   it("emits a plain copy when source duration matches target within ~1ms", () => {
@@ -243,8 +248,8 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.operation).toBe("trim");
     expect(result.targetDurationSeconds).toBe(4);
     expect(captured.args).toHaveLength(1);
-    const tIdx = captured.args[0]!.indexOf("-t");
-    expect(captured.args[0]![tIdx + 1]).toBe("4.000000");
+    const filterIdx = captured.args[0]!.indexOf("-af");
+    expect(captured.args[0]![filterIdx + 1]).toBe("atrim=duration=4.000000,asetpts=PTS-STARTPTS");
   });
 
   it("emits a copy when audio duration already equals frameCount/fps", async () => {
