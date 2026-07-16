@@ -21,6 +21,7 @@ import {
   serializeValue as valueToCode,
   safeJsKey as safeKey,
   resolveConversionProps,
+  mergePercentageKeyframes,
 } from "./gsapSerialize";
 
 export type {
@@ -1961,7 +1962,7 @@ function buildKeyframeObjectCode(
   }>,
   options?: { easeEach?: string },
 ): string {
-  const entries = keyframes.map((kf) => {
+  const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = keyframePropsToCode(kf);
     if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
@@ -2355,10 +2356,9 @@ export function removeKeyframeFromScript(
 /**
  * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
  * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
- * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
- * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
- * the animation/keyframe isn't found, the tween has no object-form keyframes, or
- * the move resolves onto the same keyframe. Acorn twin: moveKeyframeInScript.
+ * gesture). Re-sorts keyframes by percentage. No-op when the animation/keyframe
+ * isn't found, the tween has no object-form keyframes, the move resolves onto the
+ * same keyframe, or the destination is occupied. Acorn twin: moveKeyframeInScript.
  */
 export function moveKeyframeInScript(
   script: string,
@@ -2382,19 +2382,19 @@ export function moveKeyframeInScript(
   // retime, because findKeyframePropByPct resolves the destination back onto the
   // from-keyframe — so a deliberate 1% drag committed nothing. Acorn twin too.
   if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return script;
-  // A destination keyframe is only a real collision (overwrite) when it's a
-  // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
+  // Never overwrite another authored keyframe. Resolving the destination back
+  // onto the source keyframe is not a collision (the tolerance is intentionally
+  // wider than MOVE_NOOP_EPSILON_PCT).
   const dest = findKeyframePropByPct(kfNode, toPercentage);
-  const collision = dest && dest.prop !== match.prop ? dest : null;
+  if (dest && dest.prop !== match.prop) return script;
 
   // Reuse each keyframe's value node verbatim (preserves properties +
-  // per-keyframe ease + _auto). Drop the moved keyframe (and any destination
-  // keyframe it overwrites), re-key the moved value to toPercentage, then re-sort.
+  // per-keyframe ease + _auto). Drop the moved keyframe, re-key its value to
+  // toPercentage, then re-sort.
   const movedValue = match.prop.value;
   const entries: Array<{ pct: number; value: AstNode }> = [];
   for (const prop of filterPercentageProps(kfNode)) {
     if (prop === match.prop) continue;
-    if (collision && prop === collision.prop) continue;
     const pct = percentageFromKey(propKeyName(prop) ?? "");
     if (Number.isNaN(pct)) continue;
     entries.push({ pct, value: prop.value });
@@ -2446,7 +2446,11 @@ export function resizeKeyframedTweenInScript(
     match.prop.key = parseExpr(`{ ${JSON.stringify(`${to}%`)}: 0 }`).properties[0].key;
   }
 
-  applyUpdatesToCall(loc.target.call, { position: newPosition, duration: newDuration });
+  const durationAuthored = findPropertyNode(loc.target.call.varsArg, "duration") !== undefined;
+  applyUpdatesToCall(loc.target.call, {
+    position: newPosition,
+    ...(durationAuthored ? { duration: newDuration } : {}),
+  });
   return recast.print(loc.parsed.ast).code;
 }
 
