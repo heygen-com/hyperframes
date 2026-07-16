@@ -1220,7 +1220,7 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("toasts a breaker-open style commit and saves again after reset", async () => {
+  it("does not toast a breaker-open style commit and saves again after reset", async () => {
     const saveQueue = createDomEditSaveQueue({ failureThreshold: 1 });
     let patchCount = 0;
     const { element, rendered, cleanup } = renderStyleCommitWithFetch(
@@ -1245,8 +1245,9 @@ describe("useDomEditCommits style persist handling", () => {
       await rendered.hook.handleDomStyleCommit("color", "blue");
       await rendered.hook.handleDomStyleCommit("color", "green");
 
+      expect(rendered.showToast).toHaveBeenCalledOnce();
       expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringContaining("Auto-save is paused"),
+        expect.stringContaining("network down"),
         "error",
       );
       expect(element.style.getPropertyValue("color")).toBe("red");

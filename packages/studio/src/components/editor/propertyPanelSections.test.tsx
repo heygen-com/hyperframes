@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
+import { StyleSections } from "./propertyPanelStyleSections";
 import type { DomEditSelection } from "./domEditingTypes";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -156,6 +157,71 @@ describe("FlatTextSection", () => {
     expect(host.querySelector('[data-panel-section="text"]')).toBeNull();
     // The flat layer list's own content must render.
     expect(host.textContent).toContain("Text layers");
+    act(() => root.unmount());
+  });
+});
+
+describe("StyleSections", () => {
+  it("reads the pending stroke style when a width commit follows it", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const styles: Record<string, string> = {
+      "border-width": "0px",
+      "border-style": "none",
+    };
+    const element = makeElement({ computedStyles: styles, textFields: [] });
+    const pendingPersist = new Promise<void>(() => undefined);
+    const operations: Array<[string, string]> = [];
+    const onSetStyle = (property: string, value: string): Promise<void> => {
+      styles[property] = value;
+      operations.push([property, value]);
+      return operations.length === 1 ? pendingPersist : Promise.resolve();
+    };
+    act(() => {
+      root.render(
+        <StyleSections
+          projectId="project-1"
+          element={element}
+          styles={styles}
+          assets={[]}
+          onSetStyle={onSetStyle}
+        />,
+      );
+    });
+
+    const strokeSection = host.querySelector<HTMLElement>('[data-panel-section="stroke"]');
+    if (!strokeSection) throw new Error("expected Stroke section");
+    const toggle = strokeSection.querySelector<HTMLButtonElement>("button");
+    if (!toggle) throw new Error("expected Stroke section toggle");
+    act(() => toggle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    const styleSelect = strokeSection.querySelector<HTMLSelectElement>("select");
+    if (!styleSelect) throw new Error("expected stroke Style select");
+    act(() => {
+      styleSelect.value = "dashed";
+      styleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(styles["border-style"]).toBe("dashed");
+
+    const widthInput = strokeSection.querySelector<HTMLInputElement>("input");
+    if (!widthInput) throw new Error("expected stroke Width input");
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(widthInput, "4");
+      widthInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      widthInput.dispatchEvent(new Event("focusout", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(operations).toContainEqual(["border-width", "4px"]);
+    expect(operations).not.toContainEqual(["border-style", "solid"]);
     act(() => root.unmount());
   });
 });

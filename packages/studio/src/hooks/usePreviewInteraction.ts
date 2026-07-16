@@ -75,6 +75,26 @@ export function usePreviewInteraction({
 }: UsePreviewInteractionParams) {
   const cycleRef = useRef<ClickCycleState | null>(null);
   const lastDownRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const interactionSeqRef = useRef(0);
+
+  const commitSelectionWithSourceProbe = useCallback(
+    async (
+      transientSelection: DomEditSelection,
+      interactionSeq: number,
+      options?: ApplyDomSelectionOptions,
+    ): Promise<DomEditSelection | null> => {
+      const resolvedSelection = await buildDomSelectionFromTarget(transientSelection.element);
+      if (interactionSeq !== interactionSeqRef.current) return null;
+      const committedSelection = resolvedSelection ?? transientSelection;
+      if (options) {
+        applyDomSelection(committedSelection, options);
+      } else {
+        applyDomSelection(committedSelection);
+      }
+      return committedSelection;
+    },
+    [applyDomSelection, buildDomSelectionFromTarget],
+  );
 
   const pausePreviewPlayback = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
@@ -90,6 +110,7 @@ export function usePreviewInteraction({
     // fallow-ignore-next-line complexity
     async (e: React.MouseEvent<HTMLDivElement>, options?: PreviewMouseDownOptions) => {
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
+      const interactionSeq = ++interactionSeqRef.current;
 
       // Manual double-click detection (see DOUBLE_CLICK_MS): the first click
       // re-renders the overlay so `e.detail` never reaches 2 on the canvas.
@@ -119,8 +140,11 @@ export function usePreviewInteraction({
         cycle.candidates.length > 1 &&
         Math.hypot(e.clientX - cycle.x, e.clientY - cycle.y) < CYCLE_RADIUS_PX &&
         downTs - cycle.at < CYCLE_WINDOW_MS;
-      if (isDoubleClick && !e.shiftKey && !hasStackCycleAtSpot) {
-        const hit = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY);
+      if (isDoubleClick && !e.shiftKey) {
+        const hit = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+          skipSourceProbe: true,
+        });
+        if (interactionSeq !== interactionSeqRef.current) return;
         if (hit?.element.hasAttribute("data-hf-group")) {
           e.preventDefault();
           e.stopPropagation();
@@ -130,10 +154,12 @@ export function usePreviewInteraction({
           const child = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
             activeGroupElement: hit.element,
           });
+          if (interactionSeq !== interactionSeqRef.current) return;
           applyDomSelection(child ?? hit);
           return;
         }
         if (
+          !hasStackCycleAtSpot &&
           hit &&
           !hit.element.hasAttribute("data-composition-src") &&
           !hit.element.hasAttribute("data-composition-file")
@@ -141,7 +167,7 @@ export function usePreviewInteraction({
           e.preventDefault();
           e.stopPropagation();
           cycleRef.current = null;
-          applyDomSelection(hit);
+          await commitSelectionWithSourceProbe(hit, interactionSeq);
           return;
         }
       }
@@ -158,18 +184,21 @@ export function usePreviewInteraction({
       if (e.shiftKey) {
         // Additive selection — no cycling
         cycleRef.current = null;
-        const nextSelection =
-          (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-            preferClipAncestor: options?.preferClipAncestor ?? false,
-          })) ??
-          options?.hoverSelection ??
-          null;
+        const resolvedSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+          preferClipAncestor: options?.preferClipAncestor ?? false,
+        });
+        if (interactionSeq !== interactionSeqRef.current) return;
+        const nextSelection = resolvedSelection ?? options?.hoverSelection ?? null;
         if (!nextSelection) {
           resumeIfNothingSelected();
           return;
         }
         e.preventDefault();
         e.stopPropagation();
+        if (!resolvedSelection) {
+          await commitSelectionWithSourceProbe(nextSelection, interactionSeq, { additive: true });
+          return;
+        }
         applyDomSelection(nextSelection, { additive: true });
         return;
       }
@@ -181,10 +210,7 @@ export function usePreviewInteraction({
         cycleRef.current = { ...prev, index: nextIndex, at: now };
         e.preventDefault();
         e.stopPropagation();
-        const committedSelection = nextSel
-          ? await buildDomSelectionFromTarget(nextSel.element)
-          : null;
-        applyDomSelection(committedSelection);
+        if (nextSel) await commitSelectionWithSourceProbe(nextSel, interactionSeq);
         return;
       }
 
@@ -192,6 +218,7 @@ export function usePreviewInteraction({
       let nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
+      if (interactionSeq !== interactionSeqRef.current) return;
       // A null result while drilled into a group means the click landed OUTSIDE that
       // group (resolveGroupCapture → out-of-scope). Drill-in isn't sticky: exit it and
       // re-resolve at the top level so this click selects whatever's there (or the
@@ -203,8 +230,19 @@ export function usePreviewInteraction({
           preferClipAncestor: options?.preferClipAncestor ?? false,
           activeGroupElement: null,
         });
+        if (interactionSeq !== interactionSeqRef.current) return;
       }
-      nextSelection = nextSelection ?? options?.hoverSelection ?? null;
+      let selectionAlreadyApplied = false;
+      if (!nextSelection && options?.hoverSelection) {
+        e.preventDefault();
+        e.stopPropagation();
+        nextSelection = await commitSelectionWithSourceProbe(
+          options.hoverSelection,
+          interactionSeq,
+        );
+        if (!nextSelection) return;
+        selectionAlreadyApplied = true;
+      }
       if (!nextSelection) {
         cycleRef.current = null;
         applyDomSelection(null, { revealPanel: false });
@@ -213,7 +251,7 @@ export function usePreviewInteraction({
       }
       e.preventDefault();
       e.stopPropagation();
-      applyDomSelection(nextSelection);
+      if (!selectionAlreadyApplied) applyDomSelection(nextSelection);
 
       if (!e.shiftKey && e.altKey && onClickToSource) {
         onClickToSource(nextSelection);
@@ -222,13 +260,14 @@ export function usePreviewInteraction({
       // Resolve all stacked candidates so a subsequent click at the same
       // position can cycle to the next layer (issues #1124, #1125).
       const all = await resolveAllDomSelectionsFromPreviewPoint(e.clientX, e.clientY);
+      if (interactionSeq !== interactionSeqRef.current) return;
       cycleRef.current =
         all.length > 1 ? { x: e.clientX, y: e.clientY, candidates: all, index: 0, at: now } : null;
     },
     [
       applyDomSelection,
-      buildDomSelectionFromTarget,
       captionEditMode,
+      commitSelectionWithSourceProbe,
       compositionLoading,
       onClickToSource,
       pausePreviewPlayback,
