@@ -145,6 +145,29 @@
       "file": "packages/studio/src/utils/studioHelpers.ts",
       "exports": ["resolveDroppedAssetDimensions"],
     },
+    // TEMP (transparent-proxy stack): proxyTranscoder is carved in below its
+    // consumers, which land upstack (mediaProxyPreview + the preview route,
+    // then the CLI surfaces). With no importer yet, a per-PR audit against the
+    // merge base sees the module's whole export surface as unused. Same shape
+    // as the drawElementService entry below. Safe to drop once the preview
+    // weld lands; the stack's final slice greps for zero TEMP entries.
+    {
+      "file": "packages/studio-server/src/helpers/proxyTranscoder.ts",
+      "exports": [
+        "PROXY_PARAMS_VERSION",
+        "TRANSCODE_TIMEOUT_MS",
+        "DEFAULT_PROXY_WAIT_TIMEOUT_MS",
+        "ProxyTranscodeError",
+        "FfmpegMissingFilterError",
+        "ProxyCapacityError",
+        "ProxySourceOutsideProjectError",
+        "ProxyWaitTimeoutError",
+        "waitForProxy",
+        "getProxyCachePath",
+        "clearFailedTranscodesForTest",
+        "resolveProxy",
+      ],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
