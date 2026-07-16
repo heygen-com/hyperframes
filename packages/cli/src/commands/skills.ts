@@ -2,6 +2,7 @@ import { defineCommand } from "citty";
 import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
+import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
@@ -176,9 +177,9 @@ function mirrorToInstalledAgents(): void {
     const { mirrored } = mirrorGlobalSkills({ skills: names });
     const n = mirrored.length;
     if (n > 0) {
-      // stderr: reachable from `skills update --json` (via installSkills) before
-      // the JSON envelope is written to stdout.
-      console.error(
+      // stderr (via diag): reachable from `skills update --json` (via installSkills)
+      // before the JSON envelope is written to stdout.
+      diag.notice(
         c.dim(`Linked skills into ${n} other agent ${n === 1 ? "directory" : "directories"}.`),
       );
     }
@@ -251,17 +252,18 @@ async function installSkills(
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
-  // stderr: installSkills runs on the `skills update --json` path before its JSON
-  // envelope is written to stdout — progress here must not corrupt that output.
+  // stderr (via diag): installSkills runs on the `skills update --json` path before
+  // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
-    console.error();
-    console.error(c.bold(`Installing ${source.name} skills...`));
-    console.error();
+    diag.notice();
+    diag.notice(c.bold(`Installing ${source.name} skills...`));
+    diag.notice();
     try {
       await runSkillsAdd(source.url, safeSelection, opts);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
-      console.error(c.dim(`${source.name} skills skipped`));
+      // warn, not notice: this is a non-fatal skip after a caught install error.
+      diag.warn(c.dim(`${source.name} skills skipped`));
     }
   }
 
