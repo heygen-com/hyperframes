@@ -64,7 +64,7 @@ function completeJob(opts: Parameters<NonNullable<StudioApiAdapter["startBackgro
 
 describe("registerMediaRoutes", () => {
   it("returns metadata for a project-local media asset", async () => {
-    const probe = vi.fn(() => ({
+    const probe = vi.fn(async () => ({
       kind: "video" as const,
       color: {
         dynamicRange: "hdr" as const,
