@@ -14,10 +14,10 @@ There are two ways a Claude Design composition can reach HyperFrames. **This gui
 | --- | --- | --- |
 | Wire format | multi-file ZIP (`index.html` + `fonts/` + README) | **one self-contained HTML file** |
 | How it travels | user downloads the ZIP | **the importer fetches one HTML** |
-| Assets | referenced from sibling files (`fonts/…`) | **inlined into the HTML as `data:` URIs** |
+| Assets | referenced from sibling files (`fonts/…`) | **resolvable from the one file: inline `data:` URIs (preferred) or a publicly-fetchable absolute URL** |
 | Next step | a coding agent polishes locally, renders via CLI | **enhanced inside HyperFrames; rendered in the cloud** |
 
-The single most important consequence: **there is no file tree on the other side.** Anything not inside the one HTML file does not arrive. This inverts the usual "don't base64 your media" advice — here you **must** inline (see *Asset & fidelity rules*).
+The single most important consequence: **there is no file tree on the other side.** A relative path or sibling-file reference (`fonts/…`, `uploads/…`) simply does not arrive. Every asset must be **resolvable**: an inline `data:` URI (preferred — the only fully self-contained form) or a publicly-fetchable absolute URL, never a relative path or local-file variable (see *Asset & fidelity rules*).
 
 ---
 
@@ -59,13 +59,13 @@ The HyperFrames runtime, GSAP, and shader-transitions are loaded from the jsdeli
 
 ## Asset & fidelity rules (this is where Send-to differs most)
 
-**Inline every brand asset as a `data:` URI.** There is no `fonts/` directory and no sibling file tree on the import side — a relative or file-path reference is simply missing.
+**Every asset must be resolvable from the single HTML file** — an inline `data:` URI (preferred; the only fully self-contained form) or a publicly-fetchable absolute URL. A relative path, sibling-file ref, or local-file variable is simply missing on import and renders blank.
 
 | Asset | Usual (ZIP) advice | **Send-to requires** |
 | --- | --- | --- |
 | Fonts | `fonts/Brand.woff2` file ref | **base64 `data:font/…` in `@font-face` src** (one per weight/style used) |
-| Images / logos | file ref or HTTPS URL | **base64 `data:image/…`** — inline; no external URL |
-| Video / audio (if any) | file ref | **base64 `data:` URI, or omit** — external/relative refs won't arrive; audio is unnecessary (the enhance step adds it) |
+| Images / logos | file ref or HTTPS URL | **inline base64 `data:image/…`** (images inline fine — a 1 MB photo is well under the cap); never a relative path or an expiring/private host |
+| Video / audio (if any) | file ref | **inline `data:` URI if small; large media → a publicly-fetchable absolute URL** (inlining large media can exceed the import size cap); never a relative path or expiring/private host |
 | Runtime / GSAP / shaders | — | **CDN `<script src>`** (do NOT inline) |
 
 Inline a font like this (base64 elided):
@@ -83,7 +83,7 @@ Inline a font like this (base64 elided):
 Gotchas learned from real imports:
 
 - **Inlining the brand font is what preserves fidelity.** If the font isn't inlined, it falls back to a system font and the brand look is lost. Do NOT use a Google Fonts `<link>` for a Send-to composition — inline the `@font-face` instead.
-- **Inline images; do not link them.** An external image URL — especially a private or short-lived asset host — may 404 by render time, and `s3://`-style or presigned URLs expire. Inline every authored image/logo as a `data:` URI so the composition is truly self-contained. (The only assets fetched over the network are the HyperFrames runtime/GSAP/shader scripts, which the renderer is designed to fetch.)
+- **Prefer inline; never a dead or expiring ref.** Inline images/logos as `data:` URIs when practical — the only fully self-contained form. If an asset is too large to inline, use a **publicly-fetchable absolute URL**; never a relative path, a local-file variable, or a **short-lived/private host** (a signed URL that expires, `s3://`/presigned URLs) — those 404 by render time. (The runtime/GSAP/shader scripts are the only network fetches by design.)
 - **Watch for injected loader cruft.** If assets are fetched through a proxy/CDN that injects its own beacon scripts (e.g. a Cloudflare `cdn-cgi/challenge-platform` snippet), strip them — they 404 in the renderer and add noise.
 - **No placeholder assets** (`placehold.co`, lorem-ipsum). Ship real brand content.
 
