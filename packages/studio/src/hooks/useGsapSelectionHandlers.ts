@@ -173,8 +173,8 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapDeleteAnimation = useCallback(
-    (animId: string) => {
-      const sel = domEditSelection ?? lastSelectionRef.current;
+    (animId: string, selectionOverride?: DomEditSelection | null) => {
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
       observeGsapMutation(deleteGsapAnimation(sel, animId), sel, "delete", "Delete GSAP animation");
     },
@@ -298,17 +298,15 @@ export function useGsapSelectionHandlers({
       percentage: number,
       properties: Record<string, number | string>,
       commitOverrides?: Partial<CommitMutationOptions>,
+      selectionOverride?: DomEditSelection | null,
     ) => {
-      if (!domEditSelection) return Promise.resolve();
-      return addKeyframeBatch(
-        domEditSelection,
-        animId,
-        percentage,
-        properties,
-        commitOverrides,
-      ).catch((error) => {
-        trackGsapHandlerFailure(error, domEditSelection, "add-keyframe", "Add keyframe");
-      });
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return Promise.resolve();
+      return addKeyframeBatch(sel, animId, percentage, properties, commitOverrides).catch(
+        (error) => {
+          trackGsapHandlerFailure(error, sel, "add-keyframe", "Add keyframe");
+        },
+      );
     },
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );

@@ -13,7 +13,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
-import { isInstantHold } from "./gsapShared";
+import { isInstantHold, idSelector } from "./gsapShared";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -168,7 +168,7 @@ export function useGestureCommit({
         if (!sortedPcts.includes(0)) sortedPcts.unshift(0);
       }
 
-      const selector = sel.id ? `#${sel.id}` : sel.selector;
+      const selector = sel.id ? idSelector(sel.id) : sel.selector;
       if (!selector) {
         showToast("Cannot save — element has no selector", "error");
         return;
