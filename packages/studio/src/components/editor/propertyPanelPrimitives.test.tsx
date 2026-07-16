@@ -2,9 +2,9 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditingTypes";
-import { SelectField } from "./propertyPanelPrimitives";
+import { SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { StyleSections } from "./propertyPanelStyleSections";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,6 +17,7 @@ afterEach(() => {
   }
   roots.length = 0;
   document.body.innerHTML = "";
+  vi.useRealTimers();
 });
 
 function render(node: React.ReactNode): HTMLElement {
@@ -35,6 +36,26 @@ function findSelect(host: HTMLElement, label: string): HTMLSelectElement {
   const select = field?.querySelector<HTMLSelectElement>("select");
   if (!select) throw new Error(`Missing select field: ${label}`);
   return select;
+}
+
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("HTMLInputElement value setter is unavailable");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function slider(value: number, onCommit: (nextValue: number) => void): React.ReactNode {
+  return (
+    <SliderControl
+      value={value}
+      min={0}
+      max={100}
+      step={1}
+      displayValue={String(value)}
+      onCommit={onCommit}
+    />
+  );
 }
 
 function expandSection(host: HTMLElement, title: string): void {
@@ -108,6 +129,65 @@ describe("SelectField unlisted values", () => {
     expect(style.value).toBe("groove");
     expect(style.options[0]?.value).toBe("groove");
     expect(style.options[0]?.disabled).toBe(false);
+  });
+});
+
+describe("SliderControl commit contract", () => {
+  it("flushes the last pending value on unmount", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const root = roots.pop();
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "20");
+      setInputValue(input, "40");
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(40);
+  });
+
+  it("flushes a pending value to the old target before switching targets", () => {
+    vi.useFakeTimers();
+    const oldTargetCommit = vi.fn();
+    const newTargetCommit = vi.fn();
+    const host = render(slider(0, oldTargetCommit));
+    const root = roots.at(-1);
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "35"));
+    act(() => root.render(slider(0, newTargetCommit)));
+
+    expect(oldTargetCommit).toHaveBeenCalledTimes(1);
+    expect(oldTargetCommit).toHaveBeenCalledWith(35);
+    expect(newTargetCommit).not.toHaveBeenCalled();
+  });
+
+  it("makes one trailing commit for a rapid drag", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "10");
+      setInputValue(input, "20");
+      setInputValue(input, "30");
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(30);
   });
 });
 

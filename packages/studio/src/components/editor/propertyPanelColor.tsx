@@ -11,6 +11,7 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
+import { useDebouncedCommit } from "./propertyPanelPrimitives";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
 
@@ -28,7 +29,7 @@ function ColorSlider({
   background,
   thumbColor,
   disabled,
-  onCommit,
+  onPreview,
 }: {
   label: string;
   value: number;
@@ -39,21 +40,21 @@ function ColorSlider({
   background: string;
   thumbColor: string;
   disabled?: boolean;
-  onCommit: (nextValue: number) => void;
+  onPreview: (nextValue: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const percent = ((value - min) / (max - min)) * 100;
 
-  const commitFromClientX = (clientX: number) => {
+  const previewFromClientX = (clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     const rawValue = min + ((clientX - rect.left) / rect.width) * (max - min);
     const stepped = Math.round(rawValue / step) * step;
-    onCommit(Math.max(min, Math.min(max, stepped)));
+    onPreview(Math.max(min, Math.min(max, stepped)));
   };
 
-  const commitKeyboardValue = (nextValue: number) => {
-    onCommit(Math.max(min, Math.min(max, nextValue)));
+  const previewKeyboardValue = (nextValue: number) => {
+    onPreview(Math.max(min, Math.min(max, nextValue)));
   };
 
   return (
@@ -78,29 +79,29 @@ function ColorSlider({
         onPointerDown={(event) => {
           if (disabled) return;
           event.currentTarget.setPointerCapture(event.pointerId);
-          commitFromClientX(event.clientX);
+          previewFromClientX(event.clientX);
         }}
         onPointerUp={(event) => {
           event.currentTarget.blur();
         }}
         onPointerMove={(event) => {
           if (disabled || event.buttons !== 1) return;
-          commitFromClientX(event.clientX);
+          previewFromClientX(event.clientX);
         }}
         onKeyDown={(event) => {
           if (disabled) return;
           if (event.key === "ArrowRight" || event.key === "ArrowUp") {
             event.preventDefault();
-            commitKeyboardValue(value + step);
+            previewKeyboardValue(value + step);
           } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
             event.preventDefault();
-            commitKeyboardValue(value - step);
+            previewKeyboardValue(value - step);
           } else if (event.key === "Home") {
             event.preventDefault();
-            commitKeyboardValue(min);
+            previewKeyboardValue(min);
           } else if (event.key === "End") {
             event.preventDefault();
-            commitKeyboardValue(max);
+            previewKeyboardValue(max);
           }
         }}
       >
@@ -144,6 +145,18 @@ export function ColorField({
   const saturationPercent = Math.round(hsv.saturation * 100);
   const brightnessPercent = Math.round(hsv.value * 100);
   const alphaPercent = Math.round(draftColor.alpha * 100);
+
+  const updateColorDraft = useCallback((nextValue: string) => {
+    const nextColor = parseCssColor(nextValue);
+    if (!nextColor) return;
+    setDraftColor(nextColor);
+    setHexDraft(toHexColor(nextColor).toUpperCase());
+  }, []);
+  const { preview: previewColorValue, flush: flushColor } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: updateColorDraft,
+    onCommit,
+  });
 
   useEffect(() => {
     const nextColor = colorFromCss(value);
@@ -198,10 +211,8 @@ export function ColorField({
     };
   }, [open]);
 
-  const commitColor = (nextColor: ParsedColor) => {
-    setDraftColor(nextColor);
-    setHexDraft(toHexColor(nextColor).toUpperCase());
-    onCommit(formatCssColor(nextColor));
+  const previewColor = (nextColor: ParsedColor) => {
+    previewColorValue(formatCssColor(nextColor));
   };
 
   const commitHsv = (nextHsv: { hue?: number; saturation?: number; value?: number }) => {
@@ -210,7 +221,7 @@ export function ColorField({
       saturation: nextHsv.saturation ?? hsv.saturation,
       value: nextHsv.value ?? hsv.value,
     });
-    commitColor({ ...rgb, alpha: draftColor.alpha });
+    previewColor({ ...rgb, alpha: draftColor.alpha });
   };
 
   const updateSaturationValue = (clientX: number, clientY: number, target: HTMLDivElement) => {
@@ -225,7 +236,7 @@ export function ColorField({
     const normalized = nextHex.trim().startsWith("#") ? nextHex.trim() : `#${nextHex.trim()}`;
     const parsed = parseCssColor(normalized);
     if (!parsed) return;
-    commitColor({ ...parsed, alpha: draftColor.alpha });
+    previewColor({ ...parsed, alpha: draftColor.alpha });
   };
 
   const picker = open
@@ -310,7 +321,7 @@ export function ColorField({
               background="linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)"
               thumbColor={hueColor}
               disabled={disabled}
-              onCommit={(nextHue) => commitHsv({ hue: nextHue })}
+              onPreview={(nextHue) => commitHsv({ hue: nextHue })}
             />
 
             <ColorSlider
@@ -323,7 +334,7 @@ export function ColorField({
               background={`linear-gradient(90deg, transparent, ${opaqueColor})`}
               thumbColor={currentColor}
               disabled={disabled}
-              onCommit={(nextAlpha) => commitColor({ ...draftColor, alpha: nextAlpha })}
+              onPreview={(nextAlpha) => previewColor({ ...draftColor, alpha: nextAlpha })}
             />
 
             <label className="grid gap-1.5">
@@ -331,7 +342,10 @@ export function ColorField({
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexCommit(event.target.value)}
-                onBlur={() => setHexDraft(toHexColor(draftColor).toUpperCase())}
+                onBlur={() => {
+                  flushColor();
+                  setHexDraft(toHexColor(draftColor).toUpperCase());
+                }}
                 className={`${FIELD} h-10 w-full text-[11px] font-medium outline-none`}
                 spellCheck={false}
               />

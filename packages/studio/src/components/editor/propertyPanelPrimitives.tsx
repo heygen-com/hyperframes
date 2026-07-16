@@ -1,6 +1,59 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
+const INSPECTOR_COMMIT_DELAY_MS = 350;
+
+export function useDebouncedCommit<T>({
+  sourceValue,
+  onPreview,
+  onCommit,
+}: {
+  sourceValue: T;
+  onPreview: (nextValue: T) => void;
+  onCommit: (nextValue: T) => void;
+}) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef = useRef<{ value: T; commit: (nextValue: T) => void } | null>(null);
+
+  const flush = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending) pending.commit(pending.value);
+  }, []);
+
+  useEffect(() => flush, [flush, onCommit, sourceValue]);
+
+  const preview = useCallback(
+    (nextValue: T) => {
+      onPreview(nextValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (Object.is(nextValue, sourceValue)) {
+        timerRef.current = null;
+        pendingRef.current = null;
+        return;
+      }
+      pendingRef.current = { value: nextValue, commit: onCommit };
+      timerRef.current = setTimeout(flush, INSPECTOR_COMMIT_DELAY_MS);
+    },
+    [flush, onCommit, onPreview, sourceValue],
+  );
+
+  const commit = useCallback(
+    (nextValue: T) => {
+      onPreview(nextValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      pendingRef.current = null;
+      if (!Object.is(nextValue, sourceValue)) onCommit(nextValue);
+    },
+    [onCommit, onPreview, sourceValue],
+  );
+
+  return { preview, commit, flush };
+}
+
 function CommitField({
   value,
   disabled,
@@ -13,7 +66,6 @@ function CommitField({
   onCommit: (nextValue: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,6 +74,12 @@ function CommitField({
 
   valueRef.current = value;
   draftRef.current = draft;
+
+  const { preview: previewDraft, commit: commitDraft } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: setDraft,
+    onCommit,
+  });
 
   useEffect(() => {
     if (focusedRef.current && dirtyRef.current) return;
@@ -47,26 +105,8 @@ function CommitField({
     return () => el.removeEventListener("wheel", handler);
   }, [disabled]);
 
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-
-  const scheduleCommit = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 120);
-  };
-  const scheduleCommitRef = useRef(scheduleCommit);
-  scheduleCommitRef.current = scheduleCommit;
+  const scheduleCommitRef = useRef(previewDraft);
+  scheduleCommitRef.current = previewDraft;
 
   return (
     <input
@@ -79,8 +119,8 @@ function CommitField({
       }}
       onChange={(e) => {
         dirtyRef.current = true;
-        setDraft(e.target.value);
-        if (liveCommit) scheduleCommit(e.target.value);
+        if (liveCommit) previewDraft(e.target.value);
+        else setDraft(e.target.value);
       }}
       onBlur={() => {
         const wasDirty = dirtyRef.current;
@@ -99,8 +139,7 @@ function CommitField({
         if (!nextDraft) return;
         e.preventDefault();
         dirtyRef.current = true;
-        setDraft(nextDraft);
-        scheduleCommit(nextDraft);
+        previewDraft(nextDraft);
       }}
       title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
       className="min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
@@ -132,6 +171,21 @@ export function MetricField({
   onCommit: (nextValue: string) => void;
 }) {
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
+  const [scrubDraft, setScrubDraft] = useState<{ value: string; source: string } | null>(null);
+  const previewScrubDraft = useCallback(
+    (nextValue: string) => setScrubDraft({ value: nextValue, source: value }),
+    [value],
+  );
+  const {
+    preview: previewScrub,
+    commit: commitMetric,
+    flush: flushScrub,
+  } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: previewScrubDraft,
+    onCommit,
+  });
+  const displayedValue = scrubDraft?.source === value ? scrubDraft.value : value;
 
   const handleScrubPointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -149,14 +203,15 @@ export function MetricField({
       const state = scrubRef.current;
       if (!state) return;
       const delta = e.clientX - state.startX;
-      onCommit(String(Math.round(state.startValue + delta)));
+      previewScrub(String(Math.round(state.startValue + delta)));
     },
-    [onCommit],
+    [previewScrub],
   );
 
   const handleScrubPointerUp = useCallback(() => {
     scrubRef.current = null;
-  }, []);
+    flushScrub();
+  }, [flushScrub]);
 
   const scrubProps =
     scrub && !disabled
@@ -174,10 +229,10 @@ export function MetricField({
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{label}</span>
         <CommitField
-          value={value}
+          value={displayedValue}
           disabled={disabled}
           liveCommit={liveCommit}
-          onCommit={onCommit}
+          onCommit={commitMetric}
         />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
@@ -230,30 +285,15 @@ export function SliderControl({
   onCommit: (nextValue: number) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  const { preview: previewDraft, flush } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: setDraft,
+    onCommit,
+  });
 
   useEffect(() => {
     setDraft(value);
   }, [value]);
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-  const scheduleCommit = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 40);
-  };
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
@@ -266,12 +306,11 @@ export function SliderControl({
         disabled={disabled}
         onChange={(e) => {
           const n = Number(e.target.value);
-          setDraft(n);
-          scheduleCommit(n);
+          previewDraft(n);
         }}
-        onMouseUp={() => commitDraft(draft)}
-        onTouchEnd={() => commitDraft(draft)}
-        onBlur={() => commitDraft(draft)}
+        onMouseUp={flush}
+        onTouchEnd={flush}
+        onBlur={flush}
         className="h-4 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />
       <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">

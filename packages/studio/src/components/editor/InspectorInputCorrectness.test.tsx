@@ -18,6 +18,7 @@ const roots: Root[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
   document.body.innerHTML = "";
+  vi.useRealTimers();
 });
 
 function render(element: React.ReactNode) {
@@ -150,5 +151,41 @@ describe("inspector input correctness", () => {
 
     expect(input.value).toBe("#123456");
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("previews color pointer moves without committing each move", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    render(<ColorField label="Fill" value="#ff0000" onCommit={onCommit} />);
+    const openButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Pick fill color"]',
+    );
+    if (!openButton) throw new Error("Color picker button was not rendered");
+    act(() => openButton.click());
+    const saturationField = document.querySelector<HTMLDivElement>(".cursor-crosshair");
+    if (!saturationField) throw new Error("Color saturation field was not rendered");
+    saturationField.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+    const initialPreviewStyle = saturationField.lastElementChild?.getAttribute("style");
+
+    act(() =>
+      saturationField.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, buttons: 1, clientX: 25, clientY: 25 }),
+      ),
+    );
+    const firstPreviewStyle = saturationField.lastElementChild?.getAttribute("style");
+    expect(firstPreviewStyle).not.toBe(initialPreviewStyle);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() =>
+      saturationField.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, buttons: 1, clientX: 75, clientY: 50 }),
+      ),
+    );
+    expect(saturationField.lastElementChild?.getAttribute("style")).not.toBe(firstPreviewStyle);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });
