@@ -101,6 +101,9 @@ A vox piece is a sequence of DIFFERENT pages, not one page redecorated. Two hard
   These are the shared Vox annotation philosophy: labels point AT things (thin-arrow), facts get
   factual-register chips (caption-chip, mono variant for archive), processes get numbered steps,
   key words get marker sweeps, and every borrowed image/number gets a source footnote.
+- Data family (dark-data / archive grammars): `npx hyperframes add vox-annotated-line-chart vox-pie-callout vox-highlight-row-table` —
+  each ships a seek-safe draw-on helper (voxLineDraw / voxPieReveal / voxTableFocus). One chart
+  per page; emphasize one series/row in accent, rest neutral; every chart gets a source footnote.
 - Continuity: `npx hyperframes add vox-timeline-bar` — persistent bottom timeline (atlas grammar,
   but works for any dated narrative). Mount ONCE at composition level, keep it resident across
   beats, glide the playhead each beat, pop event chips on their VO keywords. Stronger than a

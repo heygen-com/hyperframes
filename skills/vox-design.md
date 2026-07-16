@@ -157,3 +157,9 @@ v2 changes (v1 preserved at tag `vox-skills-v1`):
 
 Still open after v2: archive/map/prop component families (photo-card, newspaper, portrait
 tokens, country fills), per-grammar layout blocks, block multi-instance id collision, SFX pass.
+
+**v2.1 (2026-07-16):** data-chart family shipped — `vox-annotated-line-chart`, `vox-pie-callout`,
+`vox-highlight-row-table` (seek-safe draw-on helpers), closing the P1 gap the dark-data preset
+was hand-building. Registry now 17 vox components + 1 block. BYO-footage path added to
+/vox-avatar + /vox-avatar-edit (transcribe-first, no Tokyo dependency — covers the
+with-footage user class). Remaining: map/archive-photo families, layout blocks, SFX.

@@ -17,5 +17,5 @@ No humans with visible faces. No dialogue. No narration. No music. Quiet ambienc
 
 Palette: charcoal `#1E1B18` / off-white `#f4f1e8` / marker yellow `#FFD21E` / signal red `#D2382B` / one cool accent (teal or faded navy).
 
-HF-native mapping (registry): `vox-highlighter-word` · `vox-caption-chip` (.accent for events) · `vox-source-footnote` (.on-dark) · charts hand-built per §chart rules (chart z-index behind host in avatar pieces).
+HF-native mapping (registry): `vox-annotated-line-chart` (event callout pinned to the inflection) · `vox-pie-callout` (hero wedge + count-up figure) · `vox-highlight-row-table` (.on-dark) · `vox-highlighter-word` · `vox-caption-chip` (.accent for events) · `vox-source-footnote` (.on-dark). Charts sit at z-index behind the host in avatar pieces.
 Text: numbers get the large treatment (one hero figure per page); sourcing mandatory on every chart (`vox-source-footnote`).

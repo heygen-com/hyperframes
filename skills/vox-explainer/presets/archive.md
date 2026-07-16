@@ -17,5 +17,5 @@ No modern elements. No dialogue. No narration. No music. Quiet room-tone ambienc
 
 Palette: near-black `#14110E` / photo sepia+grey / cream plate `#EFE6CE` / chip black `#111` / accent red `#D2382B` (numbered steps only).
 
-HF-native mapping (registry): `vox-caption-chip` (.mono) · `vox-numbered-step` · `vox-source-footnote` (.on-dark) · photo cards = `vox-torn-card` with straight white border variant + Ken Burns transform on inner img (wrapper/child split).
+HF-native mapping (registry): `vox-caption-chip` (.mono) · `vox-numbered-step` · `vox-highlight-row-table` (light variant, focal row) · `vox-source-footnote` (.on-dark) · photo cards = `vox-torn-card` with straight white border variant + Ken Burns transform on inner img (wrapper/child split).
 Text: captions are factual register (name, place, year); every archival image gets a source footnote.
