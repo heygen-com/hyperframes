@@ -131,3 +131,29 @@ The criticism is correct, and it's a design flaw, not an execution slip:
 | Restyle-a-still identity (NB2L + face rule) | ArcFace 0.888–0.909 |
 | Edit reliability | 27/27 zero retries, $0.55–0.72/beat |
 | Voice lock across clips | none exists (audio input disabled; extension unsupported) |
+
+## 7. v2 (2026-07-16 night) — the grammar family correction
+
+v1's self-critique (§5: "page monotony, vocabulary too small") was validated empirically:
+frame-level dissection of four canonical Vox videos (phones / emoji-ads / WWI-prosthetics /
+ME-cold-war-Atlas, 22 min, 96 sampled frames) showed **"Vox style" is a family of five page
+grammars** — collage, diagram, dark-data, archive, atlas — sharing one annotation philosophy
+and a presenter↔graphics alternation rhythm. v1 implemented only trend-collage (~15% of the
+observed vocabulary). Taxonomy: VA-1766 `research/vox-component-taxonomy.md`.
+
+v2 changes (v1 preserved at tag `vox-skills-v1`):
+- **Preset layer → five grammar presets** (single source in vox-explainer/presets/), chosen
+  by topic in a new §0 that all four skills route through.
+- **Annotation family shipped as registry components** (the grammar-agnostic, highest-leverage
+  gap): `vox-thin-arrow`, `vox-caption-chip`, `vox-numbered-step`, `vox-highlighter-word`,
+  `vox-source-footnote`, plus `vox-timeline-bar` (persistent continuity device, atlas grammar).
+- **vox-avatar: alternation rhythm** — plan beats as host/graphic; the host exits for
+  full-bleed graphic beats (real-Vox rhythm; also cheaper — Tokyo only for host beats).
+- **vox-omni: four prompt-discipline rules** adapted from ston6919/vox-style-video and
+  validated against our measured constraints: frame-0/reserved split, 0.5s still-hold +
+  no-reinterpret block, text whitelist + blank-cards-for-post (the Omni×HF hybrid seam),
+  PNG blur-checked handoff frames; plus an audio-first sectioning mode for fixed-VO pieces.
+- **vox-avatar-edit: grammar-aware style half** of each edit prompt (condensed preset lines).
+
+Still open after v2: archive/map/prop component families (photo-card, newspaper, portrait
+tokens, country fills), per-grammar layout blocks, block multi-instance id collision, SFX pass.
