@@ -68,7 +68,10 @@ async function main(): Promise<void> {
     })),
   );
 
-  await rm(outputDir, { force: true, recursive: true });
+  // Full runs rebuild from scratch; explicit-name runs only refresh their own
+  // files (wiping here 404s every other staged page still referenced by
+  // compare boards).
+  if (requested.length === 0) await rm(outputDir, { force: true, recursive: true });
   await mkdir(outputDir, { recursive: true });
 
   const index: StagedTriple[] = [];
