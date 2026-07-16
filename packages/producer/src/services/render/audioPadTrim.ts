@@ -19,12 +19,10 @@
  */
 
 import { spawn } from "node:child_process";
-import { rmSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { rmSync, writeFileSync } from "node:fs";
 import {
   extractAudioMetadata,
   formatFfmpegError,
-  getFfmpegBinary,
   getFfprobeBinary,
   runFfmpeg,
   type AudioMetadata,
@@ -70,10 +68,7 @@ export interface PadTrimAudioInput {
    */
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
   probeAudioInfo?: (audioPath: string) => Promise<AudioProbeInfo>;
-  runFfmpeg?: (
-    args: string[],
-    options?: { stdin?: string },
-  ) => Promise<{ success: boolean; error?: string }>;
+  runFfmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
 }
 
 export type PadTrimOperation = "pad" | "trim" | "copy";
@@ -96,7 +91,16 @@ export type PadTrimAudioStepKind = "copy" | "trim" | "pad-silence" | "pad-concat
 export interface PadTrimAudioStep {
   kind: PadTrimAudioStepKind;
   args: string[];
-  stdin?: string;
+  /**
+   * Concat-demuxer script materialization. When both fields are set, the
+   * runner writes `concatListContent` to `concatListPath` synchronously
+   * before spawning ffmpeg, and the step's `args` reference that path via
+   * `-i concatListPath`. Feeding the concat script through a real file
+   * (instead of `pipe:0`) is what makes bare-path directives work on both
+   * Linux and Windows — see `concatFileLine` for the platform history.
+   */
+  concatListPath?: string;
+  concatListContent?: string;
 }
 
 export interface PadTrimAudioPlan {
@@ -138,6 +142,7 @@ export function buildPadTrimAudioPlan(
   if (delta > 0) {
     const padDur = formatSeconds(delta);
     const silencePath = `${outputPath}.pad-silence.aac`;
+    const concatListPath = `${outputPath}.concat-list.txt`;
     return {
       operation: "pad",
       steps: [
@@ -165,19 +170,18 @@ export function buildPadTrimAudioPlan(
             "concat",
             "-safe",
             "0",
-            "-protocol_whitelist",
-            "file,pipe,crypto,data",
             "-i",
-            "pipe:0",
+            concatListPath,
             "-c:a",
             "copy",
             "-y",
             outputPath,
           ],
-          stdin: `${concatFileLine(audioPath)}\n${concatFileLine(silencePath)}\n`,
+          concatListPath,
+          concatListContent: `${concatFileLine(audioPath)}\n${concatFileLine(silencePath)}\n`,
         },
       ],
-      cleanupPaths: [silencePath],
+      cleanupPaths: [silencePath, concatListPath],
     };
   }
   // Trim. `-t` truncates AAC without re-encoding because AAC frames are
@@ -231,8 +235,27 @@ function channelLayoutForChannels(channels: number | undefined): string {
 }
 
 function concatFileLine(path: string): string {
-  const normalized = pathToFileURL(path).href;
-  return `file '${normalized.replace(/'/g, "'\\''")}'`;
+  // Bare paths in concat directives — NOT `file://` URLs. Two failure
+  // modes on the round trip to a working shape:
+  //   1. `file:///C:/…` — FFmpeg 8.x on Windows fails to open URL-form
+  //      paths from the concat demuxer with "Impossible to open
+  //      file:///C:/…" (its `file:` protocol strips the scheme leaving
+  //      `///C:/…`, which Windows path parsing then rejects). Field-
+  //      signal reports ts=1784169914 / 1784177061 / 1784177375 (all
+  //      win32/x64 CLI 0.7.59; the last isolated the module's arg shape
+  //      vs a working manual `apad=whole_dur` command).
+  //   2. Bare `/tmp/…` when the concat script was fed via `pipe:0` —
+  //      FFmpeg's URL joiner resolves absolute POSIX paths against the
+  //      base `pipe:` URL, producing `pipe:/tmp/…` which the demuxer
+  //      then tries to open as a pipe. Broke Linux CI (regression shard
+  //      + producer integration) once the `file://` prefix was dropped.
+  // Fix: emit bare paths AND materialize the concat script into a real
+  // file (see `concatListPath`/`concatListContent` on the pad-concat
+  // step), matching sibling `assemble.ts`'s concat convention. A real
+  // file's directory becomes the base URL, and absolute paths in the
+  // script resolve as-is on both platforms. The single-quote escaping
+  // (`'\''`) is the concat demuxer's own escape rule.
+  return `file '${path.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -300,7 +323,14 @@ export async function padOrTrimAudioToVideoFrameCount(
 
   try {
     for (const step of plan.steps) {
-      const ffmpegResult = await runner(step.args, { stdin: step.stdin });
+      // Materialize the concat-demuxer script to a real file when the step
+      // needs one. Doing this here (instead of piping via `pipe:0` in the
+      // runner) is what makes the demuxer's URL resolution treat
+      // absolute paths as absolute — see `concatFileLine` for context.
+      if (step.concatListPath !== undefined && step.concatListContent !== undefined) {
+        writeFileSync(step.concatListPath, step.concatListContent, "utf-8");
+      }
+      const ffmpegResult = await runner(step.args);
       if (!ffmpegResult.success) {
         return {
           success: false,
@@ -427,52 +457,13 @@ async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo>
   };
 }
 
-async function defaultRunFfmpeg(
-  args: string[],
-  options?: { stdin?: string },
-): Promise<{ success: boolean; error?: string }> {
-  if (options?.stdin !== undefined) return runFfmpegWithStdin(args, options.stdin);
-
+async function defaultRunFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }> {
   const result = await runFfmpeg(args);
   if (result.success) return { success: true };
   return {
     success: false,
     error: `[audioPadTrim] ${formatFfmpegError(result.exitCode, result.stderr)}`,
   };
-}
-
-async function runFfmpegWithStdin(
-  args: string[],
-  stdin: string,
-): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn(getFfmpegBinary(), args);
-    let stderr = "";
-
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("error", (err) => {
-      resolve({
-        success: false,
-        error: `[audioPadTrim] ${err instanceof Error ? err.message : String(err)}`,
-      });
-    });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve({ success: true });
-        return;
-      }
-      resolve({
-        success: false,
-        error: `[audioPadTrim] ${formatFfmpegError(code, stderr)}`,
-      });
-    });
-
-    proc.stdin.end(stdin);
-  });
 }
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────
