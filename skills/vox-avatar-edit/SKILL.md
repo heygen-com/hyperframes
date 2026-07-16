@@ -35,7 +35,7 @@ script → beats → TTS (person's voice) → Tokyo talking clips (lips)      [=
   → concat (hard cuts)
 ```
 
-Working script: `scripts/omni_edit_batch2.py <case>` (compose → edit → conform → remux → concat).
+Working script: `scripts/omni_edit_batch3.py <case>` (v2: grammar-aware style half, per-case canvas color; compose → edit → conform → remux → concat). v1 collage-only variant: `scripts/omni_edit_batch2.py`.
 
 ## Rules (each one is a measured failure turned guardrail)
 

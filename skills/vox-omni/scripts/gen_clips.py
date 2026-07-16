@@ -48,7 +48,7 @@ def gen_beat(beat, style, ref_frame_path, ledger):
             inp.insert(0, {
                 "type": "image",
                 "data": base64.b64encode(f.read()).decode(),
-                "mime_type": "image/jpeg",
+                "mime_type": "image/png",
             })
     body = {
         "model": MODEL,
@@ -92,9 +92,9 @@ def gen_beat(beat, style, ref_frame_path, ledger):
     })
     print(f"beat{beat['id']} [{beat['label']}] ok: {gen_s:.0f}s, {len(data)} bytes, ~${ledger[-1]['usd_est']}")
 
-    last = os.path.join(OUT, f"beat{beat['id']}-last.jpg")
+    last = os.path.join(OUT, f"beat{beat['id']}-last.png")
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-sseof", "-0.1", "-i", clip, "-frames:v", "1", "-q:v", "2", last],
+        ["ffmpeg", "-y", "-v", "error", "-sseof", "-0.1", "-i", clip, "-frames:v", "1", last],
         check=True,
     )
     return last
