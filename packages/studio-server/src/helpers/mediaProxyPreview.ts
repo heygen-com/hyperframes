@@ -78,8 +78,8 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
  * static project servers (via the `./media-proxy-preview` subpath export).
- * The map is injected even when empty: the runtime treats map PRESENCE as
- * "this surface serves `?hf-proxy=`", gating its reactive/tertiary swaps.
+ * Empty maps leave HTML untouched, preserving the normal no-hostile-media
+ * preview path. On-demand proxy requests enforce the same eligibility gate.
  */
 export async function injectMediaCodecMapIntoHtml(
   html: string,
@@ -98,6 +98,7 @@ export async function injectMediaCodecMapIntoHtml(
     // Best-effort: a scan failure must never block serving the page.
     return html;
   }
+  if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
     if (!facts.browserHostile || facts.hasAlpha) continue;
     resolveProxy(projectDir, resolve(projectDir, rootRelativePathname.replace(/^\/+/, ""))).catch(

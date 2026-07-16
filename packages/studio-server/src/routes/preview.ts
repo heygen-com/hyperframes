@@ -16,6 +16,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { resolveProxy, ProxyTranscodeError } from "../helpers/proxyTranscoder.js";
+import { decideMediaProxyEligibility, probeAssetCodec } from "../helpers/mediaCodecMap.js";
 import {
   isAutoProxyEnabled,
   injectMediaCodecMap,
@@ -61,7 +62,9 @@ function parseStudioMotionManifestContent(content: string): {
   hasCustomEase: boolean;
 } {
   try {
-    const parsed = JSON.parse(content) as { motions?: Array<{ customEase?: unknown }> };
+    const parsed = JSON.parse(content) as {
+      motions?: Array<{ customEase?: unknown }>;
+    };
     const motions = Array.isArray(parsed.motions) ? parsed.motions : [];
     return {
       hasMotion: motions.length > 0,
@@ -247,11 +250,13 @@ function variablesEtagSalt(raw: string | undefined): string {
  * route should 400; otherwise `values` is the override object (or null when
  * the param is absent) and `raw` feeds the ETag salt.
  */
-function previewVariablesFromRequest(
-  rawVariables: string | undefined,
-):
+function previewVariablesFromRequest(rawVariables: string | undefined):
   | { error: string }
-  | { error?: undefined; raw: string | undefined; values: Record<string, unknown> | null } {
+  | {
+      error?: undefined;
+      raw: string | undefined;
+      values: Record<string, unknown> | null;
+    } {
   const parse = parsePreviewVariablesParam(rawVariables);
   if (!parse.ok) return { error: parse.error };
   return { raw: rawVariables, values: parse.values };
@@ -299,11 +304,17 @@ function resolveProjectMainHtml(
 ): { html: string; compositionPath: string } | null {
   const indexPath = join(projectDir, "index.html");
   if (existsSync(indexPath)) {
-    return { html: readFileSync(indexPath, "utf-8"), compositionPath: "index.html" };
+    return {
+      html: readFileSync(indexPath, "utf-8"),
+      compositionPath: "index.html",
+    };
   }
   const blockHtmlPath = join(projectDir, `${projectId}.html`);
   if (existsSync(blockHtmlPath)) {
-    return { html: readFileSync(blockHtmlPath, "utf-8"), compositionPath: `${projectId}.html` };
+    return {
+      html: readFileSync(blockHtmlPath, "utf-8"),
+      compositionPath: `${projectId}.html`,
+    };
   }
   return null;
 }
@@ -334,7 +345,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
-      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
     }
 
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
@@ -472,7 +486,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const etag = `"comp:v2:${compPath}:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
-      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
     }
 
     const stamped = pinSubCompHfIds(compFile, compPath);
@@ -527,12 +544,19 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       ) {
         return c.text("not found", 404);
       }
+      const eligibility = decideMediaProxyEligibility(await probeAssetCodec(file));
+      if (!eligibility.eligible) {
+        return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
+      }
     }
 
     const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyParam)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
-      : { "Cache-Control": "private, max-age=3600, must-revalidate", ETag: etag };
+      : {
+          "Cache-Control": "private, max-age=3600, must-revalidate",
+          ETag: etag,
+        };
 
     if (!isText) {
       const ifNoneMatch = c.req.header("If-None-Match");

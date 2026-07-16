@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import type { FfprobeRunner } from "./mediaMetadata.js";
 import {
   BROWSER_HOSTILE_CODECS,
+  decideMediaProxyEligibility,
   createMediaCodecProbeCache,
   probeAssetCodec,
   scanProjectMediaCodecMap,
@@ -24,13 +25,22 @@ function makeRunner(
     const entry = codecByPath[filePath];
     const normalized = typeof entry === "string" ? { codecName: entry } : entry;
     const streams = normalized
-      ? [{ codec_type: "video", codec_name: normalized.codecName, pix_fmt: normalized.pixFmt }]
+      ? [
+          {
+            codec_type: "video",
+            codec_name: normalized.codecName,
+            pix_fmt: normalized.pixFmt,
+          },
+        ]
       : [];
     return { status: 0, stdout: JSON.stringify({ streams }), stderr: "" };
   };
 }
 
-function countingRunner(runner: FfprobeRunner): { runner: FfprobeRunner; calls: () => number } {
+function countingRunner(runner: FfprobeRunner): {
+  runner: FfprobeRunner;
+  calls: () => number;
+} {
   let calls = 0;
   return {
     runner: (command, args, options) => {
@@ -122,7 +132,9 @@ describe("probeAssetCodec", () => {
 
     const facts = await probeAssetCodec(
       videoPath,
-      makeRunner({ [videoPath]: { codecName: "prores", pixFmt: "yuva444p10le" } }),
+      makeRunner({
+        [videoPath]: { codecName: "prores", pixFmt: "yuva444p10le" },
+      }),
     );
 
     expect(facts).toEqual({
@@ -142,6 +154,42 @@ describe("probeAssetCodec", () => {
     await expect(
       probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" })),
     ).resolves.toBeNull();
+  });
+});
+
+describe("decideMediaProxyEligibility", () => {
+  it("allows only hostile opaque video through the H.264 proxy path", () => {
+    expect(
+      decideMediaProxyEligibility({
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      }),
+    ).toEqual({ eligible: true });
+  });
+
+  it("rejects alpha and browser-safe sources before transcoding", () => {
+    expect(
+      decideMediaProxyEligibility({
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: true,
+      }),
+    ).toEqual({ eligible: false, reason: "alpha_source" });
+    expect(
+      decideMediaProxyEligibility({
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      }),
+    ).toEqual({ eligible: false, reason: "browser_safe_codec" });
+    expect(decideMediaProxyEligibility(null)).toEqual({
+      eligible: false,
+      reason: "unknown_codec",
+    });
   });
 });
 
@@ -172,9 +220,9 @@ describe("scanProjectMediaCodecMap", () => {
       }),
     });
 
-    expect(Object.keys(map).sort()).toEqual(["/assets/my clip.mp4", "/assets/sub/clip.mp4"]);
+    expect(Object.keys(map)).toEqual(["/assets/sub/clip.mp4"]);
     expect(map["/assets/sub/clip.mp4"]?.browserHostile).toBe(true);
-    expect(map["/assets/my clip.mp4"]?.browserHostile).toBe(false);
+    expect(map["/assets/my clip.mp4"]).toBeUndefined();
   });
 
   it("rewrites a sub-composition's ../-traversing src via compSrcPath before resolving (rewriteAssetPath)", async () => {
@@ -185,7 +233,12 @@ describe("scanProjectMediaCodecMap", () => {
 
     const map = await scanProjectMediaCodecMap(
       project,
-      [{ html: videoHtml("../assets/clip.mp4"), compSrcPath: "compositions/scene.html" }],
+      [
+        {
+          html: videoHtml("../assets/clip.mp4"),
+          compSrcPath: "compositions/scene.html",
+        },
+      ],
       { runner: makeRunner({ [join(project, "assets", "clip.mp4")]: "hevc" }) },
     );
 

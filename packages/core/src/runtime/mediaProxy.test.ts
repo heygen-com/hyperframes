@@ -89,7 +89,11 @@ describe("maybeProxyProactively", () => {
 
   it("swaps when hostile and representativeMime is null (no canPlayType check possible)", () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
-      "/video.mp4": { codecName: "prores", browserHostile: true, representativeMime: null },
+      "/video.mp4": {
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+      },
     };
     const el = createVideo("/video.mp4");
     stubCanPlayType(el, "probably"); // should not even be consulted
@@ -231,6 +235,23 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
       expect.objectContaining({
         code: "runtime_media_proxy_unavailable",
         details: expect.objectContaining({ reason: "alpha_source" }),
+      }),
+    );
+  });
+
+  it("does not proxy a mapped browser-safe codec on the metadata path", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": H264_ENTRY };
+    const el = createVideo("/video.mp4");
+    markZeroWidth(el);
+
+    handleMetadataForProxy(el);
+
+    expect(isProxied(el)).toBe(false);
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "runtime_media_proxy_unavailable",
+        details: expect.objectContaining({ reason: "browser_safe_codec" }),
       }),
     );
   });
@@ -385,6 +406,23 @@ describe("handleErrorForProxy (tertiary trigger)", () => {
 });
 
 describe("swapToProxy", () => {
+  it("does not poison swap state when the source URL is malformed", () => {
+    const el = createVideo("/video.mp4");
+    Object.defineProperty(el, "currentSrc", {
+      value: "http://[",
+      configurable: true,
+    });
+
+    swapToProxy(el, HEVC_ENTRY, "reactive");
+
+    expect(el.load).not.toHaveBeenCalled();
+    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "runtime_media_proxy_unavailable",
+        details: expect.objectContaining({ reason: "invalid_source_url" }),
+      }),
+    );
+  });
   it("evicts per-source sync state so the swapped element is treated as a first tick", () => {
     const el = createVideo("/video.mp4");
     // Populate sync state as a real active-clip tick would.

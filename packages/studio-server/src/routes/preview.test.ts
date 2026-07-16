@@ -672,13 +672,23 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
   ) => Promise<
     Record<
       string,
-      { codecName: string; browserHostile: boolean; representativeMime: string | null }
+      {
+        codecName: string;
+        browserHostile: boolean;
+        representativeMime: string | null;
+      }
     >
   >;
 
   async function loadPreviewModule(opts: {
     resolveProxyImpl?: (projectDir: string, absoluteSourcePath: string) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
+    probeAssetCodecImpl?: () => Promise<{
+      codecName: string;
+      browserHostile: boolean;
+      representativeMime: string | null;
+      hasAlpha: boolean;
+    } | null>;
   }): Promise<typeof import("./preview.js")> {
     vi.resetModules();
     const resolveProxy =
@@ -699,6 +709,27 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     vi.doMock("../helpers/mediaCodecMap.js", () => ({
       scanProjectMediaCodecMap: opts.scanMapImpl ?? (async () => ({})),
       createMediaCodecProbeCache: () => new Map(),
+      probeAssetCodec:
+        opts.probeAssetCodecImpl ??
+        (async () => ({
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        })),
+      decideMediaProxyEligibility: (
+        facts: {
+          browserHostile: boolean;
+          hasAlpha: boolean;
+        } | null,
+      ) => {
+        if (!facts) return { eligible: false, reason: "unknown_codec" };
+        if (facts.hasAlpha) return { eligible: false, reason: "alpha_source" };
+        if (!facts.browserHostile) {
+          return { eligible: false, reason: "browser_safe_codec" };
+        }
+        return { eligible: true };
+      },
     }));
     return import("./preview.js");
   }
@@ -807,6 +838,39 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
+    it("rejects alpha-bearing and browser-safe sources before transcoding", async () => {
+      for (const facts of [
+        {
+          codecName: "prores",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: true,
+        },
+        {
+          codecName: "h264",
+          browserHostile: false,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      ]) {
+        const projectDir = createProjectDir();
+        writeFileSync(join(projectDir, "clip.mp4"), "video-bytes");
+        const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+        const { registerPreviewRoutes: register } = await loadPreviewModule({
+          resolveProxyImpl: resolveProxyMock,
+          probeAssetCodecImpl: async () => facts,
+        });
+        const app = new Hono();
+        register(app, createAdapter(projectDir));
+
+        const res = await app.request(
+          "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+        );
+        expect(res.status).toBe(422);
+        expect(resolveProxyMock).not.toHaveBeenCalled();
+      }
+    });
+
     it("returns 404 without transcoding when the param value is not exactly h264", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -884,6 +948,18 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
   });
 
   describe("__HF_MEDIA_CODEC_MAP__ injection into composition HTML", () => {
+    it("keeps HTML byte-identical when the scan finds no proxy-eligible media", async () => {
+      const projectDir = createProjectDir();
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({}),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request("http://localhost/projects/demo/preview");
+      const html = await res.text();
+      expect(html).not.toContain("data-hf-media-codec-map");
+    });
     it("injects the scanned map naming the hostile fixture, and pre-warms resolveProxy for it", async () => {
       const projectDir = createProjectDir();
       const resolveProxyMock = vi.fn(async () => join(projectDir, ".transcode-cache", "x.mp4"));
@@ -924,7 +1000,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       writeFileSync(join(projectDir, "clip.mp4"), "bytes");
       const resolveProxyMock = vi.fn(async () => "should-not-be-called");
       const scanMapMock = vi.fn(async () => ({
-        "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+        "/clip.mp4": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+        },
       }));
       const { registerPreviewRoutes: register } = await loadPreviewModule({
         resolveProxyImpl: resolveProxyMock,

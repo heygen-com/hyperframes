@@ -44,6 +44,20 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
   av1: 'video/mp4; codecs="av01.0.08M.08"',
 };
 
+export type MediaProxyIneligibilityReason = "alpha_source" | "browser_safe_codec" | "unknown_codec";
+
+export type MediaProxyEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: MediaProxyIneligibilityReason };
+
+/** Single policy gate shared by proactive scans and on-demand proxy routes. */
+export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
+  if (!facts) return { eligible: false, reason: "unknown_codec" };
+  if (facts.hasAlpha) return { eligible: false, reason: "alpha_source" };
+  if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
+  return { eligible: true };
+}
+
 function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
   const isHostile = Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName);
   return {
@@ -219,7 +233,7 @@ export async function scanProjectMediaCodecMap(
   const map: MediaCodecMap = {};
   entries.forEach(([, pathname], index) => {
     const entryFacts = facts[index];
-    if (entryFacts) map[pathname] = entryFacts;
+    if (entryFacts?.browserHostile) map[pathname] = entryFacts;
   });
   return map;
 }

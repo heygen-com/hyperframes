@@ -123,7 +123,7 @@ function lookupCodecMapEntry(
     if (!pathname.endsWith(key)) continue;
     if (bestKey === null || key.length > bestKey.length) bestKey = key;
   }
-  return bestKey ? map[bestKey] : null;
+  return bestKey ? (map[bestKey] ?? null) : null;
 }
 
 function appendProxyParam(src: string): string {
@@ -136,7 +136,8 @@ type UnavailableReason =
   | "cross_origin"
   | "proxy_playback_failed"
   | "browser_safe_codec"
-  | "alpha_source";
+  | "alpha_source"
+  | "invalid_source_url";
 
 const UNAVAILABLE_NOTES: Record<UnavailableReason, string> = {
   cross_origin:
@@ -146,6 +147,7 @@ const UNAVAILABLE_NOTES: Record<UnavailableReason, string> = {
     "the file errored but its codec is browser-decodable; an H.264 proxy cannot help (the file itself is likely corrupt)",
   alpha_source:
     "the source carries an alpha channel; an H.264 proxy would destroy the transparency, so it is never proxied",
+  invalid_source_url: "the media source URL is malformed and cannot be proxied",
 };
 
 function emitUnavailableDiagnostic(
@@ -184,15 +186,16 @@ export function swapToProxy(
   trigger: ProxyTrigger = "reactive",
 ): void {
   if (swappedElements.has(el)) return;
-  swappedElements.add(el);
   const originalSrc = currentSrcValue(el);
   let proxiedSrc: string;
   try {
     proxiedSrc = appendProxyParam(originalSrc);
   } catch (err) {
     swallow("runtime.mediaProxy.swap", err);
+    emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
     return;
   }
+  swappedElements.add(el);
   // The swapped src points at a different file — sync state (drift offsets,
   // seek-retry latches, volume tracking) computed against the original
   // source must not carry over, or the next tick misreads a fresh file's
@@ -281,6 +284,10 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
     return;
   }
   const entry = lookupCodecMapEntry(key, map);
+  if (entry && !entry.browserHostile) {
+    emitUnavailableDiagnostic(el, "browser_safe_codec", src);
+    return;
+  }
   if (entry?.hasAlpha) {
     emitUnavailableDiagnostic(el, "alpha_source", src);
     return;
