@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject } from "react";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import { buildStrokeWidthStyleUpdates } from "../components/editor/propertyPanelHelpers";
 import { usePlayerStore } from "../player";
+import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDomEditCommits } from "./useDomEditCommits";
@@ -29,11 +31,14 @@ interface RenderedDomEditCommits {
   showToast: ReturnType<typeof makeShowToast>;
   recordEdit: ReturnType<typeof vi.fn<() => Promise<void>>>;
   reloadPreview: ReturnType<typeof vi.fn>;
+  refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
   cleanup: () => void;
 }
 
 interface RenderDomEditCommitsOptions {
   importedFontAssets?: ImportedFontAsset[];
+  queueDomEditSave?: (save: () => Promise<void>) => Promise<void>;
+  refreshDomEditSelectionFromPreview?: (selection: DomEditSelection) => void;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
 }
 
@@ -91,6 +96,43 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
   return input.url;
+}
+
+interface CapturedPatchOperation {
+  type: string;
+  property: string;
+  value: unknown;
+  childSelector: unknown;
+  childIndex: unknown;
+}
+
+function isPatchOperationLike(value: unknown): value is { type: string; property: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof value.type === "string" &&
+    "property" in value &&
+    typeof value.property === "string"
+  );
+}
+
+function requestOperations(init: Parameters<typeof fetch>[1]): CapturedPatchOperation[] {
+  const body: unknown = JSON.parse(String(init?.body));
+  if (typeof body !== "object" || body === null || !("operations" in body)) {
+    throw new Error("Expected patch operations");
+  }
+  if (!Array.isArray(body.operations)) throw new Error("Expected patch operations");
+  return body.operations.map((operation) => {
+    if (!isPatchOperationLike(operation)) throw new Error("Expected patch operation");
+    return {
+      type: operation.type,
+      property: operation.property,
+      value: "value" in operation ? operation.value : undefined,
+      childSelector: "childSelector" in operation ? operation.childSelector : undefined,
+      childIndex: "childIndex" in operation ? operation.childIndex : undefined,
+    };
+  });
 }
 
 function stubPatchFetch(
@@ -152,6 +194,7 @@ function textField(input: {
   value: string;
   source: DomEditTextField["source"];
   tagName?: string;
+  sourceChildIndex?: number;
 }): DomEditTextField {
   return {
     key: input.key,
@@ -162,6 +205,7 @@ function textField(input: {
     inlineStyles: {},
     computedStyles: {},
     source: input.source,
+    sourceChildIndex: input.sourceChildIndex,
   };
 }
 
@@ -212,13 +256,14 @@ function renderDomEditCommits(
   const projectIdRef: MutableRefObject<string | null> = { current: "p1" };
   const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
   const reloadPreview = vi.fn();
+  const refreshDomEditSelectionFromPreview = options.refreshDomEditSelectionFromPreview ?? vi.fn();
 
   function Probe() {
     captured.current = useDomEditCommits({
       activeCompPath: "index.html",
       previewIframeRef,
       showToast,
-      queueDomEditSave: async (save) => save(),
+      queueDomEditSave: options.queueDomEditSave ?? (async (save) => save()),
       writeProjectFile: options.writeProjectFile ?? (async () => {}),
       domEditSaveTimestampRef,
       editHistory: { recordEdit },
@@ -230,7 +275,7 @@ function renderDomEditCommits(
       domEditSelection: selection,
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
-      refreshDomEditSelectionFromPreview: vi.fn(),
+      refreshDomEditSelectionFromPreview,
       buildDomSelectionFromTarget: vi.fn(async () => null),
     });
     return null;
@@ -248,6 +293,7 @@ function renderDomEditCommits(
     showToast,
     recordEdit,
     reloadPreview,
+    refreshDomEditSelectionFromPreview,
     cleanup: () => {
       act(() => {
         root.unmount();
@@ -406,11 +452,14 @@ describe("useDomEditCommits z-index reorder persistence", () => {
   });
 });
 
-async function commitStyleAgainst(response: Parameters<typeof stubPatchFetch>[0]) {
+async function commitStyleAgainst(
+  response: Parameters<typeof stubPatchFetch>[0],
+  options: RenderDomEditCommitsOptions = {},
+) {
   stubPatchFetch(response);
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   const { iframe, element } = createPreviewElement();
-  const rendered = renderDomEditCommits(createSelection(element), iframe);
+  const rendered = renderDomEditCommits(createSelection(element), iframe, options);
   await act(async () => {
     await rendered.hook.handleDomStyleCommit("color", "blue");
   });
@@ -425,12 +474,15 @@ async function commitStyleAgainst(response: Parameters<typeof stubPatchFetch>[0]
   };
 }
 
-function renderStyleCommitWithFetch(fetchHandler: FetchHandler) {
+function renderStyleCommitWithFetch(
+  fetchHandler: FetchHandler,
+  options: RenderDomEditCommitsOptions = {},
+) {
   const fetchMock = vi.fn(fetchHandler);
   vi.stubGlobal("fetch", fetchMock);
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   const { iframe, element } = createPreviewElement();
-  const rendered = renderDomEditCommits(createSelection(element), iframe);
+  const rendered = renderDomEditCommits(createSelection(element), iframe, options);
   return {
     element,
     fetchMock,
@@ -438,6 +490,64 @@ function renderStyleCommitWithFetch(fetchHandler: FetchHandler) {
     warnSpy,
     cleanup: () => {
       warnSpy.mockRestore();
+      rendered.cleanup();
+    },
+  };
+}
+
+function renderWithBlockedFirstSave(
+  bodyHtml = '<div data-hf-id="hf-card" style="color: red">Card</div>',
+  selectionOverrides: Partial<DomEditSelection> = {},
+) {
+  const firstSave = createDeferred<void>();
+  const firstSaveStarted = createDeferred<void>();
+  const startedOperations: CapturedPatchOperation[][] = [];
+  const persistedState = new Map<string, string | null>();
+  let persistReadCount = 0;
+  const saveQueue = createDomEditSaveQueue();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/")) {
+        persistReadCount += 1;
+        return jsonResponse({ content: bodyHtml });
+      }
+      if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+        const operations = requestOperations(init);
+        startedOperations.push(operations);
+        if (startedOperations.length === 1) {
+          firstSaveStarted.resolve(undefined);
+          await firstSave.promise;
+        }
+        for (const operation of operations) {
+          if (typeof operation.value !== "string" && operation.value !== null) {
+            throw new Error("Expected persisted patch value");
+          }
+          persistedState.set(operation.property, operation.value);
+        }
+        return jsonResponse({ ok: true, changed: true, matched: true, content: "" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }),
+  );
+  const { iframe, element } = createPreviewElement(bodyHtml);
+  const selection = createSelection(element, selectionOverrides);
+  const rendered = renderDomEditCommits(selection, iframe, {
+    queueDomEditSave: saveQueue.enqueue,
+  });
+  return {
+    element,
+    selection,
+    rendered,
+    startedOperations,
+    persistedState,
+    firstSaveStarted: firstSaveStarted.promise,
+    getPersistReadCount: () => persistReadCount,
+    releaseFirstSave: () => firstSave.resolve(undefined),
+    cleanup: () => {
+      firstSave.resolve(undefined);
+      saveQueue.destroy();
       rendered.cleanup();
     },
   };
@@ -525,7 +635,10 @@ describe("useDomEditCommits style persist handling", () => {
   });
 
   it("toasts and reverts a style commit when the patch request rejects", async () => {
-    const { element, rendered, cleanup } = await commitStyleAgainst(new Error("network down"));
+    const saveQueue = createDomEditSaveQueue();
+    const { element, rendered, cleanup } = await commitStyleAgainst(new Error("network down"), {
+      queueDomEditSave: saveQueue.enqueue,
+    });
 
     try {
       expect(rendered.showToast).toHaveBeenCalledWith(
@@ -534,6 +647,7 @@ describe("useDomEditCommits style persist handling", () => {
       );
       expect(element.style.getPropertyValue("color")).toBe("red");
     } finally {
+      saveQueue.destroy();
       cleanup();
     }
   });
@@ -599,6 +713,226 @@ describe("useDomEditCommits style persist handling", () => {
       expect(element.style.getPropertyValue("color")).toBe("green");
     } finally {
       cleanup();
+    }
+  });
+
+  it("persists overlapping style commits in issue order", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const firstCommit = harness.rendered.hook.handleDomStyleCommit("color", "blue");
+      await harness.firstSaveStarted;
+      const secondCommit = harness.rendered.hook.handleDomStyleCommit("color", "green");
+
+      expect(harness.getPersistReadCount()).toBe(1);
+
+      harness.releaseFirstSave();
+      await Promise.all([firstCommit, secondCommit]);
+
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "color", value: "blue" })],
+        [expect.objectContaining({ property: "color", value: "green" })],
+      ]);
+      expect(harness.persistedState.get("color")).toBe("green");
+      expect(harness.element.style.getPropertyValue("color")).toBe("green");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("persists queued border width before the following border style", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const widthCommit = harness.rendered.hook.handleDomStyleCommit("border-width", "4px");
+      await harness.firstSaveStarted;
+      const styleCommit = harness.rendered.hook.handleDomStyleCommit("border-style", "solid");
+
+      expect(harness.getPersistReadCount()).toBe(1);
+
+      harness.releaseFirstSave();
+      await Promise.all([widthCommit, styleCommit]);
+
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "border-width", value: "4px" })],
+        [expect.objectContaining({ property: "border-style", value: "solid" })],
+      ]);
+      expect(harness.persistedState.get("border-width")).toBe("4px");
+      expect(harness.persistedState.get("border-style")).toBe("solid");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("keeps a pending border style fresh for a following border width commit", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const styleCommit = harness.rendered.hook.handleDomStyleCommit("border-style", "dashed");
+      await harness.firstSaveStarted;
+
+      expect(harness.selection.computedStyles["border-style"]).toBe("dashed");
+      const widthUpdates = buildStrokeWidthStyleUpdates(
+        "4px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(widthUpdates).toEqual([["border-width", "4px"]]);
+
+      const widthCommits = widthUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+      harness.releaseFirstSave();
+      await Promise.all([styleCommit, ...widthCommits]);
+
+      expect(harness.persistedState.get("border-style")).toBe("dashed");
+      expect(harness.persistedState.get("border-width")).toBe("4px");
+      expect(harness.startedOperations.flat().map(({ property }) => property)).toEqual([
+        "border-style",
+        "border-width",
+      ]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("uses the border style produced by the previous rapid width commit", async () => {
+    const harness = renderWithBlockedFirstSave();
+
+    try {
+      const firstUpdates = buildStrokeWidthStyleUpdates(
+        "2px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(firstUpdates).toEqual([
+        ["border-width", "2px"],
+        ["border-style", "solid"],
+      ]);
+      const firstCommits = firstUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+      await harness.firstSaveStarted;
+
+      expect(harness.selection.computedStyles["border-style"]).toBe("solid");
+      const secondUpdates = buildStrokeWidthStyleUpdates(
+        "4px",
+        harness.selection.computedStyles["border-style"],
+      );
+      expect(secondUpdates).toEqual([["border-width", "4px"]]);
+      const secondCommits = secondUpdates.map(([property, value]) =>
+        harness.rendered.hook.handleDomStyleCommit(property, value),
+      );
+
+      harness.releaseFirstSave();
+      await Promise.all([...firstCommits, ...secondCommits]);
+      expect(harness.persistedState.get("border-width")).toBe("4px");
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("resyncs the same selection after a successful optimistic snapshot update", async () => {
+    stubPatchFetch({ ok: true, changed: true, matched: true, content: "" });
+    const refreshDomEditSelectionFromPreview = vi.fn<(selection: DomEditSelection) => void>();
+    const { iframe, element } = createPreviewElement();
+    const selection = createSelection(element);
+    const rendered = renderDomEditCommits(selection, iframe, {
+      refreshDomEditSelectionFromPreview,
+    });
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("border-style", "dashed");
+      });
+
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledOnce();
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledWith(selection);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("toasts a breaker-open style commit and saves again after reset", async () => {
+    const saveQueue = createDomEditSaveQueue({ failureThreshold: 1 });
+    let patchCount = 0;
+    const { element, rendered, cleanup } = renderStyleCommitWithFetch(
+      async (input) => {
+        const url = requestUrl(input);
+        if (url.includes("/api/projects/p1/files/")) {
+          return jsonResponse({
+            content: '<div data-hf-id="hf-card" style="color: red">Card</div>',
+          });
+        }
+        if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+          patchCount += 1;
+          if (patchCount === 1) throw new Error("network down");
+          return jsonResponse({ ok: true, changed: true, matched: true, content: "" });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+      { queueDomEditSave: saveQueue.enqueue },
+    );
+
+    try {
+      await rendered.hook.handleDomStyleCommit("color", "blue");
+      await rendered.hook.handleDomStyleCommit("color", "green");
+
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringContaining("Auto-save is paused"),
+        "error",
+      );
+      expect(element.style.getPropertyValue("color")).toBe("red");
+
+      saveQueue.reset();
+      await rendered.hook.handleDomStyleCommit("color", "purple");
+
+      expect(patchCount).toBe(2);
+      expect(element.style.getPropertyValue("color")).toBe("purple");
+    } finally {
+      saveQueue.destroy();
+      cleanup();
+    }
+  });
+
+  it("queues a child text-field style commit behind an unresolved style commit", async () => {
+    const harness = renderWithBlockedFirstSave(
+      '<div data-hf-id="hf-card"><span>Card</span></div>',
+      {
+        textFields: [
+          textField({
+            key: "child:0:span",
+            value: "Card",
+            source: "child",
+            sourceChildIndex: 0,
+          }),
+        ],
+      },
+    );
+
+    try {
+      const styleCommit = harness.rendered.hook.handleDomStyleCommit("color", "blue");
+      await harness.firstSaveStarted;
+      const fieldStyleCommit = harness.rendered.hook.handleDomTextFieldStyleCommit(
+        "child:0:span",
+        "font-weight",
+        "700",
+      );
+
+      expect(harness.getPersistReadCount()).toBe(1);
+
+      harness.releaseFirstSave();
+      await Promise.all([styleCommit, fieldStyleCommit]);
+      expect(harness.startedOperations[1]).toEqual([
+        {
+          type: "inline-style",
+          property: "font-weight",
+          value: "700",
+          childSelector: ":scope > span",
+          childIndex: 0,
+        },
+      ]);
+      expect(harness.persistedState.get("font-weight")).toBe("700");
+    } finally {
+      harness.cleanup();
     }
   });
 
@@ -925,6 +1259,26 @@ describe("useDomEditCommits attribute persist handling", () => {
       expect(element.getAttribute("muted")).toBe("second-value");
     } finally {
       rendered.cleanup();
+    }
+  });
+
+  it("persists overlapping attribute commits in issue order", async () => {
+    const harness = renderWithBlockedFirstSave('<div data-hf-id="hf-card"></div>');
+
+    try {
+      const firstCommit = harness.rendered.hook.handleDomAttributeCommit("volume", "0.5");
+      await harness.firstSaveStarted;
+      const secondCommit = harness.rendered.hook.handleDomAttributeCommit("volume", "0.8");
+
+      expect(harness.getPersistReadCount()).toBe(1);
+
+      harness.releaseFirstSave();
+      await Promise.all([firstCommit, secondCommit]);
+      expect(harness.startedOperations).toHaveLength(2);
+      expect(harness.persistedState.get("volume")).toBe("0.8");
+      expect(harness.element.getAttribute("data-volume")).toBe("0.8");
+    } finally {
+      harness.cleanup();
     }
   });
 });

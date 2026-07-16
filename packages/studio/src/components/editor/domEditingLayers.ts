@@ -289,7 +289,7 @@ async function probeSourceElement(
   projectId: string,
   sourceFile: string,
   target: { id?: string; hfId?: string; selector?: string; selectorIndex?: number },
-): Promise<boolean> {
+): Promise<boolean | undefined> {
   try {
     const response = await fetch(
       `/api/projects/${projectId}/file-mutations/probe-element/${encodeURIComponent(sourceFile)}`,
@@ -299,14 +299,14 @@ async function probeSourceElement(
         body: JSON.stringify({ target }),
       },
     );
-    if (!response.ok) return true;
+    if (!response.ok) return undefined;
     const data = await response.json();
-    if (data && typeof data === "object" && "exists" in data && data.exists === false) {
-      return false;
+    if (data && typeof data === "object" && "exists" in data && typeof data.exists === "boolean") {
+      return data.exists;
     }
-    return true;
+    return undefined;
   } catch {
-    return true;
+    return undefined;
   }
 }
 
@@ -355,8 +355,9 @@ export async function resolveDomEditSelection(
       isCompositionRootLayer(current, doc, computedStyles);
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
+    const sourceProbeEnabled = !options.skipSourceProbe && Boolean(options.projectId);
     let existsInSource: boolean | undefined;
-    if (!options.skipSourceProbe && options.projectId && (current.id || selector || hfId)) {
+    if (sourceProbeEnabled && options.projectId && (current.id || selector || hfId)) {
       const probeTarget: { id?: string; hfId?: string; selector?: string; selectorIndex?: number } =
         {};
       if (current.id) probeTarget.id = current.id;
@@ -375,7 +376,7 @@ export async function resolveDomEditSelection(
         isCompositionRoot,
         isInsideLockedComposition: isInsideLocked,
         isMasterView: options.isMasterView,
-        existsInSource: existsInSource ?? true,
+        existsInSource: sourceProbeEnabled ? existsInSource === true : true,
       }),
     ).capabilities;
     const rect = current.getBoundingClientRect();

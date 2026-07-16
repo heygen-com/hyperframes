@@ -28,6 +28,7 @@ export interface UsePreviewInteractionParams {
     clientX: number,
     clientY: number,
   ) => Promise<DomEditSelection[]>;
+  buildDomSelectionFromTarget: (target: HTMLElement) => Promise<DomEditSelection | null>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
   /** Drill into a group (double-click on the canvas) so its children become selectable. */
   setActiveGroupElement: (el: HTMLElement | null) => void;
@@ -67,6 +68,7 @@ export function usePreviewInteraction({
   applyDomSelection,
   resolveDomSelectionFromPreviewPoint,
   resolveAllDomSelectionsFromPreviewPoint,
+  buildDomSelectionFromTarget,
   updateDomEditHoverSelection,
   setActiveGroupElement,
   onClickToSource,
@@ -111,14 +113,14 @@ export function usePreviewInteraction({
       // Double-click a group → drill into it and select the child under the
       // pointer (resolve with the group as the explicit drill-in scope, since the
       // activeGroupElement state hasn't re-rendered yet within this handler).
-      if (isDoubleClick && !e.shiftKey) {
+      const cycle = cycleRef.current;
+      const hasStackCycleAtSpot =
+        cycle !== null &&
+        cycle.candidates.length > 1 &&
+        Math.hypot(e.clientX - cycle.x, e.clientY - cycle.y) < CYCLE_RADIUS_PX &&
+        downTs - cycle.at < CYCLE_WINDOW_MS;
+      if (isDoubleClick && !e.shiftKey && !hasStackCycleAtSpot) {
         const hit = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY);
-        const cycle = cycleRef.current;
-        const hasStackCycleAtSpot =
-          cycle !== null &&
-          cycle.candidates.length > 1 &&
-          Math.hypot(e.clientX - cycle.x, e.clientY - cycle.y) < CYCLE_RADIUS_PX &&
-          downTs - cycle.at < CYCLE_WINDOW_MS;
         if (hit?.element.hasAttribute("data-hf-group")) {
           e.preventDefault();
           e.stopPropagation();
@@ -133,7 +135,6 @@ export function usePreviewInteraction({
         }
         if (
           hit &&
-          !hasStackCycleAtSpot &&
           !hit.element.hasAttribute("data-composition-src") &&
           !hit.element.hasAttribute("data-composition-file")
         ) {
@@ -180,7 +181,10 @@ export function usePreviewInteraction({
         cycleRef.current = { ...prev, index: nextIndex, at: now };
         e.preventDefault();
         e.stopPropagation();
-        applyDomSelection(nextSel);
+        const committedSelection = nextSel
+          ? await buildDomSelectionFromTarget(nextSel.element)
+          : null;
+        applyDomSelection(committedSelection);
         return;
       }
 
@@ -223,6 +227,7 @@ export function usePreviewInteraction({
     },
     [
       applyDomSelection,
+      buildDomSelectionFromTarget,
       captionEditMode,
       compositionLoading,
       onClickToSource,
