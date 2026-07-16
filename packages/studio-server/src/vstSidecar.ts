@@ -145,15 +145,9 @@ export function startVstSidecar(): Promise<{ port: number; token: string; stop: 
 
   pending = new Promise<{ port: number; token: string; stop: () => void }>(
     (resolvePromise, reject) => {
-      // `--parent-pid` lets the sidecar self-reap if THIS process dies
-      // ungracefully (see server.py's _watch_parent_and_exit) — necessary
-      // because we launch it via `uv run`, so the sidecar's own getppid() is
-      // the intervening uv process, not us.
-      const child = spawn(
-        cmd,
-        [...baseArgs, "serve", "--port", "0", "--parent-pid", String(process.pid)],
-        { stdio: ["ignore", "pipe", "pipe"] },
-      );
+      const child = spawn(cmd, [...baseArgs, "serve", "--port", "0"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       spawningChild = child;
       let settled = false;
 

@@ -40,34 +40,11 @@ function resolveExistingProjectFile(projectDir: string, subPath: string): string
 
 export function registerVstRoutes(api: Hono, adapter: StudioApiAdapter): void {
   /**
-   * The VST sidecar is a native Python process on the same host as this
-   * server — it reads audio via pedalboard's `AudioFile`, which needs a
-   * real filesystem path, not the `/preview/*` HTTP URL the browser plays
-   * the dry `<audio>` element from. This resolves a project-relative asset
-   * path (the part of that URL after `/preview/`) to its absolute path on
-   * disk, the same way the `/preview/*` static route does, so a client that
-   * already has a working playback URL can hand the sidecar something it
-   * can actually open.
-   */
-  api.get("/vst/wav-path", async (c) => {
-    const projectId = c.req.query("projectId");
-    const subPath = c.req.query("path");
-    if (!projectId || !subPath) {
-      return c.json({ error: "projectId and path query params required" }, 400);
-    }
-    const project = await adapter.resolveProject(projectId);
-    if (!project) return c.json({ error: "not found" }, 404);
-    const file = resolveWithinProject(project.dir, subPath);
-    if (!file || !existsSync(file)) return c.json({ error: "not found" }, 404);
-    return c.json({ path: file });
-  });
-
-  /**
    * Analyze a voiceover track and return complementary PeakFilter carve bands
-   * for a music track (the "vocal pocket"). Both paths are project-relative
-   * (same shape as `/vst/wav-path`'s `path`), resolved against the project dir
-   * here so no absolute paths cross the wire. V1 only analyzes the voice; the
-   * music path is validated-to-exist for symmetry and future dynamic ducking.
+   * for a music track (the "vocal pocket"). Both paths are project-relative,
+   * resolved against the project dir here so no absolute paths cross the
+   * wire. V1 only analyzes the voice; the music path is validated-to-exist
+   * for symmetry and future dynamic ducking.
    */
   api.post("/vst/carve", async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
