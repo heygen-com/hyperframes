@@ -22,6 +22,12 @@ const mocks = vi.hoisted(() => {
       this.stderrTail = stderrTail;
     }
   }
+  class FakeProxyCapacityError extends FakeProxyTranscodeError {
+    constructor(message = "media proxy queue is full") {
+      super(message);
+      this.name = "ProxyCapacityError";
+    }
+  }
   return {
     resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(
       // Benign default so `injectMediaCodecMap`'s fire-and-forget pre-warm
@@ -40,6 +46,7 @@ const mocks = vi.hoisted(() => {
       >
     >(async () => ({})),
     ProxyTranscodeError: FakeProxyTranscodeError,
+    ProxyCapacityError: FakeProxyCapacityError,
   };
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
@@ -47,6 +54,7 @@ const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
+  ProxyCapacityError: mocks.ProxyCapacityError,
 }));
 
 // The shared injection helper ships as a self-contained dist bundle (its copy
@@ -200,6 +208,45 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     expect(html).toContain("/clip.mp4");
   });
 
+  it("lets an explicit proxy override win over hyperframes.json", async () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+    });
+    const projectDir = mk();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ media: { autoProxy: false } }),
+    );
+    server = await serveStaticProjectHtml(
+      projectDir,
+      "<html><head></head><body></body></html>",
+      undefined,
+      [],
+      true,
+    );
+
+    const html = await (await fetch(server.url)).text();
+    expect(html).toContain("__HF_MEDIA_CODEC_MAP__");
+  });
+
+  it("lets an explicit --no-proxy override suppress config-enabled proxying", async () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+    });
+    const projectDir = mk();
+    server = await serveStaticProjectHtml(
+      projectDir,
+      "<html><head></head><body></body></html>",
+      undefined,
+      [],
+      false,
+    );
+
+    const html = await (await fetch(server.url)).text();
+    expect(html).not.toContain("__HF_MEDIA_CODEC_MAP__");
+    expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
+  });
+
   it("serves the resolved proxy's bytes for ?hf-proxy=h264 on a hostile video asset", async () => {
     const projectDir = mk();
     writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -224,6 +271,17 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
 
     const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
     expect(res.status).toBe(502);
+  });
+
+  it("answers a retryable 503 when the proxy queue is full", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("1");
   });
 
   it("404s ?hf-proxy=h264 for a non-video asset without attempting a transcode", async () => {

@@ -52,6 +52,7 @@ import {
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
+import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import {
   readBackgroundPreviewStatus,
   startBackgroundPreview,
@@ -68,6 +69,7 @@ interface BrowserLaunchOptions {
 
 interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
+  autoProxy?: boolean;
 }
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
@@ -324,6 +326,9 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
+    // Resolve once so embedded, monorepo-dev, and locally installed Studio
+    // modes all receive identical --proxy/--no-proxy + config semantics.
+    const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
 
     if (isDevMode()) {
       if (args.background) {
@@ -338,6 +343,7 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
     }
 
@@ -355,6 +361,7 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
     }
 
@@ -391,8 +398,6 @@ export default defineCommand({
     }
 
     const forceNew = !!args["force-new"];
-    // Explicit --proxy/--no-proxy wins over hyperframes.json's media.autoProxy.
-    const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
     return runEmbeddedMode(dir, startPort, {
       projectName,
       forceNew,
@@ -891,6 +896,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev"], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
   attachStudioReadyHandler(child, s, pName, options);
@@ -940,6 +946,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
   attachStudioReadyHandler(child, s, pName, options);

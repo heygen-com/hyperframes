@@ -37,7 +37,11 @@ import {
   buildRangeResponse,
   assetContentType,
 } from "../utils/compositionServer.js";
-import { resolveProxy, ProxyTranscodeError } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  resolveProxy,
+  ProxyCapacityError,
+  ProxyTranscodeError,
+} from "@hyperframes/studio-server/proxy-transcoder";
 
 export default defineCommand({
   meta: { name: "play", description: "Play a composition in a lightweight browser player" },
@@ -230,6 +234,11 @@ export async function registerCompositionRoute(
         // .mkv, ...) — serve its real type, matching the preview route.
         return buildRangeResponse(proxyPath, "video/mp4", ctx.req.header("Range"));
       } catch (err) {
+        if (err instanceof ProxyCapacityError) {
+          return ctx.text(`Proxy transcode deferred: ${err.message}`, 503, {
+            "Retry-After": "1",
+          });
+        }
         if (err instanceof ProxyTranscodeError) {
           return ctx.text(`Proxy transcode failed: ${err.message}`, 502);
         }

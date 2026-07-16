@@ -80,7 +80,18 @@ interface FfprobeStream {
   bits_per_raw_sample?: string;
 }
 
-const VIDEO_EXT = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"]);
+const VIDEO_EXT = new Set([
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".m4v",
+  ".mxf",
+  ".mts",
+  ".m2ts",
+  ".ts",
+]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
 const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
 

@@ -6,7 +6,18 @@ import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi"]);
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".m4v",
+  ".mxf",
+  ".mts",
+  ".m2ts",
+  ".ts",
+]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const VIDEO_OUTPUT_EXTENSIONS = new Set([".webm", ".mov"]);
 const QUALITIES = new Set(["fast", "balanced", "best"]);

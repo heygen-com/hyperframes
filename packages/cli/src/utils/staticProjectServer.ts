@@ -4,7 +4,11 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
-import { resolveProxy, ProxyTranscodeError } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  resolveProxy,
+  ProxyCapacityError,
+  ProxyTranscodeError,
+} from "@hyperframes/studio-server/proxy-transcoder";
 
 export interface StaticProjectServer {
   url: string;
@@ -98,6 +102,11 @@ async function serveProxyRequest(
     if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res);
   } catch (err) {
+    if (err instanceof ProxyCapacityError) {
+      res.writeHead(503, { "Content-Type": "text/plain", "Retry-After": "1" });
+      res.end(`Proxy transcode deferred: ${err.message}`);
+      return;
+    }
     if (err instanceof ProxyTranscodeError) {
       res.writeHead(502, { "Content-Type": "text/plain" });
       res.end(`Proxy transcode failed: ${err.message}`);
@@ -115,12 +124,15 @@ export async function serveStaticProjectHtml(
   // Extra dirs to resolve non-index requests against, after projectDir (e.g. a
   // temp dir of localized remote assets).
   assetRoots: readonly string[] = [],
+  // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
+  // committed hyperframes.json setting.
+  autoProxyOverride?: boolean,
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
   // Codec-map injection lives here (not per-caller) so all seven callers of
   // this function inherit it in one place; computed once since `html` is
   // static for the lifetime of this server, not re-scanned per request.
-  const autoProxy = resolveAutoProxy(projectDir, undefined);
+  const autoProxy = resolveAutoProxy(projectDir, autoProxyOverride);
   const servedHtml = autoProxy ? await injectMediaCodecMap(html, projectDir, [{ html }]) : html;
 
   // fallow-ignore-next-line complexity

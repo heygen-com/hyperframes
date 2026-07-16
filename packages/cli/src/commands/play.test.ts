@@ -23,6 +23,12 @@ const mocks = vi.hoisted(() => {
       this.stderrTail = stderrTail;
     }
   }
+  class FakeProxyCapacityError extends FakeProxyTranscodeError {
+    constructor(message = "media proxy queue is full") {
+      super(message);
+      this.name = "ProxyCapacityError";
+    }
+  }
   return {
     resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(
       // Benign default so `injectMediaCodecMap`'s fire-and-forget pre-warm
@@ -41,6 +47,7 @@ const mocks = vi.hoisted(() => {
       >
     >(async () => ({})),
     ProxyTranscodeError: FakeProxyTranscodeError,
+    ProxyCapacityError: FakeProxyCapacityError,
   };
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
@@ -48,6 +55,7 @@ const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
+  ProxyCapacityError: mocks.ProxyCapacityError,
 }));
 
 // The shared injection helper ships as a self-contained dist bundle (its copy
@@ -135,6 +143,23 @@ describe("registerCompositionRoute", () => {
     expect(await res.text()).toBe("transcoded-h264-bytes");
   });
 
+  it.each(["mxf", "mts", "m2ts", "ts"])(
+    "recognizes .%s camera/container media as proxy-eligible video",
+    async (extension) => {
+      const project = tmpProject();
+      writeFileSync(join(project.dir, `clip.${extension}`), "hostile-video-bytes");
+      const proxyPath = join(project.dir, "proxy.mp4");
+      writeFileSync(proxyPath, "transcoded-h264-bytes");
+      mocks.resolveProxy.mockResolvedValue(proxyPath);
+      const app = await buildApp(project, true);
+
+      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`);
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("transcoded-h264-bytes");
+    },
+  );
+
   it("answers 502 (not a silent failure) when the proxy transcode fails", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
@@ -146,6 +171,18 @@ describe("registerCompositionRoute", () => {
     const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
 
     expect(res.status).toBe(502);
+  });
+
+  it("answers a retryable 503 when the proxy queue is full", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+    mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
+    const app = await buildApp(project, true);
+
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("1");
   });
 
   it("404s ?hf-proxy=h264 for a non-video asset without attempting a transcode", async () => {

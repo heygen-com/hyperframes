@@ -1,8 +1,9 @@
 // Shared scaffolding for the lightweight composition servers used by `play` and
 // `present`: locating the built runtime/player/slideshow bundles, serving
 // composition asset files, and binding to a free port.
-import { existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -81,6 +82,10 @@ const ASSET_CONTENT_TYPES: Record<string, string> = {
   m4v: "video/mp4",
   mov: "video/quicktime",
   mkv: "video/x-matroska",
+  mxf: "video/mxf",
+  mts: "video/mp2t",
+  m2ts: "video/mp2t",
+  ts: "video/mp2t",
   webm: "video/webm",
   mp3: "audio/mpeg",
   wav: "audio/wav",
@@ -96,23 +101,26 @@ export function assetContentType(filePath: string): string {
 /**
  * Hono-native Range/206 response for a file on disk, mirroring the inline
  * Range logic in `packages/studio-server/src/routes/preview.ts`'s static
- * asset route (buffer + slice, not a stream — CLI-served projects are local
- * dev-sized). `staticProjectServer.ts`'s raw-`node:http` counterpart is
- * `serveFileWithRange`; that one writes to a `ServerResponse` and can't be
- * reused here since Hono route handlers return a Fetch API `Response`.
+ * asset route. `staticProjectServer.ts`'s raw-`node:http` counterpart is
+ * `serveFileWithRange`; this version converts Node's bounded file stream to a
+ * Fetch API stream for Hono without allocating the whole media/proxy file.
  */
 export function buildRangeResponse(
   filePath: string,
   contentType: string,
   rangeHeader: string | undefined,
 ): Response {
-  const buffer = readFileSync(filePath);
-  const size = buffer.length;
+  const size = statSync(filePath).size;
   const last = size - 1;
   const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
 
+  const body = (start: number, end: number): ReadableStream<Uint8Array> | null =>
+    size === 0
+      ? null
+      : (Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>);
+
   if (!match) {
-    return new Response(new Uint8Array(buffer), {
+    return new Response(body(0, last), {
       status: 200,
       headers: {
         "Content-Type": contentType,
@@ -132,7 +140,7 @@ export function buildRangeResponse(
     });
   }
 
-  return new Response(new Uint8Array(buffer.subarray(start, end + 1)), {
+  return new Response(body(start, end), {
     status: 206,
     headers: {
       "Content-Type": contentType,
