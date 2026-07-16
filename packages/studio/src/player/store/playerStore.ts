@@ -293,9 +293,7 @@ interface BeatHistoryEntry {
   label: string;
 }
 
-// Lightweight pub-sub for current time during playback.
-// Bypasses React state so the RAF loop can update the playhead/time display
-// without triggering re-renders on every frame.
+// Lightweight pub-sub avoids React re-renders on every playback frame.
 type TimeListener = (time: number) => void;
 const _timeListeners = new Set<TimeListener>();
 export const liveTime = {
@@ -589,11 +587,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
 }));
 
-// Bug-bash aid: expose the store so a reproduction can dump live state from the
-// console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
-// handle; no behavioural effect.
-// Only in dev. `import.meta.env` may be undefined in non-Vite bundlers (Next.js
-// Turbopack), so guard the access like the telemetry client does.
+// Dev-only bug-bash handle; guard import.meta.env for non-Vite bundlers.
 function isDevBuild(): boolean {
   try {
     return import.meta.env.DEV === true;
