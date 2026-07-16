@@ -4,11 +4,11 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 19 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
+This repo ships 23 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
 
 ```bash
 npx skills add heygen-com/hyperframes --full-depth              # interactive picker
-npx skills add heygen-com/hyperframes --all --full-depth        # install all 19 (skips picker)
+npx skills add heygen-com/hyperframes --all --full-depth        # install all (skips picker)
 npx skills add heygen-com/hyperframes --skill <name> --full-depth  # just one (bare name, no leading slash)
 ```
 
@@ -25,6 +25,10 @@ Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fe
 - `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, PiP) synced to the transcript; the clip plays unchanged underneath, footage untouched. For plain captions/subtitles → `/embedded-captions`.
 - `/motion-graphics` — a short (typically under 10s) design-led **motion graphic**, motion-is-the-message, no narration: kinetic type, a stat / number count-up, a chart, a logo sting, a lower-third / overlay, or an animated tweet / headline / captured-page highlight; rendered to MP4 or a transparent overlay. Longer / narrated / custom → `/general-video`.
 - `/music-to-video` — a **music track** (audio file, or video to pull audio from) → beat-synced video (lyric / slideshow / kinetic promo). Music drives pacing; user-supplied images / videos are cut onto the same beat grid.
+- `/vox-explainer` — a **Vox-style paper-collage editorial explainer** built HF-native (kraft pages, torn-edge cutouts, cutout labels, stop-motion boil); image assets via NB2L/media-use, everything else deterministic. Faceless; avatar-hosted → `/vox-avatar`.
+- `/vox-avatar` — a Vox collage piece **hosted by a real person's talking avatar** (Tokyo lips → matte → die-cut mount in an HF collage); labels/charts deterministic, host zone text-free.
+- `/vox-avatar-edit` — the talking avatar kept untouched while **Omni edit-mode repaints one organic collage world around them** per beat (content-aware prompts, duration conform, source-voice remux).
+- `/vox-omni` — a Vox collage explainer **generated end-to-end by Omni Flash** (beat map → per-clip gen with chaining → ASR retime → TTS); organic motion, faceless-grade only.
 - `/slideshow` — a **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video.
 - `/general-video` — fallback for any other video creation (title card, longer brand / sizzle reel, multi-scene montage, static loop, custom composition) and the home of **companion mode** — co-create with the full HyperFrames toolbox; the original hyperframes flow — design → plan → layout → build → validate, any length.
 - `/remotion-to-hyperframes` — port an existing Remotion (React) composition to HyperFrames HTML. One-way migration, not creation.
@@ -50,7 +54,7 @@ When adding a new skill, or substantially renaming / repurposing an existing one
 2. The scaffolded project template `packages/cli/src/templates/_shared/CLAUDE.md` + `AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. The two template files must stay byte-identical.
 3. If the skill changes the routing surface for "make a video" requests, also update the routing table + intent layer in `skills/hyperframes/SKILL.md` AND that workflow's entry in `skills/hyperframes/references/workflow-catalog.md` (the input/output/trigger contract the router reads before the workflow is installed) — plus its row in `references/route-briefs.md` when the route asks questions.
 4. Mirror the Router / Creation workflows / Domain skills grouping across all surfaces so a skill always lives in the same column.
-5. Skill count appears in the README and CLAUDE.md intro lines ("19 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
+5. Skill count appears in the README and CLAUDE.md intro lines ("23 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 

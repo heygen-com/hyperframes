@@ -51,7 +51,7 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 ## Skills
 
-HyperFrames ships 19 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
+HyperFrames ships 23 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
 
 Run `npx skills add heygen-com/hyperframes --full-depth` for the interactive picker — it lists the **core set** under the "Core Skills" group and the on-demand creation workflows under "Other". Use `npx skills add heygen-com/hyperframes --all --full-depth` to install all 19 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name> --full-depth` for just one (bare name, no leading `/`). Keep `--full-depth` — it installs the current `main`; without it `skills add` fetches the skills.sh blob, which lags by hours.
 
@@ -68,6 +68,10 @@ Installs stay lean after that: `npx hyperframes init` keeps the **core set** fre
 | Skill                      | Use when                                                                                                                                                                                                                     |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/product-launch-video`    | Any **website** — marketing / launching / promoting a product (from its URL, a brief, or a script), or a site tour / showcase / social clip featuring the site's own visuals. Up to ~3 min (sweet spot 30-90s).              |
+| `/vox-explainer`           | **Vox-style paper-collage explainer**, HF-native and deterministic (faceless).                                                                                                                                              |
+| `/vox-avatar`              | Vox collage **hosted by a talking avatar** (Tokyo lips → matte → die-cut mount); deterministic labels/charts.                                                                                                               |
+| `/vox-avatar-edit`         | Talking avatar untouched, **Omni edit repaints the collage world** around them (content-aware, voice remuxed).                                                                                                              |
+| `/vox-omni`                | Vox collage **generated end-to-end by Omni Flash** (chaining, ASR retime, TTS); faceless-grade.                                                                                                                             |
 | `/faceless-explainer`      | **Explaining a topic / concept** from arbitrary text — no product, no URL, no website capture; every visual is LLM-invented (typography / abstract / diagram / data-viz).                                                    |
 | `/pr-to-video`             | A **GitHub pull request** (PR URL, `owner/repo#N` ref, or "this PR") → changelog / feature-reveal / fix / refactor explainer, read via the `gh` CLI.                                                                         |
 | `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched) — verbatim rail, embedded climax behind the subject, or pure-cinematic embed.                                                          |
