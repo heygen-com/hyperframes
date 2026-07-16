@@ -79,13 +79,14 @@ export async function serveStaticProjectHtml(
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
-    if (url === "/" || url === "/index.html") {
+    const pathname = new URL(url, "http://127.0.0.1").pathname;
+    if (pathname === "/" || pathname === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(html);
       return;
     }
 
-    const requestPath = decodeURIComponent(url).replace(/^\//, "");
+    const requestPath = decodeURIComponent(pathname).replace(/^\//, "");
     for (const root of roots) {
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
