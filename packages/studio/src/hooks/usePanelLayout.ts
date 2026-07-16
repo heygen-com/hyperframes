@@ -52,6 +52,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     side: "left" | "right";
     startX: number;
     startW: number;
+    currentW: number;
   } | null>(null);
 
   const setLeftWidth = useCallback((width: number) => {
@@ -82,25 +83,30 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
         side,
         startX: e.clientX,
         startW: side === "left" ? leftWidth : rightWidth,
+        currentW: side === "left" ? leftWidth : rightWidth,
       };
     },
     [leftWidth, rightWidth],
   );
 
-  const handlePanelResizeMove = useCallback(
-    (e: React.PointerEvent) => {
-      const drag = panelDragRef.current;
-      if (!drag) return;
-      const delta = e.clientX - drag.startX;
-      const newW = drag.startW + (drag.side === "left" ? delta : -delta);
-      if (drag.side === "left") setLeftWidth(newW);
-      else setRightWidth(newW);
-    },
-    [setLeftWidth, setRightWidth],
-  );
+  const handlePanelResizeMove = useCallback((e: React.PointerEvent) => {
+    const drag = panelDragRef.current;
+    if (!drag) return;
+    const delta = e.clientX - drag.startX;
+    const newW = drag.startW + (drag.side === "left" ? delta : -delta);
+    const next = drag.side === "left" ? clampLeftPanelWidth(newW) : clampRightPanelWidth(newW);
+    drag.currentW = next;
+    if (drag.side === "left") setLeftWidthState(next);
+    else setRightWidthState(next);
+  }, []);
 
   const handlePanelResizeEnd = useCallback(() => {
+    const drag = panelDragRef.current;
+    if (!drag) return;
     panelDragRef.current = null;
+    writeStudioUiPreferences(
+      drag.side === "left" ? { leftPanelWidth: drag.currentW } : { rightPanelWidth: drag.currentW },
+    );
   }, []);
 
   const trackedSetRightPanelTab = useCallback(

@@ -80,6 +80,10 @@ function Cube3dControl({
   };
   // Comp-derived lens for the cube widget's depth preview when the element has no perspective.
   const depthPerspective = naturalDepthPerspective(element.element);
+  const propsForDepth = (z: number): Record<string, number> =>
+    !gsapRuntimeValues.transformPerspective && depthPerspective > 0
+      ? { z, transformPerspective: depthPerspective }
+      : { z };
   // Commit only the rotation axes the drag actually changed (each rounded to a
   // whole degree). Reuses the keyframe-aware animated-property commit, so a drag
   // at the playhead writes/updates a keyframe just like the numeric fields.
@@ -130,11 +134,11 @@ function Cube3dControl({
           onPoseDraft={livePreview}
           onPoseCommit={commitPose}
           onDepthDraft={(z) => {
-            onLivePreviewProps?.(element, { z });
+            onLivePreviewProps?.(element, propsForDepth(z));
           }}
           onDepthCommit={(z) => {
             track("slider", "3D depth");
-            void onCommitAnimatedProperties(element, { z });
+            void onCommitAnimatedProperties(element, propsForDepth(z));
           }}
           onRecenter={recenter}
           onKeyframe={onKeyframe}

@@ -103,6 +103,7 @@ export function StudioApp() {
   const captionSync = useCaptionSync(projectId);
   const timelineElements = usePlayerStore((s) => s.elements);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
+  const setTimelineSelection = usePlayerStore((s) => s.setSelection);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
@@ -295,6 +296,7 @@ export function StudioApp() {
     previewIframeRef,
     timelineElements,
     setSelectedTimelineElementId,
+    setTimelineSelection,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,

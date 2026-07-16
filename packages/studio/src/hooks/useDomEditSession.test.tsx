@@ -227,6 +227,7 @@ describe("onReorderShadow source filter", () => {
         previewIframeRef: { current: null },
         timelineElements: [],
         setSelectedTimelineElementId: vi.fn(),
+        setTimelineSelection: vi.fn(),
         setRightCollapsed: vi.fn(),
         setRightPanelTab: vi.fn(),
         showToast: vi.fn(),

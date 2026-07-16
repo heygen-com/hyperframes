@@ -6,6 +6,13 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
 import { CANVAS_NUDGE_SAFETY_TIMEOUT_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
+import {
+  buildEditHistoryEntry,
+  createEmptyEditHistory,
+  hashEditHistoryContent,
+  pushEditHistoryEntry,
+  undoEditHistory,
+} from "../../utils/editHistory";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -136,12 +143,37 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
   });
 
   it("undoes a held-key burst to its pre-burst position", () => {
-    let position = 0;
-    const undoEntries: Array<{ before: number; after: number }> = [];
-    const commit = vi.fn((_selection: DomEditSelection, next: { x: number; y: number }) => {
-      undoEntries.push({ before: position, after: next.x });
-      position = next.x;
-    });
+    let history = createEmptyEditHistory();
+    let currentContent = "position:0";
+    let commitSequence = 0;
+    const commit = (_selection: DomEditSelection, next: { x: number; y: number }) => {
+      const sequence = ++commitSequence;
+      const coalesceKey = `layer-move:${sequence}`;
+      const preparedContent = `position:prepared:${sequence}`;
+      const finalContent = `position:${next.x}`;
+      const entries = [
+        buildEditHistoryEntry({
+          id: `prepare-${sequence}`,
+          projectId: "project-1",
+          label: "Move layer",
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+          now: sequence * 100,
+          files: { "index.html": { before: currentContent, after: preparedContent } },
+        }),
+        buildEditHistoryEntry({
+          id: `move-${sequence}`,
+          projectId: "project-1",
+          label: "Move layer",
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+          now: sequence * 100 + 1,
+          files: { "index.html": { before: preparedContent, after: finalContent } },
+        }),
+      ];
+      for (const entry of entries) history = pushEditHistoryEntry(history, entry);
+      currentContent = finalContent;
+    };
     const cleanup = mountSingleNudge(commit);
 
     try {
@@ -149,12 +181,17 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
         for (let step = 0; step < 5; step += 1) dispatchArrowRight();
         releaseArrowRight();
       });
-      expect(undoEntries).toEqual([{ before: 0, after: 5 }]);
+      expect(history.undo).toHaveLength(1);
+      expect(history.undo[0]?.files["index.html"]?.before).toBe("position:0");
+      expect(history.undo[0]?.files["index.html"]?.after).toBe("position:5");
 
-      const entry = undoEntries.pop();
-      if (!entry) throw new Error("Expected a nudge undo entry");
-      position = entry.before;
-      expect(position).toBe(0);
+      const undo = undoEditHistory(
+        history,
+        { "index.html": hashEditHistoryContent(currentContent) },
+        1_000,
+      );
+      expect(undo.ok).toBe(true);
+      expect(undo.filesToWrite).toEqual({ "index.html": "position:0" });
     } finally {
       cleanup();
     }
@@ -170,6 +207,26 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
       expect(commit).not.toHaveBeenCalled();
 
       act(() => vi.advanceTimersByTime(1));
+      expect(commit).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("commits an armed nudge burst exactly once when the window blurs", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => dispatchArrowRight());
+      expect(commit).not.toHaveBeenCalled();
+
+      act(() => window.dispatchEvent(new Event("blur")));
+      act(() => {
+        releaseArrowRight();
+        vi.advanceTimersByTime(CANVAS_NUDGE_SAFETY_TIMEOUT_MS);
+      });
+
       expect(commit).toHaveBeenCalledTimes(1);
     } finally {
       cleanup();

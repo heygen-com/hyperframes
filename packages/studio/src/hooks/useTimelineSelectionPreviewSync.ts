@@ -91,7 +91,7 @@ export function useTimelineSelectionPreviewSync({
       : null;
 
     if (selectedIds.length === 0) {
-      if (previousSelectedKey.length > 0 && currentSelections.length > 0) {
+      if (previousSelectedKey.length > 0 && currentIds.length > 0) {
         applyDomSelection(null, { revealPanel: false });
       }
       return;

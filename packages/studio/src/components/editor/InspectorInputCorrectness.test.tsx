@@ -74,6 +74,68 @@ describe("inspector input correctness", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("preserves a focused dirty animation string draft across external value changes", () => {
+    const onCommit = vi.fn();
+    const { host, root } = render(
+      <PropertyRow
+        prop="filter"
+        val="blur(4px)"
+        onCommit={onCommit}
+        onRemove={() => undefined}
+        removeTitle="Remove property"
+      />,
+    );
+    const input = host.querySelector<HTMLInputElement>("input");
+    if (!input) throw new Error("Animation string input was not rendered");
+
+    act(() => input.focus());
+    act(() => setInputValue(input, "contrast(2)"));
+    act(() =>
+      root.render(
+        <PropertyRow
+          prop="filter"
+          val="grayscale(1)"
+          onCommit={onCommit}
+          onRemove={() => undefined}
+          removeTitle="Remove property"
+        />,
+      ),
+    );
+
+    expect(host.querySelector("input")).toBe(input);
+    expect(input.value).toBe("contrast(2)");
+    act(() => input.blur());
+    expect(onCommit).toHaveBeenCalledWith("contrast(2)");
+  });
+
+  it("updates an unfocused animation string field from an external value change", () => {
+    const onCommit = vi.fn();
+    const { host, root } = render(
+      <PropertyRow
+        prop="filter"
+        val="blur(4px)"
+        onCommit={onCommit}
+        onRemove={() => undefined}
+        removeTitle="Remove property"
+      />,
+    );
+
+    act(() =>
+      root.render(
+        <PropertyRow
+          prop="filter"
+          val="grayscale(1)"
+          onCommit={onCommit}
+          onRemove={() => undefined}
+          removeTitle="Remove property"
+        />,
+      ),
+    );
+
+    expect(host.querySelector<HTMLInputElement>("input")?.value).toBe("grayscale(1)");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["filter", "Blur", "blur(4px)"],
     ["clipPath", "Circle", "circle(50% at 50% 50%)"],
