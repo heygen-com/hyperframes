@@ -290,6 +290,7 @@ export async function assemble(
 
     // ── 3. Audio: pad-or-trim then mux ────────────────────────────────────
     let audioForMux: string | null = null;
+    let preserveAudioPrimingEditList = false;
     if (audioPath !== null && existsSync(audioPath)) {
       const paddedAudioPath = join(workDir, "audio-padded.m4a");
       const padTrimResult = await padOrTrimAudioToVideoFrameCount({
@@ -302,6 +303,7 @@ export async function assemble(
         throw new Error(`[assemble] audio pad/trim failed: ${padTrimResult.error}`);
       }
       audioForMux = paddedAudioPath;
+      preserveAudioPrimingEditList = padTrimResult.operation === "trim";
       log.info("[assemble] audio normalized for mux", {
         operation: padTrimResult.operation,
         targetDurationSeconds: padTrimResult.targetDurationSeconds,
@@ -321,7 +323,7 @@ export async function assemble(
         audioForMux,
         muxOutputPath,
         abortSignal,
-        { audioCodec: "aac" },
+        { audioCodec: "aac", preserveAudioPrimingEditList },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {

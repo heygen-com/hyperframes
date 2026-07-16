@@ -76,7 +76,10 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       normalizeResult.outputPath,
       outputPath,
       abortSignal,
-      { audioCodec: "aac" },
+      {
+        audioCodec: "aac",
+        preserveAudioPrimingEditList: normalizeResult.operation === "trim",
+      },
       job.config.fps,
     );
     assertNotAborted();

@@ -77,6 +77,8 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
+  /** Preserve a priming edit list known to have been created by AAC re-encoding. */
+  preserveAudioPrimingEditList?: boolean;
 }
 
 async function shouldCopyAacSidecar(
@@ -691,7 +693,7 @@ export async function muxVideoWithAudio(
     }
   }
   const copiesContainerizedAac =
-    !isWebm && shouldCopyAudio && extname(audioPath).toLowerCase() === ".m4a";
+    !isWebm && shouldCopyAudio && config?.preserveAudioPrimingEditList === true;
   // PTS bases can diverge during mux and reintroduce negative DTS. See
   // buildEncoderArgs for the full reasoning on why that breaks playback.
   // A freshly encoded M4A is the exception: its edit list already hides the
