@@ -66,6 +66,11 @@ function renderLanes({
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  const shiftClickClipRef: React.RefObject<{
+    element: TimelineElement;
+    anchorX: number;
+    anchorY: number;
+  } | null> = { current: null };
   const setSelectedElementId = vi.fn((id: string | null) => {
     usePlayerStore.getState().setSelectedElementId(id);
   });
@@ -97,7 +102,7 @@ function renderLanes({
         setDraggedClip={vi.fn()}
         setSelectedElementId={setSelectedElementId}
         syncClipDragAutoScroll={vi.fn()}
-        shiftClickClipRef={{ current: null }}
+        shiftClickClipRef={shiftClickClipRef}
         getPreviewElement={(element) => element}
         getTrackStyle={getTrackStyle}
         keyframeCache={keyframeCache}
@@ -114,7 +119,7 @@ function renderLanes({
     );
   });
 
-  return { host, root, setSelectedElementId, onSeek };
+  return { host, root, setSelectedElementId, onSeek, shiftClickClipRef };
 }
 
 function pointerEvent(type: string, init: PointerEventInit): Event {
@@ -122,12 +127,17 @@ function pointerEvent(type: string, init: PointerEventInit): Event {
   return new MouseEvent(type, init);
 }
 
-function clickClip(host: HTMLElement, id: string): void {
+function clickClip(host: HTMLElement, id: string, shiftKey = false): boolean {
   const clip = host.querySelector<HTMLElement>(`[data-el-id="${id}"]`);
   if (!clip) throw new Error(`Expected timeline clip ${id}`);
+  const pointerDown = pointerEvent("pointerdown", { bubbles: true, button: 0, shiftKey });
+  const stopPropagation = vi.spyOn(pointerDown, "stopPropagation");
   act(() => {
-    clip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    clip.dispatchEvent(pointerDown);
+    clip.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, shiftKey }));
+    clip.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey }));
   });
+  return stopPropagation.mock.calls.length > 0;
 }
 
 describe("TimelineLanes selection", () => {
@@ -229,6 +239,56 @@ describe("TimelineLanes selection", () => {
 
     expect(harness.setSelectedElementId).toHaveBeenCalledWith(secondClip.id);
     expect([...usePlayerStore.getState().selectedElementIds]).toEqual([secondClip.id]);
+    act(() => harness.root.unmount());
+  });
+
+  it("adds an unselected clip with Shift-click without arming clip range selection", () => {
+    usePlayerStore.getState().setSelection([firstClip.id], firstClip.id);
+    const harness = renderLanes({
+      elements: [firstClip, secondClip],
+      selectedElementId: firstClip.id,
+      selectedElementIds: new Set([firstClip.id]),
+    });
+
+    const stoppedPointerDown = clickClip(harness.host, secondClip.id, true);
+
+    const state = usePlayerStore.getState();
+    expect(state.selectedElementId).toBe(firstClip.id);
+    expect(state.selectedElementIds).toEqual(new Set([firstClip.id, secondClip.id]));
+    expect(harness.shiftClickClipRef.current).toBeNull();
+    expect(stoppedPointerDown).toBe(true);
+    act(() => harness.root.unmount());
+  });
+
+  it("removes a selected clip with Shift-click and keeps a remaining anchor", () => {
+    usePlayerStore.getState().setSelection([firstClip.id, secondClip.id], firstClip.id);
+    const harness = renderLanes({
+      elements: [firstClip, secondClip],
+      selectedElementId: firstClip.id,
+      selectedElementIds: new Set([firstClip.id, secondClip.id]),
+    });
+
+    clickClip(harness.host, firstClip.id, true);
+
+    const state = usePlayerStore.getState();
+    expect(state.selectedElementId).toBe(secondClip.id);
+    expect(state.selectedElementIds).toEqual(new Set([secondClip.id]));
+    expect(harness.shiftClickClipRef.current).toBeNull();
+    act(() => harness.root.unmount());
+  });
+
+  it("clears selection when Shift-click removes the last selected clip", () => {
+    usePlayerStore.getState().setSelection([firstClip.id], firstClip.id);
+    const harness = renderLanes({
+      selectedElementId: firstClip.id,
+      selectedElementIds: new Set([firstClip.id]),
+    });
+
+    clickClip(harness.host, firstClip.id, true);
+
+    const state = usePlayerStore.getState();
+    expect(state.selectedElementId).toBeNull();
+    expect(state.selectedElementIds.size).toBe(0);
     act(() => harness.root.unmount());
   });
 

@@ -5,6 +5,7 @@ import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingL
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import { isAdditiveSelectionEvent } from "../../utils/selectionModifiers";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
 
 interface MarqueeState {
@@ -184,7 +185,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
               width: Math.abs(m.currentX - m.startX),
               height: Math.abs(m.currentY - m.startY),
             },
-            event.shiftKey,
+            isAdditiveSelectionEvent(event),
           );
         } else {
           deps.onMarqueeSelectRef.current?.([], false);
