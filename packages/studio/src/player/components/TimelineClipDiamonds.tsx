@@ -13,7 +13,7 @@ import {
   type TimelineKeyframeTarget,
 } from "./timelineKeyframeIdentity";
 
-interface TimelineDiamondKeyframe {
+export interface TimelineDiamondKeyframe {
   percentage: number;
   /** Tween-relative percentage (the retime mutation keys on this, not clip %). */
   tweenPercentage?: number;
