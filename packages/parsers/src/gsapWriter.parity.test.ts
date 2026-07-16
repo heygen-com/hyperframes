@@ -1124,8 +1124,9 @@ describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
 // ── moveKeyframeInScript (retime: preserve value + ease) ─────────────────────
 // "Move to Playhead" retimes a keyframe in time, keeping its properties and
 // per-keyframe ease. The moved keyframe must vanish from the source percentage
-// and reappear (with identical value + ease) at the destination; a destination
-// collision is overwritten, not duplicated. recast and acorn must agree.
+// and reappear (with identical value + ease) at the destination. An occupied
+// destination rejects the retime without mutating authored data. Both writers
+// must agree.
 const MOVE_KF_SCRIPT = `
   const tl = gsap.timeline({ paused: true });
   tl.to("#box", { keyframes: { "0%": { x: 0 }, "50%": { x: 100, opacity: 0.5, ease: "power2.in" }, "100%": { x: 200 } }, duration: 1 }, 0.2);
@@ -1145,16 +1146,10 @@ describe("moveKeyframeInScript: retime preserves value + ease (acorn) ", () => {
     expect(pcts).not.toContain(50);
   });
 
-  it("overwrites the destination keyframe on collision (no duplicate)", () => {
+  it("rejects an occupied destination without mutating either writer", () => {
     const id = acornId(MOVE_KF_SCRIPT);
-    const out = moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 50, 100);
-    const kfs = shapeOf(out).keyframes?.keyframes ?? [];
-    const pcts = kfs.map((k) => k.percentage);
-    expect(pcts).toEqual([0, 100]);
-    const dest = kfs.find((k) => k.percentage === 100)!;
-    // The moved keyframe's value + ease replaced the old 100% { x: 200 }.
-    expect(dest.properties).toEqual({ x: 100, opacity: 0.5 });
-    expect(dest.ease).toBe("power2.in");
+    expect(moveKeyframeAcorn(MOVE_KF_SCRIPT, id, 50, 100)).toBe(MOVE_KF_SCRIPT);
+    expect(moveKeyframeRecast(MOVE_KF_SCRIPT, id, 50, 100)).toBe(MOVE_KF_SCRIPT);
   });
 
   it("no-ops only for a negligible move (below the drag epsilon)", () => {
@@ -1203,7 +1198,7 @@ describe("parity: moveKeyframeInScript (recast vs acorn)", () => {
     expectParity(MOVE_KF_SCRIPT, 50, 10);
   });
 
-  it("retime onto an existing percentage (collision overwrite)", () => {
+  it("reject an occupied destination", () => {
     expectParity(MOVE_KF_SCRIPT, 50, 100);
   });
 
@@ -1242,6 +1237,12 @@ describe("moveKeyframeInScript: array-form keyframes (recast + acorn parity)", (
       modelOf(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 75)),
     );
   });
+
+  it("leaves array-form source untouched when the destination is occupied", () => {
+    const id = acornId(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+    expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
+  });
 });
 
 // ── resizeKeyframedTweenInScript (boundary drag: re-key + grow window) ────────
@@ -1252,6 +1253,10 @@ describe("moveKeyframeInScript: array-form keyframes (recast + acorn parity)", (
 const RESIZE_KF_SCRIPT = `
   const tl = gsap.timeline({ paused: true });
   tl.to("#box", { keyframes: { "0%": { opacity: 0, _auto: 1 }, "50%": { opacity: 0.5, ease: "power2.in" }, "100%": { opacity: 1, _auto: 1 }, easeEach: "power1.inOut" }, duration: 1, ease: "power3.out" }, 0.2);
+`;
+const RESIZE_KF_NO_DURATION_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#box", { keyframes: { "0%": { opacity: 0 }, "50%": { opacity: 0.5, ease: "power2.in" }, "100%": { opacity: 1 } }, ease: "power3.out" }, 0.2);
 `;
 // Window [0.2, 1.2]; drag the last keyframe (abs 1.2) out to abs 2.2 → [0.2, 2.2].
 // abs 0.2/0.7/2.2 over the new 2.0s window → 0 / 25 / 100.
@@ -1290,12 +1295,33 @@ describe("resizeKeyframedTweenInScript: preserves author intent (acorn + recast)
     it(`${label}: no-ops on unknown id`, () => {
       expect(resize(RESIZE_KF_SCRIPT, "bad-id", 0.2, 2, RESIZE_REMAP)).toBe(RESIZE_KF_SCRIPT);
     });
+
+    it(`${label}: preserves an unauthored duration`, () => {
+      const id = acornId(RESIZE_KF_NO_DURATION_SCRIPT);
+      const out = resize(RESIZE_KF_NO_DURATION_SCRIPT, id, 0.4, 2, RESIZE_REMAP);
+      expect(out).not.toMatch(/\bduration\s*:/);
+      const shape = shapeOf(out);
+      expect(shape.duration).toBeUndefined();
+      expect(parseGsapScript(out).animations[0]!.position).toBeCloseTo(0.4, 5);
+      expect(shape.keyframes?.keyframes.map((keyframe) => keyframe.percentage)).toEqual([
+        0, 25, 100,
+      ]);
+    });
   }
 
   it("parity: both writers reparse to the same model", () => {
     const id = acornId(RESIZE_KF_SCRIPT);
     expect(modelOf(resizeKeyframedTweenAcorn(RESIZE_KF_SCRIPT, id, 0.2, 2, RESIZE_REMAP))).toEqual(
       modelOf(resizeKeyframedTweenRecast(RESIZE_KF_SCRIPT, id, 0.2, 2, RESIZE_REMAP)),
+    );
+  });
+
+  it("parity: both writers preserve duration absence", () => {
+    const id = acornId(RESIZE_KF_NO_DURATION_SCRIPT);
+    expect(
+      modelOf(resizeKeyframedTweenAcorn(RESIZE_KF_NO_DURATION_SCRIPT, id, 0.4, 2, RESIZE_REMAP)),
+    ).toEqual(
+      modelOf(resizeKeyframedTweenRecast(RESIZE_KF_NO_DURATION_SCRIPT, id, 0.4, 2, RESIZE_REMAP)),
     );
   });
 });
@@ -1374,6 +1400,31 @@ function lastModelOf(script: string) {
   const arr = modelOf(script);
   return arr[arr.length - 1];
 }
+
+describe("keyframe object builders: duplicate percentage merge", () => {
+  const duplicateKeyframes = [
+    { percentage: 0, properties: { x: 0 } },
+    { percentage: 50, properties: { x: 100 }, ease: "power1.in" },
+    { percentage: 50, properties: { x: 120, opacity: 0.5 }, auto: true },
+    { percentage: 100, properties: { x: 200 } },
+  ];
+
+  for (const [label, add] of [
+    ["acorn", addWithKfAcorn],
+    ["recast", addWithKfRecast],
+  ] as const) {
+    it(`${label}: emits one merged key and preserves authored properties and ease`, () => {
+      const out = add(ADD_WITH_KF_BASE, "#hero", 0, 1, duplicateKeyframes).script;
+      expect(out.match(/["']50%["']\s*:/g)).toHaveLength(1);
+      const atFifty = lastModelOf(out)?.keyframes?.keyframes.filter(
+        (keyframe) => keyframe.percentage === 50,
+      );
+      expect(atFifty).toHaveLength(1);
+      expect(atFifty?.[0]?.properties).toEqual({ x: 120, opacity: 0.5, _auto: 1 });
+      expect(atFifty?.[0]?.ease).toBe("power1.in");
+    });
+  }
+});
 
 // NOTE (WS-3.F): recast is retired, so `recast` here is an alias of the acorn
 // writer and the historical `toEqual(lastModelOf(recast))` comparisons are
