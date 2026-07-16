@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-caption-chip",
+  "type": "hyperframes:component",
+  "title": "Vox Caption Chip",
+  "description": "Black small-caps caption bar that slides in from a frame edge and stays resident (archive/atlas grammar). Variants: mono typewriter, accent red.",
+  "tags": [
+    "vox",
+    "caption",
+    "chip",
+    "label",
+    "archive"
+  ],
+  "files": [
+    {
+      "path": "vox-caption-chip.html",
+      "target": "compositions/components/vox-caption-chip.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

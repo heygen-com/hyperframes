@@ -1,0 +1,12 @@
+<!-- vox-highlighter-word: word-level marker highlight (Vox dark-data grammar, emoji-ads pattern).
+     The .hl-fill sweeps left-to-right behind the word: animate scaleX 0->1, transformOrigin "0% 50%".
+     Stack several .vox-hl in a column, staggering the sweeps. Optional icon/emoji prefix span. -->
+<style>
+  .vox-hl { position: relative; display: inline-block; font-family: "Bebas Neue", sans-serif;
+    font-size: 56px; line-height: 1.05; letter-spacing: 1.5px; color: #111; padding: 2px 10px; }
+  .vox-hl .hl-fill { position: absolute; inset: 0; background: #FFD21E; z-index: -1;
+    transform: skewX(-4deg); }
+  .vox-hl.on-dark { color: #111; }
+  .vox-hl .hl-prefix { font-size: .75em; margin-right: 8px; }
+</style>
+<span class="vox-hl"><span class="hl-fill"></span><span class="hl-prefix">🔥</span>LIT</span>

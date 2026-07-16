@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-timeline-bar",
+  "type": "hyperframes:component",
+  "title": "Vox Timeline Bar",
+  "description": "Persistent bottom timeline: year ticks, gliding playhead, pop-in event chips (atlas grammar). Seek-safe helpers voxTimelineInit/Playhead/Event. The strongest cross-beat continuity device.",
+  "tags": [
+    "vox",
+    "timeline",
+    "continuity",
+    "atlas",
+    "data"
+  ],
+  "files": [
+    {
+      "path": "vox-timeline-bar.html",
+      "target": "compositions/components/vox-timeline-bar.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

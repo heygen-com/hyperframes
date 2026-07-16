@@ -1,0 +1,27 @@
+<!-- vox-thin-arrow: 1.5-2px monochrome annotation arrow (Vox diagram grammar).
+     Draw-on: call voxArrowDraw(tl, ".my-arrow", fromT, dur) — animates stroke draw then pops the head.
+     Variants: default ink, .blue (diagram pages), .red (UI callouts). Curve via the `d` path. -->
+<style>
+  .vox-arrow { position: absolute; overflow: visible; }
+  .vox-arrow path, .vox-arrow polyline { fill: none; stroke: #1a1a1a; stroke-width: 2; stroke-linecap: round; }
+  .vox-arrow .va-head { fill: #1a1a1a; stroke: none; }
+  .vox-arrow.blue path, .vox-arrow.blue polyline { stroke: #2E5F8A; }
+  .vox-arrow.blue .va-head { fill: #2E5F8A; }
+  .vox-arrow.red path, .vox-arrow.red polyline { stroke: #D2382B; stroke-width: 2.5; }
+  .vox-arrow.red .va-head { fill: #D2382B; }
+</style>
+<svg class="vox-arrow blue" width="220" height="90" viewBox="0 0 220 90">
+  <path class="va-line" d="M6 10 C 60 70, 140 78, 204 46"/>
+  <polygon class="va-head" points="212,42 196,40 202,54"/>
+</svg>
+<script>
+  // Seek-safe draw-on: dash the line, tween the offset, then scale the head in.
+  function voxArrowDraw(tl, selector, fromT, dur) {
+    var line = document.querySelector(selector + " .va-line");
+    var len = line.getTotalLength();
+    tl.set(selector + " .va-line", { strokeDasharray: len, strokeDashoffset: len }, 0);
+    tl.set(selector + " .va-head", { scale: 0, transformOrigin: "50% 50%" }, 0);
+    tl.fromTo(selector + " .va-line", { strokeDashoffset: len }, { strokeDashoffset: 0, duration: dur * 0.8, ease: "power2.inOut" }, fromT);
+    tl.fromTo(selector + " .va-head", { scale: 0 }, { scale: 1, duration: dur * 0.2, ease: "back.out(3)" }, fromT + dur * 0.75);
+  }
+</script>

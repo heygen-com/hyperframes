@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Highlighter Word demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#F4F1EA;display:grid;place-items:center}
+.col{display:flex;flex-direction:column;gap:26px;align-items:flex-start}</style></head>
+<body>
+<style>
+  .vox-hl { position: relative; display: inline-block; font-family: "Bebas Neue", sans-serif;
+    font-size: 56px; line-height: 1.05; letter-spacing: 1.5px; color: #111; padding: 2px 10px; }
+  .vox-hl .hl-fill { position: absolute; inset: 0; background: #FFD21E; z-index: -1;
+    transform: skewX(-4deg); }
+  .vox-hl .hl-prefix { font-size: .75em; margin-right: 8px; }
+</style>
+<div class="col">
+  <span class="vox-hl"><span class="hl-fill"></span><span class="hl-prefix">🔥</span>LIT</span>
+  <span class="vox-hl"><span class="hl-fill" style="background:#8FD3B6"></span><span class="hl-prefix">💯</span>KEEP IT 100</span>
+  <span class="vox-hl"><span class="hl-fill" style="background:#F0A8A0"></span><span class="hl-prefix">🍟</span>FRY DAY</span>
+</div>
+</body></html>

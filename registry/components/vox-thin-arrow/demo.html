@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Thin Arrow demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#F4F1EA;display:grid;place-items:center}
+.stage{position:relative;width:560px;height:700px}
+.stage .lbl{position:absolute;font-family:"Courier Prime","Courier New",monospace;font-size:20px;letter-spacing:1.5px;text-transform:uppercase;color:#1a1a1a}
+</style></head>
+<body>
+<style>
+  .vox-arrow { position: absolute; overflow: visible; }
+  .vox-arrow path, .vox-arrow polyline { fill: none; stroke: #1a1a1a; stroke-width: 2; stroke-linecap: round; }
+  .vox-arrow .va-head { fill: #1a1a1a; stroke: none; }
+  .vox-arrow.blue path, .vox-arrow.blue polyline { stroke: #2E5F8A; }
+  .vox-arrow.blue .va-head { fill: #2E5F8A; }
+  .vox-arrow.red path, .vox-arrow.red polyline { stroke: #D2382B; stroke-width: 2.5; }
+  .vox-arrow.red .va-head { fill: #D2382B; }
+</style>
+<div class="stage">
+  <span class="lbl" style="left:0;top:0">Notification loop</span>
+  <svg class="vox-arrow blue" style="left:30px;top:40px" width="220" height="90" viewBox="0 0 220 90">
+    <path class="va-line" d="M6 10 C 60 70, 140 78, 204 46"/>
+    <polygon class="va-head" points="212,42 196,40 202,54"/>
+  </svg>
+  <span class="lbl" style="right:0;top:250px">Variable reward</span>
+  <svg class="vox-arrow" style="right:60px;top:290px" width="160" height="120" viewBox="0 0 160 120">
+    <path class="va-line" d="M150 10 C 100 40, 60 80, 18 100"/>
+    <polygon class="va-head" points="8,106 24,100 20,88"/>
+  </svg>
+  <span class="lbl" style="left:20px;bottom:180px">Tap here</span>
+  <svg class="vox-arrow red" style="left:40px;bottom:60px" width="120" height="110" viewBox="0 0 120 110">
+    <path class="va-line" d="M10 8 C 30 50, 60 80, 100 92"/>
+    <polygon class="va-head" points="110,96 96,86 92,100"/>
+  </svg>
+</div>
+</body></html>

@@ -1,0 +1,60 @@
+<!-- vox-timeline-bar: persistent bottom timeline with moving playhead + pop-in event chips
+     (Vox atlas grammar, ME-cold-war pattern). The strongest cross-beat continuity device:
+     mount it once at composition level (z above pages), keep it resident, advance the playhead
+     each beat. Helpers below are seek-safe (pure fromTo/set).
+       voxTimelineInit(selector)                              — position ticks & events from data-year
+       voxTimelinePlayhead(tl, selector, year0, year1, t0, t1) — glide playhead between years
+       voxTimelineEvent(tl, selector, idx, atT)               — pop event chip idx at time atT -->
+<style>
+  .vox-tl { position: absolute; left: 40px; right: 40px; bottom: 36px; height: 74px;
+    font-family: "Bebas Neue", sans-serif; --tl-min: 1900; --tl-max: 2020; }
+  .vox-tl .vt-axis { position: absolute; left: 0; right: 0; bottom: 22px; height: 2px;
+    background: rgba(20,18,14,.75); }
+  .vox-tl .vt-tick { position: absolute; bottom: 0; transform: translateX(-50%);
+    font-size: 17px; letter-spacing: 1px; color: rgba(20,18,14,.75); }
+  .vox-tl .vt-tick::before { content: ""; position: absolute; left: 50%; bottom: 20px;
+    width: 2px; height: 8px; background: rgba(20,18,14,.75); }
+  .vox-tl .vt-playhead { position: absolute; bottom: 17px; width: 12px; height: 12px;
+    border-radius: 50%; background: #D2382B; transform: translateX(-50%);
+    box-shadow: 0 0 0 3px rgba(210,56,43,.25); }
+  .vox-tl .vt-event { position: absolute; bottom: 34px; transform: translateX(-50%);
+    background: #111; color: #f4f1e8; font-size: 18px; letter-spacing: 1.5px; line-height: 1;
+    text-transform: uppercase; padding: 8px 12px 7px; white-space: nowrap; }
+  .vox-tl .vt-event::after { content: ""; position: absolute; left: 50%; top: 100%;
+    transform: translateX(-50%); border: 5px solid transparent; border-top-color: #111; }
+  .vox-tl.on-dark .vt-axis, .vox-tl.on-dark .vt-tick::before { background: rgba(244,241,232,.7); }
+  .vox-tl.on-dark .vt-tick { color: rgba(244,241,232,.7); }
+</style>
+<div class="vox-tl" style="--tl-min:1900; --tl-max:2020;">
+  <div class="vt-axis"></div>
+  <span class="vt-tick" data-year="1900">1900</span>
+  <span class="vt-tick" data-year="1960">1960</span>
+  <span class="vt-tick" data-year="2020">2020</span>
+  <div class="vt-playhead" data-year="1914"></div>
+  <div class="vt-event" data-year="1914">WAR BREAKS OUT</div>
+  <div class="vt-event" data-year="1979">REVOLUTION</div>
+</div>
+<script>
+  function voxTimelineX(el, year) {
+    var cs = getComputedStyle(el);
+    var min = parseFloat(cs.getPropertyValue("--tl-min")), max = parseFloat(cs.getPropertyValue("--tl-max"));
+    return ((year - min) / (max - min)) * 100;
+  }
+  function voxTimelineInit(selector) {
+    var root = document.querySelector(selector);
+    root.querySelectorAll("[data-year]").forEach(function (el) {
+      el.style.left = voxTimelineX(root, parseFloat(el.dataset.year)) + "%";
+    });
+    root.querySelectorAll(".vt-event").forEach(function (el) { el.style.opacity = 0; });
+  }
+  function voxTimelinePlayhead(tl, selector, year0, year1, t0, t1) {
+    var root = document.querySelector(selector);
+    tl.fromTo(selector + " .vt-playhead",
+      { left: voxTimelineX(root, year0) + "%" },
+      { left: voxTimelineX(root, year1) + "%", duration: t1 - t0, ease: "power1.inOut" }, t0);
+  }
+  function voxTimelineEvent(tl, selector, idx, atT) {
+    var ev = selector + " .vt-event:nth-of-type(" + (idx + 1) + ")";
+    tl.fromTo(ev, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2.5)" }, atT);
+  }
+</script>

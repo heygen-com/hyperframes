@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-thin-arrow",
+  "type": "hyperframes:component",
+  "title": "Vox Thin Arrow",
+  "description": "1.5-2px monochrome annotation arrow with seek-safe draw-on helper (voxArrowDraw). The Vox diagram-grammar pointer: label to target, blue on light pages, red for UI callouts.",
+  "tags": [
+    "vox",
+    "arrow",
+    "annotation",
+    "diagram"
+  ],
+  "files": [
+    {
+      "path": "vox-thin-arrow.html",
+      "target": "compositions/components/vox-thin-arrow.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

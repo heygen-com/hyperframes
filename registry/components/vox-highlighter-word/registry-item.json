@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-highlighter-word",
+  "type": "hyperframes:component",
+  "title": "Vox Highlighter Word",
+  "description": "Word-level marker highlight with left-to-right sweep fill and optional emoji prefix; stack and stagger for lists (dark-data grammar).",
+  "tags": [
+    "vox",
+    "highlight",
+    "typography",
+    "marker"
+  ],
+  "files": [
+    {
+      "path": "vox-highlighter-word.html",
+      "target": "compositions/components/vox-highlighter-word.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
