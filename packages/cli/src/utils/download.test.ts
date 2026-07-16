@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import type { ClientRequest, IncomingMessage } from "node:http";
+import { get as httpsGet } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough } from "node:stream";
-import { get as httpsGet } from "node:https";
-import type { ClientRequest, IncomingMessage } from "node:http";
+import { PassThrough, Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadFile } from "./download.js";
 
@@ -60,7 +60,37 @@ describe("downloadFile", () => {
     await expect(
       downloadFile("https://example.test/model.onnx", dest, { timeoutMs: 10 }),
     ).rejects.toThrow("Download timed out after 10ms");
-    expect(existsSync(`${dest}.tmp`)).toBe(false);
     expect(existsSync(dest)).toBe(false);
+    expect(existsSync(`${dest}.download.lock`)).toBe(false);
+  });
+
+  it("serializes concurrent downloads to the same cache destination", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-lock-"));
+    tempDirs.push(dir);
+    const dest = join(dir, "model.bin");
+    let requests = 0;
+
+    mockGet.mockImplementation(((_url: string, callback: (response: IncomingMessage) => void) => {
+      requests += 1;
+      const response = Readable.from([Buffer.from("complete-model")]) as Readable & {
+        statusCode: number;
+        headers: Record<string, string>;
+      };
+      response.statusCode = 200;
+      response.headers = {};
+      const request = new EventEmitter() as ClientRequest;
+      request.setTimeout = vi.fn(() => request);
+      queueMicrotask(() => callback(response as unknown as IncomingMessage));
+      return request;
+    }) as typeof httpsGet);
+
+    await Promise.all([
+      downloadFile("https://example.test/model.bin", dest),
+      downloadFile("https://example.test/model.bin", dest),
+    ]);
+
+    expect(requests).toBe(1);
+    expect(readFileSync(dest, "utf8")).toBe("complete-model");
+    expect(existsSync(`${dest}.download.lock`)).toBe(false);
   });
 });
