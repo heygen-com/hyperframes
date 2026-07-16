@@ -10,6 +10,8 @@ const MAX_INSTALL_COMPRESSION_RATIO = 50;
 
 const CLAUDE_PLUGIN_PAYLOAD_FILES = [
   "packages/producer/tests/missing-host-comp-id/src/silence.wav",
+  "packages/producer/tests/page-side-shader-compositor-render-compat/src/silent.wav",
+  "packages/producer/tests/variables-prod/src/silence.wav",
 ] as const;
 
 function compressionRatio(bytes: Buffer): number {
