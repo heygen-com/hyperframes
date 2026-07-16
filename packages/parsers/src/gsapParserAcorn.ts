@@ -975,6 +975,14 @@ function parsePercentageKeyframes(
       for (const [k, v] of Object.entries(record)) {
         if (k === "ease" && typeof v === "string") {
           kfEase = v;
+        } else if (k === "duration") {
+          // `duration` is array-keyframe SEGMENT TIMING, not an animatable
+          // property. In a %-keyed object keyframe the % key owns timing, so a
+          // per-step `duration` is neither timing nor a property here. Skip it
+          // (parseObjectArrayKeyframes already does) — otherwise it surfaces as
+          // a bogus "duration" keyframe lane and gets round-tripped as a
+          // property, corrupting the tween on the next manual edit.
+          continue;
         } else if (typeof v === "number" || typeof v === "string") {
           properties[k] = v;
         }

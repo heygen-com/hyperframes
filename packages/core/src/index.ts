@@ -95,7 +95,6 @@ export {
   keyframesToGsapAnimations,
   gsapAnimationsToKeyframes,
 } from "@hyperframes/parsers";
-
 export type { ParsedHtml, CompositionMetadata } from "@hyperframes/parsers";
 
 export {

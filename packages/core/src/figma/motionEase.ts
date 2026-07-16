@@ -28,7 +28,7 @@ const NAMED_EASE: Record<string, string> = {
   elasticinout: "elastic.inOut",
   anticipate: "back.in",
   spring: "elastic.out",
-  hold: "steps(1)",
+  hold: "hold",
 };
 
 function isBezier4(ease: unknown[]): ease is [number, number, number, number] {
