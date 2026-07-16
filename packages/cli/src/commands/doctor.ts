@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 import { defineCommand } from "citty";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { platform } from "node:os";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
@@ -133,6 +133,37 @@ function checkDisk(): CheckResult {
   return { ok: true, detail: `${freeGb} GB free` };
 }
 
+function commandExists(command: string): boolean {
+  try {
+    execFileSync("which", [command], { stdio: "ignore", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puppeteer's managed Chrome download delegates ZIP extraction to `unzip` on
+ * macOS and Linux. Windows has built-in tar/PowerShell extraction paths, so it
+ * does not need this Unix dependency.
+ */
+export function checkArchiveExtractor(
+  hostPlatform = platform(),
+  exists: (command: string) => boolean = commandExists,
+): CheckResult {
+  if (hostPlatform === "win32") {
+    return { ok: true, detail: "Built into Windows" };
+  }
+  if (exists("unzip")) {
+    return { ok: true, detail: "unzip" };
+  }
+  return {
+    ok: false,
+    detail: "Not found",
+    hint: "Install unzip so HyperFrames can extract its managed Chrome download.",
+  };
+}
+
 function checkEnvironment(): CheckResult {
   const sys = getSystemMeta();
   const parts: string[] = [];
@@ -238,6 +269,7 @@ export default defineCommand({
       { name: "CPU", run: checkCPU },
       { name: "Memory", run: checkMemory },
       { name: "Disk", run: checkDisk },
+      { name: "Archive extractor", run: checkArchiveExtractor },
     ];
 
     // /dev/shm is only relevant on Linux (especially Docker)

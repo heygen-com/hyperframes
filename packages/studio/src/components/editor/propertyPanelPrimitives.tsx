@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  DesignPanelInputProvider,
+  useTrackDesignInput,
+} from "../../contexts/DesignPanelInputContext";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
 
-function CommitField({
+export function CommitField({
   value,
   disabled,
   liveCommit,
@@ -131,7 +135,15 @@ export function MetricField({
   tooltip?: string;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const scrubRef = useRef<{ startX: number; startValue: number; pointerId: number } | null>(null);
+  const commit = useCallback(
+    (nextValue: string) => {
+      if (nextValue !== value) track("metric", label);
+      onCommit(nextValue);
+    },
+    [label, onCommit, track, value],
+  );
 
   const handleScrubPointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -149,9 +161,9 @@ export function MetricField({
       const state = scrubRef.current;
       if (!state) return;
       const delta = e.clientX - state.startX;
-      onCommit(String(Math.round(state.startValue + delta)));
+      commit(String(Math.round(state.startValue + delta)));
     },
-    [onCommit],
+    [commit],
   );
 
   const handleScrubPointerUp = useCallback(() => {
@@ -173,12 +185,7 @@ export function MetricField({
     <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
         <span {...scrubProps}>{label}</span>
-        <CommitField
-          value={value}
-          disabled={disabled}
-          liveCommit={liveCommit}
-          onCommit={onCommit}
-        />
+        <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>
@@ -200,17 +207,23 @@ export function DetailField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
+  const commit = (nextValue: string) => {
+    if (nextValue !== value) track("text", label);
+    onCommit(nextValue);
+  };
   return (
     <label className="grid min-w-0 gap-1.5">
       <span className={LABEL}>{label}</span>
       <div className={FIELD}>
-        <CommitField value={value} disabled={disabled} onCommit={onCommit} />
+        <CommitField value={value} disabled={disabled} onCommit={commit} />
       </div>
     </label>
   );
 }
 
 export function SliderControl({
+  trackName,
   value,
   min,
   max,
@@ -220,6 +233,7 @@ export function SliderControl({
   disabled,
   onCommit,
 }: {
+  trackName: string;
   value: number;
   min: number;
   max: number;
@@ -229,8 +243,10 @@ export function SliderControl({
   disabled?: boolean;
   onCommit: (nextValue: number) => void;
 }) {
+  const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionChangedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
 
@@ -246,6 +262,10 @@ export function SliderControl({
 
   const commitDraft = (nextDraft: number) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    if (interactionChangedRef.current) {
+      interactionChangedRef.current = false;
+      track("slider", trackName);
+    }
     if (nextDraft !== valueRef.current) onCommit(nextDraft);
   };
   const scheduleCommit = (nextDraft: number) => {
@@ -267,6 +287,7 @@ export function SliderControl({
         onChange={(e) => {
           const n = Number(e.target.value);
           setDraft(n);
+          interactionChangedRef.current = true;
           scheduleCommit(n);
         }}
         onMouseUp={() => commitDraft(draft)}
@@ -282,16 +303,19 @@ export function SliderControl({
 }
 
 export function SegmentedControl({
+  trackName,
   options,
   value,
   disabled,
   onChange,
 }: {
+  trackName: string;
   options: Array<{ label: string; value: string }>;
   value: string;
   disabled?: boolean;
   onChange: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   return (
     <div
       className="grid min-w-0 gap-[2px] rounded-md bg-panel-input p-[2px]"
@@ -302,7 +326,10 @@ export function SegmentedControl({
           key={option.value}
           type="button"
           disabled={disabled}
-          onClick={() => onChange(option.value)}
+          onClick={() => {
+            if (option.value !== value) track("segmented", trackName);
+            onChange(option.value);
+          }}
           className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
             option.value === value
               ? "bg-panel-hover text-white"
@@ -331,6 +358,7 @@ export function SelectField({
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
+  const track = useTrackDesignInput();
   const hasUnlistedValue = Boolean(value && !options.includes(value));
   const renderedOptions = hasUnlistedValue ? [value, ...options] : options;
   return (
@@ -339,7 +367,10 @@ export function SelectField({
       <select
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          track("select", label);
+          onChange(e.target.value);
+        }}
         className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
       >
         {renderedOptions.map((option) => (
@@ -392,36 +423,36 @@ export function Section({
     </svg>
   );
 
+  const section = slugifyPanelSectionTitle(title);
   return (
-    <section
-      className="min-w-0 border-t border-panel-border"
-      data-panel-section={slugifyPanelSectionTitle(title)}
-    >
-      <div className="flex w-full items-center gap-2 px-4 py-2.5">
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
-        >
-          <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
-          {collapseIcon}
-        </button>
-        {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
-      </div>
-      {!collapsed && (
-        <div className="px-4 pb-3">
-          {disabledReason && (
-            <p
-              data-disabled-reason
-              className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400"
-            >
-              {disabledReason}
-            </p>
-          )}
-          {children}
+    <DesignPanelInputProvider section={section}>
+      <section className="min-w-0 border-t border-panel-border" data-panel-section={section}>
+        <div className="flex w-full items-center gap-2 px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+          >
+            <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
+            {collapseIcon}
+          </button>
+          {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
         </div>
-      )}
-    </section>
+        {!collapsed && (
+          <div className="px-4 pb-3">
+            {disabledReason && (
+              <p
+                data-disabled-reason
+                className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400"
+              >
+                {disabledReason}
+              </p>
+            )}
+            {children}
+          </div>
+        )}
+      </section>
+    </DesignPanelInputProvider>
   );
 }
 

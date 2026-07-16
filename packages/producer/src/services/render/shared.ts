@@ -233,11 +233,23 @@ export function updateJobStatus(
   progress: number,
   onProgress?: ProgressCallback,
 ): void {
+  job.warnings ??= [];
   job.status = status;
   job.currentStage = stage;
-  job.progress = progress;
-  if (status === "failed" || status === "complete") job.completedAt = new Date();
-  if (onProgress) onProgress(job, stage);
+  const boundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  job.progress = Math.max(job.progress, boundedProgress);
+  if (status === "failed" || status === "complete" || status === "cancelled") {
+    job.completedAt = new Date();
+    job.outcome =
+      status === "failed"
+        ? "failed"
+        : status === "cancelled"
+          ? "cancelled"
+          : job.warnings.length > 0
+            ? "completed_with_warnings"
+            : "completed";
+  }
+  if (onProgress) void onProgress(job, stage);
 }
 
 /**

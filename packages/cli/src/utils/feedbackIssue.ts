@@ -1,3 +1,5 @@
+import { FEEDBACK_RATING_SCALE } from "./feedbackRating.js";
+
 // Reading package.json at runtime from the single-file bundled CLI is awkward,
 // so we keep the canonical repo as a constant. It must match the `repository.url`
 // in packages/cli/package.json.
@@ -33,7 +35,7 @@ function truncate(value: string, max: number): string {
 
 function buildIssueTitle(rating: number, comment?: string): string {
   const firstLine = comment?.split("\n")[0]?.trim();
-  if (!firstLine) return `Render feedback (rating ${rating}/5)`;
+  if (!firstLine) return `Render feedback (rating ${rating}/${FEEDBACK_RATING_SCALE})`;
   return `[feedback] ${truncate(firstLine, TITLE_MAX)}`;
 }
 
@@ -44,7 +46,7 @@ function buildIssueBody(input: IssueInput): string {
     : "_Publishing the repro failed, no public link available._";
 
   return [
-    `**Rating:** ${input.rating}/5`,
+    `**Rating:** ${input.rating}/${FEEDBACK_RATING_SCALE}`,
     "",
     "## Comment",
     comment ? truncate(comment, COMMENT_MAX) : "_No comment provided._",

@@ -82,4 +82,39 @@ describe("useGsapPropertyDebounce flush stability (finding #7)", () => {
       root.unmount();
     });
   });
+
+  it("reports a rejected debounced flush instead of leaking an unhandled rejection", async () => {
+    const error = new Error("save failed");
+    const commitMutationSafely = vi.fn().mockRejectedValue(error);
+    const onFlushError = vi.fn();
+    let queueEdit: (() => void) | null = null;
+
+    function Harness() {
+      const ops = useGsapPropertyDebounce(commitMutationSafely, {
+        sdkSession: null,
+        sdkDeps: null,
+        activeCompPath: "index.html",
+        onFlushError,
+      });
+      queueEdit = () => ops.updateGsapProperty(selection, "tw-1", "x", 42);
+      return null;
+    }
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(Harness));
+    });
+    act(() => queueEdit?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(onFlushError).toHaveBeenCalledWith(
+      error,
+      selection,
+      { type: "update-property", animationId: "tw-1", property: "x", value: 42 },
+      "Edit GSAP x",
+    );
+    act(() => root.unmount());
+  });
 });

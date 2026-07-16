@@ -10,6 +10,9 @@ export const examples: Example[] = [
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
   ["Use a custom port", "hyperframes preview --port 8080"],
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
+  ["Keep preview running after this command exits", "hyperframes preview --background"],
+  ["Show the background preview for this project", "hyperframes preview --status"],
+  ["Stop the background preview for this project", "hyperframes preview --stop"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
   [
@@ -19,7 +22,16 @@ export const examples: Example[] = [
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
-import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
+import { parseStoryboard, STORYBOARD_FILENAME } from "@hyperframes/core/storyboard";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -44,6 +56,11 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  readBackgroundPreviewStatus,
+  startBackgroundPreview,
+  stopBackgroundPreview,
+} from "./previewLifecycle.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -88,6 +105,21 @@ export default defineCommand({
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
+    background: {
+      type: "boolean",
+      description: "Start an embedded preview that remains running after the command exits",
+      default: false,
+    },
+    status: {
+      type: "boolean",
+      description: "Show the background preview for this project and exit",
+      default: false,
+    },
+    stop: {
+      type: "boolean",
+      description: "Stop the background preview for this project and exit",
       default: false,
     },
     list: {
@@ -153,6 +185,30 @@ export default defineCommand({
   async run({ args }) {
     const startPort = parseInt(args.port ?? "3002", 10);
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
+
+    if (args.status || args.stop) {
+      const project = resolveProject(args.dir);
+      if (args.stop) {
+        const stopped = await stopBackgroundPreview(project.dir, startPort);
+        console.log(
+          stopped
+            ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
+            : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+        );
+        return;
+      }
+      const status = await readBackgroundPreviewStatus(project.dir, startPort);
+      if (!status) {
+        console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+        return;
+      }
+      console.log(`\n  ${c.success("Background preview running")}`);
+      console.log(
+        `  ${c.accent(`http://localhost:${status.port}`)} ${c.dim(`(PID ${status.pid})`)}`,
+      );
+      console.log(`  ${c.dim(status.logPath)}\n`);
+      return;
+    }
 
     // --list: scan and display active servers
     if (args.list) {
@@ -267,6 +323,11 @@ export default defineCommand({
     }
 
     if (isDevMode()) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runDevMode(dir, {
         projectName,
         noOpen,
@@ -279,6 +340,11 @@ export default defineCommand({
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
+      if (args.background) {
+        clack.log.error("--background currently supports the embedded preview server only");
+        process.exitCode = 1;
+        return;
+      }
       return runLocalStudioMode(dir, {
         projectName,
         noOpen,
@@ -287,6 +353,38 @@ export default defineCommand({
         remoteDebuggingPort,
         browserNoGpu,
       });
+    }
+
+    if (args.background) {
+      let background;
+      try {
+        background = await startBackgroundPreview(dir, startPort, {
+          forceNew: Boolean(args["force-new"]),
+        });
+      } catch (error) {
+        clack.log.error(errorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      const url = `http://localhost:${background.port}`;
+      clack.intro(c.bold("hyperframes preview"));
+      printStudioSummary(projectName, url, {
+        details: [
+          background.type === "reused"
+            ? "Reusing the background server already running for this project."
+            : `Running in the background. Log: ${background.logPath}`,
+          "Changes reload automatically in the studio.",
+        ],
+        footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+      });
+      openStudioBrowser(url, projectName, dir, {
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        browserNoGpu,
+      });
+      return;
     }
 
     const forceNew = !!args["force-new"];
@@ -653,9 +751,47 @@ function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSel
   };
 }
 
-function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
+// Land the browser on the Storyboard view while the project is still planning
+// or sketching — the timeline only becomes the right landing once frames are
+// animated (or the storyboard never tracked statuses at all, e.g. beat plans).
+export function studioLandingSearch(projectDir: string): string {
+  const storyboardPath = join(projectDir, STORYBOARD_FILENAME);
+  if (!existsSync(storyboardPath)) return "";
+  let frames;
+  try {
+    frames = parseStoryboard(readFileSync(storyboardPath, "utf8")).frames;
+  } catch {
+    return "";
+  }
+  // Sketch review in progress — the board is the review surface.
+  if (frames.some((f) => f.status === "built")) return "?view=storyboard";
+  // Pure planning stage: frames declare src paths but none are built yet.
+  const srcs = frames
+    .map((f) => f.src)
+    .filter((s): s is string => typeof s === "string" && s.length > 0);
+  const planning =
+    frames.length > 0 &&
+    frames.every((f) => f.status === "outline") &&
+    srcs.length > 0 &&
+    !srcs.some((s) => existsSync(join(projectDir, s)));
+  return planning ? "?view=storyboard" : "";
+}
+
+// The full Studio URL to open or hand to the user: status-aware landing view
+// plus the project hash route. `url` never carries a trailing slash (both the
+// embedded server and the Vite `Local:` match strip it).
+function studioDeepLink(url: string, projectName: string, projectDir: string): string {
+  return `${url}/${studioLandingSearch(projectDir)}#project/${projectName}`;
+}
+
+function openStudioBrowser(
+  url: string,
+  projectName: string,
+  projectDir: string,
+  options?: BrowserLaunchOptions,
+): void {
   if (options?.noOpen) return;
-  openBrowser(`${url}#project/${projectName}`, {
+  openBrowser(studioDeepLink(url, projectName, projectDir), {
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
@@ -740,6 +876,7 @@ function attachStudioReadyHandler(
   child: StudioChildProcess,
   spinner: ReturnType<typeof clack.spinner>,
   projectName: string,
+  projectDir: string,
   options?: BrowserLaunchOptions,
 ): void {
   let detected = false;
@@ -751,7 +888,7 @@ function attachStudioReadyHandler(
     detected = true;
     spinner.stop(c.success("Studio running"));
     printStudioSummary(projectName, url, { footer: "Press Ctrl+C to stop" });
-    openStudioBrowser(url, projectName, options);
+    openStudioBrowser(url, projectName, projectDir, options);
     child.stdout.removeListener("data", handleOutput);
     child.stderr.removeListener("data", handleOutput);
   }
@@ -789,7 +926,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  attachStudioReadyHandler(child, s, pName, options);
+  attachStudioReadyHandler(child, s, pName, dir, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Kill the child's entire process tree on SIGTERM/SIGINT. Ctrl+C sends
@@ -838,7 +975,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  attachStudioReadyHandler(child, s, pName, options);
+  attachStudioReadyHandler(child, s, pName, dir, options);
   removeSymlinkOnExit(createdSymlink, symlinkPath);
 
   // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
@@ -909,7 +1046,7 @@ async function runEmbeddedMode(
     printStudioSummary(pName, url, {
       details: ["Reusing existing server. Use --force-new to start a fresh instance."],
     });
-    openStudioBrowser(url, pName, options);
+    openStudioBrowser(url, pName, dir, options);
     return;
   }
 
@@ -927,7 +1064,7 @@ async function runEmbeddedMode(
     ],
     footer: "Press Ctrl+C to stop",
   });
-  openStudioBrowser(url, pName, options);
+  openStudioBrowser(url, pName, dir, options);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the

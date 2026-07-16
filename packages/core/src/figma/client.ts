@@ -14,12 +14,16 @@ export type FigmaClientErrorCode =
 export class FigmaClientError extends Error {
   readonly code: FigmaClientErrorCode;
   readonly status?: number;
+  /** Low-cardinality REST call label (e.g. "images", "files_nodes") for
+   *  telemetry attribution — never the raw fileKey/nodeId path. */
+  readonly endpoint?: string;
 
-  constructor(code: FigmaClientErrorCode, message: string, status?: number) {
+  constructor(code: FigmaClientErrorCode, message: string, status?: number, endpoint?: string) {
     super(message);
     this.name = "FigmaClientError";
     this.code = code;
     this.status = status;
+    this.endpoint = endpoint;
   }
 }
 
@@ -217,6 +221,8 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     enterpriseGated?: boolean;
     /** scope named in a FORBIDDEN message so the user knows which to add. */
     scopeHint?: string;
+    /** low-cardinality call label carried onto any thrown FigmaClientError. */
+    endpoint: string;
   }
 
   /** Map a 403 to the right typed error using figma's own response body:
@@ -233,18 +239,21 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
         "BAD_TOKEN",
         "figma rejected the token (403 Invalid token) — it is invalid, expired, or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
         403,
+        opts.endpoint,
       );
     if (opts.enterpriseGated)
       return new FigmaClientError(
         "REQUIRES_ENTERPRISE",
         "figma variables require an Enterprise plan (403) — fall back to styles",
         403,
+        opts.endpoint,
       );
     if (body && /scope/i.test(body))
       return new FigmaClientError(
         "FORBIDDEN",
         `figma denied access (403): ${body} — add the named scope at figma.com/settings → Security → Personal access tokens.`,
         403,
+        opts.endpoint,
       );
     const scopeLine = opts.scopeHint
       ? `This endpoint needs the "${opts.scopeHint}" scope — add it at figma.com/settings → Security → Personal access tokens.`
@@ -253,6 +262,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
       "FORBIDDEN",
       `figma denied access (403). ${scopeLine} Also confirm the file is visible to your account.`,
       403,
+      opts.endpoint,
     );
   }
 
@@ -264,6 +274,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
         "BAD_TOKEN",
         "figma rejected the token (401) — it is expired or revoked. Re-mint at figma.com/settings → Security, then update FIGMA_TOKEN.",
         401,
+        opts.endpoint,
       );
     if (res.status === 403) throw forbiddenError(await readFigmaErrorMessage(res), opts);
     if (res.status === 429)
@@ -271,15 +282,17 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
         "RATE_LIMITED",
         `figma rate limit hit (429) and still limited after ${maxRetries} retries — wait a minute and re-run, or import fewer nodes per call.`,
         429,
+        opts.endpoint,
       );
     throw new FigmaClientError(
       "HTTP_ERROR",
       `figma request failed: HTTP ${res.status} ${path}`,
       res.status,
+      opts.endpoint,
     );
   }
 
-  async function get(path: string, opts: GetOptions = {}): Promise<unknown> {
+  async function get(path: string, opts: GetOptions): Promise<unknown> {
     // Retry 429 with backoff before surfacing RATE_LIMITED — figma's limit is
     // per-minute, so a couple of imports in quick succession hit it and a
     // short wait clears it. Honor Retry-After when present, else exponential.
@@ -302,6 +315,8 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
         throw new FigmaClientError(
           "RENDER_FAILED",
           `figma could not render node ${nodeId} as ${opts.format}`,
+          undefined,
+          "images",
         );
       return { url: result.url, ext: opts.format };
     },
@@ -314,6 +329,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
       if (opts.scale !== undefined) params.set("scale", String(opts.scale));
       const body = await get(`/v1/images/${fileKey}?${params}`, {
         scopeHint: SCOPE_HINTS.fileContent,
+        endpoint: "images",
       });
       const images = isRecord(body) && isRecord(body.images) ? body.images : {};
       return nodeIds.map((nodeId) => {
@@ -327,7 +343,10 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     },
 
     async imageFills(fileKey) {
-      const body = await get(`/v1/files/${fileKey}/images`, { scopeHint: SCOPE_HINTS.fileContent });
+      const body = await get(`/v1/files/${fileKey}/images`, {
+        scopeHint: SCOPE_HINTS.fileContent,
+        endpoint: "files_images",
+      });
       const meta = isRecord(body) && isRecord(body.meta) ? body.meta : {};
       const images = isRecord(meta.images) ? meta.images : {};
       const out = new Map<string, string>();
@@ -338,7 +357,10 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     },
 
     async variables(fileKey) {
-      const body = await get(`/v1/files/${fileKey}/variables/local`, { enterpriseGated: true });
+      const body = await get(`/v1/files/${fileKey}/variables/local`, {
+        enterpriseGated: true,
+        endpoint: "variables_local",
+      });
       const meta = isRecord(body) && isRecord(body.meta) ? body.meta : {};
       const variables = isRecord(meta.variables) ? meta.variables : {};
       const collections = isRecord(meta.variableCollections) ? meta.variableCollections : {};
@@ -353,6 +375,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
     async styles(fileKey) {
       const body = await get(`/v1/files/${fileKey}/styles`, {
         scopeHint: SCOPE_HINTS.libraryContent,
+        endpoint: "styles",
       });
       const meta = isRecord(body) && isRecord(body.meta) ? body.meta : {};
       const styles = Array.isArray(meta.styles) ? meta.styles : [];
@@ -370,6 +393,7 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
       const params = new URLSearchParams({ ids: nodeId, geometry: "paths" });
       const body = await get(`/v1/files/${ref.fileKey}/nodes?${params}`, {
         scopeHint: SCOPE_HINTS.fileContent,
+        endpoint: "files_nodes",
       });
       const nodes = isRecord(body) && isRecord(body.nodes) ? body.nodes : {};
       const entry = nodes[nodeId];
@@ -380,13 +404,19 @@ export function createFigmaClient(options: FigmaClientOptions): FigmaClient {
         typeof doc.name !== "string" ||
         typeof doc.type !== "string"
       )
-        throw new FigmaClientError("NODE_NOT_FOUND", `node ${nodeId} not found in ${ref.fileKey}`);
+        throw new FigmaClientError(
+          "NODE_NOT_FOUND",
+          `node ${nodeId} not found in ${ref.fileKey}`,
+          undefined,
+          "files_nodes",
+        );
       return { ...doc, id: doc.id, name: doc.name, type: doc.type };
     },
 
     async fileVersion(fileKey) {
       const body = await get(`/v1/files/${fileKey}?depth=1`, {
         scopeHint: SCOPE_HINTS.fileMetadata,
+        endpoint: "file_meta",
       });
       const version = isRecord(body) && typeof body.version === "string" ? body.version : "";
       const lastModified =

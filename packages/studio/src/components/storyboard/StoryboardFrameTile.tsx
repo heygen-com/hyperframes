@@ -7,6 +7,13 @@ export interface StoryboardFrameTileProps {
   frame: StoryboardFrameView;
   /** Open this frame in the full-area focus view. */
   onOpen: (index: number) => void;
+  /** This frame's pending comment draft ("" when none). */
+  commentDraft: string;
+  onCommentDraftChange: (index: number, text: string) => void;
+  /** A submitted comment the agent has not consumed yet (null when none). */
+  pendingComment: string | null;
+  /** Project signature the board was loaded with (busts the poster cache). */
+  posterVersion?: string;
 }
 
 function firstLine(text: string): string {
@@ -26,7 +33,15 @@ function placeholderMessage(frame: StoryboardFrameView): string {
 
 /** A single contact-sheet tile: poster preview + its metadata. Click to focus. */
 // fallow-ignore-next-line complexity
-export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFrameTileProps) {
+export function StoryboardFrameTile({
+  projectId,
+  frame,
+  onOpen,
+  commentDraft,
+  onCommentDraftChange,
+  pendingComment,
+  posterVersion,
+}: StoryboardFrameTileProps) {
   const meta = FRAME_STATUS_META[frame.status];
   const renderable = frame.srcExists && frame.status !== "outline";
   const title = frame.title ?? `Frame ${frame.index}`;
@@ -48,6 +63,7 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
             src={frame.src}
             seconds={posterTime(frame)}
             title={title}
+            posterVersion={posterVersion}
           />
         ) : (
           <FrameTilePlaceholder frame={frame} />
@@ -74,6 +90,19 @@ export function StoryboardFrameTile({ projectId, frame, onOpen }: StoryboardFram
         {frame.duration && <span>{frame.duration}</span>}
         {frame.transitionIn && <span>↘ {frame.transitionIn}</span>}
       </div>
+      <textarea
+        value={commentDraft}
+        onChange={(e) => onCommentDraftChange(frame.index, e.target.value)}
+        rows={2}
+        placeholder="Comment on this frame…"
+        aria-label={`Comment on ${title}`}
+        className="mt-2 w-full resize-none rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-sky-700 focus:outline-none"
+      />
+      {pendingComment && (
+        <p className="mt-1 text-[11px] text-sky-400/90">
+          <span className="font-medium">Pending:</span> “{pendingComment}”
+        </p>
+      )}
     </article>
   );
 }

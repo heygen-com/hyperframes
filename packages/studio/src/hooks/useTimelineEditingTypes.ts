@@ -2,6 +2,7 @@ import type { MutableRefObject, RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PublishSdkSession } from "../utils/sdkCutover";
 
 interface RecordEditInput {
   label: string;
@@ -23,14 +24,15 @@ export type TimelineZIndexReorderCommit = (
     key?: string;
   }>,
   coalesceKey?: string,
-) => Promise<void>;
+) => Promise<import("./domEditCommitTypes").DomEditPatchBatchesResult | undefined | void>;
 
 export interface UseTimelineEditingOptions {
   projectId: string | null;
   activeCompPath: string | null;
   timelineElements: TimelineElement[];
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
+  observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
@@ -40,6 +42,8 @@ export interface UseTimelineEditingOptions {
   isRecordingRef?: RefObject<boolean>;
   /** Stage 7 §3.2: SDK session for routing timing ops through setTiming. */
   sdkSession?: Composition | null;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: PublishSdkSession;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;

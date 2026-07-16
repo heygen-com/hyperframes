@@ -28,6 +28,7 @@ vi.mock("../utils/studioTelemetry", () => ({
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutationResult } from "./gsapScriptCommitTypes";
+import { persistSdkSerialize } from "../utils/sdkCutover";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
 
 // ── applyPreviewSync (pure preview-sync decision) ────────────────────────────
@@ -214,7 +215,11 @@ type HookApi = ReturnType<typeof useGsapScriptCommits>;
 
 let cleanup: (() => void) | null = null;
 
-function renderCommitHook() {
+function renderCommitHook(
+  options: {
+    writeProjectFile?: (path: string, content: string) => Promise<void>;
+  } = {},
+) {
   const reloadPreview = vi.fn();
   const onCacheInvalidate = vi.fn();
   const onFileContentChanged = vi.fn();
@@ -235,7 +240,7 @@ function renderCommitHook() {
       onFileContentChanged,
       showToast,
       sdkSession: null,
-      writeProjectFile: undefined,
+      writeProjectFile: options.writeProjectFile,
       forceReloadSdkSession,
     });
     return null;
@@ -421,5 +426,46 @@ describe("runCommit — instantPatch wiring", () => {
     expect(deps.forceReloadSdkSession).toHaveBeenCalledTimes(1);
     expect(applySoftReload).toHaveBeenCalledTimes(1);
     expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes a legacy fallback request behind an in-flight SDK whole-file edit", async () => {
+    let releaseSdkWrite: (() => void) | undefined;
+    const sdkWriteGate = new Promise<void>((resolve) => {
+      releaseSdkWrite = resolve;
+    });
+    let notifySdkWriteStarted: (() => void) | undefined;
+    const sdkWriteStarted = new Promise<void>((resolve) => {
+      notifySdkWriteStarted = resolve;
+    });
+    const writeProjectFile = vi.fn(async () => {
+      notifySdkWriteStarted?.();
+      await sdkWriteGate;
+    });
+    const deps = renderCommitHook({ writeProjectFile });
+    const sdkEdit = persistSdkSerialize(() => "SDK_AFTER", "index.html", "BEFORE", {
+      editHistory: { recordEdit: deps.recordEdit },
+      writeProjectFile,
+      readProjectFile: vi.fn(async () => "BEFORE"),
+      reloadPreview: deps.reloadPreview,
+      domEditSaveTimestampRef: { current: 0 },
+    });
+    await sdkWriteStarted;
+
+    mockFetchResult();
+    let legacyEdit: Promise<void> | undefined;
+    act(() => {
+      legacyEdit = deps.api.commitMutation(selection, { x: 10 }, { label: "Legacy fallback" });
+    });
+    await Promise.resolve();
+    expect(fetch).not.toHaveBeenCalled();
+
+    releaseSdkWrite?.();
+    await act(async () => {
+      await Promise.all([sdkEdit, legacyEdit]);
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/proj-1/gsap-mutations/index.html",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

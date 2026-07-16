@@ -752,17 +752,27 @@ class IframePreviewAdapter implements PreviewAdapter {
   attachSync(comp: Composition): () => void {
     this._syncDetach?.();
 
-    const doc = this.iframe.contentDocument;
-    if (doc) {
+    const syncOverrides = (): void => {
+      const doc = this.iframe.contentDocument;
+      if (!doc) return;
       try {
         applyOverrideSet({ document: doc, wrapped: false, stamped: "" }, comp.getOverrides());
       } catch (err) {
-        // Don't let a bad initial snapshot prevent the ongoing subscription
-        // below from attaching — future patches should still mirror even if
-        // this composition's current overrides couldn't be applied.
-        console.warn("[hyperframes] attachSync: initial override sync failed:", err);
+        // Don't let a bad snapshot prevent the ongoing subscription below
+        // from attaching — future patches should still mirror even if this
+        // composition's current overrides couldn't be applied.
+        console.warn("[hyperframes] attachSync: override sync failed:", err);
       }
-    }
+    };
+
+    // Immediate snapshot for the current document…
+    syncOverrides();
+    // …and again on every iframe `load`: assigning srcdoc/src is an ASYNC
+    // navigation, so an attach in the same tick snapshots the OUTGOING
+    // document, and patches committed during the load window mirror into it
+    // and die with it. Re-syncing on load converges the new document with
+    // the composition state regardless of attach/navigation ordering.
+    this.iframe.addEventListener("load", syncOverrides);
 
     const rawUnsubscribe = comp.on("patch", ({ patches }) => {
       const liveDoc = this.iframe.contentDocument;
@@ -778,6 +788,7 @@ class IframePreviewAdapter implements PreviewAdapter {
     });
 
     const detach = (): void => {
+      this.iframe.removeEventListener("load", syncOverrides);
       rawUnsubscribe();
       if (this._syncDetach === detach) this._syncDetach = null;
     };

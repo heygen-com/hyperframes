@@ -139,6 +139,55 @@ describe("FALLBACK_CORE_SKILLS pin", () => {
   });
 });
 
+describe(".claude-plugin/marketplace.json core-skills pin", () => {
+  // The marketplace `core-skills` entry's `skills` array drives two surfaces:
+  // the upstream `skills add` picker groups the listed skills under
+  // "Core Skills" (everything unlisted falls into "Other"), and Claude Code
+  // treats the array as that plugin's skill allowlist. That makes it a third
+  // enumeration of core membership — pin it to isCoreSkill and the skills/
+  // tree so neither surface can silently drift from the tiers `init` /
+  // `skills update` actually enforce. It lives on a separate marketplace
+  // entry (not plugin.json, and not the `hyperframes` entry) precisely so
+  // the full `hyperframes` plugin keeps auto-discovering all skills.
+  it("lists exactly the core skills present in the repo's skills/ tree", () => {
+    const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+    const marketplace = JSON.parse(
+      readFileSync(join(repoRoot, ".claude-plugin", "marketplace.json"), "utf-8"),
+    ) as { plugins?: { name?: string; skills?: string[] }[] };
+    const entry = marketplace.plugins?.find((p) => p.name === "core-skills");
+    if (!entry?.skills) {
+      throw new Error("marketplace.json is missing the core-skills entry's `skills` array");
+    }
+    const declared = entry.skills.map((p) => p.replace(/^\.\/skills\//, "")).sort();
+
+    const skillsRoot = join(repoRoot, "skills");
+    const coreOnDisk = readdirSync(skillsRoot)
+      .filter((n) => existsSync(join(skillsRoot, n, "SKILL.md")))
+      .filter((n) => isCoreSkill(n))
+      .sort();
+
+    expect(declared).toEqual(coreOnDisk);
+    // Upstream resolves each entry relative to the repo root — the "./skills/"
+    // prefix is load-bearing (see vercel-labs/skills plugin-manifest.ts).
+    for (const p of entry.skills) {
+      expect(p.startsWith("./skills/")).toBe(true);
+    }
+    // The full plugin must NOT carry a skills allowlist: Claude Code would
+    // narrow it to the listed subset instead of auto-discovering all skills.
+    const full = marketplace.plugins?.find((p) => p.name === "hyperframes");
+    expect(full).toBeDefined();
+    expect(full?.skills).toBeUndefined();
+    // Same for plugin.json (the direct-install manifest for the full plugin) —
+    // and upstream lets plugin.json groupings override marketplace ones, so a
+    // skills array here would also rename the picker group back to
+    // "Hyperframes".
+    const plugin = JSON.parse(
+      readFileSync(join(repoRoot, ".claude-plugin", "plugin.json"), "utf-8"),
+    ) as { skills?: string[] };
+    expect(plugin.skills).toBeUndefined();
+  });
+});
+
 describe("diffSkills", () => {
   const latest: SkillsManifest = {
     source: "test",

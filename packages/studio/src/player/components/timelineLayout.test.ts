@@ -5,6 +5,7 @@ import {
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
   GUTTER,
+  TRACKS_LEFT_PAD,
   getTimelineRowTop,
   getTimelineRowFromY,
   getTimelineCanvasHeight,
@@ -85,7 +86,7 @@ describe("track-area breathing pad y-math", () => {
 
     it("drops onto lane 0 when the pointer is in the middle of the first lane", () => {
       const clientY = getTimelineRowTop(0) + TRACK_H / 2;
-      const clientX = GUTTER + 100; // t = 1s
+      const clientX = GUTTER + TRACKS_LEFT_PAD + 100; // t = 1s
       const { start, track } = resolveTimelineAssetDrop(base, clientX, clientY);
       expect(track).toBe(0);
       expect(start).toBe(1);

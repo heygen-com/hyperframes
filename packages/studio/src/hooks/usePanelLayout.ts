@@ -6,6 +6,7 @@ import type {
 } from "../utils/studioHelpers";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { STUDIO_FLAT_INSPECTOR_ENABLED } from "../components/editor/manualEditingAvailability";
 
 const MIN_PANEL_WIDTH = 160;
 const MAX_RIGHT_PANEL_WIDTH = 600;
@@ -105,7 +106,20 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
   const trackedSetRightPanelTab = useCallback(
     (tab: RightPanelTab) => {
       if (tab === "design" || tab === "layers") {
-        setRightInspectorPanes((panes) => ({ ...panes, [tab]: true }));
+        // Flat inspector: Layers always renders full-height by itself (see
+        // StudioRightPanel's render gate), so this MUST land on the same
+        // radio-style exclusivity setExclusiveRightInspectorPane enforces for
+        // the direct in-panel tab click — every OTHER path that reaches here
+        // (element select, closing block-params, the header Inspector
+        // button, and this function's own callers outside an active
+        // inspector tab) would otherwise additively leave both panes `true`
+        // and reproduce the "both tabs highlight, only one renders" bug this
+        // still-additive branch used to cause under the flat flag.
+        setRightInspectorPanes(
+          STUDIO_FLAT_INSPECTOR_ENABLED
+            ? { design: tab === "design", layers: tab === "layers" }
+            : (panes) => ({ ...panes, [tab]: true }),
+        );
       }
       setRightPanelTab(tab);
       trackStudioEvent("tab_switch", { panel: "right_panel", tab });
@@ -121,6 +135,14 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     });
   }, []);
 
+  // Radio-style variant for the flat inspector: Layers always renders full-
+  // height by itself there (never split-shared with Design), so leaving both
+  // panes independently toggleable would highlight both tabs as "active"
+  // while only one actually shows. Selecting one turns the other off.
+  const setExclusiveRightInspectorPane = useCallback((pane: RightInspectorPane) => {
+    setRightInspectorPanes({ design: pane === "design", layers: pane === "layers" });
+  }, []);
+
   return {
     leftWidth,
     setLeftWidth,
@@ -134,6 +156,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     setRightPanelTab: trackedSetRightPanelTab,
     rightInspectorPanes,
     toggleRightInspectorPane,
+    setExclusiveRightInspectorPane,
     toggleLeftSidebar,
     handlePanelResizeStart,
     handlePanelResizeMove,

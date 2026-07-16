@@ -81,6 +81,30 @@ describe("renderObservabilityTelemetryPayload — DE inversion/router cohort (fa
     const payload = renderObservabilityTelemetryPayload(makeSummary({}));
     expect(payload.captureDeFallbackReason).toBeUndefined();
   });
+
+  it("carries the failing dB, frame index, and threshold for a psnr fallback, still visible on a hard failure", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({
+        deParallelRouter: "routed",
+        deFallbackReason: "psnr",
+        deFallbackFailedDb: 28.4,
+        deFallbackFrameIndex: 649,
+        deFallbackThresholdDb: 32,
+      }),
+    );
+    expect(payload.captureDeFallbackFailedDb).toBe(28.4);
+    expect(payload.captureDeFallbackFrameIndex).toBe(649);
+    expect(payload.captureDeFallbackThresholdDb).toBe(32);
+  });
+
+  it("leaves failedDb/thresholdDb undefined for a blank/oom/capture_error fallback (no PSNR score exists)", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deFallbackReason: "oom", deFallbackFrameIndex: undefined }),
+    );
+    expect(payload.captureDeFallbackFailedDb).toBeUndefined();
+    expect(payload.captureDeFallbackFrameIndex).toBeUndefined();
+    expect(payload.captureDeFallbackThresholdDb).toBeUndefined();
+  });
 });
 
 describe("renderObservabilityTelemetryPayload — non-DE parallel-stream router", () => {

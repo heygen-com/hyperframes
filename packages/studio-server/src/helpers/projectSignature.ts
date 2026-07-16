@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve } from "node:path";
+import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
   ".cjs",
@@ -135,6 +136,25 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
     hash.update("\0");
   }
   return hash.digest("hex").slice(0, 24);
+}
+
+/**
+ * Resolve the project signature through the adapter's cached path when the host
+ * provides one (the CLI invalidates its cache from the file watcher), falling
+ * back to a direct computation.
+ */
+export function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
+  return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
+}
+
+/** The shared route opening: resolve the project (null → caller 404s) with its signature. */
+export async function resolveProjectAndSignature(
+  adapter: StudioApiAdapter,
+  projectId: string,
+): Promise<{ project: ResolvedProject; signature: string } | null> {
+  const project = await adapter.resolveProject(projectId);
+  if (!project) return null;
+  return { project, signature: resolveProjectSignature(adapter, project.dir) };
 }
 
 /**

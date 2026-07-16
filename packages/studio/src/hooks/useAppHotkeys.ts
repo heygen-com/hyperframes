@@ -9,6 +9,7 @@ import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -87,6 +88,7 @@ interface HistoryResult {
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, content: string) => Promise<void>;
+  serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
 }
 interface EditHistoryHandle {
   undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
@@ -367,6 +369,11 @@ export function useAppHotkeys({
     },
     [domEditSaveTimestampRef, writeProjectFile],
   );
+  const serializeHistoryFiles = useCallback(
+    <T>(paths: readonly string[], task: () => Promise<T>) =>
+      serializeStudioFileMutations(writeProjectFile, paths, task),
+    [writeProjectFile],
+  );
 
   const applyHistory = useCallback(
     async (direction: "undo" | "redo") => {
@@ -377,6 +384,7 @@ export function useAppHotkeys({
       const result = await editHistory[direction]({
         readFile: readHistoryFile,
         writeFile: writeHistoryFile,
+        serialize: serializeHistoryFiles,
       });
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(
@@ -406,6 +414,7 @@ export function useAppHotkeys({
       syncHistoryPreviewAfterApply,
       waitForPendingDomEditSaves,
       writeHistoryFile,
+      serializeHistoryFiles,
       onAfterUndoRedo,
       activeCompPath,
       forceReloadSdkSession,

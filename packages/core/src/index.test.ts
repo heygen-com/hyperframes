@@ -124,6 +124,7 @@ describe("@hyperframes/core public API exports", () => {
       expect(typeof core.extractResolvedMedia).toBe("function");
       expect(typeof core.clampDurations).toBe("function");
       expect(typeof core.shouldClampMediaDuration).toBe("function");
+      expect(typeof core.shouldClampResolvedMediaDuration).toBe("function");
     });
   });
 

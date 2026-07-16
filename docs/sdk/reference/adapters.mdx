@@ -121,7 +121,7 @@ interface PreviewAdapter {
 </ParamField>
 
 <ParamField path="attachSync" type="(comp: Composition) => () => void">
-  Mirrors a composition's edits onto the adapter's own live document: an immediate full sync of the composition's current overrides, then a subscription that replays every future `patch` event — including undo/redo, since both fire through the same event with forward or inverse patches. Calling `attachSync` again while already attached detaches the previous subscription first. Returns an unsubscribe function.
+  Mirrors a composition's edits onto the adapter's own live document: an immediate full sync of the composition's current overrides, then a subscription that replays every future `patch` event — including undo/redo, since both fire through the same event with forward or inverse patches. Calling `attachSync` again while already attached detaches the previous subscription first. The full-override sync also re-runs on every iframe `load`, so a `srcdoc` navigation that races the attach (or drops patches committed during the load window) converges once the new document arrives. Returns an unsubscribe function.
 
   Script-tag patches (`/script/gsap` and any future `/script/*` path) are never mirrored — rewriting a live `<script>` tag's content doesn't re-execute it, and re-running GSAP setup from scratch would conflict with running timeline state. Every other patch kind (style, text, attribute, timing, hold, element add/remove, stylesheet, variable value, variable declaration) mirrors as-is.
 
@@ -335,4 +335,3 @@ preview.commitPreview();
     Building a visual editor canvas with the iframe preview adapter and hit-testing.
   </Card>
 </CardGroup>
-

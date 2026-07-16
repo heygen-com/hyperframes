@@ -159,6 +159,8 @@ A PR is shipped by people, and every PR video closes with a `credits` frame nami
 
 The `credits` frame is an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 1–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. The frame sits in the Step 3 proposal like any other, so the user can cut it there; skip it yourself only when no avatar was fetched.
 
+> **Narrate the name, not the handle.** `people.json` carries a `name` field (GitHub display name, e.g. "Miguel Angel Simon Sierra") next to `login` for whichever contributors `gh` already named (author, commit authors, `mergedBy`); it's `null` for reviewers/commenters/assignees, which `gh pr view` only ever gives a bare login. Before writing this frame, resolve any `null` name yourself for the 1-6 people going on the close: `gh api users/<login> --jq .name`. Voiceover always says the **name** (first name is enough — "Shipped by Miguel, reviewed by Wenbo") and **never** reads a raw `@login` aloud (`@miguAng18947550` spoken by TTS is the failure mode this exists to avoid). On-screen text under each avatar can show both, name first, handle small and secondary: `Miguel Angel Simon Sierra` / `@miguel-heygen`. When a name still doesn't resolve (GitHub has no public name for that user either), fall back to the login on-screen and skip that person from the spoken line rather than reading the handle.
+
 Every other frame has **no** `asset_candidates` (the visuals are invented downstream from `scene` + the diff).
 
 ### Versions on the end card (cta / changelog)
@@ -182,6 +184,13 @@ The largest quality bug in PR videos is **scripts that talk too long**. TTS runs
 Estimate while writing: `duration ≈ ceil(word_count / 2.2)`. 29 words → 13s (trim); 17 words → 8s; 12 words → 6s. Trim techniques: cut the lead-in clause ("Until now, the agent shipped…" → "The agent shipped…"); move numbers off-script onto a counter; split only when the halves carry distinct beats (cause then effect). **Silent frames are allowed and common** — a diff typing on, a before→after morph, a counter running. Set `voiceover` empty, omit from `SCRIPT.md`, and make `narrativeRole` carry it. A complex change does not need a long script; it needs a careful one — if you can't headline the change in 19 words, the headline isn't sharp yet.
 
 **Write each line as discrete cues, not one run-on breath.** Step 5 reveals each on-screen piece _when the voiceover names it_ (the anti-PowerPoint mechanism). A line with clear phrase boundaries — "Three retries — then it backs off — then it gives up clean" — hands the shot its reveal cadence for free; a single long clause leaves the frame nothing to pace to.
+
+## Music & silence
+
+The storyboard's top YAML block carries a `music:` field — the BGM mood the audio step retrieves against (e.g. `music: confident minimal tech underscore`). Omitting it falls back to `message:` → `arc:` → a neutral default, so BGM plays unless turned off explicitly.
+
+- **`music: none`** — BGM off (narration, if any, still runs).
+- **`music: none` + no `SCRIPT.md`** — the canonical **fully-silent marker**: no narration, no BGM, no SFX. `audio.mjs` generates nothing and the audio step is a clean skip. Use exactly this spelling when the user asks for a silent / music-free video.
 
 ## Frame template
 

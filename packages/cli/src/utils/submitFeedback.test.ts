@@ -38,6 +38,7 @@ describe("submitFeedback", () => {
         headers: { "content-type": "application/json", heygen_route: "canary" },
         body: JSON.stringify({
           rating: 4,
+          rating_scale: 10,
           comment: "fast but font missing",
           cli_version: "1.2.3",
           env: "os=darwin/arm64 node=v22.11.0",
@@ -45,6 +46,17 @@ describe("submitFeedback", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it.each([0, 10])("serializes the NPS boundary %i without changing it", async (rating) => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({ rating, cliVersion: "1.2.3" });
+
+    const requestInit = fetchMock.mock.calls[0]?.[1];
+    const body = JSON.parse(requestInit?.body as string);
+    expect(body).toMatchObject({ rating, rating_scale: 10 });
   });
 
   it("truncates over-long fields to the backend caps", async () => {

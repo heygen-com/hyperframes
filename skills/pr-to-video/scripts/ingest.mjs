@@ -157,11 +157,14 @@ const isBot = (login) => {
 // (often differs from the opener — a teammate force-pushes the branch, or commits
 // are co-authored). Commit authors are first-class contributors for a credits close.
 const ROLE_ORDER = ["author", "committer", "reviewer", "commenter", "assignee"];
-const peopleMap = new Map(); // login -> { login, roles:Set, reviewState, association, commitCount }
+const peopleMap = new Map(); // login -> { login, name, roles:Set, reviewState, association, commitCount }
 const botsFiltered = new Set();
 // Returns the person record for a real (non-bot) login, creating it on first
-// touch; records and drops bots. null means "skip this login".
-function consider(login) {
+// touch; records and drops bots. null means "skip this login". `name` is the
+// GitHub display name (e.g. "Miguel Angel Simon Sierra") — gh only hands this
+// over for author/commits/mergedBy, not reviewers/commenters/assignees, so it's
+// filled in opportunistically and the first non-empty value wins.
+function consider(login, name) {
   if (!login) return null;
   if (isBot(login)) {
     botsFiltered.add(login);
@@ -170,27 +173,30 @@ function consider(login) {
   if (!peopleMap.has(login))
     peopleMap.set(login, {
       login,
+      name: null,
       roles: new Set(),
       reviewState: null,
       association: null,
       commitCount: 0,
     });
-  return peopleMap.get(login);
+  const p = peopleMap.get(login);
+  if (!p.name && name) p.name = name;
+  return p;
 }
 
 const authorLogin = pr.author?.login || null;
 {
-  const p = consider(authorLogin);
+  const p = consider(authorLogin, pr.author?.name);
   if (p) p.roles.add("author");
 }
 
 // Commit authors — the people who actually wrote the code. pr.commits[].authors[]
 // carries login/name/email; co-authored commits list several. Counts drive ordering
-// and the brief ("@login (N commits)"). Authors with no GitHub login (email-only)
-// can't be avatar'd, so they're skipped here.
+// and the brief ("Name (@login, N commits)"). Authors with no GitHub login
+// (email-only) can't be avatar'd, so they're skipped here.
 for (const c of Array.isArray(pr.commits) ? pr.commits : []) {
   for (const a of Array.isArray(c?.authors) ? c.authors : []) {
-    const p = consider(a?.login);
+    const p = consider(a?.login, a?.name);
     if (!p) continue;
     p.roles.add("committer");
     p.commitCount += 1;
@@ -209,7 +215,7 @@ if (!reviewSource.length && Array.isArray(pr.reviews)) {
   reviewSource = [...lastByAuthor.values()];
 }
 for (const r of reviewSource) {
-  const p = consider(r?.author?.login);
+  const p = consider(r?.author?.login, r?.author?.name);
   if (!p) continue;
   p.roles.add("reviewer");
   if (r.state) p.reviewState = r.state;
@@ -217,11 +223,11 @@ for (const r of reviewSource) {
 }
 
 for (const c of Array.isArray(pr.comments) ? pr.comments : []) {
-  const p = consider(c?.author?.login);
+  const p = consider(c?.author?.login, c?.author?.name);
   if (p) p.roles.add("commenter");
 }
 for (const a of Array.isArray(pr.assignees) ? pr.assignees : []) {
-  const p = consider(a?.login);
+  const p = consider(a?.login, a?.name);
   if (p) p.roles.add("assignee");
 }
 
@@ -239,6 +245,11 @@ const primaryRoleRank = (roles) => {
 const people = [...peopleMap.values()]
   .map((p) => ({
     login: p.login,
+    // Display name for narration/on-screen credits — GitHub logins read aloud
+    // badly ("@miguAng18947550"). null when GitHub has no public name for this
+    // user and fetch-people-avatars.mjs couldn't resolve one either; the credits
+    // frame falls back to the login in that case.
+    name: p.name || null,
     roles: ROLE_ORDER.filter((r) => p.roles.has(r)),
     commitCount: p.commitCount || 0,
     reviewState: p.reviewState || null,
@@ -418,11 +429,14 @@ if (shippedVersion)
 lines.push("");
 
 // People & reviews — human context for an optional credits / shipped-by close.
-// Avatars land in assets/<login>.png (downloaded by the orchestrator).
+// Avatars land in assets/<login>.png (downloaded by the orchestrator). Each
+// person is labeled "Name (@login)" — the credits close speaks the name, the
+// handle is display-only (never read aloud; see story-design.md).
+const label = (p) => (p.name ? `${p.name} (@${p.login})` : `@${p.login}`);
 if (people.length) {
   lines.push("## People & reviews");
   const authorPerson = people.find((p) => p.roles.includes("author"));
-  if (authorPerson) lines.push(`Author (opened PR): @${authorPerson.login}`);
+  if (authorPerson) lines.push(`Author (opened PR): ${label(authorPerson)}`);
   const committers = people.filter((p) => p.roles.includes("committer"));
   if (committers.length) {
     const parts = committers
@@ -430,7 +444,7 @@ if (people.length) {
       .sort((a, b) => b.commitCount - a.commitCount)
       .map(
         (p) =>
-          `@${p.login}${p.commitCount ? ` (${p.commitCount} commit${p.commitCount === 1 ? "" : "s"})` : ""}`,
+          `${label(p)}${p.commitCount ? ` (${p.commitCount} commit${p.commitCount === 1 ? "" : "s"})` : ""}`,
       );
     lines.push(`Commit authors: ${parts.join(", ")}`);
   }
@@ -438,7 +452,7 @@ if (people.length) {
   if (reviewers.length) {
     const parts = reviewers.map(
       (p) =>
-        `@${p.login}${p.reviewState ? ` (${REVIEW_STATE_LABEL[p.reviewState] || p.reviewState.toLowerCase()})` : ""}`,
+        `${label(p)}${p.reviewState ? ` (${REVIEW_STATE_LABEL[p.reviewState] || p.reviewState.toLowerCase()})` : ""}`,
     );
     lines.push(`Reviewers: ${parts.join(", ")}`);
   }
@@ -446,8 +460,7 @@ if (people.length) {
     (p) =>
       p.roles.includes("commenter") && !p.roles.includes("author") && !p.roles.includes("reviewer"),
   );
-  if (commentersOnly.length)
-    lines.push(`Commenters: ${commentersOnly.map((p) => `@${p.login}`).join(", ")}`);
+  if (commentersOnly.length) lines.push(`Commenters: ${commentersOnly.map(label).join(", ")}`);
   if (reviewDecision) lines.push(`Review decision: ${reviewDecision}`);
   if (mergedByLogin) lines.push(`Merged by: @${mergedByLogin}`);
   lines.push(`Avatars: assets/<login>.png (${people.length} contributor(s) — see people.json)`);

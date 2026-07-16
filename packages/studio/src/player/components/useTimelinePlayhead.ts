@@ -4,6 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   GUTTER,
+  TRACKS_LEFT_PAD,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
@@ -73,7 +74,7 @@ export function useTimelinePlayhead({
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
-      gutter: GUTTER,
+      gutter: GUTTER + TRACKS_LEFT_PAD,
       currentPixelsPerSecond: prevPps,
       nextPixelsPerSecond: pps,
       duration: durationRef.current,
@@ -129,7 +130,7 @@ export function useTimelinePlayhead({
       const el = scrollRef.current;
       if (!el || effectiveDuration <= 0) return;
       const rect = el.getBoundingClientRect();
-      const x = clientX - rect.left + el.scrollLeft - GUTTER;
+      const x = clientX - rect.left + el.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
       if (x < 0) return;
       const time = Math.max(0, Math.min(effectiveDuration, x / pps));
       liveTime.notify(time);
@@ -185,7 +186,7 @@ export function useTimelinePlayhead({
       const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
         pointerX: e.clientX - rect.left,
         currentScrollLeft: scroll.scrollLeft,
-        gutter: GUTTER,
+        gutter: GUTTER + TRACKS_LEFT_PAD,
         currentPixelsPerSecond: ppsRef.current,
         nextPixelsPerSecond: nextPps,
         duration: durationRef.current,

@@ -1,4 +1,5 @@
 import { getPublishApiBaseUrl } from "./publishProject.js";
+import { FEEDBACK_RATING_SCALE } from "./feedbackRating.js";
 
 // Match the backend DTO caps (HyperframesFeedbackRequest). Truncate here so an
 // over-long field (e.g. a pasted stack trace) is still forwarded truncated,
@@ -24,6 +25,7 @@ export async function submitFeedback(input: {
       method: "POST",
       body: JSON.stringify({
         rating: input.rating,
+        rating_scale: FEEDBACK_RATING_SCALE,
         comment: cap(input.comment, MAX_COMMENT),
         cli_version: cap(input.cliVersion, MAX_CLI_VERSION),
         env: cap(input.env, MAX_ENV),

@@ -1,12 +1,13 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
 vi.mock("node:fs", () => ({ existsSync: vi.fn() }));
 
 const mockExec = vi.mocked(execSync);
+const mockExecFile = vi.mocked(execFileSync);
 const mockExists = vi.mocked(existsSync);
 
 // The common-dir fallback list is platform-gated (empty on win32), so pin the
@@ -21,6 +22,7 @@ afterEach(() => {
   Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   vi.clearAllMocks();
   delete process.env.HYPERFRAMES_FFMPEG_PATH;
+  delete process.env.HYPERFRAMES_FFPROBE_PATH;
 });
 
 describe("findFFmpeg", () => {
@@ -51,5 +53,54 @@ describe("findFFmpeg", () => {
 
     const { findFFmpeg } = await import("./ffmpeg.js");
     expect(findFFmpeg()).toBeUndefined();
+  });
+
+  it("finds project-local FFmpeg binaries when they are not on PATH", async () => {
+    mockExec.mockImplementation(() => {
+      throw new Error("not found");
+    });
+    const localFFmpeg = resolve(".hyperframes", "bin", "ffmpeg");
+    const localFFprobe = resolve(".hyperframes", "bin", "ffprobe");
+    mockExists.mockImplementation((path) => path === localFFmpeg || path === localFFprobe);
+
+    const { findFFmpeg, findFFprobe } = await import("./ffmpeg.js");
+    expect(findFFmpeg()).toBe(localFFmpeg);
+    expect(findFFprobe()).toBe(localFFprobe);
+  });
+});
+
+describe("resolveH264EncoderMode", () => {
+  it("falls back to VideoToolbox when libx264 is absent", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const encoders = `
+ V....D h264_videotoolbox    VideoToolbox H.264 Encoder
+`;
+
+    expect(resolveH264EncoderMode(encoders, false)).toBe("gpu");
+  });
+
+  it("does not treat a compiled Linux hardware encoder as usable", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const encoders = `
+ V....D h264_vaapi    H.264/AVC (VAAPI)
+`;
+
+    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(
+      "neither libx264 nor VideoToolbox",
+    );
+  });
+
+  it("inspects the configured FFmpeg binary", async () => {
+    mockExecFile.mockReturnValue(
+      " V....D h264_videotoolbox    VideoToolbox H.264 Encoder\n" as never,
+    );
+    const { detectH264EncoderMode } = await import("./ffmpeg.js");
+
+    expect(detectH264EncoderMode("/custom/ffmpeg", false)).toBe("gpu");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "/custom/ffmpeg",
+      ["-hide_banner", "-encoders"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
   });
 });

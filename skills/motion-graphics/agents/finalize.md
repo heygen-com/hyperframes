@@ -1,16 +1,16 @@
-# Finalize / repair (subagent)
+# Finalize / repair subagent
 
-Snapshot visual QA + one in-place fix pass + render. Dispatched only when Step 6 `lint`/`inspect` reports issues, or to do the final render.
+Perform snapshot QA and one in-place repair pass. Dispatch only when Step 5 `lint`, `check`, or snapshot review reports a defect. The orchestrator owns final approval and render; this agent never renders.
 
 ## Dispatch context
 
-`SKILL_DIR` / `PROJECT_DIR` / `Render quality: draft|standard|high` / snapshot times / lint+inspect tails (if any).
+`SKILL_DIR` / `PROJECT_DIR` / proof snapshot times / `lint` and `check` output tails, when present.
 
 ## Flow
 
-1. **Snapshots** — `npx hyperframes check . --at <beat times> --snapshots`; eyeball for: overflow / off-canvas, text collisions, empty frames, wrong content, motion that doesn't read.
-2. **One in-place repair pass** — `Edit` `compositions/index.html` for the visible issues. **Never change a fixed `data-duration`** (timing is set upstream; changing it breaks assembly). Re-run `lint`/`inspect`.
-3. **Render** — `(cd "$PROJECT_DIR" && npx hyperframes render . --skill=motion-graphics -q <quality> -o ./renders/video.mp4)` (add `--format webm` for an alpha overlay export). Verify the mp4 exists + duration matches.
+1. **Snapshots** — run `npx hyperframes snapshot --at <proof-times>` and inspect overflow, off-canvas content, text collisions, empty frames, wrong content, and unreadable motion.
+2. **One in-place repair pass** — edit `compositions/index.html` for the visible issues. Never change a fixed `data-duration`; timing is set upstream.
+3. **Recheck** — rerun `npx hyperframes lint`, `npx hyperframes check`, and the affected snapshots. Return the result to the orchestrator without rendering.
 
 ## STOP / escalate
 

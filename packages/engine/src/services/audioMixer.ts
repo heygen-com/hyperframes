@@ -5,7 +5,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { isAbsolute, join, dirname } from "path";
+import { join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
@@ -530,7 +530,7 @@ export async function processCompositionAudio(
       }
       try {
         let srcPath = element.src;
-        if (!isAbsolute(srcPath) && !isHttpUrl(srcPath)) {
+        if (!isHttpUrl(srcPath)) {
           // Same browser-vs-filesystem path semantics as videos — see
           // resolveProjectRelativeSrc in videoFrameExtractor for the full why.
           srcPath = resolveProjectRelativeSrc(element.src, baseDir, compiledDir);
@@ -624,6 +624,25 @@ export async function processCompositionAudio(
       }
     }),
   );
+
+  // Never turn a per-track preparation failure into a successful partial mix.
+  // The producer only surfaces audio failures when `success` is false; mixing
+  // the remaining tracks made the omitted cue indistinguishable from a valid
+  // render unless someone manually audited that exact audio window.
+  if (errors.length > 0) {
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    return {
+      success: false,
+      outputPath,
+      durationMs: Date.now() - startMs,
+      tracksProcessed: tracks.length,
+      error: `Audio processing failed: ${errors.join(", ")}`,
+    };
+  }
 
   const mixResult = await mixAudioTracks(tracks, outputPath, totalDuration, signal, config);
 

@@ -12,16 +12,14 @@ description: >
 
 Keyframes are a pose contract: visible states, continuous subject identity, seek-safe runtime, verified pixels.
 
-Use `hyperframes-animation` for broad scene recipes.
-Use `hyperframes-cli` for full command docs.
-Use `references/keyframe-patterns.md` only when choosing implementation mechanisms, not visual style.
+Use `hyperframes-animation` for broad scene recipes. Use `hyperframes-cli` for full command docs. Use `references/keyframe-patterns.md` only when choosing implementation mechanisms, not visual style.
 
 ## Procedure
 
 1. Identify the animated subject, visible states, final state, and runtime.
 2. Choose the smallest mechanism that proves the prompt. Read `references/keyframe-patterns.md` only if the mechanism is unclear.
 3. Author seek-safe keyframes in the declared runtime. Build synchronously and register the runtime instance.
-4. Verify with lint, validate, `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
+4. Verify with `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots at proof times.
 5. If proof fails, fix the source keyframes and rerun the smallest failing diagnostic before rendering.
 
 ## Contract
@@ -101,9 +99,7 @@ window.__timelines = window.__timelines || {};
 window.__timelines[compositionId] = tl;
 ```
 
-Use labels for semantic states.
-Use position parameters instead of chained delays.
-Use `immediateRender: false` for later `from()`/`fromTo()` tweens touching the same property.
+Use labels for semantic states. Use position parameters instead of chained delays. Use `immediateRender: false` for later `from()`/`fromTo()` tweens touching the same property.
 
 ## Keyframe Forms
 
@@ -119,11 +115,11 @@ For one subject moving between two boxes, prefer one continuous transform tween 
 
 ## Channels
 
-Prefer compositor/visual channels:
-`x/y/z`, `xPercent/yPercent`, `scale`, `rotationX/Y/Z`, `skew`, `transformOrigin`, `svgOrigin`, `opacity`, `autoAlpha`, `clip-path`, masks, CSS vars, SVG path/dash values, camera transforms, shader uniforms.
+Prefer compositor/visual channels: `x/y/z`, `xPercent/yPercent`, `scale`, `rotationX/Y/Z`, `skew`, `transformOrigin`, `svgOrigin`, `opacity`, `autoAlpha`, `clip-path`, masks, CSS vars, SVG path/dash values, camera transforms, shader uniforms.
 
-Avoid layout/lifecycle channels:
-`top/left/right/bottom`, `width/height`, `margin/padding`, `display`, `visibility`, late DOM creation, helper overlays doing subject motion.
+Avoid layout/lifecycle channels: `top/left/right/bottom`, `width/height`, `margin/padding`, `display`, `visibility`, late DOM creation, helper overlays doing subject motion.
+
+For visibility changes, use `autoAlpha` on the registered seekable GSAP timeline, or a zero-duration `tl.set()` at an explicit boundary. Target only a non-clip element or a wrapper inside the clip; never target `.clip` itself. Never duration-tween raw `visibility`, and never tween `display`.
 
 ## Mechanism Choice
 
@@ -165,13 +161,11 @@ Preserve line boxes, word spacing, readability, and final fit. If text moves int
 
 ## SVG
 
-For stroke growth prefer `DrawSVGPlugin`, then `stroke-dasharray`/`stroke-dashoffset`.
-For shape interpolation prefer `MorphSVGPlugin`; convert primitives to paths when needed and split complex silhouettes into simpler parts.
+For stroke growth prefer `DrawSVGPlugin`, then `stroke-dasharray`/`stroke-dashoffset`. For shape interpolation prefer `MorphSVGPlugin`; convert primitives to paths when needed and split complex silhouettes into simpler parts.
 
 ## 3D
 
-Scale alone is fake depth.
-Use perspective on a stable parent, `transform-style: preserve-3d`, z travel, rotation, camera/world motion, occlusion, and layer order when objects cross.
+Scale alone is fake depth. Use perspective on a stable parent, `transform-style: preserve-3d`, z travel, rotation, camera/world motion, occlusion, and layer order when objects cross.
 
 Use one or two diagnostic angles that expose the depth relationship. If angled proof shows no depth crossing, improve z/camera/occlusion.
 
@@ -193,9 +187,7 @@ npx hyperframes keyframes . --shot "<file>" --ghost --angle <angle>
 npx hyperframes snapshot . --at <times>
 ```
 
-Choose `<selector>` for the real animated subject.
-Choose `<times>` for first frame, proof poses, final-minus-hold, and exact final.
-Choose `<angle>` only when depth must be proven.
+Choose `<selector>` for the real animated subject. Choose `<times>` for first frame, proof poses, final-minus-hold, and exact final. Choose `<angle>` only when depth must be proven.
 
 | Tool             | Proves                                                                                              |
 | ---------------- | --------------------------------------------------------------------------------------------------- |
@@ -234,4 +226,4 @@ A helper-selector shot is not proof. An onion shot over a broken full frame is n
 
 ## Done
 
-Run lint, validate, keyframes, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.
+Run `hyperframes lint`, `hyperframes check`, `hyperframes keyframes`, one focused `--shot`, and snapshots. Confirm first frame, proof poses, final-minus-hold, exact final, subject-owned motion, and no debug overlays.

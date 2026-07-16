@@ -7,7 +7,7 @@ import {
 } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import { GUTTER } from "./timelineLayout";
+import { GUTTER, TRACKS_LEFT_PAD } from "./timelineLayout";
 import {
   computeMarqueeSelection,
   getMarqueeRect,
@@ -228,7 +228,8 @@ export function useTimelineRangeSelection({
       setShowPopover(false);
       const rect = scrollRef.current?.getBoundingClientRect();
       if (rect) {
-        const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
+        const x =
+          e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
         const time = Math.max(0, x / pps);
         rangeAnchorTime.current = time;
         setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
@@ -285,7 +286,7 @@ export function useTimelineRangeSelection({
       const el = scrollRef.current;
       if (el) {
         const rect = el.getBoundingClientRect();
-        const x = clientX - rect.left + el.scrollLeft - GUTTER;
+        const x = clientX - rect.left + el.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
         if (x >= 0) {
           const dur = el.scrollWidth / pps;
           liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
@@ -309,7 +310,8 @@ export function useTimelineRangeSelection({
       if (isRangeSelecting.current) {
         const rect = scrollRef.current?.getBoundingClientRect();
         if (rect) {
-          const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
+          const x =
+            e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
           setRangeSelection((prev) =>
             prev
               ? { ...prev, end: Math.max(0, x / pps), anchorX: e.clientX, anchorY: e.clientY }

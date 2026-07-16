@@ -55,24 +55,24 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     animId: string,
     updates: { duration?: number; ease?: string; position?: number },
-  ) => void;
-  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => void;
-  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => void;
+  ) => Promise<void>;
+  deleteGsapAnimation: (sel: DomEditSelection, animId: string) => Promise<void>;
+  deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => Promise<void>;
   addGsapAnimation: (
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
   ) => Promise<void>;
-  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   updateGsapFromProperty: (
     sel: DomEditSelection,
     animId: string,
     prop: string,
     value: number | string,
-  ) => void;
-  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
-  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => void;
+  ) => Promise<void>;
+  addGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
+  removeGsapFromProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   addKeyframe: (
     sel: DomEditSelection,
     animId: string,
@@ -105,7 +105,7 @@ export interface UseDomEditWiringParams {
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
-  removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
+  removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
   handleDomManualEditsReset: (sel: DomEditSelection) => void;
 }
 
@@ -245,6 +245,7 @@ export function useDomEditWiring({
     removeAllKeyframes,
     handleDomManualEditsReset,
     selectedGsapAnimations,
+    showToast,
   });
 
   // ── Preview sync side-effects ──

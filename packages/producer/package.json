@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.7.56",
+  "version": "0.7.60",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -51,15 +51,15 @@
     "test:integration": "bun run test:classification && node scripts/run-test-lane.mjs integration",
     "test:integration:bun": "node scripts/run-test-lane.mjs integration bun",
     "test:integration:vitest": "node scripts/run-test-lane.mjs integration vitest",
-    "test:regression": "tsx src/regression-harness.ts --exclude-tags transparency",
-    "test:regression:update": "tsx src/regression-harness.ts --update --exclude-tags transparency",
-    "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency --mode=distributed-simulated",
+    "test:regression": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer",
+    "test:regression:update": "tsx src/regression-harness.ts --update --exclude-tags transparency,field-signal-reproducer",
+    "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer --mode=distributed-simulated",
     "test:transparency": "tsx src/transparency-test.ts",
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",
     "docker:test": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test",
     "docker:test:update": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --update",
     "docker:test:distributed": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=distributed-simulated",
-    "test:lambda-local": "tsx src/regression-harness.ts --exclude-tags transparency --mode=lambda-local",
+    "test:lambda-local": "tsx src/regression-harness.ts --exclude-tags transparency,field-signal-reproducer --mode=lambda-local",
     "docker:test:lambda-local": "docker run --rm --security-opt seccomp=unconfined --shm-size=2g -v ./tests:/app/packages/producer/tests hyperframes-producer:test --mode=lambda-local",
     "prepublishOnly": "echo skip"
   },

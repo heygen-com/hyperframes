@@ -206,6 +206,7 @@ let _trackCommandResult:
     }) => void)
   | undefined;
 let _printUpdateNotice: (() => void) | undefined;
+let _printStalePinNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
@@ -245,6 +246,7 @@ if (
 
   import("./utils/updateCheck.js").then(async (mod) => {
     _printUpdateNotice = mod.printUpdateNotice;
+    _printStalePinNotice = mod.printStalePinNotice;
     const result = await mod.checkForUpdate().catch(() => null);
     if (result?.updateAvailable) {
       const auto = await import("./utils/autoUpdate.js").catch(() => null);
@@ -268,10 +270,12 @@ const runId = getRunId();
 // work — so a plain `on` listener would print the update notice (and
 // re-flush) once per drain (the user-reported double-print). `once`
 // detaches after first invocation, which is what we want for both.
+// fallow-ignore-next-line complexity
 process.once("beforeExit", () => {
   _flush?.().catch(() => {});
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
+    _printStalePinNotice?.();
     _printSkillsUpdateNotice?.();
   }
 });

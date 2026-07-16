@@ -9,10 +9,6 @@ description: >
   real image's geometry into a chart. Usually under 10s (up to ~30s), no
   narration or live-action subject; renders to MP4 or transparent overlay.
   Longer / narrated / multi-scene → /general-video. Unclear → /hyperframes.
-metadata:
-  {
-    "tags": "orchestrator, motion-graphics, kinetic-type, data-viz, logo-reveal, lower-thirds, news, tweet, webpage, asset-fusion, short-form, overlay, no-narration",
-  }
 ---
 
 > **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update motion-graphics`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
@@ -21,9 +17,9 @@ metadata:
 
 # motion-graphics — dispatch entry
 
-> **Confirm the route before Step 0.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). A **longer, multi-scene, or narrated** treatment → `/general-video`; a **narrated video of a website** → `/website-to-video`; a **topic explainer** → `/faceless-explainer`; a **product promo** → `/product-launch-video`; **captions on existing footage** → `/embedded-captions`. **Out of scope**: live / at-render-time data, or footage it can't capture. Unsure motion-first-vs-narrated? **Read `/hyperframes` first.**
+> **The front door is `/hyperframes`.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). Anything longer, narrated, or multi-scene — or any uncertainty → read `/hyperframes` first: the intent layer owns every route decision.
 
-This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then straight through to render; the collaborative/autonomous distinction in `../hyperframes-core/references/brief-contract.md` adds no gates here.
+This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then build through verification without intermediate review. The intent layer (`/hyperframes` § 4) routes here directly without run-shape questions; a storyboard and companion session add little to a piece this short. Rendering is still user-gated: after checks and proof snapshots pass, ask the canonical “preview first, or render?” question from `../hyperframes-core/references/brief-contract.md`. When a `BRIEF.md` exists, read it before the director's question.
 
 A short design-led motion graphic. **Asset-first**: decide the asset strategy and source real material _before_ designing the shot, then design the shot around what you have, then compose by reusing catalog capabilities. All artifacts go to `PROJECT_DIR = videos/<project-name>/` (created in Step 0); all paths below are relative to it.
 
@@ -34,8 +30,9 @@ A short design-led motion graphic. **Asset-first**: decide the asset strategy an
 | source ◇ | Bash — media-use resolve (**skip if `asset_needs` is empty**)         | `assets/` + `assets/index.md`                                    | `phases/source/guide.md`      |
 | design   | subagent — shot design around resolved assets                         | `shot-plan.json` (final: block(s) + layout + motion + positions) | `agents/director.md` (Part 2) |
 | build    | subagent — reuse-first composition                                    | `compositions/index.html`                                        | `agents/builder.md`           |
-| render   | Bash — `hyperframes render` (MP4, or `--format webm/mov` for overlay) | `renders/video.mp4`                                              | Step 5                        |
-| verify   | Bash — `lint` / `inspect` -> repair subagent on failure               | (fixes in place)                                                 | `agents/finalize.md`          |
+| verify   | Bash — `lint`, `check`, proof snapshots; repair on failure            | `snapshots/contact-sheet.jpg`                                    | Step 5                        |
+| approve  | Ask preview or render; wait for the answer                            | explicit render approval                                         | Step 6                        |
+| render   | Bash — `hyperframes render` (MP4, or `--format webm/mov` for overlay) | `renders/video.mp4` or transparent overlay                       | Step 6                        |
 
 `◇ source` runs only when the chosen category declares assets. Pure code/text categories (e.g. `kinetic-type`, most `charts`/`stat`) have `asset_needs: []` and skip straight from plan to design.
 
@@ -124,40 +121,43 @@ Dispatch a subagent (prompt = `agents/director.md` Part 2 + dispatch context inc
 
 Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output `compositions/index.html` honoring the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic).
 
-### Step 5 — Render (Bash)
+### Step 5 — Verify (Bash → repair subagent on failure)
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes render . --skill=motion-graphics -q draft -o ./renders/video.mp4)
+(cd "$PROJECT_DIR" && npx hyperframes lint .)
+(cd "$PROJECT_DIR" && npx hyperframes check .)
+(cd "$PROJECT_DIR" && npx hyperframes snapshot --at <proof-times>)
+```
+
+Choose proof times that show the opening state, signature move, and final hold. Inspect the generated contact or snapshot sheet before continuing. On `lint`, `check`, or snapshot failure, dispatch the repair subagent (`agents/finalize.md`) for one in-place fix pass, then rerun the failed gate. Never change a fixed duration merely to hide a defect.
+
+### Step 6 — Approve and render (Bash)
+
+Ask one question: “preview first, or render?” If the user chooses preview, open Studio and return to the same approval gate after revisions:
+
+```bash
+(cd "$PROJECT_DIR" && npx hyperframes preview)
+```
+
+Render only after an explicit render answer:
+
+```bash
+(cd "$PROJECT_DIR" && npx hyperframes render . --skill=motion-graphics -q high -o ./renders/video.mp4)
 # transparent overlay variant: --format webm  (or mov)
 ```
 
-### Step 6 — Verify (Bash → repair subagent on failure)
-
-```bash
-(cd "$PROJECT_DIR" && npx hyperframes check .)
-```
-
-exit 0 → done. On lint/inspect errors, dispatch the repair subagent (`agents/finalize.md`: snapshot QA + one in-place fix pass + re-render). Never change a fixed duration in repair.
-
-### Report + optional preview
-
-Report the final output (`renders/video.mp4`, or the `.webm` / `.mov` overlay variant) + duration. **Don't open a preview during the run.** Offer one only on request, started **after** render so it serves the final file:
-
-```bash
-(cd "$PROJECT_DIR" && npx hyperframes preview)   # Studio UI; or `npx hyperframes play` for a shareable link
-```
-
-Flags live in the `hyperframes-cli` skill (`references/preview-render.md`).
+Verify the output exists, is non-empty, and has the intended duration. The final handoff names the artifact, actual duration, composition or frame id, proof times, and the inspected contact or snapshot sheet. Flags live in `/hyperframes-cli` → `references/preview-render.md`.
 
 ## Resume table
 
-| State                                                    | Continue from            |
-| -------------------------------------------------------- | ------------------------ |
-| no `shot-plan.json`                                      | Step 1 (plan)            |
-| `shot-plan.json` has `asset_needs`, no `assets/`         | Step 2 (source)          |
-| `shot-plan.json` final, no `compositions/index.html`     | Step 3/4 (design+build)  |
-| `compositions/index.html` exists, no `renders/video.mp4` | Step 5 (render) + Step 6 |
-| `renders/video.mp4` exists                               | Report + stop            |
+| State                                                    | Continue from              |
+| -------------------------------------------------------- | -------------------------- |
+| no `shot-plan.json`                                      | Step 1 (plan)              |
+| `shot-plan.json` has `asset_needs`, no `assets/`         | Step 2 (source)            |
+| `shot-plan.json` final, no `compositions/index.html`     | Step 3/4 (design+build)    |
+| `compositions/index.html` exists, proof snapshots absent | Step 5 (verify)            |
+| checks and proof snapshots pass, no approved render      | Step 6 (approval)          |
+| approved render exists                                   | verify output, then report |
 
 ## Design notes (maintainers — execution does not read this)
 

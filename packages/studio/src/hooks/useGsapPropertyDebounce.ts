@@ -5,6 +5,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
   sdkGsapTweenPersist,
   sdkGsapRemovePropertyPersist,
+  cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
 import { extractGsapScriptText } from "../utils/gsapSoftReload";
@@ -45,6 +46,12 @@ interface SdkPropertyDeps {
   sdkSession?: Composition | null;
   sdkDeps?: CutoverDeps | null;
   activeCompPath?: string | null;
+  onFlushError?: (
+    error: unknown,
+    selection: DomEditSelection,
+    mutation: Record<string, unknown>,
+    label: string,
+  ) => void;
 }
 
 export function useGsapPropertyDebounce(
@@ -68,38 +75,46 @@ export function useGsapPropertyDebounce(
   const sdkRef = useRef(sdk);
   sdkRef.current = sdk;
 
+  // fallow-ignore-next-line complexity
   const flushPendingPropertyEdit = useCallback(async () => {
     const pending = pendingPropertyEditRef.current;
     if (!pending) return;
     pendingPropertyEditRef.current = null;
     const { selection, animationId, property, value } = pending;
-    const { sdkSession, sdkDeps, activeCompPath } = sdkRef.current ?? {};
-    if (sdkSession && sdkDeps) {
-      const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      const handled = await sdkGsapTweenPersist(
-        targetPath,
-        {
-          kind: "set",
-          animationId,
-          properties: {
-            properties: mergeTweenProperties(sdkSession, animationId, { [property]: value }, "to"),
+    const mutation = { type: "update-property", animationId, property, value };
+    const label = `Edit GSAP ${property}`;
+    try {
+      const { sdkSession, sdkDeps, activeCompPath } = sdkRef.current ?? {};
+      if (sdkSession && sdkDeps) {
+        const targetPath = selection.sourceFile || activeCompPath || "index.html";
+        const handled = await sdkGsapTweenPersist(
+          targetPath,
+          {
+            kind: "set",
+            animationId,
+            properties: {
+              properties: mergeTweenProperties(
+                sdkSession,
+                animationId,
+                { [property]: value },
+                "to",
+              ),
+            },
           },
-        },
-        sdkSession,
-        sdkDeps,
-        { label: `Edit GSAP ${property}`, coalesceKey: `gsap:${animationId}:${property}` },
-      );
-      if (handled) return;
-    }
-    commitMutationSafely(
-      selection,
-      { type: "update-property", animationId, property, value },
-      {
-        label: `Edit GSAP ${property}`,
+          sdkSession,
+          sdkDeps,
+          { label, coalesceKey: `gsap:${animationId}:${property}` },
+        );
+        if (cutoverCommittedOrThrow(handled)) return;
+      }
+      await commitMutationSafely(selection, mutation, {
+        label,
         coalesceKey: `gsap:${animationId}:${property}`,
         softReload: true,
-      },
-    );
+      });
+    } catch (error) {
+      sdkRef.current?.onFlushError?.(error, selection, mutation, label);
+    }
   }, [commitMutationSafely]);
 
   const updateGsapProperty = useCallback(
@@ -162,7 +177,7 @@ export function useGsapPropertyDebounce(
           sdkDeps,
           { label: `Add GSAP ${property}` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
@@ -187,7 +202,7 @@ export function useGsapPropertyDebounce(
           sdkDeps,
           { label: `Remove GSAP ${from ? `from-${property}` : property}` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       if (from) {
         commitMutationSafely(
@@ -247,7 +262,7 @@ export function useGsapPropertyDebounce(
             coalesceKey: `gsap:${animationId}:from:${property}`,
           },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,
@@ -285,7 +300,7 @@ export function useGsapPropertyDebounce(
           sdkDeps,
           { label: `Add GSAP from-${property}` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,

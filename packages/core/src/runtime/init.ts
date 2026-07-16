@@ -19,7 +19,11 @@ import {
 } from "./adapters/video-texture-compat";
 import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
-import { refreshRuntimeMediaCache, syncRuntimeMedia } from "./media";
+import {
+  refreshRuntimeMediaCache,
+  resolveRuntimeMediaClipDuration,
+  syncRuntimeMedia,
+} from "./media";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
@@ -583,7 +587,7 @@ export function initSandboxRuntimeModular(): void {
     const computedEnd =
       duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
     return (
-      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime <= computedEnd : true)
+      currentTime >= start && (Number.isFinite(computedEnd) ? currentTime < computedEnd : true)
     );
   };
 
@@ -1807,10 +1811,12 @@ export function initSandboxRuntimeModular(): void {
         const ownDuration = Number.parseFloat(element.dataset.duration ?? "");
         const explicitDuration =
           Number.isFinite(ownDuration) && ownDuration > 0 ? ownDuration : null;
-        const candidates = [sourceDuration, hostRemaining, explicitDuration].filter(
-          (value): value is number => value != null,
-        );
-        return candidates.length > 0 ? Math.min(...candidates) : null;
+        return resolveRuntimeMediaClipDuration({
+          isVideo: element.tagName === "VIDEO",
+          sourceDuration,
+          hostRemaining,
+          explicitDuration,
+        });
       },
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
@@ -2042,6 +2048,7 @@ export function initSandboxRuntimeModular(): void {
     const compositionLoaderParams = {
       injectedStyles: state.injectedCompStyles,
       injectedScripts: state.injectedCompScripts,
+      injectedLinks: state.injectedCompLinks,
       parseDimensionPx,
       onDiagnostic: ({
         code,
@@ -2475,9 +2482,31 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  let timelinesBuiltListener: (() => void) | null = null;
+  const waitForTimelinesBuilt = () => {
+    if (timelinesBuiltListener) return;
+    const onTimelinesBuilt = () => {
+      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
+      timelinesBuiltListener = null;
+      maybePublishRenderReady();
+    };
+    timelinesBuiltListener = onTimelinesBuilt;
+    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
+  };
+  registerRuntimeCleanup(() => {
+    if (!timelinesBuiltListener) return;
+    window.removeEventListener("hf-timelines-built", timelinesBuiltListener);
+    timelinesBuiltListener = null;
+  });
+
   maybePublishRenderReady = () => {
-    if (!externalCompositionsReady || window.__hfTimelinesBuilding) {
+    if (!externalCompositionsReady) {
       window.__renderReady = false;
+      return;
+    }
+    if (window.__hfTimelinesBuilding) {
+      window.__renderReady = false;
+      waitForTimelinesBuilt();
       return;
     }
     // Re-run discover so adapters can refresh their state from the current
@@ -2498,14 +2527,6 @@ export function initSandboxRuntimeModular(): void {
   // synchronously. Wait for the "hf-timelines-built" event before the first
   // binding attempt so the transport clock receives the finished timeline
   // duration instead of permanently publishing duration=0.
-  if (window.__hfTimelinesBuilding) {
-    window.__renderReady = false;
-    const onTimelinesBuilt = () => {
-      window.removeEventListener("hf-timelines-built", onTimelinesBuilt);
-      maybePublishRenderReady();
-    };
-    window.addEventListener("hf-timelines-built", onTimelinesBuilt);
-  }
   maybePublishRenderReady();
 
   // When the bundler inlines compositions, data-composition-src is removed so
@@ -2812,7 +2833,7 @@ export function initSandboxRuntimeModular(): void {
             const mediaStart =
               Number.parseFloat(rawEl.dataset.playbackStart ?? rawEl.dataset.mediaStart ?? "0") ||
               0;
-            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime <= end) {
+            if (Number.isFinite(start) && state.currentTime >= start && state.currentTime < end) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({ el: rawEl, compositionStart: start, mediaStart });
                 foundActive = true;
@@ -3047,12 +3068,21 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     state.injectedCompStyles = [];
+    for (const linkEl of state.injectedCompLinks) {
+      try {
+        linkEl.remove();
+      } catch (err) {
+        // ignore cleanup failures
+        swallow("runtime.init.site15", err);
+      }
+    }
+    state.injectedCompLinks = [];
     for (const scriptEl of state.injectedCompScripts) {
       try {
         scriptEl.remove();
       } catch (err) {
         // ignore cleanup failures
-        swallow("runtime.init.site15", err);
+        swallow("runtime.init.site16", err);
       }
     }
     state.injectedCompScripts = [];

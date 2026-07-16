@@ -105,6 +105,10 @@
     return !!element.closest("[data-layout-allow-overflow]");
   }
 
+  function hasTextClipOptOut(element) {
+    return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
+  }
+
   function opacityChain(element) {
     let opacity = 1;
     for (let current = element; current; current = current.parentElement) {
@@ -215,10 +219,10 @@
     const text = textContentFor(element, directOnly);
     if (!text) return false;
     if (directOnly) return true;
-    for (const child of Array.from(element.children)) {
-      if (isVisibleElement(child) && textContentFor(child)) return false;
-    }
-    return true;
+    // Aggregate text may come exclusively from descendants (including hidden
+    // captions). The container itself does not paint that text and must not be
+    // audited as though it did.
+    return textContentFor(element, true).length > 0;
   }
 
   function textClientRects(element, directOnly) {
@@ -394,6 +398,7 @@
   }
 
   function clippedTextIssue(element, time, tolerance) {
+    if (hasTextClipOptOut(element)) return null;
     const style = getComputedStyle(element);
     if (!clipsOverflow(style)) return null;
     const overflowX = element.scrollWidth - element.clientWidth;
@@ -431,9 +436,9 @@
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return [];
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     const selector = selectorFor(element);
     const issues = [];
 
@@ -455,7 +460,7 @@
     const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
     if (
       containerOverflow &&
-      !hasAllowOverflowFlag(element) &&
+      !hasTextClipOptOut(element) &&
       !clippedByAncestor(element, container)
     ) {
       const style = elementStyle;
@@ -481,7 +486,7 @@
     }
 
     const canvasOverflow = overflowFor(textRect, rootRect, tolerance);
-    if (canvasOverflow && !hasAllowOverflowFlag(element)) {
+    if (canvasOverflow && !hasTextClipOptOut(element)) {
       issues.push({
         code: "canvas_overflow",
         severity: "info",
@@ -566,7 +571,7 @@
   // (low colour alpha) is decorative and exempt, as are elements opted out with
   // data-layout-allow-overlap.
   function isSolidTextBlock(element) {
-    if (!isVisibleElement(element) || !hasOwnTextCandidate(element)) return false;
+    if (!isVisibleElement(element) || !hasOwnTextCandidate(element, true)) return false;
     if (hasAllowOverlapFlag(element)) return false;
     return colorAlpha(getComputedStyle(element).color) >= 0.35;
   }
@@ -575,8 +580,9 @@
     const blocks = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isSolidTextBlock(element)) continue;
-      const rect = textRectFor(element);
-      if (rect) blocks.push({ element, rect });
+      const rects = textClientRects(element, true);
+      const rect = textRectFor(element, true);
+      if (rect) blocks.push({ element, rect, rects });
     }
     return blocks;
   }
@@ -589,6 +595,18 @@
     const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     return overlapX > 0 && overlapY > 0 ? overlapX * overlapY : 0;
+  }
+
+  function rectsArea(rects) {
+    return rects.reduce((total, rect) => total + rectArea(rect), 0);
+  }
+
+  function fragmentIntersectionArea(a, b) {
+    let total = 0;
+    for (const aRect of a) {
+      for (const bRect of b) total += intersectionArea(aRect, bRect);
+    }
+    return total;
   }
 
   function isNested(a, b) {
@@ -626,8 +644,8 @@
   function overlapIssue(a, b, time) {
     if (isNested(a.element, b.element)) return null;
     if (isManagedFlowOverlap(a.element, b.element)) return null;
-    const area = intersectionArea(a.rect, b.rect);
-    if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
+    const area = fragmentIntersectionArea(a.rects, b.rects);
+    if (area <= Math.min(rectsArea(a.rects), rectsArea(b.rects)) * 0.2) return null;
     return {
       // Warning at the per-sample level: a single-sample overlap is usually an
       // entrance/exit transient (two blocks crossing mid-animation), not a real
@@ -730,13 +748,117 @@
 
   const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
   const FRAME_MEDIA_TAGS = new Set([...RASTER_TAGS, "SVG"]);
+  const imageAlphaCanvases = new WeakMap();
+
+  function objectPositionOffset(value, freeSpace) {
+    const token = String(value || "50%")
+      .trim()
+      .split(/\s+/)[0];
+    if (token === "left" || token === "top") return 0;
+    if (token === "right" || token === "bottom") return freeSpace;
+    if (token === "center") return freeSpace / 2;
+    if (token.endsWith("%")) return (freeSpace * parseFloat(token)) / 100;
+    const pixels = parseFloat(token);
+    return Number.isFinite(pixels) ? pixels : freeSpace / 2;
+  }
+
+  function objectPositionOffsets(value, freeX, freeY) {
+    const tokens = String(value || "50% 50%")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2);
+    let x = "50%";
+    let y = "50%";
+    if (tokens.length === 1) {
+      if (tokens[0] === "top" || tokens[0] === "bottom") y = tokens[0];
+      else x = tokens[0];
+    } else {
+      for (const token of tokens) {
+        if (token === "top" || token === "bottom") y = token;
+        else if (token === "left" || token === "right") x = token;
+        else if (x === "50%") x = token;
+        else y = token;
+      }
+    }
+    return { x: objectPositionOffset(x, freeX), y: objectPositionOffset(y, freeY) };
+  }
+
+  // Return the alpha painted by an <img> at a viewport point. `null` means the
+  // browser would not let us inspect the image (not loaded or cross-origin), in
+  // which case callers preserve the conservative opaque fallback.
+  function imageAlphaAt(element, x, y) {
+    const sourceWidth = element.naturalWidth;
+    const sourceHeight = element.naturalHeight;
+    const rect = element.getBoundingClientRect();
+    if (!sourceWidth || !sourceHeight || !rect.width || !rect.height) return null;
+
+    const style = getComputedStyle(element);
+    const fit = style.objectFit || "fill";
+    let scaleX = rect.width / sourceWidth;
+    let scaleY = rect.height / sourceHeight;
+    if (fit !== "fill") {
+      const contain = Math.min(scaleX, scaleY);
+      const cover = Math.max(scaleX, scaleY);
+      const scale =
+        fit === "cover"
+          ? cover
+          : fit === "none"
+            ? 1
+            : fit === "scale-down"
+              ? Math.min(1, contain)
+              : contain;
+      scaleX = scale;
+      scaleY = scale;
+    }
+
+    const paintedWidth = sourceWidth * scaleX;
+    const paintedHeight = sourceHeight * scaleY;
+    const offsets = objectPositionOffsets(
+      style.objectPosition,
+      rect.width - paintedWidth,
+      rect.height - paintedHeight,
+    );
+    const localX = x - rect.left - offsets.x;
+    const localY = y - rect.top - offsets.y;
+    if (localX < 0 || localY < 0 || localX >= paintedWidth || localY >= paintedHeight) return 0;
+
+    try {
+      let cached = imageAlphaCanvases.get(element);
+      const source = element.currentSrc || element.src;
+      if (
+        !cached ||
+        cached.width !== sourceWidth ||
+        cached.height !== sourceHeight ||
+        cached.source !== source
+      ) {
+        const canvas = document.createElement("canvas");
+        canvas.width = sourceWidth;
+        canvas.height = sourceHeight;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) return null;
+        context.drawImage(element, 0, 0, sourceWidth, sourceHeight);
+        cached = { context, width: sourceWidth, height: sourceHeight, source };
+        imageAlphaCanvases.set(element, cached);
+      }
+      const sourceX = Math.min(sourceWidth - 1, Math.max(0, Math.floor(localX / scaleX)));
+      const sourceY = Math.min(sourceHeight - 1, Math.max(0, Math.floor(localY / scaleY)));
+      return cached.context.getImageData(sourceX, sourceY, 1, 1).data[3] / 255;
+    } catch {
+      return null;
+    }
+  }
 
   // An element hides text beneath it when it paints opaque pixels at near-full
   // opacity: raster content (img/video/canvas), a background image, or a solid
   // background colour. Low-opacity overlays (grain, scrims) do not occlude.
-  function isOpaqueOccluder(element) {
-    if (opacityChain(element) < 0.6) return false;
+  function isOpaqueOccluder(element, x, y) {
+    const opacity = opacityChain(element);
+    if (opacity < 0.6) return false;
     if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (element.tagName === "IMG") {
+      const alpha = imageAlphaAt(element, x, y);
+      if (alpha !== null) return alpha * opacity >= 0.6;
+    }
     if (RASTER_TAGS.has(element.tagName)) return true;
     return hasOpaqueBackground(getComputedStyle(element));
   }
@@ -798,7 +920,7 @@
       // Pair-specific exemptions excuse this hit only; keep walking for deeper occluders.
       if (sharedPreserve3d(element, hit)) continue;
       if (isCrossSceneTransitionOverlap(element, hit)) continue;
-      if (isOpaqueOccluder(hit)) return hit;
+      if (isOpaqueOccluder(hit, x, y)) return hit;
     }
     return null;
   }
@@ -819,25 +941,32 @@
     return text.length > 0 && text.length <= ATOMIC_LABEL_MAX_CHARS && !/\s/.test(text);
   }
 
-  // Sweep a grid across the text box (three rows, not just the mid-line, so
-  // overlays covering only part of a multi-line block are caught). Unlike a
+  // Sweep a grid across each painted text fragment (three rows, not just the
+  // mid-line, so overlays covering only part of a multi-line block are caught).
+  // Sampling fragments instead of their union avoids probing empty line gaps.
+  // Unlike a
   // first-hit scan, this keeps sampling every point so it can report what
   // fraction of the box is actually covered — a corner nibble on a paragraph
   // reads very differently from a label buried under an overlay. Still
   // returns the first opaque element found, for `containerSelector`.
-  function occlusionCoverage(element, textRect) {
+  function occlusionCoverage(element, textRects) {
     let occluder = null;
     let hits = 0;
-    for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
-      const y = textRect.top + textRect.height * yFraction;
-      for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
-        const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
-        if (!hit) continue;
-        hits += 1;
-        if (!occluder) occluder = hit;
+    for (const textRect of textRects) {
+      for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
+        const y = textRect.top + textRect.height * yFraction;
+        for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
+          const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+          if (!hit) continue;
+          hits += 1;
+          if (!occluder) occluder = hit;
+        }
       }
     }
-    return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
+    return {
+      occluder,
+      coveredFraction: round(hits / (OCCLUSION_GRID_POINTS * textRects.length)),
+    };
   }
 
   // pointer-events:none hides elements from elementFromPoint — both probed text AND occluders.
@@ -874,10 +1003,14 @@
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
     if (!hasVisibleTextInk(element)) return null;
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
-    const { occluder, coveredFraction } = occlusionCoverage(element, textRect);
+    const textRects = textClientRects(element, true);
+    const text = textContentFor(element, true);
+    const { occluder, coveredFraction } = occlusionCoverage(
+      element,
+      textRects.length > 0 ? textRects : [textRect],
+    );
     if (!occluder) return null;
     if (!isAtomicLabel(text) && coveredFraction < PROSE_COVERAGE_FLOOR) return null;
     return {
@@ -907,9 +1040,9 @@
   // paints the glyphs; a `background-clip: text` with no gradient/image and no
   // opaque background-color paints nothing, so it stays reportable.
   function invisibleTextIssue(element, time) {
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     if (!text) return null;
     const cs = getComputedStyle(element);
     // Vendor computed-style props are read by property (camelCase), matching
@@ -1032,8 +1165,8 @@
       if (escapedElements.has(element)) continue;
       // Ownership is geometric and strict-mutex: any text breach past canvas_overflow's own
       // tolerance cedes the element to canvas_overflow; in-bounds text leaves the panel finding.
-      if (hasOwnTextCandidate(element)) {
-        const textRect = textRectFor(element);
+      if (hasOwnTextCandidate(element, true)) {
+        const textRect = textRectFor(element, true);
         if (textRect && overflowFor(textRect, rootRect, tolerance)) continue;
       }
       const rect = toRect(element.getBoundingClientRect());
@@ -1263,7 +1396,7 @@
       document.body;
     const rootRect = rootRectFor(root);
     const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element),
+      isVisibleElement(element, 0.05),
     );
     const issues = [];
 

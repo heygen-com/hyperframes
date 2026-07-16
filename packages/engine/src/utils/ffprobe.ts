@@ -53,6 +53,8 @@ function parseProbeJson(stdout: string): FFProbeOutput {
 
 const videoMetadataCache = new Map<string, Promise<VideoMetadata>>();
 const audioMetadataCache = new Map<string, Promise<AudioMetadata>>();
+// FFmpeg's built-in AAC encoder emits AAC-LC, which has 1024 samples per packet.
+const AAC_LC_SAMPLES_PER_PACKET = 1024;
 
 export interface VideoColorSpace {
   /** Color transfer characteristics, e.g. "bt709", "smpte2084", "arib-std-b67" */
@@ -98,6 +100,7 @@ interface FFProbeStream {
   height?: number;
   duration?: string;
   nb_frames?: string;
+  nb_read_packets?: string;
   pix_fmt?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
@@ -366,15 +369,36 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
     const audioStream = output.streams.find((s) => s.codec_type === "audio");
     if (!audioStream) throw new Error("[FFmpeg] No audio stream found");
 
-    const durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
+    let durationSeconds = output.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = audioStream.duration ? parseFloat(audioStream.duration) : undefined;
+    const sampleRate = audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100;
+    const audioCodec = audioStream.codec_name || "unknown";
+    if (audioCodec === "aac" && sampleRate > 0) {
+      const packetStdout = await runFfprobe([
+        "-v",
+        "quiet",
+        "-select_streams",
+        "a:0",
+        "-count_packets",
+        "-show_entries",
+        "stream=nb_read_packets",
+        "-print_format",
+        "json",
+        filePath,
+      ]);
+      const packetOutput = parseProbeJson(packetStdout);
+      const packetCount = Number(packetOutput.streams[0]?.nb_read_packets);
+      if (Number.isFinite(packetCount) && packetCount > 0) {
+        durationSeconds = (packetCount * AAC_LC_SAMPLES_PER_PACKET) / sampleRate;
+      }
+    }
 
     return {
       durationSeconds,
       streamDurationSeconds: streamDuration && streamDuration > 0 ? streamDuration : undefined,
-      sampleRate: audioStream.sample_rate ? parseInt(audioStream.sample_rate) : 44100,
+      sampleRate,
       channels: audioStream.channels || 2,
-      audioCodec: audioStream.codec_name || "unknown",
+      audioCodec,
       bitrate: output.format.bit_rate ? parseInt(output.format.bit_rate) : undefined,
     };
   })();

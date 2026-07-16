@@ -5,6 +5,7 @@ import { MetricField } from "./propertyPanelPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { Transform3DCube, type CubePose } from "./Transform3DCube";
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 // translateZ only foreshortens under a perspective lens. Rather than hardcode one
 // (an arbitrary px value reads wrong at different canvas sizes), derive it from the
@@ -40,7 +41,7 @@ interface PropertyPanel3dTransformProps {
     property: string,
     value: number,
   ) => Promise<void>;
-  /** Batched commit — several props into one keyframe (the cube's rotationX/Y/Z). */
+  /** Batched commit for several props in one keyframe (the cube's rotationX/Y/Z). */
   onCommitAnimatedProperties?: (
     element: DomEditSelection,
     props: Record<string, number | string>,
@@ -71,6 +72,7 @@ function Cube3dControl({
   onKeyframe?: () => void;
   keyframed?: boolean;
 }) {
+  const track = useTrackDesignInput();
   const pose: CubePose = {
     rotationX: gsapRuntimeValues.rotationX ?? 0,
     rotationY: gsapRuntimeValues.rotationY ?? 0,
@@ -89,12 +91,13 @@ function Cube3dControl({
     }
     const axes = Object.keys(changedProps);
     if (axes.length === 0) return;
-    // ONE keyframe for the whole pose change — avoids per-axis commits racing into
+    track("slider", "3D rotation pose");
+    // ONE keyframe for the whole pose change, avoiding per-axis commits racing into
     // adjacent duplicate keyframes.
     void onCommitAnimatedProperties(element, changedProps);
   };
   const recenter = () => {
-    // ONE commit for the whole reset — six per-axis commits meant six soft-reloads
+    // ONE commit for the whole reset. Six per-axis commits meant six soft-reloads
     // (six flashes) for a single click. Batch like commitPose does.
     const identity = {
       rotationX: 0,
@@ -104,9 +107,10 @@ function Cube3dControl({
       scale: 1,
       transformPerspective: 0,
     };
+    track("button", "Reset 3D transform");
     void onCommitAnimatedProperties(element, identity);
   };
-  // Immediate element feedback while dragging — set the live transform without a
+  // Immediate element feedback while dragging: set the live transform without a
   // source write; the release commits via commitPose.
   const livePreview = (next: CubePose) =>
     onLivePreviewProps?.(element, {
@@ -129,6 +133,7 @@ function Cube3dControl({
             onLivePreviewProps?.(element, { z });
           }}
           onDepthCommit={(z) => {
+            track("slider", "3D depth");
             void onCommitAnimatedProperties(element, { z });
           }}
           onRecenter={recenter}
@@ -178,7 +183,7 @@ const parsePxNonNeg = (s: string): number | null => {
 /**
  * One 3D-transform field: a number/scrub input plus its keyframe diamond, so
  * rotation / perspective / Z / scale can each be keyframed just like Layout's
- * X / Y — the diamond was previously missing on the rotation + perspective rows.
+ * X / Y. The diamond was previously missing on the rotation + perspective rows.
  */
 function Transform3dField({
   label,
@@ -256,7 +261,7 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
-  // Expanded by default — the cube gizmo is the headline of this panel, so show
+  // Expanded by default because the cube gizmo is the headline of this panel, so show
   // it up front rather than hiding it behind a collapsed header.
   const [collapsed, setCollapsed] = useState(false);
   const ctx: FieldCtx = {

@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
 import type { EditHistoryKind } from "./editHistory";
+import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 
 export interface RecordEditInput {
@@ -13,13 +14,15 @@ export interface RecordEditInput {
 export interface DomEditCommitBaseParams {
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: ProjectFileWriter;
   domEditSaveTimestampRef: MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   projectIdRef: MutableRefObject<string | null>;
   reloadPreview: () => void;
   clearDomSelection: () => void;
 }
+
+type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
@@ -29,7 +32,7 @@ interface SaveProjectFilesWithHistoryInput {
   coalesceMs?: number;
   files: Record<string, string>;
   readFile: (path: string) => Promise<string>;
-  writeFile: (path: string, content: string) => Promise<void>;
+  writeFile: ProjectFileWriter;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
 }
 
@@ -55,37 +58,39 @@ export async function saveProjectFilesWithHistory({
   writeFile,
   recordEdit,
 }: SaveProjectFilesWithHistoryInput): Promise<string[]> {
-  const snapshots: Record<string, { before: string; after: string }> = {};
-  for (const [path, after] of Object.entries(files)) {
-    const before = await readFile(path);
-    if (before !== after) {
-      snapshots[path] = { before, after };
-    }
-  }
-
-  const changedPaths = Object.keys(snapshots);
-  if (changedPaths.length === 0) return [];
-
-  const writtenPaths: string[] = [];
-  try {
-    for (const path of changedPaths) {
-      await writeFile(path, snapshots[path].after);
-      writtenPaths.push(path);
-    }
-
-    await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
-  } catch (error) {
-    try {
-      for (const path of writtenPaths.reverse()) {
-        await writeFile(path, snapshots[path].before);
+  return serializeStudioFileMutations(writeFile, Object.keys(files), async () => {
+    const snapshots: Record<string, { before: string; after: string }> = {};
+    for (const [path, after] of Object.entries(files)) {
+      const before = await readFile(path);
+      if (before !== after) {
+        snapshots[path] = { before, after };
       }
-    } catch (rollbackError) {
-      throw new AggregateError(
-        [error, rollbackError],
-        "Failed to save project files and rollback did not complete",
-      );
     }
-    throw error;
-  }
-  return changedPaths;
+
+    const changedPaths = Object.keys(snapshots);
+    if (changedPaths.length === 0) return [];
+
+    const writtenPaths: string[] = [];
+    try {
+      for (const path of changedPaths) {
+        await writeFile(path, snapshots[path].after, snapshots[path].before);
+        writtenPaths.push(path);
+      }
+
+      await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
+    } catch (error) {
+      try {
+        for (const path of writtenPaths.reverse()) {
+          await writeFile(path, snapshots[path].before, snapshots[path].after);
+        }
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Failed to save project files and rollback did not complete",
+        );
+      }
+      throw error;
+    }
+    return changedPaths;
+  });
 }

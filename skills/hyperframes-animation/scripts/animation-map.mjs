@@ -16,19 +16,26 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loader.mjs";
+import { sampleTweenBboxes } from "./animation-map-sampling.mjs";
+import {
+  bundleCompositionForCapture,
+  hyperframesPackageSpec,
+  importPackagesOrBootstrap,
+  initializeSessionWithRetry,
+} from "./package-loader.mjs";
 
-const {
-  createFileServer,
-  createCaptureSession,
-  initializeSession,
-  closeCaptureSession,
-  getCompositionDuration,
-} = (
-  await importPackagesOrBootstrap(["@hyperframes/producer"], {
-    npmPackages: [hyperframesPackageSpec("@hyperframes/producer")],
-  })
-)["@hyperframes/producer"];
+const packages = await importPackagesOrBootstrap(
+  ["@hyperframes/producer", "@hyperframes/core", "@hyperframes/core/compiler"],
+  {
+    npmPackages: [
+      hyperframesPackageSpec("@hyperframes/producer"),
+      hyperframesPackageSpec("@hyperframes/core"),
+    ],
+  },
+);
+const { createFileServer, createCaptureSession, closeCaptureSession, getCompositionDuration } =
+  packages["@hyperframes/producer"];
+const { parseFps } = packages["@hyperframes/core"];
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -40,23 +47,43 @@ const OUT_DIR = resolve(args.out ?? ".hyperframes/anim-map");
 const MIN_DUR = Number(args["min-duration"] ?? 0.15);
 const WIDTH = Number(args.width ?? 1920);
 const HEIGHT = Number(args.height ?? 1080);
-const FPS = Number(args.fps ?? 30);
+const parsedFps = parseFps(args.fps ?? 30);
+if (!parsedFps.ok) die(`Invalid --fps "${args.fps ?? ""}": ${parsedFps.reason}`);
+const FPS = parsedFps.value;
 const COMP_DIR = resolve(args.composition);
 
 await mkdir(OUT_DIR, { recursive: true });
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
-const session = await createCaptureSession(
-  server.url,
-  OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
-  null,
-);
-await initializeSession(session);
-
+// Raw modular hosts do not mount child compositions in the capture helper.
+// Bundle first so duration/timeline discovery sees the same DOM as render/check.
+const bundle = await bundleCompositionForCapture(packages["@hyperframes/core/compiler"], COMP_DIR);
+let server;
+let session;
 try {
+  server = await createFileServer({
+    projectDir: COMP_DIR,
+    compiledDir: bundle.compiledDir,
+    port: 0,
+  });
+  // Canonical transient-init retry/cleanup (mirrors the render pipeline's
+  // probeStage): a valid modular project's sub-composition timelines register
+  // asynchronously, so the first attempt can time out as transient
+  // "zero duration / Runtime ready: false" — retry once with a fresh browser
+  // instead of false-failing the project.
+  session = await initializeSessionWithRetry(
+    packages["@hyperframes/producer"],
+    () =>
+      createCaptureSession(
+        server.url,
+        OUT_DIR,
+        { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+        null,
+      ),
+    { log: (message) => console.error(`animation-map: ${message}`) },
+  );
+
   const duration = await getCompositionDuration(session);
   const tweens = await enumerateTweens(session);
   const kept = tweens.filter((tw) => tw.end - tw.start >= MIN_DUR);
@@ -77,12 +104,7 @@ try {
       (_, k) => +(tw.start + ((k + 0.5) / FRAMES) * (tw.end - tw.start)).toFixed(3),
     );
 
-    const bboxes = [];
-    for (const t of times) {
-      await seekTo(session, t);
-      const bbox = await measureTarget(session, tw.selectorHint);
-      bboxes.push({ t, ...bbox });
-    }
+    const bboxes = await sampleTweenBboxes(session.page, tw.selectorHint, times);
 
     const animProps = tw.props.filter(
       (p) => !["parent", "overwrite", "immediateRender", "startAt", "runBackwards"].includes(p),
@@ -125,8 +147,9 @@ try {
 
   printSummary(report);
 } finally {
-  await closeCaptureSession(session).catch(() => {});
-  server.close();
+  if (session) await closeCaptureSession(session).catch(() => {});
+  server?.close();
+  bundle.cleanup();
 }
 
 // ─── Seek helper ────────────────────────────────────────────────────────────
@@ -203,23 +226,6 @@ async function enumerateTweens(session) {
     results.sort((a, b) => a.start - b.start);
     return results;
   });
-}
-
-async function measureTarget(session, selector) {
-  return await session.page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return { x: 0, y: 0, w: 0, h: 0, missing: true };
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    return {
-      x: Math.round(r.x),
-      y: Math.round(r.y),
-      w: Math.round(r.width),
-      h: Math.round(r.height),
-      opacity: parseFloat(cs.opacity),
-      visible: cs.visibility !== "hidden" && cs.display !== "none",
-    };
-  }, selector);
 }
 
 // ─── Tween description (the key output for agents) ──────────────────────────

@@ -14,7 +14,7 @@ beforeAll(() => {
 describe("loadExternalCompositions", () => {
   afterEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("style").forEach((s) => s.remove());
+    document.head.querySelectorAll("style, link").forEach((node) => node.remove());
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).gsap;
     delete (window as Window & { gsap?: unknown; __selectedTitle?: unknown }).__selectedTitle;
     delete (window as Window & { __hyperframes?: unknown }).__hyperframes;
@@ -26,6 +26,7 @@ describe("loadExternalCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 
@@ -87,6 +88,186 @@ describe("loadExternalCompositions", () => {
     });
 
     expect(injectedStyles.length).toBeGreaterThan(0);
+  });
+
+  it("preserves head stylesheets when an external composition uses a template", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href="./scene.css"></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.css"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not resolve an empty stylesheet href to the composition HTML", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><link rel="stylesheet" href=""></head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Unstyled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    expect(
+      document.head.querySelector(
+        'link[rel="stylesheet"][href="https://example.com/compositions/scene.html"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("does not inject stylesheet href variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <link rel="stylesheet" href=" ">
+          <link rel="stylesheet" href="#theme">
+          <link rel="stylesheet" href="?v=1">
+          <link rel="stylesheet" href="./scene.html?v=2#theme">
+          <link rel="stylesheet" href="./scene.css?v=1">
+        </head>
+        <body>
+          <template id="scene-template">
+            <div data-composition-id="scene"><p>Styled scene</p></div>
+          </template>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    const injectedHrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map(
+      (link) => (link as HTMLLinkElement).href,
+    );
+    expect(injectedHrefs).toEqual(["https://example.com/compositions/scene.css?v=1"]);
+  });
+
+  it("does not execute head script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head>
+          <script src="#theme"></script>
+          <script src="?v=1"></script>
+          <script src="./scene.html?v=2#theme"></script>
+        </head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not execute content script src variants that resolve to the composition document", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <body>
+          <div data-composition-id="scene">
+            <p>Scene</p>
+            <script src="#theme"></script>
+            <script src="?v=1"></script>
+            <script src="./scene.html?v=2#theme"></script>
+          </div>
+        </body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+    expect(injectedScripts).toEqual([]);
+  });
+
+  it("does not fail composition mounting when a head script src is malformed", async () => {
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/compositions/scene.html");
+    host.setAttribute("data-composition-id", "scene");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <html>
+        <head><script src="http://[invalid"></script></head>
+        <body><div data-composition-id="scene"><p>Scene</p></div></body>
+      </html>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      const appended = originalAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.src) {
+        queueMicrotask(() => node.dispatchEvent(new Event("load")));
+      }
+      return appended;
+    });
+
+    const injectedScripts: HTMLScriptElement[] = [];
+    const onDiagnostic = vi.fn();
+    await loadExternalCompositions({ ...defaultParams, injectedScripts, onDiagnostic });
+
+    expect(injectedScripts).toHaveLength(1);
+    expect(onDiagnostic).not.toHaveBeenCalled();
   });
 
   it("calls onDiagnostic when fetch fails", async () => {
@@ -1021,6 +1202,7 @@ describe("loadInlineTemplateCompositions", () => {
   const defaultParams = {
     injectedStyles: [] as HTMLStyleElement[],
     injectedScripts: [] as HTMLScriptElement[],
+    injectedLinks: [] as HTMLLinkElement[],
     parseDimensionPx: (v: string | null) => (v ? `${v}px` : null),
   };
 

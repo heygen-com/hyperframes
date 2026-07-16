@@ -90,6 +90,7 @@ function renderPanel() {
       <StudioRightPanel
         designPanelActive
         sdkSession={null}
+        publishSdkSession={() => "rejected-inactive-target"}
         reloadPreview={() => {}}
         domEditSaveTimestampRef={{ current: 0 }}
         recordEdit={async () => {}}

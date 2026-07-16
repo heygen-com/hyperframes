@@ -239,3 +239,97 @@ describe("installPositionEditsSeekReapply", () => {
     ).not.toThrow();
   });
 });
+
+describe("applyPositionEdits — force option", () => {
+  it("skips a clobbered translate non-forced, re-applies with force", () => {
+    const el = makeElement({
+      "data-x": "10",
+      "data-y": "0",
+      [EDIT_BASE_X_ATTR]: "0",
+      [EDIT_BASE_Y_ATTR]: "0",
+    });
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("10px 0px");
+
+    // External clobber (GSAP folding it into a cached transform, a draft
+    // write, …) — the non-forced fold-guard must skip, force must overwrite.
+    el.style.setProperty("translate", "999px 0px");
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("999px 0px");
+
+    applyPositionEdits(document, { force: true });
+    expect(el.style.getPropertyValue("translate")).toBe("10px 0px");
+    el.remove();
+  });
+});
+
+describe("applyPositionEdits — reset path", () => {
+  it("restores the captured pre-edit translate when base attrs were removed (undo)", () => {
+    const el = makeElement(
+      {
+        "data-x": "10",
+        "data-y": "5",
+        [EDIT_BASE_X_ATTR]: "0",
+        [EDIT_BASE_Y_ATTR]: "0",
+      },
+      "translate: 3px 4px",
+    );
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("13px 9px");
+    expect(el.getAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR)).toBe("3px 4px");
+
+    // Undo: the host removes the whole edit channel.
+    el.removeAttribute("data-x");
+    el.removeAttribute("data-y");
+    el.removeAttribute(EDIT_BASE_X_ATTR);
+    el.removeAttribute(EDIT_BASE_Y_ATTR);
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("3px 4px");
+    expect(el.hasAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR)).toBe(false);
+    el.remove();
+  });
+
+  it("removes the inline translate entirely when the captured original was none", () => {
+    const el = makeElement({
+      "data-x": "10",
+      "data-y": "0",
+      [EDIT_BASE_X_ATTR]: "0",
+      [EDIT_BASE_Y_ATTR]: "0",
+    });
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("10px 0px");
+
+    el.removeAttribute("data-x");
+    el.removeAttribute("data-y");
+    el.removeAttribute(EDIT_BASE_X_ATTR);
+    el.removeAttribute(EDIT_BASE_Y_ATTR);
+    applyPositionEdits(document);
+    expect(el.style.getPropertyValue("translate")).toBe("");
+    expect(el.hasAttribute(EDIT_ORIGINAL_TRANSLATE_ATTR)).toBe(false);
+    el.remove();
+  });
+
+  it("a redo after reset re-captures a clean baseline", () => {
+    const el = makeElement({
+      "data-x": "10",
+      "data-y": "0",
+      [EDIT_BASE_X_ATTR]: "0",
+      [EDIT_BASE_Y_ATTR]: "0",
+    });
+    applyPositionEdits(document);
+    el.removeAttribute("data-x");
+    el.removeAttribute("data-y");
+    el.removeAttribute(EDIT_BASE_X_ATTR);
+    el.removeAttribute(EDIT_BASE_Y_ATTR);
+    applyPositionEdits(document); // reset
+
+    // Redo: the host restores the edit channel with a new position.
+    el.setAttribute("data-x", "20");
+    el.setAttribute("data-y", "0");
+    el.setAttribute(EDIT_BASE_X_ATTR, "0");
+    el.setAttribute(EDIT_BASE_Y_ATTR, "0");
+    applyPositionEdits(document, { force: true });
+    expect(el.style.getPropertyValue("translate")).toBe("20px 0px");
+    el.remove();
+  });
+});

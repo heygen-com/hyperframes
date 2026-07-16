@@ -48,6 +48,51 @@ describe("findMatchingTimelineElementId", () => {
   it("returns null for an unmatched element in index.html", () => {
     expect(findMatchingTimelineElementId({ id: "ghost", sourceFile: "index.html" }, [])).toBe(null);
   });
+
+  it("resolves the correct repeated composition host by domId, not the first host sharing the same compositionSrc", () => {
+    // Two hosts import the SAME sub-composition — only compositionSrc alone
+    // can't tell them apart, but each still has its own domId (as any
+    // element does). Selecting the SECOND host must not collapse to the
+    // first one just because an earlier, unrelated element also happens to
+    // share its compositionSrc.
+    const els = [
+      el({ id: "host-a", domId: "host-a", sourceFile: "index.html", compositionSrc: "scene.html" }),
+      el({ id: "host-b", domId: "host-b", sourceFile: "index.html", compositionSrc: "scene.html" }),
+    ];
+    expect(
+      findMatchingTimelineElementId(
+        {
+          id: "host-b",
+          sourceFile: "index.html",
+          compositionSrc: "scene.html",
+          isCompositionHost: true,
+        },
+        els,
+      ),
+    ).toBe("host-b");
+  });
+
+  it("falls back to compositionSrc-only matching when the host selection has neither a domId nor a selector", () => {
+    const els = [
+      el({
+        id: "host-only",
+        domId: undefined,
+        sourceFile: "index.html",
+        compositionSrc: "scene.html",
+      }),
+    ];
+    expect(
+      findMatchingTimelineElementId(
+        {
+          id: undefined,
+          sourceFile: "index.html",
+          compositionSrc: "scene.html",
+          isCompositionHost: true,
+        },
+        els,
+      ),
+    ).toBe("host-only");
+  });
 });
 
 describe("findTimelineIdByAncestor", () => {
