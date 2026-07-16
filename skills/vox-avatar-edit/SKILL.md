@@ -27,6 +27,12 @@ measured failure — see `skills DESIGN.md` for the decision log.
 
 ## Pipeline
 
+Input can be Tokyo-generated talking clips OR **user-uploaded talking footage** (self-recorded /
+HeyGen-generated) — the edit stage only needs a real talking video. With uploaded footage, skip
+the script/TTS/Tokyo stages: transcribe the footage, cut at sentence boundaries into ≤10s beats
+(see /vox-avatar "Input source B"), then continue below; the footage's own voice is what gets
+remuxed back in.
+
 ```
 script → beats → TTS (person's voice) → Tokyo talking clips (lips)      [= /vox-avatar steps 1-2]
   → per-beat HOST LAYOUT pre-compose (ffmpeg canvas)                    [rule 2]

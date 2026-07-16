@@ -88,6 +88,28 @@ Use `hyperframes-agent` `integrations/tokyo/` (client.py + fallback.py) — do n
   a 0.5-1.8s frozen host before a hard cut reads as a stutter (empirical). Payoff beat may
   hold ~0.8s but mask the hold with a slow ambient push (scale 1.00->1.02, ease none).
 
+## Input source B — bring your own avatar footage (no Tokyo access needed)
+
+When the user UPLOADS an existing talking-head video (self-recorded, HeyGen-generated, or any
+real footage of the person speaking the actual script), the pipeline inverts: **the footage's
+own audio IS the VO** — you derive the beats from the footage instead of writing them first.
+
+1. **Transcribe** the footage (`hyperframes transcribe` / faster-whisper, word timestamps).
+2. **Cut into beats at sentence boundaries** (4–8s each, never split a sentence) — the beat map
+   is extracted, not authored. Labels still come from VO keywords per the /vox-explainer contract;
+   grammar choice (§0) and the alternation rhythm apply unchanged (`graphic` beats = host
+   off-screen while the footage AUDIO continues).
+3. **Matte** each host beat (`hyperframes remove-background` → alpha webm) and mount as usual.
+4. **AUDIO CONTRACT unchanged, source inverted:** the beat's `<audio>` is the footage's own
+   audio track (stream-copied, never re-encoded, never re-dubbed) at the beat's offsets. If the
+   user wants a DIFFERENT script than what the footage says, that is a re-shoot / avatar-generation
+   problem — never dub over the lips.
+5. QC gates identical (no-text zone, no freeze tails, lip-sync spot-checks are trivially true
+   since audio and lips share a source).
+
+/vox-avatar-edit accepts uploaded footage with zero changes — it only ever needed "a real
+talking video" (pre-compose to target AR, edit, conform, remux the footage's voice).
+
 ## Poster mode (fallback / cheap preview)
 
 When Tokyo is unreachable or a fast preview is wanted: per-beat restyled poster stills via
