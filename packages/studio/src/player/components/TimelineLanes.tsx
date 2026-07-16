@@ -25,6 +25,7 @@ import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { Music } from "../../icons/SystemIcons";
 import { renderClipChildren } from "./timelineClipChildren";
+import { isAdditiveSelectionEvent } from "../../utils/selectionModifiers";
 
 /**
  * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
@@ -331,12 +332,9 @@ export function TimelineLanes({
                           (e) => {
                             if (e.button !== 0) return;
                             if (usePlayerStore.getState().activeTool === "razor") return;
-                            if (e.shiftKey) {
-                              shiftClickClipRef.current = {
-                                element: el,
-                                anchorX: e.clientX,
-                                anchorY: e.clientY,
-                              };
+                            if (isAdditiveSelectionEvent(e)) {
+                              shiftClickClipRef.current = null;
+                              e.stopPropagation();
                               return;
                             }
                             const target = e.currentTarget as HTMLElement;
@@ -412,6 +410,10 @@ export function TimelineLanes({
                               } else {
                                 onRazorSplit(el, clampedTime);
                               }
+                              return;
+                            }
+                            if (isAdditiveSelectionEvent(e)) {
+                              usePlayerStore.getState().toggleSelectedElementId(elementKey);
                               return;
                             }
                             // Plain click always selects this clip and drops any marquee
