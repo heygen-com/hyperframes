@@ -56,7 +56,12 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
   const npx = buildNpxCommand(args);
   return new Promise((resolve, reject) => {
     const child = spawn(npx.command, npx.args, {
-      stdio: "inherit",
+      // Route the child's stdout to the parent's stderr (fd 2), keeping stdin
+      // inherited. `skills update --json` runs this installer before printing its
+      // JSON envelope on stdout; child progress chatter on stdout would corrupt it.
+      // Diagnostics belong on stderr regardless of mode, so this is safe for the
+      // interactive path too (the user still sees the output).
+      stdio: ["inherit", 2, 2],
       // We install with --full-depth (a full `git clone` of the repo, the only
       // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS_TAIL),
       // which is heavier than the blob fetch, so allow more headroom.
@@ -171,7 +176,9 @@ function mirrorToInstalledAgents(): void {
     const { mirrored } = mirrorGlobalSkills({ skills: names });
     const n = mirrored.length;
     if (n > 0) {
-      console.log(
+      // stderr: reachable from `skills update --json` (via installSkills) before
+      // the JSON envelope is written to stdout.
+      console.error(
         c.dim(`Linked skills into ${n} other agent ${n === 1 ? "directory" : "directories"}.`),
       );
     }
@@ -244,15 +251,17 @@ async function installSkills(
 
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
+  // stderr: installSkills runs on the `skills update --json` path before its JSON
+  // envelope is written to stdout — progress here must not corrupt that output.
   for (const source of SOURCES) {
-    console.log();
-    console.log(c.bold(`Installing ${source.name} skills...`));
-    console.log();
+    console.error();
+    console.error(c.bold(`Installing ${source.name} skills...`));
+    console.error();
     try {
       await runSkillsAdd(source.url, safeSelection, opts);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
-      console.log(c.dim(`${source.name} skills skipped`));
+      console.error(c.dim(`${source.name} skills skipped`));
     }
   }
 

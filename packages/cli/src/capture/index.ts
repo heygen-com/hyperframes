@@ -474,7 +474,9 @@ export async function captureWebsite(
         const summary = fontsManifest.families
           .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
           .join(", ");
-        console.log(`Font metadata extracted: ${summary}`);
+        // stderr: `capture --json` writes its envelope to stdout; this progress
+        // note must not corrupt it (matches the sibling console.warn below).
+        console.warn(`Font metadata extracted: ${summary}`);
         if (fontsManifest.unidentified.length > 0) {
           console.warn(
             `  ${fontsManifest.unidentified.length} font file(s) could not be identified — DESIGN.md should flag these explicitly.`,

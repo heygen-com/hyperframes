@@ -249,13 +249,15 @@ export default defineCommand({
     ensureDOMParser();
     const compositions = parseCompositions(html, dirname(project.indexPath));
 
-    if (compositions.length === 0) {
-      console.log(`${c.success("◇")}  ${c.accent(project.name)} — no compositions found`);
+    // --json must always emit a machine-readable envelope, including the empty
+    // case — check it before the human "no compositions" message on stdout.
+    if (args.json) {
+      console.log(JSON.stringify(withMeta({ compositions }), null, 2));
       return;
     }
 
-    if (args.json) {
-      console.log(JSON.stringify(withMeta({ compositions }), null, 2));
+    if (compositions.length === 0) {
+      console.log(`${c.success("◇")}  ${c.accent(project.name)} — no compositions found`);
       return;
     }
 

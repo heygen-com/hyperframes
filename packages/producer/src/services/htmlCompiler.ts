@@ -1908,7 +1908,9 @@ export async function compileForRender(
           );
         }
         if (metadata.isVFR) {
-          console.info(
+          // defaultLogger (stderr), not console.info (stdout) — matches the sibling
+          // warning above; a stdout line here corrupts `check --json` / `validate --json`.
+          defaultLogger.warn(
             `[Compiler] Video "${video.id}" is variable frame rate (VFR); ` +
               `the engine will normalize it to CFR before frame extraction. ` +
               `If rendering feels slow on this video, pre-encode once with: ${reencode}`,
