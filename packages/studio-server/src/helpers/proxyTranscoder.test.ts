@@ -65,6 +65,7 @@ afterEach(() => {
 async function loadModule(
   spawn: SpawnImpl,
   ffmpegPath: string | undefined,
+  isHdr = false,
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
   vi.doMock("node:child_process", () => {
@@ -73,6 +74,12 @@ async function loadModule(
   });
   vi.doMock("@hyperframes/parsers/ff-binaries", () => ({
     findFfBinary: () => ffmpegPath,
+  }));
+  vi.doMock("./mediaMetadata.js", () => ({
+    probeMediaMetadata: async () => ({
+      kind: "video",
+      color: { isHdr },
+    }),
   }));
   return import("./proxyTranscoder.js");
 }
@@ -102,6 +109,12 @@ describe("resolveProxy", () => {
     expect(call.args).toContain("-c:a");
     expect(call.args).toContain("aac");
     expect(call.args.some((a) => a.includes("scale="))).toBe(true);
+    expect(call.args).toContain("-pix_fmt");
+    expect(call.args).toContain("yuv420p");
+    expect(call.args).toContain("-colorspace");
+    expect(call.args).toContain("bt709");
+    expect(call.args).toContain("-color_primaries");
+    expect(call.args).toContain("-color_trc");
     // temp-name-then-rename: the ffmpeg output target is not the final path.
     const outputArg = call.args.at(-1)!;
     expect(outputArg).not.toBe(expectedCachePath);
@@ -132,6 +145,25 @@ describe("resolveProxy", () => {
     const result = await resolveProxy(projectDir, sourcePath);
     expect(result).toBe(cachePath);
     expect(calls).toHaveLength(0);
+  });
+
+  it("tone-maps HDR input before emitting browser-safe BT.709", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, true);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "hdr.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+
+    const filterIndex = calls[0]!.args.indexOf("-vf");
+    const filter = calls[0]!.args[filterIndex + 1];
+    expect(filter).toContain("tonemap=");
+    expect(filter).toContain("bt709");
+
+    succeed(calls[0]!);
+    await result;
   });
 
   it("dedupes two concurrent same-key calls to one spawn", async () => {

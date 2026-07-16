@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { probeMediaMetadata } from "./mediaMetadata.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -127,7 +128,19 @@ export function clearFailedTranscodesForTest(): void {
   failedTranscodes.clear();
 }
 
-function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
+async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
+  const metadata = await probeMediaMetadata(sourcePath);
+  const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+  const videoFilter = metadata.color.isHdr
+    ? [
+        "zscale=t=linear:npl=100",
+        "tonemap=hable:desat=0",
+        "zscale=p=bt709:t=bt709:m=bt709:r=tv",
+        evenScale,
+        "format=yuv420p",
+      ].join(",")
+    : [evenScale, "format=yuv420p"].join(",");
+
   return new Promise((resolvePromise, reject) => {
     const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
     if (!ffmpegPath) {
@@ -140,11 +153,19 @@ function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
       "-i",
       sourcePath,
       "-vf",
-      "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+      videoFilter,
       "-c:v",
       "libx264",
       "-profile:v",
       "high",
+      "-pix_fmt",
+      "yuv420p",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
       "-crf",
       "18",
       "-preset",
