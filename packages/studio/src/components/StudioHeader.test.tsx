@@ -5,7 +5,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StudioShellProvider } from "../contexts/StudioContext";
 import { PanelLayoutProvider } from "../contexts/PanelLayoutContext";
-import { ViewModeProvider, useViewModeState } from "../contexts/ViewModeContext";
+import {
+  ViewModeProvider,
+  useViewModeState,
+  type StudioViewMode,
+} from "../contexts/ViewModeContext";
 import { usePanelLayout } from "../hooks/usePanelLayout";
 import type { RenderJob } from "./renders/useRenderQueue";
 import { StudioHeader } from "./StudioHeader";
@@ -36,9 +40,13 @@ function renderJob(status: RenderJob["status"]): RenderJob {
 function HeaderHarness({
   jobs,
   startRender,
+  storyboardAvailable,
+  onViewModeChange,
 }: {
   jobs: RenderJob[];
   startRender: (composition?: string) => Promise<void>;
+  storyboardAvailable: boolean;
+  onViewModeChange: (mode: StudioViewMode) => void;
 }) {
   const panelLayout = usePanelLayout({ rightCollapsed: true, rightPanelTab: "design" });
   const viewMode = useViewModeState();
@@ -76,9 +84,18 @@ function HeaderHarness({
 
   return (
     <StudioShellProvider value={shellValue}>
-      <ViewModeProvider value={viewMode}>
+      <ViewModeProvider
+        value={{
+          ...viewMode,
+          setViewMode: (mode) => {
+            onViewModeChange(mode);
+            viewMode.setViewMode(mode);
+          },
+        }}
+      >
         <PanelLayoutProvider value={panelLayout}>
           <StudioHeader
+            storyboardAvailable={storyboardAvailable}
             captureFrameHref="#"
             captureFrameFilename="frame.png"
             handleCaptureFrameClick={() => {}}
@@ -87,6 +104,7 @@ function HeaderHarness({
             inspectorPanelActive={false}
           />
           <output data-testid="right-panel-tab">{panelLayout.rightPanelTab}</output>
+          <output data-testid="view-mode">{viewMode.viewMode}</output>
         </PanelLayoutProvider>
       </ViewModeProvider>
     </StudioShellProvider>
@@ -96,8 +114,19 @@ function HeaderHarness({
 function renderHeader(
   jobs: RenderJob[],
   startRender: (composition?: string) => Promise<void>,
+  storyboardAvailable = true,
+  onViewModeChange: (mode: StudioViewMode) => void = () => {},
 ): void {
-  act(() => root.render(<HeaderHarness jobs={jobs} startRender={startRender} />));
+  act(() =>
+    root.render(
+      <HeaderHarness
+        jobs={jobs}
+        startRender={startRender}
+        storyboardAvailable={storyboardAvailable}
+        onViewModeChange={onViewModeChange}
+      />,
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -145,5 +174,58 @@ describe("StudioHeader render status", () => {
 
     expect(host.querySelector('[data-testid="right-panel-tab"]')?.textContent).toBe("renders");
     expect(startRender).not.toHaveBeenCalled();
+  });
+});
+
+describe("StudioHeader storyboard view", () => {
+  it("disables storyboard with an accessible reason when no storyboard exists", () => {
+    const onViewModeChange = vi.fn();
+    renderHeader(
+      [],
+      vi.fn(async () => {}),
+      false,
+      onViewModeChange,
+    );
+
+    const storyboardTab = [...host.querySelectorAll('[role="tab"]')].find(
+      (tab) => tab.textContent?.trim() === "Storyboard",
+    );
+    expect(storyboardTab).toBeInstanceOf(HTMLButtonElement);
+    if (!(storyboardTab instanceof HTMLButtonElement)) return;
+    expect(storyboardTab.disabled).toBe(true);
+    expect(storyboardTab.getAttribute("aria-label")).toBe(
+      "No storyboard yet, add a STORYBOARD.md at the project root to use this view.",
+    );
+
+    act(() => {
+      storyboardTab.click();
+    });
+
+    expect(onViewModeChange).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-testid="view-mode"]')?.textContent).toBe("timeline");
+  });
+
+  it("switches to storyboard when storyboard data exists", () => {
+    const onViewModeChange = vi.fn();
+    renderHeader(
+      [],
+      vi.fn(async () => {}),
+      true,
+      onViewModeChange,
+    );
+
+    const storyboardTab = [...host.querySelectorAll('[role="tab"]')].find(
+      (tab) => tab.textContent?.trim() === "Storyboard",
+    );
+    expect(storyboardTab).toBeInstanceOf(HTMLButtonElement);
+    if (!(storyboardTab instanceof HTMLButtonElement)) return;
+    expect(storyboardTab.disabled).toBe(false);
+
+    act(() => {
+      storyboardTab.click();
+    });
+
+    expect(onViewModeChange).toHaveBeenCalledWith("storyboard");
+    expect(host.querySelector('[data-testid="view-mode"]')?.textContent).toBe("storyboard");
   });
 });

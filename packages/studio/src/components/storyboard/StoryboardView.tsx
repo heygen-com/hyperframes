@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Copy, Check } from "@phosphor-icons/react";
-import { useStoryboard } from "../../hooks/useStoryboard";
+import type { UseStoryboardResult } from "../../hooks/useStoryboard";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { Button } from "../ui/Button";
 import { StoryboardLoaded } from "./StoryboardLoaded";
 
-export interface StoryboardViewProps {
+export interface StoryboardViewProps extends UseStoryboardResult {
   projectId: string;
   /** Select a composition in the timeline (used by the frame focus "Open in Preview"). */
   onSelectComposition: (path: string) => void;
@@ -17,9 +17,14 @@ export interface StoryboardViewProps {
  * {@link StoryboardLoaded} owns the Board ↔ Source experience.
  */
 // fallow-ignore-next-line complexity
-export function StoryboardView({ projectId, onSelectComposition }: StoryboardViewProps) {
-  const { data, loading, error, reload } = useStoryboard(projectId);
-
+export function StoryboardView({
+  projectId,
+  onSelectComposition,
+  data,
+  loading,
+  error,
+  reload,
+}: StoryboardViewProps) {
   if (loading) return <StoryboardFrame>{<Message>Loading storyboard…</Message>}</StoryboardFrame>;
   if (error) {
     return (

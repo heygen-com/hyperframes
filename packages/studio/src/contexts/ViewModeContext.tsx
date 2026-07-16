@@ -26,7 +26,7 @@ export interface ViewModeValue {
 }
 
 /**
- * Owns live view-mode state. Storyboard mode is always available, with no flag gating.
+ * Owns live view-mode state. StudioApp gates storyboard mode using the loaded project data.
  */
 export function useViewModeState(initialViewMode?: StudioViewMode | null): ViewModeValue {
   const [viewMode, setViewMode] = useState<StudioViewMode>(

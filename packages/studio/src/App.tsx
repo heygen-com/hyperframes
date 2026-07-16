@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
+import { useStoryboardGate } from "./hooks/useStoryboardGate";
 import { usePlayerStore, type TimelineElement } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
@@ -95,6 +96,11 @@ export function StudioApp() {
   activeCompPathRef.current = activeCompPath;
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);
   const renderQueue = useRenderQueue(projectId);
+  const { storyboard, storyboardAvailable } = useStoryboardGate(
+    projectId,
+    viewModeValue.viewMode,
+    viewModeValue.setViewMode,
+  );
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
   const captionSync = useCaptionSync(projectId);
@@ -481,6 +487,7 @@ export function StudioApp() {
                   onDrop={dragOverlay.onDrop}
                 >
                   <StudioHeader
+                    storyboardAvailable={storyboardAvailable}
                     captureFrameHref={frameCapture.captureFrameHref}
                     captureFrameFilename={frameCapture.captureFrameFilename}
                     handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
@@ -497,6 +504,7 @@ export function StudioApp() {
                   )}
                   {viewModeValue.viewMode === "storyboard" && (
                     <StoryboardView
+                      {...storyboard}
                       projectId={projectId}
                       onSelectComposition={handleSelectComposition}
                     />
