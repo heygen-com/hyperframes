@@ -35,12 +35,18 @@ export const PROXY_PARAMS_VERSION = "v2";
 
 const CACHE_DIR_NAME = ".transcode-cache";
 
-// ponytail: fixed global bound, not configurable. ffmpeg is internally
-// multithreaded so 2 concurrent authoring-proxy encodes already saturate a
-// typical dev laptop; raise this constant (or make it an env override) if
-// real usage shows queuing hurts.
-const MAX_CONCURRENT_TRANSCODES = 2;
-const MAX_QUEUED_TRANSCODES = 8;
+function boundedEnvInteger(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+}
+
+// ffmpeg is internally multithreaded, so two concurrent proxy encodes already
+// saturate a typical laptop. Operators of shared/large machines may tune the
+// bounded values without patching the package; invalid values fail safe.
+const MAX_CONCURRENT_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_CONCURRENCY", 2, 1, 16);
+const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8, 0, 256);
 
 const STDERR_TAIL_MAX_CHARS = 4000;
 const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;

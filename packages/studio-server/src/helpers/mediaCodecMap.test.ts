@@ -110,6 +110,21 @@ describe("probeAssetCodec", () => {
     });
   });
 
+  it("treats VP9 as conditionally hostile so unsupported browsers can request a proxy", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.webm");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "vp9" }));
+
+    expect(facts).toEqual({
+      codecName: "vp9",
+      browserHostile: true,
+      representativeMime: BROWSER_HOSTILE_CODECS.vp9,
+      hasAlpha: false,
+    });
+  });
+
   it("reports ProRes as browser-hostile with no representative mime", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mov");
@@ -279,5 +294,26 @@ describe("scanProjectMediaCodecMap", () => {
     });
     expect(third["/clip.mp4"]?.codecName).toBe("hevc");
     expect(probe.calls()).toBe(2);
+  });
+
+  it("bounds the long-lived probe cache while retaining the newest assets", async () => {
+    const project = tmpProject();
+    const cache = createMediaCodecProbeCache();
+    const paths = Array.from({ length: 513 }, (_, index) => `clip-${index}.mp4`);
+    const codecByPath: Record<string, string> = {};
+    for (const path of paths) {
+      const absolutePath = join(project, path);
+      writeFileSync(absolutePath, "fake video bytes");
+      codecByPath[absolutePath] = "hevc";
+    }
+
+    await scanProjectMediaCodecMap(project, [{ html: videoHtml(...paths) }], {
+      cache,
+      runner: makeRunner(codecByPath),
+    });
+
+    expect(cache.size).toBe(512);
+    expect(paths.slice(0, 8).some((path) => !cache.has(join(project, path)))).toBe(true);
+    expect(cache.has(join(project, "clip-512.mp4"))).toBe(true);
   });
 });

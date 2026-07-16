@@ -42,6 +42,10 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
   hevc: 'video/mp4; codecs="hvc1.1.6.L120.B0"',
   prores: null,
   av1: 'video/mp4; codecs="av01.0.08M.08"',
+  // VP9 is browser-dependent: Chrome generally decodes it while Safari
+  // support varies. Treat it as conditional so canPlayType keeps the
+  // original where supported and transparently proxies it where unsupported.
+  vp9: 'video/webm; codecs="vp09.00.10.08"',
 };
 
 export type MediaProxyIneligibilityReason = "alpha_source" | "browser_safe_codec" | "unknown_codec";
@@ -105,6 +109,21 @@ export function createMediaCodecProbeCache(): MediaCodecProbeCache {
 // across repeated scans (the studio preview route, etc.) should construct
 // and hold their own cache via `createMediaCodecProbeCache`.
 const defaultProbeCache: MediaCodecProbeCache = new Map();
+const MAX_PROBE_CACHE_ENTRIES = 512;
+
+function rememberProbeResult(
+  cache: MediaCodecProbeCache,
+  filePath: string,
+  result: CachedAssetProbe,
+): void {
+  if (!cache.has(filePath) && cache.size >= MAX_PROBE_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
+  // Refresh insertion order so frequently used assets remain resident.
+  cache.delete(filePath);
+  cache.set(filePath, result);
+}
 
 async function probeAssetCodecCached(
   filePath: string,
@@ -118,9 +137,12 @@ async function probeAssetCodecCached(
     return null;
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === mtimeMs) return cached.facts;
+  if (cached && cached.mtimeMs === mtimeMs) {
+    rememberProbeResult(cache, filePath, cached);
+    return cached.facts;
+  }
   const facts = await probeAssetCodec(filePath, runner);
-  cache.set(filePath, { mtimeMs, facts });
+  rememberProbeResult(cache, filePath, { mtimeMs, facts });
   return facts;
 }
 

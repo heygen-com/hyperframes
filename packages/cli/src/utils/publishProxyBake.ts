@@ -25,7 +25,7 @@
  * structured manifest rather than silently shipping an unplayable asset.
  */
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
@@ -125,7 +125,7 @@ export async function bakeMediaProxies(
       try {
         const proxyPath = await waitForProxy(resolveProxy(absProjectDir, absoluteSourcePath));
         const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;
-        fileContents.set(archivePath, readFileSync(proxyPath));
+        fileContents.set(archivePath, await readFile(proxyPath));
         proxyByAbsolutePath.set(absoluteSourcePath, archivePath);
         manifest.proxied.push(pathname);
       } catch (err) {

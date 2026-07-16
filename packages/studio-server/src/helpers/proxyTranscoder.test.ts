@@ -69,6 +69,8 @@ afterEach(() => {
   vi.resetModules();
   vi.doUnmock("node:child_process");
   vi.doUnmock("@hyperframes/parsers/ff-binaries");
+  delete process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY;
+  delete process.env.HYPERFRAMES_PROXY_MAX_QUEUE;
 });
 
 async function loadModule(
@@ -260,6 +262,26 @@ describe("resolveProxy", () => {
       await flush();
     }
     await Promise.all(accepted);
+  });
+
+  it("honors bounded concurrency and queue environment overrides", async () => {
+    process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = "1";
+    process.env.HYPERFRAMES_PROXY_MAX_QUEUE = "0";
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxyCapacityError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const firstPath = join(projectDir, "first.mov");
+    const secondPath = join(projectDir, "second.mov");
+    writeFileSync(firstPath, "first");
+    writeFileSync(secondPath, "second");
+
+    const first = resolveProxy(projectDir, firstPath);
+    await flush();
+    expect(calls).toHaveLength(1);
+    await expect(resolveProxy(projectDir, secondPath)).rejects.toBeInstanceOf(ProxyCapacityError);
+
+    succeed(calls[0]!);
+    await expect(first).resolves.toBeTruthy();
   });
 
   it("produces a new cache key when the source mtime changes", async () => {
