@@ -20,8 +20,17 @@ def main() -> int:
     p_scan.add_argument("--dirs", nargs="*", default=None)
     p_scan.add_argument("--json", action="store_true")
 
+    p_carve = sub.add_parser("carve", help="Analyze a voiceover WAV, print carve bands JSON")
+    p_carve.add_argument("--voice", required=True)
+    p_carve.add_argument("--max-cut-db", type=float, default=4.0)
+    p_carve.add_argument("--json", action="store_true")
+
     p_serve = sub.add_parser("serve", help="Run the WebSocket sidecar")
     p_serve.add_argument("--port", type=int, default=0)
+    # The spawner's own pid: the sidecar self-exits when it dies (see
+    # server._watch_parent_and_exit), so an ungraceful studio crash leaves no
+    # orphaned `serve` process behind.
+    p_serve.add_argument("--parent-pid", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -51,10 +60,19 @@ def main() -> int:
         print(_json.dumps(scan_paths(args.dirs or default_plugin_dirs())))
         return 0
 
+    if args.command == "carve":
+        import json as _json
+
+        from .carve import carve_file
+
+        bands = carve_file(args.voice, max_cut_db=args.max_cut_db)
+        print(_json.dumps({"bands": bands}))
+        return 0
+
     if args.command == "serve":
         from .server import serve
 
-        serve(args.port)
+        serve(args.port, parent_pid=args.parent_pid)
         return 0
 
     return 2
