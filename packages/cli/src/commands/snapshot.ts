@@ -233,6 +233,7 @@ async function captureSnapshots(
     includeEnd?: boolean;
     zoom?: ZoomTarget;
     zoomScale?: number;
+    autoProxy?: boolean;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -242,7 +243,7 @@ async function captureSnapshots(
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
   const html = await bundleWithLocalizedFonts(projectDir);
-  const server = await serveStaticProjectHtml(projectDir, html);
+  const server = await serveStaticProjectHtml(projectDir, html, undefined, [], opts.autoProxy);
 
   const savedPaths: string[] = [];
 
@@ -604,6 +605,12 @@ export default defineCommand({
       description:
         "Gemini vision frame analysis. Runs by default when GEMINI_API_KEY is set. Pass a custom question (e.g. --describe 'Is the logo visible in every beat?') to override the default prompt, or --describe false to opt out.",
     },
+    proxy: {
+      type: "boolean",
+      description:
+        "Auto-transcode browser-hostile video codecs for snapshots (default: on; overrides hyperframes.json media.autoProxy)",
+      default: undefined,
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -652,6 +659,7 @@ export default defineCommand({
         includeEnd: args.end !== false,
         zoom: zoomTarget,
         zoomScale,
+        autoProxy: args.proxy as boolean | undefined,
       });
 
       if (paths.length === 0) {
