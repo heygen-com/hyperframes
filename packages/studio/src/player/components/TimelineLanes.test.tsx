@@ -33,6 +33,14 @@ const secondClip: TimelineElement = {
   track: 0,
 };
 
+const laterClip: TimelineElement = {
+  id: "clip-later",
+  tag: "div",
+  start: 5,
+  duration: 2,
+  track: 0,
+};
+
 beforeEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
@@ -43,12 +51,16 @@ function renderLanes({
   selectedElementId,
   selectedElementIds = new Set<string>(),
   keyframeCache,
+  currentTime = 0,
+  onSeek = vi.fn(),
   onMoveKeyframe,
 }: {
   elements?: TimelineElement[];
   selectedElementId: string | null;
   selectedElementIds?: Set<string>;
   keyframeCache?: Map<string, KeyframeCacheEntry>;
+  currentTime?: number;
+  onSeek?: (time: number) => void;
   onMoveKeyframe?: (elementId: string, fromClipPct: number, toClipPct: number) => void;
 }) {
   const host = document.createElement("div");
@@ -90,7 +102,8 @@ function renderLanes({
         getTrackStyle={getTrackStyle}
         keyframeCache={keyframeCache}
         selectedKeyframes={new Set()}
-        currentTime={0}
+        currentTime={currentTime}
+        onSeek={onSeek}
         onMoveKeyframe={onMoveKeyframe}
         onToggleTrackHidden={undefined}
         onResizeElement={undefined}
@@ -101,7 +114,7 @@ function renderLanes({
     );
   });
 
-  return { host, root, setSelectedElementId };
+  return { host, root, setSelectedElementId, onSeek };
 }
 
 function pointerEvent(type: string, init: PointerEventInit): Event {
@@ -118,6 +131,80 @@ function clickClip(host: HTMLElement, id: string): void {
 }
 
 describe("TimelineLanes selection", () => {
+  it("seeks to a clicked clip when the playhead is before its window", () => {
+    const harness = renderLanes({
+      elements: [laterClip],
+      selectedElementId: null,
+      currentTime: 0,
+    });
+
+    clickClip(harness.host, laterClip.id);
+
+    expect(harness.onSeek).toHaveBeenCalledWith(laterClip.start);
+    expect(harness.setSelectedElementId).toHaveBeenCalledWith(laterClip.id);
+    act(() => harness.root.unmount());
+  });
+
+  it("does not seek when the playhead is inside the clicked clip window", () => {
+    const harness = renderLanes({
+      selectedElementId: null,
+      currentTime: 0.5,
+    });
+
+    clickClip(harness.host, firstClip.id);
+
+    expect(harness.onSeek).not.toHaveBeenCalled();
+    expect(harness.setSelectedElementId).toHaveBeenCalledWith(firstClip.id);
+    act(() => harness.root.unmount());
+  });
+
+  it("does not seek when reclicking a selected clip that contains the playhead", () => {
+    usePlayerStore.getState().setSelectedElementId(firstClip.id);
+    const harness = renderLanes({
+      selectedElementId: firstClip.id,
+      currentTime: 0.5,
+    });
+
+    clickClip(harness.host, firstClip.id);
+
+    expect(harness.onSeek).not.toHaveBeenCalled();
+    expect(harness.setSelectedElementId).toHaveBeenCalledWith(firstClip.id);
+    act(() => harness.root.unmount());
+  });
+
+  it("seeks to an off-window clip when selecting its keyframe diamond", () => {
+    const harness = renderLanes({
+      elements: [laterClip],
+      selectedElementId: null,
+      currentTime: 0,
+      onMoveKeyframe: vi.fn(),
+      keyframeCache: new Map([
+        [
+          laterClip.id,
+          {
+            format: "percentage",
+            keyframes: [
+              { percentage: 0, properties: { x: 0 } },
+              { percentage: 50, properties: { x: 100 } },
+            ],
+          },
+        ],
+      ]),
+    });
+    const diamond = harness.host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    expect(diamond).not.toBeNull();
+
+    act(() => {
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 50 }),
+      );
+    });
+
+    expect(harness.onSeek).toHaveBeenCalledWith(laterClip.start);
+    expect(harness.setSelectedElementId).toHaveBeenCalledWith(laterClip.id);
+    act(() => harness.root.unmount());
+  });
+
   it("writes a plain clip click to store selection only", () => {
     usePlayerStore.getState().setSelectedElementId(firstClip.id);
     const harness = renderLanes({ selectedElementId: firstClip.id });
