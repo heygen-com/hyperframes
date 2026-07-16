@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
+import { trackStudioSegmentEaseEdit } from "../../telemetry/events";
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
@@ -264,7 +265,10 @@ export const AnimationCard = memo(function AnimationCard({
                     globalEase={animation.keyframes.easeEach ?? animation.ease ?? "none"}
                     expandedPct={expandedKfPct}
                     onToggle={setExpandedKfPct}
-                    onEaseCommit={(pct, ease) => onUpdateKeyframeEase(animation.id, pct, ease)}
+                    onEaseCommit={(pct, ease) => {
+                      onUpdateKeyframeEase(animation.id, pct, ease);
+                      trackStudioSegmentEaseEdit({ action: "commit", ease });
+                    }}
                     onApplyAll={
                       onSetAllKeyframeEases
                         ? (ease) => onSetAllKeyframeEases(animation.id, ease)
@@ -292,7 +296,6 @@ export const AnimationCard = memo(function AnimationCard({
                     />
                     <EaseCurveSection
                       ease={easeName}
-                      duration={animation.duration}
                       onCustomEaseCommit={(customEase) => {
                         const easeKey = animation.keyframes ? "easeEach" : "ease";
                         onUpdateMeta(animation.id, { [easeKey]: customEase });
