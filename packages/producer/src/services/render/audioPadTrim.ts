@@ -416,7 +416,8 @@ function parseFrameRate(rate: string): { fpsNum: number; fpsDen: number } {
 }
 
 async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo> {
-  // extractAudioMetadata is the shared ffprobe wrapper (caches results).
+  // The shared ffprobe wrapper derives AAC-LC duration from packet count so
+  // every consumer sees the same VBR-safe metadata.
   const metadata: AudioMetadata = await extractAudioMetadata(audioPath);
   return {
     durationSeconds: metadata.durationSeconds,

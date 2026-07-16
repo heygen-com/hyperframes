@@ -23,6 +23,12 @@ import type { OAuthTokens } from "./store.js";
 const DEFAULT_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
 export const HEYGEN_CLI_SOURCE = "cli";
+// Tool-attribution header identifying this CLI as the request origin. Sent on
+// every HeyGen call (both auth types) so the backend can isolate hyperframes CLI
+// usage in billing meta. Distinct from HEYGEN_CLI_SOURCE_HEADER above, which is
+// the OAuth-only cli-source header that gates the free allowance.
+export const HEYGEN_CLIENT_SOURCE_HEADER = "X-HeyGen-Client-Source";
+export const HEYGEN_CLIENT_SOURCE = "hyperframes";
 
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
@@ -182,12 +188,14 @@ export function buildAuthHeaders(credential: ResolvedCredential): Record<string,
     return {
       authorization: `Bearer ${credential.access_token}`,
       [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
+      [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE,
     };
   }
   // API-key traffic keeps the normal billing path; the backend ignores the
   // cli-source header for it, so we don't send it (avoids a contradictory
-  // "cli-source claim on an API-key request").
-  return { "x-api-key": credential.key };
+  // "cli-source claim on an API-key request"). The tool-attribution header IS
+  // sent here — an API-key hyperframes call is still hyperframes usage.
+  return { "x-api-key": credential.key, [HEYGEN_CLIENT_SOURCE_HEADER]: HEYGEN_CLIENT_SOURCE };
 }
 
 async function safeText(res: Response): Promise<string> {

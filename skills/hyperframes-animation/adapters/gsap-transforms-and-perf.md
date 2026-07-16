@@ -24,7 +24,7 @@ Prefer `autoAlpha` over `opacity` for show/hide:
 gsap.to(".panel", { autoAlpha: 0, duration: 0.4 });
 ```
 
-`autoAlpha: 0` sets both `opacity: 0` and `visibility: hidden`, which removes the element from hit-testing and accessibility tree at zero alpha — closer to "gone" than plain `opacity: 0`.
+`autoAlpha: 0` sets both `opacity: 0` and `visibility: hidden`, which removes the element from hit-testing and accessibility tree at zero alpha — closer to "gone" than plain `opacity: 0`. The registered seekable timeline still interpolates only opacity; visibility changes at the hidden endpoint. Use `autoAlpha` only on non-clip elements or wrappers inside a clip; HyperFrames owns `.clip` visibility. Never duration-tween raw `visibility` or `display`.
 
 ## clearProps
 

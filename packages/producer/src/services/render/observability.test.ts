@@ -209,6 +209,98 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
+  // Field signal ts=1784019503: a healthy ~64s browser calibration
+  // pre-capture emitted heartbeats saying "stage still running /
+  // framesCompleted: 0" and read as broken to downstream consumers. The
+  // calibration call sites now pass `heartbeatMessage: "browser calibrating
+  // (frames not started)"` so operator-facing logs and metrics can
+  // distinguish healthy calibration waits from actual zero-frame stalls
+  // once capture is meant to be underway.
+  it("uses a custom heartbeat message during calibration stages", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-calibrating",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_calibration",
+      { stagePhase: "calibrating", framesCompleted: 0, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+      { heartbeatMessage: "browser calibrating (frames not started)" },
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) =>
+        message === "[Render:trace]" &&
+        meta?.phase === "capture_calibration" &&
+        meta?.status === "checkpoint",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        message: "browser calibrating (frames not started)",
+        stagePhase: "calibrating",
+        framesCompleted: 0,
+        heartbeatIndex: 1,
+      }),
+    );
+    // No "stage still running" for this stage — the calibration override
+    // must fully replace the default, not sit alongside it.
+    expect(
+      log.info.mock.calls.some(
+        ([message, meta]) =>
+          message === "[Render:trace]" && meta?.message === "stage still running",
+      ),
+    ).toBe(false);
+
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
+  it("keeps the default heartbeat message when no override is passed", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-default",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      { stagePhase: "capturing", framesCompleted: 42, totalFrames: 900 },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls).toHaveLength(1);
+    expect(heartbeatCalls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        stagePhase: "capturing",
+        framesCompleted: 42,
+      }),
+    );
+    resolveStage?.();
+    await stage;
+    vi.useRealTimers();
+  });
+
   it("clears pending heartbeats when a stage rejects", async () => {
     vi.useFakeTimers();
     const log = makeLog();

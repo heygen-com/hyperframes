@@ -395,13 +395,21 @@ export function buildStreamingArgs(
       // encoder with no `-vf`. They hit the same "height not divisible by 2"
       // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
       // up to even on the software side before the encode.
-      const vf = withEvenDimensionPad("", pixelFormat);
+      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
       if (vf) args.push("-vf", vf);
     } else {
       // Range conversion: Chrome screenshots are full-range RGB. Pad odd
       // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
       // "height not divisible by 2" on an odd-sized composition canvas.
-      args.push("-vf", withEvenDimensionPad("scale=in_range=pc:out_range=tv", pixelFormat));
+      args.push(
+        "-vf",
+        withEvenDimensionPad(
+          "scale=in_range=pc:out_range=tv",
+          pixelFormat,
+          options.width,
+          options.height,
+        ),
+      );
     }
 
     // Fixed timescale for consistent A/V timing across platforms.

@@ -35,6 +35,27 @@ export class StudioSaveNetworkError extends Error {
   }
 }
 
+export class StudioFileConflictError extends StudioSaveHttpError {
+  readonly filePath: string;
+  readonly currentVersion: string | null;
+  readonly currentContent: string | null;
+  readonly attemptedContent: string;
+
+  constructor(input: {
+    filePath: string;
+    currentVersion: string | null;
+    currentContent: string | null;
+    attemptedContent: string;
+  }) {
+    super(`Save conflict: ${input.filePath} changed outside this Studio session`, 409);
+    this.name = "StudioFileConflictError";
+    this.filePath = input.filePath;
+    this.currentVersion = input.currentVersion;
+    this.currentContent = input.currentContent;
+    this.attemptedContent = input.attemptedContent;
+  }
+}
+
 function readNumericProperty(value: object, key: string): number | undefined {
   const record = value as Record<string, unknown>;
   const property = record[key];
@@ -69,6 +90,23 @@ export function getStudioSaveErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   return "Unknown save failure";
+}
+
+export function markStudioSaveErrorAlreadyToasted<T>(error: T): T {
+  if (!error || typeof error !== "object") return error;
+  try {
+    Object.defineProperty(error, "alreadyToasted", { value: true, configurable: true });
+  } catch {
+    // Best effort: failure reporting must not replace the original save error.
+  }
+  return error;
+}
+
+export function isStudioSaveErrorAlreadyToasted(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if ((error as { alreadyToasted?: unknown }).alreadyToasted === true) return true;
+  const cause = (error as { cause?: unknown }).cause;
+  return cause !== error && isStudioSaveErrorAlreadyToasted(cause);
 }
 
 export function getStudioSaveStatusCode(error: unknown): number | undefined {

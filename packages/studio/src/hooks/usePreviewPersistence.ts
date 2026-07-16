@@ -10,7 +10,7 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapSoftReload";
+import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
@@ -133,7 +133,10 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message = "Auto-save is paused. Check your connection.";
+        const message =
+          event.statusCode === 409
+            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+            : "Auto-save is paused. Check your connection.";
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
         trackStudioEvent("save_queue_paused", {
@@ -156,7 +159,7 @@ export function usePreviewPersistence({
 
   // ── Queue / drain helpers ──
 
-  const queueDomEditSave = useCallback((save: () => Promise<void>) => {
+  const queueDomEditSave = useCallback(<T>(save: () => Promise<T>): Promise<T> => {
     return domEditSaveQueueRef.current?.enqueue(save) ?? save();
   }, []);
 

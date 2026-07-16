@@ -76,9 +76,10 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
         // Mirror the server: rewrites the GSAP script for the new id, writes to
         // disk, returns the final content.
         disk["index.html"] = SPLIT_GSAP;
-        return new Response(JSON.stringify({ ok: true, after: SPLIT_GSAP }), {
+        const version = `"test-gsap-${SPLIT_GSAP.length}"`;
+        return new Response(JSON.stringify({ ok: true, after: SPLIT_GSAP, version }), {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ETag: version },
         });
       }
       // The fixture has no GSAP script — mirror the server's 400 response.
@@ -89,9 +90,16 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
     }
     if (u.includes("/file-mutations/split-element/")) {
       disk["index.html"] = SPLIT;
+      const version = `"test-split-${SPLIT.length}"`;
       return new Response(
-        JSON.stringify({ ok: true, changed: true, content: SPLIT, newId: "clip1-split" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: true,
+          changed: true,
+          content: SPLIT,
+          newId: "clip1-split",
+          version,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json", ETag: version } },
       );
     }
     if (u.includes("/files/")) {

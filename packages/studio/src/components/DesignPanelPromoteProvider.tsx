@@ -9,11 +9,12 @@
  * composition, so behavior there is unchanged.
  */
 
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { useSdkSession } from "../hooks/useSdkSession";
 import { useVariablesPersist, type UseVariablesPersistParams } from "../hooks/useVariablesPersist";
 import { VariablePromoteProvider } from "../contexts/VariablePromoteContext";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
 /** Persist wiring minus the target — this provider derives the target from the selection. */
 type PersistDeps = Omit<UseVariablesPersistParams, "sdkSession" | "activeCompPath">;
@@ -22,12 +23,14 @@ export function DesignPanelPromoteProvider({
   selection,
   projectId,
   activeCompPath,
+  showToast,
   children,
   ...persistDeps
 }: PersistDeps & {
   selection: DomEditSelection | null;
   projectId: string | null;
   activeCompPath: string | null;
+  showToast: (message: string, tone?: "error" | "info") => void;
   children: ReactNode;
 }) {
   const targetPath = selection?.sourceFile || activeCompPath || "index.html";
@@ -35,10 +38,20 @@ export function DesignPanelPromoteProvider({
   const persist = useVariablesPersist({
     ...persistDeps,
     sdkSession: handle.session,
+    publishSdkSession: handle.publish,
     activeCompPath: targetPath,
   });
+  const handlePersistError = useCallback(
+    (error: unknown) => showToast(getStudioSaveErrorMessage(error), "error"),
+    [showToast],
+  );
   return (
-    <VariablePromoteProvider session={handle.session} selection={selection} persist={persist}>
+    <VariablePromoteProvider
+      session={handle.session}
+      selection={selection}
+      persist={persist}
+      onPersistError={handlePersistError}
+    >
       {children}
     </VariablePromoteProvider>
   );

@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import {
   brandRolesFromStats,
   chroma,
+  isIconFont,
   lum,
   parseColors,
   parseFonts,
@@ -163,10 +164,6 @@ let brandFontWeights = []; // weights the brand text font actually ships (tokens
 let brandColorStats = []; // rich per-color usage stats (areaBg / interactiveBg / textCount …)
 // Icon/glyph fonts capture surfaces as "fonts" — they are never the brand text face
 // (webflow-icons, Font Awesome, icomoon …) and must not become display/body or contribute weights.
-const isIconFont = (name) =>
-  /(?:^|[\s_-])icons?(?:[\s_-]|$)|icomoon|font\s*-?awesome|glyphicons?|material\s*icons|feather\s*icons/i.test(
-    String(name),
-  );
 if (existsSync(tokensPath)) {
   try {
     const t = JSON.parse(readFileSync(tokensPath, "utf8"));

@@ -67,6 +67,7 @@ export function trackStudioFeedback(props: { rating: number; comment?: string })
   trackEvent("survey sent", {
     $survey_id: "studio_experience",
     $survey_response: props.rating,
+    rating_scale: 10,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
     doctor_summary: getBrowserDoctorSummary(),
     source: "studio",

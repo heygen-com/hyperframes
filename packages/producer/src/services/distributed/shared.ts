@@ -100,6 +100,7 @@ export interface SyntheticRenderJobInput {
   videoFrameFormat?: VideoFrameFormat;
   outputResolution?: RenderConfig["outputResolution"];
   hdrMode: RenderConfig["hdrMode"];
+  strictness?: RenderConfig["strictness"];
   entryFile: string;
   logger?: ProducerLogger;
   producerConfig?: RenderConfig["producerConfig"];
@@ -126,6 +127,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     entryFile: input.entryFile,
     logger: input.logger ?? defaultLogger,
     hdrMode: input.hdrMode,
+    strictness: input.strictness,
     producerConfig: input.producerConfig,
   };
   return createRenderJob(renderConfig);

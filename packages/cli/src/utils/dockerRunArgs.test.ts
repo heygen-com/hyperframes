@@ -172,6 +172,7 @@ describe("buildDockerRunArgs", () => {
         videoFrameFormat: "png",
         quiet: true,
         debug: true,
+        bestEffort: false,
         entryFile: "compositions/intro.html",
         experimentalFastCapture: true,
       },
@@ -191,12 +192,28 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("png");
     expect(args).toContain("--quiet");
     expect(args).toContain("--debug");
+    expect(args).toContain("--no-best-effort");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");
     expect(args).toContain("--composition");
     expect(args).toContain("compositions/intro.html");
     expect(args).toContain("--experimental-fast-capture");
+  });
+
+  it("forwards only an explicit strict-readiness opt-in", () => {
+    const compatible = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, bestEffort: true },
+    });
+    expect(compatible).not.toContain("--best-effort");
+    expect(compatible).not.toContain("--no-best-effort");
+
+    const strict = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, bestEffort: false },
+    });
+    expect(strict).toContain("--no-best-effort");
   });
 
   it("forwards --experimental-fast-capture only when enabled", () => {

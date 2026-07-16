@@ -110,7 +110,79 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   });
 });
 
+describe("createTimelineElementFromManifestClip — source-scoped selector identity", () => {
+  it("ignores an index.html duplicate when indexing a scene.html selector", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root" data-composition-file="index.html">
+        <div class="sub"></div>
+        <div data-composition-id="scene" data-composition-file="scene.html">
+          <div class="sub"></div>
+          <div class="sub" data-target></div>
+        </div>
+      </div>
+    `);
+    const target = doc.querySelector("[data-target]");
+    if (!target) throw new Error("missing target");
+
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: null,
+        label: "Sub",
+        kind: "element",
+        tagName: "div",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: target,
+    });
+
+    expect(element.sourceFile).toBe("scene.html");
+    expect(element.selectorIndex).toBe(1);
+    expect(element.key).toBe("scene.html:.sub:1");
+  });
+});
+
 describe("createImplicitTimelineLayersFromDOM — hfId from data-hf-id", () => {
+  it("uses the runtime root paint scope for implicit siblings of manifest clips", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="timed" data-start="0" data-duration="5"></div>
+        <div id="implicit"></div>
+      </div>
+    `);
+    const timedHost = doc.getElementById("timed");
+    const timed = createTimelineElementFromManifestClip({
+      clip: {
+        id: "timed",
+        label: "Timed",
+        start: 0,
+        duration: 5,
+        track: 0,
+        stackingContextId: "css:root",
+        kind: "element",
+        tagName: "div",
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: timedHost,
+    });
+    const implicit = createImplicitTimelineLayersFromDOM(doc, 5, [timed])[0];
+
+    expect(implicit?.stackingContextId).toBe("css:root");
+    expect(implicit?.stackingContextId).toBe(timed.stackingContextId);
+  });
+
   it("harvests hfId from an implicit layer child that has data-hf-id", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">

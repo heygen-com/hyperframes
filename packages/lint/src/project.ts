@@ -212,8 +212,13 @@ export async function lintProject(
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
-        else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
+        if (entry.isDirectory()) {
+          // Registry components are source snippets, not independently mounted
+          // sub-compositions. Linting every installed template here makes an
+          // unused component fail the assembled project check.
+          if (!rel && entry.name === "components") continue;
+          out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
+        } else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
           out.push(relPath);
         }
       }

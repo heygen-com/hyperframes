@@ -1,11 +1,39 @@
 // fallow-ignore-file code-duplication
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
+
+export type H264EncoderMode = "software" | "gpu";
+
+/**
+ * Select the H.264 encoder class supported by an FFmpeg build.
+ *
+ * Some macOS FFmpeg distributions expose VideoToolbox but omit libx264. The
+ * default CPU render path must not pass libx264-only options such as `-preset`
+ * to those builds.
+ */
+export function resolveH264EncoderMode(
+  ffmpegEncodersOutput: string,
+  gpuRequested: boolean,
+): H264EncoderMode {
+  if (gpuRequested) return "gpu";
+  if (/\blibx264\b/.test(ffmpegEncodersOutput)) return "software";
+  if (/\bh264_videotoolbox\b/.test(ffmpegEncodersOutput)) return "gpu";
+  throw new Error("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
+}
+
+export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean): H264EncoderMode {
+  const encoders = execFileSync(ffmpegPath, ["-hide_banner", "-encoders"], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5000,
+  });
+  return resolveH264EncoderMode(encoders, gpuRequested);
+}
 
 function chooseBestPathCandidate(
   name: "ffmpeg" | "ffprobe",
@@ -59,13 +87,21 @@ function findInCommonDirs(name: "ffmpeg" | "ffprobe"): string | undefined {
   return undefined;
 }
 
+function findInProjectLocalBin(name: "ffmpeg" | "ffprobe"): string | undefined {
+  const extension = process.platform === "win32" ? ".exe" : "";
+  const candidate = resolve(".hyperframes", "bin", `${name}${extension}`);
+  return existsSync(candidate) ? candidate : undefined;
+}
+
 function findConfiguredBinary(
   envName: string,
   binaryName: "ffmpeg" | "ffprobe",
 ): string | undefined {
   const configured = process.env[envName]?.trim();
   if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return findOnPath(binaryName) ?? findInCommonDirs(binaryName);
+  return (
+    findOnPath(binaryName) ?? findInProjectLocalBin(binaryName) ?? findInCommonDirs(binaryName)
+  );
 }
 
 export function findFFmpeg(): string | undefined {

@@ -11,6 +11,7 @@ import {
   runAndParseJsonEnvelope,
 } from "./deprecationTestHarness.js";
 import {
+  auditClipDurations,
   extractCompositionErrorsFromLint,
   navigationTimeoutHint,
   raceMediaReady,
@@ -48,6 +49,58 @@ vi.mock("../utils/producer.js", () => ({
 // outer catch (the JSON failure envelope) without needing headless Chrome.
 vi.mock("../utils/project.js", () => resolveProjectMock());
 vi.mock("../utils/lintProject.js", () => lintProjectFailureMock());
+
+describe("auditClipDurations", () => {
+  it("audits audio only because explicit video slots hold their final frame", async () => {
+    let selector = "";
+    const originalDocument = globalThis.document;
+    const audio = {
+      duration: 1,
+      id: "voice",
+      loop: false,
+      tagName: "AUDIO",
+      getAttribute: (name: string) =>
+        name === "data-duration" ? "5" : name === "data-media-start" ? "0" : null,
+    };
+    const page = {
+      evaluate: async (fn: (waitMs: number) => unknown, waitMs: number) => {
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: {
+            querySelectorAll: (query: string) => {
+              selector = query;
+              return [audio];
+            },
+          },
+        });
+        return fn(waitMs);
+      },
+    };
+
+    try {
+      const warnings = await auditClipDurations(
+        page as never,
+        ({ slotSeconds, mediaSeconds }) => ({
+          shortfallSeconds: slotSeconds - mediaSeconds,
+          toleranceSeconds: 0.05,
+        }),
+        10,
+      );
+      expect(selector).toBe("audio[data-duration]");
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.text).toContain('Audio "voice"');
+    } finally {
+      if (originalDocument === undefined) {
+        Reflect.deleteProperty(globalThis, "document");
+      } else {
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: originalDocument,
+        });
+      }
+    }
+  });
+});
 
 // Regression for the validate audio-duration-probe timeout: a slow-loading
 // media element's duration was snapshotted once, at a fixed point in time,

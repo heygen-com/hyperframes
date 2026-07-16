@@ -325,4 +325,4 @@ For a single kinetic phrase that "zooms past," keep the streak slightly visible 
 - `/hyperframes-animation` — `out`-family easing, proxy-driven `onUpdate` attribute tweens, and locked-envelope coordination (`../../adapters/gsap-easing-and-stagger.md`)
 - `/hyperframes-creative` — `references/typography.md` (embedded display face for a text streak), `references/video-composition.md` (solid field behind the smear)
 - `/hyperframes-core` — composition wiring, determinism (finite tweens, no `Math.random`)
-- `/hyperframes-cli` — `hyperframes lint` / `hyperframes check` (validate catches a missing `#streak-blur` node or an unreferenced filter)
+- `/hyperframes-cli` — `hyperframes lint` / `hyperframes check` (`check` catches a missing `#streak-blur` node or an unreferenced filter)

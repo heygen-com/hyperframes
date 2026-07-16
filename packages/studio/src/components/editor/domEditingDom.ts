@@ -4,6 +4,7 @@
  * No imports from other domEditing* modules — safe to import from anywhere.
  */
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
 
 // ─── Type guard ───────────────────────────────────────────────────────────────
@@ -296,11 +297,9 @@ export function getSelectorIndex(
 ): number | undefined {
   if (!selector?.startsWith(".")) return undefined;
 
-  const candidates = querySelectorAllSafely(doc, selector).filter(
-    (candidate): candidate is HTMLElement =>
-      isHtmlElement(candidate) &&
-      getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
+  return getSourceScopedSelectorIndex(doc, el, selector, sourceFile, (candidate) =>
+    isHtmlElement(candidate)
+      ? getSourceFileForElement(candidate, activeCompositionPath).sourceFile
+      : undefined,
   );
-  const index = candidates.indexOf(el);
-  return index >= 0 ? index : undefined;
 }

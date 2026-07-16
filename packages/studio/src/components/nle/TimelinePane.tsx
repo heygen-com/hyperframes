@@ -21,7 +21,9 @@ export function forwardRebasedTimelineMoveElements(
     edits: TimelineMoveEdit[],
     coalesceKey?: string,
     operation?: TimelineMoveOperation,
+    coalesceMs?: number,
   ) => Promise<void> | void,
+  coalesceMs?: number,
 ) {
   return onMoveElements(
     edits.map(({ element, updates }) => {
@@ -34,6 +36,7 @@ export function forwardRebasedTimelineMoveElements(
     }),
     coalesceKey,
     operation,
+    coalesceMs,
   );
 }
 
@@ -160,6 +163,7 @@ export function TimelinePane({
       edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
       coalesceKey?: string,
       operation?: TimelineMoveOperation,
+      coalesceMs?: number,
     ) => {
       // Match the sibling handlers: report the telemetry when the batch touches at
       // least one expanded sub-comp child (the clips being rebased to local coords).
@@ -167,7 +171,13 @@ export function TimelinePane({
         trackStudioExpandedClipEdit({ action: "move" });
       }
       if (!onMoveElements) return;
-      return forwardRebasedTimelineMoveElements(edits, coalesceKey, operation, onMoveElements);
+      return forwardRebasedTimelineMoveElements(
+        edits,
+        coalesceKey,
+        operation,
+        onMoveElements,
+        coalesceMs,
+      );
     },
     [onMoveElements],
   );

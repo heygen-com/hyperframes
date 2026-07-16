@@ -138,3 +138,36 @@ describe("validateVariableValues", () => {
     expect(comp.validateVariableValues({ title: "still-a-string" })).toEqual([]);
   });
 });
+
+describe("getVariableValue base defaults", () => {
+  it("returns the pre-override declared default with { base: true }", async () => {
+    // openComposition({overrides}) folds var.<id> into the declaration —
+    // the live default becomes the override. base:true must still see
+    // the authored value.
+    const comp = await openComposition(BASE_HTML, {
+      overrides: { "var.accent": "#FF0000" },
+    });
+    expect(comp.getVariableValue("accent")).toBe("#FF0000");
+    expect(comp.getVariableValue("accent", { base: true })).toBe("#00C3FF");
+  });
+
+  it("keeps the base default stable across live setVariableValue dispatches", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setVariableValue("accent", "#123456");
+    expect(comp.getVariableValue("accent")).toBe("#123456");
+    expect(comp.getVariableValue("accent", { base: true })).toBe("#00C3FF");
+  });
+
+  it("returns undefined for an undeclared id with { base: true }", async () => {
+    const comp = await openComposition(BASE_HTML);
+    expect(comp.getVariableValue("never-declared", { base: true })).toBeUndefined();
+  });
+
+  it("falls back to the live default for a variable declared mid-session", async () => {
+    // A variable that did not exist at open has no pre-override snapshot —
+    // its current declaration IS its base.
+    const comp = await openComposition(BASE_HTML);
+    comp.declareVariable({ id: "brand-title", type: "string", label: "Title", default: "Hi" });
+    expect(comp.getVariableValue("brand-title", { base: true })).toBe("Hi");
+  });
+});

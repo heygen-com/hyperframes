@@ -88,6 +88,36 @@ describe("parseToolVersion", () => {
   });
 });
 
+describe("checkArchiveExtractor", () => {
+  it("reports a missing unzip dependency on non-Windows hosts", async () => {
+    const doctor = await import("./doctor.js");
+    expect(doctor).toHaveProperty("checkArchiveExtractor");
+    const result = doctor.checkArchiveExtractor("linux", () => false);
+
+    expect(result).toEqual({
+      ok: false,
+      detail: "Not found",
+      hint: "Install unzip so HyperFrames can extract its managed Chrome download.",
+    });
+  });
+
+  it("accepts unzip on non-Windows hosts", async () => {
+    const { checkArchiveExtractor } = await import("./doctor.js");
+    expect(checkArchiveExtractor("darwin", (command) => command === "unzip")).toEqual({
+      ok: true,
+      detail: "unzip",
+    });
+  });
+
+  it("uses the built-in Windows extraction path", async () => {
+    const { checkArchiveExtractor } = await import("./doctor.js");
+    expect(checkArchiveExtractor("win32", () => false)).toEqual({
+      ok: true,
+      detail: "Built into Windows",
+    });
+  });
+});
+
 describe("buildDoctorReport", () => {
   it("emits the locked schema shape", () => {
     const report = buildDoctorReport(OUTCOMES_ALL_OK);

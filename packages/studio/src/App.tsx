@@ -64,21 +64,18 @@ import {
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
-
 type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
-
   useEffect(() => {
     if (resolving || waitingForServer) return;
     if (hasFiredSessionStart()) return;
     markSessionStartFired();
     trackStudioSessionStart({ has_project: projectId != null });
   }, [projectId, resolving, waitingForServer]);
-
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
     () => initialUrlStateRef.current.activeCompPath == null,
@@ -168,6 +165,7 @@ export function StudioApp() {
     timelineElements,
     showToast,
     writeProjectFile: fileManager.writeProjectFile,
+    observeProjectFileVersion: fileManager.observeProjectFileVersion,
     recordEdit: editHistory.recordEdit,
     domEditSaveTimestampRef,
     reloadPreview,
@@ -176,6 +174,7 @@ export function StudioApp() {
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
     sdkSession: editFlowSdkSession,
+    publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
     handleDomZIndexReorderCommitRef,
   });
@@ -189,10 +188,10 @@ export function StudioApp() {
       }>,
       coalesceKey?: string,
       operation: TimelineMoveOperation = "timing",
+      coalesceMs?: number,
     ) => {
-      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, {
-        handleTimelineGroupMove: timelineEditing.handleTimelineGroupMove,
-      });
+      const deps = { handleTimelineGroupMove: timelineEditing.handleTimelineGroupMove };
+      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, deps, coalesceMs);
     },
     [timelineEditing.handleTimelineGroupMove],
   );
@@ -317,6 +316,7 @@ export function StudioApp() {
     selectSidebarTab: sidebarTabRef.current.select,
     getSidebarTab: sidebarTabRef.current.get,
     sdkSession: editFlowSdkSession,
+    publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
@@ -331,7 +331,6 @@ export function StudioApp() {
     domEditSession.domEditSelection,
     domEditSession.domEditGroupSelections,
   );
-
   useCaptionDetection({
     projectId,
     activeCompPath,
@@ -533,6 +532,7 @@ export function StudioApp() {
                           recordingDuration={gestureRecording.recordingDuration}
                           onToggleRecording={recordingToggle}
                           sdkSession={sdkHandle.session}
+                          publishSdkSession={sdkHandle.publish}
                           reloadPreview={reloadPreview}
                           domEditSaveTimestampRef={domEditSaveTimestampRef}
                           recordEdit={editHistory.recordEdit}

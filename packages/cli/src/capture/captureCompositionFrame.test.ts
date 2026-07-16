@@ -305,7 +305,11 @@ describe("captureRegionCrop", () => {
     const buffer = await captureRegionCrop(page, region, 3);
 
     expect(setViewport).toHaveBeenNthCalledWith(1, { ...original, deviceScaleFactor: 3 });
-    expect(screenshot).toHaveBeenCalledWith({ clip: region, type: "png" });
+    expect(screenshot).toHaveBeenCalledWith({
+      clip: region,
+      type: "png",
+      omitBackground: true,
+    });
     expect(setViewport).toHaveBeenNthCalledWith(2, original);
     expect(buffer).toBeInstanceOf(Buffer);
     expect(Array.from(buffer)).toEqual([1, 2, 3]);

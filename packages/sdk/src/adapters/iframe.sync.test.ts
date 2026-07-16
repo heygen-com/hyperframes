@@ -252,3 +252,51 @@ window.__timelines = { t: tl };</script>
     expect(liveTitle.getAttribute("data-end")).toBe("3");
   });
 });
+
+describe("IframePreviewAdapter.attachSync — iframe load re-sync", () => {
+  it("re-applies the override snapshot when the iframe fires `load`", async () => {
+    const iframe = mountIframe(BASE_HTML);
+    const comp = await openComposition(BASE_HTML);
+    const adapter = createIframePreviewAdapter(iframe);
+    adapter.attachSync(comp);
+    comp.setStyle("hf-title", { color: "#f00" });
+
+    // Simulate a navigation: replace the document with a fresh base (the
+    // mirrored edit is gone), then fire the load event a real srcdoc
+    // assignment would produce.
+    const midDoc = iframe.contentDocument;
+    if (!midDoc) throw new Error("iframe has no document");
+    midDoc.open();
+    midDoc.write(BASE_HTML);
+    midDoc.close();
+    iframe.dispatchEvent(new Event("load"));
+
+    const liveTitle = iframe.contentDocument?.querySelector(
+      '[data-hf-id="hf-title"]',
+    ) as HTMLElement;
+    expect(liveTitle.style.getPropertyValue("color")).toBe("#f00");
+  });
+
+  it("stops re-syncing on load after detach", async () => {
+    const iframe = mountIframe(BASE_HTML);
+    const comp = await openComposition(BASE_HTML);
+    const adapter = createIframePreviewAdapter(iframe);
+    const detach = adapter.attachSync(comp);
+    comp.setStyle("hf-title", { color: "#f00" });
+    detach();
+
+    const midDoc = iframe.contentDocument;
+    if (!midDoc) throw new Error("iframe has no document");
+    midDoc.open();
+    midDoc.write(BASE_HTML);
+    midDoc.close();
+    iframe.dispatchEvent(new Event("load"));
+
+    const liveTitle = iframe.contentDocument?.querySelector(
+      '[data-hf-id="hf-title"]',
+    ) as HTMLElement;
+    // BASE_HTML's authored inline color remains because detach must not
+    // re-apply comp's #f00 override on the load event.
+    expect(liveTitle.style.getPropertyValue("color")).toBe("#fff");
+  });
+});

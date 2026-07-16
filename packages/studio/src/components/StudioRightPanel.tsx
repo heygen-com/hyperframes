@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
@@ -20,10 +12,13 @@ import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
+import {
+  STUDIO_FLAT_INSPECTOR_ENABLED,
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+} from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
+import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
@@ -38,9 +33,8 @@ import {
   type ColorGradingScope,
 } from "./studioColorGradingScope";
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
-
-const MIN_INSPECTOR_SPLIT_PERCENT = 20;
-const MAX_INSPECTOR_SPLIT_PERCENT = 75;
+import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
+import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -56,6 +50,7 @@ export interface StudioRightPanelProps {
   onToggleRecording?: () => void;
   /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
   sdkSession: Composition | null;
+  publishSdkSession: NonNullable<UseSlideshowPersistParams["publishSdkSession"]>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -63,7 +58,7 @@ export interface StudioRightPanelProps {
     kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
-  onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
+  onToggleElementHidden?: ToggleHiddenHandler;
 }
 
 // fallow-ignore-next-line complexity
@@ -75,6 +70,7 @@ export function StudioRightPanel({
   recordingDuration,
   onToggleRecording,
   sdkSession,
+  publishSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
@@ -87,6 +83,7 @@ export function StudioRightPanel({
     setRightPanelTab,
     rightInspectorPanes,
     toggleRightInspectorPane,
+    setExclusiveRightInspectorPane,
     handlePanelResizeStart,
     handlePanelResizeMove,
     handlePanelResizeEnd,
@@ -109,10 +106,12 @@ export function StudioRightPanel({
     copiedAgentPrompt,
     clearDomSelection,
     handleUngroupSelection,
+    handleGroupSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
+    handleDomAttributesCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -167,6 +166,7 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
   });
 
   // Notes path: persists are debounced in SlideshowPanel; coalesceKey ensures
@@ -179,16 +179,17 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
 
-  const [layersPanePercent, setLayersPanePercent] = useState(40);
-  const splitContainerRef = useRef<HTMLDivElement>(null);
-  const splitDragRef = useRef<{
-    startY: number;
-    startPercent: number;
-    height: number;
-  } | null>(null);
+  const {
+    layersPanePercent,
+    splitContainerRef,
+    handleInspectorSplitResizeStart,
+    handleInspectorSplitResizeMove,
+    handleInspectorSplitResizeEnd,
+  } = useInspectorSplitResize();
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
 
   useEffect(
@@ -226,37 +227,15 @@ export function StudioRightPanel({
       setRightPanelTab(pane);
       return;
     }
+    // Flat inspector: Layers always renders full-height by itself (see the
+    // render branch below), so the two panes are mutually exclusive here —
+    // otherwise both tabs could show "active" while only one actually shows.
+    if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+      setExclusiveRightInspectorPane(pane);
+      return;
+    }
     toggleRightInspectorPane(pane);
   };
-
-  const handleInspectorSplitResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.setPointerCapture(event.pointerId);
-      const height = splitContainerRef.current?.getBoundingClientRect().height ?? 0;
-      splitDragRef.current = {
-        startY: event.clientY,
-        startPercent: layersPanePercent,
-        height,
-      };
-    },
-    [layersPanePercent],
-  );
-
-  const handleInspectorSplitResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = splitDragRef.current;
-    if (!drag || drag.height <= 0) return;
-    const deltaPercent = ((event.clientY - drag.startY) / drag.height) * 100;
-    const next = Math.min(
-      MAX_INSPECTOR_SPLIT_PERCENT,
-      Math.max(MIN_INSPECTOR_SPLIT_PERCENT, drag.startPercent + deltaPercent),
-    );
-    setLayersPanePercent(next);
-  }, []);
-
-  const handleInspectorSplitResizeEnd = useCallback(() => {
-    splitDragRef.current = null;
-  }, []);
 
   const handleApplyColorGradingScope = useCallback(
     async (scope: ColorGradingScope, value: string | null) =>
@@ -341,12 +320,17 @@ export function StudioRightPanel({
     },
     [projectId, refreshFileTree, showToast],
   );
-
+  const handleHideAllSelected = () => {
+    const { elements } = usePlayerStore.getState();
+    const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
+    if (keys.length > 0) void onToggleElementHidden?.(keys, true);
+  };
   const propertyPanel = (
     <DesignPanelPromoteProvider
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
       projectId={projectId}
       activeCompPath={activeCompPath}
+      showToast={showToast}
       readProjectFile={readProjectFile}
       writeProjectFile={writeProjectFile}
       recordEdit={recordEdit}
@@ -359,12 +343,16 @@ export function StudioRightPanel({
         assets={assets}
         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
         multiSelectCount={domEditGroupSelections.length}
+        multiSelectedElements={domEditGroupSelections}
+        onGroupSelection={handleGroupSelection}
+        onHideAllSelected={handleHideAllSelected}
         copiedAgentPrompt={copiedAgentPrompt}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
         onUngroup={handleUngroupSelection}
         onSetStyle={handleDomStyleCommit}
         onSetAttribute={handleDomAttributeCommit}
+        onSetAttributes={handleDomAttributesCommit}
         onSetAttributeLive={handleDomAttributeLiveCommit}
         onApplyColorGradingScope={handleApplyColorGradingScope}
         onSetHtmlAttribute={handleDomHtmlAttributeCommit}
@@ -534,11 +522,12 @@ export function StudioRightPanel({
               ) : rightPanelTab === "variables" ? (
                 <VariablesPanel
                   sdkSession={sdkSession}
+                  publishSdkSession={publishSdkSession}
                   reloadPreview={reloadPreview}
                   domEditSaveTimestampRef={domEditSaveTimestampRef}
                   recordEdit={recordEdit}
                 />
-              ) : layersPaneOpen && designPaneOpen ? (
+              ) : layersPaneOpen && designPaneOpen && !STUDIO_FLAT_INSPECTOR_ENABLED ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div
                     className="min-h-[120px] overflow-hidden"

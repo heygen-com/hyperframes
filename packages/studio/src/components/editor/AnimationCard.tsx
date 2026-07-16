@@ -21,12 +21,14 @@ import {
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
   defaultExpanded: boolean;
+  flat?: boolean;
 }
 
 // fallow-ignore-next-line complexity
 export const AnimationCard = memo(function AnimationCard({
   animation,
   defaultExpanded,
+  flat,
   onUpdateProperty,
   onUpdateMeta,
   onDeleteAnimation,
@@ -150,7 +152,14 @@ export const AnimationCard = memo(function AnimationCard({
     );
 
   return (
-    <div className="border-b border-neutral-800 pb-3">
+    <div
+      data-flat-effect-card={flat ? "true" : undefined}
+      className={
+        flat
+          ? "border-b border-l-2 border-panel-accent/40 border-b-panel-hairline pb-3 pl-2"
+          : "border-b border-neutral-800 pb-3"
+      }
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -162,13 +171,19 @@ export const AnimationCard = memo(function AnimationCard({
         >
           {methodLabel}
         </span>
-        <span className="text-[11px] font-medium text-neutral-400" title="When this effect plays">
+        <span
+          className={`text-[11px] font-medium ${flat ? "text-panel-text-3" : "text-neutral-400"}`}
+          title="When this effect plays"
+        >
           {typeof animation.position === "number"
             ? `${parseFloat(animation.position.toFixed(3))}s`
             : animation.position}{" "}
           – {typeof endTime === "number" ? `${parseFloat(endTime.toFixed(3))}s` : endTime}
         </span>
-        <span className="ml-auto text-[10px] text-neutral-500" title={easeName}>
+        <span
+          className={`ml-auto text-[10px] ${flat ? "text-panel-text-3" : "text-neutral-500"}`}
+          title={easeName}
+        >
           {easeLabel}
         </span>
         <svg
@@ -176,7 +191,7 @@ export const AnimationCard = memo(function AnimationCard({
           height="10"
           viewBox="0 0 10 10"
           fill="currentColor"
-          className={`flex-shrink-0 text-neutral-500 transition-transform ${expanded ? "" : "-rotate-90"}`}
+          className={`flex-shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>

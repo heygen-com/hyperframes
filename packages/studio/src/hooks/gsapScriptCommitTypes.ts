@@ -2,6 +2,7 @@ import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PublishSdkSession } from "../utils/sdkCutover";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 
 export interface MutationResult {
@@ -22,10 +23,9 @@ export interface CommitMutationOptions {
   beforeReload?: () => void;
   /**
    * Serialize this commit against others sharing the same key. Used to chain
-   * per-animationId GSAP meta updates so overlapping read-modify-write POSTs to
-   * one file can't interleave — which would pair the shadow fidelity diff with a
-   * stale server result and report false ease mismatches. Commits without a key
-   * (and under distinct keys) run concurrently as before.
+   * per-animationId GSAP meta updates. Every commit independently takes the
+   * project/file mutation lock, so this key only adds ordering and can never
+   * bypass whole-file serialization.
    */
   serializeKey?: string;
   /**
@@ -87,6 +87,8 @@ export interface GsapScriptCommitsParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   /** Stage 7 §3.5: SDK session for routing GSAP tween ops through addGsapTween/setGsapTween/removeGsapTween. */
   sdkSession?: Composition | null;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: PublishSdkSession;
   writeProjectFile?: (path: string, content: string) => Promise<void>;
   /** Resync the in-memory SDK session after a server-authoritative write. */
   forceReloadSdkSession?: () => void;

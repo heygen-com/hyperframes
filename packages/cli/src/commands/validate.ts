@@ -127,8 +127,9 @@ export function raceMediaReady(
 }
 
 /**
- * Flag `<video>`/`<audio>` clips whose source is meaningfully shorter than their
- * `data-duration` slot (the slot gets silently shortened in renders). Runs in
+ * Flag `<audio>` clips whose source is meaningfully shorter than their
+ * `data-duration` slot (the slot gets silently shortened in renders). Videos
+ * intentionally hold their final frame through an explicit longer slot. Runs in
  * the live page to read each element's intrinsic `.duration`, which static lint
  * can't see.
  */
@@ -140,7 +141,7 @@ export async function auditClipDurations(
   // fallow-ignore-next-line complexity
   const clips = await page.evaluate(async (maxWaitMs: number) => {
     const nodes = Array.from(
-      document.querySelectorAll("video[data-duration], audio[data-duration]"),
+      document.querySelectorAll("audio[data-duration]"),
     ) as HTMLMediaElement[];
 
     // The caller's page-settle sleep is a flat, unconditional wait shared with
@@ -276,7 +277,11 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
           : [],
       )) as ContrastCandidate[];
 
-      const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
+      const screenshot = (await page.screenshot({
+        encoding: "base64",
+        type: "png",
+        omitBackground: true,
+      })) as string;
       const entries = await page.evaluate(
         (b64: string, time: number, cands: ContrastCandidate[]) =>
           typeof (window as unknown as Record<string, unknown>).__contrastAuditFinish === "function"

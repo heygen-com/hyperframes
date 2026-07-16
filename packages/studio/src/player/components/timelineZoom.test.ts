@@ -45,11 +45,11 @@ describe("getTimelinePixelsPerSecond", () => {
 
 describe("getNextTimelineZoomPercent", () => {
   it("zooms out from fit relative to 100 percent", () => {
-    expect(getNextTimelineZoomPercent("out", "fit", 375)).toBe(80);
+    expect(getNextTimelineZoomPercent("out", "fit", 375)).toBe(50);
   });
 
   it("zooms in from fit relative to 100 percent", () => {
-    expect(getNextTimelineZoomPercent("in", "fit", 375)).toBe(125);
+    expect(getNextTimelineZoomPercent("in", "fit", 375)).toBe(200);
   });
 
   it("clamps the lower bound", () => {

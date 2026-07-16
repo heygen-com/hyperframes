@@ -1,48 +1,108 @@
-# Brief contract — interaction mode, shared brief fields, and question rules
+# Brief contract
 
-Every creation workflow runs its intake step (Step 0 / brief) against this contract. It defines three things: the **interaction mode** (which controls all later gates, not just the brief), the **shared brief fields**, and the **question rules**. Each workflow maps these fields to its own values in its SKILL.md — including its enums, recommendation logic, and extra inputs. This file never includes workflow-specific content. Workflows without a real brief, such as `/motion-graphics`, use only § 1.
+The intent layer (`/hyperframes` § 4) asks creation questions once. The executing workflow writes the confirmed result to `BRIEF.md` and does not ask those questions again. This contract defines the canonical run-shape fields, shared brief fields, and question rules. Route-specific options live in `/hyperframes` → `references/route-briefs.md`.
 
-## 1. Interaction mode
+## Contents
 
-There are two modes. Default: **collaborative**.
+- [Run shape](#1-run-shape)
+- [Shared fields](#2-shared-fields)
+- [Question protocol](#3-question-protocol)
 
-**Signals.**
+## 1. Run shape
 
-- **Ongoing autonomous signals** — "autonomous", "surprise me", "decide for me", "just build it", "don't ask, just go", "LFG": the whole flow switches to autonomous from this point on.
-- **One-time acceptance** — a bare "go" / "looks good" at a gate accepts only that gate's defaults; the mode does not change.
-- The mode is set **once** — by a signal in the request, or by the brief's first question (§ 3) — and **carries forward. No later step asks again.** Once a storyboard exists, record it in `STORYBOARD.md` frontmatter (`mode: autonomous`). When resuming an existing project, read `mode` from that frontmatter first — a recorded mode counts as already set, so don't ask again.
-- **Mid-run switch**: "stop asking / just finish it" → autonomous for the rest of the run. Clear feedback on a heads-up → collaborative resumes at the next gate.
+Three terms describe different concerns. Do not substitute one for another.
 
-**Gate types.** Autonomous mode changes only the first two types:
+| Term         | Values                          | Owns                                                                                          |
+| ------------ | ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `flow`       | `automation` or `companion`     | Who drives execution. `companion` always executes in `/general-video`.                        |
+| `storyboard` | `yes` or `no`                   | Whether the live board is used for plan and layout review.                                    |
+| `mode`       | `collaborative` or `autonomous` | How later preference and checkpoint gates behave. The user never chooses this label directly. |
 
-1. **Preference gates** (which preset, voice, caption identity, want a preview?) — autonomous: decide yourself and state the decision with a one-line reason. Never stay silent.
-2. **Checkpoint gates** (storyboard approval, pre-render review) — autonomous: post the same summary you would have asked about as an inline heads-up, then continue. One exception: before rendering, ask once — preview first, or render (§ 3).
-3. **Quality gates** (`hyperframes check`, capture completeness, fetch failures, workflow-specific verification checklists) — never skip these in any mode. Errors still stop the run. Reasoning like "autonomous means bias toward action, so I'll skip verification" misuses the mode — bias toward action applies to deciding _what to build_, not _whether to verify_.
-4. **Routing and sign-in decisions** — wrong routing is a quality problem: an ambiguous-intent confirmation, such as `/slideshow`'s "is this a deck?", still happens in autonomous mode. Auth sign-in follows `/media-use` → Preflight: show the status as-is; collaborative waits for the user's choice, while autonomous notes it and continues offline.
+Derive `mode` once from the confirmed run shape:
 
-**Autonomous is not silent.** Every question absorbed by the mode becomes a decision with a receipt — state the choice and its one-line reason inline as you go. Final delivery always includes the contact sheet, so review happens after the fact instead of not happening at all.
+| `flow`       | `storyboard` | Derived `mode`  |
+| ------------ | ------------ | --------------- |
+| `companion`  | either value | `collaborative` |
+| `automation` | `yes`        | `collaborative` |
+| `automation` | `no`         | `autonomous`    |
 
-## 2. Field registry
+Default to `collaborative` only when a legacy project lacks enough state to derive a mode. `/motion-graphics` is autonomous by design and does not need the two run-shape questions.
 
-The shared brief fields. Each workflow's SKILL.md declares which fields it uses, its own value set, how it derives recommendations, and — decisively — marks each field **ask** (always gets its own question) or **state** (stated in the intro text, never asked). The binding table's ask/state marking is authoritative; the default policies below apply only when a binding doesn't say otherwise. If a workflow does not use a field, such as `/music-to-video` having no narration, that field is simply absent from its binding — don't ask about it.
+### Signals and persistence
 
-| Field         | Meaning                                                               | Default policy                                                                                                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode`        | collaborative / autonomous (§ 1)                                      | detect signals; never ask again                                                                                                                                                                                                  |
-| `destination` | where the video will play (X / LinkedIn feed, YouTube, TikTok, embed) | infer from the request; if unknown **and** it would change aspect or type scale, include ONE question in the brief                                                                                                               |
-| `aspect`      | canvas                                                                | derive from destination — social **feed** (X / LinkedIn / Instagram) → square `1080x1080`; TikTok / Reels / Shorts → `1080x1920`; YouTube / website embed / unknown-desktop → `1920x1080`. State the derivation; never ask twice |
-| `length`      | target duration                                                       | the workflow derives its own recommendation and states the reason                                                                                                                                                                |
-| `language`    | narration + captions                                                  | use the user's language — state it, don't ask                                                                                                                                                                                    |
-| `audience`    | who will watch                                                        | infer from the input; confirm only when it would change the beats                                                                                                                                                                |
-| `message`     | the ONE thing the video must communicate                              | derive it and echo it in the brief — if the message cannot be stated in one sentence, the video is not ready for storyboarding                                                                                                   |
-| `angle`       | what kind of story (workflow enum)                                    | workflow-specific values; recommend one with a receipt                                                                                                                                                                           |
-| `narration`   | yes / minimal / no (+ workflow slots such as `VO_MODE`)               | workflow-specific                                                                                                                                                                                                                |
+- An ongoing signal such as “surprise me”, “decide for me”, “just build it”, or “stop asking” sets `flow: automation`, `storyboard: no`, and therefore `mode: autonomous` when it appears during intent capture.
+- A bare “go” or “looks good” at a checkpoint accepts that checkpoint only. It does not change mode.
+- After `STORYBOARD.md` exists, persist the derived mode in its frontmatter. On resume, an explicit `mode` in `STORYBOARD.md` overrides the derivation because it may represent a later user change.
+- Mid-run “stop asking; finish it” changes only checkpoint behavior. Set `STORYBOARD.md` `mode` to `autonomous` when the file exists. Do not rewrite the already-confirmed `flow` or `storyboard` fields.
+- Resume collaborative checkpoints only after an explicit signal such as “let's review together”; ordinary feedback does not change mode.
 
-## 3. Question rules
+### Gate behavior
 
-The executable question script lives in each workflow's Step 0 as a literal two-round template. This section defines only the invariants that script satisfies:
+| Gate                                                                            | Collaborative                                                   | Autonomous                                                      |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| Preference: preset, voice, caption identity                                     | Ask when the workflow marks it as required.                     | Decide and state the choice with a one-line reason.             |
+| Checkpoint: plan, sketches, pre-render review                                   | Ask and wait.                                                   | Post the same summary, then continue.                           |
+| Quality: fetch completeness, `lint`, `hyperframes check`, workflow verification | Run and stop on errors.                                         | Run and stop on errors.                                         |
+| Routing ambiguity                                                               | Resolve explicitly; a wrong route changes the deliverable.      | Same requirement.                                               |
+| Sign-in or credential unavailable                                               | Show status and wait for sign-in or explicit offline selection. | Show status and continue through an available offline provider. |
 
-- **Round 1 asks the mode** — one question, skipped when the request already carried a signal. Autonomous → no further questions: state the locked brief (all fields + receipts) as a heads-up and build straight through; the one remaining question, before render, is "preview first, or render?". Collaborative → Round 2.
-- **Round 2 asks the workflow's ask-marked fields** — one question per field, recommended option first, each with its receipt. Skip a question only when the user already answered that field in their request; inference is not an answer.
-- **Receipts.** Every recommended option states its basis — "~40s — small change, +44/−13 across 12 files"; "square 1:1 — you named the X/LinkedIn feed as the destination".
-- **Channel.** Native question UI when the environment has one; otherwise plain text as one numbered list. "go" accepts all defaults.
+Autonomous mode never silently drops a required capability. If the selected workflow has no local, cached, or offline provider for it, surface the blocker instead of omitting the capability. A credential problem does not relax the quality gates.
+
+Rendering remains user-gated in both modes. After checks pass, collaborative runs ask “render now, or what changes?” Autonomous runs ask “preview first, or render?” Render only after the answer.
+
+### Studio comments
+
+Checkpoint feedback may arrive in chat or in `.hyperframes/frame-comments.json` (format: `storyboard-format.md`). When the user replies to a checkpoint, read that file before interpreting the chat reply. Apply only the named frame changes, delete the comments file after handling it, and re-present the affected frames. A board submission does not notify the agent, so tell the user to reply in chat after submitting comments.
+
+Autonomous is not silent: replace absorbed questions with visible decisions and short reasons. Every autonomous visual or video delivery names the final preview or rendered artifact as applicable, reports the actual duration for a time-based deliverable, and includes a contact sheet or snapshot sheet plus relevant frame identifiers when available. For multi-scene work, use scene midpoints; for a single-scene piece, use one or more proof times. This gives the user a review surface even though intermediate checkpoints did not pause.
+
+## 2. Shared fields
+
+Ask only fields used by the selected route. Route entries identify their must-have questions and deferred questions. Values inferred or derived by policy are stated in the brief, not asked.
+
+| Field         | Meaning                                              | Policy                                                                                                                                              |
+| ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flow`        | Who drives execution                                 | Ask at the end of intent capture when the route supports both flows. An autonomous signal answers it.                                               |
+| `storyboard`  | Whether to review on the live board                  | Ask before `flow` when the route supports a board. A storyboard request answers it.                                                                 |
+| `destination` | Where the video will play                            | Infer from the request. Ask only when unknown and the answer changes aspect, type scale, or composition.                                            |
+| `aspect`      | Canvas size                                          | Derive from destination: social feed → `1080x1080`; TikTok/Reels/Shorts → `1080x1920`; YouTube/website/desktop → `1920x1080`. State the derivation. |
+| `length`      | Target duration                                      | Let the workflow recommend a range supported by the material; include the reason.                                                                   |
+| `language`    | Narration and caption language                       | Use the user's language and state it.                                                                                                               |
+| `audience`    | Who will watch                                       | Infer when clear. Ask only when a different answer changes the story or terminology.                                                                |
+| `message`     | The one thing the video must communicate             | Derive and echo one sentence. Do not storyboard until this is clear.                                                                                |
+| `angle`       | Route-specific story shape                           | Recommend one route-defined option with a reason.                                                                                                   |
+| `narration`   | `yes`, `minimal`, or `no`, plus route-specific modes | Follow the selected route.                                                                                                                          |
+
+### Remembered defaults
+
+Let `<MEDIA_DIR>` be the installed `/media-use` skill directory. Let `<MEMORY_ROOT>` be the existing project root. Before scaffolding, use a deliberately nonexistent probe path with no `.media` ancestor, such as `/tmp/hyperframes-intent-memory-<run-id>`; never use the current workspace as the probe. Read merged preferences with:
+
+```bash
+node <MEDIA_DIR>/scripts/prefs.mjs get --hyperframes <MEMORY_ROOT> --json
+```
+
+For the pre-project probe, `<MEMORY_ROOT>` is the nonexistent probe path, so only the personal tier can contribute. If that path already exists or contains `.media`, choose another. Do not claim project provenance before the real project exists.
+
+A remembered value becomes the recommended answer and names its source. It never overrides the current request and never skips a required question. A confirmed recipe is different: adopting the bundle may fill the fields it contains because adoption itself is the confirmation.
+
+Record only values the user confirmed, never values merely inferred or defaulted. Recording happens after the workflow writes `BRIEF.md`; supported keys are listed in `brief-format.md`. A user who sees the recommendation and accepts it has confirmed it. Personal defaults promote only according to `/media-use` memory rules.
+
+The first time a project records a preference, say one short line that it will be remembered for future runs. Do not re-record a remembered value merely because an autonomous build reused it; only a confirmation in the current run creates a new memory event.
+
+## 3. Question protocol
+
+Follow these invariants:
+
+1. Ask only unanswered fields that materially affect the output.
+2. Ask one field per message and wait for its answer before asking the next field.
+3. Put the recommended option first and attach a short reason. A numbered choice list is allowed, but every option in that list must answer the same field. Option lists fit factual fields (destination, length, language), where they scaffold recall; a creative field (message, angle, tone) the request has not already shaped takes an anchored open question — a list there steers the answer instead of collecting it.
+4. Skip a question when the current request already answers it. Inference alone is not an answer.
+5. Ask `storyboard` and then `flow` last, only for routes that support them.
+6. Announce deferred questions before hand-off; do not surprise the user later.
+7. When an autonomous signal appears, ask no remaining preference or checkpoint questions. State the completed brief and the reasons for decisions, then build.
+8. Use native question UI when available. Otherwise send one plain-text question with one numbered option list; never place several fields in the same list.
+9. Before the hand-off summary, run one integration check: look for a consequence the combined answers create that no single answer showed, and surface it with a proposed adjustment.
+10. The hand-off summary separates fields the user stated from fields that were inferred or defaulted, with receipts on both.
+11. Revision is not confirmation: after any correction to the summary, present the updated summary and confirm before executing.
+
+At a checkpoint, “go” accepts that checkpoint's displayed recommendation. If a message explicitly presents a complete brief and says that “go” will accept every displayed default, then “go” may confirm that whole displayed brief; do not assume broader acceptance without that sentence.

@@ -1,5 +1,6 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
+import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import { flush, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 
@@ -53,6 +54,9 @@ export interface RenderObservabilityTelemetryPayload {
   captureDePreRouterWorkers?: number;
   captureDeSelfVerifyFallback?: boolean;
   captureDeFallbackReason?: string;
+  captureDeFallbackFailedDb?: number;
+  captureDeFallbackFrameIndex?: number;
+  captureDeFallbackThresholdDb?: number;
   /** Non-DE parallel-streaming router outcome ("screenshot" | "beginframe" —
    * routed; "eligible_off" — would route but the kill switch is off). */
   captureParallelStream?: string;
@@ -107,6 +111,9 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     de_pre_router_workers: props.captureDePreRouterWorkers,
     de_self_verify_fallback: props.captureDeSelfVerifyFallback,
     de_fallback_reason: props.captureDeFallbackReason,
+    de_fallback_failed_db: props.captureDeFallbackFailedDb,
+    de_fallback_frame_index: props.captureDeFallbackFrameIndex,
+    de_fallback_threshold_db: props.captureDeFallbackThresholdDb,
     capture_parallel_stream: props.captureParallelStream,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
@@ -172,6 +179,9 @@ export function trackRenderComplete(
     deVerifyInitMs?: number;
     deSelfVerifyFallback?: boolean;
     deFallbackReason?: string;
+    deFallbackFailedDb?: number;
+    deFallbackFrameIndex?: number;
+    deFallbackThresholdDb?: number;
     deBlankSuspects?: number;
     deBlankDeterministicAccepts?: number;
     deBlankRecaptures?: number;
@@ -259,6 +269,9 @@ export function trackRenderComplete(
       de_verify_init_ms: props.deVerifyInitMs,
       de_self_verify_fallback: props.deSelfVerifyFallback,
       de_fallback_reason: props.deFallbackReason,
+      de_fallback_failed_db: props.deFallbackFailedDb,
+      de_fallback_frame_index: props.deFallbackFrameIndex,
+      de_fallback_threshold_db: props.deFallbackThresholdDb,
       de_blank_suspects: props.deBlankSuspects,
       de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
       de_blank_recaptures: props.deBlankRecaptures,
@@ -490,6 +503,9 @@ export function trackCliError(props: {
   stack_trace?: string;
   command?: string;
   kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+  /** Low-cardinality figma REST call label (e.g. "images", "files_nodes") —
+   *  which endpoint failed, for FigmaClientError-backed failures only. */
+  endpoint?: string;
 }): void {
   trackEvent("cli_error", {
     error_name: props.error_name,
@@ -502,6 +518,7 @@ export function trackCliError(props: {
       : undefined,
     command: props.command,
     kind: props.kind,
+    endpoint: props.endpoint,
   });
 }
 
@@ -596,6 +613,7 @@ export function trackRenderFeedback(props: {
   trackEvent("survey sent", {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
+    rating_scale: FEEDBACK_RATING_SCALE,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
     ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),

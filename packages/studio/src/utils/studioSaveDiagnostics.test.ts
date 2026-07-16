@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  StudioFileConflictError,
   StudioSaveHttpError,
   StudioSaveNetworkError,
   buildStudioSaveFailureProperties,
@@ -8,6 +9,23 @@ import {
 } from "./studioSaveDiagnostics";
 
 describe("studio save diagnostics", () => {
+  it("preserves conflict versions and both sides for explicit recovery UI", () => {
+    const error = new StudioFileConflictError({
+      filePath: "index.html",
+      currentVersion: '"sha256:new"',
+      currentContent: "external",
+      attemptedContent: "local",
+    });
+
+    expect(getStudioSaveStatusCode(error)).toBe(409);
+    expect(error).toMatchObject({
+      filePath: "index.html",
+      currentVersion: '"sha256:new"',
+      currentContent: "external",
+      attemptedContent: "local",
+    });
+  });
+
   it("builds save_failure properties with stable diagnostics", () => {
     const error = new StudioSaveHttpError("Failed to save index.html (503)", 503);
 

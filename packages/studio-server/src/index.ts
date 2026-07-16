@@ -12,6 +12,11 @@ export type {
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
+export {
+  consumeFileWriteReceipt,
+  fileContentVersion,
+  type FileWriteReceipt,
+} from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
 export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
 export {

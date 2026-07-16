@@ -310,15 +310,27 @@ function writeConsumerFixture(packDir, packedWorkspaces) {
   const fixtureDir = join(packDir, "consumer");
   mkdirSync(fixtureDir);
   const rootPackage = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-  const dependencies = Object.fromEntries(
+  const workspaceFileDeps = Object.fromEntries(
     packedWorkspaces.map(({ filename, packedPackage }) => [packedPackage.name, `file:${filename}`]),
   );
+  const dependencies = { ...workspaceFileDeps };
   dependencies.typescript = rootPackage.devDependencies.typescript;
   dependencies["@types/node"] = rootPackage.devDependencies["@types/node"];
   writeFileSync(
     join(fixtureDir, "package.json"),
     JSON.stringify(
-      { name: "packed-consumer", private: true, type: "module", dependencies },
+      {
+        name: "packed-consumer",
+        private: true,
+        type: "module",
+        dependencies,
+        // Each packed tarball pins its inter-@hyperframes deps to the exact
+        // release version. On a release bump that version is not on the registry
+        // yet, so a plain install fails to resolve those transitive deps. Force
+        // every @hyperframes/* to the sibling local tarball so the check is
+        // self-contained pre-publish (matches how the packages install together).
+        overrides: { ...workspaceFileDeps },
+      },
       null,
       2,
     ),

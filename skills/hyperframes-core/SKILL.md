@@ -11,21 +11,24 @@ This skill is the **technical contract** — how to build one hyperframes projec
 
 ## References
 
-| File                                 | Read it to…                                                                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                                                 |
-| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                               |
-| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                 |
-| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                           |
-| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                              |
-| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                                          |
-| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                       |
-| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                                        |
-| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                   |
-| `references/brief-contract.md`       | conduct a creation workflow's intake — interaction mode (collaborative / autonomous), shared brief fields, asking rules |
-| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                        |
-| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                      |
-| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                            |
+| File                                 | Read it to…                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                                                                                                            |
+| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                                          |
+| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                                            |
+| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                                                                                      |
+| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                                         |
+| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                                     |
+| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                                                                                  |
+| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                                                                                                   |
+| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                                                                              |
+| `references/review-loop.md`          | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow                                                                         |
+| `references/production-loop.md`      | take an approved plan to a delivered video — the stage dependencies (audio, frames, assembly, transitions, captions, verify, deliver) a freeform build follows directly            |
+| `references/brief-contract.md`       | the brief's ground rules — mode derivation (collaborative / autonomous), shared field registry, question invariants (the asking itself lives in `/hyperframes` → the intent layer) |
+| `references/brief-format.md`         | author `BRIEF.md` — the confirmed intent document a workflow's Setup writes and every later step reads                                                                             |
+| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                                                                                   |
+| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                                                                                 |
+| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                                       |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 
@@ -43,18 +46,18 @@ File shape, host wiring, and the pre-render checklist → `references/sub-compos
 
 ### Root must be sized (silent layout bug)
 
-The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. `lint`/`validate`/`inspect` do **not** catch this. Skeleton → `references/minimal-composition.md`.
+The standalone root needs an explicit **sized box** (`width`/`height` in px), and every ancestor down to a `height:100%` element must have a resolved height — otherwise a flex/`100%` child collapses to ~0 and content piles into the top-left corner. Do not rely on automated gates alone to catch this; inspect a snapshot. Skeleton → `references/minimal-composition.md`.
 
 ### One paused timeline
 
 Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`), built **synchronously** at page load. Render duration = root `data-duration`, not timeline length. Don't manually nest sub-timelines into the host. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
 
-### Non-negotiable rules (silent bugs `lint`/`validate`/`inspect` won't catch)
+### Non-negotiable rules (silent bugs automated gates may miss)
 
 Surfaced here; full rationale in the linked reference. Do not violate:
 
 - No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
-- Animate only the visual-property allowlist; never `display`/`visibility`; no `gsap.set` on later-scene clips. → `determinism-rules.md`
+- Animate only the visual-property allowlist; never tween `display` or raw `visibility`. GSAP `autoAlpha` and zero-duration timeline boundary sets are the only visibility exceptions, and only on non-clip elements or wrappers inside a clip. The framework alone controls `.clip` visibility. Do not `gsap.set` later-scene clips at page load. → `determinism-rules.md`
 - No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
 - `<video>`/`<audio>` must be a **direct child of the host root** (never inside a sub-comp `<template>`/wrapper); the framework owns playback. → `variables-and-media.md`
 - Every `id` must be unique across the **assembled** page; inside a sub-comp, prefix ids with the composition id (`#<id>-hero`). Duplicate `<video>`/`<img>` ids render **blank** — the producer injects frames by `getElementById`, and cross-file dupes slip past `lint`. → `composition-patterns.md`

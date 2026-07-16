@@ -9,10 +9,8 @@ import { Tooltip } from "../../components/ui";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { SpeedMenu } from "./SpeedMenu";
 import { useSeekBarDrag, resolveSeekPercent } from "./useSeekBarDrag";
-import { useState } from "react";
 
 export { resolveSeekPercent };
-type TimeDisplayMode = "time" | "frame";
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
@@ -369,7 +367,8 @@ export const PlayerControls = memo(function PlayerControls({
   const outPoint = usePlayerStore((s) => s.outPoint);
   const setInPoint = usePlayerStore.getState().setInPoint;
   const setOutPoint = usePlayerStore.getState().setOutPoint;
-  const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("time");
+  const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
+  const setTimeDisplayMode = usePlayerStore.getState().setTimeDisplayMode;
 
   const progressFillRef = useRef<HTMLDivElement>(null);
   const progressThumbRef = useRef<HTMLDivElement>(null);
@@ -428,10 +427,11 @@ export const PlayerControls = memo(function PlayerControls({
 
   return (
     <div
+      // No own background/border: the transport blends into the preview
+      // panel's surface — buttons carry their own chrome.
       className="px-4 py-2 flex flex-wrap items-center gap-x-2 gap-y-1"
       aria-disabled={disabled || undefined}
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.04)",
         paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
       }}
     >
@@ -456,7 +456,7 @@ export const PlayerControls = memo(function PlayerControls({
       >
         <button
           type="button"
-          onClick={() => setTimeDisplayMode((m) => (m === "time" ? "frame" : "time"))}
+          onClick={() => setTimeDisplayMode(timeDisplayMode === "time" ? "frame" : "time")}
           disabled={disabled}
           className="font-mono text-[11px] tabular-nums flex-shrink-0 w-[118px] text-left transition-colors disabled:pointer-events-none hover:opacity-80"
           style={{ color: "#A1A1AA", cursor: "pointer" }}

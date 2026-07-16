@@ -928,6 +928,26 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT report overlapping_gsap_tweens for same-named constants in separate IIFEs", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="x"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    (() => { const T = 0; tl.to("#x", { opacity: 1, duration: 1 }, T + 0); })();
+    (() => { const T = 10; tl.to("#x", { opacity: 0, duration: 1 }, T + 0); })();
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
   it("detects overlapping_gsap_tweens between variable-target tweens", async () => {
     // Both tweens target the same element via a querySelector variable and their
     // windows overlap on `opacity`. The structure-driven window builder must see
@@ -970,6 +990,92 @@ describe("GSAP rules", () => {
     const b = pickWord(1);
     tl.to(a, { x: 100, duration: 1 }, 0);
     tl.to(b, { x: 100, duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT report overlapping_gsap_tweens for distinct loop-built DOM targets", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="caption-card-0"></div>
+    <div id="caption-card-1"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    for (let i = 0; i < 2; i++) {
+      const card = document.getElementById("caption-card-" + i);
+      tl.to(card, { opacity: 1, duration: 1 }, i * 0.5);
+    }
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does NOT report overlapping_gsap_tweens for distinct object proxy drivers", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const particles = { value: 0 };
+    const grain = { value: 0 };
+    tl.to(particles, { value: 1, duration: 2, ease: "none" }, 0);
+    tl.to(grain, { value: 1, duration: 2, ease: "none" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
+  it("reports overlapping_gsap_tweens for the same object proxy driver", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const driver = { value: 0 };
+    tl.to(driver, { value: 1, duration: 2, ease: "none" }, 0);
+    tl.to(driver, { value: 2, duration: 2, ease: "none" }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeDefined();
+  });
+
+  it("does not conflate same-named object proxies from sibling scopes", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    (() => {
+      const driver = { value: 0 };
+      tl.to(driver, { value: 1, duration: 2, ease: "none" }, 0);
+    })();
+    (() => {
+      const driver = { value: 0 };
+      tl.to(driver, { value: 1, duration: 2, ease: "none" }, 0.5);
+    })();
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;

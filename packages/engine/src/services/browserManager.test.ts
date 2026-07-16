@@ -28,6 +28,25 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--enable-gpu-rasterization");
   });
 
+  it("disables GPU compositing only for software BeginFrame capture", () => {
+    const softwareBeginFrame = buildChromeArgs(
+      { ...base, captureMode: "beginframe" },
+      { browserGpuMode: "software" },
+    );
+    const softwareScreenshot = buildChromeArgs(
+      { ...base, captureMode: "screenshot" },
+      { browserGpuMode: "software" },
+    );
+    const hardwareBeginFrame = buildChromeArgs(
+      { ...base, captureMode: "beginframe", platform: "linux" },
+      { browserGpuMode: "hardware" },
+    );
+
+    expect(softwareBeginFrame).toContain("--disable-gpu-compositing");
+    expect(softwareScreenshot).not.toContain("--disable-gpu-compositing");
+    expect(hardwareBeginFrame).not.toContain("--disable-gpu-compositing");
+  });
+
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
     const args = buildChromeArgs({ ...base, platform: "darwin" }, { browserGpuMode: "hardware" });
     expect(args).toContain("--enable-unsafe-webgpu");

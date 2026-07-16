@@ -48,13 +48,27 @@ export interface CompilationResult {
   unresolved: UnresolvedElement[];
 }
 
-// ffprobe precision can differ slightly across local and CI media stacks. Also
-// the floor for the engine's hold-last-frame tolerance (a slot left unclamped is
-// short by at most this), so they must move together.
+// ffprobe precision can differ slightly across local and CI media stacks, so
+// avoid shortening authored audio for insignificant probe drift.
 export const MEDIA_DURATION_CLAMP_EPSILON_SECONDS = 0.05;
 
 export function shouldClampMediaDuration(declaredDuration: number, maxDuration: number): boolean {
   return declaredDuration > maxDuration + MEDIA_DURATION_CLAMP_EPSILON_SECONDS;
+}
+
+/**
+ * Whether compilation should shorten an authored media slot to its source.
+ *
+ * Non-looping video intentionally keeps an explicit longer slot: browsers and
+ * the render frame injector hold its final frame until that authored slot ends.
+ * Audio has no frame to hold, so its slot remains bounded by playable source.
+ */
+export function shouldClampResolvedMediaDuration(
+  tagName: ResolvedMediaElement["tagName"],
+  declaredDuration: number,
+  maxDuration: number,
+): boolean {
+  return tagName === "audio" && shouldClampMediaDuration(declaredDuration, maxDuration);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

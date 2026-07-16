@@ -16,7 +16,8 @@ interface UseRazorSplitOptions {
   projectId: string | null;
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
+  observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
@@ -48,7 +49,7 @@ async function splitHtmlElement(
   newId: string,
   elementStart: number,
   elementDuration: number,
-): Promise<{ ok: boolean; changed?: boolean; content?: string }> {
+): Promise<{ ok: boolean; changed?: boolean; content?: string; version: string }> {
   const response = await fetch(
     `/api/projects/${projectId}/file-mutations/split-element/${encodeURIComponent(targetPath)}`,
     {
@@ -64,9 +65,18 @@ async function splitHtmlElement(
     },
   );
   if (!response.ok) throw new Error("Split request failed");
-  return (await response.json()) as { ok: boolean; changed?: boolean; content?: string };
+  const data = (await response.json()) as {
+    ok: boolean;
+    changed?: boolean;
+    content?: string;
+    version?: string;
+  };
+  const version = data.version ?? response.headers.get("etag");
+  if (!version) throw new Error("Split response did not include a content version");
+  return { ...data, version };
 }
 
+// fallow-ignore-next-line complexity
 async function splitGsapAnimations(
   projectId: string,
   targetPath: string,
@@ -75,7 +85,7 @@ async function splitGsapAnimations(
   splitTime: number,
   elementStart: number,
   elementDuration: number,
-): Promise<{ content: string | null; skippedSelectors?: string[] }> {
+): Promise<{ content: string | null; version?: string; skippedSelectors?: string[] }> {
   const response = await fetch(
     `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(targetPath)}`,
     {
@@ -101,10 +111,12 @@ async function splitGsapAnimations(
   const data = (await response.json()) as {
     ok?: boolean;
     after?: string;
+    version?: string;
     skippedSelectors?: string[];
   };
   return {
     content: data.ok && data.after ? data.after : null,
+    version: data.version ?? response.headers.get("etag") ?? undefined,
     skippedSelectors: data.skippedSelectors,
   };
 }
@@ -119,11 +131,11 @@ function getOriginalContent(originals: ReadonlyMap<string, string>, path: string
 
 async function restoreFilesToOriginal(
   originals: ReadonlyMap<string, string>,
-  paths: Iterable<string>,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
+  snapshots: ReadonlyMap<string, { before: string; after: string }>,
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
 ): Promise<void> {
-  for (const path of paths) {
-    await writeProjectFile(path, getOriginalContent(originals, path));
+  for (const [path, snapshot] of snapshots) {
+    await writeProjectFile(path, getOriginalContent(originals, path), snapshot.after);
   }
 }
 
@@ -149,17 +161,25 @@ async function splitElementsAtTime(
   activeCompPath: string | null,
   originals: ReadonlyMap<string, string>,
   snapshots: Map<string, { before: string; after: string }>,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+  observeProjectFileVersion?: (path: string, version: string | null) => void,
 ): Promise<number> {
   let count = 0;
   for (const element of elements) {
-    const result = await executeSplit(pid, element, splitTime, activeCompPath, writeProjectFile);
+    const result = await executeSplit(
+      pid,
+      element,
+      splitTime,
+      activeCompPath,
+      writeProjectFile,
+      observeProjectFileVersion,
+    );
     if (!result.changed) continue;
     snapshots.set(result.targetPath, {
       before: getOriginalContent(originals, result.targetPath),
       after: result.patchedContent,
     });
-    await writeProjectFile(result.targetPath, result.patchedContent);
+    await writeProjectFile(result.targetPath, result.patchedContent, result.patchedContent);
     count++;
   }
   return count;
@@ -171,7 +191,8 @@ async function executeSplit(
   element: TimelineElement,
   splitTime: number,
   activeCompPath: string | null,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+  observeProjectFileVersion?: (path: string, version: string | null) => void,
 ): Promise<{
   targetPath: string;
   originalContent: string;
@@ -209,6 +230,7 @@ async function executeSplit(
   if (!splitResult.changed) {
     return { targetPath, originalContent, patchedContent: originalContent, changed: false };
   }
+  observeProjectFileVersion?.(targetPath, splitResult.version);
 
   let patchedContent =
     typeof splitResult.content === "string" ? splitResult.content : originalContent;
@@ -226,11 +248,12 @@ async function executeSplit(
         element.duration,
       );
       if (gsapResult.content) patchedContent = gsapResult.content;
+      if (gsapResult.version) observeProjectFileVersion?.(targetPath, gsapResult.version);
       if (gsapResult.skippedSelectors?.length) skippedSelectors = gsapResult.skippedSelectors;
     } catch (gsapError) {
       // GSAP mutation failed — the HTML split already wrote to disk.
       // Restore the original content to avoid a corrupt half-split state.
-      await writeProjectFile(targetPath, originalContent);
+      await writeProjectFile(targetPath, originalContent, patchedContent);
       throw gsapError;
     }
   }
@@ -243,6 +266,7 @@ export function useRazorSplit({
   activeCompPath,
   showToast,
   writeProjectFile,
+  observeProjectFileVersion,
   recordEdit,
   domEditSaveTimestampRef,
   reloadPreview,
@@ -265,7 +289,14 @@ export function useRazorSplit({
 
       try {
         const { targetPath, originalContent, patchedContent, changed, skippedSelectors } =
-          await executeSplit(pid, element, splitTime, activeCompPath, writeProjectFile);
+          await executeSplit(
+            pid,
+            element,
+            splitTime,
+            activeCompPath,
+            writeProjectFile,
+            observeProjectFileVersion,
+          );
 
         if (!changed) {
           showToast("Failed to split clip — playhead may be outside the clip", "error");
@@ -305,6 +336,7 @@ export function useRazorSplit({
       recordEdit,
       showToast,
       writeProjectFile,
+      observeProjectFileVersion,
       domEditSaveTimestampRef,
       reloadPreview,
       forceReloadSdkSession,
@@ -312,8 +344,8 @@ export function useRazorSplit({
     ],
   );
 
-  // fallow-ignore-next-line complexity
   const handleRazorSplitAll = useCallback(
+    // fallow-ignore-next-line complexity
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -338,6 +370,7 @@ export function useRazorSplit({
           originals,
           finalSnapshots,
           writeProjectFile,
+          observeProjectFileVersion,
         );
         if (splitCount === 0) return;
 
@@ -358,7 +391,7 @@ export function useRazorSplit({
         // Best-effort rollback — a failing restore write must not swallow the
         // original error's toast, which is what tells the user the split failed.
         try {
-          await restoreFilesToOriginal(originals, finalSnapshots.keys(), writeProjectFile);
+          await restoreFilesToOriginal(originals, finalSnapshots, writeProjectFile);
         } catch {
           /* leave disk as-is; the original failure is reported below */
         }
@@ -371,6 +404,7 @@ export function useRazorSplit({
       recordEdit,
       showToast,
       writeProjectFile,
+      observeProjectFileVersion,
       domEditSaveTimestampRef,
       reloadPreview,
       forceReloadSdkSession,

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { computeReorderZValues, getElementZIndex, resolveContextOrder } from "./layerOrdering";
+import { getElementZIndex, resolveContextOrder } from "./layerOrdering";
 
 function makeElement(zIndex?: string): HTMLElement {
   const element = document.createElement("div");
@@ -28,20 +28,6 @@ describe("getElementZIndex", () => {
   it("returns zero for auto or missing z-index", () => {
     expect(getElementZIndex(makeElement())).toBe(0);
     expect(getElementZIndex(makeElement("auto"))).toBe(0);
-  });
-});
-
-describe("computeReorderZValues", () => {
-  it("preserves distinct existing z-index values and remaps them onto the new order", () => {
-    expect(computeReorderZValues([1, 8, 3], 0, 2)).toEqual([8, 3, 1]);
-  });
-
-  it("renumbers an all-tied group to descending contiguous z-index values", () => {
-    expect(computeReorderZValues([0, 0, 0], 2, 0)).toEqual([3, 2, 1]);
-  });
-
-  it("renumbers the whole group when any existing z-index values are tied", () => {
-    expect(computeReorderZValues([5, 5, 1], 2, 0)).toEqual([3, 2, 1]);
   });
 });
 

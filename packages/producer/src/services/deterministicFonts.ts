@@ -432,6 +432,10 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   return requested;
 }
 
+export function fontFormatHint(src: string): "collection" | "woff2" {
+  return src.startsWith("data:font/collection;") ? "collection" : "woff2";
+}
+
 function buildFontFaceRule(
   familyName: string,
   src: string,
@@ -442,7 +446,7 @@ function buildFontFaceRule(
   return [
     "@font-face {",
     `  font-family: "${familyName}";`,
-    `  src: url("${src}") format("woff2");`,
+    `  src: url("${src}") format("${fontFormatHint(src)}");`,
     `  font-style: ${style};`,
     `  font-weight: ${weight};`,
     "  font-display: block;",
@@ -456,6 +460,7 @@ function buildFontFaceRule(
 async function buildFontFaceCss(
   requestedFamilies: Map<string, string>,
   options: InternalFontFetchOptions,
+  fontText?: string,
 ): Promise<{
   css: string;
   unresolved: string[];
@@ -483,7 +488,7 @@ async function buildFontFaceCss(
       // already covered by the embedded bundle. This ensures that
       // compositions requesting e.g. wght@200 get that weight even
       // if the bundle only ships 400/700/900.
-      const googleFaces = await fetchGoogleFont(originalCaseFamily, options);
+      const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
       for (const face of googleFaces) {
         // A weight covered by the embedded bundle is already full-coverage —
         // skip it. For weights the bundle lacks, add EVERY subset face (a
@@ -503,7 +508,7 @@ async function buildFontFaceCss(
     }
 
     // Path 2: fetch from Google Fonts (with local cache)
-    const googleFaces = await fetchGoogleFont(originalCaseFamily, options);
+    const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
     if (googleFaces.length > 0) {
       for (const face of googleFaces) {
         rules.push(
@@ -735,10 +740,12 @@ async function ensureWoff2DataUri(
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
+  fontText?: string,
 ): Promise<GoogleFontFace[]> {
   const slug = fontSlug(familyName);
   const encodedFamily = encodeURIComponent(familyName);
-  const url = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700`;
+  const textParam = fontText ? `&text=${encodeURIComponent(fontText)}` : "";
+  const url = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`;
 
   let cssText: string;
   try {
@@ -844,6 +851,22 @@ export interface InjectDeterministicFontFacesOptions {
   allowSystemFontCapture?: boolean;
 }
 
+// Keep the complete CSS request under the broadly supported ~2 KB URL limit.
+// Using unique source characters covers static text plus strings authored in
+// scripts, while collapsing repeated prose and base64 assets to a tiny set.
+const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
+
+function extractGoogleFontsText(html: string): string | undefined {
+  const { document } = parseHTML(html);
+  const decodedBodyText = document.body?.textContent ?? "";
+  const uniqueCharacters = [...new Set([...Array.from(html), ...Array.from(decodedBodyText)])].join(
+    "",
+  );
+  return encodeURIComponent(uniqueCharacters).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
+    ? uniqueCharacters
+    : undefined;
+}
+
 export async function injectDeterministicFontFaces(
   html: string,
   options: InjectDeterministicFontFacesOptions = {},
@@ -871,7 +894,11 @@ export async function injectDeterministicFontFaces(
     return html;
   }
 
-  const { css, unresolved } = await buildFontFaceCss(pendingFamilies, fetchOptions);
+  const { css, unresolved } = await buildFontFaceCss(
+    pendingFamilies,
+    fetchOptions,
+    extractGoogleFontsText(html),
+  );
   if (unresolved.length > 0 && options.failClosedFontFetch) {
     throw new FontFetchError(
       unresolved.join(", "),

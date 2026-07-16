@@ -40,7 +40,6 @@ describe("useTimelineStackingSync", () => {
       start: 0,
       duration: 2,
       track: 0,
-      sourceFile: "nested.html",
     };
     let apply: ((patches: Array<{ key: string; zIndex: number }>, key?: string) => unknown) | null =
       null;
@@ -57,7 +56,17 @@ describe("useTimelineStackingSync", () => {
     });
 
     expect(commit).toHaveBeenCalledWith(
-      [expect.objectContaining({ element: node, zIndex: 8, sourceFile: "nested.html" })],
+      [
+        expect.objectContaining({
+          element: node,
+          zIndex: 8,
+          sourceFile: "nested.html",
+          // The patch's store key rides along so the commit updates the store
+          // zIndex synchronously on the lane-sync path (and rolls it back on
+          // failure) instead of waiting for a preview reload.
+          key: "a",
+        }),
+      ],
       "clip-lane-move:7",
     );
     act(() => root.unmount());

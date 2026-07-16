@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { findFFprobe } from "../browser/ffmpeg.js";
+import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 
 /**
@@ -11,6 +11,15 @@ export interface WebmAlphaProbe {
   probed: boolean;
   /** True when the VP9 stream declares the alpha sidecar (ALPHA_MODE=1 tag). */
   alphaMode: boolean;
+  /**
+   * When true, the tag says alpha but every decoded sample byte reads
+   * alpha=255 — either the composition has no transparent regions in the
+   * samples, or libvpx-vp9 wrote the tag without emitting the alpha side data
+   * (a known Windows-build quirk). Undefined when the pixel-level probe
+   * couldn't run (no ffmpeg, decode error, malformed byte count) — an
+   * inconclusive probe is not a warning trigger.
+   */
+  sampledAlphaFullyOpaque?: boolean;
 }
 
 /**
@@ -32,13 +41,27 @@ export interface WebmAlphaProbe {
  */
 export function webmAlphaAdvisory(format: string, probe: WebmAlphaProbe): string | undefined {
   if (format !== "webm") return undefined;
-  if (!probe.probed || probe.alphaMode) return undefined;
-  return (
-    "The WebM output has no VP9 alpha sidecar (the ALPHA_MODE stream tag is absent), " +
-    "so transparency was flattened to opaque. Your ffmpeg/libvpx-vp9 build cannot emit " +
-    "the alpha plane on this platform. For guaranteed transparency, re-render with " +
-    "--format mov (ProRes 4444)."
-  );
+  if (!probe.probed) return undefined;
+  if (!probe.alphaMode) {
+    return (
+      "The WebM output has no VP9 alpha sidecar (the ALPHA_MODE stream tag is absent), " +
+      "so transparency was flattened to opaque. Your ffmpeg/libvpx-vp9 build cannot emit " +
+      "the alpha plane on this platform. For guaranteed transparency, re-render with " +
+      "--format mov (ProRes 4444)."
+    );
+  }
+  if (probe.sampledAlphaFullyOpaque) {
+    return (
+      "The WebM declares alpha (ALPHA_MODE=1) but every sampled decoded pixel " +
+      "reads alpha=255. This may be intentional (the composition has no transparent " +
+      "regions in the samples) OR your ffmpeg/libvpx-vp9 build wrote the tag without " +
+      "emitting the alpha side data — a known Windows-build quirk. To rule it out, " +
+      "re-render with --format mov (ProRes 4444), or with --format png-sequence and " +
+      "encode the frames yourself: ffmpeg -framerate <fps> -i frame_%06d.png " +
+      "-c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le out.mov"
+    );
+  }
+  return undefined;
 }
 
 /**
@@ -78,9 +101,78 @@ function probeWebmAlpha(filePath: string): WebmAlphaProbe {
     const alphaMode = Object.entries(tags).some(
       ([k, v]) => k.toLowerCase() === "alpha_mode" && String(v) === "1",
     );
-    return { probed: true, alphaMode };
+    const probe: WebmAlphaProbe = { probed: true, alphaMode };
+    if (alphaMode) {
+      const opaque = sampledAlphaIsFullyOpaque(filePath);
+      // Only surface `true`; leave undefined otherwise so #2044's "silent on
+      // working alpha" fast path is preserved when the pixel probe can't run
+      // OR when the sample has any partial/transparent pixel.
+      if (opaque === true) probe.sampledAlphaFullyOpaque = true;
+    }
+    return probe;
   } catch {
     return { probed: false, alphaMode: false };
+  }
+}
+
+/**
+ * Bytes per sampled frame at 8x8 rgba: 8 * 8 * 4 = 256. `-frames:v 3` samples
+ * AT MOST 3 frames — a legitimate 1-frame WebM (a still) yields 256 bytes and
+ * a 2-frame yields 512, both valid opaque samples that must be evaluated.
+ */
+const BYTES_PER_SAMPLE_FRAME = 8 * 8 * 4;
+const MAX_SAMPLE_BYTES = BYTES_PER_SAMPLE_FRAME * 3;
+
+/**
+ * Force the libvpx-vp9 decoder (default decoder silently discards VP9 alpha
+ * — see docs/guides/rendering.mdx) and sample up to 3 frames at 8x8 rgba.
+ * Returns `true` iff every alpha byte across all sampled frames is 255,
+ * `false` when any pixel shows partial/full transparency, `undefined` if the
+ * probe couldn't run (no ffmpeg, decode error, or the byte count is not a
+ * positive whole-frame multiple ≤ 768 — anything else is a malformed decode,
+ * not a signal).
+ *
+ * Exported for direct unit testing; the pixel-level contract is too load-
+ * bearing to only exercise through `webmAlphaAdvisory`.
+ */
+export function sampledAlphaIsFullyOpaque(filePath: string): boolean | undefined {
+  const ffmpegPath = findFFmpeg();
+  if (!ffmpegPath) return undefined;
+  try {
+    const buf = execFileSync(
+      ffmpegPath,
+      [
+        "-v",
+        "error",
+        "-c:v",
+        "libvpx-vp9",
+        "-i",
+        filePath,
+        "-frames:v",
+        "3",
+        "-vf",
+        "scale=8:8",
+        "-pix_fmt",
+        "rgba",
+        "-f",
+        "rawvideo",
+        "-",
+      ],
+      { timeout: 30_000, maxBuffer: 4096, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    if (
+      buf.length === 0 ||
+      buf.length > MAX_SAMPLE_BYTES ||
+      buf.length % BYTES_PER_SAMPLE_FRAME !== 0
+    ) {
+      return undefined;
+    }
+    for (let i = 3; i < buf.length; i += 4) {
+      if (buf[i] !== 255) return false;
+    }
+    return true;
+  } catch {
+    return undefined;
   }
 }
 

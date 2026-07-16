@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Copy, Check } from "@phosphor-icons/react";
 import { useStoryboard } from "../../hooks/useStoryboard";
+import { useProjectSignaturePoll } from "../../hooks/useProjectSignaturePoll";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { Button } from "../ui/Button";
 import { StoryboardLoaded } from "./StoryboardLoaded";
@@ -19,6 +20,10 @@ export interface StoryboardViewProps {
 // fallow-ignore-next-line complexity
 export function StoryboardView({ projectId, onSelectComposition }: StoryboardViewProps) {
   const { data, loading, error, reload } = useStoryboard(projectId);
+  // Keep the board current while an agent writes to the project: when the
+  // project signature moves past the one `data` was loaded with, refetch. Also
+  // upgrades the empty state the moment STORYBOARD.md lands on disk.
+  useProjectSignaturePoll(projectId, data?.signature, reload);
 
   if (loading) return <StoryboardFrame>{<Message>Loading storyboard…</Message>}</StoryboardFrame>;
   if (error) {
@@ -87,12 +92,14 @@ audience: <who it's for>
 ## Frame 1 — <title>
 - duration: 5s
 - transition_in: crossfade
-- status: planned
+- status: outline
 - src: compositions/frames/01-<slug>.html
 
 <A sentence or two: what's on screen and what the narration says.>
 
-Add one \`## Frame N\` section per beat. Keep the arc tight.`;
+Add one \`## Frame N\` section per beat. Keep the arc tight.
+
+Then run the review loop from the hyperframes-core skill (references/review-loop.md): present the plan as a proposal, offer wireframe sketches on this board, and build on the confirmed layouts.`;
 }
 
 function EmptyState({ path }: { path: string }) {

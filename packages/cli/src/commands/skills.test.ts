@@ -112,6 +112,15 @@ vi.mock("../utils/skillsMirror.js", () => ({
   mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [] })),
 }));
 
+// The reconcile commands drop the background nudge's cached verdict on
+// success (the stale-24h-cache fix). Stub it so these tests never touch the
+// dev machine's real ~/.hyperframes config; the invalidation behavior itself
+// is unit-tested in skillsUpdateCheck.test.ts.
+const invalidateSkillsCache = vi.fn();
+vi.mock("../utils/skillsUpdateCheck.js", () => ({
+  invalidateSkillsCache: (...args: unknown[]) => invalidateSkillsCache(...args),
+}));
+
 // The global install command this CLI runs (after `skills add <url>` and the
 // per-name `--skill` selection).
 const GLOBAL_ARGS_TAIL = [
@@ -133,7 +142,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 /** Invoke a `skills <name>` subcommand from a freshly-imported module. */
 async function runSkillsSub(
-  name: "update",
+  name: "update" | "check",
   args: Record<string, unknown> = {},
   positionals: string[] = [],
 ): Promise<void> {
@@ -175,11 +184,19 @@ describe("hyperframes skills", () => {
     vi.resetModules();
     // vi.resetModules re-imports skills.js but the manifest mock's vi.fn
     // instances persist — restore their default behavior for each test.
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    // pruneOrphanedLockEntries is reset explicitly too: relying on afterEach's
+    // vi.restoreAllMocks() to clear vi.fn() call state is vitest-3-specific
+    // (vitest 4 restores spies only), and call-count assertions like the
+    // twice-in-a-row convergence test would then see counts accumulated from
+    // earlier tests.
+    const { checkSkills, presentSkills, pruneOrphanedLockEntries } =
+      await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
     vi.mocked(presentSkills).mockImplementation((names: readonly string[]) => [...names]);
+    vi.mocked(pruneOrphanedLockEntries).mockReset();
+    vi.mocked(pruneOrphanedLockEntries).mockImplementation(() => []);
     // Each test asserts on process.exitCode; isolate it from the runner's own.
     prevExitCode = process.exitCode;
     process.exitCode = 0;
@@ -570,6 +587,65 @@ describe("hyperframes skills", () => {
     expect(state.spawnCalls).toHaveLength(0);
     expect(process.exitCode).toBe(1);
   });
+
+  // The stale-24h-cache regression: the skills commands are excluded from the
+  // background nudge pipeline (cli.ts), so unless they drop the cached verdict
+  // themselves, a successful install keeps the pre-install "N out of date or
+  // missing" nag alive on every other command for up to 24h.
+  describe("nudge-cache invalidation", () => {
+    it("skills update drops the cached nudge verdict on success", async () => {
+      setPlatform("linux");
+      invalidateSkillsCache.mockClear();
+
+      await runSkillsUpdate();
+
+      expect(process.exitCode).toBe(0);
+      expect(invalidateSkillsCache).toHaveBeenCalled();
+    });
+
+    it("skills update keeps the cached verdict when the install fails", async () => {
+      setPlatform("linux");
+      invalidateSkillsCache.mockClear();
+      state.spawnExitCode = 1; // `skills add` exits non-zero → strict throw
+
+      await runSkillsUpdate();
+
+      expect(process.exitCode).toBe(1);
+      expect(invalidateSkillsCache).not.toHaveBeenCalled();
+    });
+
+    it("skills update keeps the cached verdict on the offline (presence-only) path", async () => {
+      setPlatform("linux");
+      invalidateSkillsCache.mockClear();
+      const { checkSkills } = await import("../utils/skillsManifest.js");
+      vi.mocked(checkSkills).mockRejectedValue(new Error("offline"));
+
+      await runSkillsUpdate();
+
+      // Presence-only run never learned anything about freshness — the cached
+      // verdict is still the best information available.
+      expect(invalidateSkillsCache).not.toHaveBeenCalled();
+    });
+
+    it("bare `skills` (full install) drops the cached nudge verdict", async () => {
+      setPlatform("linux");
+      invalidateSkillsCache.mockClear();
+
+      const { default: skillsCmd } = await import("./skills.js");
+      await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+      expect(invalidateSkillsCache).toHaveBeenCalled();
+    });
+
+    it("skills check drops the cached verdict — the fresh result supersedes it", async () => {
+      setPlatform("linux");
+      invalidateSkillsCache.mockClear();
+
+      await runSkillsSub("check", { json: true });
+
+      expect(invalidateSkillsCache).toHaveBeenCalled();
+    });
+  });
 });
 
 // The router contract: `/hyperframes` picks a workflow, then runs
@@ -585,11 +661,16 @@ describe("hyperframes skills update <names>", () => {
     state.spawnExitCode = 0;
     state.gitMissing = false;
     vi.resetModules();
-    const { checkSkills, presentSkills } = await import("../utils/skillsManifest.js");
+    // Same explicit resets as the describe above (incl. the vitest-4-proofing
+    // note on pruneOrphanedLockEntries).
+    const { checkSkills, presentSkills, pruneOrphanedLockEntries } =
+      await import("../utils/skillsManifest.js");
     vi.mocked(checkSkills).mockReset();
     vi.mocked(checkSkills).mockImplementation(async () => DEFAULT_CHECK as never);
     vi.mocked(presentSkills).mockReset();
     vi.mocked(presentSkills).mockImplementation((names: readonly string[]) => [...names]);
+    vi.mocked(pruneOrphanedLockEntries).mockReset();
+    vi.mocked(pruneOrphanedLockEntries).mockImplementation(() => []);
     prevExitCode = process.exitCode;
     process.exitCode = 0;
   });

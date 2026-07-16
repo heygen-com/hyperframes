@@ -17,6 +17,7 @@ export {
   extractResolvedMedia,
   clampDurations,
   shouldClampMediaDuration,
+  shouldClampResolvedMediaDuration,
   type UnresolvedElement,
   type ResolvedDuration,
   type ResolvedMediaElement,

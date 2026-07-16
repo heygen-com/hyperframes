@@ -4,7 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyResolutionPreset, injectTailwindBrowserScript } from "./init.js";
+import {
+  applyResolutionPreset,
+  injectTailwindBrowserScript,
+  resolveVideoDurationSeconds,
+} from "./init.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
 const tailwindScript =
@@ -43,6 +47,32 @@ function expectScaffoldedScripts(target: string): void {
 }
 
 describe("hyperframes init flag rename", () => {
+  it("requires an explicit source in non-interactive mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Non-interactive init requires --example, --video, or --audio");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a following flag when --example has no value", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([target, "--example", "--non-interactive"]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("--example requires a value");
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--example blank scaffolds a bundled project with npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
@@ -149,6 +179,26 @@ describe("hyperframes init flag rename", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("uses the video stream duration when audio outlasts the final video frame", () => {
+    expect(
+      resolveVideoDurationSeconds({
+        streamDuration: 1,
+        frameDuration: 1,
+        formatDuration: 1.2,
+      }),
+    ).toBe(1);
+  });
+
+  it("falls through unusable stream durations before using the container duration", () => {
+    expect(
+      resolveVideoDurationSeconds({
+        streamDuration: 0,
+        frameDuration: Number.NaN,
+        formatDuration: 1.2,
+      }),
+    ).toBe(1.2);
   });
 
   it("--audio with a missing file fails without creating the project directory", () => {

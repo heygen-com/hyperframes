@@ -1,3 +1,5 @@
+import { readLayerRevealPriorZ } from "./timelineElementHelpers";
+
 export interface StackingContextDescriptor {
   parentCompositionId: string | null;
   compositionAncestors: readonly string[];
@@ -11,6 +13,9 @@ export interface ContextOrderItem extends StackingContextDescriptor {
 // fallow-ignore-next-line complexity
 export function getElementZIndex(element: HTMLElement): number {
   try {
+    // An active Layers-panel reveal lift reports the element's TRUE z.
+    const prior = readLayerRevealPriorZ(element);
+    if (prior != null) return prior;
     const inline = element.style?.zIndex;
     if (inline && inline !== "auto") {
       const parsed = parseInt(inline, 10);
@@ -25,34 +30,6 @@ export function getElementZIndex(element: HTMLElement): number {
   } catch {
     return 0;
   }
-}
-
-// fallow-ignore-next-line complexity
-export function hasExplicitZIndex(element: HTMLElement): boolean {
-  try {
-    const inline = element.style?.zIndex;
-    if (inline) return inline !== "auto";
-    const win = element.ownerDocument?.defaultView;
-    if (!win) return false;
-    const value = win.getComputedStyle(element).zIndex;
-    return value !== "auto" && value !== "";
-  } catch {
-    return false;
-  }
-}
-
-export function computeReorderZValues(
-  existingValues: readonly number[],
-  fromIndex: number,
-  toIndex: number,
-): number[] {
-  const reordered = [...existingValues];
-  const [moved] = reordered.splice(fromIndex, 1);
-  reordered.splice(toIndex, 0, moved);
-
-  const sorted = [...existingValues].sort((a, b) => b - a);
-  const hasDupes = sorted.some((v, i) => i > 0 && v === sorted[i - 1]);
-  return hasDupes ? reordered.map((_, i) => reordered.length - i) : sorted;
 }
 
 export function resolveStackingContextKey(item: StackingContextDescriptor): string {

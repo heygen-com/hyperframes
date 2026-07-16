@@ -93,17 +93,37 @@ interface SurfacedComposition {
 
 // ── GSAP extraction ──────────────────────────────────────────────────────────
 
-function inlineScriptText(html: string): string {
+// <template> content lives in an inert DocumentFragment that document-level
+// querySelectorAll does not traverse — and sub-compositions are REQUIRED to wrap
+// markup + script in <template>. Query the document and every template fragment
+// (including templates nested inside another template's fragment, walked
+// iteratively), or template-wrapped compositions surface zero tweens/keyframes.
+// Ordering contract: document-level matches come first, then template contents
+// in discovery order — NOT strict source order when a file mixes top-level and
+// template scripts. Spec-conformant sub-compositions keep everything in one
+// template, so mixed files only need to parse, not preserve interleaving.
+function queryIncludingTemplates(html: string, selector: string): Element[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  return Array.from(doc.querySelectorAll("script"))
+  const roots: Array<{ querySelectorAll(s: string): Iterable<Element> }> = [doc];
+  const queue = Array.from(doc.querySelectorAll("template")) as HTMLTemplateElement[];
+  while (queue.length > 0) {
+    const content = queue.shift()!.content;
+    if (!content) continue;
+    roots.push(content);
+    queue.push(...(Array.from(content.querySelectorAll("template")) as HTMLTemplateElement[]));
+  }
+  return roots.flatMap((root) => Array.from(root.querySelectorAll(selector)));
+}
+
+function inlineScriptText(html: string): string {
+  return queryIncludingTemplates(html, "script")
     .filter((s) => !s.getAttribute("src"))
     .map((s) => s.textContent ?? "")
     .join("\n");
 }
 
 function inlineStyleText(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return Array.from(doc.querySelectorAll("style"))
+  return queryIncludingTemplates(html, "style")
     .map((s) => s.textContent ?? "")
     .join("\n");
 }
@@ -560,6 +580,10 @@ function collectCompositions(indexPath: string): SurfacedComposition[] {
     surfaceComposition(html, basename(indexPath), basename(indexPath)),
   ];
 
+  // Deliberately document-root only (NOT queryIncludingTemplates): host divs
+  // with [data-composition-src] live in the orchestrating index.html light
+  // tree, never inside <template>. Widening this scan would change discovery
+  // semantics, not fix a gap.
   const doc = new DOMParser().parseFromString(html, "text/html");
   for (const div of Array.from(doc.querySelectorAll("[data-composition-src]"))) {
     const src = div.getAttribute("data-composition-src");

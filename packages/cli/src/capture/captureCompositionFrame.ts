@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
 const CAPTURE_SETTLE_MS = 1500;
@@ -171,7 +172,10 @@ export async function openSettledCompositionPage(
     await installPageFunctionGuard(page);
     await page.setViewport(viewport);
     await options.beforeNavigate?.(page);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: resolveDiagnosticNavigationTimeoutMs(),
+    });
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {
@@ -446,7 +450,7 @@ export interface CropCapturePage {
     height: number;
     deviceScaleFactor?: number;
   }): Promise<void>;
-  screenshot(options: { clip: CropRegion; type: "png" }): Promise<Uint8Array>;
+  screenshot(options: { clip: CropRegion; type: "png"; omitBackground: true }): Promise<Uint8Array>;
 }
 
 /**
@@ -465,7 +469,7 @@ export async function captureRegionCrop(
   const original = page.viewport();
   if (original) await page.setViewport({ ...original, deviceScaleFactor: scale });
   try {
-    const shot = await page.screenshot({ clip: region, type: "png" });
+    const shot = await page.screenshot({ clip: region, type: "png", omitBackground: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
   } finally {
     if (original) await page.setViewport(original);

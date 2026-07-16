@@ -122,6 +122,12 @@ type TestMetadata = {
      */
     experimentalFastCapture?: boolean;
     /**
+     * Pin the browser capture path for a regression fixture. The producer's
+     * software-GPU default normally prefers screenshots, so BeginFrame-only
+     * compositor regressions must opt out explicitly to exercise that path.
+     */
+    captureMode?: "screenshot" | "beginframe";
+    /**
      * Render-time variable overrides, equivalent to `hyperframes render
      * --variables '<json>'`. Injected as `window.__hfVariables` before any
      * page script runs so the runtime helper `getVariables()` returns the
@@ -241,7 +247,10 @@ function formatResidualSuffix(residualRmsDb: number | null, error: string | unde
   return `, residualRMS: ${residualRmsDb.toFixed(2)} dBFS`;
 }
 
-function parseArgs(argv: string[]): CliOptions {
+// Exported for unit testing (pinning `--exclude-tags` comma-parsing so the
+// values baked into `Dockerfile.test` and `packages/producer/package.json`
+// scripts keep matching the parser's contract).
+export function parseArgs(argv: string[]): CliOptions {
   const testNames: string[] = [];
   const excludeTags: string[] = [];
   let update = false;
@@ -385,6 +394,15 @@ function validateMetadata(meta: unknown): TestMetadata {
   if (rc.experimentalFastCapture !== undefined && typeof rc.experimentalFastCapture !== "boolean") {
     throw new Error(
       "meta.json: 'renderConfig.experimentalFastCapture' must be a boolean (or omit for false)",
+    );
+  }
+  if (
+    rc.captureMode !== undefined &&
+    rc.captureMode !== "screenshot" &&
+    rc.captureMode !== "beginframe"
+  ) {
+    throw new Error(
+      "meta.json: 'renderConfig.captureMode' must be 'screenshot' or 'beginframe' (or omitted)",
     );
   }
   if (
@@ -1034,7 +1052,12 @@ async function runTestSuite(
       // var, scoped to this suite's render so it never leaks to other suites.
       const useFast = suite.meta.renderConfig.experimentalFastCapture === true;
       const prevFast = process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+      const captureMode = suite.meta.renderConfig.captureMode;
+      const prevForceScreenshot = process.env.PRODUCER_FORCE_SCREENSHOT;
       if (useFast) process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = "true";
+      if (captureMode) {
+        process.env.PRODUCER_FORCE_SCREENSHOT = captureMode === "screenshot" ? "true" : "false";
+      }
       try {
         const job = createRenderJob({
           fps: suite.meta.renderConfig.fps,
@@ -1052,6 +1075,10 @@ async function runTestSuite(
         if (useFast) {
           if (prevFast === undefined) delete process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
           else process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = prevFast;
+        }
+        if (captureMode) {
+          if (prevForceScreenshot === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
+          else process.env.PRODUCER_FORCE_SCREENSHOT = prevForceScreenshot;
         }
       }
     }

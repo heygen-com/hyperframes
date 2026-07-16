@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
-import { injectDeterministicFontFaces } from "./deterministicFonts.js";
+import { fontFormatHint, injectDeterministicFontFaces } from "./deterministicFonts.js";
 
 // A font family that is NOT in FONT_ALIASES but exists on macOS as
 // /System/Library/Fonts/Supplemental/Impact.ttf. When Google Fonts
@@ -36,6 +36,11 @@ function makeHttp400Fetch(): typeof fetch {
 }
 
 describe("system font capture — allowSystemFontCapture option", () => {
+  it("uses the CSS collection hint for raw TTC data URIs", () => {
+    expect(fontFormatHint("data:font/collection;base64,AA==")).toBe("collection");
+    expect(fontFormatHint("data:font/woff2;base64,AA==")).toBe("woff2");
+  });
+
   it("does not attempt system font capture when allowSystemFontCapture is false", async () => {
     const html = makeHtml("NotARealFontFamilyForTest");
     const result = await injectDeterministicFontFaces(html, {
