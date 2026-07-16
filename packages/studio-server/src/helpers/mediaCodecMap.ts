@@ -93,6 +93,7 @@ export async function probeAssetCodec(
 
 interface CachedAssetProbe {
   mtimeMs: number;
+  size: number;
   facts: AssetCodecFacts | null;
 }
 
@@ -130,19 +131,19 @@ async function probeAssetCodecCached(
   cache: MediaCodecProbeCache,
   runner?: FfprobeRunner,
 ): Promise<AssetCodecFacts | null> {
-  let mtimeMs: number;
+  let stat: ReturnType<typeof statSync>;
   try {
-    mtimeMs = statSync(filePath).mtimeMs;
+    stat = statSync(filePath);
   } catch {
     return null;
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === mtimeMs) {
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
     rememberProbeResult(cache, filePath, cached);
     return cached.facts;
   }
   const facts = await probeAssetCodec(filePath, runner);
-  rememberProbeResult(cache, filePath, { mtimeMs, facts });
+  rememberProbeResult(cache, filePath, { mtimeMs: stat.mtimeMs, size: stat.size, facts });
   return facts;
 }
 

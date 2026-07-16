@@ -263,10 +263,12 @@ describe("scanProjectMediaCodecMap", () => {
     expect(map["/assets/clip.mp4"]?.browserHostile).toBe(true);
   });
 
-  it("caches a probe per (path, mtime): a second scan of an unchanged file doesn't reprobe, touching mtime does", async () => {
+  it("caches by path + mtime + size, invalidating same-mtime re-exports and touched files", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
+    const pinnedMtime = new Date(Date.now() - 60_000);
+    utimesSync(videoPath, pinnedMtime, pinnedMtime);
     const html = videoHtml("clip.mp4");
     const cache = createMediaCodecProbeCache();
     const probe = countingRunner(makeRunner({ [videoPath]: "hevc" }));
@@ -285,6 +287,15 @@ describe("scanProjectMediaCodecMap", () => {
     expect(second["/clip.mp4"]?.codecName).toBe("hevc");
     expect(probe.calls()).toBe(1);
 
+    writeFileSync(videoPath, "larger fake video bytes");
+    utimesSync(videoPath, pinnedMtime, pinnedMtime);
+    const resized = await scanProjectMediaCodecMap(project, [{ html }], {
+      cache,
+      runner: probe.runner,
+    });
+    expect(resized["/clip.mp4"]?.codecName).toBe("hevc");
+    expect(probe.calls()).toBe(2);
+
     const future = new Date(Date.now() + 60_000);
     utimesSync(videoPath, future, future);
 
@@ -293,7 +304,7 @@ describe("scanProjectMediaCodecMap", () => {
       runner: probe.runner,
     });
     expect(third["/clip.mp4"]?.codecName).toBe("hevc");
-    expect(probe.calls()).toBe(2);
+    expect(probe.calls()).toBe(3);
   });
 
   it("bounds the long-lived probe cache while retaining the newest assets", async () => {
