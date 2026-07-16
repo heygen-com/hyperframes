@@ -3,6 +3,7 @@ import type { ZoomMode } from "../store/playerStore";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
+export const LABEL_COL_W = 232;
 export const TRACK_H = 48;
 export const LANE_H = 28;
 export const RULER_H = 24;
