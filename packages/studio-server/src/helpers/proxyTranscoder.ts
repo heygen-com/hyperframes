@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
+import { cleanupProxyCache } from "./proxyCache.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -22,7 +23,7 @@ import { probeMediaMetadata } from "./mediaMetadata.js";
  * entry still lands for the next request.
  */
 
-export const PROXY_PARAMS_VERSION = "v1";
+export const PROXY_PARAMS_VERSION = "v2";
 
 const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -141,6 +142,27 @@ function releaseSlot(): void {
 // --- per-key in-flight dedupe ----------------------------------------------
 
 const inFlight = new Map<string, Promise<string>>();
+
+function maintainProxyCache(cacheDir: string): void {
+  try {
+    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()) });
+  } catch (error) {
+    // Cache maintenance must never turn a playable preview into an error.
+    console.warn(
+      `[media-proxy] cache cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function markCacheEntryUsed(cachePath: string): void {
+  try {
+    const now = new Date();
+    utimesSync(cachePath, now, now);
+  } catch {
+    // A concurrent cleanup may have removed a stale entry after existsSync;
+    // the normal miss path below will recreate it on the next request.
+  }
+}
 
 // --- negative cache ---------------------------------------------------------
 // A source that failed to transcode fails again identically until the file
@@ -266,6 +288,7 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
     try {
       await runFfmpeg(absoluteSourcePath, tempPath);
       renameSync(tempPath, cachePath);
+      maintainProxyCache(cacheDir);
       return cachePath;
     } finally {
       // No partial files: if anything above threw, remove whatever ffmpeg
@@ -290,7 +313,11 @@ export async function resolveProxy(
   absoluteSourcePath: string,
 ): Promise<string> {
   const cachePath = getProxyCachePath(projectDir, absoluteSourcePath);
-  if (existsSync(cachePath)) return cachePath;
+  if (existsSync(cachePath)) {
+    markCacheEntryUsed(cachePath);
+    maintainProxyCache(dirname(cachePath));
+    return cachePath;
+  }
 
   const rememberedFailure = failedTranscodes.get(cachePath);
   if (rememberedFailure) {

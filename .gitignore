@@ -87,6 +87,8 @@ my-video/
 # never committed. Broadened from .hyperframes/backup/ after preview-generated state
 # leaked into a fixture commit.
 .hyperframes/
+# Studio authoring proxies are generated locally and can grow to multiple GB.
+.transcode-cache/
 examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda
