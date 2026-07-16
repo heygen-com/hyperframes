@@ -14,8 +14,8 @@
       distinct contract token.
 
   Envelope, fixed IN and OUT with elastic HOLD only:
-    IN_BASE  = 3.75s, sequential strokes, nib hops, then caption reveal
-    HOLD     = max(0, D - IN - OUT), one finite paper-stage drift
+    IN_BASE  = 3.55s, 3.25s sequential draw phase, then pen exit and caption
+    HOLD     = max(0, D - IN - OUT), dead-calm completed lockup
     OUT_BASE = 0.45s, completed sketch and caption fade together
     If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
     The timeline is never time-scaled.
@@ -82,8 +82,8 @@
           .wbi-stage {
             display: grid;
             grid-template-rows: minmax(0, 1fr) auto;
-            width: 88cqw;
-            height: 86cqh;
+            width: 92cqw;
+            height: 90cqh;
             opacity: 0;
             will-change: transform, opacity;
           }
@@ -107,7 +107,10 @@
           .wbi-stroke {
             fill: none;
             stroke: var(--fg, #20242b);
-            stroke-width: 10;
+            /* User-space width: never non-scaling-stroke on dashed paths
+               (screen-space dash breaks draw-on under group scale). Non-uniform
+               scale gives a natural thick-thin nib variation. */
+            stroke-width: 6;
             stroke-linecap: round;
             stroke-linejoin: round;
           }
@@ -144,7 +147,7 @@
             padding-top: var(--space-1, 1.8cqh);
             color: var(--muted, #667085);
             font-family: var(--font-display, Inter, system-ui, sans-serif);
-            font-size: clamp(18px, 4.3cqmin, 42px);
+            font-size: clamp(24px, 5cqh, 52px);
             font-weight: 680;
             line-height: 1.1;
             letter-spacing: -0.02em;
@@ -168,7 +171,11 @@
                 preserveAspectRatio="xMidYMid meet"
                 aria-hidden="true"
               >
-                <g class="wbi-sketch" data-sketch="bulb">
+                <g
+                  class="wbi-sketch"
+                  data-sketch="bulb"
+                  transform="translate(500 280) scale(1.25 1.4) translate(-500 -256)"
+                >
                   <path
                     class="wbi-stroke"
                     d="M 430 340 C 414 310 392 286 386 244 C 376 172 427 113 501 109 C 578 105 633 160 626 235 C 622 279 596 306 574 341"
@@ -184,7 +191,12 @@
                   <path class="wbi-stroke" d="M 640 228 C 657 225 670 226 685 230"></path>
                 </g>
 
-                <g class="wbi-sketch" data-sketch="flow" hidden>
+                <g
+                  class="wbi-sketch"
+                  data-sketch="flow"
+                  transform="translate(500 280) scale(0.9 2.1) translate(-525 -265)"
+                  hidden
+                >
                   <path
                     class="wbi-stroke"
                     d="M 145 205 C 145 184 160 171 184 171 L 315 171 C 338 171 351 187 351 207 L 351 322 C 351 344 337 357 314 357 L 181 357 C 158 357 145 342 145 321 Z"
@@ -208,7 +220,7 @@
                   ></path>
                 </g>
 
-                <g class="wbi-sketch" data-sketch="rocket" hidden>
+                <g class="wbi-sketch" data-sketch="rocket" transform="translate(0 -17)" hidden>
                   <path
                     class="wbi-stroke"
                     d="M 500 76 C 552 117 581 184 578 272 C 576 329 549 378 500 420 C 451 378 425 329 422 272 C 419 184 448 117 500 76 Z"
@@ -280,7 +292,10 @@
               : "green";
 
             Object.keys(sketchGroups).forEach(function (name) {
-              sketchGroups[name].hidden = name !== sketch;
+              // SVG <g> has no `hidden` IDL property (assignment is a dead
+              // expando); toggle the attribute so the [hidden] CSS applies.
+              if (name !== sketch) sketchGroups[name].setAttribute("hidden", "");
+              else sketchGroups[name].removeAttribute("hidden");
             });
             root.style.setProperty("--wbi-accent", accentColors[accent]);
             captionElement.textContent = caption;
@@ -290,31 +305,35 @@
               sketch.charAt(0).toUpperCase() + sketch.slice(1) + " sketch. " + caption,
             );
 
+            var groupTransform = sketchGroups[sketch].transform.baseVal.consolidate();
             var strokes = Array.from(sketchGroups[sketch].querySelectorAll(".wbi-stroke")).map(
               function (path) {
                 var length = path.getTotalLength();
                 path.style.strokeDasharray = length + " " + length;
                 path.style.strokeDashoffset = String(length);
-                return { path: path, length: length };
+                return {
+                  path: path,
+                  length: length,
+                  progress: 0,
+                  matrix: groupTransform ? groupTransform.matrix : null,
+                };
               },
             );
-            var averageLength =
-              strokes.reduce(function (sum, stroke) {
-                return sum + stroke.length;
-              }, 0) / strokes.length;
-            var weightTotal = strokes.reduce(function (sum, stroke) {
-              return sum + Math.sqrt(stroke.length);
+            var totalLength = strokes.reduce(function (sum, stroke) {
+              return sum + stroke.length;
             }, 0);
 
-            function pathPose(stroke, progress) {
-              var clamped = Math.max(0, Math.min(1, progress));
-              var distance = clamped * stroke.length;
-              var tangentStep = Math.max(0.5, stroke.length * 0.004);
-              var before = stroke.path.getPointAtLength(Math.max(0, distance - tangentStep));
-              var after = stroke.path.getPointAtLength(
-                Math.min(stroke.length, distance + tangentStep),
-              );
+            function pointAt(stroke, distance) {
               var point = stroke.path.getPointAtLength(distance);
+              return stroke.matrix ? point.matrixTransform(stroke.matrix) : point;
+            }
+
+            function pathPose(stroke, progress) {
+              var distance = progress * stroke.length;
+              var tangentStep = Math.max(0.5, stroke.length * 0.004);
+              var before = pointAt(stroke, Math.max(0, distance - tangentStep));
+              var after = pointAt(stroke, Math.min(stroke.length, distance + tangentStep));
+              var point = pointAt(stroke, distance);
 
               return {
                 x: point.x,
@@ -327,28 +346,40 @@
               gsap.set(penElement, { x: pose.x, y: pose.y, rotation: pose.rotation });
             }
 
-            function renderStroke(stroke, progress) {
-              var clamped = Math.max(0, Math.min(1, progress));
+            function renderStroke(stroke) {
+              var clamped = Math.max(0, Math.min(1, stroke.progress));
               stroke.path.style.strokeDashoffset = String((1 - clamped) * stroke.length);
               placePen(pathPose(stroke, clamped));
             }
 
-            var IN_BASE = 3.75;
+            var DRAW_PHASE_BASE = 3.25;
+            var CAPTION_BASE = 0.3;
+            var IN_BASE = DRAW_PHASE_BASE + CAPTION_BASE;
             var OUT_BASE = 0.45;
-            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var resolvedDuration =
+              window.__hyperframes && window.__hyperframes.getDuration
+                ? window.__hyperframes.getDuration()
+                : undefined;
+            var duration = Math.max(
+              0.001,
+              typeof resolvedDuration === "number"
+                ? resolvedDuration
+                : parseFloat(root.dataset.duration || "5"),
+            );
             var fixedTotal = IN_BASE + OUT_BASE;
             var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
             var IN = IN_BASE * phaseScale;
             var OUT = OUT_BASE * phaseScale;
             var HOLD = Math.max(0, duration - IN - OUT);
-            var LEAD = IN * 0.04;
-            var CAPTION = IN * 0.12;
-            var SEQUENCE = Math.max(0, IN - LEAD - CAPTION);
-            var hopCount = Math.max(0, strokes.length - 1);
-            var HOP = hopCount > 0 ? (SEQUENCE * 0.13) / hopCount : 0;
-            var DRAW_BUDGET = Math.max(0, SEQUENCE - HOP * hopCount);
+            var DRAW_PHASE = DRAW_PHASE_BASE * phaseScale;
+            var CAPTION = CAPTION_BASE * phaseScale;
+            var hopCount = strokes.length - 1;
+            var HOP = 0.1 * phaseScale;
+            var MIN_DRAW = 0.26 * phaseScale;
+            var DRAW_BUDGET = DRAW_PHASE - HOP * hopCount;
+            var LENGTH_BUDGET = DRAW_BUDGET - MIN_DRAW * strokes.length;
             var OUT_START = IN + HOLD;
-            var cursor = LEAD;
+            var cursor = 0;
 
             gsap.set(stage, { opacity: 0, y: "1.2cqh" });
             gsap.set(captionElement, { opacity: 0, y: "1.4cqh" });
@@ -358,8 +389,8 @@
 
             var tl = gsap.timeline({ paused: true });
 
-            // IN: each path owns one draw tween. Longer paths receive a
-            // sine midpoint cadence, while short marks finish more quickly.
+            // IN: each stroke owns one progress value. Its single onUpdate
+            // paints the dash and places the nib at the same ink front.
             tl.to(
               stage,
               { opacity: 1, y: "0cqh", duration: Math.min(0.26, IN), ease: "power2.out" },
@@ -367,18 +398,16 @@
             );
 
             strokes.forEach(function (stroke, index) {
-              var drawState = { progress: 0 };
-              var drawDuration = (DRAW_BUDGET * Math.sqrt(stroke.length)) / weightTotal;
-              var drawEase = stroke.length > averageLength ? "sine.inOut" : "power2.out";
+              var drawDuration = MIN_DRAW + (LENGTH_BUDGET * stroke.length) / totalLength;
 
               tl.to(
-                drawState,
+                stroke,
                 {
                   progress: 1,
                   duration: drawDuration,
-                  ease: drawEase,
+                  ease: "power1.inOut",
                   onUpdate: function () {
-                    renderStroke(stroke, drawState.progress);
+                    renderStroke(stroke);
                   },
                 },
                 cursor,
@@ -422,26 +451,11 @@
               { opacity: 1, y: "0cqh", duration: CAPTION, ease: "power2.out" },
               cursor,
             );
-            tl.to(
-              penElement,
-              { opacity: penVisible ? 0.62 : 0, duration: CAPTION, ease: "power2.out" },
-              cursor,
-            );
+            tl.to(penElement, { opacity: 0, duration: CAPTION, ease: "power2.out" }, cursor);
+            tl.to(penArt, { y: -18, duration: CAPTION, ease: "power2.out" }, cursor);
 
-            // HOLD: one finite drift cycle keeps longer mounts alive.
-            if (HOLD > 0) {
-              tl.to(
-                stage,
-                {
-                  y: "-0.45cqh",
-                  duration: HOLD / 2,
-                  ease: "sine.inOut",
-                  yoyo: true,
-                  repeat: 1,
-                },
-                IN,
-              );
-            }
+            // HOLD: the completed lockup stays dead calm. Duration changes
+            // stretch only this gap between the caption reveal and OUT.
 
             // OUT: the completed drawing leaves as one subject.
             tl.to(stage, { opacity: 0, y: "-1.8cqh", duration: OUT, ease: "power2.in" }, OUT_START);
