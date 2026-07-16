@@ -8,6 +8,7 @@ import {
   normalizeConfig,
   projectConfigPath,
   readProjectConfig,
+  resolveAutoProxy,
   writeProjectConfig,
   PROJECT_CONFIG_FILENAME,
 } from "./projectConfig.js";
@@ -36,6 +37,7 @@ describe("projectConfig", () => {
           $schema: DEFAULT_PROJECT_CONFIG.$schema,
           registry: "https://example.com/my-registry",
           paths: { blocks: "src/blocks", components: "src/fx", assets: "media" },
+          media: { autoProxy: true },
         };
         writeProjectConfig(dir, custom);
         const read = readProjectConfig(dir);
@@ -59,6 +61,28 @@ describe("projectConfig", () => {
       expect(result.paths.blocks).toBe("x");
       expect(result.paths.components).toBe(DEFAULT_PROJECT_CONFIG.paths.components);
       expect(result.paths.assets).toBe(DEFAULT_PROJECT_CONFIG.paths.assets);
+    });
+
+    it("defaults media.autoProxy to true when media is absent", () => {
+      const result = normalizeConfig({ registry: "https://alt.example.com" });
+      expect(result.media).toEqual({ autoProxy: true });
+    });
+
+    it("preserves an explicit media.autoProxy: false", () => {
+      const result = normalizeConfig({ media: { autoProxy: false } });
+      expect(result.media).toEqual({ autoProxy: false });
+    });
+
+    it("falls back to the default when media.autoProxy is malformed", () => {
+      const result = normalizeConfig({
+        media: { autoProxy: "nope" } as unknown as never,
+      });
+      expect(result.media).toEqual({ autoProxy: true });
+    });
+
+    it("falls back to the default when media itself is malformed", () => {
+      const result = normalizeConfig({ media: "nope" as unknown as never });
+      expect(result.media).toEqual({ autoProxy: true });
     });
   });
 
@@ -118,6 +142,87 @@ describe("projectConfig", () => {
         const path = join(dir, PROJECT_CONFIG_FILENAME);
         const parsed = JSON.parse(readFileSync(path, "utf-8"));
         expect(parsed.registry).toBe(DEFAULT_PROJECT_CONFIG.registry);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("resolveAutoProxy", () => {
+    it("defaults to true when no config file exists and no flag is passed", () => {
+      const dir = tmp();
+      try {
+        expect(resolveAutoProxy(dir, undefined)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("returns false when the config sets media.autoProxy: false", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ media: { autoProxy: false } }),
+          "utf-8",
+        );
+        expect(resolveAutoProxy(dir, undefined)).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("defaults to true when the config file is partial and omits media", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ registry: "https://only-this.example.com" }),
+          "utf-8",
+        );
+        expect(resolveAutoProxy(dir, undefined)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("an explicit false flag wins over a config that enables it", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ media: { autoProxy: true } }),
+          "utf-8",
+        );
+        expect(resolveAutoProxy(dir, false)).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("an explicit true flag wins over a config that disables it", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ media: { autoProxy: false } }),
+          "utf-8",
+        );
+        expect(resolveAutoProxy(dir, true)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("falls back to the default when the on-disk media value is malformed", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ media: { autoProxy: "nope" } }),
+          "utf-8",
+        );
+        expect(resolveAutoProxy(dir, undefined)).toBe(true);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
