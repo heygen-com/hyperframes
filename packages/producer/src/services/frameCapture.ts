@@ -14,7 +14,6 @@ export {
   prepareCaptureSessionForReuse,
   type CaptureOptions,
   type CaptureResult,
-  type CaptureBufferResult,
   type CapturePerfSummary,
   type CaptureSession,
   type BeforeCaptureHook,

@@ -2,15 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
-import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
-import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
 import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
@@ -38,13 +35,6 @@ import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
-  activeBlockParams?: {
-    blockName: string;
-    blockTitle: string;
-    params: BlockParam[];
-    compositionPath: string;
-  } | null;
-  onCloseBlockParams?: () => void;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
@@ -64,8 +54,6 @@ export interface StudioRightPanelProps {
 // fallow-ignore-next-line complexity
 export function StudioRightPanel({
   designPanelActive,
-  activeBlockParams,
-  onCloseBlockParams,
   recordingState,
   recordingDuration,
   onToggleRecording,
@@ -103,10 +91,10 @@ export function StudioRightPanel({
   const {
     domEditSelection,
     domEditGroupSelections,
-    copiedAgentPrompt,
     clearDomSelection,
     handleUngroupSelection,
     handleGroupSelection,
+    handleAskAgent,
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
@@ -119,7 +107,6 @@ export function StudioRightPanel({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -157,7 +144,7 @@ export function StudioRightPanel({
   } = useFileManagerContext();
 
   // Discrete ops (toggle, reorder, add/delete, hotspot): persist immediately,
-  // no coalescing — each is a distinct user action that deserves its own undo entry.
+  // no coalescing. Each is a distinct user action that deserves its own undo entry.
   const onPersistSlideshow = useSlideshowPersist({
     sdkSession,
     activeCompPath,
@@ -228,7 +215,7 @@ export function StudioRightPanel({
       return;
     }
     // Flat inspector: Layers always renders full-height by itself (see the
-    // render branch below), so the two panes are mutually exclusive here —
+    // render branch below), so the two panes are mutually exclusive here;
     // otherwise both tabs could show "active" while only one actually shows.
     if (STUDIO_FLAT_INSPECTOR_ENABLED) {
       setExclusiveRightInspectorPane(pane);
@@ -346,7 +333,7 @@ export function StudioRightPanel({
         multiSelectedElements={domEditGroupSelections}
         onGroupSelection={handleGroupSelection}
         onHideAllSelected={handleHideAllSelected}
-        copiedAgentPrompt={copiedAgentPrompt}
+        onAskAgent={handleAskAgent}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
         onUngroup={handleUngroupSelection}
@@ -364,7 +351,6 @@ export function StudioRightPanel({
         onSetTextFieldStyle={handleDomTextFieldStyleCommit}
         onAddTextField={handleDomAddTextField}
         onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
         onImportAssets={handleImportFiles}
         fontAssets={fontAssets}
         onImportFonts={handleImportFonts}
@@ -412,21 +398,6 @@ export function StudioRightPanel({
       actionError={renderQueue.actionError}
       onDismissActionError={renderQueue.dismissActionError}
       onClearCompleted={renderQueue.clearCompleted}
-      onStartRender={async (format, quality, resolution, fps) => {
-        await waitForPendingDomEditSaves();
-        const composition =
-          activeCompPath && activeCompPath !== "index.html" ? activeCompPath : undefined;
-        await renderQueue.startRender({
-          fps,
-          quality,
-          format,
-          resolution,
-          composition,
-          // Render what the user is previewing: active variable overrides
-          // from the Variables panel ride along (undefined = defaults).
-          variables: usePreviewVariablesStore.getState().values ?? undefined,
-        });
-      }}
       compositionDimensions={compositionDimensions}
       isRendering={renderQueue.isRendering}
     />
@@ -468,7 +439,7 @@ export function StudioRightPanel({
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
                   <PanelTabButton
@@ -499,21 +470,13 @@ export function StudioRightPanel({
               />
               <PanelTabButton
                 label="Variables"
-                tooltip="Template variables — declare, preview with values"
+                tooltip="Template variables: declare, preview with values"
                 active={rightPanelTab === "variables"}
                 onClick={() => setRightPanelTab("variables")}
               />
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              {rightPanelTab === "block-params" && activeBlockParams ? (
-                <BlockParamsPanel
-                  blockName={activeBlockParams.blockName}
-                  blockTitle={activeBlockParams.blockTitle}
-                  params={activeBlockParams.params}
-                  compositionPath={activeBlockParams.compositionPath}
-                  onClose={onCloseBlockParams ?? (() => {})}
-                />
-              ) : rightPanelTab === "slideshow" ? (
+              {rightPanelTab === "slideshow" ? (
                 <SlideshowPanel
                   scenes={slideshowScenes}
                   onPersist={onPersistSlideshow}
@@ -561,7 +524,7 @@ export function StudioRightPanel({
                 // under a highlighted inspector tab.
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                   <p className="text-xs text-neutral-500">
-                    Inspector is unavailable right now — select the Design or Layers pane above, or
+                    Inspector is unavailable right now. Select the Design or Layers pane above, or
                     pause playback/recording to inspect elements.
                   </p>
                   <button

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
@@ -151,7 +150,11 @@ export function StyleSections({
   return (
     <>
       {isFlex && !hideFlex && (
-        <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
+        <Section
+          title="Flex"
+          disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+          defaultCollapsed
+        >
           <div className="space-y-4">
             <SegmentedControl
               trackName="Flex direction"
@@ -197,7 +200,11 @@ export function StyleSections({
       )}
 
       {hasVisualBackground && (
-        <Section title="Radius" icon={<Settings size={15} />} defaultCollapsed>
+        <Section
+          title="Radius"
+          disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+          defaultCollapsed
+        >
           <BorderRadiusEditor
             tl={radiusTL}
             tr={radiusTR}
@@ -222,7 +229,11 @@ export function StyleSections({
         </Section>
       )}
 
-      <Section title="Stroke" icon={<Square size={15} />} defaultCollapsed>
+      <Section
+        title="Stroke"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <MetricField
@@ -261,18 +272,7 @@ export function StyleSections({
                   await onSetStyle(property, value);
                 }
               }}
-              options={[
-                "none",
-                "solid",
-                "dashed",
-                "dotted",
-                "double",
-                "hidden",
-                "groove",
-                "ridge",
-                "inset",
-                "outset",
-              ]}
+              options={["none", "solid", "dashed", "dotted", "double"]}
             />
           </div>
           <ColorField
@@ -284,20 +284,24 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Effects" icon={<Zap size={15} />} defaultCollapsed>
+      <Section
+        title="Effects"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <SelectField
             label="Shadow"
             value={boxShadowPreset}
             disabled={styleEditingDisabled}
+            disableUnlistedValue
             onChange={(next) => {
-              if (next === "custom") return;
               onSetStyle(
                 "box-shadow",
                 buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
               );
             }}
-            options={["custom", "none", "soft", "lift", "glow"]}
+            options={["none", "soft", "lift", "glow"]}
           />
           <div className={RESPONSIVE_GRID}>
             <div className="grid min-w-0 gap-1.5">
@@ -339,7 +343,11 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Clip" icon={<Layers size={15} />} defaultCollapsed>
+      <Section
+        title="Clip"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <div className={RESPONSIVE_GRID}>
             <SelectField
@@ -347,14 +355,14 @@ export function StyleSections({
               value={styles.overflow || "visible"}
               disabled={styleEditingDisabled}
               onChange={(next) => onSetStyle("overflow", next)}
-              options={["visible", "hidden", "clip", "auto", "scroll"]}
+              options={["visible", "hidden", "clip"]}
             />
             <SelectField
               label="Mask"
               value={clipPathPreset}
               disabled={styleEditingDisabled}
+              disableUnlistedValue
               onChange={(next) => {
-                if (next === "custom") return;
                 onSetStyle(
                   "clip-path",
                   buildClipPathValue(
@@ -364,7 +372,7 @@ export function StyleSections({
                   ),
                 );
               }}
-              options={["custom", "none", "inset", "circle"]}
+              options={["none", "inset", "circle"]}
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
@@ -416,7 +424,11 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Transparency" icon={<Eye size={15} />} defaultCollapsed>
+      <Section
+        title="Transparency"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+        defaultCollapsed
+      >
         <div className="space-y-4">
           <SliderControl
             trackName="Opacity"
@@ -439,7 +451,10 @@ export function StyleSections({
         </div>
       </Section>
 
-      <Section title="Fill" icon={<Palette size={15} />}>
+      <Section
+        title="Fill"
+        disabledReason={styleEditingDisabled ? element.capabilities.reasonIfDisabled : undefined}
+      >
         <div className="space-y-4">
           <SegmentedControl
             trackName="Fill type"

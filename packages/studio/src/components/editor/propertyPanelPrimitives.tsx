@@ -21,11 +21,14 @@ export function CommitField({
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusedRef = useRef(false);
+  const dirtyRef = useRef(false);
 
   valueRef.current = value;
   draftRef.current = draft;
 
   useEffect(() => {
+    if (focusedRef.current && dirtyRef.current) return;
     setDraft(value);
   }, [value]);
 
@@ -40,6 +43,7 @@ export function CommitField({
       if (!nextDraft) return;
       e.preventDefault();
       e.stopPropagation();
+      dirtyRef.current = true;
       setDraft(nextDraft);
       scheduleCommitRef.current(nextDraft);
     };
@@ -74,11 +78,21 @@ export function CommitField({
       type="text"
       value={draft}
       disabled={disabled}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
       onChange={(e) => {
+        dirtyRef.current = true;
         setDraft(e.target.value);
         if (liveCommit) scheduleCommit(e.target.value);
       }}
-      onBlur={() => commitDraft(draft)}
+      onBlur={() => {
+        const wasDirty = dirtyRef.current;
+        focusedRef.current = false;
+        dirtyRef.current = false;
+        if (wasDirty) commitDraft(draft);
+        else setDraft(valueRef.current);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           (e.target as HTMLInputElement).blur();
@@ -88,6 +102,7 @@ export function CommitField({
         const nextDraft = adjustNumericToken(draft, e.key === "ArrowUp" ? 1 : -1, e);
         if (!nextDraft) return;
         e.preventDefault();
+        dirtyRef.current = true;
         setDraft(nextDraft);
         scheduleCommit(nextDraft);
       }}
@@ -332,17 +347,20 @@ export function SelectField({
   label,
   value,
   disabled,
+  disableUnlistedValue,
   options,
   onChange,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  disableUnlistedValue?: boolean;
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
-  const renderedOptions = value && !options.includes(value) ? [value, ...options] : options;
+  const hasUnlistedValue = Boolean(value && !options.includes(value));
+  const renderedOptions = hasUnlistedValue ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
       <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
@@ -356,7 +374,11 @@ export function SelectField({
         className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
       >
         {renderedOptions.map((option) => (
-          <option key={option} value={option}>
+          <option
+            key={option}
+            value={option}
+            disabled={disableUnlistedValue && hasUnlistedValue && option === value}
+          >
             {option}
           </option>
         ))}
@@ -367,15 +389,15 @@ export function SelectField({
 
 export function Section({
   title,
-  icon: _icon,
   children,
   accessory,
+  disabledReason,
   defaultCollapsed = false,
 }: {
   title: string;
-  icon: ReactNode;
   children: ReactNode;
   accessory?: ReactNode;
+  disabledReason?: string;
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -416,7 +438,19 @@ export function Section({
           </button>
           {accessory && <div className="flex flex-shrink-0 items-center">{accessory}</div>}
         </div>
-        {!collapsed && <div className="px-4 pb-3">{children}</div>}
+        {!collapsed && (
+          <div className="px-4 pb-3">
+            {disabledReason && (
+              <p
+                data-disabled-reason
+                className="mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400"
+              >
+                {disabledReason}
+              </p>
+            )}
+            {children}
+          </div>
+        )}
       </section>
     </DesignPanelInputProvider>
   );

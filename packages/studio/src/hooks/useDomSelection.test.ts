@@ -34,6 +34,7 @@ function renderHarness(initialProps: HarnessProps): {
       previewIframeRef: { current: null },
       timelineElements: [],
       setSelectedTimelineElementId: vi.fn(),
+      setTimelineSelection: vi.fn(),
       setRightCollapsed: vi.fn(),
       setRightPanelTab: vi.fn(),
       previewIframe: null,

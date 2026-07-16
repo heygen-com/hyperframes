@@ -1,4 +1,4 @@
-import { useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -12,6 +12,7 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 
 export interface StudioHeaderProps {
+  storyboardAvailable: boolean;
   captureFrameHref: string;
   captureFrameFilename: string;
   handleCaptureFrameClick: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -19,8 +20,9 @@ export interface StudioHeaderProps {
   capturing?: boolean;
   inspectorButtonActive: boolean;
   inspectorPanelActive: boolean;
-  onExport?: () => void;
 }
+
+const TERMINAL_RENDER_STATUS_MS = 5000;
 
 function HyperframesLogo() {
   // Full logo from logo-dark.svg (263×79): heygen label + gradient mark + hyperframes wordmark.
@@ -147,13 +149,17 @@ const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
   { mode: "storyboard", label: "Storyboard" },
   { mode: "timeline", label: "Preview" },
 ];
+const STORYBOARD_UNAVAILABLE_TITLE =
+  "No storyboard yet, add a STORYBOARD.md at the project root to use this view.";
 
 /** Segmented control switching the main stage between storyboard and preview. */
-function ViewModeToggle() {
+function ViewModeToggle({ storyboardAvailable }: { storyboardAvailable: boolean }) {
   const { viewMode, setViewMode } = useViewMode();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const isModeAvailable = (mode: StudioViewMode) => mode !== "storyboard" || storyboardAvailable;
 
   const selectMode = (mode: StudioViewMode) => {
+    if (!isModeAvailable(mode)) return;
     if (mode === viewMode) return;
     trackStudioEvent("view_mode_toggle", { mode });
     setViewMode(mode);
@@ -164,9 +170,14 @@ function ViewModeToggle() {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const dir = e.key === "ArrowLeft" ? -1 : 1;
-    const next = (index + dir + VIEW_MODE_OPTIONS.length) % VIEW_MODE_OPTIONS.length;
-    tabRefs.current[next]?.focus();
-    selectMode(VIEW_MODE_OPTIONS[next].mode);
+    for (let offset = 1; offset <= VIEW_MODE_OPTIONS.length; offset += 1) {
+      const next = (index + dir * offset + VIEW_MODE_OPTIONS.length) % VIEW_MODE_OPTIONS.length;
+      const nextMode = VIEW_MODE_OPTIONS[next].mode;
+      if (!isModeAvailable(nextMode)) continue;
+      tabRefs.current[next]?.focus();
+      selectMode(nextMode);
+      return;
+    }
   };
 
   return (
@@ -177,7 +188,8 @@ function ViewModeToggle() {
     >
       {VIEW_MODE_OPTIONS.map(({ mode, label }, index) => {
         const active = viewMode === mode;
-        return (
+        const disabled = !isModeAvailable(mode);
+        const button = (
           <button
             key={mode}
             ref={(el) => {
@@ -186,7 +198,9 @@ function ViewModeToggle() {
             type="button"
             role="tab"
             aria-selected={active}
-            tabIndex={active ? 0 : -1}
+            aria-label={disabled ? STORYBOARD_UNAVAILABLE_TITLE : undefined}
+            disabled={disabled}
+            tabIndex={active && !disabled ? 0 : -1}
             onClick={() => selectMode(mode)}
             onKeyDown={(e) => handleKeyDown(e, index)}
             className={`rounded px-3 py-1 text-[11px] font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
@@ -196,6 +210,13 @@ function ViewModeToggle() {
             {label}
           </button>
         );
+        return disabled ? (
+          <Tooltip key={mode} label={STORYBOARD_UNAVAILABLE_TITLE} side="bottom">
+            {button}
+          </Tooltip>
+        ) : (
+          button
+        );
       })}
     </div>
   );
@@ -203,6 +224,7 @@ function ViewModeToggle() {
 
 // fallow-ignore-next-line complexity
 export function StudioHeader({
+  storyboardAvailable,
   captureFrameHref,
   captureFrameFilename,
   handleCaptureFrameClick,
@@ -210,11 +232,48 @@ export function StudioHeader({
   capturing,
   inspectorButtonActive,
   inspectorPanelActive,
-  onExport,
 }: StudioHeaderProps) {
-  const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
+  const { projectId, editHistory, handleUndo, handleRedo, renderQueue, startRender } =
+    useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
+  const activeRenderIdRef = useRef<string | null>(null);
+  const terminalStatusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [terminalStatus, setTerminalStatus] = useState<"complete" | "failed" | null>(null);
+
+  useEffect(() => {
+    const activeJob = renderQueue.jobs.find((job) => job.status === "rendering");
+    if (activeJob) {
+      activeRenderIdRef.current = activeJob.id;
+      clearTimeout(terminalStatusTimerRef.current);
+      setTerminalStatus(null);
+      return;
+    }
+
+    const activeRenderId = activeRenderIdRef.current;
+    if (!activeRenderId) return;
+    activeRenderIdRef.current = null;
+
+    const finishedJob = renderQueue.jobs.find((job) => job.id === activeRenderId);
+    if (finishedJob?.status !== "complete" && finishedJob?.status !== "failed") return;
+
+    setTerminalStatus(finishedJob.status);
+    clearTimeout(terminalStatusTimerRef.current);
+    terminalStatusTimerRef.current = setTimeout(
+      () => setTerminalStatus(null),
+      TERMINAL_RENDER_STATUS_MS,
+    );
+  }, [renderQueue.jobs]);
+
+  useEffect(() => () => clearTimeout(terminalStatusTimerRef.current), []);
+
+  const renderButtonLabel = isRendering
+    ? "Rendering…"
+    : terminalStatus === "complete"
+      ? "Render complete"
+      : terminalStatus === "failed"
+        ? "Render failed"
+        : "Export";
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
@@ -227,7 +286,7 @@ export function StudioHeader({
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
       {/* Center: storyboard / preview toggle */}
-      <ViewModeToggle />
+      <ViewModeToggle storyboardAvailable={storyboardAvailable} />
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <Tooltip
@@ -379,7 +438,11 @@ export function StudioHeader({
         </Tooltip>
         <Tooltip
           label={
-            isRendering ? "A render is already in progress" : "Render and export this composition"
+            isRendering
+              ? "A render is already in progress"
+              : terminalStatus
+                ? `${renderButtonLabel}. View renders`
+                : "Render and export this composition"
           }
           side="bottom"
         >
@@ -387,14 +450,14 @@ export function StudioHeader({
             type="button"
             disabled={isRendering}
             onClick={() => {
-              if (isRendering) return;
               setRightPanelTab("renders");
               setRightCollapsed(false);
-              onExport?.();
+              if (terminalStatus) return;
+              void startRender(undefined);
             }}
             className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isRendering ? "Rendering…" : "Export"}
+            {renderButtonLabel}
           </button>
         </Tooltip>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Plus, Type } from "../../icons/SystemIcons";
+import { Plus } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -414,7 +414,7 @@ export function TextSection({
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
-  /** Skip TextSection's own "Text" Section heading/wrapper — for callers (the
+  /** Skip TextSection's own "Text" Section heading/wrapper for callers (the
    *  flat inspector's multi-field fallback) that already render their own
    *  "Text" heading one level up, to avoid a doubled heading. Defaults to
    *  false so the legacy (non-flat) call site is unaffected. */
@@ -454,11 +454,7 @@ export function TextSection({
       />
     );
     if (hideOwnHeading) return content;
-    return (
-      <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
-        {content}
-      </Section>
-    );
+    return <Section title="Text">{content}</Section>;
   }
 
   const content = (
@@ -526,11 +522,7 @@ export function TextSection({
     </div>
   );
   if (hideOwnHeading) return content;
-  return (
-    <Section title="Text" icon={<Type size={15} />}>
-      {content}
-    </Section>
-  );
+  return <Section title="Text">{content}</Section>;
 }
 
 export { StyleSections } from "./propertyPanelStyleSections";

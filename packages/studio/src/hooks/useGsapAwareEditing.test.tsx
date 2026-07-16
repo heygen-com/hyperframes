@@ -79,6 +79,65 @@ function mountResizeHandler(animations: GsapAnimation[]) {
 }
 
 describe("useGsapAwareEditing anchored resize", () => {
+  it("scopes each move release to a distinct history transaction", async () => {
+    const element = document.createElement("div");
+    const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
+    const capturedKeys: Array<string | undefined> = [];
+    const commitMutation = vi.fn(
+      (_selection: DomEditSelection, _mutation: unknown, options: { coalesceKey?: string }) => {
+        capturedKeys.push(options.coalesceKey);
+        return Promise.resolve();
+      },
+    );
+    mocks.drag.mockImplementation(
+      async (
+        currentSelection: DomEditSelection,
+        _next: unknown,
+        _animations: unknown,
+        _iframe: unknown,
+        commit: (
+          selection: DomEditSelection,
+          mutation: unknown,
+          options: { label: string; softReload?: boolean; skipReload?: boolean },
+        ) => Promise<void>,
+      ) => {
+        await commit(currentSelection, { type: "prepare-move" }, { label: "Prepare move" });
+        await commit(currentSelection, { type: "move" }, { label: "Move layer", softReload: true });
+        return true;
+      },
+    );
+    let move!: (selection: DomEditSelection, next: { x: number; y: number }) => Promise<void>;
+    function Harness() {
+      move = useGsapAwareEditing({
+        domEditSelection: selection,
+        selectedGsapAnimations: [],
+        gsapCommitMutation: commitMutation,
+        previewIframeRef: { current: null },
+        showToast: vi.fn(),
+        bumpGsapCache: vi.fn(),
+        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+        trackGsapInteractionFailure: vi.fn(),
+        handleDomBoxSizeCommit: vi.fn(),
+        addGsapAnimation: vi.fn(),
+        convertToKeyframes: vi.fn(),
+        setArcPath: vi.fn(),
+        updateArcSegment: vi.fn(),
+      }).handleGsapAwarePathOffsetCommit;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    await act(() => move(selection, { x: 5, y: 0 }));
+    await act(() => move(selection, { x: 6, y: 0 }));
+
+    expect(capturedKeys).toHaveLength(4);
+    expect(capturedKeys[0]).toMatch(/^layer-move:\d+$/);
+    expect(capturedKeys[0]).toBe(capturedKeys[1]);
+    expect(capturedKeys[2]).toBe(capturedKeys[3]);
+    expect(capturedKeys[2]).not.toBe(capturedKeys[0]);
+    act(() => root.unmount());
+  });
+
   it("forwards the anchor offset to the DOM fallback when GSAP does not handle resize", async () => {
     mocks.resize.mockResolvedValue(false);
     const h = mountResizeHandler([]);

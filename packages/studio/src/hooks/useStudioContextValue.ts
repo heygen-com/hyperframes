@@ -20,18 +20,8 @@ interface StudioContextInput {
   editHistory: { canUndo: boolean; canRedo: boolean; undoLabel: string; redoLabel: string };
   handleUndo: StudioContextValue["handleUndo"];
   handleRedo: StudioContextValue["handleRedo"];
-  renderQueue: {
-    jobs: unknown[];
-    isRendering: boolean;
-    loadError: string | null;
-    actionError: string | null;
-    dismissActionError: () => void;
-    reloadRenders: () => void;
-    deleteRender: (id: string) => void;
-    cancelRender: (id: string) => void;
-    clearCompleted: () => void;
-    startRender: (options: unknown) => Promise<void>;
-  };
+  startRender: StudioContextValue["startRender"];
+  renderQueue: StudioContextValue["renderQueue"];
   compositionDimensions: { width: number; height: number } | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
@@ -56,6 +46,7 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     editHistory: input.editHistory,
     handleUndo: input.handleUndo,
     handleRedo: input.handleRedo,
+    startRender: input.startRender,
     renderQueue: input.renderQueue,
     compositionDimensions: input.compositionDimensions,
     waitForPendingDomEditSaves: input.waitForPendingDomEditSaves,

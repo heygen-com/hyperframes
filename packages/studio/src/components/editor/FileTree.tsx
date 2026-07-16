@@ -19,14 +19,25 @@ interface FileTreeProps {
   files: string[];
   activeFile: string | null;
   onSelectFile: (path: string) => void;
-  onCreateFile?: (path: string) => void;
-  onCreateFolder?: (path: string) => void;
+  onCreateFile?: (path: string) => FileOperation;
+  onCreateFolder?: (path: string) => FileOperation;
   onDeleteFile?: (path: string) => void;
-  onRenameFile?: (oldPath: string, newPath: string) => void;
+  onRenameFile?: (oldPath: string, newPath: string) => FileOperation;
   onDuplicateFile?: (path: string) => void;
   onMoveFile?: (oldPath: string, newPath: string) => void;
   onImportFiles?: (files: FileList, dir?: string) => void;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
+}
+
+export type FileOperation = void | string | null | Promise<void | string | null>;
+
+async function resolveFileOperation(operation: () => FileOperation): Promise<string | null> {
+  try {
+    const result = await operation();
+    return typeof result === "string" ? result : null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "File operation failed";
+  }
 }
 
 // ── Main FileTree Component ──
@@ -81,10 +92,11 @@ export const FileTree = memo(function FileTree({
       setInlineInput({
         parentPath,
         mode: "new-file",
-        onCommit: (name: string) => {
+        onCommit: async (name: string) => {
           const fullPath = parentPath ? `${parentPath}/${name}` : name;
-          onCreateFile?.(fullPath);
-          setInlineInput(null);
+          const error = await resolveFileOperation(() => onCreateFile?.(fullPath));
+          if (!error) setInlineInput(null);
+          return error;
         },
         onCancel: () => setInlineInput(null),
       });
@@ -99,10 +111,11 @@ export const FileTree = memo(function FileTree({
       setInlineInput({
         parentPath,
         mode: "new-folder",
-        onCommit: (name: string) => {
+        onCommit: async (name: string) => {
           const fullPath = parentPath ? `${parentPath}/${name}` : name;
-          onCreateFolder?.(fullPath);
-          setInlineInput(null);
+          const error = await resolveFileOperation(() => onCreateFolder?.(fullPath));
+          if (!error) setInlineInput(null);
+          return error;
         },
         onCancel: () => setInlineInput(null),
       });
@@ -121,12 +134,14 @@ export const FileTree = memo(function FileTree({
         mode: "rename",
         originalPath: path,
         originalName: name,
-        onCommit: (newName: string) => {
+        onCommit: async (newName: string) => {
           if (newName !== name) {
             const newPath = parentPath ? `${parentPath}/${newName}` : newName;
-            onRenameFile?.(path, newPath);
+            const error = await resolveFileOperation(() => onRenameFile?.(path, newPath));
+            if (error) return error;
           }
           setInlineInput(null);
+          return null;
         },
         onCancel: () => setInlineInput(null),
       });
@@ -270,8 +285,8 @@ export const FileTree = memo(function FileTree({
               defaultValue=""
               depth={0}
               isFolder={inlineInput.mode === "new-folder"}
-              onCommit={(name) => inlineInput.onCommit?.(name)}
-              onCancel={() => inlineInput.onCancel?.()}
+              onCommit={(name) => inlineInput.onCommit(name)}
+              onCancel={() => inlineInput.onCancel()}
             />
           )}
         {children.map((child) =>

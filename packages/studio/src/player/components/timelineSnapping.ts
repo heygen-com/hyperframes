@@ -63,6 +63,27 @@ export function snapTimelineTime(
   return best ? { time: best.time, target: best } : { time, target: null };
 }
 
+export function snapKeyframeRetimeTime(input: {
+  enabled: boolean;
+  dropAbsTime: number;
+  elements: ReadonlyArray<Pick<TimelineElement, "start" | "duration" | "key" | "id">>;
+  playheadTime: number | null;
+  beatTimes: readonly number[];
+  pixelsPerSecond: number;
+}): number {
+  if (!input.enabled) return input.dropAbsTime;
+  const targets = collectTimelineSnapTargets({
+    elements: input.elements,
+    playheadTime: input.playheadTime,
+    beatTimes: input.beatTimes,
+  });
+  return snapTimelineTime(
+    input.dropAbsTime,
+    targets,
+    TIMELINE_SNAP_PX / Math.max(input.pixelsPerSecond, 1),
+  ).time;
+}
+
 /**
  * Snap a moved clip so whichever edge (start or end) is nearest a target lands
  * on it, keeping duration fixed. Mirrors the historical beat-snap semantics:

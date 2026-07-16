@@ -1,15 +1,20 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../utils/studioUiPreferences";
 
 const MIN_INSPECTOR_SPLIT_PERCENT = 20;
 const MAX_INSPECTOR_SPLIT_PERCENT = 75;
 
 export function useInspectorSplitResize() {
-  const [layersPanePercent, setLayersPanePercent] = useState(40);
+  const [layersPanePercent, setLayersPanePercent] = useState(() => {
+    const stored = readStudioUiPreferences().inspectorSplitPercent ?? 40;
+    return Math.min(MAX_INSPECTOR_SPLIT_PERCENT, Math.max(MIN_INSPECTOR_SPLIT_PERCENT, stored));
+  });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const splitDragRef = useRef<{
     startY: number;
     startPercent: number;
     height: number;
+    currentPercent: number;
   } | null>(null);
 
   const handleInspectorSplitResizeStart = useCallback(
@@ -21,6 +26,7 @@ export function useInspectorSplitResize() {
         startY: event.clientY,
         startPercent: layersPanePercent,
         height,
+        currentPercent: layersPanePercent,
       };
     },
     [layersPanePercent],
@@ -34,11 +40,15 @@ export function useInspectorSplitResize() {
       MAX_INSPECTOR_SPLIT_PERCENT,
       Math.max(MIN_INSPECTOR_SPLIT_PERCENT, drag.startPercent + deltaPercent),
     );
+    drag.currentPercent = next;
     setLayersPanePercent(next);
   }, []);
 
   const handleInspectorSplitResizeEnd = useCallback(() => {
+    const drag = splitDragRef.current;
+    if (!drag) return;
     splitDragRef.current = null;
+    writeStudioUiPreferences({ inspectorSplitPercent: drag.currentPercent });
   }, []);
 
   return {

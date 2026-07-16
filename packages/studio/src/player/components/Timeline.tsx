@@ -467,7 +467,6 @@ export const Timeline = memo(function Timeline({
           renderClipOverlay={renderClipOverlay}
           playheadRef={playheadRef}
           onDrillDown={onDrillDown}
-          onSelectElement={onSelectElement}
           setHoveredClip={setHoveredClip}
           setShowPopover={setShowPopover}
           setRangeSelection={setRangeSelection}

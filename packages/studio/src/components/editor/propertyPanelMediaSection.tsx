@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ClipboardList, Film, Music, Scissors } from "../../icons/SystemIcons";
+import { Check, ClipboardList, Scissors } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import {
   type BackgroundRemovalProgress,
@@ -129,7 +129,7 @@ export function MediaSection({
   };
 
   return (
-    <Section title={panelTitle} icon={isAudio ? <Music size={15} /> : <Film size={15} />}>
+    <Section title={panelTitle}>
       <div className="space-y-4">
         {srcAttr && (
           <div className="min-w-0">

@@ -10,11 +10,11 @@ import { NLEProvider, useNLEContext } from "./nle/NLEContext";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
-import { useDomEditActionsContext } from "../contexts/DomEditContext";
+import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
-import type { GestureRecordingState } from "./editor/GestureRecordControl";
+import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -55,9 +55,8 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
+  onExitCaptionMode: () => void;
 }
 
 // The CapCut-style shell: [left | preview | right] in a top row, with a
@@ -87,15 +86,39 @@ export function EditorShell({
   setCompositionLoading,
   shouldShowSelectedDomBounds,
   isGestureRecording,
-  recordingState,
-  onToggleRecording,
   blockPreview,
   gestureOverlay,
+  onExitCaptionMode,
 }: EditorShellProps) {
-  const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
+  const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef, showToast } =
     useStudioShellContext();
-  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } = useStudioPlaybackContext();
-  const { handleTimelineElementSelect } = useDomEditActionsContext();
+  const { refreshKey, captionEditMode, refreshPreviewDocumentVersion, timelineElements } =
+    useStudioPlaybackContext();
+  const {
+    handleTimelineElementSelect,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
+  } = useDomEditActionsContext();
+  const { domEditSelection, domEditGroupSelections } = useDomEditSelectionContext();
+  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+  const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
+  const reportTimelineSelectionNotFound = useCallback(() => {
+    showToast("The selected clip is not available in the preview yet.", "info");
+  }, [showToast]);
+
+  useTimelineSelectionPreviewSync({
+    selectedElementId,
+    selectedElementIds,
+    timelineElements,
+    domEditSelection,
+    domEditGroupSelections,
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
+    onSelectionNotFound: reportTimelineSelectionNotFound,
+  });
 
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
@@ -133,6 +156,7 @@ export function EditorShell({
             left={left}
             right={right}
             captionEditMode={captionEditMode}
+            onExitCaptionMode={onExitCaptionMode}
             onSelectTimelineElement={handleTimelineElementSelect}
             onPreviewBlockDrop={handlePreviewBlockDrop}
             timelineToolbar={timelineToolbar}
@@ -146,8 +170,6 @@ export function EditorShell({
                 shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                 blockPreview={blockPreview}
                 isGestureRecording={isGestureRecording}
-                recordingState={recordingState}
-                onToggleRecording={onToggleRecording}
                 gestureOverlay={gestureOverlay}
               />
             }
@@ -163,6 +185,7 @@ interface EditorShellBodyProps {
   left: ReactNode;
   right: ReactNode;
   captionEditMode: boolean;
+  onExitCaptionMode: () => void;
   previewOverlay: ReactNode;
   onSelectTimelineElement: (element: TimelineElement | null) => void;
   onPreviewBlockDrop?: (
@@ -181,6 +204,7 @@ function EditorShellBody({
   left,
   right,
   captionEditMode,
+  onExitCaptionMode,
   previewOverlay,
   onSelectTimelineElement,
   onPreviewBlockDrop,
@@ -238,10 +262,18 @@ function EditorShellBody({
         timelineFooter={
           captionEditMode ? (
             <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
-              <div className="flex items-center gap-1.5 px-2 py-0.5">
+              <div className="flex items-center justify-between gap-1.5 px-2 py-0.5">
                 <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
                   Captions
                 </span>
+                <button
+                  type="button"
+                  onClick={onExitCaptionMode}
+                  aria-label="Exit caption mode"
+                  className="text-[9px] font-medium text-neutral-500 transition-colors hover:text-neutral-200"
+                >
+                  Exit caption mode
+                </button>
               </div>
               <CaptionTimeline pixelsPerSecond={100} />
             </div>

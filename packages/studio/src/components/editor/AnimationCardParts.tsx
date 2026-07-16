@@ -1,4 +1,4 @@
-import { MetricField } from "./propertyPanelPrimitives";
+import { CommitField, MetricField } from "./propertyPanelPrimitives";
 import {
   PERCENT_PROPS,
   PROP_CONSTRAINTS,
@@ -117,15 +117,7 @@ export function PropertyRow({
             <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">
               {PROP_LABELS[prop] ?? prop}
             </span>
-            <input
-              type="text"
-              defaultValue={String(val)}
-              className="flex-1 bg-transparent text-[11px] text-neutral-200 outline-none"
-              onBlur={(e) => onCommit(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-            />
+            <CommitField value={String(val)} onCommit={onCommit} />
           </div>
           <RemoveButton onClick={onRemove} title={removeTitle} />
         </div>

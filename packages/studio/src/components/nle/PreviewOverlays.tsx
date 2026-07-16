@@ -23,15 +23,12 @@ import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "./zLaneGesture";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
-import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
 
 export interface PreviewOverlaysProps {
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -135,8 +132,6 @@ export function PreviewOverlays({
   shouldShowSelectedDomBounds,
   blockPreview,
   isGestureRecording,
-  recordingState,
-  onToggleRecording,
   gestureOverlay,
 }: PreviewOverlaysProps) {
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
@@ -266,8 +261,6 @@ export function PreviewOverlays({
         }}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}
-        recordingState={recordingState}
-        onToggleRecording={onToggleRecording}
         onMarqueeSelect={applyMarqueeSelection}
       />
       <SnapToolbar onSnapChange={setSnapPrefs} />

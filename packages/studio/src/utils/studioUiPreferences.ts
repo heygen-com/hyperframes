@@ -6,6 +6,9 @@ export interface StoredPreviewZoomState {
 
 export interface StudioUiPreferences {
   leftCollapsed?: boolean;
+  leftPanelWidth?: number;
+  rightPanelWidth?: number;
+  inspectorSplitPercent?: number;
   timelineVisible?: boolean;
   timelineHeight?: number;
   playbackRate?: number;
@@ -57,6 +60,18 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     const preferences: StudioUiPreferences = {};
     if (typeof parsed.leftCollapsed === "boolean") {
       preferences.leftCollapsed = parsed.leftCollapsed;
+    }
+    if (typeof parsed.leftPanelWidth === "number" && Number.isFinite(parsed.leftPanelWidth)) {
+      preferences.leftPanelWidth = parsed.leftPanelWidth;
+    }
+    if (typeof parsed.rightPanelWidth === "number" && Number.isFinite(parsed.rightPanelWidth)) {
+      preferences.rightPanelWidth = parsed.rightPanelWidth;
+    }
+    if (
+      typeof parsed.inspectorSplitPercent === "number" &&
+      Number.isFinite(parsed.inspectorSplitPercent)
+    ) {
+      preferences.inspectorSplitPercent = parsed.inspectorSplitPercent;
     }
     if (typeof parsed.timelineVisible === "boolean") {
       preferences.timelineVisible = parsed.timelineVisible;

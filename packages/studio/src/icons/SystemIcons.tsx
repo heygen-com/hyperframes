@@ -1,19 +1,15 @@
 import {
   Check as PhCheck,
-  Clock as PhClock,
   Eye as PhEye,
   FilmStrip,
   Stack,
-  ArrowsOutCardinal,
   MusicNote,
-  Palette as PhPalette,
   Minus as PhMinus,
   Plus as PhPlus,
   Square as PhSquare,
   SquareSplitVertical as PhSquareSplitVertical,
   TextT,
   X as PhX,
-  Lightning,
   CaretRight,
   ClipboardText,
   ArrowCounterClockwise,
@@ -36,20 +32,16 @@ const makeIcon = (Icon: PhosphorIcon) => {
 
 // Lucide name → Phosphor equivalent
 export const Check = makeIcon(PhCheck);
-export const Clock = makeIcon(PhClock);
 export const Eye = makeIcon(PhEye);
 export const Film = makeIcon(FilmStrip);
 export const Layers = makeIcon(Stack);
-export const Move = makeIcon(ArrowsOutCardinal);
 export const Music = makeIcon(MusicNote);
-export const Palette = makeIcon(PhPalette);
 export const Minus = makeIcon(PhMinus);
 export const Plus = makeIcon(PhPlus);
 export const Square = makeIcon(PhSquare);
 export const Compare = makeIcon(PhSquareSplitVertical);
 export const Type = makeIcon(TextT);
 export const X = makeIcon(PhX);
-export const Zap = makeIcon(Lightning);
 // Extra icons used in this project (not in lucide's default mapping above)
 export const ChevronDown = ({ title, style, ...props }: IconProps) => {
   const transform = style?.transform ? `${style.transform} rotate(90deg)` : "rotate(90deg)";

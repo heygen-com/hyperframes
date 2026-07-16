@@ -53,7 +53,6 @@ export interface TimelineLaneBaseProps {
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDrillDown?: (element: TimelineElement) => void;
-  onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
   setRangeSelection: (v: null) => void;
@@ -120,7 +119,6 @@ export function TimelineLanes({
   renderClipContent,
   renderClipOverlay,
   onDrillDown,
-  onSelectElement,
   setHoveredClip,
   setShowPopover,
   setRangeSelection,
@@ -285,6 +283,10 @@ export function TimelineLanes({
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
+                    const selectClip = () => {
+                      usePlayerStore.getState().clearSelectedElementIds();
+                      setSelectedElementId(elementKey);
+                    };
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT
                     // fold in the map index, or a splice/reorder remounts every clip
@@ -434,15 +436,9 @@ export function TimelineLanes({
                               }
                               return;
                             }
-                            // Plain click single-selects: drop any marquee multi-selection.
-                            // Only a click on the PRIMARY selection toggles it off — a click
-                            // on a marquee-selected clip narrows the selection to that clip.
-                            const hadMultiSelection = selectedElementIds.size > 0;
-                            usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement =
-                              selectedElementId === elementKey && !hadMultiSelection ? null : el;
-                            setSelectedElementId(nextElement ? elementKey : null);
-                            onSelectElement?.(nextElement);
+                            // Plain click always selects this clip and drops any marquee
+                            // multi-selection, narrowing it to the clicked clip.
+                            selectClip();
                           }
                         }
                         onDoubleClick={(e) => {
@@ -473,6 +469,7 @@ export function TimelineLanes({
                             }
                             elementId={elementKey}
                             selectedKeyframes={selectedKeyframes}
+                            onSelectClip={selectClip}
                             onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
                             onShiftClickKeyframe={onShiftClickKeyframe}
                             onContextMenuKeyframe={onContextMenuKeyframe}

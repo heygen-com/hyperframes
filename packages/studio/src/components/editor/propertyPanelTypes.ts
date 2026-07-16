@@ -28,13 +28,13 @@ export interface PropertyPanelProps {
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;
   onHideAllSelected?: () => void;
-  copiedAgentPrompt: boolean;
+  onAskAgent?: () => void;
   onClearSelection: () => void;
   onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   /** Commits several data-* attributes on the SAME element in ONE atomic
-   *  persist call — e.g. a pinned timing range's start+duration together, so
+   *  persist call, e.g. a pinned timing range's start+duration together, so
    *  a selection change or a partial failure mid-commit can't misdirect one
    *  of the two writes or leave them half-applied. Falls back to sequential
    *  `onSetAttribute` calls where omitted. */
@@ -64,7 +64,6 @@ export interface PropertyPanelProps {
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
-  onAskAgent: () => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];

@@ -213,6 +213,7 @@ export function GradientField({
 }) {
   const track = useTrackDesignInput();
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const [selectedStopIndex, setSelectedStopIndex] = useState<number | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
 
   const commit = (next: GradientModel) => onCommit(serializeGradient(next));
@@ -256,13 +257,31 @@ export function GradientField({
             if (disabled) return;
             const rect = previewRef.current?.getBoundingClientRect();
             if (!rect || rect.width <= 0) return;
-            addStop(((event.clientX - rect.left) / rect.width) * 100);
+            const position = ((event.clientX - rect.left) / rect.width) * 100;
+            const hitStopIndex = parsed.stops.findIndex(
+              (stop) => (Math.abs(stop.position - position) / 100) * rect.width <= 8,
+            );
+            if (hitStopIndex >= 0) {
+              setSelectedStopIndex(hitStopIndex);
+              return;
+            }
+            addStop(position);
           }}
         >
           {parsed.stops.map((stop, index) => (
-            <div
+            <button
               key={`stop-preview-${index}`}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              type="button"
+              disabled={disabled}
+              aria-label={`Select stop ${index + 1}`}
+              aria-pressed={selectedStopIndex === index}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedStopIndex(index);
+              }}
+              className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] ${
+                selectedStopIndex === index ? "ring-2 ring-panel-accent" : ""
+              }`}
               style={{
                 left: `calc(${stop.position}% - 8px)`,
                 backgroundColor: stop.color,

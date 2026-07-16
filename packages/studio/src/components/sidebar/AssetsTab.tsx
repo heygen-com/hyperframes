@@ -161,9 +161,12 @@ export const AssetsTab = memo(function AssetsTab({
   }, []);
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
+  const projectMediaAssets = useMemo(
+    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+    [assets],
+  );
   const mediaAssets = useMemo(() => {
-    const media = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
-    const all = filterByUsage(media, usedPaths, usageFilter);
+    const all = filterByUsage(projectMediaAssets, usedPaths, usageFilter);
     if (!searchQuery) return all;
     const q = searchQuery.toLowerCase();
     return all.filter((a) => {
@@ -179,7 +182,7 @@ export const AssetsTab = memo(function AssetsTab({
       const rec = manifest.get(a);
       return rec?.description?.toLowerCase().includes(q);
     });
-  }, [assets, searchQuery, manifest, usageFilter, usedPaths]);
+  }, [projectMediaAssets, searchQuery, manifest, usageFilter, usedPaths]);
   const categorized = useMemo(() => {
     const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
@@ -202,12 +205,8 @@ export const AssetsTab = memo(function AssetsTab({
     return c;
   }, [mediaAssets, categorized]);
   const usageCounts = useMemo(
-    () =>
-      countUsage(
-        assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
-        usedPaths,
-      ),
-    [assets, usedPaths],
+    () => countUsage(projectMediaAssets, usedPaths),
+    [projectMediaAssets, usedPaths],
   );
   const visibleCategories =
     activeFilter === "all"
@@ -278,7 +277,7 @@ export const AssetsTab = memo(function AssetsTab({
         )}
 
         {/* Search */}
-        {mediaAssets.length > 0 && (
+        {projectMediaAssets.length > 0 && (
           <div className="flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] mb-2">
             <svg width="12" height="12" viewBox="0 0 256 256" fill="none" className="flex-shrink-0">
               <circle
@@ -311,7 +310,7 @@ export const AssetsTab = memo(function AssetsTab({
         )}
 
         {/* Filter chips */}
-        {viewMode === "local" && mediaAssets.length > 0 && (
+        {viewMode === "local" && projectMediaAssets.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             <button
               onClick={() => setActiveFilter("all")}
@@ -370,7 +369,7 @@ export const AssetsTab = memo(function AssetsTab({
       <div className="flex-1 overflow-y-auto mt-1">
         {viewMode === "global" ? (
           <GlobalAssetsView searchQuery={searchQuery} />
-        ) : mediaAssets.length === 0 ? (
+        ) : projectMediaAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
               width="24"
@@ -390,6 +389,23 @@ export const AssetsTab = memo(function AssetsTab({
               <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
             </svg>
             <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
+          </div>
+        ) : mediaAssets.length === 0 || visibleCategories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
+            <p className="text-[11px] text-panel-text-3 text-center">
+              {searchQuery ? "No assets match your search" : "No assets match your filters"}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setActiveFilter("all");
+                setUsageFilter("all");
+              }}
+              className="text-[10px] font-medium text-panel-accent hover:text-panel-text-1 transition-colors"
+            >
+              {searchQuery ? "Clear search" : "Clear filters"}
+            </button>
           </div>
         ) : (
           visibleCategories.map((cat) => (

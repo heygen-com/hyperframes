@@ -21,7 +21,6 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 
 // ── Types ──
-
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -39,6 +38,7 @@ export interface UseDomEditSessionParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
   setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
+  setTimelineSelection: (ids: Iterable<string>, anchor?: string | null) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -72,7 +72,6 @@ export interface UseDomEditSessionParams {
 }
 
 // ── Hook ──
-
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -83,6 +82,7 @@ export function useDomEditSession({
   previewIframeRef,
   timelineElements,
   setSelectedTimelineElementId,
+  setTimelineSelection,
   setRightCollapsed,
   setRightPanelTab,
   showToast,
@@ -142,6 +142,7 @@ export function useDomEditSession({
     previewIframeRef,
     timelineElements,
     setSelectedTimelineElementId,
+    setTimelineSelection,
     setRightCollapsed,
     setRightPanelTab,
     previewIframe,

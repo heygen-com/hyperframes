@@ -4,8 +4,15 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
-import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
+import { CANVAS_NUDGE_SAFETY_TIMEOUT_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
+import {
+  buildEditHistoryEntry,
+  createEmptyEditHistory,
+  hashEditHistoryContent,
+  pushEditHistoryEntry,
+  undoEditHistory,
+} from "../../utils/editHistory";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -58,6 +65,33 @@ function dispatchArrowRight(): void {
   );
 }
 
+function releaseArrowRight(): void {
+  window.dispatchEvent(
+    new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true, cancelable: true }),
+  );
+}
+
+function mountSingleNudge(
+  onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"],
+): () => void {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const element = document.createElement("div");
+  element.id = "dot-a";
+  document.body.append(element);
+  act(() => {
+    root.render(
+      <Harness selection={makeSelection("Dot", element)} onPathOffsetCommit={onPathOffsetCommit} />,
+    );
+  });
+  return () => {
+    act(() => root.unmount());
+    host.remove();
+    element.remove();
+  };
+}
+
 describe("useDomEditNudge — selection cleanup keyed on stable identity", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,6 +100,137 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("commits one undo step when a held arrow key is released", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        for (let step = 0; step < 5; step += 1) dispatchArrowRight();
+        releaseArrowRight();
+      });
+
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit.mock.calls[0]?.[1]).toEqual({ x: 5 * CANVAS_NUDGE_STEP_PX, y: 0 });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("commits separate undo steps for separate key presses", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        dispatchArrowRight();
+        releaseArrowRight();
+      });
+      expect(commit).toHaveBeenCalledTimes(1);
+
+      act(() => vi.advanceTimersByTime(1_000));
+      act(() => {
+        dispatchArrowRight();
+        releaseArrowRight();
+      });
+
+      expect(commit).toHaveBeenCalledTimes(2);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("undoes a held-key burst to its pre-burst position", () => {
+    let history = createEmptyEditHistory();
+    let currentContent = "position:0";
+    let commitSequence = 0;
+    const commit = (_selection: DomEditSelection, next: { x: number; y: number }) => {
+      const sequence = ++commitSequence;
+      const coalesceKey = `layer-move:${sequence}`;
+      const preparedContent = `position:prepared:${sequence}`;
+      const finalContent = `position:${next.x}`;
+      const entries = [
+        buildEditHistoryEntry({
+          id: `prepare-${sequence}`,
+          projectId: "project-1",
+          label: "Move layer",
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+          now: sequence * 100,
+          files: { "index.html": { before: currentContent, after: preparedContent } },
+        }),
+        buildEditHistoryEntry({
+          id: `move-${sequence}`,
+          projectId: "project-1",
+          label: "Move layer",
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+          now: sequence * 100 + 1,
+          files: { "index.html": { before: preparedContent, after: finalContent } },
+        }),
+      ];
+      for (const entry of entries) history = pushEditHistoryEntry(history, entry);
+      currentContent = finalContent;
+    };
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => {
+        for (let step = 0; step < 5; step += 1) dispatchArrowRight();
+        releaseArrowRight();
+      });
+      expect(history.undo).toHaveLength(1);
+      expect(history.undo[0]?.files["index.html"]?.before).toBe("position:0");
+      expect(history.undo[0]?.files["index.html"]?.after).toBe("position:5");
+
+      const undo = undoEditHistory(
+        history,
+        { "index.html": hashEditHistoryContent(currentContent) },
+        1_000,
+      );
+      expect(undo.ok).toBe(true);
+      expect(undo.filesToWrite).toEqual({ "index.html": "position:0" });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("uses the safety timeout only when keyup is missed", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => dispatchArrowRight());
+      act(() => vi.advanceTimersByTime(CANVAS_NUDGE_SAFETY_TIMEOUT_MS - 1));
+      expect(commit).not.toHaveBeenCalled();
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(commit).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("commits an armed nudge burst exactly once when the window blurs", () => {
+    const commit = vi.fn();
+    const cleanup = mountSingleNudge(commit);
+
+    try {
+      act(() => dispatchArrowRight());
+      expect(commit).not.toHaveBeenCalled();
+
+      act(() => window.dispatchEvent(new Event("blur")));
+      act(() => {
+        releaseArrowRight();
+        vi.advanceTimersByTime(CANVAS_NUDGE_SAFETY_TIMEOUT_MS);
+      });
+
+      expect(commit).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+    }
   });
 
   it("keeps a nudge burst alive when the parent hands down a new selection object for the same element", () => {
@@ -108,9 +273,7 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     });
     expect(commit).not.toHaveBeenCalled();
 
-    act(() => {
-      vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
-    });
+    act(() => releaseArrowRight());
 
     // One combined commit for both presses, not two separate (premature) ones.
     expect(commit).toHaveBeenCalledTimes(1);

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import type { LeftSidebarHandle, SidebarTab } from "./components/sidebar/LeftSidebar";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
+import { useStoryboardGate } from "./hooks/useStoryboardGate";
 import { usePlayerStore, type TimelineElement } from "./player";
 import { StudioOverlays } from "./components/StudioOverlays";
 import { SaveQueuePausedBanner } from "./components/SaveQueuePausedBanner";
@@ -33,6 +34,7 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
+import { useStartRender } from "./hooks/useStartRender";
 import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
@@ -69,7 +71,7 @@ type CanvasRect = { left: number; top: number; width: number; height: number };
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
-  const viewModeValue = useViewModeState();
+  const viewModeValue = useViewModeState(initialUrlStateRef.current.viewMode);
   useEffect(() => {
     if (resolving || waitingForServer) return;
     if (hasFiredSessionStart()) return;
@@ -91,11 +93,17 @@ export function StudioApp() {
   activeCompPathRef.current = activeCompPath;
   const leftSidebarRef = useRef<LeftSidebarHandle>(null);
   const renderQueue = useRenderQueue(projectId);
+  const { storyboard, storyboardAvailable } = useStoryboardGate(
+    projectId,
+    viewModeValue.viewMode,
+    viewModeValue.setViewMode,
+  );
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
   const captionSync = useCaptionSync(projectId);
   const timelineElements = usePlayerStore((s) => s.elements);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
+  const setTimelineSelection = usePlayerStore((s) => s.setSelection);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
@@ -159,6 +167,12 @@ export function StudioApp() {
     reloadPreview: () => setRefreshKey((k) => k + 1),
     pendingTimelineEditPathRef,
   });
+  const startRender = useStartRender({
+    enqueueRender: renderQueue.enqueueRender,
+    isRendering: renderQueue.isRendering,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
+    showToast,
+  });
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
@@ -203,13 +217,7 @@ export function StudioApp() {
       }),
     [timelineEditing],
   );
-  const {
-    activeBlockParams,
-    setActiveBlockParams,
-    handleAddBlock,
-    handleTimelineBlockDrop,
-    handlePreviewBlockDrop,
-  } = useBlockHandlers({
+  const { handleAddBlock, handleTimelineBlockDrop, handlePreviewBlockDrop } = useBlockHandlers({
     projectId,
     blockCtxDeps: {
       activeCompPath,
@@ -222,8 +230,6 @@ export function StudioApp() {
       showToast,
     },
     previewIframeRef,
-    setRightCollapsed: panelLayout.setRightCollapsed,
-    setRightPanelTab: panelLayout.setRightPanelTab,
   });
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
@@ -290,6 +296,7 @@ export function StudioApp() {
     previewIframeRef,
     timelineElements,
     setSelectedTimelineElementId,
+    setTimelineSelection,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
     showToast,
@@ -331,7 +338,7 @@ export function StudioApp() {
     domEditSession.domEditSelection,
     domEditSession.domEditGroupSelections,
   );
-  useCaptionDetection({
+  const exitCaptionMode = useCaptionDetection({
     projectId,
     activeCompPath,
     compIdToSrc,
@@ -424,6 +431,8 @@ export function StudioApp() {
     previewIframeRef,
     rightPanelTab: panelLayout.rightPanelTab,
     rightCollapsed: panelLayout.rightCollapsed,
+    viewMode: viewModeValue.viewMode,
+    setViewMode: viewModeValue.setViewMode,
     activeCompPathHydrated,
     domEditSelection: domEditSession.domEditSelection,
     buildDomSelectionFromTarget: domEditSession.buildDomSelectionFromTarget,
@@ -446,6 +455,7 @@ export function StudioApp() {
     editHistory,
     handleUndo: appHotkeys.handleUndo,
     handleRedo: appHotkeys.handleRedo,
+    startRender,
     renderQueue,
     compositionDimensions,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
@@ -478,6 +488,7 @@ export function StudioApp() {
                   onDrop={dragOverlay.onDrop}
                 >
                   <StudioHeader
+                    storyboardAvailable={storyboardAvailable}
                     captureFrameHref={frameCapture.captureFrameHref}
                     captureFrameFilename={frameCapture.captureFrameFilename}
                     handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
@@ -485,12 +496,6 @@ export function StudioApp() {
                     capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
-                    onExport={() => {
-                      void (async () => {
-                        await previewPersistence.waitForPendingDomEditSaves();
-                        await renderQueue.startRender(undefined);
-                      })();
-                    }}
                   />
                   {previewPersistence.domEditSaveQueuePaused && (
                     <SaveQueuePausedBanner
@@ -500,12 +505,14 @@ export function StudioApp() {
                   )}
                   {viewModeValue.viewMode === "storyboard" && (
                     <StoryboardView
+                      {...storyboard}
                       projectId={projectId}
                       onSelectComposition={handleSelectComposition}
                     />
                   )}
                   <EditorShell
                     hidden={viewModeValue.viewMode === "storyboard"}
+                    onExitCaptionMode={exitCaptionMode}
                     left={
                       <StudioLeftSidebar
                         leftSidebarRef={leftSidebarRef}
@@ -523,11 +530,6 @@ export function StudioApp() {
                       panelLayout.rightCollapsed ? null : (
                         <StudioRightPanel
                           designPanelActive={designPanelActive}
-                          activeBlockParams={activeBlockParams}
-                          onCloseBlockParams={() => {
-                            setActiveBlockParams(null);
-                            panelLayout.setRightPanelTab("design");
-                          }}
                           recordingState={gestureState}
                           recordingDuration={gestureRecording.recordingDuration}
                           onToggleRecording={recordingToggle}
@@ -560,8 +562,6 @@ export function StudioApp() {
                     setCompositionLoading={setCompositionLoading}
                     shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                     isGestureRecording={gestureState === "recording"}
-                    recordingState={gestureState}
-                    onToggleRecording={recordingToggle}
                     blockPreview={blockPreview}
                     gestureOverlay={
                       gestureState === "recording" && previewIframe ? (

@@ -33,6 +33,7 @@ interface TimelineClipDiamondsProps {
   currentPercentage: number;
   elementId: string;
   selectedKeyframes: Set<string>;
+  onSelectClip?: () => void;
   onClickKeyframe?: (percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
@@ -76,13 +77,13 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   currentPercentage,
   elementId,
   selectedKeyframes,
+  onSelectClip,
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
   onMoveKeyframe,
   suppressClickRef,
 }: TimelineClipDiamondsProps) {
-  // Hooks must run before the early return below.
   const dragRef = useRef<DragState | null>(null);
   // Visual-only preview of the dragged diamond's clip-% — no runtime/GSAP hold
   // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
@@ -104,8 +105,6 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
     });
   };
 
-  if (clipWidthPx < 20) return null;
-
   // When the beat strip occupies the top band, shrink the diamonds and center
   // them in the remaining bottom region so they don't collide with it.
   const diamondSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_RATIO));
@@ -119,7 +118,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const sortedClipPcts = sorted.map((k) => k.percentage);
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
-  const canDrag = isSelected && !!onMoveKeyframe;
+  const canDrag = !!onMoveKeyframe;
 
   return (
     <div
@@ -177,6 +176,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           if (e.button !== 0) return;
           e.stopPropagation();
           if (canDrag) {
+            if (!isSelected) onSelectClip?.();
             e.currentTarget.setPointerCapture?.(e.pointerId);
             dragRef.current = {
               kfKey,

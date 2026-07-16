@@ -118,9 +118,7 @@ function flatSection(children: ReactElement) {
 function classicSection(children: ReactElement) {
   return (
     <DesignPanelInputProvider ui="classic">
-      <Section title="Style" icon={null}>
-        {children}
-      </Section>
+      <Section title="Style">{children}</Section>
     </DesignPanelInputProvider>
   );
 }
@@ -479,7 +477,7 @@ describe("classic PropertyPanel input coverage", () => {
       act(() => blurInput(input));
     }
 
-    // Header + footer chrome — the classic siblings of the flat header/footer.
+    // Header + footer chrome, the classic siblings of the flat header/footer.
     // (Copy is skipped: its handler reaches for the clipboard, unavailable here.
     // The visibility toggle is store-gated on a live selection this unit mock does
     // not model; Clear selection already exercises the header section.)
@@ -531,7 +529,7 @@ describe("flat PropertyPanel input coverage", () => {
           onSetManualOffset: vi.fn(),
           onSetManualSize: vi.fn(),
           onSetManualRotation: vi.fn(),
-          // Header/footer controls render only when their callbacks are wired —
+          // Header/footer controls render only when their callbacks are wired.
           // supply them so the coverage guard exercises the header + footer sections.
           selectedElementId: "el-1",
           selectedElementHidden: false,
@@ -554,7 +552,7 @@ describe("flat PropertyPanel input coverage", () => {
       act(() => changeInput(input, String(200 + index)));
       act(() => blurInput(input));
     }
-    // Header (Clear selection) and footer (ask + record) controls — exercises the
+    // Header (Clear selection) and footer (ask + record) controls exercise the
     // "header" and "footer" sections. The visibility toggle is intentionally omitted:
     // it renders only when the dispatcher forwards a live selection handle, which this
     // unit-level mock does not model. Clear selection already covers the header section.

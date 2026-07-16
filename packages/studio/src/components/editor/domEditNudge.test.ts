@@ -3,6 +3,7 @@ import {
   CANVAS_NUDGE_SHIFT_STEP_PX,
   CANVAS_NUDGE_STEP_PX,
   canCanvasNudgeTargets,
+  isCanvasNudgeKey,
   resolveCanvasNudgeDelta,
 } from "./domEditNudge";
 
@@ -60,6 +61,16 @@ describe("resolveCanvasNudgeDelta", () => {
   it("ignores non-arrow keys", () => {
     expect(resolveCanvasNudgeDelta(mockKeyboardEvent("Escape"))).toBeNull();
     expect(resolveCanvasNudgeDelta(mockKeyboardEvent("a"))).toBeNull();
+  });
+});
+
+describe("isCanvasNudgeKey", () => {
+  it("recognizes only arrow keys as nudge transaction keys", () => {
+    expect(isCanvasNudgeKey("ArrowLeft")).toBe(true);
+    expect(isCanvasNudgeKey("ArrowRight")).toBe(true);
+    expect(isCanvasNudgeKey("ArrowUp")).toBe(true);
+    expect(isCanvasNudgeKey("ArrowDown")).toBe(true);
+    expect(isCanvasNudgeKey("Shift")).toBe(false);
   });
 });
 

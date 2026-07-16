@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { act, createElement, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../../player";
+import type { DomEditSelection } from "./domEditing";
 import {
+  PropertyPanel,
   buildInsetClipPathSides,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
@@ -13,6 +19,186 @@ import {
   setCssFilterFunctionPx,
 } from "./PropertyPanel";
 import { isSelectedElementHidden } from "./propertyPanelHelpers";
+import { StyleSections } from "./propertyPanelStyleSections";
+
+vi.mock("../../contexts/StudioContext", () => ({
+  useStudioShellContext: () => ({ showToast: () => undefined }),
+}));
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+function makeSelection(
+  capabilityOverrides: Partial<DomEditSelection["capabilities"]>,
+): DomEditSelection {
+  return {
+    element: document.createElement("div"),
+    id: "selected",
+    selector: "#selected",
+    selectorIndex: 0,
+    label: "Selected element",
+    tagName: "div",
+    sourceFile: "index.html",
+    compositionPath: "index.html",
+    isCompositionHost: false,
+    isInsideLockedComposition: false,
+    boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+    textContent: null,
+    dataAttributes: {},
+    inlineStyles: {},
+    computedStyles: {},
+    textFields: [],
+    capabilities: {
+      canSelect: true,
+      canEditStyles: true,
+      canCrop: true,
+      canMove: true,
+      canResize: true,
+      canApplyManualOffset: true,
+      canApplyManualSize: true,
+      canApplyManualRotation: true,
+      ...capabilityOverrides,
+    },
+  };
+}
+
+function renderInDocument(node: ReactNode): {
+  host: HTMLDivElement;
+  unmount: () => void;
+} {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(node);
+  });
+  return {
+    host,
+    unmount: () => {
+      act(() => root.unmount());
+      host.remove();
+    },
+  };
+}
+
+function renderPropertyPanel(element: DomEditSelection) {
+  return renderInDocument(
+    createElement(PropertyPanel, {
+      projectId: "project",
+      projectDir: null,
+      assets: [],
+      element,
+      onClearSelection: vi.fn(),
+      onSetStyle: vi.fn(),
+      onSetAttribute: vi.fn(),
+      onSetAttributeLive: vi.fn(),
+      onSetHtmlAttribute: vi.fn(),
+      onSetManualOffset: vi.fn(),
+      onSetManualSize: vi.fn(),
+      onSetManualRotation: vi.fn(),
+      onSetText: vi.fn(),
+      onSetTextFieldStyle: vi.fn(),
+      onAddTextField: vi.fn(),
+      onRemoveTextField: vi.fn(),
+    }),
+  );
+}
+
+function renderStyleSections(element: DomEditSelection) {
+  return renderInDocument(
+    createElement(StyleSections, {
+      projectId: "project",
+      element,
+      styles: {},
+      assets: [],
+      onSetStyle: vi.fn(),
+    }),
+  );
+}
+
+describe("PropertyPanel disabled control reasons", () => {
+  it("renders the capability reason on a disabled Layout section", () => {
+    const reason = "This element belongs to a locked composition.";
+    const panel = renderPropertyPanel(
+      makeSelection({
+        canEditStyles: false,
+        canApplyManualOffset: false,
+        canApplyManualSize: false,
+        canApplyManualRotation: false,
+        reasonIfDisabled: reason,
+      }),
+    );
+
+    const layout = panel.host.querySelector('[data-panel-section="layout"]');
+    expect(layout?.querySelector("[data-disabled-reason]")?.textContent).toBe(reason);
+    panel.unmount();
+  });
+
+  it("renders no disabled reason note for an enabled selection", () => {
+    const panel = renderPropertyPanel(makeSelection({}));
+
+    expect(panel.host.querySelector('[data-panel-section="layout"] [data-disabled-reason]')).toBe(
+      null,
+    );
+    panel.unmount();
+  });
+
+  it("renders no empty disabled reason chrome when no reason is available", () => {
+    const panel = renderPropertyPanel(
+      makeSelection({
+        canEditStyles: false,
+        canApplyManualOffset: false,
+        canApplyManualSize: false,
+        canApplyManualRotation: false,
+      }),
+    );
+
+    expect(panel.host.querySelector('[data-panel-section="layout"] [data-disabled-reason]')).toBe(
+      null,
+    );
+    panel.unmount();
+  });
+
+  it("renders the capability reason on a disabled Fill section", () => {
+    const reason = "This element belongs to a locked composition.";
+    const panel = renderStyleSections(
+      makeSelection({
+        canEditStyles: false,
+        reasonIfDisabled: reason,
+      }),
+    );
+
+    const fill = panel.host.querySelector('[data-panel-section="fill"]');
+    expect(fill?.querySelector("[data-disabled-reason]")?.textContent).toBe(reason);
+    panel.unmount();
+  });
+
+  it("renders no stale disabled reason note on an enabled Fill section", () => {
+    const panel = renderStyleSections(
+      makeSelection({
+        canEditStyles: true,
+        reasonIfDisabled: "This reason is not relevant while style editing is enabled.",
+      }),
+    );
+
+    expect(panel.host.querySelector('[data-panel-section="fill"] [data-disabled-reason]')).toBe(
+      null,
+    );
+    panel.unmount();
+  });
+
+  it("renders no empty disabled reason chrome on Fill when no reason is available", () => {
+    const panel = renderStyleSections(
+      makeSelection({
+        canEditStyles: false,
+      }),
+    );
+
+    expect(panel.host.querySelector('[data-panel-section="fill"] [data-disabled-reason]')).toBe(
+      null,
+    );
+    panel.unmount();
+  });
+});
 
 describe("PropertyPanel style helpers", () => {
   it("normalizes bounded pixel values without accepting incompatible units", () => {

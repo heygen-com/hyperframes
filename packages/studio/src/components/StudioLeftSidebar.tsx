@@ -42,7 +42,7 @@ export function StudioLeftSidebar({
     handlePanelResizeMove,
     handlePanelResizeEnd,
   } = usePanelLayoutContext();
-  const { projectId, renderQueue, waitForPendingDomEditSaves } = useStudioShellContext();
+  const { projectId, renderQueue, startRender } = useStudioShellContext();
   const {
     compositions,
     assets,
@@ -62,11 +62,10 @@ export function StudioLeftSidebar({
 
   const handleRenderComposition = useCallback(
     async (comp: string) => {
-      await waitForPendingDomEditSaves();
       const { format, quality, fps } = getPersistedRenderSettings();
-      await renderQueue.startRender({ composition: comp, format, quality, fps });
+      await startRender(comp, { format, quality, fps });
     },
-    [renderQueue, waitForPendingDomEditSaves],
+    [startRender],
   );
 
   if (leftCollapsed) {
@@ -170,8 +169,7 @@ export function StudioLeftSidebar({
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
           e.preventDefault();
           const delta = e.key === "ArrowLeft" ? -16 : 16;
-          const maxLeft = Math.floor(window.innerWidth * 0.5);
-          setLeftWidth(Math.max(160, Math.min(maxLeft, leftWidth + delta)));
+          setLeftWidth(leftWidth + delta);
         }}
       >
         {/* Expanded hit zone: 8px wide, centered on the 3px seam */}

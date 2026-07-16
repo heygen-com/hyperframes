@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
 import { generateId } from "../../utils/generateId";
 
@@ -40,6 +39,12 @@ export interface StartRenderOptions {
    * `hyperframes render --variables` uses.
    */
   variables?: Record<string, unknown>;
+}
+
+export interface EnqueueRenderOptions extends StartRenderOptions {
+  fps: number;
+  quality: "draft" | "standard" | "high";
+  format: "mp4" | "webm" | "mov";
 }
 
 // "Hide" (formerly "Clear") is a view operation, not a delete: hidden ids are
@@ -131,26 +136,16 @@ export function useRenderQueue(projectId: string | null) {
     loadRenders();
   }, [loadRenders]);
 
-  // Start a render and track progress via SSE
+  // Enqueue a render and track progress via SSE
   // Pre-existing branchy fetch/poll flow — the variables passthrough added one branch.
-  const startRender = useCallback(
+  const enqueueRender = useCallback(
     // fallow-ignore-next-line complexity
-    async (opts: StartRenderOptions = {}) => {
+    async (opts: EnqueueRenderOptions) => {
       if (!projectId) return;
 
-      const fps = opts.fps ?? 30;
-      const quality = opts.quality ?? "standard";
-      const format = opts.format ?? "mp4";
+      const { fps, quality, format } = opts;
       const resolution = opts.resolution;
       const composition = opts.composition;
-
-      trackStudioRenderStart({
-        fps,
-        quality,
-        format,
-        resolution,
-        composition,
-      });
 
       const startTime = Date.now();
       // "auto" / undefined means "render at the composition's authored size".
@@ -170,7 +165,7 @@ export function useRenderQueue(projectId: string | null) {
         format,
         // So the server-emitted render_complete/render_error is attributed to
         // this browser user (same id studio_* events use), making the render
-        // funnel joinable. Matches studio_render_start fired just above.
+        // funnel joinable. Matches studio_render_start from the shared start action.
         telemetryDistinctId: getAnonymousId(),
       };
       if (resolution && resolution !== "auto") body.resolution = resolution;
@@ -269,8 +264,6 @@ export function useRenderQueue(projectId: string | null) {
         );
         activeJobRef.current = null;
       };
-
-      return jobId;
     },
     [projectId, closeActiveEventSource],
   );
@@ -365,7 +358,7 @@ export function useRenderQueue(projectId: string | null) {
       deleteRender,
       cancelRender,
       clearCompleted,
-      startRender: startRender as (options: unknown) => Promise<void>,
+      enqueueRender,
     }),
     [
       jobs,
@@ -377,7 +370,7 @@ export function useRenderQueue(projectId: string | null) {
       deleteRender,
       cancelRender,
       clearCompleted,
-      startRender,
+      enqueueRender,
     ],
   );
 }

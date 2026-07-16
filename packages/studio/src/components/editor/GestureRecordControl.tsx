@@ -1,6 +1,6 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
-export type GestureRecordingState = "idle" | "recording" | "preview";
+type GestureRecordingState = "idle" | "recording" | "preview";
 
 interface GestureRecordIconProps {
   recording: boolean;
@@ -53,52 +53,5 @@ export function GestureRecordPanelButton({
           : "Record gesture (R) -- move pointer to capture motion"}
       </button>
     </div>
-  );
-}
-
-interface GestureRecordBadgeProps {
-  rect: { left: number; top: number; width: number; height: number };
-  recordingState?: GestureRecordingState;
-  onToggleRecording: () => void;
-}
-
-export function GestureRecordBadge({
-  rect,
-  recordingState,
-  onToggleRecording,
-}: GestureRecordBadgeProps) {
-  const recording = recordingState === "recording";
-  const label = recording ? "Stop gesture recording (R)" : "Record gesture (R)";
-
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={`pointer-events-auto absolute z-20 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors ${
-        recording
-          ? "border-red-400/60 bg-red-500 text-white animate-pulse"
-          : "border-studio-accent/60 bg-neutral-950 text-studio-accent hover:bg-neutral-900"
-      }`}
-      style={{
-        left: Math.max(0, rect.left + rect.width + 8),
-        top: Math.max(0, rect.top - 4),
-      }}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggleRecording();
-      }}
-    >
-      <GestureRecordIcon recording={recording} />
-    </button>
   );
 }

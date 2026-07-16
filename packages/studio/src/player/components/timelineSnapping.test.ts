@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TIMELINE_SNAP_PX,
   collectTimelineSnapTargets,
+  snapKeyframeRetimeTime,
   snapMoveToTargets,
   snapTimelineTime,
 } from "./timelineSnapping";
@@ -76,6 +77,24 @@ describe("snapTimelineTime", () => {
 
   it("returns input unchanged when nothing is within threshold", () => {
     expect(snapTimelineTime(6, targets, 0.1)).toEqual({ time: 6, target: null });
+  });
+});
+
+describe("snapKeyframeRetimeTime", () => {
+  const input = {
+    dropAbsTime: 4.06,
+    elements: [],
+    playheadTime: null,
+    beatTimes: [4],
+    pixelsPerSecond: 100,
+  };
+
+  it("snaps a keyframe retime drop to a beat when timeline snapping is enabled", () => {
+    expect(snapKeyframeRetimeTime({ ...input, enabled: true })).toBe(4);
+  });
+
+  it("passes the keyframe retime drop through when timeline snapping is disabled", () => {
+    expect(snapKeyframeRetimeTime({ ...input, enabled: false })).toBe(4.06);
   });
 });
 

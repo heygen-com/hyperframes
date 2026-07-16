@@ -1,6 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { isHfColorGradingActive } from "@hyperframes/core/color-grading";
-import { Compare, Palette, RotateCcw } from "../../icons/SystemIcons";
+import { Compare, RotateCcw } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import { ColorGradingControls } from "./propertyPanelColorGradingControls";
 import { Section } from "./propertyPanelPrimitives";
@@ -178,7 +178,6 @@ export function ColorGradingSection({
   return (
     <Section
       title="Color grading"
-      icon={<Palette size={15} />}
       accessory={
         <div className="flex min-w-0 items-center gap-1.5">
           <HoldBeforeButton

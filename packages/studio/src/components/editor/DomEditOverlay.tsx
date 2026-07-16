@@ -20,7 +20,6 @@ import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
-import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
@@ -83,8 +82,6 @@ interface DomEditOverlayProps {
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;
   gridVisible?: boolean;
   gridSpacing?: number;
-  recordingState?: GestureRecordingState;
-  onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
   /**
    * Delete the selected canvas element.

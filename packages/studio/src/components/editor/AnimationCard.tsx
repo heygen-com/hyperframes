@@ -1,9 +1,8 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
+import { SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
-import { MetricField, SelectField } from "./propertyPanelPrimitives";
-import { controlPointsForGsapEase } from "./studioMotion";
+import { MetricField } from "./propertyPanelPrimitives";
 import { EASE_LABELS, METHOD_LABELS, METHOD_TOOLTIPS, PROP_LABELS } from "./gsapAnimationConstants";
 import { buildTweenSummary } from "./gsapAnimationHelpers";
 import { EaseCurveSection } from "./EaseCurveSection";
@@ -272,33 +271,14 @@ export const AnimationCard = memo(function AnimationCard({
                     }
                   />
                 ) : (
-                  <>
-                    <SelectField
-                      label="Speed"
-                      value={easeName.startsWith("custom(") ? "custom" : easeName}
-                      options={[...SUPPORTED_EASES, "custom"]}
-                      onChange={(next) => {
-                        const easeKey = animation.keyframes ? "easeEach" : "ease";
-                        if (next === "custom") {
-                          const points = controlPointsForGsapEase(
-                            easeName !== "none" ? easeName : "power2.out",
-                          );
-                          const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
-                          onUpdateMeta(animation.id, { [easeKey]: `custom(${path})` });
-                        } else {
-                          onUpdateMeta(animation.id, { [easeKey]: next });
-                        }
-                      }}
-                    />
-                    <EaseCurveSection
-                      ease={easeName}
-                      duration={animation.duration}
-                      onCustomEaseCommit={(customEase) => {
-                        const easeKey = animation.keyframes ? "easeEach" : "ease";
-                        onUpdateMeta(animation.id, { [easeKey]: customEase });
-                      }}
-                    />
-                  </>
+                  <EaseCurveSection
+                    ease={easeName}
+                    duration={animation.duration}
+                    onCustomEaseCommit={(customEase) => {
+                      const easeKey = animation.keyframes ? "easeEach" : "ease";
+                      onUpdateMeta(animation.id, { [easeKey]: customEase });
+                    }}
+                  />
                 )}
               </>
             )}

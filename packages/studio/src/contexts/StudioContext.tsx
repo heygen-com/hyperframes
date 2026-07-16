@@ -1,6 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { TimelineElement } from "../player";
 import type { CompositionDimensions } from "../components/renders/RenderQueue";
+import type { RenderJob } from "../components/renders/useRenderQueue";
+import type { StartRenderAction } from "../hooks/useStartRender";
 
 export interface StudioShellValue {
   projectId: string;
@@ -16,8 +18,9 @@ export interface StudioShellValue {
   };
   handleUndo: () => Promise<void>;
   handleRedo: () => Promise<void>;
+  startRender: StartRenderAction;
   renderQueue: {
-    jobs: unknown[];
+    jobs: RenderJob[];
     isRendering: boolean;
     loadError: string | null;
     actionError: string | null;
@@ -26,7 +29,6 @@ export interface StudioShellValue {
     deleteRender: (jobId: string) => void;
     cancelRender: (jobId: string) => void;
     clearCompleted: () => void;
-    startRender: (options: unknown) => Promise<void>;
   };
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;
@@ -93,6 +95,7 @@ export function StudioShellProvider({
     editHistory,
     handleUndo,
     handleRedo,
+    startRender,
     renderQueue,
     compositionDimensions,
     waitForPendingDomEditSaves,
@@ -109,6 +112,7 @@ export function StudioShellProvider({
       editHistory,
       handleUndo,
       handleRedo,
+      startRender,
       renderQueue,
       compositionDimensions,
       waitForPendingDomEditSaves,
@@ -125,6 +129,7 @@ export function StudioShellProvider({
       previewIframeRef,
       handleUndo,
       handleRedo,
+      startRender,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
     ],

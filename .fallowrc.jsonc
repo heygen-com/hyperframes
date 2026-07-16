@@ -566,6 +566,12 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // AnimationCard.tsx / EaseCurveSection.tsx: pre-existing large components
+      // (360/276-line render functions) re-flagged by the easing-picker
+      // consolidation, which only removed a select from one and added a small
+      // select to the other. Splitting them is out of scope here.
+      "packages/studio/src/components/editor/AnimationCard.tsx",
+      "packages/studio/src/components/editor/EaseCurveSection.tsx",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited
@@ -696,9 +702,11 @@
       "packages/studio/src/captions/components/shared.tsx",
       "packages/studio/src/captions/hooks/useCaptionSync.ts",
       "packages/studio/src/components/AskAgentModal.tsx",
-      "packages/studio/src/components/editor/BlockParamsPanel.tsx",
       "packages/studio/src/components/editor/DomEditOverlay.tsx",
       "packages/studio/src/components/editor/FileTree.tsx",
+      // FileTreeIcons.tsx: FileIcon's HIGH complexity pre-dates U12; this change
+      // only tightens InlineInputState callback types and leaves FileIcon unchanged.
+      "packages/studio/src/components/editor/FileTreeIcons.tsx",
       "packages/studio/src/components/editor/FileTreeNodes.tsx",
       "packages/studio/src/components/editor/LayersPanel.tsx",
       "packages/studio/src/components/editor/MotionPathNode.tsx",
@@ -710,6 +718,9 @@
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
+      // AssetsTab.tsx: AssetsTab's HIGH complexity pre-dates U12; this change
+      // adds only ~16 lines for the no-matches state.
+      "packages/studio/src/components/sidebar/AssetsTab.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
