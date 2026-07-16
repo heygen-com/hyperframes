@@ -20,7 +20,7 @@ import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js"
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { scanProjectMediaCodecMap } from "@hyperframes/studio-server/media-codec-map";
-import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import { resolveProxy, waitForProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -116,9 +116,9 @@ export async function preResolveHostileMediaProxies(
 
   await Promise.all(
     hostilePathnames.map((pathname) =>
-      resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))).catch(
-        () => undefined,
-      ),
+      waitForProxy(
+        resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))),
+      ).catch(() => undefined),
     ),
   );
 }

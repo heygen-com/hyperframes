@@ -38,6 +38,7 @@ const STDERR_TAIL_MAX_CHARS = 4000;
 const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 const MAX_FAILURE_CACHE_ENTRIES = 128;
+export const DEFAULT_PROXY_WAIT_TIMEOUT_MS = 2 * 60 * 1000;
 
 export class ProxyTranscodeError extends Error {
   readonly exitCode: number | null;
@@ -71,6 +72,33 @@ export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
   constructor() {
     super("media proxy source must be inside the project", null, "");
     this.name = "ProxySourceOutsideProjectError";
+  }
+}
+
+export class ProxyWaitTimeoutError extends ProxyTranscodeError {
+  constructor(timeoutMs: number) {
+    super(`media proxy did not become ready within ${timeoutMs}ms`, null, "");
+    this.name = "ProxyWaitTimeoutError";
+  }
+}
+
+/** Bounds one caller's wait without cancelling the shared in-flight ffmpeg
+ * job. Other preview/publish callers still receive the completed cache entry. */
+export async function waitForProxy<T>(
+  promise: Promise<T>,
+  timeoutMs = DEFAULT_PROXY_WAIT_TIMEOUT_MS,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new ProxyWaitTimeoutError(timeoutMs)), timeoutMs);
+        timer.unref();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

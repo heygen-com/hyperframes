@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
   resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
+  waitForProxy: vi.fn(<T>(promise: Promise<T>) => promise),
   scanProjectMediaCodecMap: vi.fn<
     (
       ...args: unknown[]
@@ -68,6 +69,7 @@ vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
 }));
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
+  waitForProxy: mocks.waitForProxy,
 }));
 
 const PROJECT: ProjectDir = {

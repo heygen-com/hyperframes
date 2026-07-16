@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
       >
     >(),
     ProxyTranscodeError: FakeProxyTranscodeError,
+    waitForProxy: vi.fn(<T>(promise: Promise<T>) => promise),
   };
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
@@ -42,6 +43,7 @@ const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
+  waitForProxy: mocks.waitForProxy,
 }));
 
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
@@ -88,7 +90,7 @@ describe("bakeMediaProxies", () => {
       ["clip.mp4", Buffer.from("ORIGINAL_HEVC_BYTES", "utf-8")],
     ]);
 
-    await bakeMediaProxies(PROJECT_DIR, fileContents);
+    const manifest = await bakeMediaProxies(PROJECT_DIR, fileContents);
 
     // Original bytes untouched.
     expect(fileContents.get("clip.mp4")?.toString("utf-8")).toBe("ORIGINAL_HEVC_BYTES");
@@ -106,6 +108,7 @@ describe("bakeMediaProxies", () => {
     expect(html).not.toContain('src="clip.mp4"');
 
     expect(mocks.resolveProxy).toHaveBeenCalledWith(PROJECT_DIR, join(PROJECT_DIR, "clip.mp4"));
+    expect(manifest).toEqual({ proxied: ["/clip.mp4"], skippedAlpha: [], failed: [] });
   });
 
   it("never rewrites an <audio> sharing the hostile video's src; the original file stays for it", async () => {
@@ -130,29 +133,30 @@ describe("bakeMediaProxies", () => {
     expect(fileContents.get("clip.mp4")?.toString("utf-8")).toBe("ORIGINAL_HEVC_BYTES");
   });
 
-  it("skips an asset whose transcode fails, warns, and still leaves the archive buildable", async () => {
+  it("fails publish with an explicit manifest when a required opaque proxy cannot be built", async () => {
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: "video/mp4" },
     });
     mocks.resolveProxy.mockRejectedValue(new FakeProxyTranscodeError("ffmpeg exited with code 1"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-
     const fileContents = new Map<string, Buffer>([
       ["index.html", indexHtml(`<video src="clip.mp4" muted></video>`)],
       ["clip.mp4", Buffer.from("ORIGINAL_HEVC_BYTES", "utf-8")],
     ]);
 
-    await expect(bakeMediaProxies(PROJECT_DIR, fileContents)).resolves.toBeUndefined();
+    await expect(bakeMediaProxies(PROJECT_DIR, fileContents)).rejects.toMatchObject({
+      name: "ProxyBakeError",
+      manifest: {
+        proxied: [],
+        skippedAlpha: [],
+        failed: [{ path: "/clip.mp4", error: "ffmpeg exited with code 1" }],
+      },
+    });
 
     expect([...fileContents.keys()].some((k) => k.startsWith(`${PROXY_ARCHIVE_PREFIX}/`))).toBe(
       false,
     );
     expect(fileContents.get("index.html")?.toString("utf-8")).toContain('src="clip.mp4"');
     expect(fileContents.get("clip.mp4")?.toString("utf-8")).toBe("ORIGINAL_HEVC_BYTES");
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toContain("clip.mp4");
-
-    warnSpy.mockRestore();
   });
 
   it("bakes and rewrites a percent-encoded src through the same resolution path the scan uses", async () => {
@@ -201,7 +205,7 @@ describe("bakeMediaProxies", () => {
       ["clip.mov", Buffer.from("ORIGINAL_PRORES_4444_BYTES", "utf-8")],
     ]);
 
-    await bakeMediaProxies(PROJECT_DIR, fileContents);
+    const manifest = await bakeMediaProxies(PROJECT_DIR, fileContents);
 
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
     expect([...fileContents.keys()].some((k) => k.startsWith(`${PROXY_ARCHIVE_PREFIX}/`))).toBe(
@@ -210,6 +214,7 @@ describe("bakeMediaProxies", () => {
     expect(fileContents.get("index.html")?.toString("utf-8")).toContain('src="clip.mov"');
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]?.[0]).toContain("alpha");
+    expect(manifest).toEqual({ proxied: [], skippedAlpha: ["/clip.mov"], failed: [] });
 
     warnSpy.mockRestore();
   });

@@ -20,9 +20,9 @@
  * `cloud render` never calls this: it uses `createPublishArchive` directly,
  * which has no baking hook (R2 in the plan).
  *
- * A transcode failure for one asset is logged and skipped — it never fails
- * the publish, and that HTML's `<video src>` is left pointing at the
- * original (same behavior as if auto-proxying were off for that one asset).
+ * Alpha-bearing sources remain explicit skips because H.264 would destroy
+ * transparency. A failed opaque-hostile transcode aborts publish with a
+ * structured manifest rather than silently shipping an unplayable asset.
  */
 
 import { readFileSync } from "node:fs";
@@ -38,11 +38,36 @@ import {
   scanProjectMediaCodecMap,
   type HtmlSourceLike,
 } from "@hyperframes/studio-server/media-codec-map";
-import { ProxyTranscodeError, resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  ProxyTranscodeError,
+  resolveProxy,
+  waitForProxy,
+} from "@hyperframes/studio-server/proxy-transcoder";
 import { rewriteHtmlAttributes } from "./publishProject.js";
 
 /** Archive-path prefix for baked proxy files, mirroring `localizeExternalAssets`'s `_ext/`. */
 export const PROXY_ARCHIVE_PREFIX = "_proxy";
+
+export interface ProxyBakeManifest {
+  proxied: string[];
+  skippedAlpha: string[];
+  failed: Array<{ path: string; error: string }>;
+}
+
+class ProxyBakeError extends Error {
+  readonly manifest: ProxyBakeManifest;
+
+  constructor(manifest: ProxyBakeManifest) {
+    const summary = manifest.failed.map((entry) => `${entry.path}: ${entry.error}`).join("; ");
+    super(`Unable to bake required browser media proxies (${summary})`);
+    this.name = "ProxyBakeError";
+    this.manifest = manifest;
+  }
+}
+
+function emptyManifest(): ProxyBakeManifest {
+  return { proxied: [], skippedAlpha: [], failed: [] };
+}
 
 function isHtmlEntry(path: string): boolean {
   return path.endsWith(".html") || path.endsWith(".htm");
@@ -52,16 +77,17 @@ function isHtmlEntry(path: string): boolean {
  * Mutates `fileContents` in place: adds a `_proxy/<hash>.mp4` entry for every
  * browser-hostile local video asset referenced from the archive's HTML, and
  * rewrites those HTML entries' matching `<video src>` attributes to point at
- * the proxy. No-op for any asset whose transcode fails (console warning
- * only, entry left pointing at the original).
+ * the proxy. Returns a structured manifest; throws ProxyBakeError when any
+ * required opaque proxy cannot be prepared.
  */
 export async function bakeMediaProxies(
   projectDir: string,
   fileContents: Map<string, Buffer>,
-): Promise<void> {
+): Promise<ProxyBakeManifest> {
+  const manifest = emptyManifest();
   const absProjectDir = resolve(projectDir);
   const htmlEntries = [...fileContents.entries()].filter(([path]) => isHtmlEntry(path));
-  if (htmlEntries.length === 0) return;
+  if (htmlEntries.length === 0) return manifest;
 
   const htmlSources: HtmlSourceLike[] = htmlEntries.map(([entryPath, content]) => ({
     html: content.toString("utf-8"),
@@ -79,11 +105,12 @@ export async function bakeMediaProxies(
         `hyperframes publish: skipping proxy for "${pathname}" (source has an alpha channel; ` +
           "H.264 proxying would destroy the transparency, keeping the original)",
       );
+      manifest.skippedAlpha.push(pathname);
       continue;
     }
     hostilePathnames.push(pathname);
   }
-  if (hostilePathnames.length === 0) return;
+  if (hostilePathnames.length === 0) return manifest;
 
   // Absolute source path -> archive path of its baked proxy. Built by
   // resolving each map key back to an absolute path the same way
@@ -96,18 +123,20 @@ export async function bakeMediaProxies(
     hostilePathnames.map(async (pathname) => {
       const absoluteSourcePath = resolve(absProjectDir, pathname.replace(/^\/+/, ""));
       try {
-        const proxyPath = await resolveProxy(absProjectDir, absoluteSourcePath);
+        const proxyPath = await waitForProxy(resolveProxy(absProjectDir, absoluteSourcePath));
         const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;
         fileContents.set(archivePath, readFileSync(proxyPath));
         proxyByAbsolutePath.set(absoluteSourcePath, archivePath);
+        manifest.proxied.push(pathname);
       } catch (err) {
         const reason = err instanceof ProxyTranscodeError ? err.message : String(err);
-        console.warn(`hyperframes publish: skipping proxy for "${pathname}" (${reason})`);
+        manifest.failed.push({ path: pathname, error: reason });
       }
     }),
   );
 
-  if (proxyByAbsolutePath.size === 0) return;
+  if (manifest.failed.length > 0) throw new ProxyBakeError(manifest);
+  if (proxyByAbsolutePath.size === 0) return manifest;
 
   for (const [entryPath, content] of htmlEntries) {
     const { document } = parseHTML(content.toString("utf-8"));
@@ -134,4 +163,5 @@ export async function bakeMediaProxies(
     );
     if (modified) fileContents.set(entryPath, Buffer.from(document.toString(), "utf-8"));
   }
+  return manifest;
 }

@@ -86,6 +86,21 @@ async function loadModule(
 }
 
 describe("resolveProxy", () => {
+  it("bounds a caller wait without cancelling the shared transcode promise", async () => {
+    const { waitForProxy, ProxyWaitTimeoutError } = await loadModule(
+      () => createFakeProc(),
+      FFMPEG_PATH,
+    );
+    let finish!: (value: string) => void;
+    const shared = new Promise<string>((resolvePromise) => {
+      finish = resolvePromise;
+    });
+
+    await expect(waitForProxy(shared, 1)).rejects.toBeInstanceOf(ProxyWaitTimeoutError);
+    finish("eventual-proxy.mp4");
+    await expect(shared).resolves.toBe("eventual-proxy.mp4");
+  });
+
   it("transcodes once on a cache miss and caches via temp+rename", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
