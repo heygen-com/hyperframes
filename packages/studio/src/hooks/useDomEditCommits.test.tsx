@@ -9,9 +9,16 @@ import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { buildStrokeWidthStyleUpdates } from "../components/editor/propertyPanelHelpers";
 import { usePlayerStore } from "../player";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import {
+  buildEditHistoryEntry,
+  createEmptyEditHistory,
+  hashEditHistoryContent,
+  pushEditHistoryEntry,
+  undoEditHistory,
+} from "../utils/editHistory";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { useDomEditCommits } from "./useDomEditCommits";
+import { useDomEditCommits, type UseDomEditCommitsParams } from "./useDomEditCommits";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -26,10 +33,12 @@ interface PatchResponseBody {
   content?: string;
 }
 
+type RecordEditInput = Parameters<UseDomEditCommitsParams["editHistory"]["recordEdit"]>[0];
+
 interface RenderedDomEditCommits {
   hook: ReturnType<typeof useDomEditCommits>;
   showToast: ReturnType<typeof makeShowToast>;
-  recordEdit: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  recordEdit: ReturnType<typeof vi.fn<(entry: RecordEditInput) => Promise<void>>>;
   reloadPreview: ReturnType<typeof vi.fn>;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
   cleanup: () => void;
@@ -40,6 +49,7 @@ interface RenderDomEditCommitsOptions {
   queueDomEditSave?: <T>(save: () => Promise<T>) => Promise<T>;
   refreshDomEditSelectionFromPreview?: (selection: DomEditSelection) => void;
   writeProjectFile?: (path: string, content: string, expectedContent?: string) => Promise<void>;
+  onTrySdkPersist?: UseDomEditCommitsParams["onTrySdkPersist"];
 }
 
 type FetchHandler = (
@@ -135,6 +145,19 @@ function requestOperations(init: Parameters<typeof fetch>[1]): CapturedPatchOper
   });
 }
 
+function requestHfId(init: Parameters<typeof fetch>[1]): string {
+  const body: unknown = JSON.parse(String(init?.body));
+  if (typeof body !== "object" || body === null || !("target" in body)) {
+    throw new Error("Expected patch target");
+  }
+  const target = body.target;
+  if (typeof target !== "object" || target === null || !("hfId" in target)) {
+    throw new Error("Expected patch target hfId");
+  }
+  if (typeof target.hfId !== "string") throw new Error("Expected patch target hfId");
+  return target.hfId;
+}
+
 function stubPatchFetch(
   patchResponse: PatchResponseBody | Error,
   sourceContent = '<div data-hf-id="hf-card" style="color: red">Card</div>',
@@ -187,6 +210,37 @@ function createPreviewElement(
   const element = doc.querySelector('[data-hf-id="hf-card"]');
   if (!(element instanceof HTMLElement)) throw new Error("Expected HTML target element");
   return { iframe, element };
+}
+
+function createBatchPreviewSelections(): {
+  iframe: HTMLIFrameElement;
+  elements: HTMLElement[];
+  selections: DomEditSelection[];
+} {
+  const { iframe, element } = createPreviewElement(
+    '<div data-hf-id="hf-card" style="color: red">One</div>' +
+      '<div data-hf-id="hf-two" style="color: red">Two</div>' +
+      '<div data-hf-id="hf-three" style="color: red">Three</div>',
+  );
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error("Expected iframe contentDocument");
+  const second = doc.querySelector('[data-hf-id="hf-two"]');
+  const third = doc.querySelector('[data-hf-id="hf-three"]');
+  if (!(second instanceof HTMLElement) || !(third instanceof HTMLElement)) {
+    throw new Error("Expected batch target elements");
+  }
+  const elements = [element, second, third];
+  const targetIds = ["hf-card", "hf-two", "hf-three"];
+  const selections = elements.map((target, index) => {
+    const hfId = targetIds[index];
+    if (!hfId) throw new Error("Expected batch target id");
+    return createSelection(target, {
+      hfId,
+      selector: `[data-hf-id="${hfId}"]`,
+      label: `Card ${index + 1}`,
+    });
+  });
+  return { iframe, elements, selections };
 }
 
 function textField(input: {
@@ -251,7 +305,7 @@ function renderDomEditCommits(
 ) {
   const captured: { current: ReturnType<typeof useDomEditCommits> | null } = { current: null };
   const showToast = makeShowToast();
-  const recordEdit = vi.fn(async () => {});
+  const recordEdit = vi.fn(async (_entry: RecordEditInput) => {});
   const previewIframeRef: MutableRefObject<HTMLIFrameElement | null> = { current: iframe };
   const projectIdRef: MutableRefObject<string | null> = { current: "p1" };
   const domEditSaveTimestampRef: MutableRefObject<number> = { current: 0 };
@@ -277,6 +331,7 @@ function renderDomEditCommits(
       clearDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview,
       buildDomSelectionFromTarget: vi.fn(async () => null),
+      onTrySdkPersist: options.onTrySdkPersist,
     });
     return null;
   }
@@ -406,7 +461,7 @@ describe("useDomEditCommits z-index reorder persistence", () => {
 
   it("falls back to reloading when the server response omits matched[]", async () => {
     // Without a matched[] confirmation the persist can't be proven in sync with
-    // the live DOM — the skip-reload path must not engage.
+    // the live DOM, the skip-reload path must not engage.
     const original = '<div id="a" style="z-index: 1"></div>';
     const after = '<div id="a" style="z-index: 2"></div>';
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
@@ -851,14 +906,64 @@ function renderStyleCommitWithFetch(
   vi.stubGlobal("fetch", fetchMock);
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   const { iframe, element } = createPreviewElement();
-  const rendered = renderDomEditCommits(createSelection(element), iframe, options);
+  const selection = createSelection(element);
+  const rendered = renderDomEditCommits(selection, iframe, options);
   return {
     element,
+    selection,
     fetchMock,
     rendered,
     warnSpy,
     cleanup: () => {
       warnSpy.mockRestore();
+      rendered.cleanup();
+    },
+  };
+}
+
+function renderBatchStyleCommit(failedHfId?: string) {
+  const startedHfIds: string[] = [];
+  const startedOperations: CapturedPatchOperation[][] = [];
+  const saveQueue = createDomEditSaveQueue();
+  let sourceContent = "source:initial";
+  const fetchMock = vi.fn(
+    async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/")) {
+        return jsonResponse({ content: sourceContent });
+      }
+      if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+        const hfId = requestHfId(init);
+        startedHfIds.push(hfId);
+        startedOperations.push(requestOperations(init));
+        if (hfId === failedHfId) {
+          return jsonResponse({ ok: true, changed: false, matched: false });
+        }
+        sourceContent = `${sourceContent}|${hfId}:blue`;
+        return jsonResponse({ ok: true, changed: true, matched: true, content: sourceContent });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const { iframe, elements, selections } = createBatchPreviewSelections();
+  const primarySelection = selections[0];
+  if (!primarySelection) throw new Error("Expected primary batch selection");
+  const rendered = renderDomEditCommits(primarySelection, iframe, {
+    queueDomEditSave: saveQueue.enqueue,
+  });
+  return {
+    elements,
+    selections,
+    rendered,
+    startedHfIds,
+    startedOperations,
+    finalSourceContent: () => sourceContent,
+    cleanup: () => {
+      saveQueue.destroy();
       rendered.cleanup();
     },
   };
@@ -955,6 +1060,267 @@ async function expectRejectedTextStructureEdit(
   }
 }
 
+describe("useDomEditCommits batch style commit", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  it("persists three targets in selection order through the save queue", async () => {
+    const harness = renderBatchStyleCommit();
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(harness.selections, "color", "blue");
+      });
+
+      expect(harness.startedHfIds).toEqual(["hf-card", "hf-two", "hf-three"]);
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "color", value: "blue" })],
+        [expect.objectContaining({ property: "color", value: "blue" })],
+        [expect.objectContaining({ property: "color", value: "blue" })],
+      ]);
+      expect(harness.elements.map((element) => element.style.color)).toEqual([
+        "blue",
+        "blue",
+        "blue",
+      ]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("removes a shared inline style across every target", async () => {
+    const harness = renderBatchStyleCommit();
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(harness.selections, "color", null);
+      });
+
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "color", value: null })],
+        [expect.objectContaining({ property: "color", value: null })],
+        [expect.objectContaining({ property: "color", value: null })],
+      ]);
+      expect(harness.elements.map((element) => element.style.getPropertyValue("color"))).toEqual([
+        "",
+        "",
+        "",
+      ]);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("reverts and toasts only the unresolvable target while the others land", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const harness = renderBatchStyleCommit("hf-two");
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(harness.selections, "color", "blue");
+      });
+
+      expect(harness.startedHfIds).toEqual(["hf-card", "hf-two", "hf-three"]);
+      expect(harness.elements.map((element) => element.style.color)).toEqual([
+        "blue",
+        "red",
+        "blue",
+      ]);
+      expect(harness.rendered.showToast).toHaveBeenCalledTimes(1);
+      expect(harness.rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Couldn't save "Card 2": Couldn't find this element/),
+        "error",
+      );
+      expect(harness.rendered.recordEdit).toHaveBeenCalledTimes(2);
+      expect(harness.finalSourceContent()).toContain("hf-card:blue");
+      expect(harness.finalSourceContent()).toContain("hf-three:blue");
+      expect(harness.finalSourceContent()).not.toContain("hf-two:blue");
+    } finally {
+      warnSpy.mockRestore();
+      harness.cleanup();
+    }
+  });
+
+  it("coalesces every target into one undo entry", async () => {
+    const harness = renderBatchStyleCommit();
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(harness.selections, "color", "blue");
+      });
+
+      const records = harness.rendered.recordEdit.mock.calls.map(([entry]) => entry);
+      expect(records).toHaveLength(3);
+      expect(new Set(records.map((entry) => entry.coalesceKey)).size).toBe(1);
+      expect(records[0]?.coalesceKey).toMatch(/^batch-style:\d+$/);
+      expect(records.every((entry) => entry.coalesceMs === Number.POSITIVE_INFINITY)).toBe(true);
+
+      let history = createEmptyEditHistory();
+      records.forEach((entry, index) => {
+        history = pushEditHistoryEntry(
+          history,
+          buildEditHistoryEntry({
+            id: `batch-${index}`,
+            projectId: "p1",
+            label: entry.label,
+            kind: entry.kind,
+            coalesceKey: entry.coalesceKey,
+            coalesceMs: entry.coalesceMs,
+            now: index * 1_000_000,
+            files: entry.files,
+          }),
+        );
+      });
+      expect(history.undo).toHaveLength(1);
+      expect(history.undo[0]?.files["index.html"]).toMatchObject({
+        before: "source:initial",
+        after: harness.finalSourceContent(),
+      });
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("pairs batch stroke width per target and coalesces all planned updates", async () => {
+    const harness = renderBatchStyleCommit();
+    const [noneSelection, dashedSelection] = harness.selections;
+    const [noneElement, dashedElement] = harness.elements;
+    if (!noneSelection || !dashedSelection || !noneElement || !dashedElement) {
+      throw new Error("Expected two batch targets");
+    }
+    noneSelection.computedStyles["border-style"] = "none";
+    dashedSelection.computedStyles["border-style"] = "dashed";
+    noneElement.style.borderStyle = "none";
+    dashedElement.style.borderStyle = "dashed";
+
+    try {
+      await act(async () => {
+        await harness.rendered.hook.handleDomStyleBatchCommit(
+          [noneSelection, dashedSelection],
+          (selection) =>
+            buildStrokeWidthStyleUpdates("4px", selection.computedStyles["border-style"]),
+        );
+      });
+
+      expect(noneElement.style.borderWidth).toBe("4px");
+      expect(noneElement.style.borderStyle).toBe("solid");
+      expect(dashedElement.style.borderWidth).toBe("4px");
+      expect(dashedElement.style.borderStyle).toBe("dashed");
+      expect(harness.startedOperations).toEqual([
+        [expect.objectContaining({ property: "border-width", value: "4px" })],
+        [expect.objectContaining({ property: "border-style", value: "solid" })],
+        [expect.objectContaining({ property: "border-width", value: "4px" })],
+      ]);
+
+      const records = harness.rendered.recordEdit.mock.calls.map(([entry]) => entry);
+      expect(records).toHaveLength(3);
+      expect(new Set(records.map((entry) => entry.coalesceKey)).size).toBe(1);
+      let history = createEmptyEditHistory();
+      records.forEach((entry, index) => {
+        history = pushEditHistoryEntry(
+          history,
+          buildEditHistoryEntry({
+            id: `planned-batch-${index}`,
+            projectId: "p1",
+            label: entry.label,
+            kind: entry.kind,
+            coalesceKey: entry.coalesceKey,
+            coalesceMs: entry.coalesceMs,
+            now: index * 1_000_000,
+            files: entry.files,
+          }),
+        );
+      });
+      expect(history.undo).toHaveLength(1);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it("forwards the infinite coalesce window through the SDK persist path", async () => {
+    const capturedOptions: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = requestUrl(input);
+        if (url.includes("/api/projects/p1/files/")) {
+          return jsonResponse({ content: "source:initial" });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+    const { iframe, selections } = createBatchPreviewSelections();
+    const primarySelection = selections[0];
+    if (!primarySelection) throw new Error("Expected primary batch selection");
+    const rendered = renderDomEditCommits(primarySelection, iframe, {
+      onTrySdkPersist: async (_selection, _operations, _content, _path, options) => {
+        capturedOptions.push(options);
+        return { status: "committed", version: "test-version" };
+      },
+    });
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleBatchCommit(selections, "color", "blue");
+      });
+
+      expect(capturedOptions).toHaveLength(3);
+      expect(capturedOptions).toEqual([
+        expect.objectContaining({ coalesceMs: Number.POSITIVE_INFINITY }),
+        expect.objectContaining({ coalesceMs: Number.POSITIVE_INFINITY }),
+        expect.objectContaining({ coalesceMs: Number.POSITIVE_INFINITY }),
+      ]);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("does not let a stale failed batch target revert a newer single-target style", async () => {
+    const firstPatch = createDeferred<Response>();
+    let patchCount = 0;
+    const harness = renderStyleCommitWithFetch(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/projects/p1/files/")) {
+        return jsonResponse({
+          content: '<div data-hf-id="hf-card" style="color: red">Card</div>',
+        });
+      }
+      if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+        patchCount += 1;
+        if (patchCount === 1) return firstPatch.promise;
+        return jsonResponse({ ok: true, changed: true, matched: true, content: "" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    try {
+      const batchCommit = harness.rendered.hook.handleDomStyleBatchCommit(
+        [harness.selection],
+        "color",
+        "blue",
+      );
+      await flushAsyncWork();
+      expect(patchCount).toBe(1);
+
+      const singleCommit = harness.rendered.hook.handleDomStyleCommit("color", "green");
+      await flushAsyncWork();
+      expect(patchCount).toBe(2);
+      await singleCommit;
+
+      firstPatch.reject(new Error("stale batch request failed"));
+      await batchCommit;
+
+      expect(harness.element.style.color).toBe("green");
+    } finally {
+      harness.cleanup();
+    }
+  });
+});
+
 describe("useDomEditCommits style persist handling", () => {
   beforeEach(() => {
     ensureCssEscape();
@@ -1035,6 +1401,66 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
     } finally {
       cleanup();
+    }
+  });
+
+  it("removes an inline style live, persists null, and records the original HTML for undo", async () => {
+    const original = '<div data-hf-id="hf-card" style="color: red">Card</div>';
+    const patched = '<div data-hf-id="hf-card">Card</div>';
+    const fetchMock = stubPatchFetch(
+      { ok: true, changed: true, matched: true, content: patched },
+      original,
+    );
+    const { iframe, element } = createPreviewElement(original);
+    const selection = createSelection(element, {
+      computedStyles: { color: "red" },
+      inlineStyles: { color: "red" },
+    });
+    const rendered = renderDomEditCommits(selection, iframe);
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomStyleCommit("color", null);
+      });
+
+      expect(element.style.getPropertyValue("color")).toBe("");
+      const patchCall = fetchMock.mock.calls.find(([input]) =>
+        requestUrl(input).includes("/file-mutations/patch-element/"),
+      );
+      if (!patchCall) throw new Error("Missing patch request");
+      expect(requestOperations(patchCall[1])).toEqual([
+        {
+          type: "inline-style",
+          property: "color",
+          value: null,
+          childSelector: undefined,
+          childIndex: undefined,
+        },
+      ]);
+      expect(rendered.refreshDomEditSelectionFromPreview).toHaveBeenCalledWith(selection);
+      expect(rendered.recordEdit).toHaveBeenCalledWith({
+        label: "Edit layer style",
+        kind: "manual",
+        coalesceKey: undefined,
+        coalesceMs: undefined,
+        files: { "index.html": { before: original, after: patched } },
+      });
+      const recorded = rendered.recordEdit.mock.calls[0]?.[0];
+      if (!recorded) throw new Error("Missing reset history entry");
+      const history = pushEditHistoryEntry(
+        createEmptyEditHistory(),
+        buildEditHistoryEntry({
+          ...recorded,
+          projectId: "p1",
+          id: "reset-color",
+          now: 1,
+        }),
+      );
+      const undo = undoEditHistory(history, { "index.html": hashEditHistoryContent(patched) }, 2);
+      expect(undo.ok).toBe(true);
+      expect(undo.filesToWrite).toEqual({ "index.html": original });
+    } finally {
+      rendered.cleanup();
     }
   });
 
@@ -1368,7 +1794,7 @@ describe("useDomEditCommits style persist handling", () => {
 
       // The base patch already landed server-side before the font-face write
       // failed, so this is recorded as a completed edit (not reverted/re-toasted
-      // as a full failure) — only the font embellishment is reported as lost.
+      // as a full failure), only the font embellishment is reported as lost.
       expect(rendered.showToast).toHaveBeenCalledTimes(1);
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringContaining("Saved, but couldn't finish updating index.html"),

@@ -92,7 +92,7 @@ function renderHarness(props: HarnessProps) {
   };
 }
 
-describe("useDomSelection — Variables tab preservation", () => {
+describe("useDomSelection: Variables tab preservation", () => {
   it("does not yank the user off the Variables tab when selecting on canvas", () => {
     const setRightPanelTab = vi.fn();
     const el = document.createElement("div");
@@ -128,7 +128,7 @@ describe("useDomSelection — Variables tab preservation", () => {
   });
 });
 
-describe("useDomSelection — timeline-select race guard", () => {
+describe("useDomSelection: timeline-select race guard", () => {
   beforeEach(() => deferreds.clear());
   afterEach(() => deferreds.clear());
 
@@ -216,7 +216,7 @@ describe("useDomSelection - post-persist resync guard", () => {
   });
 });
 
-describe("useDomSelection — marquee multi-select survives the late async primary", () => {
+describe("useDomSelection: marquee multi-select survives the late async primary", () => {
   beforeEach(() => {
     deferreds.clear();
     const store = usePlayerStore.getState();
@@ -234,13 +234,14 @@ describe("useDomSelection — marquee multi-select survives the late async prima
     return { id, domId: id, tag: "div", start: 0, duration: 1, track: 0 };
   }
 
-  it("writes every canvas marquee member and its anchor to the store", () => {
-    const selections = ["a", "b"].map((id) => {
+  it("round-trips the seeded store selection through the preview group and store write-back", () => {
+    const store = usePlayerStore.getState();
+    store.setSelection(["b", "a"], "b");
+    const selections = Array.from(usePlayerStore.getState().selectedElementIds, (id) => {
       const element = document.createElement("div");
       element.id = id;
       return makeSelection(id.toUpperCase(), element);
     });
-    const store = usePlayerStore.getState();
     const harness = renderHarness({
       rightPanelTab: "design",
       setRightPanelTab: vi.fn(),
@@ -252,8 +253,8 @@ describe("useDomSelection — marquee multi-select survives the late async prima
 
     act(() => harness.current().applyMarqueeSelection(selections, false));
 
-    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["a", "b"]));
-    expect(usePlayerStore.getState().selectedElementId).toBe("a");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["b", "a"]));
+    expect(usePlayerStore.getState().selectedElementId).toBe("b");
     harness.cleanup();
   });
 

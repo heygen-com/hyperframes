@@ -13,6 +13,7 @@ export interface DomEditActionsValue extends Pick<
   | "applyDomSelection"
   | "clearDomSelection"
   | "handleDomStyleCommit"
+  | "handleDomStyleBatchCommit"
   | "handleDomAttributeCommit"
   | "handleDomAttributeLiveCommit"
   | "handleDomHtmlAttributeCommit"
@@ -136,6 +137,7 @@ export function DomEditProvider({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -223,6 +225,7 @@ export function DomEditProvider({
       applyDomSelection,
       clearDomSelection,
       handleDomStyleCommit,
+      handleDomStyleBatchCommit,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
       handleDomHtmlAttributeCommit,
@@ -291,6 +294,7 @@ export function DomEditProvider({
       applyDomSelection,
       clearDomSelection,
       handleDomStyleCommit,
+      handleDomStyleBatchCommit,
       handleDomAttributeCommit,
       handleDomAttributeLiveCommit,
       handleDomHtmlAttributeCommit,

@@ -480,6 +480,7 @@ export const Timeline = memo(function Timeline({
           keyframeCache={keyframeCache}
           selectedKeyframes={selectedKeyframes}
           currentTime={currentTime}
+          onSeek={onSeek}
           beatAnalysis={adjustedBeatAnalysis}
           onClickKeyframe={(el, pct) => {
             usePlayerStore.getState().clearSelectedKeyframes();

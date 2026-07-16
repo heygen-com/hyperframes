@@ -11,6 +11,11 @@ import {
 } from "./colorValue";
 import { resolveFloatingPanelPosition, type FloatingPosition } from "./floatingPanel";
 import { colorFromCss, FIELD, LABEL } from "./propertyPanelHelpers";
+import {
+  FieldLabel,
+  LIVE_PREVIEW_COMMIT_DELAY_MS,
+  useDebouncedCommit,
+} from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const COLOR_PICKER_SIZE = { width: 292, height: 386 };
@@ -29,7 +34,8 @@ function ColorSlider({
   background,
   thumbColor,
   disabled,
-  onCommit,
+  onPreview,
+  onInteractionEnd,
 }: {
   label: string;
   value: number;
@@ -40,21 +46,22 @@ function ColorSlider({
   background: string;
   thumbColor: string;
   disabled?: boolean;
-  onCommit: (nextValue: number) => void;
+  onPreview: (nextValue: number) => void;
+  onInteractionEnd: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const percent = ((value - min) / (max - min)) * 100;
 
-  const commitFromClientX = (clientX: number) => {
+  const previewFromClientX = (clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     const rawValue = min + ((clientX - rect.left) / rect.width) * (max - min);
     const stepped = Math.round(rawValue / step) * step;
-    onCommit(Math.max(min, Math.min(max, stepped)));
+    onPreview(Math.max(min, Math.min(max, stepped)));
   };
 
-  const commitKeyboardValue = (nextValue: number) => {
-    onCommit(Math.max(min, Math.min(max, nextValue)));
+  const previewKeyboardValue = (nextValue: number) => {
+    onPreview(Math.max(min, Math.min(max, nextValue)));
   };
 
   return (
@@ -79,29 +86,31 @@ function ColorSlider({
         onPointerDown={(event) => {
           if (disabled) return;
           event.currentTarget.setPointerCapture(event.pointerId);
-          commitFromClientX(event.clientX);
+          previewFromClientX(event.clientX);
         }}
         onPointerUp={(event) => {
+          onInteractionEnd();
           event.currentTarget.blur();
         }}
+        onPointerCancel={onInteractionEnd}
         onPointerMove={(event) => {
           if (disabled || event.buttons !== 1) return;
-          commitFromClientX(event.clientX);
+          previewFromClientX(event.clientX);
         }}
         onKeyDown={(event) => {
           if (disabled) return;
           if (event.key === "ArrowRight" || event.key === "ArrowUp") {
             event.preventDefault();
-            commitKeyboardValue(value + step);
+            previewKeyboardValue(value + step);
           } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
             event.preventDefault();
-            commitKeyboardValue(value - step);
+            previewKeyboardValue(value - step);
           } else if (event.key === "Home") {
             event.preventDefault();
-            commitKeyboardValue(min);
+            previewKeyboardValue(min);
           } else if (event.key === "End") {
             event.preventDefault();
-            commitKeyboardValue(max);
+            previewKeyboardValue(max);
           }
         }}
       >
@@ -122,13 +131,17 @@ export function ColorField({
   label,
   value,
   disabled,
+  onReset,
   flat,
+  mixed,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  onReset?: () => void;
   flat?: boolean;
+  mixed?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -148,6 +161,30 @@ export function ColorField({
   const saturationPercent = Math.round(hsv.saturation * 100);
   const brightnessPercent = Math.round(hsv.value * 100);
   const alphaPercent = Math.round(draftColor.alpha * 100);
+
+  const updateColorDraft = useCallback((nextValue: string) => {
+    const nextColor = parseCssColor(nextValue);
+    if (!nextColor) return;
+    setDraftColor(nextColor);
+    setHexDraft(toHexColor(nextColor).toUpperCase());
+  }, []);
+  const persistColorValue = useCallback(
+    (nextValue: string) => {
+      if (nextValue !== value) track("color", label);
+      onCommit(nextValue);
+    },
+    [label, onCommit, track, value],
+  );
+  const {
+    preview: previewColorValue,
+    commit: commitColorValue,
+    flush: flushColor,
+  } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: updateColorDraft,
+    onCommit: persistColorValue,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
+  });
 
   useEffect(() => {
     const nextColor = colorFromCss(value);
@@ -202,12 +239,8 @@ export function ColorField({
     };
   }, [open]);
 
-  const commitColor = (nextColor: ParsedColor) => {
-    setDraftColor(nextColor);
-    setHexDraft(toHexColor(nextColor).toUpperCase());
-    const nextValue = formatCssColor(nextColor);
-    if (nextValue !== value) track("color", label);
-    onCommit(nextValue);
+  const previewColor = (nextColor: ParsedColor) => {
+    previewColorValue(formatCssColor(nextColor));
   };
 
   const commitHsv = (nextHsv: { hue?: number; saturation?: number; value?: number }) => {
@@ -216,7 +249,7 @@ export function ColorField({
       saturation: nextHsv.saturation ?? hsv.saturation,
       value: nextHsv.value ?? hsv.value,
     });
-    commitColor({ ...rgb, alpha: draftColor.alpha });
+    previewColor({ ...rgb, alpha: draftColor.alpha });
   };
 
   const updateSaturationValue = (clientX: number, clientY: number, target: HTMLDivElement) => {
@@ -231,7 +264,7 @@ export function ColorField({
     const normalized = nextHex.trim().startsWith("#") ? nextHex.trim() : `#${nextHex.trim()}`;
     const parsed = parseCssColor(normalized);
     if (!parsed) return;
-    commitColor({ ...parsed, alpha: draftColor.alpha });
+    commitColorValue(formatCssColor({ ...parsed, alpha: draftColor.alpha }));
   };
 
   const picker = open
@@ -270,6 +303,8 @@ export function ColorField({
                 if (event.buttons !== 1) return;
                 updateSaturationValue(event.clientX, event.clientY, event.currentTarget);
               }}
+              onPointerUp={flushColor}
+              onPointerCancel={flushColor}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
               <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
@@ -316,7 +351,8 @@ export function ColorField({
               background="linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)"
               thumbColor={hueColor}
               disabled={disabled}
-              onCommit={(nextHue) => commitHsv({ hue: nextHue })}
+              onPreview={(nextHue) => commitHsv({ hue: nextHue })}
+              onInteractionEnd={flushColor}
             />
 
             <ColorSlider
@@ -329,7 +365,8 @@ export function ColorField({
               background={`linear-gradient(90deg, transparent, ${opaqueColor})`}
               thumbColor={currentColor}
               disabled={disabled}
-              onCommit={(nextAlpha) => commitColor({ ...draftColor, alpha: nextAlpha })}
+              onPreview={(nextAlpha) => previewColor({ ...draftColor, alpha: nextAlpha })}
+              onInteractionEnd={flushColor}
             />
 
             <label className="grid gap-1.5">
@@ -337,7 +374,10 @@ export function ColorField({
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexCommit(event.target.value)}
-                onBlur={() => setHexDraft(toHexColor(draftColor).toUpperCase())}
+                onBlur={() => {
+                  flushColor();
+                  setHexDraft(toHexColor(draftColor).toUpperCase());
+                }}
                 className={`${FIELD} h-10 w-full text-[11px] font-medium outline-none`}
                 spellCheck={false}
               />
@@ -374,6 +414,14 @@ export function ColorField({
             style={{ backgroundColor: value || "transparent" }}
           />
           <span className="font-mono text-[11px] text-panel-text-0">{value}</span>
+          {mixed && (
+            <span
+              data-color-mixed-indicator="true"
+              className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+            >
+              Mixed
+            </span>
+          )}
         </button>
         {picker}
       </div>
@@ -382,7 +430,7 @@ export function ColorField({
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <FieldLabel label={label} disabled={disabled} onReset={onReset} />
       <button
         type="button"
         disabled={disabled}
@@ -398,6 +446,14 @@ export function ColorField({
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-100">
           {value}
         </span>
+        {mixed && (
+          <span
+            data-color-mixed-indicator="true"
+            className="rounded bg-panel-hover px-1.5 py-0.5 text-[9px] font-medium text-panel-text-4"
+          >
+            Mixed
+          </span>
+        )}
       </button>
       {picker}
     </div>

@@ -27,7 +27,7 @@ export function MediaSection({
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string | null) => void | Promise<void>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onRemoveBackground?: (
@@ -356,6 +356,13 @@ export function MediaSection({
               <SelectField
                 label="Fit"
                 value={objectFit}
+                onReset={
+                  Object.hasOwn(element.inlineStyles, "object-fit")
+                    ? () => {
+                        void onSetStyle("object-fit", null);
+                      }
+                    : undefined
+                }
                 onChange={(next) => {
                   void onSetStyle("object-fit", next);
                 }}
@@ -364,6 +371,13 @@ export function MediaSection({
               <SelectField
                 label="Position"
                 value={objectPosition}
+                onReset={
+                  Object.hasOwn(element.inlineStyles, "object-position")
+                    ? () => {
+                        void onSetStyle("object-position", null);
+                      }
+                    : undefined
+                }
                 onChange={(next) => {
                   void onSetStyle("object-position", next);
                 }}

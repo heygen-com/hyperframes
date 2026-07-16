@@ -2,10 +2,16 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
+  HF_COLOR_GRADING_ATTR,
+} from "@hyperframes/core/color-grading";
 import type { DomEditSelection } from "./domEditingTypes";
-import { SelectField } from "./propertyPanelPrimitives";
+import { getInlineStyles } from "./domEditingDom";
+import { CommitField, MetricField, SelectField, SliderControl } from "./propertyPanelPrimitives";
 import { StyleSections } from "./propertyPanelStyleSections";
+import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,6 +23,7 @@ afterEach(() => {
   }
   roots.length = 0;
   document.body.innerHTML = "";
+  vi.useRealTimers();
 });
 
 function render(node: React.ReactNode): HTMLElement {
@@ -35,6 +42,35 @@ function findSelect(host: HTMLElement, label: string): HTMLSelectElement {
   const select = field?.querySelector<HTMLSelectElement>("select");
   if (!select) throw new Error(`Missing select field: ${label}`);
   return select;
+}
+
+function findInput(host: HTMLElement, label: string): HTMLInputElement {
+  const field = Array.from(host.querySelectorAll("label")).find((candidate) =>
+    Array.from(candidate.querySelectorAll("span")).some((span) => span.textContent === label),
+  );
+  const input = field?.querySelector<HTMLInputElement>('input[type="text"]');
+  if (!input) throw new Error(`Missing input field: ${label}`);
+  return input;
+}
+
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("HTMLInputElement value setter is unavailable");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function slider(value: number, onCommit: (nextValue: number) => void): React.ReactNode {
+  return (
+    <SliderControl
+      value={value}
+      min={0}
+      max={100}
+      step={1}
+      displayValue={String(value)}
+      onCommit={onCommit}
+    />
+  );
 }
 
 function expandSection(host: HTMLElement, title: string): void {
@@ -111,9 +147,156 @@ describe("SelectField unlisted values", () => {
   });
 });
 
+describe("SliderControl commit contract", () => {
+  it("commits drag feedback after 40ms", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "25"));
+    act(() => vi.advanceTimersByTime(39));
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith(25);
+  });
+
+  it("flushes drag feedback on pointerup", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "25");
+      input.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(25);
+  });
+
+  it("drops a pending value when the source changes externally", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const root = roots.at(-1);
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "35"));
+    act(() => root.render(slider(80, onCommit)));
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("flushes the last pending value on unmount", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const root = roots.pop();
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "20");
+      setInputValue(input, "40");
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(40);
+  });
+
+  it("flushes a pending value to the old target before switching targets", () => {
+    vi.useFakeTimers();
+    const oldTargetCommit = vi.fn();
+    const newTargetCommit = vi.fn();
+    const host = render(slider(0, oldTargetCommit));
+    const root = roots.at(-1);
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!root || !input) throw new Error("Slider control was not rendered");
+
+    act(() => setInputValue(input, "35"));
+    act(() => root.render(slider(0, newTargetCommit)));
+
+    expect(oldTargetCommit).toHaveBeenCalledTimes(1);
+    expect(oldTargetCommit).toHaveBeenCalledWith(35);
+    expect(newTargetCommit).not.toHaveBeenCalled();
+  });
+
+  it("makes one trailing commit for a rapid drag", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(slider(0, onCommit));
+    const input = host.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!input) throw new Error("Slider control was not rendered");
+
+    act(() => {
+      setInputValue(input, "10");
+      setInputValue(input, "20");
+      setInputValue(input, "30");
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => vi.runAllTimers());
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(30);
+  });
+});
+
+describe("inspector commit delays", () => {
+  it("keeps CommitField live commits at 120ms", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const host = render(<CommitField value="0" liveCommit onCommit={onCommit} />);
+    const input = host.querySelector<HTMLInputElement>('input[type="text"]');
+    if (!input) throw new Error("Commit field was not rendered");
+
+    act(() => setInputValue(input, "12"));
+    act(() => vi.advanceTimersByTime(119));
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith("12");
+  });
+
+  it("keeps MetricField scrubs at the 350ms default", () => {
+    vi.useFakeTimers();
+    const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
+    HTMLElement.prototype.setPointerCapture = () => undefined;
+    const onCommit = vi.fn();
+    const host = render(<MetricField label="Width" value="10" scrub onCommit={onCommit} />);
+    const label = Array.from(host.querySelectorAll("span")).find(
+      (candidate) => candidate.textContent === "Width" && candidate.className.includes("cursor"),
+    );
+    if (!label) throw new Error("Metric scrub label was not rendered");
+
+    act(() => {
+      label.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 10 }),
+      );
+      label.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 20 }),
+      );
+    });
+    act(() => vi.advanceTimersByTime(349));
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onCommit).toHaveBeenCalledWith("20");
+    HTMLElement.prototype.setPointerCapture = originalSetPointerCapture;
+  });
+});
+
 describe("StyleSections curated options", () => {
   it("keeps authored off-list values visible and commits remaining options", () => {
-    const calls: Array<[property: string, value: string]> = [];
+    const calls: Array<[property: string, value: string | null]> = [];
     const host = render(
       <StyleSections
         projectId="project"
@@ -168,5 +351,175 @@ describe("StyleSections curated options", () => {
 
     expect(calls).toContainEqual(["border-style", "dashed"]);
     expect(calls).toContainEqual(["overflow", "hidden"]);
+  });
+});
+
+describe("StyleSections inline style reset", () => {
+  it.each([HF_COLOR_GRADING_ATTR, COLOR_GRADING_SOURCE_HIDDEN_ATTR])(
+    "does not offer an opacity reset when the element has %s",
+    (attribute) => {
+      const element = createSelection();
+      element.element.setAttribute(attribute, "true");
+      element.inlineStyles = { opacity: "0" };
+      const host = render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ opacity: "0" }}
+          assets={[]}
+          onSetStyle={() => undefined}
+        />,
+      );
+      expandSection(host, "transparency");
+
+      expect(host.querySelector('[aria-label="Reset Opacity"]')).toBeNull();
+    },
+  );
+
+  it("keeps an immediate opacity reset from being overwritten by a pending slider value", () => {
+    vi.useFakeTimers();
+    const element = createSelection();
+    element.inlineStyles = { opacity: "0.8" };
+    const onSetStyle = vi.fn<(property: string, value: string | null) => void>();
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={element}
+        styles={{ opacity: "0.8" }}
+        assets={[]}
+        onSetStyle={onSetStyle}
+      />,
+    );
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    expandSection(host, "transparency");
+    const input = host.querySelector<HTMLInputElement>(
+      '[data-panel-section="transparency"] input[type="range"]',
+    );
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Opacity"]');
+    if (!input || !reset) throw new Error("Opacity controls were not rendered");
+
+    act(() => setInputValue(input, "40"));
+    act(() => reset.click());
+    element.inlineStyles = {};
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ opacity: "1" }}
+          assets={[]}
+          onSetStyle={onSetStyle}
+        />,
+      ),
+    );
+    act(() => vi.runAllTimers());
+
+    expect(onSetStyle).toHaveBeenCalledTimes(1);
+    expect(onSetStyle).toHaveBeenCalledWith("opacity", null);
+  });
+
+  it("detects inline corner-radius longhands from the canonical style snapshot", () => {
+    const element = document.createElement("div");
+    element.style.setProperty("border-top-left-radius", "12px");
+
+    expect(getInlineStyles(element)).toMatchObject({ "border-top-left-radius": "12px" });
+  });
+
+  it("reveals reset on label hover only for an inline override", () => {
+    const overridden = createSelection();
+    overridden.inlineStyles = { gap: "24px" };
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={overridden}
+        styles={{ display: "flex", gap: "24px" }}
+        assets={[]}
+        onSetStyle={() => undefined}
+      />,
+    );
+    expandSection(host, "flex");
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Gap"]');
+    expect(reset).not.toBeNull();
+    expect(reset?.className).toContain("opacity-0");
+    expect(reset?.className).toContain("group-hover:opacity-100");
+
+    const authoredOnly = createSelection();
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={authoredOnly}
+          styles={{ display: "flex", gap: "12px" }}
+          assets={[]}
+          onSetStyle={() => undefined}
+        />,
+      ),
+    );
+
+    expect(host.querySelector('[aria-label="Reset Gap"]')).toBeNull();
+  });
+
+  it("resets the inline property and displays the refreshed authored value", () => {
+    const element = createSelection();
+    element.inlineStyles = { gap: "24px" };
+    const onSetStyle = vi.fn<(property: string, value: string | null) => void>();
+    const host = render(
+      <StyleSections
+        projectId="project"
+        element={element}
+        styles={{ display: "flex", gap: "24px" }}
+        assets={[]}
+        onSetStyle={onSetStyle}
+      />,
+    );
+    expandSection(host, "flex");
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset Gap"]');
+    if (!reset) throw new Error("Missing gap reset");
+    act(() => reset.click());
+    expect(onSetStyle).toHaveBeenCalledWith("gap", null);
+
+    element.inlineStyles = {};
+    const root = roots.at(-1);
+    if (!root) throw new Error("Missing rendered root");
+    act(() =>
+      root.render(
+        <StyleSections
+          projectId="project"
+          element={element}
+          styles={{ display: "flex", gap: "12px" }}
+          assets={[]}
+          onSetStyle={onSetStyle}
+        />,
+      ),
+    );
+
+    expect(findInput(host, "Gap").value).toBe("12px");
+    expect(host.querySelector('[aria-label="Reset Gap"]')).toBeNull();
+  });
+});
+
+describe("BorderRadiusEditor inline style reset", () => {
+  it("shows a longhand reset in linked mode when no shorthand reset exists", () => {
+    const resetTopLeft = vi.fn();
+    const host = render(
+      <BorderRadiusEditor
+        tl={12}
+        tr={12}
+        br={12}
+        bl={12}
+        resets={{ tl: resetTopLeft }}
+        onCommit={() => undefined}
+      />,
+    );
+
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="Reset All"]');
+    if (!reset) throw new Error("Missing linked radius reset");
+    act(() => reset.click());
+    expect(resetTopLeft).toHaveBeenCalledOnce();
   });
 });

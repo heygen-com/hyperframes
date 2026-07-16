@@ -1021,6 +1021,10 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     expect(payload.content).not.toContain("opacity");
+    expect(payload.content).not.toContain('style=""');
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(
+      '<div id="title">Before</div>',
+    );
   });
 
   // ── Canvas z-order / patch-target regression suite ────────────────────────

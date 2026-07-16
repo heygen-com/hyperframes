@@ -77,7 +77,7 @@ export interface UseDomEditCommitsParams {
     operations: PatchOperation[],
     originalContent: string,
     targetPath: string,
-    options?: { label?: string; coalesceKey?: string; skipRefresh?: boolean },
+    options?: { label?: string; coalesceKey?: string; coalesceMs?: number; skipRefresh?: boolean },
   ) => Promise<CutoverResult>;
   /** Stage 7 §3.1: called before the server-side delete path. */
   onTrySdkDelete?: (
@@ -183,10 +183,11 @@ export function useDomEditCommits({
         const cutover = await onTrySdkPersist(selection, operations, originalContent, targetPath, {
           label: options?.label,
           coalesceKey: options?.coalesceKey,
+          coalesceMs: options?.coalesceMs,
           skipRefresh: options?.skipRefresh,
         });
         if (cutoverCommittedOrThrow(cutover)) {
-          // SDK handled it — its in-memory doc is already current, so do NOT
+          // SDK handled it: its in-memory doc is already current, so do NOT
           // forceReload (that would echo-reload the session we just wrote).
           return;
         }
@@ -248,7 +249,7 @@ export function useDomEditCommits({
             await writeProjectFile(targetPath, preparedContent, patchedContent);
             finalContent = preparedContent;
           } catch (error) {
-            // The patch above already landed on disk — only the prepareContent
+            // The patch above already landed on disk. Only the prepareContent
             // embellishment (e.g. an injected @font-face) failed to write. Keep
             // the already-persisted patchedContent instead of throwing, which
             // would otherwise revert a change the server already committed.
@@ -332,7 +333,7 @@ export function useDomEditCommits({
           // produces a visible blink. Skip the reload when the caller asked for it
           // AND the persist is provably in sync: style-only ops, every target
           // matched. Any unmatched patch means the live DOM now shows state disk
-          // doesn't hold — reload so the preview reconverges. (The SSE/file-watcher
+          // doesn't hold, reload so the preview reconverges. (The SSE/file-watcher
           // reload is independently suppressed by domEditSaveTimestampRef above.)
           const skipSafe =
             options.skipReload === true && batchesAreInlineStyleOnly(batches) && durable;
@@ -372,6 +373,7 @@ export function useDomEditCommits({
 
   const {
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -436,6 +438,7 @@ export function useDomEditCommits({
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LABEL } from "./propertyPanelHelpers";
+import { LIVE_PREVIEW_COMMIT_DELAY_MS, useDebouncedCommit } from "./propertyPanelPrimitives";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 
 const SLIDER_THUMB_SIZE = 10;
@@ -63,17 +64,9 @@ export function ColorGradingSliderControl({
   const track = useTrackDesignInput();
   const [draftState, setDraftState] = useState<{ value: number; source: number } | null>(null);
   const [inputDraft, setInputDraft] = useState<{ value: string; source: number } | null>(null);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionChangedRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
-
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
 
   const clampDraft = useCallback(
     (nextValue: number) => clampNumber(nextValue, min, max),
@@ -86,33 +79,43 @@ export function ColorGradingSliderControl({
       const source = valueRef.current;
       setDraftState({ value: clamped, source });
       setInputDraft({ value: formatNumericInput(clamped, scale), source });
-      return clamped;
     },
     [clampDraft, scale],
   );
-
-  const commitDraft = useCallback(
+  const commitTrackedValue = useCallback(
     (nextValue: number) => {
-      const clamped = setLocalDraft(nextValue);
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
       if (interactionChangedRef.current) {
         interactionChangedRef.current = false;
         track("slider", label);
       }
-      if (clamped !== valueRef.current) onCommit(clamped);
+      onCommit(nextValue);
     },
-    [label, onCommit, setLocalDraft, track],
+    [label, onCommit, track],
+  );
+
+  const {
+    preview: previewValue,
+    commit: commitValue,
+    flush,
+  } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: setLocalDraft,
+    onCommit: commitTrackedValue,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
+  });
+
+  const commitDraft = useCallback(
+    (nextValue: number) => {
+      commitValue(clampDraft(nextValue));
+    },
+    [clampDraft, commitValue],
   );
 
   const scheduleCommit = useCallback(
     (nextValue: number) => {
-      const clamped = setLocalDraft(nextValue);
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-      commitTimerRef.current = setTimeout(() => {
-        if (clamped !== valueRef.current) onCommit(clamped);
-      }, 40);
+      previewValue(clampDraft(nextValue));
     },
-    [onCommit, setLocalDraft],
+    [clampDraft, previewValue],
   );
 
   const draft = draftState?.source === value ? draftState.value : value;
@@ -219,9 +222,9 @@ export function ColorGradingSliderControl({
             interactionChangedRef.current = true;
             scheduleCommit(Number(event.currentTarget.value));
           }}
-          onMouseUp={() => commitDraft(draft)}
-          onTouchEnd={() => commitDraft(draft)}
-          onBlur={() => commitDraft(draft)}
+          onPointerUp={flush}
+          onPointerCancel={flush}
+          onBlur={flush}
           className="hf-color-grading-range absolute left-0 right-0 top-1/2 z-30 min-w-0 w-full -translate-y-1/2"
           title={displayValue}
         />

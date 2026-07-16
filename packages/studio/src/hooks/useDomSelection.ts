@@ -212,7 +212,7 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          // Keep the Variables tab in place — selecting elements is part of the bind
+          // Keep the Variables tab in place: selecting elements is part of the bind
           // flow there; yanking to Design would lose the context.
           if (rightPanelTabRef.current !== "variables") {
             setRightPanelTab("design");
@@ -379,7 +379,7 @@ export function useDomSelection({
       }
 
       const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
+      // A newer selection superseded this one while we were resolving, drop the stale result.
       if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
     },

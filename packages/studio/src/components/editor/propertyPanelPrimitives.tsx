@@ -1,9 +1,112 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { RotateCcw } from "../../icons/SystemIcons";
 import {
   DesignPanelInputProvider,
   useTrackDesignInput,
 } from "../../contexts/DesignPanelInputContext";
 import { adjustNumericToken, FIELD, LABEL, parseNumericToken } from "./propertyPanelHelpers";
+
+const INSPECTOR_COMMIT_DELAY_MS = 350;
+export const LIVE_PREVIEW_COMMIT_DELAY_MS = 40;
+
+export function FieldLabel({
+  label,
+  labelNode,
+  disabled,
+  onReset,
+}: {
+  label: string;
+  labelNode?: ReactNode;
+  disabled?: boolean;
+  onReset?: () => void;
+}) {
+  return (
+    <span className="group inline-flex min-w-0 items-center gap-1">
+      {labelNode ?? <span className={LABEL}>{label}</span>}
+      {onReset && (
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`Reset ${label}`}
+          title={`Reset ${label} to authored value`}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onReset();
+          }}
+          className="pointer-events-none inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        >
+          <RotateCcw size={10} aria-hidden="true" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+export function useDebouncedCommit<T>({
+  sourceValue,
+  onPreview,
+  onCommit,
+  delayMs = INSPECTOR_COMMIT_DELAY_MS,
+}: {
+  sourceValue: T;
+  onPreview: (nextValue: T) => void;
+  onCommit: (nextValue: T) => void;
+  delayMs?: number;
+}) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sourceValueRef = useRef(sourceValue);
+  const pendingRef = useRef<{
+    value: T;
+    sourceValue: T;
+    commit: (nextValue: T) => void;
+  } | null>(null);
+  sourceValueRef.current = sourceValue;
+
+  const flush = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending && Object.is(pending.sourceValue, sourceValueRef.current)) {
+      pending.commit(pending.value);
+    }
+  }, []);
+
+  useEffect(() => flush, [flush, onCommit, sourceValue]);
+
+  const preview = useCallback(
+    (nextValue: T) => {
+      onPreview(nextValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (Object.is(nextValue, sourceValue)) {
+        timerRef.current = null;
+        pendingRef.current = null;
+        return;
+      }
+      pendingRef.current = { value: nextValue, sourceValue, commit: onCommit };
+      timerRef.current = setTimeout(flush, delayMs);
+    },
+    [delayMs, flush, onCommit, onPreview, sourceValue],
+  );
+
+  const commit = useCallback(
+    (nextValue: T) => {
+      onPreview(nextValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      pendingRef.current = null;
+      if (!Object.is(nextValue, sourceValue)) onCommit(nextValue);
+    },
+    [onCommit, onPreview, sourceValue],
+  );
+
+  return { preview, commit, flush };
+}
 
 export function CommitField({
   value,
@@ -17,7 +120,6 @@ export function CommitField({
   onCommit: (nextValue: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,6 +128,13 @@ export function CommitField({
 
   valueRef.current = value;
   draftRef.current = draft;
+
+  const { preview: previewDraft, commit: commitDraft } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: setDraft,
+    onCommit,
+    delayMs: 120,
+  });
 
   useEffect(() => {
     if (focusedRef.current && dirtyRef.current) return;
@@ -51,26 +160,8 @@ export function CommitField({
     return () => el.removeEventListener("wheel", handler);
   }, [disabled]);
 
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-
-  const scheduleCommit = (nextDraft: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 120);
-  };
-  const scheduleCommitRef = useRef(scheduleCommit);
-  scheduleCommitRef.current = scheduleCommit;
+  const scheduleCommitRef = useRef(previewDraft);
+  scheduleCommitRef.current = previewDraft;
 
   return (
     <input
@@ -83,8 +174,8 @@ export function CommitField({
       }}
       onChange={(e) => {
         dirtyRef.current = true;
-        setDraft(e.target.value);
-        if (liveCommit) scheduleCommit(e.target.value);
+        if (liveCommit) previewDraft(e.target.value);
+        else setDraft(e.target.value);
       }}
       onBlur={() => {
         const wasDirty = dirtyRef.current;
@@ -103,8 +194,7 @@ export function CommitField({
         if (!nextDraft) return;
         e.preventDefault();
         dirtyRef.current = true;
-        setDraft(nextDraft);
-        scheduleCommit(nextDraft);
+        previewDraft(nextDraft);
       }}
       title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
       className="min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
@@ -124,6 +214,7 @@ export function MetricField({
   scrub,
   suffix,
   tooltip,
+  onReset,
   onCommit,
 }: {
   label: string;
@@ -133,6 +224,7 @@ export function MetricField({
   scrub?: boolean;
   suffix?: string;
   tooltip?: string;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -144,6 +236,17 @@ export function MetricField({
     },
     [label, onCommit, track, value],
   );
+  const [scrubDraft, setScrubDraft] = useState<{ value: string; source: string } | null>(null);
+  const previewScrubDraft = useCallback(
+    (nextValue: string) => setScrubDraft({ value: nextValue, source: value }),
+    [value],
+  );
+  const { preview: previewScrub, flush: flushScrub } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: previewScrubDraft,
+    onCommit: commit,
+  });
+  const displayedValue = scrubDraft?.source === value ? scrubDraft.value : value;
 
   const handleScrubPointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -161,14 +264,15 @@ export function MetricField({
       const state = scrubRef.current;
       if (!state) return;
       const delta = e.clientX - state.startX;
-      commit(String(Math.round(state.startValue + delta)));
+      previewScrub(String(Math.round(state.startValue + delta)));
     },
-    [commit],
+    [previewScrub],
   );
 
   const handleScrubPointerUp = useCallback(() => {
     scrubRef.current = null;
-  }, []);
+    flushScrub();
+  }, [flushScrub]);
 
   const scrubProps =
     scrub && !disabled
@@ -184,8 +288,18 @@ export function MetricField({
   return (
     <div className={FIELD} title={tooltip}>
       <div className="flex min-w-0 items-center gap-3">
-        <span {...scrubProps}>{label}</span>
-        <CommitField value={value} disabled={disabled} liveCommit={liveCommit} onCommit={commit} />
+        <FieldLabel
+          label={label}
+          disabled={disabled}
+          onReset={onReset}
+          labelNode={<span {...scrubProps}>{label}</span>}
+        />
+        <CommitField
+          value={displayedValue}
+          disabled={disabled}
+          liveCommit={liveCommit}
+          onCommit={commit}
+        />
         {suffix && <span className="flex-shrink-0 text-[10px] text-neutral-600">{suffix}</span>}
       </div>
     </div>
@@ -200,11 +314,13 @@ export function DetailField({
   label,
   value,
   disabled,
+  onReset,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -214,7 +330,7 @@ export function DetailField({
   };
   return (
     <label className="grid min-w-0 gap-1.5">
-      <span className={LABEL}>{label}</span>
+      <FieldLabel label={label} disabled={disabled} onReset={onReset} />
       <div className={FIELD}>
         <CommitField value={value} disabled={disabled} onCommit={commit} />
       </div>
@@ -233,7 +349,7 @@ export function SliderControl({
   disabled,
   onCommit,
 }: {
-  trackName: string;
+  trackName?: string;
   value: number;
   min: number;
   max: number;
@@ -245,35 +361,27 @@ export function SliderControl({
 }) {
   const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionChangedRef = useRef(false);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  const commitDraft = useCallback(
+    (nextDraft: number) => {
+      if (interactionChangedRef.current) {
+        interactionChangedRef.current = false;
+        if (trackName) track("slider", trackName);
+      }
+      onCommit(nextDraft);
+    },
+    [onCommit, track, trackName],
+  );
+  const { preview: previewDraft, flush } = useDebouncedCommit({
+    sourceValue: value,
+    onPreview: setDraft,
+    onCommit: commitDraft,
+    delayMs: LIVE_PREVIEW_COMMIT_DELAY_MS,
+  });
 
   useEffect(() => {
     setDraft(value);
   }, [value]);
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
-
-  const commitDraft = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (interactionChangedRef.current) {
-      interactionChangedRef.current = false;
-      track("slider", trackName);
-    }
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
-  };
-  const scheduleCommit = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 40);
-  };
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
@@ -286,13 +394,12 @@ export function SliderControl({
         disabled={disabled}
         onChange={(e) => {
           const n = Number(e.target.value);
-          setDraft(n);
           interactionChangedRef.current = true;
-          scheduleCommit(n);
+          previewDraft(n);
         }}
-        onMouseUp={() => commitDraft(draft)}
-        onTouchEnd={() => commitDraft(draft)}
-        onBlur={() => commitDraft(draft)}
+        onPointerUp={flush}
+        onPointerCancel={flush}
+        onBlur={flush}
         className="h-4 min-w-0 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-panel-border [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0C0C0E,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
       />
       <div className="min-w-[44px] rounded-md bg-panel-input px-2 py-1.5 text-right text-[11px] font-medium text-panel-text-1 tabular-nums">
@@ -348,6 +455,7 @@ export function SelectField({
   value,
   disabled,
   disableUnlistedValue,
+  onReset,
   options,
   onChange,
 }: {
@@ -355,6 +463,7 @@ export function SelectField({
   value: string;
   disabled?: boolean;
   disableUnlistedValue?: boolean;
+  onReset?: () => void;
   options: string[];
   onChange: (nextValue: string) => void;
 }) {
@@ -363,7 +472,14 @@ export function SelectField({
   const renderedOptions = hasUnlistedValue ? [value, ...options] : options;
   return (
     <label className={`${FIELD} flex items-center gap-3`}>
-      <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+      <FieldLabel
+        label={label}
+        disabled={disabled}
+        onReset={onReset}
+        labelNode={
+          <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">{label}</span>
+        }
+      />
       <select
         value={value}
         disabled={disabled}

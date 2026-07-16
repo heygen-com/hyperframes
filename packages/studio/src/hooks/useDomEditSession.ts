@@ -114,7 +114,6 @@ export function useDomEditSession({
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
   // ── Selection ──
-
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -151,7 +150,6 @@ export function useDomEditSession({
   });
 
   // ── Agent modal ──
-
   const {
     agentModalOpen,
     agentModalAnchorPoint,
@@ -228,6 +226,7 @@ export function useDomEditSession({
   const {
     resolveImportedFontAsset,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
@@ -532,6 +531,7 @@ export function useDomEditSession({
     applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
+    handleDomStyleBatchCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,

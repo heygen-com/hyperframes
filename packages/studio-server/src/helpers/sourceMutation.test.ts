@@ -249,6 +249,17 @@ describe("patchElementInHtml", () => {
     ]);
 
     expect(result).not.toContain("font-size");
+    expect(result).not.toContain('style=""');
+  });
+
+  it("removes one inline declaration while preserving the others", () => {
+    const source = '<div id="hero" style="color: red; font-size: 48px">Hello</div>';
+    const { html: result } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "inline-style", property: "font-size", value: null },
+    ]);
+
+    expect(result).toContain('style="color: red"');
+    expect(result).not.toContain("font-size");
   });
 
   it("removes attribute when value is null", () => {

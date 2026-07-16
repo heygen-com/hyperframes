@@ -10,7 +10,24 @@ interface BorderRadiusEditorProps {
   br: number;
   bl: number;
   disabled?: boolean;
+  resets?: Partial<Record<Corner | "all", () => void>>;
   onCommit: (corner: Corner | "all", value: number) => void;
+}
+
+const ALL_RESET_KEYS = ["all", "tl", "tr", "br", "bl"] as const;
+
+function pickReset(
+  resets: BorderRadiusEditorProps["resets"],
+  corner: Corner | "all",
+): (() => void) | undefined {
+  if (!resets) return undefined;
+
+  const keys = corner === "all" ? ALL_RESET_KEYS : ([corner, "all"] as const);
+  for (const key of keys) {
+    const reset = resets[key];
+    if (reset) return reset;
+  }
+  return undefined;
 }
 
 const PREVIEW_W = 72;
@@ -32,6 +49,7 @@ export function BorderRadiusEditor({
   br,
   bl,
   disabled,
+  resets,
   onCommit,
 }: BorderRadiusEditorProps) {
   const uniform = tl === tr && tr === br && br === bl;
@@ -148,6 +166,7 @@ export function BorderRadiusEditor({
           value={formatNumericValue(tl)}
           disabled={disabled}
           liveCommit
+          onReset={pickReset(resets, "all")}
           onCommit={(next) => handleCornerCommit("tl", next)}
         />
       ) : (
@@ -157,6 +176,7 @@ export function BorderRadiusEditor({
             value={formatNumericValue(tl)}
             disabled={disabled}
             liveCommit
+            onReset={pickReset(resets, "tl")}
             onCommit={(next) => handleCornerCommit("tl", next)}
           />
           <MetricField
@@ -164,6 +184,7 @@ export function BorderRadiusEditor({
             value={formatNumericValue(tr)}
             disabled={disabled}
             liveCommit
+            onReset={pickReset(resets, "tr")}
             onCommit={(next) => handleCornerCommit("tr", next)}
           />
           <MetricField
@@ -171,6 +192,7 @@ export function BorderRadiusEditor({
             value={formatNumericValue(bl)}
             disabled={disabled}
             liveCommit
+            onReset={pickReset(resets, "bl")}
             onCommit={(next) => handleCornerCommit("bl", next)}
           />
           <MetricField
@@ -178,6 +200,7 @@ export function BorderRadiusEditor({
             value={formatNumericValue(br)}
             disabled={disabled}
             liveCommit
+            onReset={pickReset(resets, "br")}
             onCommit={(next) => handleCornerCommit("br", next)}
           />
         </div>

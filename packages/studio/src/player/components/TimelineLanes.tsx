@@ -25,6 +25,7 @@ import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { Music } from "../../icons/SystemIcons";
 import { renderClipChildren } from "./timelineClipChildren";
+import { isAdditiveSelectionEvent } from "../../utils/selectionModifiers";
 
 /**
  * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
@@ -70,6 +71,7 @@ export interface TimelineLaneBaseProps {
   keyframeCache?: Map<string, KeyframeCacheEntry>;
   selectedKeyframes: Set<string>;
   currentTime: number;
+  onSeek?: (time: number) => void;
   onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
@@ -132,6 +134,7 @@ export function TimelineLanes({
   keyframeCache,
   selectedKeyframes,
   currentTime,
+  onSeek,
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
@@ -286,6 +289,9 @@ export function TimelineLanes({
                     const selectClip = () => {
                       usePlayerStore.getState().clearSelectedElementIds();
                       setSelectedElementId(elementKey);
+                      const playheadInWindow =
+                        currentTime >= el.start && currentTime < el.start + el.duration;
+                      if (!playheadInWindow) onSeek?.(el.start);
                     };
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT
@@ -353,12 +359,9 @@ export function TimelineLanes({
                           (e) => {
                             if (e.button !== 0) return;
                             if (usePlayerStore.getState().activeTool === "razor") return;
-                            if (e.shiftKey) {
-                              shiftClickClipRef.current = {
-                                element: el,
-                                anchorX: e.clientX,
-                                anchorY: e.clientY,
-                              };
+                            if (isAdditiveSelectionEvent(e)) {
+                              shiftClickClipRef.current = null;
+                              e.stopPropagation();
                               return;
                             }
                             const target = e.currentTarget as HTMLElement;
@@ -434,6 +437,10 @@ export function TimelineLanes({
                               } else {
                                 onRazorSplit(el, clampedTime);
                               }
+                              return;
+                            }
+                            if (isAdditiveSelectionEvent(e)) {
+                              usePlayerStore.getState().toggleSelectedElementId(elementKey);
                               return;
                             }
                             // Plain click always selects this clip and drops any marquee

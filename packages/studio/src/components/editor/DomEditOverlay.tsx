@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
+import { isAdditiveSelectionEvent } from "../../utils/selectionModifiers";
 import { MarqueeOverlay } from "./MarqueeOverlay";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFlash";
@@ -328,7 +329,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
     onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
-    if (event.shiftKey) {
+    if (isAdditiveSelectionEvent(event)) {
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
     }
@@ -337,7 +338,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
-    if (event.shiftKey) {
+    if (isAdditiveSelectionEvent(event)) {
       // Use the already-updated hover selection rather than re-resolving async
       const candidate = hoverSelectionRef.current;
       if (!candidate) return;

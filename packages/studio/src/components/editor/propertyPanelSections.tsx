@@ -3,7 +3,7 @@ import { Plus } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
-import { MetricField, Section, SelectField } from "./propertyPanelPrimitives";
+import { FieldLabel, MetricField, Section, SelectField } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
@@ -176,11 +176,13 @@ function FontWeightField({
   value,
   disabled,
   fontFamily,
+  onReset,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
   fontFamily?: string;
+  onReset?: () => void;
   onCommit: (nextValue: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -189,7 +191,14 @@ function FontWeightField({
   return (
     <div className={FIELD}>
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">Weight</span>
+        <FieldLabel
+          label="Weight"
+          disabled={disabled}
+          onReset={onReset}
+          labelNode={
+            <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">Weight</span>
+          }
+        />
         <select
           value={value}
           disabled={disabled}
@@ -214,11 +223,13 @@ function AdvancedTextControls({
   field,
   inheritedStyles,
   disabled,
+  resetStyle,
   onCommit,
 }: {
   field: DomEditSelection["textFields"][number];
   inheritedStyles: Record<string, string>;
   disabled?: boolean;
+  resetStyle: (property: string) => (() => void) | undefined;
   onCommit: (property: string, value: string) => void;
 }) {
   return (
@@ -228,6 +239,7 @@ function AdvancedTextControls({
           label="Line"
           value={getTextStyleValue(field, inheritedStyles, "line-height", "normal")}
           disabled={disabled}
+          onReset={resetStyle("line-height")}
           options={["normal", "1", "1.1", "1.2", "1.25", "1.3", "1.4", "1.5", "1.6", "1.75", "2"]}
           onChange={(n) => onCommit("line-height", normalizeTextMetricValue("line-height", n))}
         />
@@ -235,6 +247,7 @@ function AdvancedTextControls({
           label="Track"
           value={getTextStyleValue(field, inheritedStyles, "letter-spacing", "0px")}
           disabled={disabled}
+          onReset={resetStyle("letter-spacing")}
           options={[
             "0px",
             "-0.05em",
@@ -261,6 +274,7 @@ function AdvancedTextControls({
           label="Align"
           value={getTextStyleValue(field, inheritedStyles, "text-align", "start")}
           disabled={disabled}
+          onReset={resetStyle("text-align")}
           onChange={(n) => onCommit("text-align", n)}
           options={["start", "left", "center", "right", "justify", "end"]}
         />
@@ -268,6 +282,7 @@ function AdvancedTextControls({
           label="Case"
           value={getTextStyleValue(field, inheritedStyles, "text-transform", "none")}
           disabled={disabled}
+          onReset={resetStyle("text-transform")}
           onChange={(n) => onCommit("text-transform", n)}
           options={["none", "uppercase", "lowercase", "capitalize"]}
         />
@@ -276,6 +291,7 @@ function AdvancedTextControls({
         label="Style"
         value={getTextStyleValue(field, inheritedStyles, "font-style", "normal")}
         disabled={disabled}
+        onReset={resetStyle("font-style")}
         onChange={(n) => onCommit("font-style", n)}
         options={["normal", "italic"]}
       />
@@ -303,9 +319,13 @@ function TextFieldEditor({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   showRemove: boolean;
   onSetText: (value: string, fieldKey?: string) => void;
-  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onSetTextFieldStyle: (fieldKey: string, property: string, value: string | null) => void;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const resetTextStyle = (property: string): (() => void) | undefined =>
+    field.source === "self" && Object.hasOwn(field.inlineStyles, property)
+      ? () => onSetTextFieldStyle(field.key, property, null)
+      : undefined;
   const track = useTrackDesignInput();
   return (
     <div className="space-y-3">
@@ -350,6 +370,7 @@ function TextFieldEditor({
             label="Text color"
             value={value ?? getTextFieldColor(field, styles)}
             disabled={false}
+            onReset={resetTextStyle("color")}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
           />
         )}
@@ -360,12 +381,14 @@ function TextFieldEditor({
           value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
           disabled={false}
           liveCommit
+          onReset={resetTextStyle("font-size")}
           onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
         />
         <FontWeightField
           value={field.computedStyles["font-weight"] || styles["font-weight"] || "400"}
           fontFamily={field.computedStyles["font-family"] || styles["font-family"]}
           disabled={false}
+          onReset={resetTextStyle("font-weight")}
           onCommit={(next) => onSetTextFieldStyle(field.key, "font-weight", next)}
         />
       </div>
@@ -381,6 +404,7 @@ function TextFieldEditor({
             disabled={false}
             importedFonts={fontAssets}
             onImportFonts={onImportFonts}
+            onReset={resetTextStyle("font-family")}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "font-family", next))}
           />
         )}
@@ -389,6 +413,7 @@ function TextFieldEditor({
         field={field}
         inheritedStyles={styles}
         disabled={false}
+        resetStyle={resetTextStyle}
         onCommit={(property, value) => onSetTextFieldStyle(field.key, property, value)}
       />
     </div>
@@ -411,7 +436,7 @@ export function TextSection({
   fontAssets: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onSetText: (value: string, fieldKey?: string) => void;
-  onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onSetTextFieldStyle: (fieldKey: string, property: string, value: string | null) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
   /** Skip TextSection's own "Text" Section heading/wrapper for callers (the

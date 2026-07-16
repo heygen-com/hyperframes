@@ -239,6 +239,84 @@ function dispatchOverlayPointerDown(target: Element, clientX = 120, clientY = 80
   });
 }
 
+async function dragCanvasMarquee({
+  shiftKeyAtPointerMove = false,
+  shiftKeyAtPointerUp = false,
+}: {
+  shiftKeyAtPointerMove?: boolean;
+  shiftKeyAtPointerUp?: boolean;
+} = {}): Promise<boolean | undefined> {
+  const restoreRect = stubViewportRect();
+  const originalSetPointerCapture = HTMLDivElement.prototype.setPointerCapture;
+  const originalReleasePointerCapture = HTMLDivElement.prototype.releasePointerCapture;
+  HTMLDivElement.prototype.setPointerCapture = () => {};
+  HTMLDivElement.prototype.releasePointerCapture = () => {};
+
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const iframe: HTMLIFrameElement | null = document.createElement("iframe");
+  const iframeRef = { current: iframe };
+  const onMarqueeSelect = vi.fn();
+
+  act(() => {
+    root.render(
+      React.createElement(DomEditOverlay, {
+        ...createOverlayProps({
+          iframeRef,
+          selection: null,
+          hoverSelection: null,
+          onSelectionChange: () => {},
+        }),
+        onMarqueeSelect,
+      }),
+    );
+  });
+  await flushOverlayRaf();
+
+  const overlay = getOverlay(host);
+  await act(async () => {
+    overlay.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        clientX: 120,
+        clientY: 80,
+      }),
+    );
+    overlay.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        clientX: 180,
+        clientY: 130,
+        shiftKey: shiftKeyAtPointerMove,
+      }),
+    );
+    overlay.dispatchEvent(
+      new PointerEvent("pointerup", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        clientX: 180,
+        clientY: 130,
+        shiftKey: shiftKeyAtPointerUp,
+      }),
+    );
+    await Promise.resolve();
+  });
+
+  const additive = onMarqueeSelect.mock.calls[0]?.[1];
+  act(() => root.unmount());
+  HTMLDivElement.prototype.setPointerCapture = originalSetPointerCapture;
+  HTMLDivElement.prototype.releasePointerCapture = originalReleasePointerCapture;
+  restoreRect();
+  host.remove();
+  return typeof additive === "boolean" ? additive : undefined;
+}
+
 describe("focusDomEditOverlayElement", () => {
   it("focuses the canvas overlay without scrolling", () => {
     const calls: Array<FocusOptions | undefined> = [];
@@ -278,7 +356,8 @@ describe("DomEditOverlay", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const iframe: HTMLIFrameElement | null = document.createElement("iframe");
+    const iframeRef = { current: iframe };
     const onCanvasMouseDown = vi.fn();
     const onMarqueeSelect = vi.fn();
 
@@ -369,6 +448,52 @@ describe("DomEditOverlay", () => {
       root.unmount();
     });
     host.remove();
+  });
+
+  it("uses Shift-click as an additive selection toggle", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const hoverSelection = makeDomEditSelection({ id: "hovered-sibling" });
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const onSelectionChange = vi.fn();
+
+    act(() => {
+      root.render(
+        React.createElement(
+          DomEditOverlay,
+          createOverlayProps({
+            iframeRef,
+            selection: null,
+            hoverSelection,
+            onSelectionChange,
+          }),
+        ),
+      );
+    });
+
+    const overlay = getOverlay(host);
+    act(() => {
+      overlay.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, button: 0, shiftKey: true }),
+      );
+    });
+
+    expect(onSelectionChange).toHaveBeenCalledWith(hoverSelection, { additive: true });
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("makes a canvas marquee additive from Shift at pointerup", async () => {
+    await expect(dragCanvasMarquee({ shiftKeyAtPointerUp: true })).resolves.toBe(true);
+  });
+
+  it("makes a canvas marquee non-additive when Shift is released before pointerup", async () => {
+    await expect(dragCanvasMarquee({ shiftKeyAtPointerMove: true })).resolves.toBe(false);
+  });
+
+  it("makes a plain canvas marquee replace selection at pointerup", async () => {
+    await expect(dragCanvasMarquee()).resolves.toBe(false);
   });
 
   it("starts movement from the selected bounds", async () => {

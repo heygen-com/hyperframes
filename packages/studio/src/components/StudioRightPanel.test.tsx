@@ -4,6 +4,10 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const useDomEditContextMock = vi.hoisted(() =>
+  vi.fn<() => unknown>(() => ({ domEditSelection: null, domEditGroupSelections: [] })),
+);
+
 const panelLayout = {
   rightWidth: 160,
   setRightWidth: vi.fn(),
@@ -53,14 +57,16 @@ vi.mock("../contexts/FileManagerContext", () => ({
   }),
 }));
 vi.mock("../contexts/DomEditContext", () => ({
-  useDomEditContext: () => ({ domEditSelection: null, domEditGroupSelections: [] }),
+  useDomEditContext: useDomEditContextMock,
 }));
 vi.mock("../hooks/useSlideshowPersist", () => ({ useSlideshowPersist: () => vi.fn() }));
 vi.mock("../hooks/previewVariablesStore", () => ({
   usePreviewVariablesStore: { getState: () => ({ values: undefined }) },
 }));
 vi.mock("../player", () => ({ usePlayerStore: { getState: () => ({ requestSeek: vi.fn() }) } }));
-vi.mock("./editor/PropertyPanel", () => ({ PropertyPanel: () => <div /> }));
+vi.mock("./editor/PropertyPanel", () => ({
+  PropertyPanel: () => <div>Single property panel</div>,
+}));
 vi.mock("./editor/LayersPanel", () => ({ LayersPanel: () => <div /> }));
 vi.mock("../captions/components/CaptionPropertyPanel", () => ({
   CaptionPropertyPanel: () => <div />,
@@ -100,8 +106,16 @@ function renderPanel() {
   return { host, root };
 }
 
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("HTMLInputElement value setter is unavailable");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 afterEach(() => {
   panelLayout.rightPanelTab = "renders";
+  useDomEditContextMock.mockReturnValue({ domEditSelection: null, domEditGroupSelections: [] });
   document.body.innerHTML = "";
   localStorage.clear();
 });
@@ -173,6 +187,59 @@ describe("StudioRightPanel layout", () => {
     const stored = JSON.parse(localStorage.getItem("hf-studio-ui-preferences") ?? "{}");
     expect(stored).toMatchObject({ inspectorSplitPercent: 70 });
     expect(setItem).toHaveBeenCalledTimes(1);
+
+    act(() => root.unmount());
+  });
+
+  it("renders batch style controls and commits through the DomEditContext action", () => {
+    panelLayout.rightPanelTab = "design";
+    const first = {
+      capabilities: { canEditStyles: true },
+      computedStyles: { "background-color": "rgb(255, 0, 0)" },
+    };
+    const second = {
+      capabilities: { canEditStyles: true },
+      computedStyles: { "background-color": "rgb(255, 0, 0)" },
+    };
+    const handleDomStyleBatchCommit = vi.fn();
+    useDomEditContextMock.mockReturnValue({
+      domEditSelection: first,
+      domEditGroupSelections: [first, second],
+      handleDomStyleBatchCommit,
+    });
+    const { root } = renderPanel();
+    const openButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Pick fill color color"]',
+    );
+    if (!openButton) throw new Error("Batch fill color picker was not rendered");
+
+    act(() => openButton.click());
+    const input = document.querySelector<HTMLInputElement>('input[spellcheck="false"]');
+    if (!input) throw new Error("Batch fill hex input was not rendered");
+    act(() => input.focus());
+    act(() => setInputValue(input, "#336699"));
+    act(() => input.blur());
+
+    expect(handleDomStyleBatchCommit).toHaveBeenCalledWith(
+      [first, second],
+      "background-color",
+      "rgb(51, 102, 153)",
+    );
+
+    act(() => root.unmount());
+  });
+
+  it("keeps a single selection on the existing property panel path", () => {
+    panelLayout.rightPanelTab = "design";
+    const selection = {};
+    useDomEditContextMock.mockReturnValue({
+      domEditSelection: selection,
+      domEditGroupSelections: [selection],
+    });
+    const { host, root } = renderPanel();
+
+    expect(host.textContent).toContain("Single property panel");
+    expect(host.textContent).not.toContain("Batch editing covers");
 
     act(() => root.unmount());
   });
