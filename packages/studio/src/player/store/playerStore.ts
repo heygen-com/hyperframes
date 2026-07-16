@@ -122,6 +122,7 @@ interface PlayerState {
   loopEnabled: boolean;
   /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
+  thumbnailsEnabled: boolean;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
   /**
@@ -218,6 +219,7 @@ interface PlayerState {
     >,
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
+  setThumbnailsEnabled: (enabled: boolean) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
@@ -291,9 +293,7 @@ interface BeatHistoryEntry {
   label: string;
 }
 
-// Lightweight pub-sub for current time during playback.
-// Bypasses React state so the RAF loop can update the playhead/time display
-// without triggering re-renders on every frame.
+// Lightweight pub-sub avoids React re-renders on every playback frame.
 type TimeListener = (time: number) => void;
 const _timeListeners = new Set<TimeListener>();
 export const liveTime = {
@@ -316,6 +316,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
   loopEnabled: false,
   zoomMode: "fit",
+  thumbnailsEnabled: readStudioUiPreferences().thumbnailsEnabled ?? false,
   manualZoomPercent: 100,
   zEditVersion: 0,
   timelinePps: 100,
@@ -447,6 +448,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setAudioMuted: (muted) => {
     writeStudioUiPreferences({ audioMuted: muted });
     set({ audioMuted: muted });
+  },
+  setThumbnailsEnabled: (enabled) => {
+    writeStudioUiPreferences({ thumbnailsEnabled: enabled });
+    set({ thumbnailsEnabled: enabled });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
@@ -582,11 +587,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
 }));
 
-// Bug-bash aid: expose the store so a reproduction can dump live state from the
-// console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
-// handle; no behavioural effect.
-// Only in dev. `import.meta.env` may be undefined in non-Vite bundlers (Next.js
-// Turbopack), so guard the access like the telemetry client does.
+// Dev-only bug-bash handle; guard import.meta.env for non-Vite bundlers.
 function isDevBuild(): boolean {
   try {
     return import.meta.env.DEV === true;
