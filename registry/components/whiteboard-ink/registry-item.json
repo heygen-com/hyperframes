@@ -1,0 +1,68 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "whiteboard-ink",
+  "type": "hyperframes:component",
+  "title": "Whiteboard Ink",
+  "description": "A hand-authored whiteboard sketch draws one measured stroke at a time while a pen nib follows the active tip.",
+  "tags": ["motion-primitive", "intro", "reveal", "svg", "whiteboard", "line-draw"],
+  "jobs": ["reveal"],
+  "family": "intros-and-reveals",
+  "profile": "ink-draw",
+  "evidence": "Video Primitives Wave I I8 whiteboard-ink contract",
+  "syncPoints": [{ "id": "ink-complete", "phase": "in", "offset": 3.3 }],
+  "files": [
+    {
+      "path": "whiteboard-ink.html",
+      "target": "compositions/components/whiteboard-ink.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "sketch",
+      "type": "enum",
+      "role": "content",
+      "label": "Sketch",
+      "description": "Authored whiteboard sketch to draw.",
+      "default": "bulb",
+      "options": [
+        { "value": "bulb", "label": "Bulb" },
+        { "value": "flow", "label": "Flow" },
+        { "value": "rocket", "label": "Rocket" }
+      ]
+    },
+    {
+      "id": "caption",
+      "type": "string",
+      "role": "content",
+      "label": "Caption",
+      "description": "Short line shown after the sketch completes.",
+      "default": "Draw the idea"
+    },
+    {
+      "id": "pen",
+      "type": "enum",
+      "role": "style",
+      "label": "Pen",
+      "description": "Show or hide the pen nib actor.",
+      "default": "show",
+      "options": [
+        { "value": "show", "label": "Show" },
+        { "value": "hide", "label": "Hide" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by one highlight stroke in the selected sketch.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,457 @@
+<!doctype html>
+<!--
+  whiteboard-ink: HyperFrames video primitive (intros and reveals / ink draw)
+
+  A hand-authored SVG sketch draws one stroke at a time while a pen nib
+  samples the active path tip. The nib follows getPointAtLength during each
+  draw and takes a short lifted hop between strokes.
+
+  Variables:
+    - sketch (bulb / flow / rocket): authored multi-stroke sketch.
+    - caption (string): short line shown after the drawing completes.
+    - pen (show / hide): visibility of the traveling nib actor.
+    - accent (green / blue / violet): one highlight stroke routed through a
+      distinct contract token.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 3.75s, sequential strokes, nib hops, then caption reveal
+    HOLD     = max(0, D - IN - OUT), one finite paper-stage drift
+    OUT_BASE = 0.45s, completed sketch and caption fade together
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Ink law: every selected path is measured once with getTotalLength. That
+  measurement owns its dash array, dash offset, cadence weight, and nib
+  sampling. Dashed geometry stays in native SVG user units.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal whiteboard-ink key.
+-->
+<html
+  lang="en"
+  data-composition-id="whiteboard-ink"
+  data-composition-duration="5"
+  data-composition-variables='[
+    { "id": "sketch", "type": "enum", "role": "content", "label": "Sketch", "description": "Authored whiteboard sketch to draw.", "default": "bulb", "options": [{ "value": "bulb", "label": "Bulb" }, { "value": "flow", "label": "Flow" }, { "value": "rocket", "label": "Rocket" }] },
+    { "id": "caption", "type": "string", "role": "content", "label": "Caption", "description": "Short line shown after the sketch completes.", "default": "Draw the idea" },
+    { "id": "pen", "type": "enum", "role": "style", "label": "Pen", "description": "Show or hide the pen nib actor.", "default": "show", "options": [{ "value": "show", "label": "Show" }, { "value": "hide", "label": "Hide" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by one highlight stroke in the selected sketch.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Whiteboard Ink</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="whiteboard-ink" data-duration="5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background:
+              radial-gradient(
+                ellipse at 48% 42%,
+                color-mix(in srgb, var(--bg, #f6f1e7) 96%, var(--fg, #20242b)) 0%,
+                var(--bg, #f6f1e7) 72%
+              ),
+              var(--bg, #f6f1e7);
+            color: var(--fg, #20242b);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .wbi-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .wbi-stage {
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) auto;
+            width: 88cqw;
+            height: 86cqh;
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .wbi-board {
+            position: relative;
+            min-height: 0;
+          }
+
+          .wbi-svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+
+          .wbi-sketch[hidden] {
+            display: none;
+          }
+
+          .wbi-stroke {
+            fill: none;
+            stroke: var(--fg, #20242b);
+            stroke-width: 10;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          .wbi-stroke.wbi-accent {
+            stroke: var(--wbi-accent);
+          }
+
+          .wbi-pen {
+            filter: drop-shadow(0 5px 6px color-mix(in srgb, var(--fg, #20242b) 20%, transparent));
+            will-change: transform, opacity;
+          }
+
+          .wbi-pen-art {
+            will-change: transform;
+          }
+
+          .wbi-pen-body {
+            fill: var(--surface, #ffffff);
+            stroke: var(--fg, #20242b);
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          .wbi-pen-nib {
+            fill: var(--wbi-accent);
+            stroke: var(--fg, #20242b);
+            stroke-width: 3;
+          }
+
+          .wbi-caption {
+            min-height: 10cqh;
+            padding-top: var(--space-1, 1.8cqh);
+            color: var(--muted, #667085);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: clamp(18px, 4.3cqmin, 42px);
+            font-weight: 680;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            text-align: center;
+            opacity: 0;
+          }
+        </style>
+
+        <div
+          id="wbi-clip"
+          class="wbi-clip clip"
+          data-start="0"
+          data-duration="5"
+          data-track-index="0"
+        >
+          <div class="wbi-stage" role="img">
+            <div class="wbi-board">
+              <svg
+                class="wbi-svg"
+                viewBox="0 0 1000 560"
+                preserveAspectRatio="xMidYMid meet"
+                aria-hidden="true"
+              >
+                <g class="wbi-sketch" data-sketch="bulb">
+                  <path
+                    class="wbi-stroke"
+                    d="M 430 340 C 414 310 392 286 386 244 C 376 172 427 113 501 109 C 578 105 633 160 626 235 C 622 279 596 306 574 341"
+                  ></path>
+                  <path
+                    class="wbi-stroke wbi-accent"
+                    d="M 454 238 C 469 251 482 263 499 292 C 517 261 532 247 549 235"
+                  ></path>
+                  <path class="wbi-stroke" d="M 431 347 C 468 353 531 350 571 343"></path>
+                  <path class="wbi-stroke" d="M 438 369 C 476 376 525 373 564 365"></path>
+                  <path class="wbi-stroke" d="M 454 389 C 482 403 520 402 548 385"></path>
+                  <path class="wbi-stroke" d="M 333 231 C 349 228 360 230 372 232"></path>
+                  <path class="wbi-stroke" d="M 640 228 C 657 225 670 226 685 230"></path>
+                </g>
+
+                <g class="wbi-sketch" data-sketch="flow" hidden>
+                  <path
+                    class="wbi-stroke"
+                    d="M 145 205 C 145 184 160 171 184 171 L 315 171 C 338 171 351 187 351 207 L 351 322 C 351 344 337 357 314 357 L 181 357 C 158 357 145 342 145 321 Z"
+                  ></path>
+                  <path
+                    class="wbi-stroke wbi-accent"
+                    d="M 352 264 C 378 258 397 259 425 263 L 446 267 M 429 249 L 446 267 L 427 284"
+                  ></path>
+                  <path class="wbi-stroke" d="M 516 170 L 611 265 L 516 360 L 421 265 Z"></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 612 265 C 641 268 662 268 691 264 L 711 263 M 694 247 L 711 263 L 694 280"
+                  ></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 711 204 C 711 184 726 171 749 171 L 868 171 C 891 171 905 187 905 208 L 905 321 C 905 343 891 357 868 357 L 748 357 C 725 357 711 342 711 321 Z"
+                  ></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 764 266 C 785 284 802 292 820 294 C 837 278 849 256 861 230"
+                  ></path>
+                </g>
+
+                <g class="wbi-sketch" data-sketch="rocket" hidden>
+                  <path
+                    class="wbi-stroke"
+                    d="M 500 76 C 552 117 581 184 578 272 C 576 329 549 378 500 420 C 451 378 425 329 422 272 C 419 184 448 117 500 76 Z"
+                  ></path>
+                  <path
+                    class="wbi-stroke wbi-accent"
+                    d="M 500 181 C 526 181 544 198 544 223 C 544 248 527 265 500 265 C 475 265 457 248 457 223 C 457 199 474 181 500 181 Z"
+                  ></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 430 295 C 386 320 359 363 353 419 C 389 405 420 384 448 353"
+                  ></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 570 295 C 614 320 641 363 647 419 C 611 405 580 384 552 353"
+                  ></path>
+                  <path
+                    class="wbi-stroke"
+                    d="M 476 415 C 464 445 470 478 500 518 C 530 478 536 445 524 415"
+                  ></path>
+                  <path class="wbi-stroke" d="M 452 431 C 433 451 427 475 433 500"></path>
+                  <path class="wbi-stroke" d="M 548 431 C 567 451 573 475 567 500"></path>
+                </g>
+
+                <g class="wbi-pen" aria-hidden="true">
+                  <g class="wbi-pen-art">
+                    <path class="wbi-pen-body" d="M 0 0 L -43 -11 L -52 0 L -43 11 Z"></path>
+                    <path class="wbi-pen-nib" d="M 0 0 L -11 -7 L -11 7 Z"></path>
+                  </g>
+                </g>
+              </svg>
+            </div>
+            <div class="wbi-caption"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".wbi-stage");
+            var captionElement = root.querySelector(".wbi-caption");
+            var penElement = root.querySelector(".wbi-pen");
+            var penArt = root.querySelector(".wbi-pen-art");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var sketchGroups = {
+              bulb: root.querySelector('[data-sketch="bulb"]'),
+              flow: root.querySelector('[data-sketch="flow"]'),
+              rocket: root.querySelector('[data-sketch="rocket"]'),
+            };
+            var sketch = Object.prototype.hasOwnProperty.call(sketchGroups, vars.sketch)
+              ? vars.sketch
+              : "bulb";
+            var caption = vars.caption == null ? "Draw the idea" : String(vars.caption);
+            var penVisible = vars.pen !== "hide";
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            Object.keys(sketchGroups).forEach(function (name) {
+              sketchGroups[name].hidden = name !== sketch;
+            });
+            root.style.setProperty("--wbi-accent", accentColors[accent]);
+            captionElement.textContent = caption;
+            penElement.style.display = penVisible ? "" : "none";
+            stage.setAttribute(
+              "aria-label",
+              sketch.charAt(0).toUpperCase() + sketch.slice(1) + " sketch. " + caption,
+            );
+
+            var strokes = Array.from(sketchGroups[sketch].querySelectorAll(".wbi-stroke")).map(
+              function (path) {
+                var length = path.getTotalLength();
+                path.style.strokeDasharray = length + " " + length;
+                path.style.strokeDashoffset = String(length);
+                return { path: path, length: length };
+              },
+            );
+            var averageLength =
+              strokes.reduce(function (sum, stroke) {
+                return sum + stroke.length;
+              }, 0) / strokes.length;
+            var weightTotal = strokes.reduce(function (sum, stroke) {
+              return sum + Math.sqrt(stroke.length);
+            }, 0);
+
+            function pathPose(stroke, progress) {
+              var clamped = Math.max(0, Math.min(1, progress));
+              var distance = clamped * stroke.length;
+              var tangentStep = Math.max(0.5, stroke.length * 0.004);
+              var before = stroke.path.getPointAtLength(Math.max(0, distance - tangentStep));
+              var after = stroke.path.getPointAtLength(
+                Math.min(stroke.length, distance + tangentStep),
+              );
+              var point = stroke.path.getPointAtLength(distance);
+
+              return {
+                x: point.x,
+                y: point.y,
+                rotation: (Math.atan2(after.y - before.y, after.x - before.x) * 180) / Math.PI,
+              };
+            }
+
+            function placePen(pose) {
+              gsap.set(penElement, { x: pose.x, y: pose.y, rotation: pose.rotation });
+            }
+
+            function renderStroke(stroke, progress) {
+              var clamped = Math.max(0, Math.min(1, progress));
+              stroke.path.style.strokeDashoffset = String((1 - clamped) * stroke.length);
+              placePen(pathPose(stroke, clamped));
+            }
+
+            var IN_BASE = 3.75;
+            var OUT_BASE = 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "5"));
+            var fixedTotal = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var LEAD = IN * 0.04;
+            var CAPTION = IN * 0.12;
+            var SEQUENCE = Math.max(0, IN - LEAD - CAPTION);
+            var hopCount = Math.max(0, strokes.length - 1);
+            var HOP = hopCount > 0 ? (SEQUENCE * 0.13) / hopCount : 0;
+            var DRAW_BUDGET = Math.max(0, SEQUENCE - HOP * hopCount);
+            var OUT_START = IN + HOLD;
+            var cursor = LEAD;
+
+            gsap.set(stage, { opacity: 0, y: "1.2cqh" });
+            gsap.set(captionElement, { opacity: 0, y: "1.4cqh" });
+            gsap.set(penElement, { opacity: penVisible ? 1 : 0 });
+            gsap.set(penArt, { y: 0, transformOrigin: "0px 0px" });
+            placePen(pathPose(strokes[0], 0));
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: each path owns one draw tween. Longer paths receive a
+            // sine midpoint cadence, while short marks finish more quickly.
+            tl.to(
+              stage,
+              { opacity: 1, y: "0cqh", duration: Math.min(0.26, IN), ease: "power2.out" },
+              0,
+            );
+
+            strokes.forEach(function (stroke, index) {
+              var drawState = { progress: 0 };
+              var drawDuration = (DRAW_BUDGET * Math.sqrt(stroke.length)) / weightTotal;
+              var drawEase = stroke.length > averageLength ? "sine.inOut" : "power2.out";
+
+              tl.to(
+                drawState,
+                {
+                  progress: 1,
+                  duration: drawDuration,
+                  ease: drawEase,
+                  onUpdate: function () {
+                    renderStroke(stroke, drawState.progress);
+                  },
+                },
+                cursor,
+              );
+              cursor += drawDuration;
+
+              if (index < strokes.length - 1) {
+                var nextStroke = strokes[index + 1];
+                var fromPose = pathPose(stroke, 1);
+                var toPose = pathPose(nextStroke, 0);
+                var hopState = { progress: 0 };
+
+                tl.to(
+                  hopState,
+                  {
+                    progress: 1,
+                    duration: HOP,
+                    ease: "power2.out",
+                    onUpdate: function () {
+                      var progress = hopState.progress;
+                      placePen({
+                        x: fromPose.x + (toPose.x - fromPose.x) * progress,
+                        y:
+                          fromPose.y +
+                          (toPose.y - fromPose.y) * progress -
+                          Math.sin(Math.PI * progress) * 18,
+                        rotation:
+                          fromPose.rotation + (toPose.rotation - fromPose.rotation) * progress,
+                      });
+                      gsap.set(penArt, { y: -Math.sin(Math.PI * progress) * 8 });
+                    },
+                  },
+                  cursor,
+                );
+                cursor += HOP;
+              }
+            });
+
+            tl.to(
+              captionElement,
+              { opacity: 1, y: "0cqh", duration: CAPTION, ease: "power2.out" },
+              cursor,
+            );
+            tl.to(
+              penElement,
+              { opacity: penVisible ? 0.62 : 0, duration: CAPTION, ease: "power2.out" },
+              cursor,
+            );
+
+            // HOLD: one finite drift cycle keeps longer mounts alive.
+            if (HOLD > 0) {
+              tl.to(
+                stage,
+                {
+                  y: "-0.45cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                IN,
+              );
+            }
+
+            // OUT: the completed drawing leaves as one subject.
+            tl.to(stage, { opacity: 0, y: "-1.8cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["whiteboard-ink"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
