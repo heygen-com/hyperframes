@@ -80,6 +80,7 @@ import { formatRenderOutputTimestamp } from "@hyperframes/core";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
+import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
@@ -2002,6 +2003,20 @@ function handleRenderError(
   const remediation = chromeLaunchRemediation(message);
   if (remediation) {
     errorBox("Render failed — Chrome could not launch", message, remediation);
+    process.exit(1);
+  }
+  // Windows chrome-headless-shell can crash at launch with
+  // STATUS_STACK_BUFFER_OVERRUN (exit 0xC0000409 / 3221225595). Same
+  // HYPERFRAMES_BROWSER_PATH remediation as the download-time hint (#2443)
+  // and the closed-with-invite arm64 macOS sibling (#2078). Field feedback
+  // ts=1784116246.
+  const windowsRemediation = windowsChromeCrashRemediation(message);
+  if (windowsRemediation) {
+    errorBox(
+      "Render failed — chrome-headless-shell crashed at launch",
+      message,
+      windowsRemediation,
+    );
     process.exit(1);
   }
   errorBox("Render failed", message, hint);
