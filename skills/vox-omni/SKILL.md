@@ -17,7 +17,12 @@ description: >
 
 # vox-omni — Vox-style explainer via Gemini Omni Flash
 
-Turn a topic into a 25–60s vertical Vox-style paper-collage explainer. Verified E2E 2026-07-16 (VA-1766 route A): 40s piece, $4.11, zero retries, 4/4 labels rendered, ~12 min end-to-end.
+> **v2** (2026-07-16). v1 at git tag `vox-skills-v1`. v2 adds the five-grammar preset layer
+> and four prompt-discipline rules (step 3) adapted from ston6919/vox-style-video (MIT-spirit
+> public workflow notes, Kie.ai route) — validated against our measured Omni constraints.
+
+Turn a topic into a 25–60s vertical Vox-style explainer. Verified E2E 2026-07-16 (VA-1766
+route A): 40s piece, $4.11, zero retries, 4/4 labels rendered, ~12 min end-to-end.
 
 ## Pipeline
 
@@ -39,15 +44,39 @@ style-content separation, page arc) — use it as-is. Omni-specific deltas on to
 
 ## Step 2 — Style block (append to every clip prompt)
 
-Two presets in `../vox-explainer/presets/` (single source for the family); pick one, never mix within a piece:
-- `paper-craft.md` — cream diorama, engraved cutouts, soft 2-4px shadows, accent ribbon motif (Ori V1 DNA)
-- `collage-zine.md` — kraft, halftone, torn edges, red tape, 3-6px hard shadows (Hongbin prompt DNA)
+Presets in `../vox-explainer/presets/` (single source for the family). Pick ONE page grammar
+by topic (see /vox-explainer §0), never mix within a piece:
+- `collage-zine.md` (kraft/halftone/tape — Hongbin DNA) or `paper-craft.md` (cream diorama — Ori V1 DNA) — culture/narrative
+- `diagram.md` — tech/product mechanism (paper-white, outline devices, thin arrows)
+- `dark-data.md` — data/finance/investigation (charcoal, annotated charts, social cards)
+- `archive.md` — history/war (near-black desk, floating photo cards, typewriter chips)
+- `atlas.md` — geopolitics (grayscale map, country fills, persistent timeline bar)
 
 Always end the style block with the mute template:
 `No humans. No dialogue. No narration. No music. Quiet paper-rustle ambience only.`
 (Omni always bakes an audio track; this is the only mute control. VO comes from TTS in step 5.)
 
 ## Step 3 — Generate (scripts/gen_clips.py)
+
+**Prompt-discipline rules (v2 — each kills a measured chaining failure):**
+
+1. **Frame-0 / reserved split.** Every clip prompt declares two lists: *"Already visible at
+   frame 0: …"* and *"Not visible yet; animate these on later: …"*. Without the split, the
+   seed image (or chained last-frame) arrives pre-cluttered with elements that were supposed
+   to enter on their VO beats — nothing is left to animate. Reserve negative space explicitly.
+2. **Still-hold + no-reinterpret block.** Chained clips open with: *"Hold the provided
+   starting image completely still for the first 0.5 seconds before any movement. Do not
+   redraw, restyle, relight, reposition, crop, zoom, or reinterpret the starting frame."*
+   Image input is conditioning, not a pixel lock (measured) — this shrinks the visible
+   redraw at every seam.
+3. **Text whitelist + blank cards.** Every prompt carries: *"Only render the following
+   readable text exactly: <LIST>. Do not invent any other readable words, numbers, signs,
+   labels, captions, or document text. All other paper cards stay blank or carry unreadable
+   abstract marks."* For factual text that must be 100% correct (numbers, names, sources),
+   generate a BLANK card in the right spot and overlay exact text in post (HF overlay track —
+   this is the Omni×HF hybrid: Omni paints the world, HF owns the type).
+4. **Handoff frames: PNG, blur-checked.** Extract the chain frame as PNG (never JPEG). If the
+   last frame is mid-motion/blurred, step back 0.1–0.2s (`ffmpeg -sseof -0.2 -frames:v 1`).
 
 - Endpoint: `POST /v1beta/interactions` (Interactions API only — model metadata falsely advertises generateContent).
 - Auth: Bearer OAuth from service-account JSON, scope `generative-language` (cloud-platform 403s). At HeyGen: Infisical `GEMINI_PREFAB_KEY`, inject via your secrets manager (at HeyGen: `infisical run -- python3 scripts/gen_clips.py`).
@@ -58,6 +87,12 @@ Always end the style block with the mute template:
 ## Step 4 — ASR retime (scripts/retime.py)
 
 faster-whisper each VO line → per-beat target = speech_end + 0.4s lead + 0.6s tail (last beat 1.2s) → `setpts` speed-up each clip (cap 2.0×) → concat. Converts leftover model-unit slack into editorial rhythm. Verified: 40.0s → 26.9s, beats land at 6-7s.
+
+**Audio-first alternative (v2; use when the VO is fixed up front — avatar variants, approved
+scripts):** generate/obtain the final VO FIRST → word-level transcript (faster-whisper) →
+cut sections to the real speech timings (5–10s, never split a sentence) → request each clip at
+the section's true duration. Sections are the right length by construction, so step 4 reduces
+to a trim — no speed-up artifacts. Trade-off: locks the script before any visuals exist.
 
 ## Step 5 — Voice (scripts/tts_mux.py)
 

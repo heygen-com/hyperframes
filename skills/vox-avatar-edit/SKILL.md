@@ -15,6 +15,11 @@ description: >
 > **Front door is `/hyperframes`.** Builds on /vox-avatar steps 1–2 (script → per-beat TTS →
 > Tokyo talking clips); this skill replaces the matte+assembly stages with Omni video editing.
 > Preview gate: show the first edited beat before spending on the rest.
+>
+> **v2** (2026-07-16). v1 at git tag `vox-skills-v1`. v2: the style half of each edit prompt
+> comes from the piece's page grammar preset (/vox-explainer §0 — collage / diagram /
+> dark-data / archive / atlas), condensed to its 3-4 defining lines; content half unchanged
+> (rule 1). The five-grammar choice replaces the previous single collage look.
 
 Empirical provenance (VA-1766, 2026-07-16): 27/27 edits zero retries across three prompt
 generations; $0.55–0.72 per 4–7s beat, 48–145s per edit. Every rule below was forced by a

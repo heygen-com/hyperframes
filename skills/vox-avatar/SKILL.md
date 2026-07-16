@@ -14,8 +14,11 @@ description: >
 # vox-avatar — talking-avatar-hosted Vox collage
 
 > **Front door is `/hyperframes`.** Autonomous; rendering user-gated at the canonical
-> preview-or-render question. Builds on /vox-explainer — read it first; this file covers
+> preview-or-render question. Builds on /vox-explainer — read it first (including §0
+> grammar choice: the host works inside any of the five page grammars); this file covers
 > the avatar deltas only.
+>
+> **v2** (2026-07-16). v1 preserved at git tag `vox-skills-v1`.
 
 The host is a REAL talking avatar (lip-synced to the VO), cut out and mounted as a die-cut
 paper sticker inside the collage — the avatar-video-kit pattern (matting + native backdrop)
@@ -23,10 +26,20 @@ wearing the vox theme. Poster mode (static stills) is the degraded/preview varia
 
 ## Primary flow — Tokyo talking avatar
 
-### 1. Voice first
+### 1. Voice first — and plan the alternation
 
 Write the script per the /vox-explainer beat contract, then TTS per beat in the person's own
 HeyGen voice (hyperframes-media; one voice, locked). The per-beat audio files drive Tokyo.
+
+**ALTERNATION RHYTHM (v2, from canonical-Vox dissection):** real Vox alternates
+presenter-led beats with full-bleed graphic beats — the host is NOT resident in every frame.
+Plan each beat as `host` (host prominent, graphics recede to the margins) or `graphic`
+(host exits — slide/scale out on a cut — and the page's diagram/chart/map takes the full
+frame while the VO continues). Target roughly alternating runs; never more than two `host`
+beats in a row. When the host is off-screen the no-text-zone constraint disappears, which is
+exactly when the dense payoff graphics (full-bleed chart, map spread) belong. The host's VO
+still runs under graphic beats — lips only need to match while the host is VISIBLE, so
+generate Tokyo clips only for `host` beats (cheaper, too).
 
 ### 2. Generate the talking avatar (Tokyo platform)
 
@@ -53,9 +66,11 @@ Use `hyperframes-agent` `integrations/tokyo/` (client.py + fallback.py) — do n
   avatar-video-kit `scripts/matte.mjs` → alpha cutout.
 - Mount in the composition as a die-cut sticker: white torn-paper edge (stacked white
   drop-shadow filter ×3) + soft shadow; host on its own track above the collage backdrop.
-- The collage page (kraft/torn paper/tape/labels/blocks) is HF-native per /vox-explainer.
-  Beat labels stay HF-native and sync to VO keywords. Optional captions: /embedded-captions
-  `papercut` identity matches the theme.
+- The page (whatever the grammar: collage / diagram / dark-data / archive / atlas) is
+  HF-native per /vox-explainer, annotated with the shared annotation family
+  (`vox-caption-chip`, `vox-thin-arrow`, `vox-highlighter-word`, `vox-source-footnote`) —
+  chips may point at the HOST too (name/title chip on entrance). Beat labels stay HF-native
+  and sync to VO keywords. Optional captions: /embedded-captions `papercut` identity.
 
 ### 4. QC gates
 

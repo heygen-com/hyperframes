@@ -1,16 +1,20 @@
 ---
 name: vox-explainer
 description: >
-  A Vox-style paper-collage editorial explainer built natively in HyperFrames —
-  kraft paper, torn-edge halftone cutouts, masking tape, ALL-CAPS cutout labels,
-  stop-motion boil, whip-pan/hard-cut/page-flip transitions, editorial VO.
-  Image assets (etchings, halftone photos, collage posters) come from image
-  generation (NB2L) or media-use; layout, text, motion and charts are HF-native
-  (deterministic, HD, text-perfect). Up to ~60s narrated. For a talking-head /
-  avatar host variant → /vox-avatar. Unclear intent → /hyperframes.
+  A Vox-style editorial explainer built natively in HyperFrames. Five page
+  grammars keyed to topic — collage (culture), diagram (tech/product),
+  dark-data (data/finance), archive (history), atlas (geopolitics) — sharing
+  one annotation philosophy: chips, thin arrows, highlighter words, numbered
+  steps, source footnotes. Image assets come from image generation (NB2L) or
+  media-use; layout, text, motion and charts are HF-native (deterministic, HD,
+  text-perfect). Up to ~60s narrated. For a talking-head / avatar host
+  variant → /vox-avatar. Unclear intent → /hyperframes.
 ---
 
-# vox-explainer — Vox paper-collage editorial explainer
+# vox-explainer — Vox editorial explainer (five page grammars)
+
+> **v2** (2026-07-16, frame-level dissection of 4 canonical Vox videos — taxonomy in
+> `references-vox-grammar.md` §grammars). v1 (collage-only) preserved at git tag `vox-skills-v1`.
 
 > **The front door is `/hyperframes`.** This workflow is autonomous by design: at most one
 > clarifying question, then build through verification. Rendering is user-gated — after
@@ -22,7 +26,23 @@ at $0.03/beat vs $1.01/beat for pure Omni generation, with 100% text correctness
 
 ## Workflow
 
-All artifacts in `videos/<project>/`. Phases: **beats → assets → compose → verify → (gate) preview/render**.
+All artifacts in `videos/<project>/`. Phases: **grammar → beats → assets → compose → verify → (gate) preview/render**.
+
+### 0. Pick the page grammar (one per piece — this is the biggest quality lever)
+
+"Vox style" is not one look; it is a FAMILY of page grammars sharing an annotation philosophy.
+Pick by topic, before writing beats:
+
+| Grammar | Preset | Topic fit | Page basis |
+|---|---|---|---|
+| collage | `presets/collage-zine.md` / `presets/paper-craft.md` | culture, narrative history | kraft/cream paper, torn cutouts, tape |
+| diagram | `presets/diagram.md` | tech, product, how-it-works | paper-white, outline line-art, thin arrows |
+| dark-data | `presets/dark-data.md` | data, finance, investigation | charcoal, annotated charts, social cards |
+| archive | `presets/archive.md` | history, war, biography | near-black desk, floating photo cards |
+| atlas | `presets/atlas.md` | geopolitics, international | grayscale map, country fills, timeline bar |
+
+A piece may borrow ONE page from a second grammar (e.g. an archive page inside an atlas piece)
+but has a single home grammar. The annotation components (§3) work across all five.
 
 ### 1. Beat map (`beats.json`) — the contract
 
@@ -42,8 +62,7 @@ Per beat: `{id, label, vo, visual, camera, transition_out, palette_page}`.
 
 ### 2. Assets (image generation; everything else HF-native)
 
-Pick a preset: `presets/collage-zine.md` (loud, kraft/halftone/red-tape) or
-`presets/paper-craft.md` (calm cream diorama, engraved cutouts). Never mix presets in a piece.
+The preset was chosen in §0. Never mix presets in a piece.
 
 - Photo-like cutouts (people, objects, archival): `scripts/nb2l_image.py "<prompt>" out.jpg` —
   prompt pattern: "vintage copper engraving etching of X, deep purple monochrome ink on plain
@@ -73,10 +92,19 @@ A vox piece is a sequence of DIFFERENT pages, not one page redecorated. Two hard
 ### 3. Compose (per beat = one `.clip` scene)
 
 **Reusable registry items (prefer these over hand-writing the CSS):**
-`npx hyperframes add vox-paper-page vox-torn-card vox-cutout-label vox-tape vox-boil` —
-the five core vox components; and `npx hyperframes add vox-beat-hero` — a complete
-variable-driven hero beat block (label / image_src / page_color / accent_color / duration),
-cloneable per beat so the page arc is a variables change, not a rewrite.
+
+- Collage family: `npx hyperframes add vox-paper-page vox-torn-card vox-cutout-label vox-tape vox-boil`,
+  plus `vox-beat-hero` — a variable-driven hero beat block (label / image_src / page_color /
+  accent_color / duration), cloneable per beat so the page arc is a variables change, not a rewrite.
+- **Annotation family (grammar-agnostic — use in EVERY piece):**
+  `npx hyperframes add vox-thin-arrow vox-caption-chip vox-numbered-step vox-highlighter-word vox-source-footnote`.
+  These are the shared Vox annotation philosophy: labels point AT things (thin-arrow), facts get
+  factual-register chips (caption-chip, mono variant for archive), processes get numbered steps,
+  key words get marker sweeps, and every borrowed image/number gets a source footnote.
+- Continuity: `npx hyperframes add vox-timeline-bar` — persistent bottom timeline (atlas grammar,
+  but works for any dated narrative). Mount ONCE at composition level, keep it resident across
+  beats, glide the playhead each beat, pop event chips on their VO keywords. Stronger than a
+  recurring motif.
 
 Working example with every pattern wired: `patterns/beat-collage-example.html`
 (lint+WCAG-clean, rendered). Theme tokens, torn-edge card `clip-path`, tape strips
