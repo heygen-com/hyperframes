@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-cutout-label",
+  "type": "hyperframes:component",
+  "title": "Vox Cutout Label",
+  "description": "ALL-CAPS newspaper cutout label strip with ragged edges and drop shadow. The vox text format: 1-3 words keyed to a VO keyword.",
+  "tags": [
+    "vox",
+    "label",
+    "typography",
+    "cutout",
+    "collage"
+  ],
+  "files": [
+    {
+      "path": "vox-cutout-label.html",
+      "target": "compositions/components/vox-cutout-label.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-beat-hero",
+  "type": "hyperframes:block",
+  "title": "Vox Beat \u2014 Hero Center",
+  "description": "A complete vox paper-collage hero beat (9:16): variable page color, accent block, torn-edge image card with tape, ALL-CAPS cutout label slapped on the VO keyword, stop-motion boil, slow push-in. Variables: label, image_src, page_color, accent_color, duration.",
+  "tags": [
+    "vox",
+    "collage",
+    "beat",
+    "explainer",
+    "9x16"
+  ],
+  "dimensions": {
+    "width": 720,
+    "height": 1280
+  },
+  "duration": 6.0,
+  "variables": [
+    {
+      "id": "label",
+      "type": "string",
+      "label": "Cutout label (1-3 words, ALL CAPS)",
+      "default": "UNSEEN"
+    },
+    {
+      "id": "image_src",
+      "type": "string",
+      "label": "Hero image path",
+      "default": ""
+    },
+    {
+      "id": "page_color",
+      "type": "color",
+      "label": "Page color (palette arc)",
+      "default": "#E7D7B5"
+    },
+    {
+      "id": "accent_color",
+      "type": "color",
+      "label": "Accent block color",
+      "default": "#D2382B"
+    },
+    {
+      "id": "duration",
+      "type": "number",
+      "label": "Beat duration (s)",
+      "default": 6.0
+    }
+  ],
+  "files": [
+    {
+      "path": "vox-beat-hero.html",
+      "target": "compositions/vox-beat-hero.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

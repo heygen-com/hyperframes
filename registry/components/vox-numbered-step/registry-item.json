@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-numbered-step",
+  "type": "hyperframes:component",
+  "title": "Vox Numbered Step",
+  "description": "Numbered process label (1. FACIAL CAST) \u2014 red number block + typewriter small-caps text, sequenced across beats to narrate a process.",
+  "tags": [
+    "vox",
+    "label",
+    "process",
+    "numbered",
+    "archive"
+  ],
+  "files": [
+    {
+      "path": "vox-numbered-step.html",
+      "target": "compositions/components/vox-numbered-step.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

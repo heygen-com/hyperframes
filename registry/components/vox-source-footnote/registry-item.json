@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-source-footnote",
+  "type": "hyperframes:component",
+  "title": "Vox Source Footnote",
+  "description": "Low-contrast source attribution strip pinned to a corner \u2014 the Vox credibility device. Light and on-dark variants.",
+  "tags": [
+    "vox",
+    "source",
+    "footnote",
+    "attribution"
+  ],
+  "files": [
+    {
+      "path": "vox-source-footnote.html",
+      "target": "compositions/components/vox-source-footnote.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

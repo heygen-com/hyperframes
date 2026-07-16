@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-torn-card",
+  "type": "hyperframes:component",
+  "title": "Vox Torn Card",
+  "description": "White-bordered photo card with ragged torn-edge clip-path and hard offset shadow. Wrap any image or content.",
+  "tags": [
+    "vox",
+    "card",
+    "torn-edge",
+    "cutout",
+    "collage"
+  ],
+  "files": [
+    {
+      "path": "vox-torn-card.html",
+      "target": "compositions/components/vox-torn-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

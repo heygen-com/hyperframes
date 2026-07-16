@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-paper-page",
+  "type": "hyperframes:component",
+  "title": "Vox Paper Page",
+  "description": "Full-bleed paper page: palette-variable flat color, feTurbulence grain, fold crease. The base layer of every vox beat.",
+  "tags": [
+    "vox",
+    "paper",
+    "background",
+    "texture",
+    "collage"
+  ],
+  "files": [
+    {
+      "path": "vox-paper-page.html",
+      "target": "compositions/components/vox-paper-page.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
