@@ -393,10 +393,11 @@ with `resolve --from <output> --type <type>` so it joins the ledger + global
 cache.
 
 HEVC/H.265 sources need no conversion for **render** (FFmpeg pre-decodes all
-input video); only live preview depends on the browser's codec support. If an
-HEVC asset previews black, make an H.264 authoring proxy (`ffmpeg -i in.mp4
--c:v libx264 -crf 18 proxy.mp4`), register it with `resolve --from`, and keep
-either file for the final render.
+input video) or for **preview** (auto-proxy transcodes and caches an H.264
+copy on first use, disable with `--no-proxy` or `media.autoProxy: false` in
+hyperframes.json). A manual H.264 proxy via `ffmpeg -i in.mp4 -c:v libx264
+-crf 18 proxy.mp4`, registered with `resolve --from`, remains available for
+edge cases (e.g. auto-proxy disabled, or ffmpeg unavailable at preview time).
 
 ## CLI tools used (what to run, and how to enable each)
 
