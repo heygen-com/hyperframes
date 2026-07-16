@@ -1,0 +1,75 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "telemetry-hud",
+  "type": "hyperframes:component",
+  "title": "Telemetry HUD",
+  "description": "Quiet mono debug-HUD readouts frame a slotted subject: corner brackets draw on, label:value lines tick their values on cues, one readout emphasized in accent. The subject never moves; the HUD breathes zero.",
+  "tags": ["motion-primitive", "product-demo", "hud", "telemetry", "deterministic"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "holdable",
+  "evidence": "Wave K K4 telemetry-hud specification; text-at-time value ticking generalized from typed-prompt, bracket draw from the marker-highlight dash law with attribute-driven dashoffset",
+  "syncPoints": [{ "id": "readouts-settled", "phase": "in", "offset": 2.35 }],
+  "files": [
+    {
+      "path": "telemetry-hud.html",
+      "target": "compositions/components/telemetry-hud.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "readouts",
+      "type": "string",
+      "role": "content",
+      "label": "Readouts",
+      "description": "Comma-separated label:value pairs, up to 8. The first colon splits label from value.",
+      "default": "fps:59.94,latency:11.8 ms,gpu:38%,heap:1.2 GB"
+    },
+    {
+      "id": "emphasize",
+      "type": "number",
+      "role": "style",
+      "label": "Emphasize",
+      "description": "Index of the readout rendered in the accent color. -1 disables.",
+      "default": 0,
+      "min": -1,
+      "max": 7,
+      "step": 1
+    },
+    {
+      "id": "cues",
+      "type": "string",
+      "role": "timing",
+      "label": "Cues",
+      "description": "Comma-separated seconds relative to mount start; cue N starts readout N value tick. Empty uses the authored rhythm.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color of the emphasized readout.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Outgoing transition. Frame roots own transitions; none holds the end frame.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

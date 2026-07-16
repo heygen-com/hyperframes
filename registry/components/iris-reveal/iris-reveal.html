@@ -1,0 +1,478 @@
+<!doctype html>
+<!--
+  iris-reveal: HyperFrames video primitive (transitions / bridge)
+
+  Concept: a circle clip-path opens from an authored origin (iris_x/iris_y
+  percent) revealing state B over state A. Classic register: A grayscale and
+  dimmed, B full color. One confident pass, then a still hold on B. Two
+  full-bleed content slots (the before-after-wipe convention) with
+  token-styled defaults; callers supply the two states, the primitive
+  supplies the iris.
+
+  Wave K, unit K2. Clip-path only (no dashes, no masks); both endpoints of
+  the opening tween are authored (fromTo via a seeded proxy), so seeks are
+  deterministic in both directions.
+
+  Slots (see README.md for a worked example):
+    - [data-slot="before"]: state A, the base layer. Replace the children of
+      this element in your installed copy. Default: a muted token wireframe.
+    - [data-slot="after"]:  state B, revealed by the iris. Same mechanism.
+      Default: a brand-tinted version of the wireframe.
+    Direct img/video children of a slot are sized to cover the panel.
+
+  Variables (declared in data-composition-variables below):
+    - iris_x (number, default 50, 0 to 100%): iris origin, percent of width.
+    - iris_y (number, default 50, 0 to 100%): iris origin, percent of height.
+    - open_at (number, seconds, default 0.35): when the iris starts opening,
+      relative to mount start. Clamped so the pass completes inside IN.
+    - register (color | plain, default color): color dims and desaturates
+      state A so B lands in full color; plain leaves both states untouched.
+    - accent (green | blue | violet, default green): iris rim ring and the
+      default after art tint. green maps to --brand, blue to --accent,
+      violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none holds
+      the final frame (frame roots own transitions; holds end films).
+
+  The iris rim is a thin accent circle (SVG stroke, fixed width) that rides
+  the exact same radius proxy as the clip-path, so rim and clip edge are
+  locked on every frame. It fades in as the pass starts and dissolves just
+  before the iris clears the frame corners.
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN       = open_at + 1.10s iris pass (stage settles during the first 0.32s)
+    HOLD     = elastic = max(0, D - (IN + OUT)); deliberately still on B
+    OUT      = 0.50s when exit is fade or up, 0 when exit is none
+    If D < IN + OUT, IN and OUT scale down together so IN + OUT == D.
+
+  Sync point: iris-open land at open_at + 1.10s inside IN (1.45s at
+  defaults). It never moves into elastic HOLD.
+
+  Sound cue: dispatches a bubbling `hf:sfx` CustomEvent with id
+  "iris-land-soft" at iris land. This primitive never plays audio.
+
+  Determinism: the full radius and the iris center are measured in px once
+  at mount (the K-wave law for cq-unit transform traps); the radius proxy is
+  the single owner of clip and rim progress, re-written on every seek via
+  onUpdate. Quiet register by default (L2); no percussive variants.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset:0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "iris-reveal" key (mount flattening strips
+  data-composition-id from the live root). Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="iris-reveal"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "iris_x", "type": "number", "role": "layout", "label": "Iris origin X", "description": "Horizontal iris origin as a percent of the frame width.", "default": 50, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "iris_y", "type": "number", "role": "layout", "label": "Iris origin Y", "description": "Vertical iris origin as a percent of the frame height.", "default": 50, "min": 0, "max": 100, "step": 1, "unit": "%" },
+    { "id": "open_at", "type": "number", "role": "timing", "label": "Open start", "description": "Seconds after mount start when the iris begins opening.", "default": 0.35, "min": 0, "max": 8, "step": 0.05, "unit": "s" },
+    { "id": "register", "type": "enum", "role": "style", "label": "Register", "description": "Color dims and desaturates the before state so the after state lands in full color. Plain leaves both untouched.", "default": "color", "options": [{ "value": "color", "label": "Color" }, { "value": "plain", "label": "Plain" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Iris rim ring and default after art tint.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. None holds the final revealed frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Iris Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="iris-reveal" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          /* Root fills the host-owned box. Internal measurements use cqw/cqh
+             and every painted color comes from a contract token. */
+          #root {
+            position: absolute;
+            inset: 0;
+            container-type: size;
+            isolation: isolate;
+            overflow: hidden;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+          }
+
+          .ir-clip,
+          .ir-stage,
+          .ir-panel,
+          .ir-slot,
+          .ir-rim {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .ir-clip {
+            overflow: hidden;
+          }
+
+          .ir-stage {
+            opacity: 0;
+          }
+
+          .ir-panel {
+            overflow: hidden;
+          }
+
+          /* The after layer is revealed by one circle clip-path. --ir-r (px)
+             is written by the radius proxy, the single owner of iris
+             progress; --ir-cx/--ir-cy are set once at mount. */
+          .ir-after {
+            z-index: 2;
+            clip-path: circle(calc(var(--ir-r, 0) * 1px) at var(--ir-cx, 50%) var(--ir-cy, 50%));
+          }
+
+          /* Classic register: state A reads dimmed and desaturated so state B
+             lands in full color. Static CSS, never tweened. */
+          #root[data-register="color"] .ir-before .ir-slot {
+            filter: grayscale(1) brightness(0.76);
+          }
+
+          /* Caller-supplied media covers its panel edge to edge. */
+          .ir-slot > img,
+          .ir-slot > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+
+          /* The rim ring rides the same radius proxy as the clip edge. Fixed
+             stroke width in px (set at mount), fill none, no dashes. */
+          .ir-rim {
+            z-index: 3;
+            overflow: visible;
+            pointer-events: none;
+          }
+
+          .ir-rim circle {
+            fill: none;
+            stroke: var(--ir-accent, #22c55e);
+          }
+
+          /* Token-styled default slot content: a wireframe card that reads
+             muted on the before layer and brand-tinted on the after layer.
+             Callers replacing slot children never see any of this. */
+          .ir-default {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+          }
+
+          .ir-before .ir-default {
+            background:
+              linear-gradient(
+                  color-mix(in srgb, var(--border, #334155) 34%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              linear-gradient(
+                  90deg,
+                  color-mix(in srgb, var(--border, #334155) 34%, transparent) 0.12cqw,
+                  transparent 0.12cqw
+                )
+                0 0 / 5cqw 5cqw,
+              var(--surface, #172033);
+          }
+
+          .ir-after .ir-default {
+            background: linear-gradient(
+              135deg,
+              color-mix(in srgb, var(--brand, #22c55e) 32%, var(--surface, #172033)) 0%,
+              var(--surface, #172033) 58%,
+              color-mix(in srgb, var(--ir-accent, #22c55e) 22%, var(--surface, #172033)) 100%
+            );
+          }
+
+          .ir-card {
+            width: 56cqw;
+            height: 56cqh;
+            padding: var(--space-3, 4cqh) var(--space-3, 4cqw);
+            border: 0.16cqw solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 88%, var(--bg, #07111f));
+            box-shadow: 0 2cqh 5cqw color-mix(in srgb, var(--bg, #07111f) 45%, transparent);
+          }
+
+          .ir-after .ir-card {
+            border-color: color-mix(in srgb, var(--ir-accent, #22c55e) 52%, var(--border, #334155));
+            background: color-mix(in srgb, var(--surface, #172033) 86%, var(--brand, #22c55e));
+          }
+
+          .ir-bar {
+            width: 34%;
+            height: 4.4cqh;
+            margin-bottom: var(--space-3, 4cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.5;
+          }
+
+          .ir-after .ir-bar {
+            background: var(--ir-accent, #22c55e);
+            opacity: 0.92;
+          }
+
+          .ir-line {
+            height: 2.4cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.4;
+          }
+
+          .ir-line:nth-of-type(2) {
+            width: 92%;
+          }
+
+          .ir-line:nth-of-type(3) {
+            width: 68%;
+          }
+
+          .ir-line:nth-of-type(4) {
+            width: 44%;
+          }
+
+          .ir-after .ir-line {
+            background: color-mix(in srgb, var(--brand, #22c55e) 70%, var(--fg, #f8fafc));
+            opacity: 0.75;
+          }
+        </style>
+
+        <div
+          id="iris-reveal-clip"
+          class="ir-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="ir-stage">
+            <section class="ir-panel ir-before" aria-label="Before panel">
+              <div class="ir-slot" data-slot="before">
+                <!-- SLOT "before": replace the children of this element with
+                     your own content (img, video, or HTML). -->
+                <div class="ir-default" aria-hidden="true">
+                  <div class="ir-card">
+                    <div class="ir-bar"></div>
+                    <div class="ir-line"></div>
+                    <div class="ir-line"></div>
+                    <div class="ir-line"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="ir-panel ir-after" aria-label="After panel">
+              <div class="ir-slot" data-slot="after">
+                <!-- SLOT "after": replace the children of this element with
+                     your own content (img, video, or HTML). -->
+                <div class="ir-default" aria-hidden="true">
+                  <div class="ir-card">
+                    <div class="ir-bar"></div>
+                    <div class="ir-line"></div>
+                    <div class="ir-line"></div>
+                    <div class="ir-line"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <svg class="ir-rim" aria-hidden="true">
+              <circle class="ir-rim-circle" cx="0" cy="0" r="0"></circle>
+            </svg>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "iris-reveal";
+            var stage = root.querySelector(".ir-stage");
+            var after = root.querySelector(".ir-after");
+            var rim = root.querySelector(".ir-rim");
+            var rimCircle = root.querySelector(".ir-rim-circle");
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function clampNumber(raw, fallback, min, max) {
+              var value = raw == null ? fallback : Number(raw);
+              if (!Number.isFinite(value)) return fallback;
+              return Math.max(min, Math.min(max, value));
+            }
+
+            // INVARIANT: iris origin always clamps into the declared 0-100 range.
+            var irisX = clampNumber(vars.iris_x, 50, 0, 100);
+            var irisY = clampNumber(vars.iris_y, 50, 0, 100);
+            var openAt = clampNumber(vars.open_at, 0.35, 0, 8);
+            var register = vars.register === "plain" ? "plain" : "color";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable can shadow the
+            // contract --accent token inside the subtree ("blue" is a valid
+            // CSS color and would render pure blue). When the shadow is
+            // present, fall back to the literal contract value.
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#38bdf8";
+            }
+            // INVARIANT: only none | fade | up reaches the timeline.
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            root.dataset.register = register;
+            root.style.setProperty("--ir-accent", accentColors[accent]);
+            root.style.setProperty("--ir-cx", irisX + "%");
+            root.style.setProperty("--ir-cy", irisY + "%");
+
+            // Geometry measured in px ONCE at mount (cq units inside tweened
+            // values are a seek trap). The full radius clears the farthest
+            // frame corner with a small margin so the landed frame has no
+            // visible clip edge.
+            var width = root.clientWidth || 1920;
+            var height = root.clientHeight || 1080;
+            var centerX = (irisX / 100) * width;
+            var centerY = (irisY / 100) * height;
+            var fullRadius =
+              Math.hypot(Math.max(centerX, width - centerX), Math.max(centerY, height - centerY)) *
+                1.02 +
+              2;
+
+            rim.setAttribute("viewBox", "0 0 " + width + " " + height);
+            rimCircle.setAttribute("cx", String(centerX));
+            rimCircle.setAttribute("cy", String(centerY));
+            rimCircle.setAttribute("stroke-width", String(Math.max(2, width * 0.0021)));
+
+            // RETIME RANGE: fixed IN and OUT scale together only when D is too
+            // short. HOLD is the sole elastic phase. Never use timeScale().
+            var STAGE_IN_BASE = 0.32;
+            var OPEN_DURATION_BASE = 1.1;
+            var IN_BASE = openAt + OPEN_DURATION_BASE;
+            var OUT_BASE = exit === "none" ? 0 : 0.5;
+
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var STAGE_IN = Math.min(STAGE_IN_BASE * scale, IN);
+            var OPEN_AT = openAt * scale;
+            var OPEN_DURATION = OPEN_DURATION_BASE * scale;
+            var OPEN_END = IN;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var OUT_START = IN + HOLD;
+
+            function fireSfx(id, t) {
+              root.dispatchEvent(
+                new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
+              );
+            }
+
+            // ONE radius proxy owns both the clip-path and the rim ring, so
+            // the two edges are locked on every frame. Seeded before the
+            // timeline builds so tl.seek(0) shows the closed iris.
+            var radius = { value: 0 };
+            function writeIris() {
+              after.style.setProperty("--ir-r", String(radius.value));
+              rimCircle.setAttribute("r", String(Math.max(0, radius.value)));
+            }
+            writeIris();
+
+            // Explicit both-endpoints state makes tl.seek(0) deterministic.
+            gsap.set(stage, { opacity: 0, y: 0 });
+            gsap.set(rim, { autoAlpha: 0 });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: stage settle, then ONE confident iris pass (quiet register,
+            // L2). The rim fades in as the pass starts and dissolves just
+            // before the iris clears the frame corners.
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+            tl.fromTo(
+              radius,
+              { value: 0 },
+              {
+                value: fullRadius,
+                duration: OPEN_DURATION,
+                ease: "power2.inOut",
+                onUpdate: writeIris,
+              },
+              OPEN_AT,
+            );
+            tl.fromTo(
+              rim,
+              { autoAlpha: 0 },
+              {
+                autoAlpha: 1,
+                duration: Math.min(0.18 * scale, OPEN_DURATION),
+                ease: "power1.out",
+                immediateRender: false,
+              },
+              OPEN_AT,
+            );
+            tl.to(
+              rim,
+              { autoAlpha: 0, duration: 0.24 * scale, ease: "power1.in" },
+              Math.max(OPEN_AT, OPEN_END - 0.24 * scale),
+            );
+            tl.call(
+              function () {
+                fireSfx("iris-land-soft", OPEN_END);
+              },
+              [],
+              OPEN_END,
+            );
+
+            // HOLD: deliberately still on the revealed state B.
+
+            // OUT: only when the exit variable asks for one; exit none holds
+            // the final revealed frame (frame roots own transitions).
+            if (exit !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-6cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

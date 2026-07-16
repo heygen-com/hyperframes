@@ -1,0 +1,72 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "whip-pan-cut",
+  "type": "hyperframes:component",
+  "title": "Whip Pan Cut",
+  "description": "A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.",
+  "tags": ["transition", "whip-pan", "motion-blur", "velocity-match", "speed-ramp", "bridge", "slots"],
+  "jobs": ["bridge"],
+  "family": "transitions",
+  "profile": "transition",
+  "evidence": "Wave K6: the X expert demand study names the whip pan as the loud lateral scene bridge; cut-the-curve donates the transition profile, motion-blur-streak donates the capped directional blur",
+  "syncPoints": [{ "id": "whip-cut", "phase": "in", "offset": 0.53 }],
+  "files": [
+    {
+      "path": "whip-pan-cut.html",
+      "target": "compositions/components/whip-pan-cut.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Shared travel direction for the outgoing and incoming scenes.",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "id": "whip_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Whip start",
+      "description": "Seconds after mount start when the whip begins.",
+      "default": 0.25,
+      "min": 0,
+      "max": 8,
+      "step": 0.05,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Seam hairline and default after art tint.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure of the landed scene. Default none: it rests until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,553 @@
+<!doctype html>
+<!--
+  telemetry-hud: HyperFrames video primitive (product-demo / HUD)
+
+  Quiet mono debug-HUD readouts frame a slotted subject. Four corner brackets
+  draw on (measured getTotalLength, ATTRIBUTE-driven stroke-dashoffset: a CSS
+  dashoffset tween can leave stale paint under reverse seeks), small
+  "label: value" data lines fade in, and each value ticks to its final string
+  on its cue. One readout is emphasized in the accent color. The subject never
+  moves and the HUD breathes zero: the hold is dead still.
+
+  Value ticking follows the typed-prompt law: every visible frame is read from
+  one text-at-time row table built synchronously (fixed-seed LCG) before the
+  timeline registers, so forward seeks, reverse seeks, and repeated seeks to
+  the same time always produce the same string. Nothing is incremental.
+  During a tick, unresolved characters roll through same-class stand-ins
+  (digits stay digits, letters stay letters) and resolve left to right.
+
+  Slot (see README.md for a worked example):
+    - [data-slot="subject"]: the framed subject. Replace the children of this
+      element in your installed copy (img, video, or HTML). Default: a token
+      skeleton card. Direct img/video children are sized to cover the slot.
+
+  Variables (declared in data-composition-variables below):
+    - readouts (string): comma-separated "label:value" pairs, up to 8. The
+      first colon splits label from value; later colons stay in the value.
+    - emphasize (number, default 0): index of the accent-colored readout.
+      Out-of-range values clamp; -1 disables emphasis.
+    - cues (string, default ""): comma-separated seconds relative to mount
+      start; cue N starts readout N's tick. Empty = authored rhythm.
+    - accent (green | blue | violet, default green): emphasized readout color.
+      green maps to --brand, blue to --accent, violet to --accent-2.
+    - exit (none | fade | up, default none): outgoing transition. none holds
+      the end frame (frame roots own transitions; holds end films).
+
+  Envelope (fixed IN/OUT, elastic HOLD only, never gsap.timeScale()):
+    IN   = stage fade 0.45s, brackets draw 0.12s to ~0.9s, readout lines fade
+           staggered, ticks land per cue (clamped to finish before OUT).
+    HOLD = elastic = everything after the last tick; completely still.
+    OUT  = 0.45s when exit is fade or up, 0 when exit is none.
+
+  Interruptibility (Wave K L1): every animated property has one owner (stage
+  opacity/y, per-path dashoffset, one shared tick driver), so overlapping cue
+  schedules never fight a second tween for the same value.
+
+  Mount contract: MOUNTABLE SUB-COMPOSITION. The runtime clones only
+  <template> contents; #root fills the host box (inset: 0, container-type:
+  size), has no data-width/data-height, and registers one paused timeline
+  under the literal "telemetry-hud" key. Variables come from
+  window.__hyperframes.getVariables().
+-->
+<html
+  lang="en"
+  data-composition-id="telemetry-hud"
+  data-composition-duration="4.5"
+  data-composition-variables='[
+    { "id": "readouts", "type": "string", "role": "content", "label": "Readouts", "description": "Comma-separated label:value pairs, up to 8. The first colon splits label from value.", "default": "fps:59.94,latency:11.8 ms,gpu:38%,heap:1.2 GB" },
+    { "id": "emphasize", "type": "number", "role": "style", "label": "Emphasize", "description": "Index of the readout rendered in the accent color. -1 disables.", "default": 0, "min": -1, "max": 7, "step": 1 },
+    { "id": "cues", "type": "string", "role": "timing", "label": "Cues", "description": "Comma-separated seconds relative to mount start; cue N starts readout N value tick. Empty uses the authored rhythm.", "default": "" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color of the emphasized readout.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Outgoing transition. Frame roots own transitions; none holds the end frame.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Telemetry HUD</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="telemetry-hud" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: var(--bg, #07111f);
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            pointer-events: none;
+          }
+
+          .th-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+          }
+
+          .th-stage {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            will-change: transform, opacity;
+          }
+
+          /* Framed subject: centered, static for the whole hold. */
+          .th-subject {
+            position: relative;
+            width: 56cqw;
+            height: 58cqh;
+            overflow: hidden;
+            border-radius: var(--radius, 2.4cqmin);
+          }
+
+          .th-slot,
+          .th-slot > img,
+          .th-slot > video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+
+          .th-slot > img,
+          .th-slot > video {
+            object-fit: cover;
+          }
+
+          /* Token skeleton default; callers replacing slot children never
+             see any of this. */
+          .th-default {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            border: 0.16cqmin solid var(--border, #334155);
+            border-radius: var(--radius, 2.4cqmin);
+            background: color-mix(in srgb, var(--surface, #172033) 90%, var(--bg, #07111f));
+          }
+
+          .th-card {
+            width: 72%;
+          }
+
+          .th-bar {
+            width: 38%;
+            height: 4.6cqh;
+            margin-bottom: var(--space-3, 4cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.55;
+          }
+
+          .th-line {
+            height: 2.4cqh;
+            margin-bottom: var(--space-2, 2.6cqh);
+            border-radius: 1.2cqh;
+            background: var(--muted, #94a3b8);
+            opacity: 0.38;
+          }
+
+          .th-line:nth-of-type(2) {
+            width: 88%;
+          }
+
+          .th-line:nth-of-type(3) {
+            width: 64%;
+          }
+
+          .th-line:nth-of-type(4) {
+            width: 42%;
+          }
+
+          /* Corner brackets: square-capped strokes, drawn via measured
+             dasharray/dashoffset ATTRIBUTES set from script. */
+          .th-bracket {
+            position: absolute;
+            width: 8cqmin;
+            height: 8cqmin;
+            overflow: visible;
+          }
+
+          .th-bracket path {
+            fill: none;
+            stroke: color-mix(in srgb, var(--fg, #f8fafc) 62%, transparent);
+            stroke-width: 3;
+            stroke-linecap: butt;
+          }
+
+          .th-bracket-tl {
+            top: var(--space-2, 2.4cqmin);
+            left: var(--space-2, 2.4cqmin);
+          }
+
+          .th-bracket-tr {
+            top: var(--space-2, 2.4cqmin);
+            right: var(--space-2, 2.4cqmin);
+            transform: scaleX(-1);
+          }
+
+          .th-bracket-bl {
+            bottom: var(--space-2, 2.4cqmin);
+            left: var(--space-2, 2.4cqmin);
+            transform: scaleY(-1);
+          }
+
+          .th-bracket-br {
+            bottom: var(--space-2, 2.4cqmin);
+            right: var(--space-2, 2.4cqmin);
+            transform: scale(-1, -1);
+          }
+
+          /* Readout groups sit just inside each bracket. */
+          .th-corner {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            gap: 0.9cqmin;
+          }
+
+          .th-corner-tl {
+            top: calc(var(--space-2, 2.4cqmin) + 1cqmin);
+            left: calc(var(--space-2, 2.4cqmin) + 9.6cqmin);
+          }
+
+          .th-corner-tr {
+            top: calc(var(--space-2, 2.4cqmin) + 1cqmin);
+            right: calc(var(--space-2, 2.4cqmin) + 9.6cqmin);
+            align-items: flex-end;
+          }
+
+          .th-corner-bl {
+            bottom: calc(var(--space-2, 2.4cqmin) + 1cqmin);
+            left: calc(var(--space-2, 2.4cqmin) + 9.6cqmin);
+          }
+
+          .th-corner-br {
+            bottom: calc(var(--space-2, 2.4cqmin) + 1cqmin);
+            right: calc(var(--space-2, 2.4cqmin) + 9.6cqmin);
+            align-items: flex-end;
+          }
+
+          .th-read {
+            display: flex;
+            align-items: baseline;
+            gap: 1.1cqmin;
+            font-size: 2.3cqmin;
+            line-height: 1.35;
+            white-space: nowrap;
+            will-change: opacity;
+          }
+
+          .th-label {
+            color: var(--muted, #94a3b8);
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .th-value {
+            color: var(--fg, #f8fafc);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+          }
+
+          .th-read.th-em .th-label,
+          .th-read.th-em .th-value {
+            color: var(--th-accent);
+          }
+
+          .th-read.th-em .th-value {
+            font-weight: 600;
+          }
+        </style>
+
+        <div
+          id="telemetry-hud-clip"
+          class="th-clip clip"
+          data-start="0"
+          data-duration="4.5"
+          data-track-index="0"
+        >
+          <div class="th-stage">
+            <div class="th-subject">
+              <div class="th-slot" data-slot="subject">
+                <!-- SLOT "subject": replace the children of this element with
+                     your own content (img, video, or HTML). -->
+                <div class="th-default" aria-hidden="true">
+                  <div class="th-card">
+                    <div class="th-bar"></div>
+                    <div class="th-line"></div>
+                    <div class="th-line"></div>
+                    <div class="th-line"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <svg class="th-bracket th-bracket-tl" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M 46 3 L 12 3 Q 3 3 3 12 L 3 46"></path>
+            </svg>
+            <svg class="th-bracket th-bracket-tr" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M 46 3 L 12 3 Q 3 3 3 12 L 3 46"></path>
+            </svg>
+            <svg class="th-bracket th-bracket-bl" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M 46 3 L 12 3 Q 3 3 3 12 L 3 46"></path>
+            </svg>
+            <svg class="th-bracket th-bracket-br" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M 46 3 L 12 3 Q 3 3 3 12 L 3 46"></path>
+            </svg>
+
+            <div class="th-corner th-corner-tl"></div>
+            <div class="th-corner th-corner-tr"></div>
+            <div class="th-corner th-corner-bl"></div>
+            <div class="th-corner th-corner-br"></div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            // Literal id: mount flattening strips data-composition-id from the
+            // live root before this timeline registers.
+            var compositionId = "telemetry-hud";
+            var stage = root.querySelector(".th-stage");
+            var brackets = root.querySelectorAll(".th-bracket path");
+            var corners = [
+              root.querySelector(".th-corner-tl"),
+              root.querySelector(".th-corner-tr"),
+              root.querySelector(".th-corner-bl"),
+              root.querySelector(".th-corner-br"),
+            ];
+
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var readoutsRaw =
+              vars.readouts == null
+                ? "fps:59.94,latency:11.8 ms,gpu:38%,heap:1.2 GB"
+                : String(vars.readouts);
+            var emphasizeRaw = Number(vars.emphasize);
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #22c55e)",
+              blue: "var(--accent, #38bdf8)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // The bundler mirrors composition variables as scoped CSS custom
+            // props, so this unit's own accent variable shadows the contract
+            // --accent token inside the subtree. When the shadow is present,
+            // fall back to the literal contract value instead of var(--accent).
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#38bdf8";
+            }
+            root.style.setProperty("--th-accent", accentColors[accent]);
+
+            // Parse "label:value" pairs; the FIRST colon splits, later colons
+            // stay in the value. Cap at 8 (two per corner).
+            var readouts = readoutsRaw
+              .split(",")
+              .map(function (pair) {
+                var i = pair.indexOf(":");
+                var label = (i < 0 ? pair : pair.slice(0, i)).trim();
+                var value = (i < 0 ? "" : pair.slice(i + 1)).trim();
+                return { label: label, value: value };
+              })
+              .filter(function (r) {
+                return r.label.length > 0;
+              })
+              .slice(0, 8);
+            var emphasize = Number.isFinite(emphasizeRaw)
+              ? Math.min(Math.round(emphasizeRaw), readouts.length - 1)
+              : 0;
+
+            var cueList = String(vars.cues == null ? "" : vars.cues)
+              .split(",")
+              .map(function (token) {
+                return parseFloat(token);
+              })
+              .filter(function (value) {
+                return isFinite(value) && value >= 0;
+              });
+
+            // RETIME RANGE: fixed phases; HOLD is the only elastic span.
+            var STAGE_IN = 0.45;
+            var BRACKET_AT = 0.12;
+            var BRACKET_DRAW = 0.5;
+            var READ_IN_AT = 0.45;
+            var TICK = 0.5;
+            var STILLNESS = 0.25;
+            var OUT_BASE = exit === "none" ? 0 : 0.45;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4.5"));
+            var OUT = Math.min(OUT_BASE, duration * 0.2);
+            var OUT_START = duration - OUT;
+            // Every tick must land before the stillness that precedes OUT.
+            var lastCueMax = Math.max(READ_IN_AT, OUT_START - STILLNESS - TICK);
+
+            // Fixed-seed LCG: the only randomness source, consumed in one
+            // deterministic order during this synchronous build.
+            var lcgState = 0x2c9277b5;
+            function rnd() {
+              lcgState = (Math.imul(1664525, lcgState) + 1013904223) >>> 0;
+              return lcgState / 4294967296;
+            }
+            var DIGITS = "0123456789";
+            var UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            var LOWER = "abcdefghijklmnopqrstuvwxyz";
+            function standIn(ch) {
+              if (DIGITS.indexOf(ch) >= 0) return DIGITS[Math.floor(rnd() * 10)];
+              if (UPPER.indexOf(ch) >= 0) return UPPER[Math.floor(rnd() * 26)];
+              if (LOWER.indexOf(ch) >= 0) return LOWER[Math.floor(rnd() * 26)];
+              return ch;
+            }
+
+            // Build DOM + one text-at-time table per readout, all at once.
+            // The timeline only ever reads the tables, so seeks in any
+            // direction resolve the same string for the same time.
+            var STEPS = 8;
+            var readElements = [];
+            var valueElements = [];
+            var tables = [];
+            var tickEnd = READ_IN_AT;
+            readouts.forEach(function (readout, index) {
+              var row = document.createElement("div");
+              row.className = "th-read" + (index === emphasize ? " th-em" : "");
+              var labelEl = document.createElement("span");
+              labelEl.className = "th-label";
+              labelEl.textContent = readout.label;
+              var valueEl = document.createElement("span");
+              valueEl.className = "th-value";
+              valueEl.textContent = "--";
+              row.appendChild(labelEl);
+              row.appendChild(valueEl);
+              corners[index % 4].appendChild(row);
+              readElements.push(row);
+              valueElements.push(valueEl);
+
+              var cue = cueList[index] != null ? cueList[index] : 1.0 + index * 0.28;
+              cue = Math.max(READ_IN_AT, Math.min(cue, lastCueMax));
+              var chars = Array.from(readout.value);
+              var rows = [{ t: 0, x: "--" }];
+              for (var step = 1; step <= STEPS; step += 1) {
+                var resolved =
+                  step === STEPS ? chars.length : Math.floor((chars.length * step) / STEPS);
+                var out = "";
+                for (var k = 0; k < chars.length; k += 1) {
+                  out += k < resolved ? chars[k] : standIn(chars[k]);
+                }
+                rows.push({ t: cue + (TICK * step) / STEPS, x: out });
+              }
+              tables.push(rows);
+              tickEnd = Math.max(tickEnd, cue + TICK);
+            });
+
+            // 1ms tolerance: GSAP snaps a tween's end value below the row
+            // table's accumulated float times, far under one frame.
+            function textAt(rows, time) {
+              for (var i = rows.length - 1; i >= 0; i -= 1) {
+                if (time >= rows[i].t - 0.001) return rows[i].x;
+              }
+              return rows[0].x;
+            }
+
+            gsap.set(stage, { opacity: 0, y: 0 });
+            readElements.forEach(function (el) {
+              gsap.set(el, { opacity: 0 });
+            });
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: one stage fade; the subject never moves.
+            tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
+
+            // Brackets draw on: dasharray/dashoffset as ATTRIBUTES (a CSS
+            // strokeDashoffset tween can leave stale paint under reverse
+            // seeks), both endpoints explicit.
+            brackets.forEach(function (path, index) {
+              var length = path.getTotalLength();
+              path.setAttribute("stroke-dasharray", String(length));
+              path.setAttribute("stroke-dashoffset", String(length));
+              tl.fromTo(
+                path,
+                { attr: { "stroke-dashoffset": length } },
+                {
+                  attr: { "stroke-dashoffset": 0 },
+                  duration: BRACKET_DRAW,
+                  ease: "power2.inOut",
+                  immediateRender: false,
+                },
+                BRACKET_AT + index * 0.08,
+              );
+            });
+
+            // Readout lines fade in staggered; opacity only, no movement.
+            readElements.forEach(function (el, index) {
+              tl.fromTo(
+                el,
+                { opacity: 0 },
+                { opacity: 1, duration: 0.35, ease: "power1.out", immediateRender: false },
+                READ_IN_AT + index * 0.07,
+              );
+            });
+
+            // One shared driver reads every table; single owner of all values.
+            var driver = { t: 0 };
+            tl.to(
+              driver,
+              {
+                t: tickEnd,
+                duration: tickEnd,
+                ease: "none",
+                onUpdate: function () {
+                  for (var i = 0; i < valueElements.length; i += 1) {
+                    valueElements[i].textContent = textAt(tables[i], driver.t);
+                  }
+                },
+              },
+              0,
+            );
+
+            // HOLD: the HUD breathes zero. Completely still.
+
+            // OUT: only when the exit variable asks for one.
+            if (exit !== "none") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+              if (exit === "up") {
+                tl.to(stage, { y: "-5cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              }
+            }
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines[compositionId] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -27,7 +27,7 @@ group: Text effects.
 what: A deterministic hacker-style reveal that cycles fixed glyph rows and locks the target string left to right.
 use_when: A product name, feature name, or technical claim should resolve with a terminal or engineering flavor.
 avoid_when: The brand voice is calm or premium; the glyph churn reads noisy against quiet scenes (use titlecard-lockup or per-word-rise).
-pairs_with: typed-prompt, titlecard-lockup, cut-the-curve.
+pairs_with: titlecard-lockup, cut-the-curve.
 variables: text (string, default "HYPERFRAMES"): target string. style (enum terminal or clean, default terminal): framed terminal or bare text. accent (enum green, blue, violet, default green): text, prefix, and frame color. exit (enum none, fade, up, default none).
 
 ### kinetic-type-swap
@@ -38,22 +38,12 @@ avoid_when: The alternatives differ wildly in length or you need more than a han
 pairs_with: per-word-rise, browser-device-stage, cta-close.
 variables: prefix (string, default "Ship"): fixed text before the slot. options (string, default "faster,smarter,together"): comma words shown in order; the last is final. suffix (string, default empty): fixed text after the slot. cues (string, default empty): comma seconds per swap. accent (enum green, blue, violet, default green): slot color. exit (enum none, fade, up, default none).
 
-### marker-highlight
-group: Text effects.
-what: Display text settles in, then one hand-drawn marker stroke (highlight, circle, underline, or scribble) draws over the emphasized word on cue.
-use_when: One word in a claim deserves the ink: the human-touch emphasis beat right as narration hits it.
-avoid_when: You want several words emphasized or repeated marks; the unit is one stroke on one word by design.
-pairs_with: per-word-rise, count-up, chart-story.
-variables: text (string, default "Ship it with confidence"): the full line. emphasis_word (string, default "confidence"): first substring match takes the marker; empty draws none. style (enum highlight, circle, underline, scribble, default highlight): stroke shape. draw_at (number seconds, default 0.9): draw cue. accent (enum green, blue, violet, default green): ink color. exit (enum none, fade, up, default none).
-
-## Product demo
-
 ### oversized-cursor
 group: Product demo.
 what: A deliberately oversized macOS-style pointer enters off-screen, glides to a target, clicks to visibly ignite it, then accelerates back off-screen.
 use_when: The scene needs a personified "someone clicks the thing and it works" beat with theatrical scale.
 avoid_when: The click target is your own slotted UI or the pressed state must persist; use press-ripple, which presses a slot and holds it.
-pairs_with: browser-device-stage, typed-prompt, cut-the-curve.
+pairs_with: browser-device-stage, cut-the-curve.
 variables: cursor_variant (enum light or dark, default light): pointer body tone. target_x (number percent, default 55) and target_y (number percent, default 55): tip landing point. click_label (string, default "Generate"): label on the clicked pill. exit (enum none, fade, up, default none): fade and up also depart the ignited target.
 
 ### press-ripple
@@ -61,23 +51,15 @@ group: Product demo.
 what: A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with ink ripple rings, and holds the pressed state.
 use_when: The payoff beat: the user presses the button and the film rests on that satisfied pressed state.
 avoid_when: The cursor itself is the star or must leave after the click; use oversized-cursor for the enter-click-exit arc.
-pairs_with: browser-device-stage, typed-prompt, cta-close.
+pairs_with: browser-device-stage, cta-close.
 variables: label (string, default "Get started"): text in the default pill; ignored when the target slot is replaced. target_x (number percent, default 50) and target_y (number percent, default 50): zone center. press_at (number seconds, default 1.4): press cue. cursor (enum light or dark, default light): pointer tone. accent (enum green, blue, violet, default green): ripple ink and pressed fill. exit (enum none, fade, up, default none).
-
-### typed-prompt
-group: Product demo.
-what: A prompt line types itself in chunked human cadence behind a deterministic blinking caret, with optional backspace-and-retype correction of the final word.
-use_when: The product is prompt-driven or AI-shaped and the scene should show the ask being typed before the result appears.
-avoid_when: You need multi-line output or command execution after the typing; this is one prompt line, not a terminal session.
-pairs_with: browser-device-stage, press-ripple, scramble-reveal.
-variables: text (string, default "Generate a product launch video"): the typed prompt. prompt_glyph (string, default ">"): leading glyph; empty hides. cadence (enum uniform or human, default human): keystroke rhythm. caret (enum blink or solid, default blink): caret behavior. correction (string, default empty): mistyped final word, backspaced then corrected; empty disables. cues (string, default empty): comma seconds anchoring each word start. accent (enum green, blue, violet, default green): glyph and caret color. exit (enum none, fade, up, default none).
 
 ### browser-device-stage
 group: Product demo.
 what: A generic app surface in token-native chrome (browser, window, or phone); the screen area is a slot with a skeleton default, one settle entrance, a readable hold, and an optional screen swap.
 use_when: A real screenshot or product UI needs a credible stage: this is the default way to show "the product" in a launch film.
 avoid_when: The content is seek-synced footage; slotted video is not framework-synced, so use a media clip composition instead.
-pairs_with: typed-prompt, oversized-cursor, before-after-wipe.
+pairs_with: oversized-cursor, before-after-wipe.
 variables: chrome (enum browser, window, phone, default browser): device frame. title (string, default "app.example.com"): address pill or title bar text. swap_at (number seconds, default 0): crossfade to the second screen slot; 0 disables. accent (enum green, blue, violet, default green): skeleton accent. exit (enum none, fade, up, default none). Slots: host-page templates data-slot="browser-device-stage-screen" and "browser-device-stage-screen-b".
 
 ## Proof and stats
@@ -87,7 +69,7 @@ group: Proof and stats.
 what: A token-native stat counter that eases from start to end, lands on the exact final integer with one restrained scale pulse, and holds.
 use_when: One number is the proof: users, revenue, speedup, and it should land exactly as narration states it.
 avoid_when: The stat needs context or comparison; a lone number without a chart or label reads hollow, reach for chart-story.
-pairs_with: chart-story, marker-highlight, count-up.
+pairs_with: chart-story, count-up.
 variables: start (number, default 0) and end (number, default 100): count range; always lands exactly on end. prefix (string, default empty) and suffix (string, default "%"): fixed text around the value. accent (enum green, blue, violet, default green): count color. glow (boolean, default false): opt-in soft accent glow. exit (enum none, fade, up, default none).
 
 ### chart-story
@@ -111,7 +93,7 @@ group: Intros and reveals.
 what: An authored SVG path draws from its measured length, holds with subtle drift, and fills after the stroke when the path is closed with Z.
 use_when: A custom mark, signature, underline flourish, or simple line drawing should draw itself on screen.
 avoid_when: The artwork is multi-stroke or needs a visible pen; use whiteboard-ink, which sequences strokes with a nib actor.
-pairs_with: whiteboard-ink, titlecard-lockup, marker-highlight.
+pairs_with: whiteboard-ink, titlecard-lockup.
 variables: path (string, default a wave path): SVG path data in a 1024x520 viewBox; trailing Z enables fill. stroke_width (number, default 12): stroke width in viewBox units. accent (enum green, blue, violet, default green): trace and fill color. exit (enum none, fade, up, default none).
 
 ### whiteboard-ink
@@ -147,25 +129,15 @@ group: Feature tour.
 what: N labeled token cards stagger-assemble into a grid or vertical list with a fade plus short slide directly into slot, no overshoot, then hold perfectly still.
 use_when: Several features, steps, or capabilities should land as one composed inventory the viewer can scan.
 avoid_when: The features relate to one central thing and the relationship matters; constellation-hub draws that structure.
-pairs_with: constellation-hub, browser-device-stage, cta-close.
+pairs_with: browser-device-stage, cta-close.
 variables: items (string, default "Capture,Compose,Render,Publish"): comma tile labels, 3 to 12. layout (enum grid or list, default grid). columns (number 0 to 4, default 0): 0 auto-picks. cues (string, default empty): per-item entrance times. accent (enum green, blue, violet, default green): tile dot color. exit (enum none, fade, up, default none). Slot: author children inside data-slot="items" to replace generated tiles.
-
-### constellation-hub
-group: Feature tour.
-what: Feature nodes brighten in narration order as real-length SVG connectors draw outward from a fixed central hub, then settle into one lockup.
-use_when: One product at the center with capabilities radiating from it, revealed beat by beat with the voiceover.
-avoid_when: The items are peers with no hub relationship; grid-card-assemble presents a flat set without implying a center.
-pairs_with: grid-card-assemble, chart-story, titlecard-lockup.
-variables: hub_label (string, default "Product"): text inside the fixed hub. nodes (string, default "Capture,Compose,Render,Share"): comma feature labels in narration order. cues (string, default empty): comma seconds per node reveal. accent (enum green, blue, violet, default green): hub, connectors, active nodes. exit (enum none, fade, up, default none).
-
-## Before / after
 
 ### before-after-wipe
 group: Before / after.
 what: Two full-bleed content slots compare before and after states as a persistent divider wipes the after layer over the before layer and rests at a configurable split.
 use_when: The improvement is visual: old UI versus new, raw versus polished, and one wipe tells it.
 avoid_when: The two states are sequential rather than comparative; a straight scene cut or cut-the-curve reads better than a held split.
-pairs_with: browser-device-stage, chart-story, marker-highlight.
+pairs_with: browser-device-stage, chart-story.
 variables: label_a (string, default "Before") and label_b (string, default "After"): side chips; blank hides. rest_split (number percent, default 50): divider resting position. wipe_at (number seconds, default 0.25): wipe start. accent (enum green, blue, violet, default green): divider handle and after chip. exit (enum none, fade, up, default none). Slots: replace the children of data-slot="before" and data-slot="after" in the installed copy; both panels share one coordinate space.
 
 ## Transitions
@@ -187,3 +159,59 @@ use_when: Establishing the pain: noise, doom-scrolling, endless feeds, the "befo
 avoid_when: The content of the cards matters; these are anonymous skeletons, so real posts or testimonials need a bespoke scene.
 pairs_with: cut-the-curve, before-after-wipe, count-up.
 variables: speed (enum doom or frantic, default doom): scroll pace. card_count (number 4 to 10, default 6): cards per cycle. cues (string, default empty): each cue advances the feed one card, a stepped rhythm; empty keeps the continuous loop-compatible scroll. exit (enum none, fade, up, default none): the loop guarantee only holds with empty cues and exit none.
+
+### scroll-camera-story
+group: Camera moves. A compressed forced-scroll cinematic pass: four depth layers move at different rates while section cards rise as the camera reaches them, decelerating into a held final section.
+use_when: a multi-section story should feel like one continuous cinematic travel.
+avoid_when: only one subject exists; ui-focus-zoom frames a single surface better.
+pairs_with: titlecard-lockup, cta-close, whip-pan-cut.
+variables: sections (2-4), travel (cqh), cues, accent, exit.
+
+### iris-reveal
+group: Transitions. A circle opens from an authored origin revealing full-color state B over a grayscaled state A; an accent rim rides the clip edge.
+use_when: a before-to-after or reveal beat should land as one confident punch from a point.
+avoid_when: both states must stay inspectable side by side; that is before-after-wipe.
+pairs_with: before-after-wipe, browser-device-stage, logo-brand-close.
+variables: iris_x, iris_y, open_at, register (color or plain), accent, exit.
+
+### particle-image-reveal
+group: Intros and reveals. A seeded deterministic particle field converges to materialize a slotted image, the trail thinning to zero as it completes.
+use_when: a logo or key visual deserves a crafted materialize moment.
+avoid_when: the register is strictly sober enterprise; titlecard-lockup is the quiet reveal.
+pairs_with: logo-brand-close, titlecard-lockup, beat-pulse-background.
+variables: density (low med high), direction (ltr center), accent, exit.
+
+### telemetry-hud
+group: Product demo. Quiet mono debug-HUD readouts frame a slotted subject: corner brackets draw on, values tick on cues, one readout emphasized.
+use_when: a technical product should feel instrumented and precise around its hero shot.
+avoid_when: the audience is non-technical; the HUD reads as noise.
+pairs_with: browser-device-stage, typed prompt beats via code-terminal-run, count-up.
+variables: readouts (label:value list), emphasize, cues, accent, exit.
+
+### native-notification-pop
+group: Product demo. One system-faithful iOS or macOS notification banner drops over any scene with an accurate interruptible spring and backdrop blur.
+use_when: the payoff is "it notifies you" or a moment should feel native to the OS.
+avoid_when: several notifications tell the story; that is notification-stack.
+pairs_with: browser-device-stage, press-ripple, scroll-camera-story.
+variables: title, body, app_label, os (ios macos), at, accent, exit.
+
+### whip-pan-cut
+group: Transitions. A velocity-matched whip pan with directional motion blur and a speed-ramp profile carries scene A off as scene B lands; cut-the-curve's louder sibling.
+use_when: a rapid-fire montage needs energy between beats.
+avoid_when: the film's register is quiet enterprise; use cut-the-curve.
+pairs_with: cut-the-curve, scroll-feed, spring-stack-shuffle.
+variables: direction, whip_at, accent, exit.
+
+### spring-stack-shuffle
+group: Product demo. A stack of slotted cards reshuffles with real mass on cues; a mid-flight redirect preserves velocity (the interruptible-spring law).
+use_when: browsing or cycling through screens, results, or options should feel physical.
+avoid_when: items should assemble once and rest; that is grid-card-assemble.
+pairs_with: screen-flow-carousel, browser-device-stage, whip-pan-cut.
+variables: cards (3-5), cues, accent, exit.
+
+### vox-annotate
+group: Text effects. A keyword inside a held sentence gets a hand-drawn marker while a thin connector draws to a mono callout label, one annotate gesture on the cue.
+use_when: a phrase needs an editorial aside or explanation, documentary style.
+avoid_when: plain emphasis with no callout is enough; keep the sentence clean instead.
+pairs_with: per-word-rise, line-swap, titlecard-lockup.
+variables: text, keyword, note, style (highlight circle underline scribble), draw_at, accent, exit.

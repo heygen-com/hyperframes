@@ -1,0 +1,73 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "particle-image-reveal",
+  "type": "hyperframes:component",
+  "title": "Particle Image Reveal",
+  "description": "A seeded deterministic particle field converges and settles while a slotted image reveals beneath it, the trail thinning until the image holds clean.",
+  "tags": ["motion-primitive", "intros-reveals", "particles", "reveal", "canvas", "deterministic"],
+  "jobs": ["reveal"],
+  "family": "intros-reveals",
+  "profile": "materialize",
+  "evidence": "Wave K3 demand slate: seeded-table canvas particles, pure function of (index, time), redraw on every eventful seek",
+  "syncPoints": [{ "id": "image-locked", "phase": "in", "offset": 2.8 }],
+  "files": [
+    {
+      "path": "particle-image-reveal.html",
+      "target": "compositions/components/particle-image-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Particle count for the converging field.",
+      "default": "med",
+      "options": [
+        { "value": "low", "label": "Low" },
+        { "value": "med", "label": "Medium" },
+        { "value": "high", "label": "High" }
+      ]
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "timing",
+      "label": "Direction",
+      "description": "ltr sweeps the reveal left to right; center opens an iris from the middle outward.",
+      "default": "ltr",
+      "options": [
+        { "value": "ltr", "label": "Left to right" },
+        { "value": "center", "label": "Center out" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Particle and monogram color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the revealed image holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

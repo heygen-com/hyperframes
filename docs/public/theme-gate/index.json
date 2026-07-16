@@ -1,62 +1,50 @@
 [
   {
-    "primitive": "kinetic-type-swap",
-    "neutral": "kinetic-type-swap.neutral.html",
-    "bold": "kinetic-type-swap.bold.html",
-    "editorial": "kinetic-type-swap.editorial.html"
+    "primitive": "scroll-camera-story",
+    "neutral": "scroll-camera-story.neutral.html",
+    "bold": "scroll-camera-story.bold.html",
+    "editorial": "scroll-camera-story.editorial.html"
   },
   {
-    "primitive": "titlecard-lockup",
-    "neutral": "titlecard-lockup.neutral.html",
-    "bold": "titlecard-lockup.bold.html",
-    "editorial": "titlecard-lockup.editorial.html"
+    "primitive": "iris-reveal",
+    "neutral": "iris-reveal.neutral.html",
+    "bold": "iris-reveal.bold.html",
+    "editorial": "iris-reveal.editorial.html"
   },
   {
-    "primitive": "per-word-rise",
-    "neutral": "per-word-rise.neutral.html",
-    "bold": "per-word-rise.bold.html",
-    "editorial": "per-word-rise.editorial.html"
+    "primitive": "particle-image-reveal",
+    "neutral": "particle-image-reveal.neutral.html",
+    "bold": "particle-image-reveal.bold.html",
+    "editorial": "particle-image-reveal.editorial.html"
   },
   {
-    "primitive": "before-after-wipe",
-    "neutral": "before-after-wipe.neutral.html",
-    "bold": "before-after-wipe.bold.html",
-    "editorial": "before-after-wipe.editorial.html"
+    "primitive": "telemetry-hud",
+    "neutral": "telemetry-hud.neutral.html",
+    "bold": "telemetry-hud.bold.html",
+    "editorial": "telemetry-hud.editorial.html"
   },
   {
-    "primitive": "press-ripple",
-    "neutral": "press-ripple.neutral.html",
-    "bold": "press-ripple.bold.html",
-    "editorial": "press-ripple.editorial.html"
+    "primitive": "native-notification-pop",
+    "neutral": "native-notification-pop.neutral.html",
+    "bold": "native-notification-pop.bold.html",
+    "editorial": "native-notification-pop.editorial.html"
   },
   {
-    "primitive": "scroll-feed",
-    "neutral": "scroll-feed.neutral.html",
-    "bold": "scroll-feed.bold.html",
-    "editorial": "scroll-feed.editorial.html"
+    "primitive": "whip-pan-cut",
+    "neutral": "whip-pan-cut.neutral.html",
+    "bold": "whip-pan-cut.bold.html",
+    "editorial": "whip-pan-cut.editorial.html"
   },
   {
-    "primitive": "browser-device-stage",
-    "neutral": "browser-device-stage.neutral.html",
-    "bold": "browser-device-stage.bold.html",
-    "editorial": "browser-device-stage.editorial.html"
+    "primitive": "spring-stack-shuffle",
+    "neutral": "spring-stack-shuffle.neutral.html",
+    "bold": "spring-stack-shuffle.bold.html",
+    "editorial": "spring-stack-shuffle.editorial.html"
   },
   {
-    "primitive": "count-up",
-    "neutral": "count-up.neutral.html",
-    "bold": "count-up.bold.html",
-    "editorial": "count-up.editorial.html"
-  },
-  {
-    "primitive": "chart-story",
-    "neutral": "chart-story.neutral.html",
-    "bold": "chart-story.bold.html",
-    "editorial": "chart-story.editorial.html"
-  },
-  {
-    "primitive": "grid-card-assemble",
-    "neutral": "grid-card-assemble.neutral.html",
-    "bold": "grid-card-assemble.bold.html",
-    "editorial": "grid-card-assemble.editorial.html"
+    "primitive": "vox-annotate",
+    "neutral": "vox-annotate.neutral.html",
+    "bold": "vox-annotate.bold.html",
+    "editorial": "vox-annotate.editorial.html"
   }
 ]
