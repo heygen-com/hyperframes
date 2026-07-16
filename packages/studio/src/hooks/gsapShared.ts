@@ -53,8 +53,35 @@ export function isInstantHold(animation: GsapAnimation): boolean {
  * Returns `#id` if the selection has an id, otherwise the raw selector,
  * or null if neither exists.
  */
+/**
+ * A CSS-valid selector for an element id. `#id` for a valid CSS identifier,
+ * otherwise an `[id="..."]` attribute selector. IDs that start with a digit
+ * (e.g. "01-hook-hero-word") make `#id` an invalid selector, so
+ * `document.querySelector("#01-...")` / GSAP's `querySelectorAll` throw a
+ * SyntaxError — which surfaces as a masked cross-origin "Script error." and
+ * crashes the preview the moment such a target is committed (e.g. dragging).
+ */
+// Conservative: matches only ids that are unquestionably safe as a `#id`
+// selector — ASCII identifier, starts with a letter/underscore (or a single
+// leading hyphen), no dots/colons/spaces/digits-first. Anything it rejects
+// (digit-leading like "01-hook-...", dots, spaces, non-ASCII, …) falls through
+// to the attribute selector below, which is always valid. It can only ever err
+// toward the safe form, never toward a `#id` that throws — and, unlike
+// `CSS.escape`, it needs no browser global (this runs in node tests too).
+const SAFE_HASH_ID = /^-?[A-Za-z_][\w-]*$/;
+
+export function idSelector(id: string): string {
+  // A `#id` selector is only valid for a CSS identifier. IDs that start with a
+  // digit (e.g. "01-hook-hero-word") make `document.querySelector("#01-...")` and
+  // GSAP's `querySelectorAll` throw a SyntaxError — surfacing as a masked
+  // cross-origin "Script error." that crashes the preview the moment such a
+  // target is committed (e.g. dragging the element). Address those via an
+  // attribute selector instead (quotes/backslashes escaped for the string).
+  return SAFE_HASH_ID.test(id) ? `#${id}` : `[id="${id.replace(/(["\\])/g, "\\$1")}"]`;
+}
+
 export function selectorFromSelection(selection: DomEditSelection): string | null {
-  if (selection.id) return `#${selection.id}`;
+  if (selection.id) return idSelector(selection.id);
   if (selection.selector) return selection.selector;
   return null;
 }
@@ -118,6 +145,18 @@ export interface ParsedPercentageKeyframes {
   easeEach?: string;
 }
 
+function collectAnimatableKeyframeProperties(
+  entry: Record<string, unknown>,
+): Record<string, number | string> {
+  const properties: Record<string, number | string> = {};
+  for (const [property, value] of Object.entries(entry)) {
+    if (property === "ease") continue;
+    if (typeof value === "number") properties[property] = Math.round(value * 1000) / 1000;
+    else if (typeof value === "string") properties[property] = value;
+  }
+  return properties;
+}
+
 /**
  * Parse a GSAP percentage-keyframe object (`{ "0%": { x: 10 }, "100%": { x: 200 } }`)
  * into a sorted array of `{ percentage, properties }` entries.
@@ -146,12 +185,7 @@ export function parsePercentageKeyframes(
     steps.forEach((entry, i) => {
       if (!entry || typeof entry !== "object") return;
       const percentage = steps.length > 1 ? Math.round((i / (steps.length - 1)) * 1000) / 10 : 0;
-      const properties: Record<string, number | string> = {};
-      for (const [pk, pv] of Object.entries(entry as Record<string, unknown>)) {
-        if (pk === "ease") continue;
-        if (typeof pv === "number") properties[pk] = Math.round(pv * 1000) / 1000;
-        else if (typeof pv === "string") properties[pk] = pv;
-      }
+      const properties = collectAnimatableKeyframeProperties(entry as Record<string, unknown>);
       if (Object.keys(properties).length > 0) keyframes.push({ percentage, properties });
     });
     return keyframes.length > 0 ? { keyframes } : null;
@@ -165,12 +199,7 @@ export function parsePercentageKeyframes(
     const pctMatch = key.match(/^(\d+(?:\.\d+)?)%$/);
     if (!pctMatch || !val || typeof val !== "object") continue;
     const percentage = parseFloat(pctMatch[1]);
-    const properties: Record<string, number | string> = {};
-    for (const [pk, pv] of Object.entries(val as Record<string, unknown>)) {
-      if (pk === "ease") continue;
-      if (typeof pv === "number") properties[pk] = Math.round(pv * 1000) / 1000;
-      else if (typeof pv === "string") properties[pk] = pv;
-    }
+    const properties = collectAnimatableKeyframeProperties(val as Record<string, unknown>);
     if (Object.keys(properties).length > 0) {
       keyframes.push({ percentage, properties });
     }
