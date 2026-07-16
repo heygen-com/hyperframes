@@ -49,6 +49,7 @@ import type {
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import { installStudioCustomEase } from "./customEase";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -173,7 +174,18 @@ export function initSandboxRuntimeModular(): void {
       // a stray warning is preferable to a broken runtime
     }
   };
+  const ensureStudioCustomEase = (): void => {
+    const g = window.gsap;
+    const w = window as Window & { __hfCustomEaseRegistered?: boolean };
+    if (!g || w.__hfCustomEaseRegistered) return;
+    try {
+      if (installStudioCustomEase(g)) w.__hfCustomEaseRegistered = true;
+    } catch {
+      // falling back to GSAP's default ease is preferable to a broken runtime
+    }
+  };
   ensureAutoMarkerNoop();
+  ensureStudioCustomEase();
   // Normalize html/body so browser defaults (8px margin, white background) never
   // bleed into renders as white bars. Runs in both preview and render contexts,
   // eliminating the preview/render parity gap that existed when only the React
@@ -1204,8 +1216,44 @@ export function initSandboxRuntimeModular(): void {
   // (setTimeout(0)). Scripts using requestAnimationFrame or longer delays may
   // not be discovered.
   let childrenBound = false;
+  // A GSAP keyframes tween (`{ keyframes: {...}, ease }`) builds an INNER timeline
+  // whose own `_ease` GSAP resolves ONCE, at build time, via the internal
+  // `_parseEase(vars.ease)` (gsap-core: `tl._ease = _parseEase(keyframes.ease ||
+  // vars.ease || "none")`). On render it calls that inner `timeline._ease(...)`.
+  // The composition's inline `<script>` runs and builds these tweens BEFORE this
+  // runtime finishes registering the custom eases (hold/spring/wiggle/custom) in
+  // GSAP's internal ease map — so for a custom container ease the inner `_ease`
+  // bakes to `undefined`, and the first render throws "_ease is not a function"
+  // (a masked cross-origin Script error). Registering the eases afterward can't
+  // retro-fix that already-baked value, so re-resolve every keyframes tween's
+  // inner `_ease` here, once the eases are registered.
+  const repairKeyframeInnerEase = (tlLike: unknown): void => {
+    const g = (window as unknown as { gsap?: { parseEase?: (e: unknown) => unknown } }).gsap;
+    const tl = tlLike as { getChildren?: (a: boolean, b: boolean, c: boolean) => unknown[] } | null;
+    if (!tl || typeof tl.getChildren !== "function" || !g || typeof g.parseEase !== "function")
+      return;
+    for (const child of tl.getChildren(true, true, true)) {
+      const k = child as {
+        timeline?: { _ease?: unknown };
+        vars?: { ease?: unknown; keyframes?: unknown };
+      };
+      const inner = k.timeline;
+      if (!inner || !("_ease" in inner) || typeof inner._ease === "function") continue;
+      const kf = k.vars?.keyframes;
+      const kfEase = kf && !Array.isArray(kf) ? (kf as { ease?: unknown }).ease : undefined;
+      const resolved = g.parseEase(kfEase ?? k.vars?.ease ?? "none");
+      if (typeof resolved === "function") inner._ease = resolved;
+    }
+  };
   // fallow-ignore-next-line complexity
   const bindRootTimelineIfAvailable = (): boolean => {
+    // Custom eases (hold/spring/wiggle/custom) must be registered in GSAP's
+    // internal ease map BEFORE this function's prime render (progress/totalTime
+    // below), or a keyframe segment using one resolves to a non-function ease
+    // and GSAP throws "_ease is not a function" at render. The one-shot call in
+    // init runs early, but if GSAP wasn't ready then (load-order race) it's a
+    // no-op with no retry — so re-assert here, at the render site. Idempotent.
+    ensureStudioCustomEase();
     if (!externalCompositionsReady) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
@@ -1226,6 +1274,8 @@ export function initSandboxRuntimeModular(): void {
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
+    // Repair keyframe inner-timeline eases before any prime render (see helper above).
+    repairKeyframeInnerEase(state.capturedTimeline);
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration <= 0) {
       // No resolvable duration (e.g. a set()-only timeline, or one whose
