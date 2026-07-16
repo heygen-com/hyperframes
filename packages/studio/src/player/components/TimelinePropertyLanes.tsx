@@ -44,7 +44,7 @@ function animationKeyframes(animation: GsapAnimation) {
 
 /** A tween contributes a property lane when it has a group and at least one
  *  editable keyframe (real or synthesized). */
-function animationContributesLane(animation: GsapAnimation): boolean {
+export function animationContributesLane(animation: GsapAnimation): boolean {
   return !!animation.propertyGroup && animationKeyframes(animation).length > 0;
 }
 
