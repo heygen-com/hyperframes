@@ -220,6 +220,8 @@ describe("generateGsapTimelineScript", () => {
 
     expect(script).toContain("Sync media playback");
     expect(script).toContain("media.currentTime");
+    expect(script).toContain("Number.isFinite(parsedEnd) ? parsedEnd : Infinity");
+    expect(script).not.toContain("parseFloat(media.dataset.end) || Infinity");
   });
 
   it("generates initial position sets for elements with x/y offsets", () => {
