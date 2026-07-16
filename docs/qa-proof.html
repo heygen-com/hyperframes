@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>QA proof</title>
+    <style>
+      body { background: #0a0a0b; color: #f2f2f4; font-family: system-ui, sans-serif; padding: 24px; }
+      h1 { font-size: 18px; margin: 0 0 16px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; max-width: 1200px; }
+      .card { border: 1px solid #26262b; border-radius: 10px; overflow: hidden; background: #141416; }
+      .lbl { padding: 8px 12px; font: 12px ui-monospace, monospace; color: #8a8a92; border-top: 1px solid #26262b; }
+    </style>
+  </head>
+  <body>
+    <h1>QA proof: 3 live players (recipe check)</h1>
+    <div class="grid">
+      <div class="card">
+        <div data-hf-player="true" data-src="/public/spike/rolling-number.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9; background: #0b0c0e;"></div>
+        <div class="lbl">rolling-number · prove · EXISTS</div>
+      </div>
+      <div class="card">
+        <div data-hf-player="true" data-src="/public/spike/marker-highlight.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9; background: #0b0c0e;"></div>
+        <div class="lbl">marker-highlight · emphasize · EXISTS</div>
+      </div>
+      <div class="card">
+        <div data-hf-player="true" data-src="/public/spike/touch-indicator/compiled.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9; background: #0b0c0e;"></div>
+        <div class="lbl">touch-indicator · demonstrate · Wave A (mounted)</div>
+      </div>
+    </div>
+    <script src="/hyperframes-player.global.js"></script>
+    <script src="/hyperframes-player-embed.js"></script>
+  </body>
+</html>

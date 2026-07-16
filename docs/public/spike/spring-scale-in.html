@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Staggered Fade Up - Demo</title>
+    <title>Spring Scale In - Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       * {
@@ -21,41 +21,47 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: var(--bg, #f5f5f4);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
       }
-      /* ponytail: zoom on .demo-frame (not a GSAP target) to fill ~65% of frame */
       .demo-frame {
+        display: grid;
+        place-items: center;
+        /* ponytail: scale wrapper — not a GSAP target, safe to use CSS transform */
+        transform: scale(2.0);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
+        padding: 48px 56px 44px;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 28px;
-        padding: 72px 96px;
-        zoom: 1.9;
+        gap: 10px;
+        min-width: 380px;
       }
       .demo-label {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 500;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--muted, #71717a);
+        color: #71717a;
+        margin-bottom: 4px;
       }
-      .hf-remocn-staggered-fade-up {
-        color: var(--fg, #18181b);
-        font-family: var(--font-display, Inter, system-ui, sans-serif);
-        font-weight: 900;
-        letter-spacing: -0.04em;
+      .hf-remocn-spring-scale-in {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        display: inline-flex;
+        gap: 10px;
+        font-size: 42px;
+        line-height: 1;
       }
-      .hf-remocn-staggered-fade-up {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px 18px;
-        font-size: 72px;
-        line-height: 1.05;
-        max-width: 680px;
-        justify-content: center;
-      }
-      .hf-remocn-staggered-fade-up span {
+      .hf-remocn-spring-scale-in span {
         display: inline-block;
         transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
           scale(var(--hf-word-scale, 1));
@@ -67,38 +73,40 @@
   <body>
     <div
       id="demo"
-      data-composition-id="staggered-fade-up-demo"
+      data-composition-id="spring-scale-in-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
       data-duration="5"
     >
       <div class="demo-frame">
-        <div class="demo-label">staggered fade up</div>
-        <div class="hf-remocn-staggered-fade-up">
-          <span>Motion</span><span>that</span><span>tells</span><span>a</span><span>story</span><span>one</span><span>word</span><span>at</span><span>a</span><span>time</span>
+        <div class="demo-card">
+          <div class="demo-label">Animation primitive</div>
+          <div class="hf-remocn-spring-scale-in">
+            <span>Spring</span><span>scale</span><span>in</span>
+          </div>
         </div>
       </div>
       <script>
         const tl = gsap.timeline({ paused: true });
-        const startTime = 0.4;
+        const startTime = 0.5;
         tl.fromTo(
-          ".hf-remocn-staggered-fade-up span",
-          { opacity: 0, "--hf-word-y": "28px", "--hf-word-scale": 0.92, "--hf-word-blur": "6px" },
+          ".hf-remocn-spring-scale-in span",
+          { opacity: 0, "--hf-word-y": "22px", "--hf-word-scale": 0.92, "--hf-word-blur": "5px" },
           {
             opacity: 1,
             "--hf-word-y": "0px",
             "--hf-word-scale": 1,
             "--hf-word-blur": "0px",
-            duration: 0.4,
-            stagger: 0.18,
+            duration: 0.3,
+            stagger: 0.055,
             ease: "power3.out",
           },
           startTime,
         );
         tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};
-        window.__timelines["staggered-fade-up-demo"] = tl;
+        window.__timelines["spring-scale-in-demo"] = tl;
       </script>
     </div>
   </body>

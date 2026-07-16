@@ -31,7 +31,12 @@
     height: 430px;
     border-radius: var(--radius, 30px);
     overflow: hidden;
-    background: radial-gradient(circle at 50% 20%, #dbeafe, #f8fafc 54%, #e0e7ff);
+    background: radial-gradient(
+      circle at 50% 20%,
+      var(--bg, #dbeafe),
+      var(--bg, #f8fafc) 54%,
+      var(--bg, #e0e7ff)
+    );
     box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
   }
   .hf-advanced-arc-motion-path svg {
@@ -55,8 +60,8 @@
     height: 176px;
     margin: -88px 0 0 -88px;
     border-radius: 42px;
-    background: #111827;
-    color: #fff;
+    background: var(--fg, #111827);
+    color: var(--bg, #fff);
     display: grid;
     place-items: center;
     text-align: center;
@@ -74,7 +79,7 @@
     height: 42px;
     padding: 0 var(--space-2, 16px);
     border-radius: var(--radius, 999px);
-    background: #fff;
+    background: var(--surface, #fff);
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
     font-weight: 800;
     transform-origin: 50% 50%;

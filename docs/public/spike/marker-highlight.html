@@ -21,8 +21,8 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: var(--bg, #f7f7f8);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
       }
       .demo-frame {
         display: grid;
@@ -30,12 +30,12 @@
         min-width: 900px;
         min-height: 500px;
         padding: 64px;
-        /* ponytail: scale wrapper only - GSAP targets children, not this element */
+        /* ponytail: scale wrapper only — GSAP targets children, not this element */
         transform: scale(3.5);
       }
       .hf-remocn-marker-highlight {
-        color: var(--fg, #18181b);
-        font-family: var(--font-display, Inter, system-ui, sans-serif);
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
         font-weight: 900;
         letter-spacing: -0.04em;
       }
@@ -50,18 +50,12 @@
         inset: auto 0 9px;
         height: 24px;
         border-radius: 4px;
-        background: var(--accent, #fde047);
+        background: #fde047;
         transform: scaleX(var(--hf-marker-progress, 1));
         transform-origin: left center;
       }
       .hf-remocn-marker-highlight span {
-        --mh-ink: 1;
         position: relative;
-        color: color-mix(
-          in srgb,
-          var(--muted, #71717a) calc((1 - var(--mh-ink)) * 100%),
-          var(--fg, #18181b) calc(var(--mh-ink) * 100%)
-        );
       }
     </style>
   </head>
@@ -88,8 +82,8 @@
         );
         tl.fromTo(
           ".hf-remocn-marker-highlight span",
-          { "--mh-ink": 0 },
-          { "--mh-ink": 1, duration: 0.28 },
+          { color: "#71717a" },
+          { color: "#18181b", duration: 0.28 },
           startTime + 0.16,
         );
         tl.set({}, {}, 5);

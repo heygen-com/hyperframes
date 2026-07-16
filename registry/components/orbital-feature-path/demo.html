@@ -22,12 +22,12 @@
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #f7f7f8;
-        font-family: Inter, system-ui, sans-serif;
+        background: var(--bg, #f7f7f8);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
       .hf-advanced-orbital-feature-path {
-        color: #111827;
-        font-family: Inter, system-ui, sans-serif;
+        color: var(--fg, #111827);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
       .hf-advanced-orbital-feature-path {
         position: relative;
@@ -35,7 +35,12 @@
         height: 430px;
         border-radius: 30px;
         overflow: hidden;
-        background: radial-gradient(circle at 50% 20%, #dbeafe, #f8fafc 54%, #e0e7ff);
+        background: radial-gradient(
+          circle at 50% 20%,
+          var(--bg, #dbeafe),
+          var(--bg, #f8fafc) 54%,
+          var(--bg, #e0e7ff)
+        );
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
         /* ponytail: scale wrapper (not a GSAP target) to fill ~70% of 1920×1080 */
         transform: scale(1.8);
@@ -50,7 +55,7 @@
       }
       .hf-advanced-orbital-feature-path .path {
         fill: none;
-        stroke: rgba(37, 99, 235, 0.28);
+        stroke: color-mix(in srgb, var(--accent, #2563eb) 28%, transparent);
         stroke-width: 3;
         stroke-dasharray: 10 12;
       }
@@ -62,8 +67,8 @@
         height: 176px;
         margin: -88px 0 0 -88px;
         border-radius: 42px;
-        background: #111827;
-        color: #fff;
+        background: var(--fg, #111827);
+        color: var(--bg, #fff);
         display: grid;
         place-items: center;
         text-align: center;
@@ -82,7 +87,7 @@
         height: 42px;
         padding: 0 16px;
         border-radius: 999px;
-        background: #fff;
+        background: var(--surface, #fff);
         box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
         font-size: 13px;
         font-weight: 700;
@@ -92,7 +97,7 @@
         width: 10px;
         height: 10px;
         border-radius: 999px;
-        background: #2563eb;
+        background: var(--accent, #2563eb);
       }
     </style>
   </head>

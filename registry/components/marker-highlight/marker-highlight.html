@@ -30,11 +30,17 @@
     transform-origin: left center;
   }
   .hf-remocn-marker-highlight span {
+    --mh-ink: 1;
     position: relative;
+    color: color-mix(
+      in srgb,
+      var(--muted, #71717a) calc((1 - var(--mh-ink)) * 100%),
+      var(--fg, #18181b) calc(var(--mh-ink) * 100%)
+    );
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { color: 'var(--muted, #71717a)' }, { color: 'var(--fg, #18181b)', duration: 0.28 }, startTime + 0.16);
+  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { '--mh-ink': 0 }, { '--mh-ink': 1, duration: 0.28 }, startTime + 0.16);
 -->

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Arc Motion Path - Demo</title>
+    <title>Orbital Feature Path - Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js"></script>
     <style>
@@ -25,11 +25,11 @@
         background: var(--bg, #f7f7f8);
         font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
-      .hf-advanced-arc-motion-path {
+      .hf-advanced-orbital-feature-path {
         color: var(--fg, #111827);
         font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
-      .hf-advanced-arc-motion-path {
+      .hf-advanced-orbital-feature-path {
         position: relative;
         width: 760px;
         height: 430px;
@@ -42,22 +42,24 @@
           var(--bg, #e0e7ff)
         );
         box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
-        transform: scale(0.84);
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~70% of 1920×1080 */
+        transform: scale(1.8);
+        transform-origin: 50% 50%;
       }
-      .hf-advanced-arc-motion-path svg {
+      .hf-advanced-orbital-feature-path svg {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         overflow: visible;
       }
-      .hf-advanced-arc-motion-path .path {
+      .hf-advanced-orbital-feature-path .path {
         fill: none;
         stroke: color-mix(in srgb, var(--accent, #2563eb) 28%, transparent);
         stroke-width: 3;
         stroke-dasharray: 10 12;
       }
-      .hf-advanced-arc-motion-path .core {
+      .hf-advanced-orbital-feature-path .core {
         position: absolute;
         left: 50%;
         top: 50%;
@@ -70,12 +72,12 @@
         display: grid;
         place-items: center;
         text-align: center;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 900;
         letter-spacing: -0.04em;
         box-shadow: 0 22px 54px rgba(15, 23, 42, 0.25);
       }
-      .hf-advanced-arc-motion-path .chip {
+      .hf-advanced-orbital-feature-path .chip {
         position: absolute;
         left: 0;
         top: 0;
@@ -88,36 +90,62 @@
         background: var(--surface, #fff);
         box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
         font-size: 13px;
-        font-weight: 800;
+        font-weight: 700;
         transform-origin: 50% 50%;
       }
-      .hf-advanced-arc-motion-path .dot {
+      .hf-advanced-orbital-feature-path .dot {
         width: 10px;
         height: 10px;
         border-radius: 999px;
         background: var(--accent, #2563eb);
       }
     </style>
-  </head>
+    <style data-hyperframes-theme="editorial">
+:root, #root, [data-composition-id] {
+  --bg: #e9e1d2 !important;
+  --fg: #202725 !important;
+  --muted: #6c746f !important;
+  --surface: #f8f1e5 !important;
+  --border: #c9bfad !important;
+  --brand: #246b63 !important;
+  --accent: #31776f !important;
+  --accent-2: #8a6549 !important;
+  --font-display: Georgia, "Times New Roman", serif !important;
+  --font-body: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif !important;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace !important;
+  --radius: 0.9cqmin !important;
+  --space-1: 1.1cqmin !important;
+  --space-2: 2.2cqmin !important;
+  --space-3: 3.8cqmin !important;
+  --dur-beat: 0.48s !important;
+  --ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1) !important;
+  --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+  </style>
+</head>
   <body>
     <div
       id="demo"
-      data-composition-id="arc-motion-path-demo"
+      data-composition-id="orbital-feature-path-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
       data-duration="5"
     >
-      <div class="hf-advanced-arc-motion-path">
+      <div class="hf-advanced-orbital-feature-path">
         <svg viewBox="0 0 760 430" aria-hidden="true">
           <path
-            id="arc-motion-path-path-a"
+            id="orbital-feature-path-path-a"
             class="path"
             d="M104 310 C178 110, 334 74, 442 178 S592 306, 668 120"
           />
-          <path id="arc-motion-path-path-b" class="path" d="M118 142 C224 300, 410 330, 642 206" />
+          <path
+            id="orbital-feature-path-path-b"
+            class="path"
+            d="M118 142 C224 300, 410 330, 642 206"
+          />
         </svg>
-        <div class="core">Arc Motion Path</div>
+        <div class="core">Orbital Feature Path</div>
         <div class="chip chip-a"><span class="dot"></span>Plan</div>
         <div class="chip chip-b"><span class="dot"></span>Render</div>
       </div>
@@ -127,11 +155,11 @@
       const startTime = 0.5;
       if (window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
       tl.to(
-        ".hf-advanced-arc-motion-path .chip-a",
+        ".hf-advanced-orbital-feature-path .chip-a",
         {
           motionPath: {
-            path: "#arc-motion-path-path-a",
-            align: "#arc-motion-path-path-a",
+            path: "#orbital-feature-path-path-a",
+            align: "#orbital-feature-path-path-a",
             alignOrigin: [0.5, 0.5],
             autoRotate: true,
           },
@@ -141,11 +169,11 @@
         startTime,
       );
       tl.to(
-        ".hf-advanced-arc-motion-path .chip-b",
+        ".hf-advanced-orbital-feature-path .chip-b",
         {
           motionPath: {
-            path: "#arc-motion-path-path-b",
-            align: "#arc-motion-path-path-b",
+            path: "#orbital-feature-path-path-b",
+            align: "#orbital-feature-path-path-b",
             alignOrigin: [0.5, 0.5],
             autoRotate: true,
             start: 0.1,
@@ -158,7 +186,7 @@
       );
       tl.set({}, {}, 5);
       window.__timelines = window.__timelines || {};
-      window.__timelines["arc-motion-path-demo"] = tl;
+      window.__timelines["orbital-feature-path-demo"] = tl;
     </script>
   </body>
 </html>

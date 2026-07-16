@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Confetti - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: var(--bg, #f7f7f8);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        transform: scale(1.6); /* ponytail: scale wrapper, not GSAP targets */
+      }
+      .hf-remocn-confetti {
+        color: var(--fg, #111827);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
+      }
+      .hf-remocn-confetti {
+        position: relative;
+        width: 760px;
+        height: 428px;
+        overflow: hidden;
+        border-radius: 30px;
+        background: var(--bg, #080b12);
+        box-shadow: 0 28px 80px color-mix(in srgb, var(--bg, #0f172a) 20%, transparent);
+      }
+      .hf-remocn-confetti .mesh {
+        position: absolute;
+        inset: -22%;
+        filter: blur(44px);
+        opacity: 0.88;
+        background:
+          radial-gradient(
+            circle at var(--hf-x1, 20%) var(--hf-y1, 30%),
+            var(--accent, #60a5fa) 0 18%,
+            transparent 32%
+          ),
+          radial-gradient(
+            circle at var(--hf-x2, 76%) var(--hf-y2, 52%),
+            var(--accent-2, #f472b6) 0 16%,
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at var(--hf-x3, 46%) var(--hf-y3, 78%),
+            var(--brand, #34d399) 0 18%,
+            transparent 34%
+          );
+      }
+      .hf-remocn-confetti .card {
+        position: absolute;
+        inset: 74px 92px;
+        border: 1px solid color-mix(in srgb, var(--border, #ffffff) 16%, transparent);
+        border-radius: 26px;
+        background: color-mix(in srgb, var(--surface, #ffffff) 8%, transparent);
+        color: var(--fg, #fff);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        overflow: hidden;
+      }
+      .hf-remocn-confetti .spot {
+        position: absolute;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          color-mix(in srgb, var(--fg, #ffffff) 50%, transparent),
+          transparent 65%
+        );
+        transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
+        mix-blend-mode: screen;
+      }
+      .hf-remocn-confetti .particle {
+        position: absolute;
+        left: 50%;
+        top: 54%;
+        width: 12px;
+        height: 20px;
+        border-radius: 3px;
+        background: var(--c);
+        transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
+        opacity: var(--hf-po, 0);
+      }
+      .hf-remocn-confetti h3 {
+        margin: 0;
+        font-size: 44px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-confetti p {
+        margin: 8px 0 0;
+        font-size: 15px;
+        color: color-mix(in srgb, var(--muted, #ffffff) 70%, transparent);
+      }
+    </style>
+    <style data-hyperframes-theme="bold">
+:root, #root, [data-composition-id] {
+  --bg: #080611 !important;
+  --fg: #fff8ff !important;
+  --muted: #b6a9ca !important;
+  --surface: #1b1230 !important;
+  --border: #493668 !important;
+  --brand: #ff3d81 !important;
+  --accent: #7c5cff !important;
+  --accent-2: #00d4ff !important;
+  --font-display: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif !important;
+  --font-body: Inter, "Helvetica Neue", Arial, sans-serif !important;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace !important;
+  --radius: 1.4cqmin !important;
+  --space-1: 1.2cqmin !important;
+  --space-2: 2.6cqmin !important;
+  --space-3: 4.6cqmin !important;
+  --dur-beat: 0.32s !important;
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1) !important;
+  --ease-emphasis: cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+  </style>
+</head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="confetti-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-confetti">
+          <div class="mesh"></div>
+          <div class="card">
+            <div class="spot"></div>
+            <div>
+              <h3>Confetti</h3>
+              <p>A deterministic celebration burst with seeded particles and gravity.</p>
+            </div>
+          </div>
+          <span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span
+          ><span class="particle" style="--c: var(--accent, #22c55e)"></span
+          ><span class="particle" style="--c: var(--accent, #38bdf8)"></span
+          ><span class="particle" style="--c: var(--accent, #a855f7)"></span
+          ><span class="particle" style="--c: var(--accent, #f43f5e)"></span
+          ><span class="particle" style="--c: var(--accent, #f59e0b)"></span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-confetti .mesh",
+          {
+            "--hf-x1": "18%",
+            "--hf-y1": "28%",
+            "--hf-x2": "78%",
+            "--hf-y2": "46%",
+            "--hf-x3": "44%",
+            "--hf-y3": "80%",
+          },
+          {
+            "--hf-x1": "34%",
+            "--hf-y1": "42%",
+            "--hf-x2": "62%",
+            "--hf-y2": "60%",
+            "--hf-x3": "58%",
+            "--hf-y3": "64%",
+            duration: 4,
+            ease: "sine.inOut",
+          },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-confetti .spot",
+          { "--hf-spot-x": "-120px", "--hf-spot-y": "-70px" },
+          { "--hf-spot-x": "190px", "--hf-spot-y": "90px", duration: 3, ease: "sine.inOut" },
+          startTime,
+        );
+        const particles_confetti = gsap.utils.toArray(".hf-remocn-confetti .particle");
+        if (particles_confetti.length) {
+          tl.fromTo(
+            particles_confetti,
+            { "--hf-po": 0, "--hf-px": "0px", "--hf-py": "0px", "--hf-pr": "0deg" },
+            {
+              "--hf-po": 1,
+              "--hf-px": (i) => Math.cos(i * 0.83) * 250 + "px",
+              "--hf-py": (i) => -120 - Math.sin(i * 0.61) * 120 + "px",
+              "--hf-pr": (i) => 180 + i * 37 + "deg",
+              duration: 0.8,
+              stagger: 0.015,
+              ease: "power2.out",
+            },
+            startTime + 0.2,
+          );
+        }
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["confetti-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

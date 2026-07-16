@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Texture</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      .hf-texture-text {
+        color: #fff;
+        -webkit-mask-size: var(--mask-size, cover);
+        mask-size: var(--mask-size, cover);
+        -webkit-mask-position: var(--mask-position, center);
+        mask-position: var(--mask-position, center);
+        -webkit-mask-mode: luminance;
+        mask-mode: luminance;
+        filter: contrast(var(--mask-contrast, 1));
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #0a0805;
+      }
+      #texture-lava {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0805;
+      }
+      #lv-video {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .lv-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 1;
+        pointer-events: none;
+      }
+      #lv-container {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      .lv-texture-override {
+        -webkit-mask-size: 90% 90%;
+        mask-size: 90% 90%;
+        -webkit-mask-position: 0% 50%;
+        mask-position: 0% 50%;
+        -webkit-mask-mode: luminance;
+        mask-mode: luminance;
+        filter: contrast(1.2);
+      }
+
+      .lv-shadow {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        top: 50%;
+        filter: drop-shadow(0 4px 24px rgba(255, 100, 20, 0.55));
+        opacity: 0;
+        visibility: hidden;
+      }
+      .lv-word {
+        font-family: "Anton", sans-serif;
+        font-weight: 400;
+        text-transform: uppercase;
+        color: #ffd0a0;
+        display: inline-block;
+        letter-spacing: 0.04em;
+        line-height: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="caption-texture"
+      data-composition-id="caption-texture"
+      data-start="0"
+      data-duration="8"
+      data-fps="30"
+      data-width="1920"
+      data-height="1080"
+      data-composition-variables='{"texture":{"type":"string","default":"lava"},"text":{"type":"string","default":"Every great video starts with a single frame."}}'
+    >
+      <video
+        id="lv-video"
+        muted
+        playsinline
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        data-has-audio="false"
+      ></video>
+      <div class="lv-overlay"></div>
+      <div id="lv-container"></div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        var vars =
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : window.__hfVariables || {};
+        var TEXTURE = vars.texture || "lava";
+        var TEXTURE_URL = "compositions/components/" + TEXTURE + ".png";
+        var TINTS = {
+          lava: "#FFB03C",
+          marble: "#EDF1F6",
+          metal: "#AFD4EE",
+          wood: "#E0A45E",
+          concrete: "#C4C8CD",
+          rock: "#8FE3C0",
+        };
+        var TINT = TINTS[TEXTURE] || "#ffffff";
+
+        var _fitCanvas = document.createElement("canvas");
+        var _fitCtx = _fitCanvas.getContext("2d");
+        function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
+          var size = baseFontSize;
+          var minSize = Math.floor(baseFontSize * 0.45);
+          while (size > minSize) {
+            _fitCtx.font = fontWeight + " " + size + "px " + fontFamily;
+            if (_fitCtx.measureText(text).width <= maxWidth) return size;
+            size -= 2;
+          }
+          return minSize;
+        }
+
+        var TEXT =
+          typeof vars.text === "string" && vars.text.trim()
+            ? vars.text.trim()
+            : "Every great video starts with a single frame.";
+        var _toks = TEXT.split(/\s+/);
+        var _per = 2.0 / _toks.length;
+        var WORDS = _toks.map(function (t, i) {
+          return { text: t, start: i * _per, end: (i + 1) * _per };
+        });
+
+        var KEYWORDS = new Set([8, 12, 15, 24, 27]);
+
+        var container = document.getElementById("lv-container");
+        var tl = gsap.timeline({ paused: true });
+
+        WORDS.forEach(function (w, wi) {
+          var txt = w.text.toUpperCase();
+          var fontSize = fitFontSize(txt, 200, "400", "'Anton', sans-serif", 1720);
+
+          var shadow = document.createElement("div");
+          shadow.className = "lv-shadow";
+          shadow.id = "lv-shadow-" + wi;
+          gsap.set(shadow, { yPercent: -50 });
+
+          var wordEl = document.createElement("div");
+          wordEl.className = "hf-texture-text lv-texture-override lv-word";
+          wordEl.style.color = TINT;
+          wordEl.id = "lv-word-" + wi;
+          wordEl.textContent = txt;
+          wordEl.style.fontSize = fontSize + "px";
+          wordEl.style.webkitMaskImage = "url('" + TEXTURE_URL + "')";
+          wordEl.style.maskImage = "url('" + TEXTURE_URL + "')";
+          if (KEYWORDS.has(wi)) wordEl.style.color = "#FFAA44";
+
+          shadow.appendChild(wordEl);
+          container.appendChild(shadow);
+
+          var dur = Math.max(w.end - w.start + 0.3, 0.4);
+
+          tl.set(shadow, { visibility: "visible", opacity: 0 }, w.start);
+          tl.fromTo(
+            shadow,
+            { opacity: 0, scale: 0.88 },
+            { opacity: 1, scale: 1, duration: 0.18, ease: "power3.out" },
+            w.start,
+          );
+          tl.set(wordEl, { "--mask-position": "0% 50%" }, w.start);
+          tl.to(
+            wordEl,
+            { "--mask-position": "100% 50%", duration: dur, ease: "sine.inOut" },
+            w.start,
+          );
+
+          tl.to(shadow, { opacity: 0, scale: 1.08, duration: 0.1, ease: "power2.in" }, w.end);
+          tl.set(shadow, { opacity: 0, visibility: "hidden" }, w.end + 0.1);
+        });
+
+        tl.seek(0);
+        window.__timelines["caption-texture"] = tl;
+      })();
+    </script>
+  </body>
+</html>

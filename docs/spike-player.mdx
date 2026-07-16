@@ -1,0 +1,38 @@
+---
+title: "Player preview spike"
+description: "SPIKE: live hyperframes-player previews inside Mintlify docs. Do not ship."
+---
+
+Two live compositions rendered by `<hyperframes-player>`, driven by the real seek clock, served same-origin from `docs/public/spike/`. The custom element is stripped by the MDX sanitizer, so marker divs are upgraded by `hyperframes-player-embed.js`.
+
+## rolling-number
+
+<div className="not-prose rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 my-4">
+  <div data-hf-player="true" data-src="/public/spike/rolling-number.html" data-width="1920" data-height="1080" style={{ aspectRatio: "16/9", background: "#0b0c0e" }} />
+  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">rolling-number · prove · data · holdable</div>
+</div>
+
+## marker-highlight
+
+<div className="not-prose rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 my-4">
+  <div data-hf-player="true" data-src="/public/spike/marker-highlight.html" data-width="1920" data-height="1080" style={{ aspectRatio: "16/9", background: "#0b0c0e" }} />
+  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">marker-highlight · emphasize · typography · burst</div>
+</div>
+
+## caption-texture, with live variables
+
+Change the values and press Enter: the player re-injects the variables and reloads the composition deterministically.
+
+<div className="not-prose rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 my-4">
+  <div data-hf-player="true" data-src="/public/spike/caption-texture.html" data-width="1920" data-height="1080" data-knobs='[{"name":"texture","value":"lava","options":["lava","marble","metal","wood","concrete","rock"]},{"name":"text","value":"Every great video starts with a single frame."}]' style={{ aspectRatio: "16/9", background: "#0b0c0e" }} />
+  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">caption-texture · emphasize · typography · holdable · variables: texture, text</div>
+</div>
+
+## touch-indicator (Wave A primitive, mounted sub-composition)
+
+The first Wave A primitive through the full loop: built, screened in the shared test scenes, mount-contract fixed. The demo mounts the primitive file via `data-composition-src`, the same way a scene slot does.
+
+<div className="not-prose rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 my-4">
+  <div data-hf-player="true" data-src="/public/spike/touch-indicator/compiled.html" data-width="1920" data-height="1080" style={{ aspectRatio: "16/9", background: "#0b0c0e" }} />
+  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">touch-indicator · demonstrate · pointers · interaction · variables: gesture, polarity, targetX, targetY</div>
+</div>

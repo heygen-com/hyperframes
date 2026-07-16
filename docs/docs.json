@@ -52,6 +52,7 @@
           {
             "group": "Getting Started",
             "pages": [
+              "spike-player",
               "introduction",
               "changelog",
               "weekly-updates",
