@@ -81,6 +81,12 @@ function findButton(host: HTMLElement, text: string): HTMLButtonElement | undefi
   );
 }
 
+function openSegment(host: HTMLElement, label: string): void {
+  const segment = findButton(host, label);
+  expect(segment).toBeDefined();
+  act(() => segment?.click());
+}
+
 function selectPreset(host: HTMLElement, presetId: string): string {
   const presetConfig = EASE_PRESETS.find((candidate) => candidate.id === presetId);
   if (!presetConfig) throw new Error(`Missing ease preset: ${presetId}`);
@@ -130,9 +136,7 @@ describe("AnimationCard", () => {
   it("tracks a committed segment ease alongside the existing update", () => {
     const onEaseCommit = vi.fn();
     const view = renderCard(null, onEaseCommit, true);
-    const segment = findButton(view.host, "0% → 50%");
-    expect(segment).toBeDefined();
-    act(() => segment?.click());
+    openSegment(view.host, "0% → 50%");
     const ease = selectPreset(view.host, "quad-out");
 
     expect(onEaseCommit).toHaveBeenCalledWith(ANIMATION.id, 50, ease);
@@ -210,6 +214,38 @@ function baseAnimation(overrides: Partial<GsapAnimation> = {}): GsapAnimation {
 const noop = () => {};
 
 describe("AnimationCard ease editing", () => {
+  it.each([
+    ["spring", "power2.out", "spring(0.42)", "Spring bounce"],
+    ["wiggle", "power2.out", "wiggle(3,easeInOut,0.12)", "Wiggle count"],
+    ["curve", "spring(0.6)", "custom(M0,0 C0.16,1 0.3,1 1,1)", "Cubic bezier control points"],
+  ] as const)(
+    "commits and immediately displays the %s default when a keyframe segment switches mode",
+    (mode, currentEase, ease, fieldLabel) => {
+      const onUpdateKeyframeEase = vi.fn();
+      const animation = baseAnimation({
+        keyframes: {
+          format: "percentage",
+          keyframes: [
+            { percentage: 0, properties: { opacity: 0 } },
+            { percentage: 50, properties: { opacity: 0.5 }, ease: currentEase },
+            { percentage: 100, properties: { opacity: 1 } },
+          ],
+        },
+      });
+      const view = renderCard(null, onUpdateKeyframeEase, true, animation);
+
+      openSegment(view.host, "0% → 50%");
+      const modeButton = view.host.querySelector<HTMLButtonElement>(`[data-ease-mode="${mode}"]`);
+      expect(modeButton).not.toBeNull();
+      act(() => modeButton?.click());
+
+      expect(onUpdateKeyframeEase).toHaveBeenCalledExactlyOnceWith(animation.id, 50, ease);
+      expect(modeButton?.getAttribute("aria-pressed")).toBe("true");
+      expect(view.host.querySelector(`[aria-label="${fieldLabel}"]`)).not.toBeNull();
+      act(() => view.root.unmount());
+    },
+  );
+
   it("commits one preset change to the selected keyframe segment", () => {
     const onUpdateKeyframeEase = vi.fn();
     const animation = baseAnimation({
@@ -224,11 +260,7 @@ describe("AnimationCard ease editing", () => {
     });
     const view = renderCard(null, onUpdateKeyframeEase, true, animation);
 
-    const segment = Array.from(view.host.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("0% → 50%"),
-    );
-    expect(segment).toBeDefined();
-    act(() => segment?.click());
+    openSegment(view.host, "0% → 50%");
     const ease = selectPreset(view.host, "quad-out");
 
     expect(onUpdateKeyframeEase).toHaveBeenCalledExactlyOnceWith(animation.id, 50, ease);
