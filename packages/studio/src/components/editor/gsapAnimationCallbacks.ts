@@ -63,10 +63,7 @@ const ANIMATION_META_LABELS: Record<string, { control: string; name: string }> =
  * added later is attributed honestly by its own key instead of poisoning another
  * control's usage count.
  */
-export function trackAnimationMetaUpdate(
-  track: TrackDesignInput,
-  updates: Record<string, unknown>,
-): void {
+function trackAnimationMetaUpdate(track: TrackDesignInput, updates: Record<string, unknown>): void {
   for (const key of Object.keys(updates)) {
     const mapped = ANIMATION_META_LABELS[key];
     if (mapped) track(mapped.control, mapped.name);

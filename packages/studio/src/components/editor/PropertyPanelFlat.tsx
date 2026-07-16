@@ -19,6 +19,7 @@ import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { useColorGradingController } from "./useColorGradingController";
+import { usePlayerStore } from "../../player";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -252,6 +253,23 @@ export function PropertyPanelFlat({
   // just toggled. Two ids, not one: the clicked (newly-opening/closing) group
   // AND whichever group was open immediately before the click and got
   // implicitly closed by it — both freshly-mounted headers need to animate.
+  // When the inline timeline ease button focuses a segment on this element,
+  // force the Motion group open so its AnimationCard (which only mounts while
+  // the group is expanded) can consume the focus and reveal the ease editor.
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  // Identity of the element THIS panel actually renders (not the store's
+  // selectedElementId, which flips synchronously on selection while the panel
+  // still renders the previous element during async DOM-selection resolution):
+  // a stale panel would otherwise consume a focus request meant for its
+  // successor when both share a class-selector animation id.
+  const renderedElementId = `${element.sourceFile}#${element.id}`;
+  useEffect(() => {
+    if (!focusedEaseSegment || focusedEaseSegment.elementId !== renderedElementId) return;
+    if (gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId)) {
+      setOpenGroupId("motion");
+    }
+  }, [focusedEaseSegment, gsapAnimations, renderedElementId]);
+
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -504,6 +522,17 @@ export function PropertyPanelFlat({
   const beforeOpen = openIndex === -1 ? groups : groups.slice(0, openIndex);
   const openGroup = openIndex === -1 ? null : groups[openIndex];
   const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
+  const renderClosedGroup = (group: FlatGroupDescriptor) => (
+    <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
+      <FlatGroupHeader
+        title={group.title}
+        isOpen={false}
+        onToggleOpen={() => toggleOpen(group.id)}
+        summary={group.summary}
+        animateEntrance={justToggledIds.includes(group.id)}
+      />
+    </DesignPanelInputProvider>
+  );
 
   return (
     <DesignPanelInputProvider ui="flat">
@@ -527,17 +556,7 @@ export function PropertyPanelFlat({
           />
         </DesignPanelInputProvider>
         <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {beforeOpen.map((g) => (
-            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
-              <FlatGroupHeader
-                title={g.title}
-                isOpen={false}
-                onToggleOpen={() => toggleOpen(g.id)}
-                summary={g.summary}
-                animateEntrance={justToggledIds.includes(g.id)}
-              />
-            </DesignPanelInputProvider>
-          ))}
+          {beforeOpen.map(renderClosedGroup)}
           {openGroup && (
             <DesignPanelInputProvider section={slugifyDesignInput(openGroup.title)}>
               <div data-flat-group-open="true" className="flex min-h-0 flex-1 flex-col">
@@ -556,17 +575,7 @@ export function PropertyPanelFlat({
               </div>
             </DesignPanelInputProvider>
           )}
-          {afterOpen.map((g) => (
-            <DesignPanelInputProvider key={g.id} section={slugifyDesignInput(g.title)}>
-              <FlatGroupHeader
-                title={g.title}
-                isOpen={false}
-                onToggleOpen={() => toggleOpen(g.id)}
-                summary={g.summary}
-                animateEntrance={justToggledIds.includes(g.id)}
-              />
-            </DesignPanelInputProvider>
-          ))}
+          {afterOpen.map(renderClosedGroup)}
         </div>
         <DesignPanelInputProvider section="footer">
           <PropertyPanelFlatFooter
