@@ -1226,8 +1226,8 @@ tl.to("#s5-headline", { backgroundSize: "100% 30%", duration: 0.6, ease: "power2
 Everything critical is inlined above. These are for edge cases:
 
 - Core composition contract (data attributes, sub-comp wiring): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/SKILL.md
-- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/motion-principles.md
-- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/typography.md
-- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/transitions.md
-- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes/references/captions.md
+- Motion theory (easing as emotion, direction rules): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/motion-principles.md
+- Typography (full banned list, weight contrast, OpenType): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-creative/references/typography.md
+- Transitions (shader catalog, CSS transition patterns): https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-animation/transitions/overview.md
+- Captions synced to audio: https://github.com/heygen-com/hyperframes/blob/main/skills/media-use/audio/references/captions/authoring.md
 - Full docs: https://hyperframes.heygen.com/
