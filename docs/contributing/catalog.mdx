@@ -81,6 +81,29 @@ registry/blocks/my-block/
 }
 ```
 
+### Optional installer metadata
+
+Most registry items only need the fields above. Add these optional fields when
+the installer needs extra context:
+
+```json
+{
+  "minCliVersion": "0.6.96",
+  "registryDependencies": ["grain-overlay"],
+  "deprecated": "Use `my-block-v2` instead."
+}
+```
+
+- `minCliVersion` — use this when the item depends on a HyperFrames CLI/runtime
+  feature added in a recent release. The installer uses it to stop incompatible
+  installs before writing files and guide users to upgrade.
+- `registryDependencies` — list other registry item names that must be installed
+  first. Dependencies are resolved transitively; keep the graph small, reference
+  exact item names, and avoid cycles.
+- `deprecated` — show a warning during install while keeping the item available
+  for existing projects. Include a short migration note when there is a better
+  replacement.
+
 ## The Rules
 
 Five things that must be true for every registry item:
