@@ -24,8 +24,9 @@
     "changelog:weekly": "tsx scripts/changelog-weekly.ts",
     "sync-schemas": "tsx scripts/sync-schemas.ts",
     "sync-schemas:check": "tsx scripts/sync-schemas.ts --check",
-    "lint": "bun run check:tracked-artifacts && bun run check:workspace-contracts && oxlint . && tsx scripts/lint-skills.ts",
+    "lint": "bun run check:tracked-artifacts && bun run check:workspace-contracts && oxlint . && tsx scripts/lint-skills.ts && node scripts/check-skill-mirror.mjs",
     "lint:skills": "tsx scripts/lint-skills.ts",
+    "check:skill-mirror": "node scripts/check-skill-mirror.mjs",
     "lint:fix": "oxlint --fix .",
     "check:tracked-artifacts": "node scripts/check-tracked-artifacts.mjs",
     "check:workspace-contracts": "node scripts/check-workspace-contracts.mjs",
@@ -41,7 +42,7 @@
     "player:perf": "bun run --filter @hyperframes/player perf",
     "format:check": "oxfmt --check .",
     "knip": "knip",
-    "test:scripts": "node --import tsx --test scripts/check-tracked-artifacts.test.mjs scripts/check-workspace-contracts.test.mjs scripts/validate-release-channel.test.mjs scripts/draft-changelog.test.ts scripts/set-version.test.ts scripts/release-prepare.test.ts scripts/cli-options.test.ts scripts/changelog-weekly.test.ts scripts/claude-plugin-compression.test.ts scripts/studio-runtime-smoke.test.mjs scripts/verify-packed-manifests.test.mjs",
+    "test:scripts": "node --import tsx --test scripts/check-tracked-artifacts.test.mjs scripts/check-workspace-contracts.test.mjs scripts/validate-release-channel.test.mjs scripts/draft-changelog.test.ts scripts/set-version.test.ts scripts/release-prepare.test.ts scripts/cli-options.test.ts scripts/changelog-weekly.test.ts scripts/claude-plugin-compression.test.ts scripts/studio-runtime-smoke.test.mjs scripts/verify-packed-manifests.test.mjs scripts/lint-skills.test.mjs",
     "test:skills": "node --test 'skills/**/*.test.mjs'",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
     "generate:catalog-previews": "tsx scripts/generate-catalog-previews.ts",
@@ -61,7 +62,8 @@
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "yaml": "^2.9.0"
   },
   "resolutions": {
     "@types/react": "^19.0.0",

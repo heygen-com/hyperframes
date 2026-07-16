@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!-- master-skeleton — the verbatim scaffold for a changelog master. Mirrors the
+     proven build. Replace <RANGE>, <TOTAL>, scene bodies; keep the mechanics. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1080, height=1080">
+  <title>HyperFrames Weekly — <RANGE></title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face { font-family:'ABC Solar Display'; src:url('assets/fonts/ABCSolarDisplay-Bold.woff2') format('woff2'); font-weight:700; font-display:block; }
+    @font-face { font-family:'TT Norms Pro'; src:url('assets/fonts/TT_Norms_Pro_Normal.woff2') format('woff2'); font-weight:400; font-display:block; }
+    @font-face { font-family:'TT Norms Pro'; src:url('assets/fonts/TT_Norms_Pro_Medium.woff2') format('woff2'); font-weight:500; font-display:block; }
+    @font-face { font-family:'TT Norms Mono'; src:url('assets/fonts/tt_norms_pro_mono_regular-webfont.woff2') format('woff2'); font-weight:400; font-display:block; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 1080px; height: 1080px; background: #0a0c0b; overflow: hidden;
+      font-family: 'TT Norms Pro', sans-serif; color: #f5f6f4; }
+    #bg-video { position: absolute; inset: 0; width: 1080px; height: 1080px; object-fit: cover; }
+    #bg-scrim { position: absolute; inset: 0; background: rgba(8,10,9,.25); }
+    .chrome { position: absolute; z-index: 6; }
+    #kicker-chip { top: 44px; left: 76px; font-family: 'TT Norms Mono', monospace; font-size: 20px;
+      letter-spacing: .06em; color: rgba(245,246,244,.72); background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 10px 18px; }
+    #progress { top: 58px; right: 76px; display: flex; gap: 10px; }
+    #progress .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(245,246,244,.18); }
+    .slide { position: absolute; inset: 0; opacity: 0; }
+    .sec-chip { position: absolute; top: 128px; left: 76px; font-family: 'TT Norms Mono', monospace;
+      font-size: 22px; letter-spacing: .05em; color: rgba(245,246,244,.72);
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14);
+      border-radius: 12px; padding: 10px 16px; }
+    .sec-head { position: absolute; top: 186px; left: 76px; font-family: 'ABC Solar Display', sans-serif;
+      font-weight: 700; font-size: 54px; letter-spacing: -.01em; color: #f5f6f4; }
+    .glass { background: rgba(10,12,11,.78); border: 1px solid rgba(190,255,205,.32);
+      border-radius: 22px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+    /* caption rail — overlay on top of the film, never a reserved band */
+    #cap-line { position: absolute; left: 0; right: 0; top: 1002px; height: 40px; text-align: center;
+      z-index: 7; font-family: 'TT Norms Pro', sans-serif; font-weight: 500; font-size: 25px;
+      letter-spacing: .01em; color: rgba(245,246,244,.92);
+      text-shadow: 0 2px 14px rgba(0,0,0,.85), 0 0 3px rgba(0,0,0,.6);
+      white-space: nowrap; pointer-events: none; }
+    .cap-phrase { position: absolute; left: 0; right: 0; }
+    .cap-w { display: inline-block; margin: 0 4px; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="main" data-start="0" data-duration="<TOTAL>" data-width="1080" data-height="1080">
+    <video id="bg-video" class="clip" src="assets/bg-pattern-<TOTAL>s.mp4" muted data-start="0" data-duration="<TOTAL>" data-track-index="0"></video>
+    <div id="bg-scrim"></div>
+    <div id="kicker-chip" class="chrome">HYPERFRAMES WEEKLY <span style="color:rgba(245,246,244,.66)">· <RANGE></span></div>
+    <div id="progress" class="chrome"><span class="dot" id="dot1"></span><!-- one per theme --></div>
+    <div id="cap-line" class="chrome" data-layout-allow-overlap></div>
+
+    <!-- Title (film open — authors its OWN entry; exit is stamped) -->
+    <div id="s-title" class="slide clip" data-start="0" data-duration="<CUT1>" data-track-index="1">
+      <!-- mono kicker date · ABC Solar h1 · green rule -->
+    </div>
+
+    <!-- One slide per theme. data-start = EXACTLY the ledger cut time.
+         Shell composed at local t=0; internal beats ≥0.4s after the cut,
+         done ≥0.45s before the next. data-layout-allow-overlap on mock slides. -->
+    <div id="s-t1" class="slide clip" data-start="<CUT1>" data-duration="<DUR1>" data-track-index="1" data-layout-allow-overlap>
+      <div class="sec-chip">01 · <THEME></div>
+      <div class="sec-head"><HEADLINE></div>
+      <!-- the mock, from references/visualization-registry.md, y ∈ [288, 944] -->
+    </div>
+
+    <!-- s-t2..tN, then outro (kicker · "See what shipped." · green rule · URL chip) -->
+
+    <audio id="bgm" src="bgm.mp3" data-start="0" data-duration="<TOTAL>" data-track-index="2" data-volume="0.14" data-media-start="0"></audio>
+    <audio id="vo" src="voiceover.mp3" data-start="0" data-duration="<TOTAL>" data-track-index="3" data-volume="1.0"></audio>
+  </div>
+
+  <script>
+    gsap.defaults({ overwrite: 'auto' });
+    const tl = gsap.timeline({ paused: true });
+    tl.to({}, { duration: /*<TOTAL>*/ 47 }, 0);
+
+    // chrome in; progress dots via tl.set at each cut (never tl.call)
+    gsap.set('#kicker-chip', { autoAlpha: 0, y: -10 });
+    tl.to('#kicker-chip', { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power3.out' }, 0.1);
+    // tl.set('#dot1', { backgroundColor: '#f5f6f4' }, <CUT1>); …
+
+    // ══ per-scene internal beats ══
+    // init states: gsap.set(...) at build time; motion: sequential tl.to(...) only.
+    // Every beat lands on a vo-words.json timestamp (local = master − scene start).
+    // One green (#5ef17c) moment per scene.
+
+    // ══ CAPTION RAIL — paste captions.json "lines" from align-captions.mjs ══
+    (function () {
+      const LINES = /* paste captions.json lines — [{id, end, w:[[display, start],…]},…] */ [];
+      const host = document.getElementById('cap-line');
+      LINES.forEach((line, li) => {
+        const ph = document.createElement('div');
+        ph.className = 'cap-phrase'; ph.id = 'cap-p' + li;
+        line.w.forEach(([txt], wi) => {
+          const s = document.createElement('span');
+          s.className = 'cap-w'; s.id = 'cap-p' + li + '-w' + wi; s.textContent = txt;
+          ph.appendChild(s);
+        });
+        host.appendChild(ph);
+      });
+      gsap.set('.cap-phrase', { autoAlpha: 0 });
+      gsap.set('.cap-w', { autoAlpha: 0 });
+      LINES.forEach((line, li) => {
+        tl.set('#cap-p' + li, { autoAlpha: 1 }, line.w[0][1]);
+        tl.set('#cap-p' + li, { autoAlpha: 0 }, line.end);
+        line.w.forEach(([txt, at], wi) => {
+          tl.to('#cap-p' + li + '-w' + wi, { autoAlpha: 1, duration: 0.12, ease: 'power1.out' }, at);
+        });
+      });
+    })();
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = tl;
+    // seam-stamp.mjs inserts the <seams:auto> block after the registration above.
+  </script>
+</body>
+</html>

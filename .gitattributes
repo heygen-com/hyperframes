@@ -30,3 +30,14 @@ packages/producer/tests/**/output/compiled.html filter=lfs diff=lfs merge=lfs -t
 # which is the actual implementation, surfaces as the dominant language.
 registry/**/*.html linguist-vendored
 *.html linguist-detectable=false
+
+# Repo-native project-skill assets — the changelog-video skill ships a 12 MB
+# animated background (bg-pattern.mp4) and a 5 MB house music track (bgm.mp3)
+# alongside its 5 fonts. Route them through LFS in both mirrors so a fresh
+# clone stays lean; the largefiles pre-commit guard fails hard on raw commits
+# of media this size, and history rewrites after merge are painful (see the
+# comment on the packages/producer patterns above).
+.claude/skills/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+.claude/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+.agents/skills/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+.agents/skills/**/*.mp3 filter=lfs diff=lfs merge=lfs -text

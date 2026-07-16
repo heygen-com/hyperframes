@@ -11,8 +11,17 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { parse as parseYaml, YAMLParseError } from "yaml";
 
-const SKILLS_DIR = join(import.meta.dirname, "..", "skills");
+const REPO_ROOT = join(import.meta.dirname, "..");
+// Every location that ships SKILL.md files gets linted. `skills/` is the
+// marketplace-distributed set; `.claude/skills/` and `.agents/skills/` are the
+// repo-native project skills auto-discovered by Claude Code and Codex CLI.
+const SKILLS_DIRS = [
+  join(REPO_ROOT, "skills"),
+  join(REPO_ROOT, ".claude", "skills"),
+  join(REPO_ROOT, ".agents", "skills"),
+];
 
 interface Violation {
   file: string;
@@ -66,31 +75,160 @@ function collectSkillFiles(dir: string): string[] {
  * mappings"). Not a full YAML parse; if a different malformation appears,
  * swap this for a real parser (the `yaml` package).
  */
-function lintFrontmatter(content: string): Omit<Violation, "file">[] {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return [];
-  const violations: Omit<Violation, "file">[] = [];
-  const fmLines = match[1].split("\n");
-  for (let i = 0; i < fmLines.length; i++) {
-    const line = fmLines[i];
-    // Top-level `key: value` (no indentation). Skip block scalars (> |),
-    // already-quoted values, and flow collections — those handle colons fine.
-    const m = line.match(/^([A-Za-z0-9_-]+):[ \t]+(.+)$/);
-    if (!m) continue;
-    const value = m[2].trim();
-    if (/^["'>|[{]/.test(value)) continue;
-    if (/:[ \t]/.test(value)) {
-      violations.push({
-        line: i + 2, // +1 for the opening `---`, +1 for 1-based
-        message:
-          `Unquoted frontmatter value for "${m[1]}" contains ": " — YAML reads ` +
-          `this as a nested mapping and the parse fails, which aborts ` +
-          `\`skills add\` for the entire repo. Quote the value or rephrase the colon.`,
-        text: line.trim(),
-      });
+// SKILL.md frontmatter schema.
+//
+// Two required top-level string keys plus three optional ones. Parsed with a
+// real YAML parser (the `yaml` npm package) so we can validate value TYPES
+// (name/description must be strings, allowed-tools must be a sequence or
+// string, metadata must be a mapping), not just line-level patterns.
+//
+// This is a NECESSARY-but-not-SUFFICIENT gate. Catches:
+//   * unsupported top-level keys (e.g. `category:`)
+//   * missing name / description
+//   * malformed YAML
+//   * type errors (name is a list; description is a number; metadata is a scalar)
+//   * empty string values
+//
+// The canonical Claude Code / Codex CLI / marketplace loaders may enforce
+// stricter rules (name regex, description length, nested-schema shape); those
+// are validated at load / install time. Positive + negative fixtures live in
+// scripts/lint-skills.test.mjs.
+
+const REQUIRED_FRONTMATTER_KEYS = new Set(["name", "description"]);
+const OPTIONAL_FRONTMATTER_KEYS = new Set(["license", "allowed-tools", "metadata"]);
+const KNOWN_FRONTMATTER_KEYS = new Set([
+  ...REQUIRED_FRONTMATTER_KEYS,
+  ...OPTIONAL_FRONTMATTER_KEYS,
+]);
+
+type LineViolation = Omit<Violation, "file">;
+
+function violation(line: number, message: string, text: string): LineViolation {
+  return { line, message, text };
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function parseFrontmatterYaml(body: string): { data?: unknown; error?: string } {
+  try {
+    return { data: parseYaml(body) };
+  } catch (err) {
+    if (err instanceof YAMLParseError) {
+      return { error: err.message };
     }
+    return { error: err instanceof Error ? err.message : String(err) };
   }
-  return violations;
+}
+
+function typeLabel(v: unknown): string {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "list";
+  return typeof v;
+}
+
+function missingRequired(data: Record<string, unknown>): LineViolation[] {
+  return [...REQUIRED_FRONTMATTER_KEYS]
+    .filter((k) => !(k in data))
+    .map((k) => violation(-1, `Missing required frontmatter key "${k}".`, "<top of file>"));
+}
+
+function unsupportedKeys(data: Record<string, unknown>): LineViolation[] {
+  return Object.keys(data)
+    .filter((k) => !KNOWN_FRONTMATTER_KEYS.has(k))
+    .map((k) =>
+      violation(
+        -1,
+        `Unsupported frontmatter key "${k}" — SKILL.md accepts required { ` +
+          `${[...REQUIRED_FRONTMATTER_KEYS].join(", ")} } plus optional { ` +
+          `${[...OPTIONAL_FRONTMATTER_KEYS].join(", ")} }.`,
+        `${k}: ...`,
+      ),
+    );
+}
+
+function stringFieldError(key: string, value: unknown, allowEmpty: boolean): LineViolation | null {
+  if (typeof value !== "string") {
+    return violation(
+      -1,
+      `Frontmatter "${key}" must be a string (got ${typeLabel(value)}).`,
+      `${key}: ${JSON.stringify(value)}`,
+    );
+  }
+  if (!allowEmpty && value.trim().length === 0) {
+    return violation(-1, `Frontmatter "${key}" must not be empty.`, `${key}: ""`);
+  }
+  return null;
+}
+
+function validateStringField(
+  data: Record<string, unknown>,
+  key: string,
+  allowEmpty: boolean,
+): LineViolation | null {
+  return key in data ? stringFieldError(key, data[key], allowEmpty) : null;
+}
+
+function isValidAllowedTools(value: unknown): boolean {
+  if (typeof value === "string") return true;
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+function validateAllowedTools(data: Record<string, unknown>): LineViolation | null {
+  if (!("allowed-tools" in data)) return null;
+  if (isValidAllowedTools(data["allowed-tools"])) return null;
+  return violation(
+    -1,
+    `Frontmatter "allowed-tools" must be a string or a list of strings.`,
+    `allowed-tools: ${JSON.stringify(data["allowed-tools"])}`,
+  );
+}
+
+function validateMetadata(data: Record<string, unknown>): LineViolation | null {
+  if (!("metadata" in data)) return null;
+  if (isPlainObject(data.metadata)) return null;
+  return violation(
+    -1,
+    `Frontmatter "metadata" must be a mapping / object.`,
+    `metadata: ${JSON.stringify(data.metadata)}`,
+  );
+}
+
+function validateShape(data: Record<string, unknown>): LineViolation[] {
+  const fieldChecks = [
+    validateStringField(data, "name", false),
+    validateStringField(data, "description", false),
+    validateStringField(data, "license", true),
+    validateAllowedTools(data),
+    validateMetadata(data),
+  ].filter((v): v is LineViolation => v !== null);
+  return [...missingRequired(data), ...unsupportedKeys(data), ...fieldChecks];
+}
+
+function parsedDataError(parsed: { data?: unknown; error?: string }): LineViolation | null {
+  if (parsed.error) {
+    return violation(1, `Malformed YAML frontmatter: ${parsed.error}`, "<frontmatter block>");
+  }
+  if (isPlainObject(parsed.data)) return null;
+  return violation(
+    1,
+    `Frontmatter must be a YAML mapping at the top level (got ${typeLabel(parsed.data)}).`,
+    "<frontmatter block>",
+  );
+}
+
+export function lintFrontmatter(content: string): LineViolation[] {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) {
+    return [
+      violation(1, `Missing SKILL.md YAML frontmatter (must start with '---').`, "<top of file>"),
+    ];
+  }
+  const parsed = parseFrontmatterYaml(match[1]);
+  const preflightError = parsedDataError(parsed);
+  if (preflightError) return [preflightError];
+  return validateShape(parsed.data as Record<string, unknown>);
 }
 
 /** Strip fenced code blocks so we only lint prose + inline code. */
@@ -103,48 +241,41 @@ function stripFencedBlocks(content: string): string {
   );
 }
 
+function matchDangerousPatterns(file: string, line: string, lineNumber: number): Violation[] {
+  return DANGEROUS_INLINE_PATTERNS.filter((p) => p.pattern.test(line)).map((p) => ({
+    file,
+    line: lineNumber,
+    message: p.message,
+    text: line.trim(),
+  }));
+}
+
+function lintInlinePatterns(file: string, stripped: string): Violation[] {
+  return stripped
+    .split("\n")
+    .flatMap((line, i) => (line ? matchDangerousPatterns(file, line, i + 1) : []));
+}
+
 function lintFile(filePath: string): Violation[] {
   const raw = readFileSync(filePath, "utf-8");
   const file = relative(process.cwd(), filePath);
-  const violations: Violation[] = lintFrontmatter(raw).map((v) => ({
-    ...v,
-    file,
-  }));
-
-  const stripped = stripFencedBlocks(raw);
-  const lines = stripped.split("\n");
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-
-    for (const { pattern, message } of DANGEROUS_INLINE_PATTERNS) {
-      if (pattern.test(line)) {
-        violations.push({
-          file: relative(process.cwd(), filePath),
-          line: i + 1,
-          message,
-          text: line.trim(),
-        });
-      }
-    }
-  }
-
-  return violations;
+  return [
+    ...lintFrontmatter(raw).map((v) => ({ ...v, file })),
+    ...lintInlinePatterns(file, stripFencedBlocks(raw)),
+  ];
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-if (!statSync(SKILLS_DIR, { throwIfNoEntry: false })?.isDirectory()) {
-  console.log("No skills/ directory found — skipping skill lint.");
-  process.exit(0);
+const files: string[] = [];
+for (const dir of SKILLS_DIRS) {
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
+  files.push(...collectSkillFiles(dir));
 }
-
-const files = collectSkillFiles(SKILLS_DIR);
 if (files.length === 0) {
-  console.log("No SKILL.md files found.");
+  console.log("No SKILL.md files found across skills/, .claude/skills/, .agents/skills/.");
   process.exit(0);
 }
 

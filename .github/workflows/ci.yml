@@ -61,7 +61,11 @@ jobs:
               - ".github/workflows/ci.yml"
             skills:
               - "skills/**"
+              - ".claude/skills/**"
+              - ".agents/skills/**"
               - "skills-manifest.json"
+              - "scripts/lint-skills.ts"
+              - "scripts/check-skill-mirror.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
 
@@ -315,6 +319,25 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Verify skills-manifest.json matches skills/
         run: bun packages/cli/scripts/gen-skills-manifest.ts --check
+
+  # Repo-native project skills live under .claude/skills/ (Claude Code) and
+  # .agents/skills/ (Codex CLI). Runs the skill validator against all three
+  # locations (skills/, .claude/skills/, .agents/skills/) and verifies the two
+  # project-skill trees stay byte-identical mirrors of each other. Fires on
+  # any change to the skill dirs or the two validating scripts.
+  project-skills-check:
+    name: "Skills: project-native lint + mirror"
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Lint SKILL.md files across skills/, .claude/skills/, .agents/skills/
+        run: bun scripts/lint-skills.ts
+      - name: Verify .claude/skills/ and .agents/skills/ are byte-identical
+        run: node scripts/check-skill-mirror.mjs
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"
