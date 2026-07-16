@@ -27,10 +27,6 @@ def main() -> int:
 
     p_serve = sub.add_parser("serve", help="Run the WebSocket sidecar")
     p_serve.add_argument("--port", type=int, default=0)
-    # The spawner's own pid: the sidecar self-exits when it dies (see
-    # server._watch_parent_and_exit), so an ungraceful studio crash leaves no
-    # orphaned `serve` process behind.
-    p_serve.add_argument("--parent-pid", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -72,7 +68,7 @@ def main() -> int:
     if args.command == "serve":
         from .server import serve
 
-        serve(args.port, parent_pid=args.parent_pid)
+        serve(args.port)
         return 0
 
     return 2
