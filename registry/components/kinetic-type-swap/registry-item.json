@@ -1,0 +1,59 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "kinetic-type-swap",
+  "type": "hyperframes:component",
+  "title": "Kinetic Type Swap",
+  "description": "A held sentence keeps its fixed text in place while one widest-word masked slot rolls through alternatives and settles on the final option.",
+  "tags": ["motion-primitive", "text-effects", "kinetic-type", "word-swap", "reveal"],
+  "jobs": ["reveal"],
+  "family": "text-effects",
+  "profile": "swap",
+  "evidence": "Wave I I2 true-spec contract: one widest-option masked word slot rolls while the surrounding sentence remains fixed",
+  "syncPoints": [{ "id": "final-lock", "phase": "in", "offset": 2.07 }],
+  "files": [
+    {
+      "path": "kinetic-type-swap.html",
+      "target": "compositions/components/kinetic-type-swap.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "prefix",
+      "type": "string",
+      "role": "content",
+      "label": "Prefix",
+      "description": "Fixed sentence text before the rolling word slot.",
+      "default": "Ship"
+    },
+    {
+      "id": "options",
+      "type": "string",
+      "role": "content",
+      "label": "Options",
+      "description": "Comma-separated words shown in the rolling slot.",
+      "default": "faster,smarter,together"
+    },
+    {
+      "id": "suffix",
+      "type": "string",
+      "role": "content",
+      "label": "Suffix",
+      "description": "Fixed sentence text after the rolling word slot.",
+      "default": ""
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the rolling word slot.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

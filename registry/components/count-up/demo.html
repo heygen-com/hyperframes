@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  count-up demo. This standalone composition mounts count-up.html through
+  data-composition-src. Non-default values prove every variable path while
+  the primitive stays elastic to the sized host card.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Count Up Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 3cqmin;
+        --space-1: 1.2cqmin;
+        --space-2: 2.4cqmin;
+        --space-3: 4cqmin;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          color-mix(in srgb, var(--surface) 88%, var(--accent-2)) 0%,
+          var(--bg) 72%
+        );
+      }
+
+      .mount-card {
+        width: 72%;
+        height: 42%;
+        left: 14%;
+        top: 29%;
+        container-type: size;
+        overflow: hidden;
+        border: 0.12cqmin solid color-mix(in srgb, var(--border) 72%, transparent);
+        border-radius: calc(var(--radius) * 1.35);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        box-shadow: 0 4cqh 10cqh color-mix(in srgb, var(--bg) 64%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="count-up-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+      data-fps="30"
+    >
+      <div
+        id="count-up-mount"
+        class="mount-card clip"
+        data-composition-id="count-up"
+        data-composition-src="./count-up.html"
+        data-variable-values='{"start":1200,"end":12500,"prefix":"$","suffix":"+","accent":"violet"}'
+        data-start="0"
+        data-duration="3"
+        data-track-index="0"
+        data-width="1382"
+        data-height="454"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["count-up-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

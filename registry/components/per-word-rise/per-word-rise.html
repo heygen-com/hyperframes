@@ -1,0 +1,237 @@
+<!doctype html>
+<!--
+  per-word-rise: HyperFrames video primitive (text effects / reveal)
+
+  Words, or characters through the split variable, rise into place with a
+  controlled cascade and a small blur-to-sharp settle. The finished line
+  drifts gently during the hold, then leaves with a clean upward fade.
+
+  Variables:
+    - text (string, default "WORDS IN MOTION"): displayed text.
+    - split (word | char, default "word"): animated unit size.
+    - accent (green | blue | violet, default "green"): text color.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 1.45s, the full staggered rise and sharp settle
+    HOLD     = max(0, D - IN - OUT), one finite drift away and back
+    OUT_BASE = 0.50s, staggered upward fade
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal per-word-rise key.
+-->
+<html
+  lang="en"
+  data-composition-id="per-word-rise"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Text whose words or characters rise into place.", "default": "WORDS IN MOTION" },
+    { "id": "split", "type": "enum", "role": "content", "label": "Split", "description": "Animate the text as words or individual characters.", "default": "word", "options": [{ "value": "word", "label": "Word" }, { "value": "char", "label": "Character" }] },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract accent token used for the text color.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Per Word Rise</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="per-word-rise" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .pwr-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+          }
+
+          .pwr-stage {
+            display: flex;
+            width: 88cqw;
+            max-width: 88cqw;
+            align-items: baseline;
+            justify-content: center;
+            flex-wrap: wrap;
+            column-gap: var(--space-1, 1.8cqw);
+            row-gap: var(--space-2, 2.8cqh);
+            color: var(--pwr-accent);
+            font-size: var(--pwr-font-size);
+            font-weight: 780;
+            line-height: 1.08;
+            letter-spacing: -0.035em;
+            text-align: center;
+            will-change: transform;
+          }
+
+          .pwr-stage.pwr-char {
+            column-gap: 0.045em;
+            letter-spacing: 0;
+          }
+
+          .pwr-unit {
+            display: inline-block;
+            flex: 0 0 auto;
+            filter: blur(var(--pwr-blur, 0cqh));
+            will-change: transform, filter, opacity;
+          }
+
+          .pwr-space {
+            width: 0.36em;
+          }
+        </style>
+
+        <div
+          id="per-word-rise-clip"
+          class="pwr-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="pwr-stage" role="img"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".pwr-stage");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var text = vars.text == null ? "WORDS IN MOTION" : String(vars.text);
+            var split = vars.split === "char" ? "char" : "word";
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            root.style.setProperty("--pwr-accent", accentColors[accent]);
+            stage.classList.toggle("pwr-char", split === "char");
+            stage.setAttribute("aria-label", text);
+
+            var characterCount = Math.max(1, Array.from(text).length);
+            var fittedCqw = Math.min(9.5, 126 / characterCount);
+            root.style.setProperty(
+              "--pwr-font-size",
+              "min(" + fittedCqw.toFixed(3) + "cqw, 15cqh)",
+            );
+
+            var segments = split === "char" ? Array.from(text) : text.trim().split(/\s+/);
+            if (segments.length === 0) segments = [""];
+
+            var units = segments.map(function (segment, index) {
+              var unit = document.createElement("span");
+              unit.id = "per-word-rise-unit-" + index;
+              unit.className = "pwr-unit";
+              if (split === "char" && /\s/.test(segment)) {
+                unit.classList.add("pwr-space");
+                unit.textContent = "\u00a0";
+              } else {
+                unit.textContent = segment;
+              }
+              unit.setAttribute("aria-hidden", "true");
+              stage.appendChild(unit);
+              return unit;
+            });
+
+            var IN_BASE = 1.45;
+            var OUT_BASE = 0.5;
+            var RISE_BASE = 0.74;
+            var STAGGER_BASE = 0.62;
+            var EXIT_STAGGER_BASE = 0.14;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var RISE = RISE_BASE * scale;
+            var STAGGER = units.length > 1 ? STAGGER_BASE * scale : 0;
+            var EXIT_STAGGER = units.length > 1 ? EXIT_STAGGER_BASE * scale : 0;
+            var EXIT_MOVE = Math.max(0.001, OUT - EXIT_STAGGER);
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            gsap.set(stage, { y: "0cqh" });
+            gsap.set(units, { opacity: 0, y: "8cqh", "--pwr-blur": "1.4cqh" });
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(
+              units,
+              {
+                opacity: 1,
+                y: "0cqh",
+                "--pwr-blur": "0cqh",
+                duration: RISE,
+                stagger: { amount: STAGGER, from: "start" },
+                ease: "power3.out",
+              },
+              0,
+            );
+
+            if (HOLD > 0) {
+              tl.to(
+                stage,
+                {
+                  y: "-0.55cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            tl.to(
+              units,
+              {
+                opacity: 0,
+                y: "-4.5cqh",
+                "--pwr-blur": "0.7cqh",
+                duration: EXIT_MOVE,
+                stagger: { amount: EXIT_STAGGER, from: "start" },
+                ease: "power2.in",
+              },
+              OUT_START,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["per-word-rise"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

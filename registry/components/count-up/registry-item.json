@@ -1,0 +1,69 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "count-up",
+  "type": "hyperframes:component",
+  "title": "Count Up",
+  "description": "A token-native stat counter that eases between values and lands with a restrained scale pulse.",
+  "tags": ["motion-primitive", "proof", "stats", "counter", "number", "deterministic"],
+  "jobs": ["prove"],
+  "family": "proof-stats",
+  "profile": "count",
+  "evidence": "Wave I I4 approved spec with the apple-money-count interpolation mechanic extracted and de-styled",
+  "syncPoints": [{ "id": "count-land", "phase": "in", "offset": 1.72 }],
+  "files": [
+    {
+      "path": "count-up.html",
+      "target": "compositions/components/count-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "start",
+      "type": "number",
+      "role": "content",
+      "label": "Start value",
+      "description": "First value shown by the count.",
+      "default": 0,
+      "step": 1
+    },
+    {
+      "id": "end",
+      "type": "number",
+      "role": "content",
+      "label": "End value",
+      "description": "Final value where the count lands.",
+      "default": 100,
+      "step": 1
+    },
+    {
+      "id": "prefix",
+      "type": "string",
+      "role": "content",
+      "label": "Prefix",
+      "description": "Optional text shown before the value.",
+      "default": ""
+    },
+    {
+      "id": "suffix",
+      "type": "string",
+      "role": "content",
+      "label": "Suffix",
+      "description": "Optional text shown after the value.",
+      "default": "%"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the count.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

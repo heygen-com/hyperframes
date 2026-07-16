@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  constellation-hub demo. This standalone dark stage mounts the primitive
+  with non-default hub label, node list, and violet accent values.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Constellation Hub Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0c0e;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #a8b0bf;
+        --surface: #171a20;
+        --border: #3a4250;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 2.4cqmin;
+        --space-1: 1.2cqmin;
+        --space-2: 2.4cqmin;
+        --space-3: 4cqmin;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 46%,
+          color-mix(in srgb, var(--surface, #171a20) 88%, var(--accent-2, #c5a3ff)) 0%,
+          var(--bg, #0b0c0e) 70%
+        );
+      }
+
+      .mount-card {
+        width: 78%;
+        height: 70%;
+        left: 11%;
+        top: 15%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border, #3a4250) 74%, transparent);
+        border-radius: 32px;
+        background: color-mix(in srgb, var(--surface, #171a20) 76%, transparent);
+        box-shadow: 0 44px 110px color-mix(in srgb, var(--bg, #0b0c0e) 58%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="constellation-hub-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+      data-fps="30"
+    >
+      <div
+        id="constellation-hub-mount"
+        class="mount-card clip"
+        data-composition-id="constellation-hub"
+        data-composition-src="./constellation-hub.html"
+        data-variable-values='{"hub_label":"Creator OS","nodes":"Capture,Compose,Animate,Render,Publish","accent":"violet"}'
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+        data-width="1498"
+        data-height="756"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      var demoTimeline = gsap.timeline({ paused: true });
+      demoTimeline.seek(0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["constellation-hub-demo"] = demoTimeline;
+    </script>
+  </body>
+</html>

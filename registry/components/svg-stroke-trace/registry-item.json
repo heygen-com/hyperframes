@@ -1,0 +1,54 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "svg-stroke-trace",
+  "type": "hyperframes:component",
+  "title": "SVG Stroke Trace",
+  "description": "An authored SVG path draws from its measured length, holds with subtle drift, and optionally fills when the path is closed.",
+  "tags": ["motion-primitive", "intro", "reveal", "svg", "stroke", "line-draw"],
+  "jobs": ["reveal"],
+  "family": "intros-and-reveals",
+  "profile": "trace",
+  "evidence": "Video Primitives Wave I I5 svg-stroke-trace contract",
+  "syncPoints": [{ "id": "trace-complete", "phase": "in", "offset": 1.55 }],
+  "files": [
+    {
+      "path": "svg-stroke-trace.html",
+      "target": "compositions/components/svg-stroke-trace.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "path",
+      "type": "string",
+      "role": "content",
+      "label": "Path",
+      "description": "SVG path data for the authored mark.",
+      "default": "M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194"
+    },
+    {
+      "id": "stroke_width",
+      "type": "number",
+      "role": "style",
+      "label": "Stroke width",
+      "description": "Width of the traced stroke in SVG viewBox units.",
+      "default": 12,
+      "min": 2,
+      "max": 32,
+      "step": 1
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Color used by the trace and optional fill.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cta-close",
+  "type": "hyperframes:component",
+  "title": "CTA Close",
+  "description": "An oversized action line rises into frame, one CTA capsule pops beneath it, and the finished close holds completely still.",
+  "tags": ["motion-primitive", "ui-props", "cta", "end-card", "close", "ask"],
+  "jobs": ["ask"],
+  "family": "ui-props",
+  "profile": "holdable",
+  "evidence": "Wave I I7 cta-close specification",
+  "syncPoints": [{ "id": "close-settled", "phase": "in", "offset": 1.32 }],
+  "files": [
+    {
+      "path": "cta-close.html",
+      "target": "compositions/components/cta-close.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "action_line",
+      "type": "string",
+      "role": "content",
+      "label": "Action line",
+      "description": "Two to four word action that closes the film.",
+      "default": "Make it happen"
+    },
+    {
+      "id": "button_label",
+      "type": "string",
+      "role": "content",
+      "label": "Button label",
+      "description": "Text displayed inside the single CTA capsule.",
+      "default": "Start now"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract color used by the CTA capsule.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

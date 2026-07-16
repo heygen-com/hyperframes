@@ -1,0 +1,297 @@
+<!doctype html>
+<!--
+  kinetic-type-swap: HyperFrames video primitive (text effects / swap)
+
+  A held sentence keeps its prefix and suffix fixed while one masked word
+  slot rolls through comma-separated options. Every option remains in the
+  same CSS grid cell, so the slot takes the widest option's intrinsic width
+  before motion starts and the sentence never reflows during a swap.
+
+  Variables:
+    - prefix (string, default "Ship"): fixed text before the rolling slot.
+    - options (string, default "faster,smarter,together"): comma-separated
+      words shown in order.
+    - suffix (string, default ""): fixed text after the rolling slot.
+    - accent (green | blue | violet, default "green"): rolling word color.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 2.25s, fade in followed by every vertical word swap
+    HOLD     = max(0, D - IN - OUT), final word stays locked with a soft pulse
+    OUT_BASE = 0.45s, opacity release without moving the sentence
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Determinism: options are parsed once before timeline construction. GSAP
+  owns every visible change, uses finite repeats, and registers one paused
+  timeline under the literal kinetic-type-swap key.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, and has no data-width or
+  data-height. Only word transforms change position. The held sentence never
+  moves, and the grid-owned slot width never changes.
+-->
+<html
+  lang="en"
+  data-composition-id="kinetic-type-swap"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "prefix", "type": "string", "role": "content", "label": "Prefix", "description": "Fixed sentence text before the rolling word slot.", "default": "Ship" },
+    { "id": "options", "type": "string", "role": "content", "label": "Options", "description": "Comma-separated words shown in the rolling slot.", "default": "faster,smarter,together" },
+    { "id": "suffix", "type": "string", "role": "content", "label": "Suffix", "description": "Fixed sentence text after the rolling word slot.", "default": "" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the rolling word slot.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kinetic Type Swap</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="kinetic-type-swap" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .kts-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .kts-stage {
+            display: grid;
+            place-items: center;
+            width: 94cqw;
+            height: 70cqh;
+            opacity: 0;
+          }
+
+          .kts-sentence {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: var(--space-1, 1.2cqw);
+            max-width: 94cqw;
+            color: var(--fg, #f8fafc);
+            font-size: var(--kts-font-size);
+            font-weight: 760;
+            line-height: 1.08;
+            letter-spacing: -0.045em;
+            white-space: nowrap;
+          }
+
+          .kts-prefix,
+          .kts-suffix {
+            flex: 0 0 auto;
+          }
+
+          .kts-prefix:empty,
+          .kts-suffix:empty {
+            display: none;
+          }
+
+          /* Every word occupies one grid cell and contributes its intrinsic
+             width. Transforms do not affect layout, so this masked slot stays
+             as wide as the widest option for the entire composition. */
+          .kts-slot {
+            display: inline-grid;
+            flex: 0 0 auto;
+            overflow: hidden;
+            color: var(--kts-accent);
+            text-shadow: 0 0 2.8cqh color-mix(in srgb, var(--kts-accent) 28%, transparent);
+            vertical-align: baseline;
+          }
+
+          .kts-word {
+            grid-area: 1 / 1;
+            width: max-content;
+            justify-self: center;
+            color: var(--kts-accent);
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="kinetic-type-swap-clip"
+          class="kts-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="kts-stage" role="img">
+            <div class="kts-sentence">
+              <span class="kts-prefix"></span>
+              <span class="kts-slot" aria-hidden="true"></span>
+              <span class="kts-suffix"></span>
+            </div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".kts-stage");
+            var prefixElement = root.querySelector(".kts-prefix");
+            var slotElement = root.querySelector(".kts-slot");
+            var suffixElement = root.querySelector(".kts-suffix");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var defaultOptions = ["faster", "smarter", "together"];
+            var prefix = vars.prefix == null ? "Ship" : String(vars.prefix).trim();
+            var suffix = vars.suffix == null ? "" : String(vars.suffix).trim();
+            var rawOptions = vars.options == null ? defaultOptions.join(",") : String(vars.options);
+            var options = rawOptions
+              .split(",")
+              .map(function (option) {
+                return option.trim();
+              })
+              .filter(function (option) {
+                return option.length > 0;
+              });
+            if (options.length === 0) options = defaultOptions.slice();
+
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            root.style.setProperty("--kts-accent", accentColors[accent]);
+            prefixElement.textContent = prefix;
+            suffixElement.textContent = suffix;
+
+            var words = options.map(function (option, index) {
+              var word = document.createElement("span");
+              word.className = "kts-word";
+              word.id = "kinetic-type-swap-word-" + index;
+              word.textContent = option;
+              slotElement.appendChild(word);
+              return word;
+            });
+
+            var finalSentence = [prefix, options[options.length - 1], suffix]
+              .filter(function (part) {
+                return part.length > 0;
+              })
+              .join(" ");
+            stage.setAttribute("aria-label", finalSentence);
+
+            var widestOptionLength = options.reduce(function (widest, option) {
+              return Math.max(widest, Array.from(option).length);
+            }, 1);
+            var sentenceLength =
+              Array.from(prefix).length + widestOptionLength + Array.from(suffix).length + 2;
+            var fittedCqw = Math.min(12, 122 / Math.max(1, sentenceLength));
+            root.style.setProperty(
+              "--kts-font-size",
+              "min(" + fittedCqw.toFixed(3) + "cqw, 22cqh)",
+            );
+
+            var IN_BASE = 2.25;
+            var OUT_BASE = 0.45;
+            var ARRIVAL_BASE = 0.3;
+            var SWAP_START_BASE = 0.48;
+            var ROLL_BASE = 0.46;
+            var SETTLE_TAIL_BASE = 0.18;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var ARRIVAL = ARRIVAL_BASE * scale;
+            var SWAP_START = SWAP_START_BASE * scale;
+            var ROLL = ROLL_BASE * scale;
+            var SETTLE_TAIL = SETTLE_TAIL_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            gsap.set(stage, { opacity: 0 });
+            gsap.set(words, { yPercent: 112, opacity: 0 });
+            gsap.set(words[0], { yPercent: 0, opacity: 1 });
+
+            var tl = gsap.timeline({ paused: true });
+            tl.to(stage, { opacity: 1, duration: ARRIVAL, ease: "power2.out" }, 0);
+
+            var swapCount = words.length - 1;
+            if (swapCount > 0) {
+              var lastSwapStart = Math.max(SWAP_START, IN - SETTLE_TAIL - ROLL);
+              var swapStep = swapCount === 1 ? 0 : (lastSwapStart - SWAP_START) / (swapCount - 1);
+              var rollDuration =
+                swapCount <= 2 ? ROLL : Math.min(ROLL, Math.max(0.04, swapStep * 0.72));
+
+              for (var index = 1; index < words.length; index += 1) {
+                var swapAt = swapCount === 1 ? lastSwapStart : SWAP_START + (index - 1) * swapStep;
+                var incomingEase = index === words.length - 1 ? "back.out(1.7)" : "power4.out";
+
+                tl.to(
+                  words[index - 1],
+                  { yPercent: -112, opacity: 0, duration: rollDuration, ease: "power4.in" },
+                  swapAt,
+                );
+                tl.to(
+                  words[index],
+                  { yPercent: 0, opacity: 1, duration: rollDuration, ease: incomingEase },
+                  swapAt,
+                );
+              }
+            }
+
+            var finalWord = words[words.length - 1];
+            var beat = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat")) || 0.5;
+            var pulseHalf = Math.min(beat, HOLD / 2);
+            if (pulseHalf > 0) {
+              var maxRepeat = Math.floor(HOLD / pulseHalf) - 1;
+              var pulseRepeat = maxRepeat % 2 === 1 ? maxRepeat : maxRepeat - 1;
+              if (pulseRepeat >= 1) {
+                tl.to(
+                  finalWord,
+                  {
+                    opacity: 0.9,
+                    duration: pulseHalf,
+                    ease: "sine.inOut",
+                    yoyo: true,
+                    repeat: pulseRepeat,
+                  },
+                  HOLD_START,
+                );
+              }
+            }
+
+            tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["kinetic-type-swap"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

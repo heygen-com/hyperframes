@@ -1,0 +1,212 @@
+<!doctype html>
+<!--
+  cta-close: HyperFrames video primitive (call to action / close)
+
+  One oversized action line rises into place, then one capsule pops beneath
+  it with a single overshoot. The finished lockup stays completely still.
+
+  Variables:
+    action_line: two to four word closing action
+    button_label: capsule label
+    accent: green, blue, or violet capsule color
+
+  Envelope:
+    IN_BASE = 1.32s, action rise followed by capsule pop
+    HOLD = the rest of D, completely still
+    OUT = none
+    If D is shorter than IN_BASE, IN compresses to fit. The timeline is never
+    time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal cta-close key.
+-->
+<html
+  lang="en"
+  data-composition-id="cta-close"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "action_line", "type": "string", "role": "content", "label": "Action line", "description": "Two to four word action that closes the film.", "default": "Make it happen" },
+    { "id": "button_label", "type": "string", "role": "content", "label": "Button label", "description": "Text displayed inside the single CTA capsule.", "default": "Start now" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Contract color used by the CTA capsule.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>CTA Close</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="cta-close" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cc-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, #0b0c0e);
+          }
+
+          .cc-lockup {
+            width: 92cqw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-3, 7cqh);
+            text-align: center;
+          }
+
+          .cc-action {
+            max-width: 92cqw;
+            margin: 0;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: var(--cc-action-size, min(17cqw, 27cqh));
+            font-weight: 850;
+            line-height: 0.92;
+            letter-spacing: -0.055em;
+            white-space: nowrap;
+            will-change: transform, opacity;
+          }
+
+          .cc-button {
+            min-width: 24cqw;
+            max-width: 82cqw;
+            margin: 0;
+            padding: var(--space-2, 2.7cqh) var(--space-3, 5cqw);
+            overflow: hidden;
+            border: 0.14cqmin solid color-mix(in srgb, var(--cc-accent) 72%, var(--fg, #f8fafc));
+            border-radius: 999px;
+            background: var(--cc-accent);
+            color: var(--bg, #0b0c0e);
+            font: inherit;
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            font-size: var(--cc-button-size, min(4.4cqw, 7cqh));
+            font-weight: 760;
+            line-height: 1;
+            letter-spacing: -0.025em;
+            white-space: nowrap;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity;
+          }
+        </style>
+
+        <div
+          id="cta-close-clip"
+          class="cc-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="cc-lockup">
+            <h2 class="cc-action"></h2>
+            <button class="cc-button" type="button" tabindex="-1"></button>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var actionLine = root.querySelector(".cc-action");
+            var button = root.querySelector(".cc-button");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var actionText =
+              vars.action_line == null
+                ? "Make it happen"
+                : String(vars.action_line).trim().replace(/\s+/g, " ");
+            var buttonText =
+              vars.button_label == null
+                ? "Start now"
+                : String(vars.button_label).trim().replace(/\s+/g, " ");
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            actionLine.textContent = actionText;
+            actionLine.setAttribute("aria-label", actionText);
+            button.textContent = buttonText;
+            root.style.setProperty("--cc-accent", accentColors[accent]);
+
+            // Character-count fitting is deterministic before the template is
+            // laid out. The 84cqw target preserves air on both sides.
+            var actionCharacters = Math.max(1, Array.from(actionText).length);
+            var actionSize = Math.min(17, 84 / (actionCharacters * 0.62));
+            var buttonCharacters = Math.max(1, Array.from(buttonText).length);
+            var buttonSize = Math.min(4.4, 62 / (buttonCharacters * 0.58));
+            root.style.setProperty(
+              "--cc-action-size",
+              "min(" + actionSize.toFixed(3) + "cqw, 27cqh)",
+            );
+            root.style.setProperty(
+              "--cc-button-size",
+              "min(" + buttonSize.toFixed(3) + "cqw, 7cqh)",
+            );
+
+            var IN_BASE = 1.32;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var envelopeScale = Math.min(1, duration / IN_BASE);
+            var ACTION_DURATION = 0.7 * envelopeScale;
+            var BUTTON_AT = 0.64 * envelopeScale;
+            var BUTTON_DURATION = 0.68 * envelopeScale;
+            var BUTTON_FADE = 0.22 * envelopeScale;
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.fromTo(
+              actionLine,
+              { opacity: 0, y: "8cqh" },
+              { opacity: 1, y: 0, duration: ACTION_DURATION, ease: "power3.out" },
+              0,
+            );
+            tl.fromTo(
+              button,
+              { scale: 0.72, y: "2.4cqh" },
+              { scale: 1, y: 0, duration: BUTTON_DURATION, ease: "back.out(1.7)" },
+              BUTTON_AT,
+            );
+            tl.fromTo(
+              button,
+              { opacity: 0 },
+              { opacity: 1, duration: BUTTON_FADE, ease: "power2.out" },
+              BUTTON_AT,
+            );
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["cta-close"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

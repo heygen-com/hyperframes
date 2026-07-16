@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  offset-path-traveler demo. This standalone composition mounts the primitive
+  through data-composition-src. A non-default path, label, and violet accent
+  prove the variable flow while the primitive remains elastic to its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Offset Path Traveler Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #0b0c0e);
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #9aa4b2;
+        --surface: #171a20;
+        --border: #3c4350;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 3cqmin;
+        --space-1: 1.4cqmin;
+        --space-2: 2.8cqmin;
+        --space-3: 4.2cqmin;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 44%,
+          color-mix(in srgb, var(--surface) 72%, var(--accent-2)) 0%,
+          var(--bg) 68%
+        );
+      }
+
+      .mount-card {
+        width: 78%;
+        height: 54%;
+        left: 11%;
+        top: 23%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+        border-radius: calc(var(--radius) * 1.25);
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+        box-shadow: 0 4cqh 12cqh color-mix(in srgb, var(--bg) 58%, transparent);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="offset-path-traveler-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="offset-path-traveler-mount"
+        class="mount-card clip"
+        data-composition-id="offset-path-traveler"
+        data-composition-src="./offset-path-traveler.html"
+        data-variable-values='{"path":"M -100 410 C 110 475 190 80 410 145 C 610 205 690 395 820 245 C 940 110 1025 170 1100 55","traveler_label":"Deploying","accent":"violet"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1498"
+        data-height="583"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["offset-path-traveler-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "constellation-hub",
+  "type": "hyperframes:component",
+  "title": "Constellation Hub",
+  "description": "Feature nodes brighten in narration order as real-length SVG connectors draw outward from a fixed central hub, then settle into one lockup.",
+  "tags": ["motion-primitive", "feature-tour", "hub", "nodes", "connector", "reveal"],
+  "jobs": ["exhibit"],
+  "family": "feature-tour",
+  "profile": "network",
+  "evidence": "Wave I I3 constellation-hub contract: fixed hub, ordered feature introductions, and getTotalLength-based connector drawing",
+  "syncPoints": [{ "id": "lockup-settle", "phase": "in", "offset": 2.4 }],
+  "files": [
+    {
+      "path": "constellation-hub.html",
+      "target": "compositions/components/constellation-hub.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "hub_label",
+      "type": "string",
+      "role": "content",
+      "label": "Hub label",
+      "description": "Text displayed inside the fixed central hub.",
+      "default": "Product"
+    },
+    {
+      "id": "nodes",
+      "type": "string",
+      "role": "content",
+      "label": "Feature nodes",
+      "description": "Comma-separated feature labels introduced in narration order.",
+      "default": "Capture,Compose,Render,Share"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight color used by the hub, connectors, and active nodes.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

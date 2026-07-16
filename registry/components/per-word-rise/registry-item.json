@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "per-word-rise",
+  "type": "hyperframes:component",
+  "title": "Per Word Rise",
+  "description": "Words or characters rise into place in a controlled blur-to-sharp cascade, drift gently, and leave with a clean upward fade.",
+  "tags": ["motion-primitive", "text-effects", "typography", "stagger", "reveal"],
+  "jobs": ["reveal"],
+  "family": "text-effects",
+  "profile": "stagger",
+  "evidence": "Wave I I1 approved contract build, merging the per-word and SplitTypeReveal candidates",
+  "syncPoints": [{ "id": "rise-settle", "phase": "in", "offset": 1.45 }],
+  "files": [
+    {
+      "path": "per-word-rise.html",
+      "target": "compositions/components/per-word-rise.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Text whose words or characters rise into place.",
+      "default": "WORDS IN MOTION"
+    },
+    {
+      "id": "split",
+      "type": "enum",
+      "role": "content",
+      "label": "Split",
+      "description": "Animate the text as words or individual characters.",
+      "default": "word",
+      "options": [
+        { "value": "word", "label": "Word" },
+        { "value": "char", "label": "Character" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Contract accent token used for the text color.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    }
+  ]
+}

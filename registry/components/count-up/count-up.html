@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  count-up: HyperFrames video primitive (proof and stats / prove)
+
+  A value accelerates from start to end, decelerates into the exact final
+  integer, and lands with one restrained scale pulse. Prefix and suffix stay
+  fixed while tabular numerals prevent the line from shifting as digits change.
+
+  Variables:
+    - start (number, default 0): first value shown.
+    - end (number, default 100): final value shown.
+    - prefix (string, default ""): optional text before the value.
+    - suffix (string, default "%"): optional text after the value.
+    - accent (green | blue | violet, default "green"): count color.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 2.05s, stage arrival, eased count, and landing pulse
+    HOLD     = max(0, D - IN - OUT), subtle drift then 0.25s stillness
+    OUT_BASE = 0.45s, upward release and fade
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Determinism: each displayed integer is computed synchronously for a fixed
+  timeline position. The paused timeline sets the authored frame rows directly,
+  so reverse or repeated seeks show the same value without update callbacks.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal count-up key.
+-->
+<html
+  lang="en"
+  data-composition-id="count-up"
+  data-composition-duration="3"
+  data-composition-variables='[
+    { "id": "start", "type": "number", "role": "content", "label": "Start value", "description": "First value shown by the count.", "default": 0, "step": 1 },
+    { "id": "end", "type": "number", "role": "content", "label": "End value", "description": "Final value where the count lands.", "default": 100, "step": 1 },
+    { "id": "prefix", "type": "string", "role": "content", "label": "Prefix", "description": "Optional text shown before the value.", "default": "" },
+    { "id": "suffix", "type": "string", "role": "content", "label": "Suffix", "description": "Optional text shown after the value.", "default": "%" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the count.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Count Up</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="count-up" data-duration="3" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .cu-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .cu-stage {
+            display: flex;
+            width: 92cqw;
+            align-items: baseline;
+            justify-content: center;
+            overflow: hidden;
+            color: var(--cu-accent);
+            font-size: var(--cu-font-size);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.045em;
+            text-align: center;
+            text-shadow: 0 2.4cqh 7cqh color-mix(in srgb, var(--cu-accent) 24%, transparent);
+            transform-origin: 50% 58%;
+            white-space: nowrap;
+            will-change: transform, opacity;
+          }
+
+          .cu-affix {
+            flex: 0 0 auto;
+            color: color-mix(in srgb, var(--cu-accent) 72%, var(--fg, #f8fafc));
+            font-size: 0.52em;
+            font-weight: 720;
+            letter-spacing: -0.02em;
+          }
+
+          .cu-prefix {
+            margin-right: var(--space-1, 1.2cqw);
+          }
+
+          .cu-suffix {
+            margin-left: var(--space-1, 1.2cqw);
+          }
+
+          .cu-affix:empty {
+            display: none;
+          }
+
+          .cu-value {
+            display: inline-block;
+            min-width: 1ch;
+          }
+        </style>
+
+        <div
+          id="count-up-clip"
+          class="cu-clip clip"
+          data-start="0"
+          data-duration="3"
+          data-track-index="0"
+        >
+          <div class="cu-stage" role="img">
+            <span class="cu-affix cu-prefix" aria-hidden="true"></span>
+            <span class="cu-value" aria-hidden="true"></span>
+            <span class="cu-affix cu-suffix" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".cu-stage");
+            var valueElement = root.querySelector(".cu-value");
+            var prefixElement = root.querySelector(".cu-prefix");
+            var suffixElement = root.querySelector(".cu-suffix");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var startCandidate = vars.start;
+            var endCandidate = vars.end;
+            var start = Number.isFinite(startCandidate) ? startCandidate : 0;
+            var end = Number.isFinite(endCandidate) ? endCandidate : 100;
+            var prefix = vars.prefix == null ? "" : String(vars.prefix);
+            var suffix = vars.suffix == null ? "%" : String(vars.suffix);
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            function formatValue(value) {
+              return Math.round(value).toLocaleString("en-US");
+            }
+
+            prefixElement.textContent = prefix;
+            suffixElement.textContent = suffix;
+            root.style.setProperty("--cu-accent", accentColors[accent]);
+
+            var startText = prefix + formatValue(start) + suffix;
+            var endText = prefix + formatValue(end) + suffix;
+            var characterCount = Math.max(
+              Array.from(startText).length,
+              Array.from(endText).length,
+              1,
+            );
+            var fittedCqw = Math.min(20, 150 / characterCount);
+            root.style.setProperty("--cu-font-size", "min(" + fittedCqw.toFixed(3) + "cqw, 34cqh)");
+            stage.setAttribute("aria-label", endText);
+
+            var IN_BASE = 2.05;
+            var OUT_BASE = 0.45;
+            var COUNT_BASE = 1.72;
+            var PULSE_HALF_BASE = 0.165;
+            var ARRIVAL_BASE = 0.38;
+            var STILLNESS = 0.25;
+            var FPS = 30;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3"));
+            var totalBase = IN_BASE + OUT_BASE;
+            var scale = duration < totalBase ? duration / totalBase : 1;
+            var IN = IN_BASE * scale;
+            var OUT = OUT_BASE * scale;
+            var COUNT = COUNT_BASE * scale;
+            var PULSE_HALF = PULSE_HALF_BASE * scale;
+            var ARRIVAL = ARRIVAL_BASE * scale;
+            var HOLD = Math.max(0, duration - (IN + OUT));
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+            var lastFrame = Math.max(1, Math.round(COUNT * FPS));
+            var countEase = gsap.parseEase("sine.inOut");
+            var frameRows = [];
+
+            for (var frame = 0; frame <= lastFrame; frame += 1) {
+              var progress = frame / lastFrame;
+              var easedProgress = countEase(progress);
+              frameRows.push(formatValue(start + (end - start) * easedProgress));
+            }
+
+            gsap.set(stage, { opacity: 0, y: "2.2cqh", scale: 0.98 });
+            valueElement.textContent = frameRows[0];
+
+            var tl = gsap.timeline({ paused: true });
+
+            tl.to(stage, { opacity: 1, duration: ARRIVAL, ease: "power2.out" }, 0);
+            tl.to(stage, { y: "0cqh", scale: 1, duration: ARRIVAL, ease: "power3.out" }, 0);
+
+            frameRows.forEach(function (row, frameIndex) {
+              tl.set(valueElement, { textContent: row }, COUNT * (frameIndex / lastFrame));
+            });
+
+            tl.to(stage, { scale: 1.07, duration: PULSE_HALF, ease: "power3.out" }, COUNT);
+            tl.to(
+              stage,
+              { scale: 1, duration: PULSE_HALF, ease: "power2.out" },
+              COUNT + PULSE_HALF,
+            );
+
+            var driftDuration = Math.max(0, HOLD - STILLNESS);
+            if (driftDuration > 0) {
+              tl.to(
+                stage,
+                {
+                  y: "-0.55cqh",
+                  duration: driftDuration / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            tl.to(stage, { y: "-2.2cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+            tl.to(stage, { opacity: 0, scale: 0.985, duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["count-up"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<!--
+  svg-stroke-trace: HyperFrames video primitive (intros and reveals)
+
+  An authored SVG path draws from start to finish using its measured length.
+  Closed paths receive a restrained fill after the stroke completes. Open
+  paths remain stroke-only, which keeps signatures and waves clean.
+
+  Variables:
+    - path (string): SVG path data for the traced mark.
+    - stroke_width (number, default 12): stroke width in viewBox units.
+    - accent (green | blue | violet, default green): trace and fill color.
+
+  Envelope, fixed IN and OUT with elastic HOLD only:
+    IN_BASE  = 1.85s, stroke draw followed by optional closed-path fill
+    HOLD     = max(0, D - IN - OUT), one subtle vertical drift cycle
+    OUT_BASE = 0.45s, clean upward fade
+    If D is shorter than IN_BASE + OUT_BASE, IN and OUT compress together.
+    The timeline is never time-scaled.
+
+  Mount contract: the runtime clones only this template. #root fills the host
+  box, establishes the container query basis, has no data-width or data-height,
+  and registers one paused timeline under the literal svg-stroke-trace key.
+-->
+<html
+  lang="en"
+  data-composition-id="svg-stroke-trace"
+  data-composition-duration="3.5"
+  data-composition-variables='[
+    { "id": "path", "type": "string", "role": "content", "label": "Path", "description": "SVG path data for the authored mark.", "default": "M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194" },
+    { "id": "stroke_width", "type": "number", "role": "style", "label": "Stroke width", "description": "Width of the traced stroke in SVG viewBox units.", "default": 12, "min": 2, "max": 32, "step": 1 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Color used by the trace and optional fill.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>SVG Stroke Trace</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="svg-stroke-trace" data-duration="3.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            pointer-events: none;
+          }
+
+          .sst-clip {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+          }
+
+          .sst-stage {
+            width: 88cqw;
+            height: 70cqh;
+            opacity: 0;
+            will-change: transform, opacity;
+          }
+
+          .sst-svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+
+          .sst-fill,
+          .sst-stroke {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          .sst-fill {
+            fill: var(--sst-accent);
+            stroke: none;
+            opacity: 0;
+          }
+
+          .sst-stroke {
+            fill: none;
+            stroke: var(--sst-accent);
+            filter: drop-shadow(
+              0 0 1.8cqmin color-mix(in srgb, var(--sst-accent) 34%, transparent)
+            );
+          }
+        </style>
+
+        <div
+          id="svg-stroke-trace-clip"
+          class="sst-clip clip"
+          data-start="0"
+          data-duration="3.5"
+          data-track-index="0"
+        >
+          <div class="sst-stage" role="img">
+            <svg
+              class="sst-svg"
+              viewBox="0 0 1024 520"
+              preserveAspectRatio="xMidYMid meet"
+              aria-hidden="true"
+            >
+              <path class="sst-fill"></path>
+              <path class="sst-stroke"></path>
+            </svg>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var DEFAULT_PATH =
+              "M 92 328 C 178 142 292 138 366 276 C 430 396 500 414 558 262 C 622 94 724 112 786 274 C 836 406 894 376 930 194";
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".sst-stage");
+            var fillPath = root.querySelector(".sst-fill");
+            var strokePath = root.querySelector(".sst-stroke");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var suppliedPath = vars.path == null ? DEFAULT_PATH : String(vars.path).trim();
+            var pathData = suppliedPath || DEFAULT_PATH;
+            var widthValue = vars.stroke_width;
+            var strokeWidth = Number.isFinite(widthValue)
+              ? Math.max(2, Math.min(32, widthValue))
+              : 12;
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+
+            root.style.setProperty("--sst-accent", accentColors[accent]);
+            fillPath.setAttribute("d", pathData);
+            strokePath.setAttribute("d", pathData);
+            strokePath.setAttribute("stroke-width", String(strokeWidth));
+            stage.setAttribute("aria-label", "Authored SVG path tracing from start to finish");
+
+            var pathLength = strokePath.getTotalLength();
+            strokePath.style.strokeDasharray = pathLength + " " + pathLength;
+            strokePath.style.strokeDashoffset = String(pathLength);
+
+            // A trailing close command is the single owner of fill behavior.
+            // Open signatures and waves never receive an implied closing fill.
+            var fillEnabled = /[zZ]\s*$/.test(pathData);
+
+            var IN_BASE = 1.85;
+            var OUT_BASE = 0.45;
+            var DRAW_SHARE = 0.84;
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "3.5"));
+            var fixedTotal = IN_BASE + OUT_BASE;
+            var phaseScale = duration < fixedTotal ? duration / fixedTotal : 1;
+            var IN = IN_BASE * phaseScale;
+            var OUT = OUT_BASE * phaseScale;
+            var DRAW = IN * DRAW_SHARE;
+            var FILL = IN - DRAW;
+            var HOLD = Math.max(0, duration - IN - OUT);
+            var HOLD_START = IN;
+            var OUT_START = IN + HOLD;
+
+            var tl = gsap.timeline({ paused: true });
+
+            // IN: the path measurement owns both dash values, so every authored
+            // path draws exactly once regardless of its geometry.
+            tl.to(stage, { opacity: 1, duration: Math.min(0.28, DRAW), ease: "power2.out" }, 0);
+            tl.to(strokePath, { strokeDashoffset: 0, duration: DRAW, ease: "sine.inOut" }, 0);
+
+            if (fillEnabled) {
+              tl.to(fillPath, { opacity: 0.16, duration: FILL, ease: "power2.out" }, DRAW);
+            }
+
+            // HOLD: one finite drift cycle keeps longer mounts alive.
+            if (HOLD > 0) {
+              tl.to(
+                stage,
+                {
+                  y: "-0.7cqh",
+                  duration: HOLD / 2,
+                  ease: "sine.inOut",
+                  yoyo: true,
+                  repeat: 1,
+                },
+                HOLD_START,
+              );
+            }
+
+            // OUT: the completed mark exits as one subject.
+            tl.to(stage, { opacity: 0, y: "-2.4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["svg-stroke-trace"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  cta-close demo. This standalone composition mounts cta-close.html through
+  data-composition-src. Non-default copy and accent values prove the variable
+  path while the primitive remains elastic to its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>CTA Close Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08090b;
+      }
+
+      #root {
+        --bg: #0b0c0e;
+        --fg: #f8fafc;
+        --muted: #aeb7c5;
+        --surface: #14171c;
+        --border: #343a46;
+        --brand: #71f5a7;
+        --accent: #61a8ff;
+        --accent-2: #c5a3ff;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 2.4cqmin;
+        --space-1: 1.8cqmin;
+        --space-2: 3cqmin;
+        --space-3: 5cqmin;
+        --dur-beat: 0.5s;
+        --ease-standard: cubic-bezier(0.215, 0.61, 0.355, 1);
+        --ease-emphasis: cubic-bezier(0.19, 1, 0.22, 1);
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08090b;
+      }
+
+      .mount-card {
+        width: 82%;
+        height: 64%;
+        left: 9%;
+        top: 18%;
+        container-type: size;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--border, #343a46) 56%, transparent);
+        border-radius: var(--radius, 26px);
+        background: var(--bg, #0b0c0e);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="cta-close-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="cta-close-mount"
+        class="mount-card clip"
+        data-composition-id="cta-close"
+        data-composition-src="./cta-close.html"
+        data-variable-values='{"action_line":"Make it matter","button_label":"Start now","accent":"violet"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1574"
+        data-height="691"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["cta-close-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
