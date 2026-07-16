@@ -76,6 +76,29 @@ describe("maybeProxyProactively", () => {
     );
   });
 
+  it("matches codec-map paths across case and Unicode normalization differences", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = { "/assets/Caf\u00e9.MP4": HEVC_ENTRY };
+    const el = createVideo("/assets/cafe\u0301.mp4");
+    stubCanPlayType(el, "");
+
+    maybeProxyProactively(el);
+
+    expect(isProxied(el)).toBe(true);
+  });
+
+  it("does not guess when two codec-map paths collide after normalization", () => {
+    window.__HF_MEDIA_CODEC_MAP__ = {
+      "/assets/CLIP.mp4": HEVC_ENTRY,
+      "/assets/clip.MP4": H264_ENTRY,
+    };
+    const el = createVideo("/assets/Clip.mp4");
+    stubCanPlayType(el, "");
+
+    maybeProxyProactively(el);
+
+    expect(isProxied(el)).toBe(false);
+  });
+
   it("does not swap when canPlayType reports probably/maybe despite a hostile map entry", () => {
     window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
     const el = createVideo("/video.mp4");

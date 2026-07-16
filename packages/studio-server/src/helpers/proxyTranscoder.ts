@@ -1,7 +1,15 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
@@ -110,19 +118,39 @@ export async function waitForProxy<T>(
  * cost), and a params version token so changing the ffmpeg recipe below
  * invalidates every cached proxy cleanly.
  */
-function buildProxyCacheKey(projectDir: string, absoluteSourcePath: string): string {
-  const relPath = relative(projectDir, absoluteSourcePath);
-  if (
-    relPath === ".." ||
-    relPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
-    isAbsolute(relPath)
-  ) {
+type CanonicalProxySource = {
+  projectDir: string;
+  sourcePath: string;
+  relativePath: string;
+};
+
+function canonicalizeProxySource(
+  projectDir: string,
+  absoluteSourcePath: string,
+): CanonicalProxySource {
+  const canonicalProjectDir = realpathSync(projectDir);
+  const canonicalSourcePath = realpathSync(absoluteSourcePath);
+  const relPath = relative(canonicalProjectDir, canonicalSourcePath);
+  if (relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath)) {
     throw new ProxySourceOutsideProjectError();
   }
-  const stat = statSync(absoluteSourcePath);
+  return {
+    projectDir: canonicalProjectDir,
+    sourcePath: canonicalSourcePath,
+    relativePath: relPath.normalize("NFC"),
+  };
+}
+
+function buildProxyCacheKey(source: CanonicalProxySource): string {
+  const stat = statSync(source.sourcePath);
   return createHash("sha256")
-    .update(`${relPath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}`)
+    .update(`${source.relativePath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}`)
     .digest("hex");
+}
+
+function getCanonicalProxyCachePath(source: CanonicalProxySource): string {
+  const key = buildProxyCacheKey(source);
+  return join(source.projectDir, CACHE_DIR_NAME, `${key}.mp4`);
 }
 
 /**
@@ -131,8 +159,7 @@ function buildProxyCacheKey(projectDir: string, absoluteSourcePath: string): str
  * for ETag/If-None-Match) before deciding whether to await a transcode.
  */
 export function getProxyCachePath(projectDir: string, absoluteSourcePath: string): string {
-  const key = buildProxyCacheKey(projectDir, absoluteSourcePath);
-  return join(projectDir, CACHE_DIR_NAME, `${key}.mp4`);
+  return getCanonicalProxyCachePath(canonicalizeProxySource(projectDir, absoluteSourcePath));
 }
 
 // --- global concurrency limiter -------------------------------------------
@@ -340,7 +367,8 @@ export async function resolveProxy(
   projectDir: string,
   absoluteSourcePath: string,
 ): Promise<string> {
-  const cachePath = getProxyCachePath(projectDir, absoluteSourcePath);
+  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const cachePath = getCanonicalProxyCachePath(source);
   if (existsSync(cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
@@ -356,7 +384,7 @@ export async function resolveProxy(
   const existing = inFlight.get(cachePath);
   if (existing) return existing;
 
-  const promise = transcodeToCache(absoluteSourcePath, cachePath)
+  const promise = transcodeToCache(source.sourcePath, cachePath)
     .catch((err: unknown) => {
       if (
         err instanceof ProxyTranscodeError &&

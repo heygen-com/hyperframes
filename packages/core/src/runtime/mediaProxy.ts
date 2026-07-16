@@ -112,18 +112,55 @@ export function deriveCodecMapKey(el: HTMLMediaElement): string | null {
  * ending in `"/notfoo.mp4"`, since that would require the literal substring
  * `"/foo.mp4"` to appear where the last `/` already fell a segment later).
  */
-function lookupCodecMapEntry(
+function lookupLongestExactSuffix(
   pathname: string,
   map: Record<string, MediaCodecMapEntry>,
 ): MediaCodecMapEntry | null {
-  const exact = map[pathname];
-  if (exact) return exact;
   let bestKey: string | null = null;
   for (const key of Object.keys(map)) {
     if (!pathname.endsWith(key)) continue;
     if (bestKey === null || key.length > bestKey.length) bestKey = key;
   }
   return bestKey ? (map[bestKey] ?? null) : null;
+}
+
+function lookupNormalizedSuffix(
+  pathname: string,
+  map: Record<string, MediaCodecMapEntry>,
+): MediaCodecMapEntry | null {
+  // Case-insensitive filesystems and Unicode-normalizing filesystems can
+  // serve an authored URL whose spelling differs from the canonical path
+  // ffprobe returned (Clip.mp4 vs clip.mp4, NFC vs NFD). Exact matching stays
+  // authoritative; this normalized fallback is used only when it finds one
+  // unambiguous longest suffix, so case-sensitive projects containing both
+  // spellings never select the wrong asset.
+  const normalizedPathname = pathname.normalize("NFC").toLowerCase();
+  let normalizedBestLength = -1;
+  let normalizedBest: MediaCodecMapEntry | null = null;
+  let ambiguous = false;
+  for (const [key, entry] of Object.entries(map)) {
+    const normalizedKey = key.normalize("NFC").toLowerCase();
+    if (!normalizedPathname.endsWith(normalizedKey)) continue;
+    if (normalizedKey.length > normalizedBestLength) {
+      normalizedBestLength = normalizedKey.length;
+      normalizedBest = entry;
+      ambiguous = false;
+    } else if (normalizedKey.length === normalizedBestLength) {
+      ambiguous = true;
+    }
+  }
+  return ambiguous ? null : normalizedBest;
+}
+
+function lookupCodecMapEntry(
+  pathname: string,
+  map: Record<string, MediaCodecMapEntry>,
+): MediaCodecMapEntry | null {
+  return (
+    map[pathname] ??
+    lookupLongestExactSuffix(pathname, map) ??
+    lookupNormalizedSuffix(pathname, map)
+  );
 }
 
 function appendProxyParam(src: string): string {

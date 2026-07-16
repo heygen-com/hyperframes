@@ -1,5 +1,13 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -378,6 +386,22 @@ describe("resolveProxy", () => {
     const outsideDir = tmpProject();
     const sourcePath = join(outsideDir, "outside.mov");
     writeFileSync(sourcePath, "source-bytes");
+
+    await expect(resolveProxy(projectDir, sourcePath)).rejects.toBeInstanceOf(
+      ProxySourceOutsideProjectError,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an in-project symlink whose target escapes the project", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, ProxySourceOutsideProjectError } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const outsideDir = tmpProject();
+    const outsidePath = join(outsideDir, "outside.mov");
+    const sourcePath = join(projectDir, "linked.mov");
+    writeFileSync(outsidePath, "source-bytes");
+    symlinkSync(outsidePath, sourcePath);
 
     await expect(resolveProxy(projectDir, sourcePath)).rejects.toBeInstanceOf(
       ProxySourceOutsideProjectError,
