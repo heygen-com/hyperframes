@@ -1,16 +1,35 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   openSettledCompositionPage,
   type OpenSettledCompositionPageOptions,
 } from "../capture/captureCompositionFrame.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
-import { captureOverviewShot, runBrowserCheck } from "./checkBrowser.js";
+import {
+  captureOverviewShot,
+  preResolveHostileMediaProxies,
+  runBrowserCheck,
+} from "./checkBrowser.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
+  resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
+  waitForProxy: vi.fn(<T>(promise: Promise<T>) => promise),
+  scanProjectMediaCodecMap: vi.fn<
+    (
+      ...args: unknown[]
+    ) => Promise<
+      Record<
+        string,
+        { codecName: string; browserHostile: boolean; representativeMime: string | null }
+      >
+    >
+  >(async () => ({})),
 }));
 
 vi.mock("./bundleWithLocalizedFonts.js", () => ({
@@ -44,6 +63,15 @@ vi.mock("./staticProjectServer.js", () => ({
   })),
 }));
 
+// `preResolveHostileMediaProxies` reaches these two studio-server helpers via
+vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
+  scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
+}));
+vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
+  resolveProxy: mocks.resolveProxy,
+  waitForProxy: mocks.waitForProxy,
+}));
+
 const PROJECT: ProjectDir = {
   dir: "/project",
   name: "project",
@@ -61,6 +89,7 @@ afterEach(() => {
   Reflect.deleteProperty(window, "__contrastAuditFinish");
   Reflect.deleteProperty(window, "__contrastAuditRestores");
   Reflect.deleteProperty(window, "__contrastAuditRestoreIfPending");
+  mocks.scanProjectMediaCodecMap.mockResolvedValue({});
 });
 
 function installSessionMock(page: ReturnType<typeof fakePage>): void {
@@ -303,6 +332,157 @@ it("carries validate's clip-duration audit into the runtime findings", async () 
   ]);
 });
 
+it("surfaces the runtime's media-proxy-fallback console.info line as an info finding, ignoring unrelated info logs", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const fallbackMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_fallback: "assets/clip.mp4" uses a codec (hevc) this browser can\'t decode; ' +
+      "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
+  );
+  const unrelatedInfo = fakeConsoleMessage("info", "[hyperframes] render runtime fps 30");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(fallbackMessage);
+        handler(unrelatedInfo);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_fallback",
+      severity: "info",
+      message: fallbackMessage.text(),
+    }),
+  );
+  expect(result.runtimeFindings.some((finding) => finding.message === unrelatedInfo.text())).toBe(
+    false,
+  );
+});
+
+it("surfaces the runtime's media-proxy-unavailable console.info line as its own info finding", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const unavailableMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_media_proxy_unavailable: "https://cdn.example.com/video.mp4" (cross_origin): ' +
+      "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
+  );
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(unavailableMessage);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "media_proxy_unavailable",
+      severity: "info",
+      message: unavailableMessage.text(),
+    }),
+  );
+});
+
+describe("preResolveHostileMediaProxies", () => {
+  const dirs: string[] = [];
+  const mkProjectDir = (): string => {
+    const d = mkdtempSync(join(tmpdir(), "hf-check-preresolve-"));
+    dirs.push(d);
+    return d;
+  };
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("awaits resolveProxy for every browser-hostile entry before returning", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+      "/plain.mp4": { codecName: "h264", browserHostile: false, representativeMime: null },
+    });
+    let resolveTranscode: (() => void) | undefined;
+    mocks.resolveProxy.mockImplementation(
+      () =>
+        new Promise<string>((resolveIt) => {
+          resolveTranscode = () => resolveIt("/cache/clip.mp4");
+        }),
+    );
+
+    let settled = false;
+    const pending = preResolveHostileMediaProxies(projectDir, "<html></html>").then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
+    expect(settled).toBe(false); // still waiting on the hostile entry's transcode
+
+    resolveTranscode?.();
+    await pending;
+    expect(settled).toBe(true);
+  });
+
+  it("does nothing (no scan, no resolveProxy) when autoProxy is off in hyperframes.json", async () => {
+    const projectDir = mkProjectDir();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ media: { autoProxy: false } }),
+    );
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  it("swallows a resolveProxy rejection instead of throwing", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+    });
+    mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
+
+    await expect(
+      preResolveHostileMediaProxies(projectDir, "<html></html>"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("is a no-op when the codec map has no hostile entries", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/plain.mp4": { codecName: "h264", browserHostile: false, representativeMime: null },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+});
+
 describe("captureOverviewShot", () => {
   it("injects the annotation overlay before the overview shot and removes it right after", async () => {
     const calls: string[] = [];
@@ -347,6 +527,14 @@ function installRects(): void {
   if (!root || !image) throw new Error("Geometry fixture failed to mount");
   vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
   vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 80, 200, 100));
+}
+
+function fakeConsoleMessage(type: string, text: string) {
+  return {
+    type: () => type,
+    text: () => text,
+    location: () => ({ url: "http://127.0.0.1:3000/index.html", lineNumber: 1 }),
+  };
 }
 
 function fakePage() {

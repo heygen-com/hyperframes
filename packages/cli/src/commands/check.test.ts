@@ -354,6 +354,21 @@ it("parses the caption-zone grammar and enables the frame gate", async () => {
   );
 });
 
+it("threads --no-proxy into the browser check options", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json", "--no-proxy"] });
+
+  expect(runPipeline).toHaveBeenCalledWith(PROJECT, expect.objectContaining({ autoProxy: false }));
+});
+
 it("rejects malformed caption-zone specs instead of silently disabling the gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async () => report);
