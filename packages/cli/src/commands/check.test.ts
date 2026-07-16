@@ -354,6 +354,30 @@ it("parses the caption-zone grammar and enables the frame gate", async () => {
   );
 });
 
+it("keeps bare --frame-check boolean when more flags follow it", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--snapshots", "--samples", "15", "--frame-check", "--json"],
+  });
+
+  expect(runPipeline).toHaveBeenCalledWith(
+    PROJECT,
+    expect.objectContaining({
+      samples: 15,
+      snapshots: true,
+      frameCheck: {},
+    }),
+  );
+});
+
 it("rejects malformed caption-zone specs instead of silently disabling the gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async () => report);
