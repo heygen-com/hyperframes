@@ -4,19 +4,25 @@
 `--provider` or `--words` flag. For HeyGen audio plus word timestamps, use the
 bundled `heygen-tts.mjs` script below.
 
-> **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
+> **Run the Preflight first — no credential is not a green light to silently use a fallback voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, use local Kokoro, or use the keyless Edge CLI). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
 
 ## Available routes
 
-| Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
-| ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
-| 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
-| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | UUIDs from elevenlabs.io dashboard          | No                                        | mp3 → wav via ffmpeg |
-| 3     | Kokoro-82M        | always (local fallback)                     | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
+| Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                                  | Audio format         |
+| ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------------ | -------------------- |
+| 1     | HeyGen (Starfish) | `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish` | **Yes** (`word_timestamps[]` in response)        | mp3 → wav via ffmpeg |
+| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                       | UUIDs from elevenlabs.io dashboard          | No                                               | mp3 → wav via ffmpeg |
+| 3     | Kokoro-82M        | `kokoro-onnx` + `soundfile` installed       | `am_michael`, `af_heart`, … (54 voices)     | No                                               | wav direct           |
+| 4     | Edge TTS          | `edge-tts` on PATH                          | Microsoft neural voice names                | **Yes** (`WordBoundary` via `--write-subtitles`) | mp3 → wav via ffmpeg |
 
 ```bash
 # Local Kokoro CLI
 npx hyperframes tts "Welcome to HyperFrames" -o narration.wav
+
+# Shared audio engine: pin Edge explicitly
+node skills/media-use/audio/scripts/audio.mjs \
+  --request audio_request.json --hyperframes . --out audio_meta.json \
+  --provider edge --voice en-US-AndrewNeural
 ```
 
 ## Self-contained HeyGen (no CLI) — `scripts/heygen-tts.mjs`
@@ -60,11 +66,22 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 | Best voice quality + word timestamps in one call          | **HeyGen**                                          |
 | Drop-in cloud TTS, big voice catalog                      | **ElevenLabs**                                      |
 | Offline, no API key, fast iteration                       | **Kokoro**                                          |
+| No key or ML deps, with native word timings               | **Edge** (`edge-tts`)                               |
 | Non-English multilingual with deterministic phonemization | **Kokoro** (`ef_dora`, `jf_alpha`, `zf_xiaobei`, …) |
+
+## Edge TTS
+
+The `edge` provider needs no API key and no local ML dependencies, but it does
+need network access to Microsoft's speech service. Install the `edge-tts`
+system CLI and keep it on PATH. Its default house narrator is the male
+`en-US-AndrewNeural`; use `en-US-AvaNeural` for the corresponding female voice,
+or pass any other Edge voice name verbatim with `--voice`. The default rate is
+`-2%`. Word timings come directly from `--write-subtitles` WordBoundary cues,
+so Edge narration skips the transcription pass used by Kokoro and ElevenLabs.
 
 ## ffmpeg requirement
 
-HeyGen + ElevenLabs return mp3. The bundled HeyGen helper transcodes to wav
+HeyGen + ElevenLabs + Edge return mp3. The bundled HeyGen helper and shared audio engine transcode to wav
 when `--output` ends in `.wav` (the default and what downstream `ffprobe` +
 Whisper expect). If you'd rather skip the transcode, pass `-o file.mp3`.
 Without `ffmpeg` on PATH, wav output from cloud providers fails; the local
@@ -134,4 +151,4 @@ When `--words <path>` is passed to a HeyGen call, the file is written in the sam
 ]
 ```
 
-For ElevenLabs / Kokoro, run `npx hyperframes transcribe narration.wav --model small.en` to get the same shape.
+For ElevenLabs / Kokoro, run `npx hyperframes transcribe narration.wav --model small.en` to get the same shape. Edge timings are native and already use this shape.
