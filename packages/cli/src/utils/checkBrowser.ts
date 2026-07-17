@@ -19,8 +19,11 @@ import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
 import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { resolveAutoProxy } from "./projectConfig.js";
-import { scanProjectMediaCodecMap } from "@hyperframes/studio-server/media-codec-map";
-import { resolveProxy, waitForProxy } from "@hyperframes/studio-server/proxy-transcoder";
+import {
+  decideMediaProxyEligibility,
+  scanProjectMediaCodecMap,
+} from "@hyperframes/studio-server/media-codec-map";
+import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
 import { rectToBbox } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
@@ -94,9 +97,8 @@ interface FinishedContrast {
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
  * instead of paying a bounded one-time transcode cost
  * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
- * Best-effort: a probe or transcode failure is swallowed here — `check` must
- * not fail because a proxy was attempted; the real error (if any) surfaces
- * later when the runtime itself requests the proxy over HTTP.
+ * Best-effort: a probe or transcode failure does not fail `check`; one summary
+ * line records the pre-resolve outcome before the runtime attempts playback.
  */
 export async function preResolveHostileMediaProxies(
   projectDir: string,
@@ -107,20 +109,26 @@ export async function preResolveHostileMediaProxies(
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
-  } catch {
+  } catch (err) {
+    console.info(
+      `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
+    );
     return;
   }
   const hostilePathnames = Object.entries(codecMap)
-    .filter(([, facts]) => facts.browserHostile)
+    .filter(([, facts]) => decideMediaProxyEligibility(facts).eligible)
     .map(([pathname]) => pathname);
   if (hostilePathnames.length === 0) return;
 
-  await Promise.all(
+  const startedAt = Date.now();
+  const results = await Promise.allSettled(
     hostilePathnames.map((pathname) =>
-      waitForProxy(
-        resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))),
-      ).catch(() => undefined),
+      resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))),
     ),
+  );
+  const failed = results.filter((result) => result.status === "rejected").length;
+  console.info(
+    `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
   );
 }
 
@@ -241,8 +249,8 @@ export async function captureFindingCrops(
 // shared "runtime_media_proxy_" prefix surfaces both codes; only those
 // runtime-emitted info lines should ever become findings here — an ordinary
 // `console.info` from a composition author's own script must not.
-const MEDIA_PROXY_MARKER_PREFIX = "runtime_media_proxy_";
-const MEDIA_PROXY_UNAVAILABLE_MARKER = "runtime_media_proxy_unavailable";
+const MEDIA_PROXY_MARKER_PREFIX = "[hyperframes] runtime_media_proxy_";
+const MEDIA_PROXY_UNAVAILABLE_MARKER = "[hyperframes] runtime_media_proxy_unavailable";
 
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
@@ -268,7 +276,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
         url: location.url,
         line: location.lineNumber,
       });
-    } else if (type === "info" && text.includes(MEDIA_PROXY_MARKER_PREFIX)) {
+    } else if (type === "info" && text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) {
       const location = message.location();
       drafts.push({
         code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)

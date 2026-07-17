@@ -19,14 +19,16 @@ const mocks = vi.hoisted(() => ({
   bundleWithLocalizedFonts: vi.fn(async () => "<html></html>"),
   serverClose: vi.fn(async () => undefined),
   resolveProxy: vi.fn<(projectDir: string, absoluteSourcePath: string) => Promise<string>>(),
-  waitForProxy: vi.fn(<T>(promise: Promise<T>) => promise),
   scanProjectMediaCodecMap: vi.fn<
-    (
-      ...args: unknown[]
-    ) => Promise<
+    (...args: unknown[]) => Promise<
       Record<
         string,
-        { codecName: string; browserHostile: boolean; representativeMime: string | null }
+        {
+          codecName: string;
+          browserHostile: boolean;
+          representativeMime: string | null;
+          hasAlpha: boolean;
+        }
       >
     >
   >(async () => ({})),
@@ -64,12 +66,12 @@ vi.mock("./staticProjectServer.js", () => ({
 }));
 
 // `preResolveHostileMediaProxies` reaches these two studio-server helpers via
-vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
+vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/studio-server/media-codec-map")>()),
   scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
 }));
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
-  waitForProxy: mocks.waitForProxy,
 }));
 
 const PROJECT: ProjectDir = {
@@ -342,11 +344,13 @@ it("surfaces the runtime's media-proxy-fallback console.info line as an info fin
       "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
   );
   const unrelatedInfo = fakeConsoleMessage("info", "[hyperframes] render runtime fps 30");
+  const authorInfo = fakeConsoleMessage("info", "debug runtime_media_proxy_probe");
   page.on = vi.fn(
     (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
       if (event === "console") {
         handler(fallbackMessage);
         handler(unrelatedInfo);
+        handler(authorInfo);
       }
     },
   );
@@ -367,6 +371,9 @@ it("surfaces the runtime's media-proxy-fallback console.info line as an info fin
     }),
   );
   expect(result.runtimeFindings.some((finding) => finding.message === unrelatedInfo.text())).toBe(
+    false,
+  );
+  expect(result.runtimeFindings.some((finding) => finding.message === authorInfo.text())).toBe(
     false,
   );
 });
@@ -419,8 +426,18 @@ describe("preResolveHostileMediaProxies", () => {
   it("awaits resolveProxy for every browser-hostile entry before returning", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
-      "/plain.mp4": { codecName: "h264", browserHostile: false, representativeMime: null },
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+      "/plain.mp4": {
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      },
     });
     let resolveTranscode: (() => void) | undefined;
     mocks.resolveProxy.mockImplementation(
@@ -462,19 +479,49 @@ describe("preResolveHostileMediaProxies", () => {
   it("swallows a resolveProxy rejection instead of throwing", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },
+      "/clip.mp4": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
     });
     mocks.resolveProxy.mockRejectedValue(new Error("ffmpeg exited with code 1"));
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     await expect(
       preResolveHostileMediaProxies(projectDir, "<html></html>"),
     ).resolves.toBeUndefined();
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
+    );
+  });
+
+  it("does not pre-resolve a hostile asset rejected by the shared proxy policy", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/alpha.mov": {
+        codecName: "prores",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: true,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/plain.mp4": { codecName: "h264", browserHostile: false, representativeMime: null },
+      "/plain.mp4": {
+        codecName: "h264",
+        browserHostile: false,
+        representativeMime: null,
+        hasAlpha: false,
+      },
     });
 
     await preResolveHostileMediaProxies(projectDir, "<html></html>");

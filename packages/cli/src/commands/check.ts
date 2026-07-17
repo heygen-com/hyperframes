@@ -101,7 +101,7 @@ export function createCheckCommand(
       proxy: {
         type: "boolean",
         description:
-          "Auto-transcode browser-hostile video codecs for browser checks (default: on; overrides hyperframes.json media.autoProxy)",
+          "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
         default: undefined,
       },
       snapshots: {
