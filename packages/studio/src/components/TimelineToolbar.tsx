@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -80,6 +80,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
+  const thumbnailsEnabled = usePlayerStore((s) => s.thumbnailsEnabled);
+  const setThumbnailsEnabled = usePlayerStore((s) => s.setThumbnailsEnabled);
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
@@ -357,6 +359,21 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
           })()}
         </div>
         <div className="flex items-center gap-0.5">
+          <Tooltip label={thumbnailsEnabled ? "Hide clip thumbnails" : "Show clip thumbnails"}>
+            <button
+              type="button"
+              aria-label={thumbnailsEnabled ? "Hide clip thumbnails" : "Show clip thumbnails"}
+              aria-pressed={thumbnailsEnabled}
+              onClick={() => setThumbnailsEnabled(!thumbnailsEnabled)}
+              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
+                thumbnailsEnabled
+                  ? "bg-studio-accent/10 text-studio-accent"
+                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+              }`}
+            >
+              <Image size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
           <Tooltip label="Fit timeline to width">
             <button
               type="button"

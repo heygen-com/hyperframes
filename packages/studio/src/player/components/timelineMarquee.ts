@@ -1,11 +1,4 @@
-import {
-  GUTTER,
-  TRACK_H,
-  RULER_H,
-  CLIP_Y,
-  TRACKS_LEFT_PAD,
-  getTimelineRowTop,
-} from "./timelineLayout";
+import { RULER_H, CLIP_Y, getTimelineRowHeight, getTimelineRowTop } from "./timelineLayout";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 
 /** Pointer must travel at least this far (either axis) before a pointerdown on
@@ -68,22 +61,24 @@ export function getMarqueeRect(
 
 /**
  * A clip's rendered rect in canvas/content coordinates (the same space the
- * marquee rect lives in): x from GUTTER + start * pps, y from the clip's row
- * index within the visible track order (RULER_H + row * TRACK_H + CLIP_Y).
+ * marquee rect lives in): x from the shared content origin + start * pps, y from the clip's row
+ * index within the visible track order (cumulative row top + CLIP_Y).
  * Returns null when the clip's track is not currently displayed.
  */
 export function getTimelineClipRect(
   clip: Pick<MarqueeClipInput, "start" | "duration" | "track">,
   trackOrder: number[],
   pps: number,
+  contentOrigin: number,
+  rowHeights: readonly number[] = [],
 ): Rect | null {
   const row = trackOrder.indexOf(clip.track);
   if (row < 0 || !Number.isFinite(pps) || pps <= 0) return null;
   return {
-    left: GUTTER + TRACKS_LEFT_PAD + clip.start * pps,
-    top: getTimelineRowTop(row) + CLIP_Y,
+    left: contentOrigin + clip.start * pps,
+    top: getTimelineRowTop(row, rowHeights) + CLIP_Y,
     width: Math.max(clip.duration * pps, MIN_CLIP_W),
-    height: TRACK_H - CLIP_Y * 2,
+    height: getTimelineRowHeight(row, rowHeights) - CLIP_Y * 2,
   };
 }
 
@@ -103,13 +98,21 @@ export function computeMarqueeSelection(input: {
   clips: MarqueeClipInput[];
   trackOrder: number[];
   pps: number;
+  contentOrigin: number;
   marquee: Rect;
   baseSelection?: Iterable<string>;
+  rowHeights?: readonly number[];
 }): MarqueeSelectionResult {
   const ids = new Set<string>(input.baseSelection ?? []);
   let primaryId: string | null = null;
   for (const clip of input.clips) {
-    const rect = getTimelineClipRect(clip, input.trackOrder, input.pps);
+    const rect = getTimelineClipRect(
+      clip,
+      input.trackOrder,
+      input.pps,
+      input.contentOrigin,
+      input.rowHeights,
+    );
     if (rect && rectsOverlap(rect, input.marquee)) {
       ids.add(clip.id);
       primaryId = clip.id;

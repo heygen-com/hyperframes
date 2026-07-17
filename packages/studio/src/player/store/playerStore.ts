@@ -4,22 +4,9 @@ import type { BeatEditState } from "../../utils/beatEditing";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
+import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 
-/** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
-export interface KeyframeCacheEntry {
-  format: string;
-  keyframes: Array<{
-    percentage: number;
-    /** Original tween-relative percentage (server mutations need this, not the clip-relative `percentage`). */
-    tweenPercentage?: number;
-    /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
-    propertyGroup?: string;
-    properties: Record<string, number | string>;
-    ease?: string;
-  }>;
-  ease?: string;
-  easeEach?: string;
-}
+export type { KeyframeCacheEntry } from "./keyframeSlice";
 
 export interface TimelineElement {
   id: string;
@@ -108,7 +95,7 @@ function resolveElementSelection(
   };
 }
 
-interface PlayerState {
+interface PlayerState extends KeyframeSlice {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -122,6 +109,7 @@ interface PlayerState {
   loopEnabled: boolean;
   /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
+  thumbnailsEnabled: boolean;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
   /**
@@ -138,11 +126,6 @@ interface PlayerState {
 
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
-
-  /** Set of selected keyframe keys in format `${elementId}:${percentage}`. */
-  selectedKeyframes: Set<string>;
-  toggleSelectedKeyframe: (key: string) => void;
-  clearSelectedKeyframes: () => void;
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
@@ -192,10 +175,6 @@ interface PlayerState {
   toggleSelectedElementId: (id: string) => void;
   clearSelection: () => void;
 
-  /** Keyframe data per element id, populated from parsed GSAP animations. */
-  keyframeCache: Map<string, KeyframeCacheEntry>;
-  setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
-
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -218,6 +197,7 @@ interface PlayerState {
     >,
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
+  setThumbnailsEnabled: (enabled: boolean) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
@@ -316,6 +296,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
   loopEnabled: false,
   zoomMode: "fit",
+  thumbnailsEnabled: readStudioUiPreferences().thumbnailsEnabled ?? false,
   manualZoomPercent: 100,
   zEditVersion: 0,
   timelinePps: 100,
@@ -326,15 +307,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
 
-  selectedKeyframes: new Set(),
-  toggleSelectedKeyframe: (key) =>
-    set((s) => {
-      const next = new Set(s.selectedKeyframes);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return { selectedKeyframes: next };
-    }),
-  clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
+  ...createKeyframeSlice(set),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
@@ -361,15 +334,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return resolveElementSelection(next, s.selectedElementId);
     }),
   clearSelection: () => set({ selectedElementId: null, selectedElementIds: new Set() }),
-
-  keyframeCache: new Map(),
-  setKeyframeCache: (elementId, data) =>
-    set((s) => {
-      const next = new Map(s.keyframeCache);
-      if (data) next.set(elementId, data);
-      else next.delete(elementId);
-      return { keyframeCache: next };
-    }),
 
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
@@ -447,6 +411,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setAudioMuted: (muted) => {
     writeStudioUiPreferences({ audioMuted: muted });
     set({ audioMuted: muted });
+  },
+  setThumbnailsEnabled: (enabled) => {
+    writeStudioUiPreferences({ thumbnailsEnabled: enabled });
+    set({ thumbnailsEnabled: enabled });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
@@ -568,9 +536,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       outPoint: null,
       activeTool: "select",
       selectedKeyframes: new Set(),
+      expandedClipIds: new Set(),
       selectedElementIds: new Set(),
       clipRevealRequest: null,
       keyframeCache: new Map(),
+      gsapAnimations: new Map(),
       beatAnalysis: null,
       beatEdits: null,
       beatUndo: [],

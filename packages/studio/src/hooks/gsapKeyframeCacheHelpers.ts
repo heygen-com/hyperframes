@@ -5,6 +5,7 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
+import { accumulateCollidingAnimationIds, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 
 export function updateKeyframeCacheFromParsed(
   animations: GsapAnimation[],
@@ -15,10 +16,16 @@ export function updateKeyframeCacheFromParsed(
   const { setKeyframeCache, elements } = usePlayerStore.getState();
   const idsWithKeyframes = new Set<string>();
   const merged = new Map<string, KeyframeCacheEntry>();
+  const sourceAnimations = new Map<string, GsapAnimation[]>();
   for (const anim of animations) {
     const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
-    if (!id || !anim.keyframes) continue;
+    const kfSource =
+      anim.keyframes?.keyframes ?? synthesizeFlatTweenKeyframes(anim)?.keyframes ?? [];
+    if (!id || kfSource.length === 0) continue;
     idsWithKeyframes.add(id);
+    if (anim.propertyGroup) {
+      sourceAnimations.set(id, [...(sourceAnimations.get(id) ?? []), anim]);
+    }
 
     // Convert tween-relative percentages to clip-relative so diamonds
     // render at the correct position within the timeline clip.
@@ -29,7 +36,7 @@ export function updateKeyframeCacheFromParsed(
     );
     const elStart = timelineEl?.start ?? 0;
     const elDuration = timelineEl?.duration ?? 1;
-    const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
+    const clipKeyframes = kfSource.map((kf) => {
       const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
       const clipPct =
         elDuration > 0 ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10 : kf.percentage;
@@ -38,6 +45,7 @@ export function updateKeyframeCacheFromParsed(
         percentage: clipPct,
         tweenPercentage: kf.percentage,
         propertyGroup: anim.propertyGroup,
+        animationId: anim.id,
       };
     });
 
@@ -48,6 +56,7 @@ export function updateKeyframeCacheFromParsed(
         const prev = byPct.get(kf.percentage);
         if (prev) {
           prev.properties = { ...prev.properties, ...kf.properties };
+          accumulateCollidingAnimationIds(prev, kf.animationId);
           if (kf.ease) prev.ease = kf.ease;
         } else {
           byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
@@ -55,13 +64,18 @@ export function updateKeyframeCacheFromParsed(
       }
       existing.keyframes = Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
     } else {
-      merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
+      merged.set(id, {
+        ...anim.keyframes,
+        format: anim.keyframes?.format ?? "percentage",
+        keyframes: clipKeyframes,
+      });
     }
   }
   for (const [id, entry] of merged) {
     setKeyframeCache(`${targetPath}#${id}`, entry);
     setKeyframeCache(id, entry);
     if (targetPath !== "index.html") setKeyframeCache(`index.html#${id}`, entry);
+    writeGsapAnimationsForElement(targetPath, id, sourceAnimations.get(id));
   }
   const targetId =
     (mutation as { targetSelector?: string }).targetSelector?.match(/^#([\w-]+)/)?.[1] ??
@@ -84,13 +98,12 @@ export function updateKeyframeCacheFromParsed(
  * a new cache map and re-render every subscriber.
  */
 export function clearKeyframeCacheForElement(sourceFile: string, elementId: string): void {
-  const { keyframeCache, setKeyframeCache } = usePlayerStore.getState();
-  const keys =
-    sourceFile === "index.html"
-      ? [`index.html#${elementId}`, elementId]
-      : [`${sourceFile}#${elementId}`, `index.html#${elementId}`, elementId];
+  const { keyframeCache, setKeyframeCache, gsapAnimations, setGsapAnimations } =
+    usePlayerStore.getState();
+  const keys = elementCacheKeys(sourceFile, elementId);
   for (const key of keys) {
     if (keyframeCache.has(key)) setKeyframeCache(key, undefined);
+    if (gsapAnimations.has(key)) setGsapAnimations(key, undefined);
   }
 }
 
@@ -102,11 +115,11 @@ export function clearKeyframeCacheForElement(sourceFile: string, elementId: stri
  * absent from the re-scan) leaves no stale bare entry behind.
  */
 export function clearKeyframeCacheForFile(sourceFile: string): void {
-  const { keyframeCache } = usePlayerStore.getState();
+  const { keyframeCache, gsapAnimations } = usePlayerStore.getState();
   const sfPrefix = `${sourceFile}#`;
   const fallbackPrefix = "index.html#";
   const ids = new Set<string>();
-  for (const key of keyframeCache.keys()) {
+  for (const key of [...keyframeCache.keys(), ...gsapAnimations.keys()]) {
     const matchesFile =
       key.startsWith(sfPrefix) || (sourceFile !== "index.html" && key.startsWith(fallbackPrefix));
     if (!matchesFile) continue;
@@ -115,6 +128,23 @@ export function clearKeyframeCacheForFile(sourceFile: string): void {
   }
   for (const id of ids) {
     clearKeyframeCacheForElement(sourceFile, id);
+  }
+}
+
+function elementCacheKeys(sourceFile: string, elementId: string): string[] {
+  return sourceFile === "index.html"
+    ? [`index.html#${elementId}`, elementId]
+    : [`${sourceFile}#${elementId}`, `index.html#${elementId}`, elementId];
+}
+
+export function writeGsapAnimationsForElement(
+  sourceFile: string,
+  elementId: string,
+  animations: GsapAnimation[] | undefined,
+): void {
+  const { setGsapAnimations } = usePlayerStore.getState();
+  for (const key of elementCacheKeys(sourceFile, elementId)) {
+    setGsapAnimations(key, animations);
   }
 }
 

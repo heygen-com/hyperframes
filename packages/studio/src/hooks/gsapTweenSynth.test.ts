@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
+import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 
 function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
   return {
@@ -51,5 +51,38 @@ describe("synthesizeFlatTweenKeyframes", () => {
       anim({ method: "to", duration: 0, properties: { opacity: 1 } }),
     );
     expect(out).not.toBeNull();
+  });
+});
+
+describe("deduplicateKeyframes colliding animation ids", () => {
+  it("records different animations in first-seen order at the same percentage", () => {
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { opacity: 1 }, ease: "power2.out", animationId: "#a-visual" },
+    ]);
+    const kf = merged.find((k) => k.percentage === 45);
+    expect(kf?.collidingAnimationIds).toEqual(["#a-position", "#a-visual"]);
+  });
+
+  it("deduplicates three colliding animations while preserving first-seen order", () => {
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { opacity: 1 }, ease: "power2.in", animationId: "#a-visual" },
+      { percentage: 45, properties: { y: 20 }, ease: "power2.out", animationId: "#a-position" },
+      { percentage: 45, properties: { scale: 2 }, ease: "power2.in", animationId: "#a-scale" },
+    ]);
+    expect(merged.find((k) => k.percentage === 45)?.collidingAnimationIds).toEqual([
+      "#a-position",
+      "#a-visual",
+      "#a-scale",
+    ]);
+  });
+
+  it("leaves the collision set undefined within a single animation", () => {
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { y: 20 }, ease: "power2.out", animationId: "#a-position" },
+    ]);
+    expect(merged.find((k) => k.percentage === 45)?.collidingAnimationIds).toBeUndefined();
   });
 });

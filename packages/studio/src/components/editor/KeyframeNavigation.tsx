@@ -22,6 +22,36 @@ interface KeyframeNavigationProps {
 
 const TOLERANCE = 0.5;
 
+interface NavigableKeyframe {
+  percentage: number;
+  tweenPercentage?: number;
+  properties: Record<string, number | string>;
+}
+
+export function getKeyframeNavigationState<Keyframe extends NavigableKeyframe>(
+  keyframes: readonly Keyframe[],
+  currentPercentage: number,
+  property?: string,
+) {
+  const propertyKeyframes = property
+    ? keyframes.filter((keyframe) => property in keyframe.properties)
+    : keyframes;
+  return {
+    propertyKeyframes,
+    prevKeyframe:
+      propertyKeyframes
+        .filter((keyframe) => keyframe.percentage < currentPercentage - TOLERANCE)
+        .at(-1) ?? null,
+    nextKeyframe:
+      propertyKeyframes.find((keyframe) => keyframe.percentage > currentPercentage + TOLERANCE) ??
+      null,
+    currentKeyframe:
+      propertyKeyframes.find(
+        (keyframe) => Math.abs(keyframe.percentage - currentPercentage) <= TOLERANCE,
+      ) ?? null,
+  };
+}
+
 /**
  * Convert a clip-relative percentage (element lifetime, used for display/seek) to
  * the TWEEN-relative percentage the GSAP writer/runtime key on. The clip→tween
@@ -92,18 +122,12 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
-  // Find keyframes that contain this property
-  const propertyKeyframes = keyframes?.filter((kf) => property in kf.properties) ?? [];
-
-  const prevKf =
-    propertyKeyframes.filter((kf) => kf.percentage < currentPercentage - TOLERANCE).at(-1) ?? null;
-
-  const nextKf =
-    propertyKeyframes.find((kf) => kf.percentage > currentPercentage + TOLERANCE) ?? null;
-
-  const atCurrent =
-    propertyKeyframes.find((kf) => Math.abs(kf.percentage - currentPercentage) <= TOLERANCE) ??
-    null;
+  const {
+    propertyKeyframes,
+    prevKeyframe: prevKf,
+    nextKeyframe: nextKf,
+    currentKeyframe: atCurrent,
+  } = getKeyframeNavigationState(keyframes ?? [], currentPercentage, property);
 
   // Diamond state
   let diamondState: DiamondState;

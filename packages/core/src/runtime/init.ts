@@ -50,6 +50,7 @@ import type {
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import { installStudioCustomEase } from "./customEase";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -174,7 +175,18 @@ export function initSandboxRuntimeModular(): void {
       // a stray warning is preferable to a broken runtime
     }
   };
+  const ensureStudioCustomEase = (): void => {
+    const g = window.gsap;
+    const w = window as Window & { __hfCustomEaseRegistered?: boolean };
+    if (!g || w.__hfCustomEaseRegistered) return;
+    try {
+      if (installStudioCustomEase(g)) w.__hfCustomEaseRegistered = true;
+    } catch {
+      // falling back to GSAP's default ease is preferable to a broken runtime
+    }
+  };
   ensureAutoMarkerNoop();
+  ensureStudioCustomEase();
   // Normalize html/body so browser defaults (8px margin, white background) never
   // bleed into renders as white bars. Runs in both preview and render contexts,
   // eliminating the preview/render parity gap that existed when only the React
@@ -1205,8 +1217,44 @@ export function initSandboxRuntimeModular(): void {
   // (setTimeout(0)). Scripts using requestAnimationFrame or longer delays may
   // not be discovered.
   let childrenBound = false;
+  // A GSAP keyframes tween (`{ keyframes: {...}, ease }`) builds an INNER timeline
+  // whose own `_ease` GSAP resolves ONCE, at build time, via the internal
+  // `_parseEase(vars.ease)` (gsap-core: `tl._ease = _parseEase(keyframes.ease ||
+  // vars.ease || "none")`). On render it calls that inner `timeline._ease(...)`.
+  // The composition's inline `<script>` runs and builds these tweens BEFORE this
+  // runtime finishes registering the custom eases (hold/spring/wiggle/custom) in
+  // GSAP's internal ease map — so for a custom container ease the inner `_ease`
+  // bakes to `undefined`, and the first render throws "_ease is not a function"
+  // (a masked cross-origin Script error). Registering the eases afterward can't
+  // retro-fix that already-baked value, so re-resolve every keyframes tween's
+  // inner `_ease` here, once the eases are registered.
+  const repairKeyframeInnerEase = (tlLike: unknown): void => {
+    const g = (window as unknown as { gsap?: { parseEase?: (e: unknown) => unknown } }).gsap;
+    const tl = tlLike as { getChildren?: (a: boolean, b: boolean, c: boolean) => unknown[] } | null;
+    if (!tl || typeof tl.getChildren !== "function" || !g || typeof g.parseEase !== "function")
+      return;
+    for (const child of tl.getChildren(true, true, true)) {
+      const k = child as {
+        timeline?: { _ease?: unknown };
+        vars?: { ease?: unknown; keyframes?: unknown };
+      };
+      const inner = k.timeline;
+      if (!inner || !("_ease" in inner) || typeof inner._ease === "function") continue;
+      const kf = k.vars?.keyframes;
+      const kfEase = kf && !Array.isArray(kf) ? (kf as { ease?: unknown }).ease : undefined;
+      const resolved = g.parseEase(kfEase ?? k.vars?.ease ?? "none");
+      if (typeof resolved === "function") inner._ease = resolved;
+    }
+  };
   // fallow-ignore-next-line complexity
   const bindRootTimelineIfAvailable = (): boolean => {
+    // Custom eases (hold/spring/wiggle/custom) must be registered in GSAP's
+    // internal ease map BEFORE this function's prime render (progress/totalTime
+    // below), or a keyframe segment using one resolves to a non-function ease
+    // and GSAP throws "_ease is not a function" at render. The one-shot call in
+    // init runs early, but if GSAP wasn't ready then (load-order race) it's a
+    // no-op with no retry — so re-assert here, at the render site. Idempotent.
+    ensureStudioCustomEase();
     if (!externalCompositionsReady) return false;
     const currentTimeline = state.capturedTimeline;
     const currentDuration = getTimelineDurationSeconds(currentTimeline);
@@ -1227,6 +1275,8 @@ export function initSandboxRuntimeModular(): void {
     if (typeof state.capturedTimeline.timeScale === "function") {
       state.capturedTimeline.timeScale(state.playbackRate);
     }
+    // Repair keyframe inner-timeline eases before any prime render (see helper above).
+    repairKeyframeInnerEase(state.capturedTimeline);
     const boundDuration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
     if (boundDuration <= 0) {
       // No resolvable duration (e.g. a set()-only timeline, or one whose
@@ -2347,118 +2397,6 @@ export function initSandboxRuntimeModular(): void {
       document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
   });
 
-  state.controlBridgeHandler = installRuntimeControlBridge({
-    onPlay: () => {
-      player.play();
-      emitAnalyticsEvent("composition_played", { time: player.getTime() });
-    },
-    onPause: () => {
-      player.pause();
-      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
-    },
-    onStopMedia: () => {
-      webAudio.stopAll();
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
-      }
-    },
-    onSeek: (timeSeconds, _seekMode) => {
-      player.seek(timeSeconds);
-      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
-    },
-    onSetMuted: (muted) => {
-      state.bridgeMuted = muted;
-      const effective = muted || state.mediaOutputMuted;
-      webAudio.setMuted(effective);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective || el.defaultMuted;
-      }
-    },
-    onSetVolume: (volume) => {
-      state.bridgeVolume = volume;
-      webAudio.setVolume(volume);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        const parsed = parseFloat(el.dataset.volume ?? "");
-        const clipVolume = Number.isFinite(parsed) ? parsed : 1;
-        el.volume = clipVolume * volume;
-      }
-    },
-    onSetMediaOutputMuted: (muted) => {
-      state.mediaOutputMuted = muted;
-      const effective = muted || state.bridgeMuted;
-      webAudio.setMuted(effective);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective || el.defaultMuted;
-      }
-    },
-    onSetNativeMediaSyncDisabled: (disabled) => {
-      if (state.nativeMediaSyncDisabled === disabled) return;
-      state.nativeMediaSyncDisabled = disabled;
-      state.mediaForceSyncNextTick = true;
-      if (disabled) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-      } else {
-        syncMediaForCurrentState();
-      }
-    },
-    onSetWebAudioMediaDisabled: (disabled) => {
-      if (state.webAudioMediaDisabled === disabled) return;
-      state.webAudioMediaDisabled = disabled;
-      state.mediaForceSyncNextTick = true;
-      if (disabled) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-        syncMediaForCurrentState();
-      } else {
-        syncMediaForCurrentState();
-      }
-    },
-    onSetPlaybackRate: (rate) => {
-      applyPlaybackRate(rate);
-      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
-      applyWebAudioRate();
-    },
-    onSetRootDuration: growRootDurationLive,
-    onSetColorGrading: (target, grading) => {
-      colorGrading.setGrading(target, grading);
-    },
-    onSetColorGradingCompare: (target, compare) => {
-      colorGrading.setCompare(target, compare);
-    },
-    onTick: () => {
-      if (state.tornDown || !clock.isPlaying()) return;
-      const t = clock.now();
-      state.currentTime = t;
-      seekTimelineAndAdapters(t);
-      if (clock.reachedEnd()) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-        clock.pause();
-        state.isPlaying = false;
-        const dur = clock.getDuration();
-        if (Number.isFinite(dur)) {
-          clock.seek(dur);
-          state.currentTime = dur;
-          seekTimelineAndAdapters(dur);
-        }
-        runAdapters("pause");
-        syncMediaForCurrentState();
-        postState(true);
-      }
-    },
-    onEnablePickMode: () => picker.enablePickMode(),
-    onDisablePickMode: () => picker.disablePickMode(),
-    getCanonicalFps: () => state.canonicalFps,
-  });
-
   state.deterministicAdapters = [
     createWaapiAdapter(),
     createCssAdapter({
@@ -2732,10 +2670,10 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
-  const seekTimelineAndAdapters = (
+  function seekTimelineAndAdapters(
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
-  ) => {
+  ) {
     const tl = state.capturedTimeline;
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
@@ -2803,7 +2741,7 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
-  };
+  }
 
   // True while the Studio is mid-drag on an element (the gesture marker is
   // stamped on the gestured element for the duration of the drag). During a
@@ -3039,7 +2977,7 @@ export function initSandboxRuntimeModular(): void {
   // rescaled in place; but a bounded source's window was baked into start()'s
   // duration at its prior rate and can't be rescaled, so when one is active we
   // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
-  const applyWebAudioRate = () => {
+  function applyWebAudioRate() {
     const changed = webAudio.setRate(state.playbackRate);
     if (
       changed &&
@@ -3052,7 +2990,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
-  };
+  }
 
   // Sync clock duration from any captured timeline
   if (state.capturedTimeline) {
@@ -3067,6 +3005,123 @@ export function initSandboxRuntimeModular(): void {
   state.transportRafId = window.requestAnimationFrame(transportTick);
   postTimeline();
   postState(true);
+
+  // Wire the control bridge LAST — after every transport helper its handlers
+  // dispatch to (seekTimelineAndAdapters, applyWebAudioRate, ...) is declared.
+  // The runtime's external control surface only goes live once all of its
+  // dependencies exist, so a load-time seek / set-playback-rate can never reach
+  // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  state.controlBridgeHandler = installRuntimeControlBridge({
+    onPlay: () => {
+      player.play();
+      emitAnalyticsEvent("composition_played", { time: player.getTime() });
+    },
+    onPause: () => {
+      player.pause();
+      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
+    },
+    onStopMedia: () => {
+      webAudio.stopAll();
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
+      }
+    },
+    onSeek: (timeSeconds, _seekMode) => {
+      player.seek(timeSeconds);
+      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
+    },
+    onSetMuted: (muted) => {
+      state.bridgeMuted = muted;
+      const effective = muted || state.mediaOutputMuted;
+      webAudio.setMuted(effective);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        el.muted = effective || el.defaultMuted;
+      }
+    },
+    onSetVolume: (volume) => {
+      state.bridgeVolume = volume;
+      webAudio.setVolume(volume);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        const parsed = parseFloat(el.dataset.volume ?? "");
+        const clipVolume = Number.isFinite(parsed) ? parsed : 1;
+        el.volume = clipVolume * volume;
+      }
+    },
+    onSetMediaOutputMuted: (muted) => {
+      state.mediaOutputMuted = muted;
+      const effective = muted || state.bridgeMuted;
+      webAudio.setMuted(effective);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        el.muted = effective || el.defaultMuted;
+      }
+    },
+    onSetNativeMediaSyncDisabled: (disabled) => {
+      if (state.nativeMediaSyncDisabled === disabled) return;
+      state.nativeMediaSyncDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetWebAudioMediaDisabled: (disabled) => {
+      if (state.webAudioMediaDisabled === disabled) return;
+      state.webAudioMediaDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        syncMediaForCurrentState();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetPlaybackRate: (rate) => {
+      applyPlaybackRate(rate);
+      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
+      applyWebAudioRate();
+    },
+    onSetRootDuration: growRootDurationLive,
+    onSetColorGrading: (target, grading) => {
+      colorGrading.setGrading(target, grading);
+    },
+    onSetColorGradingCompare: (target, compare) => {
+      colorGrading.setCompare(target, compare);
+    },
+    onTick: () => {
+      if (state.tornDown || !clock.isPlaying()) return;
+      const t = clock.now();
+      state.currentTime = t;
+      seekTimelineAndAdapters(t);
+      if (clock.reachedEnd()) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        clock.pause();
+        state.isPlaying = false;
+        const dur = clock.getDuration();
+        if (Number.isFinite(dur)) {
+          clock.seek(dur);
+          state.currentTime = dur;
+          seekTimelineAndAdapters(dur);
+        }
+        runAdapters("pause");
+        syncMediaForCurrentState();
+        postState(true);
+      }
+    },
+    onEnablePickMode: () => picker.enablePickMode(),
+    onDisablePickMode: () => picker.disablePickMode(),
+    getCanonicalFps: () => state.canonicalFps,
+  });
 
   const teardown = () => {
     if (state.tornDown) return;

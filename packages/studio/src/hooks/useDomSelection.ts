@@ -24,6 +24,7 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
+import { useStudioTestHooks } from "./useStudioTestHooks";
 
 // ── Types ──
 
@@ -505,6 +506,9 @@ export function useDomSelection({
     if (!captionEditMode) return;
     applyDomSelection(null, { revealPanel: false });
   }, [applyDomSelection, captionEditMode]);
+
+  // Dev-only headless-QA shortcut (window.__studioTest.selectByDomId). No-op in prod.
+  useStudioTestHooks({ previewIframeRef, buildDomSelectionFromTarget, applyDomSelection });
 
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity

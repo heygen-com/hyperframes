@@ -12,6 +12,7 @@ import {
   type GsapAnimationEditCallbacks,
 } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import { usePlayerStore } from "../../player";
 
 export function FlatTimingRow({
   element,
@@ -144,6 +145,17 @@ export function FlatMotionSection({
           : "metric";
     track(control, property);
   };
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
+  // Only consume a focus request aimed at the element THIS panel renders (not
+  // the store's selectedElementId, which flips synchronously during async
+  // selection resolution), so a shared class-selector animation id can't open
+  // the wrong element's editor.
+  const renderedElementId = `${element.sourceFile}#${element.id}`;
+  const focusedHere =
+    focusedEaseSegment && focusedEaseSegment.elementId === renderedElementId
+      ? focusedEaseSegment
+      : null;
 
   return (
     <div className="space-y-3">
@@ -176,6 +188,8 @@ export function FlatMotionSection({
                   animation={anim}
                   defaultExpanded={index === 0}
                   flat
+                  focusedSegment={focusedHere?.animationId === anim.id ? focusedHere : null}
+                  onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
                   onUpdateProperty={(animationId, property, value) => {
                     trackProperty(property);
                     callbacks.onUpdateProperty(animationId, property, value);

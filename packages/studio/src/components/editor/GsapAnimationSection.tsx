@@ -9,6 +9,7 @@ import {
   type GsapAnimationEditCallbacks,
 } from "./gsapAnimationCallbacks";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { usePlayerStore } from "../../player";
 
 interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
   animations: GsapAnimation[];
@@ -35,6 +36,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
   onSetArcPath,
   onUpdateArcSegment,
   onUpdateKeyframeEase,
+  onUpdateSegmentEase,
   onSetAllKeyframeEases,
   onUnroll,
 }: GsapAnimationSectionProps) {
@@ -56,6 +58,8 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
     trackAnimationMetaUpdate(track, updates);
     onUpdateMeta(animationId, updates);
   };
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
 
   return (
     <Section title="Animation" icon={<Film size={15} />}>
@@ -79,6 +83,10 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
               key={anim.id}
               animation={anim}
               defaultExpanded={index === 0}
+              focusedSegment={
+                focusedEaseSegment?.animationId === anim.id ? focusedEaseSegment : null
+              }
+              onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
               onUpdateProperty={(animationId, property, value) => {
                 trackProperty(property);
                 onUpdateProperty(animationId, property, value);
@@ -151,6 +159,7 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
                     }
                   : undefined
               }
+              onUpdateSegmentEase={onUpdateSegmentEase}
               onSetAllKeyframeEases={
                 onSetAllKeyframeEases
                   ? (animationId, ease) => {
