@@ -80,7 +80,12 @@ case "$*" in
       *) printf '%s\\n' '{"data":[{"avatar_id":"avatar-public-1"}]}' ;;
     esac
     ;;
-  *"voice list"*) printf '%s\\n' '{"data":[{"voice_id":"voice-starfish-1"}]}' ;;
+  *"voice list"*)
+    case "$HEYGEN_DISCOVERY_MODE" in
+      auth) printf '%s\\n' 'HTTP 401 Unauthorized' >&2; exit 1 ;;
+      *) printf '%s\\n' '{"data":[{"voice_id":"voice-starfish-1"}]}' ;;
+    esac
+    ;;
   *"video create"*)
     case "$HEYGEN_VIDEO_MODE" in
       auth) printf '%s\\n' 'HTTP 401 Unauthorized' >&2; exit 1 ;;
@@ -300,18 +305,23 @@ test("onboards and returns null when avatar/voice discovery itself is unauthenti
   const errors = [];
   t.mock.method(console, "error", (message) => errors.push(message));
 
+  // Both avatar list AND voice list would fail unauthenticated (discoveryMode
+  // "auth" applies to both in the fake CLI) -- the short-circuit after the
+  // first failure must mean only one is ever attempted, so the onboarding
+  // message and the provider-error telemetry ping each fire exactly once
+  // instead of double-firing for what's really one auth failure.
   await withFakeHeygen({ discoveryMode: "auth" }, async ({ invocations }) => {
     const heygenVideoGenerate = await freshGenerate();
     const result = await heygenVideoGenerate("Discovery auth failure", {});
 
     assert.equal(result, null);
-    assert.ok(errors.includes(ONBOARDING_MESSAGE));
-    const calls = invocations();
     assert.equal(
-      calls.filter((call) => call.includes("video create")).length,
-      0,
-      "must not attempt video create once discovery is unauthenticated",
+      errors.filter((message) => message === ONBOARDING_MESSAGE).length,
+      1,
+      "onboarding message must fire exactly once, not once per failed discovery call",
     );
+    const calls = invocations();
+    assert.equal(calls.length, 1, "must short-circuit after the first discovery failure");
     assert.match(calls[0], /^avatar list /);
   });
 });

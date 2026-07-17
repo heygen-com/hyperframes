@@ -10,6 +10,8 @@ import {
   runHeygenJson,
 } from "./heygen-cli.mjs";
 
+const ONBOARDING_MESSAGE = `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`;
+
 // Cache only a truthy id -- a transient discovery failure must not poison the
 // cache with `null` and permanently disable heygen.video for the rest of the
 // process. `onError` lets the caller distinguish not_authenticated (and nudge
@@ -45,14 +47,18 @@ export async function heygenVideoGenerate(intent, ctx) {
   const captureReason = (reason) => {
     discoveryFailureReason ??= reason;
   };
+
+  // Short-circuit: once one discovery call fails, the result is null either
+  // way, so don't attempt the second -- that would double-fire the onboarding
+  // message and the provider-error telemetry ping for what's really one failure.
   const avatarId = ctx?.avatarId || defaultAvatarId(captureReason);
+  if (!avatarId) {
+    if (discoveryFailureReason === "not_authenticated") console.error(ONBOARDING_MESSAGE);
+    return null;
+  }
   const voiceId = ctx?.voiceId || defaultStarfishVoiceId(captureReason);
-  if (!avatarId || !voiceId) {
-    if (discoveryFailureReason === "not_authenticated") {
-      console.error(
-        `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`,
-      );
-    }
+  if (!voiceId) {
+    if (discoveryFailureReason === "not_authenticated") console.error(ONBOARDING_MESSAGE);
     return null;
   }
 
@@ -81,9 +87,7 @@ export async function heygenVideoGenerate(intent, ctx) {
     );
   } catch (err) {
     if (classifyHeygenErrorCode(err) === "not_authenticated") {
-      console.error(
-        `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`,
-      );
+      console.error(ONBOARDING_MESSAGE);
     }
     reportHeygenFailure(err, "heygen video create");
     return null;
