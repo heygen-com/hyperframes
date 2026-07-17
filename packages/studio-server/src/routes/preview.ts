@@ -25,10 +25,11 @@ import {
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
-  isProxyVariant,
+  isProxyVariantRequest,
   probeAssetCodec,
-  proxyVariantFor,
+  resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
+  type ProxyVariant,
 } from "../helpers/mediaCodecMap.js";
 import {
   isAutoProxyEnabled,
@@ -544,9 +545,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
     const proxyParam = c.req.query("hf-proxy");
+    let proxyVariant: ProxyVariant | undefined;
     if (proxyParam !== undefined) {
       if (
-        !isProxyVariant(proxyParam) ||
+        !isProxyVariantRequest(proxyParam) ||
         !contentType.startsWith("video/") ||
         !isAutoProxyEnabled(adapter)
       ) {
@@ -558,12 +560,13 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
       }
       if (!facts) return c.text("media proxy unavailable: unknown_codec", 422);
-      if (proxyParam !== proxyVariantFor(facts)) {
+      proxyVariant = resolveProxyVariantRequest(proxyParam, facts) ?? undefined;
+      if (!proxyVariant) {
         return c.text("media proxy variant does not match asset", 422);
       }
     }
 
-    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyParam)}"`;
+    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyVariant)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : {
@@ -583,9 +586,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // so a 304 never needs to await a transcode at all.
     let servedPath = file;
     let servedContentType = contentType;
-    if (proxyParam !== undefined) {
+    if (proxyVariant !== undefined) {
       try {
-        servedPath = await resolveProxy(project.dir, file, proxyParam);
+        servedPath = await resolveProxy(project.dir, file, proxyVariant);
       } catch (err) {
         if (err instanceof ProxyCapacityError) {
           return c.text(err.message, 503, { "Retry-After": "5" });
@@ -593,7 +596,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }
-      servedContentType = PROXY_VARIANT_CONFIG[proxyParam].contentType;
+      servedContentType = PROXY_VARIANT_CONFIG[proxyVariant].contentType;
     }
 
     const buffer: Buffer = isText

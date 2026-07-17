@@ -737,7 +737,16 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         return { eligible: true };
       },
       isProxyVariant: (value: string) => value === "h264" || value === "vp9",
+      isProxyVariantRequest: (value: string) =>
+        value === "auto" || value === "h264" || value === "vp9",
       proxyVariantFor: (facts: { hasAlpha: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+      resolveProxyVariantRequest: (
+        request: "auto" | "h264" | "vp9",
+        facts: { hasAlpha: boolean },
+      ) => {
+        const expected = facts.hasAlpha ? "vp9" : "h264";
+        return request === "auto" || request === expected ? expected : null;
+      },
       PROXY_VARIANT_CONFIG: {
         h264: { extension: ".mp4", contentType: "video/mp4" },
         vp9: { extension: ".webm", contentType: "video/webm" },

@@ -44,9 +44,9 @@ import {
 } from "@hyperframes/studio-server/proxy-transcoder";
 import {
   decideMediaProxyEligibility,
-  isProxyVariant,
+  isProxyVariantRequest,
   probeAssetCodec,
-  proxyVariantFor,
+  resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
 } from "@hyperframes/studio-server/media-codec-map";
 
@@ -232,7 +232,7 @@ export async function registerCompositionRoute(
 
     const contentType = assetContentType(filePath);
     const proxyParam = ctx.req.query("hf-proxy");
-    if (proxyParam !== undefined && isProxyVariant(proxyParam)) {
+    if (proxyParam !== undefined && isProxyVariantRequest(proxyParam)) {
       // Opt-out (or a non-video asset) 404s the param without attempting a
       // transcode; a missing asset already 404'd above.
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
@@ -242,13 +242,15 @@ export async function registerCompositionRoute(
         if (!eligibility.eligible) {
           return ctx.text(`Media proxy unavailable: ${eligibility.reason}`, 422);
         }
-        if (!facts || proxyParam !== proxyVariantFor(facts)) {
+        if (!facts) return ctx.text("Media proxy unavailable: unknown_codec", 422);
+        const proxyVariant = resolveProxyVariantRequest(proxyParam, facts);
+        if (!proxyVariant) {
           return ctx.text("Media proxy variant does not match asset", 422);
         }
-        const proxyPath = await resolveProxy(project.dir, filePath, proxyParam);
+        const proxyPath = await resolveProxy(project.dir, filePath, proxyVariant);
         return buildRangeResponse(
           proxyPath,
-          PROXY_VARIANT_CONFIG[proxyParam].contentType,
+          PROXY_VARIANT_CONFIG[proxyVariant].contentType,
           ctx.req.header("Range"),
         );
       } catch (err) {

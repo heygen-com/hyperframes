@@ -9,6 +9,7 @@ import {
   createMediaCodecProbeCache,
   probeAssetCodec,
   proxyVariantFor,
+  resolveProxyVariantRequest,
   scanProjectMediaCodecMap,
 } from "./mediaCodecMap.js";
 
@@ -225,6 +226,19 @@ describe("proxyVariantFor", () => {
     };
     expect(proxyVariantFor(facts)).toBe("vp9");
     expect(proxyVariantFor({ ...facts, hasAlpha: false })).toBe("h264");
+  });
+});
+
+describe("resolveProxyVariantRequest", () => {
+  it("infers the alpha-aware variant for an unlisted runtime rescue", () => {
+    const facts = {
+      codecName: "prores",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: true,
+    };
+    expect(resolveProxyVariantRequest("auto", facts)).toBe("vp9");
+    expect(resolveProxyVariantRequest("h264", facts)).toBeNull();
   });
 });
 

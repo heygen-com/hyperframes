@@ -222,6 +222,7 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     handleMetadataForProxy(el);
 
     expect(isProxied(el)).toBe(true);
+    expect(proxyVariant(el)).toBe("auto");
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 

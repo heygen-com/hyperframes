@@ -48,6 +48,7 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
 };
 
 export type ProxyVariant = "h264" | "vp9";
+export type ProxyVariantRequest = ProxyVariant | "auto";
 
 export const PROXY_VARIANT_CONFIG: Record<
   ProxyVariant,
@@ -61,11 +62,26 @@ export function isProxyVariant(value: string): value is ProxyVariant {
   return Object.hasOwn(PROXY_VARIANT_CONFIG, value);
 }
 
+export function isProxyVariantRequest(value: string): value is ProxyVariantRequest {
+  return value === "auto" || isProxyVariant(value);
+}
+
 export function proxyVariantFor(facts: AssetCodecFacts): ProxyVariant {
   return facts.hasAlpha ? "vp9" : "h264";
 }
 
-export type MediaProxyIneligibilityReason = "browser_safe_codec" | "unknown_codec";
+export function resolveProxyVariantRequest(
+  request: ProxyVariantRequest,
+  facts: AssetCodecFacts,
+): ProxyVariant | null {
+  const expected = proxyVariantFor(facts);
+  return request === "auto" || request === expected ? expected : null;
+}
+
+export type MediaProxyIneligibilityReason =
+  | "browser_safe_codec"
+  | "proxy_target_codec"
+  | "unknown_codec";
 
 export type MediaProxyEligibility =
   | { eligible: true }

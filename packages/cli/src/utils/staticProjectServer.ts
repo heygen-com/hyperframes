@@ -11,11 +11,11 @@ import {
 } from "@hyperframes/studio-server/proxy-transcoder";
 import {
   decideMediaProxyEligibility,
-  isProxyVariant,
+  isProxyVariantRequest,
   probeAssetCodec,
-  proxyVariantFor,
+  resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
-  type ProxyVariant,
+  type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
 
 export interface StaticProjectServer {
@@ -92,20 +92,6 @@ function serveFileWithRange(
  * grade-compare/motionShot/layout) — see the KTD in
  * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md.
  */
-/** 422 reason when this asset cannot back the requested variant, else null. */
-async function proxyVariantRejection(
-  filePath: string,
-  variant: ProxyVariant,
-): Promise<string | null> {
-  const facts = await probeAssetCodec(filePath);
-  const eligibility = decideMediaProxyEligibility(facts);
-  if (!eligibility.eligible) return `media proxy unavailable: ${eligibility.reason}`;
-  if (!facts || variant !== proxyVariantFor(facts)) {
-    return "media proxy variant does not match asset";
-  }
-  return null;
-}
-
 /** Map a transcode failure to a response; never a silent black frame. */
 function writeProxyError(err: unknown, res: ServerResponse): void {
   if (err instanceof ProxyCapacityError) {
@@ -125,7 +111,7 @@ function writeProxyError(err: unknown, res: ServerResponse): void {
 async function serveProxyRequest(
   projectDir: string,
   filePath: string,
-  variant: ProxyVariant,
+  request: ProxyVariantRequest,
   autoProxy: boolean,
   rangeHeader: string | undefined,
   res: ServerResponse,
@@ -137,10 +123,22 @@ async function serveProxyRequest(
     return;
   }
   try {
-    const rejection = await proxyVariantRejection(filePath, variant);
-    if (rejection !== null) {
+    const facts = await probeAssetCodec(filePath);
+    const eligibility = decideMediaProxyEligibility(facts);
+    if (!eligibility.eligible) {
       res.writeHead(422, { "Content-Type": "text/plain" });
-      res.end(rejection);
+      res.end(`media proxy unavailable: ${eligibility.reason}`);
+      return;
+    }
+    if (!facts) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy unavailable: unknown_codec");
+      return;
+    }
+    const variant = resolveProxyVariantRequest(request, facts);
+    if (!variant) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy variant does not match asset");
       return;
     }
     const proxyPath = await resolveProxy(projectDir, filePath, variant);
@@ -183,7 +181,8 @@ export async function serveStaticProjectHtml(
     const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
     const proxyParam =
       queryIndex === -1 ? null : new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy");
-    const proxyVariant = proxyParam !== null && isProxyVariant(proxyParam) ? proxyParam : null;
+    const proxyRequest =
+      proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
 
     const requestPath = decodeURIComponent(pathOnly).replace(/^\//, "");
     for (const root of roots) {
@@ -191,11 +190,11 @@ export async function serveStaticProjectHtml(
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
       if (existsSync(filePath)) {
-        if (proxyVariant) {
+        if (proxyRequest) {
           void serveProxyRequest(
             projectDir,
             filePath,
-            proxyVariant,
+            proxyRequest,
             autoProxy,
             req.headers.range,
             res,

@@ -163,7 +163,7 @@ function lookupCodecMapEntry(
 
 function appendProxyParam(src: string, entry: MediaCodecMapEntry | null): string {
   const url = new URL(src, document.baseURI);
-  url.searchParams.set(PROXY_QUERY_PARAM, entry?.hasAlpha ? "vp9" : "h264");
+  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp9" : "h264") : "auto");
   return url.href;
 }
 

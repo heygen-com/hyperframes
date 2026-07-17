@@ -63,7 +63,12 @@ const mediaMocks = vi.hoisted(() => ({
     facts?.browserHostile ? { eligible: true } : { eligible: false, reason: "browser_safe_codec" },
   ),
   isProxyVariant: (value: string) => value === "h264" || value === "vp9",
+  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp9",
   proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp9", facts: { hasAlpha?: boolean }) => {
+    const expected = facts.hasAlpha ? "vp9" : "h264";
+    return request === "auto" || request === expected ? expected : null;
+  },
   PROXY_VARIANT_CONFIG: {
     h264: { extension: ".mp4", contentType: "video/mp4" },
     vp9: { extension: ".webm", contentType: "video/webm" },
@@ -128,7 +133,7 @@ it("serves direct VP9 proxy requests for alpha sources", async () => {
   mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
-  const res = await app.request("/composition/clip.mov?hf-proxy=vp9");
+  const res = await app.request("/composition/clip.mov?hf-proxy=auto");
 
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("video/webm");
