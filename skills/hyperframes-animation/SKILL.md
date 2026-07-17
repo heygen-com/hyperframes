@@ -29,7 +29,6 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 | Pick a multi-phase scene template                                              | `blueprints-index.md`                               |
 | Read one blueprint's full recipe                                               | `blueprints/<id>.md`                                |
 | Author a scene transition (CSS-driven, between two clips)                      | `transitions/overview.md`, `transitions/catalog.md` |
-| Author a velocity-matched seam cut (zoom-through / cut-the-curve / waterfall)  | `seams/<technique>.md` (+ `seams/_seam-law.md`)     |
 | Look up a broader motion-design technique                                      | `techniques.md`                                     |
 | Analyze an existing composition's animation map                                | `scripts/animation-map.mjs`                         |
 | GSAP API — timeline / tweens / position parameters                             | `adapters/gsap.md`                                  |

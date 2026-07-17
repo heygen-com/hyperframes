@@ -33,22 +33,6 @@ test("packets inline the blueprint body and the Scene-cited rule recipes", () =>
   assert.doesNotMatch(freeform, /## Selected motion rule/);
 });
 
-test("packets inline cited seam recipes plus the fixed seam-law excerpt", () => {
-  const project = mkdtempSync(join(tmpdir(), "gv-seams-"));
-  write(join(project, "frame.md"), "# tokens\n");
-  write(
-    join(project, "STORYBOARD.md"),
-    `---\nformat: 1920x1080\n---\n\n## Frame 1 — Hook\n\n- duration: 3s\n- src: compositions/01-hook.html\n- transition: cut-the-curve\n\nScene 1 (0.0–3.0s): the hero exits leftward into the seam.\n\n## Frame 2 — Plain\n\n- duration: 4s\n- src: compositions/02-plain.html\n\nScene 1 (0.0–4.0s): a quiet hold, no seam cited.\n`,
-  );
-
-  const result = buildFramePackets({ projectDir: project });
-  const hook = readFileSync(result[0].path, "utf8");
-  assert.match(hook, /## Seam law/);
-  assert.match(hook, /## Selected seam: cut-the-curve/);
-  const plain = readFileSync(result[1].path, "utf8");
-  assert.doesNotMatch(plain, /## Seam law/);
-});
-
 test("design truth resolves frame.md → design.md → DESIGN.md", () => {
   const project = mkdtempSync(join(tmpdir(), "gv-design-"));
   write(join(project, "design.md"), "# design truth\n");

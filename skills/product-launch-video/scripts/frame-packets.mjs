@@ -22,10 +22,6 @@ const ANIMATION_DIR = resolve(SKILL_DIR, "../hyperframes-animation");
 const CORE_CONTRACT_PATH = resolve(SKILL_DIR, "../hyperframes-core/references/frame-worker-core.md");
 const ROLE_DELTA_PATH = resolve(SKILL_DIR, "sub-agents/frame-worker.md");
 
-// Velocity-matched seam recipes (hyperframes-animation/seams, extracted from the
-// cut-the-curve doctrine); absent dir degrades to no seam inlining.
-const SEAMS_DIR = [join(ANIMATION_DIR, "seams")].find((dir) => existsSync(dir));
-
 function field(block, name) {
   const match = block.match(new RegExp(`^-\\s+${name}:\\s*(.+)$`, "im"));
   return match?.[1]?.trim() ?? null;
@@ -68,25 +64,6 @@ function citedRules(block, ruleIds) {
   return [...new Set([...explicit, ...mentioned])].filter((id) => ruleIds.includes(id));
 }
 
-function knownSeamIds() {
-  if (!SEAMS_DIR) return [];
-  return readdirSync(SEAMS_DIR)
-    .filter((name) => name.endsWith(".md") && !name.startsWith("_"))
-    .map((name) => name.replace(/\.md$/, ""));
-}
-
-function citedSeams(block, seamIds) {
-  const explicit = [field(block, "seam"), field(block, "seams"), field(block, "transition")]
-    .filter(Boolean)
-    .flatMap((value) => value.split(/[,\s]+/))
-    .map((seam) => seam.trim())
-    .filter(Boolean);
-  const mentioned = seamIds.filter((id) =>
-    new RegExp(`(?<![\\w-])${id}(?![\\w-])`, "i").test(block),
-  );
-  return [...new Set([...explicit, ...mentioned])].filter((id) => seamIds.includes(id));
-}
-
 function selectedFile(path, heading) {
   if (!path || !existsSync(path)) return "";
   return `\n## ${heading}\n\n${readFileSync(path, "utf8").trim()}\n`;
@@ -106,13 +83,6 @@ function resourceSections(block, ruleIds) {
       join(ANIMATION_DIR, "rules", `${rule}.md`),
       `Selected motion rule: ${rule}`,
     );
-  }
-  const seams = citedSeams(block, knownSeamIds());
-  if (seams.length > 0 && SEAMS_DIR) {
-    sections += selectedFile(join(SEAMS_DIR, "_seam-law.md"), "Seam law");
-    for (const seam of seams) {
-      sections += selectedFile(join(SEAMS_DIR, `${seam}.md`), `Selected seam: ${seam}`);
-    }
   }
   return sections;
 }
