@@ -26,7 +26,7 @@ export interface ProjectConfigPaths {
 export interface ProjectConfigMedia {
   /**
    * Auto-transcode browser-hostile video codecs (e.g. HEVC) to a cached
-   * H.264 proxy for preview/play/publish surfaces. Render always uses the
+   * H.264 proxy for supported preview surfaces. Render always uses the
    * original file regardless of this setting. Default true.
    */
   autoProxy?: boolean;
@@ -115,14 +115,11 @@ export function loadProjectConfig(projectDir: string): ProjectConfig {
 
 /**
  * Resolve whether auto-proxying of browser-hostile video codecs (HEVC, etc.)
- * is enabled for a project's live-preview surfaces. `preview`, `play`, and
- * `publish` each pass their own `--proxy`/`--no-proxy` flag value as
- * `flagValue` (wired by their own units); an explicit flag always wins over
- * the project config, in either direction (`--no-proxy` disables even when
- * config has it on; `--proxy` enables even when config has it off). Falls
- * back to the committed `hyperframes.json` `media.autoProxy` setting, and
- * finally to `true` when neither is set. Render is never affected by this
- * setting: it always uses the original file.
+ * is enabled for a project's live-preview surfaces. A caller's explicit
+ * `--proxy`/`--no-proxy` flag always wins over the project config, in either
+ * direction. Falls back to the committed `hyperframes.json`
+ * `media.autoProxy` setting, and finally to `true` when neither is set.
+ * Render is never affected by this setting: it always uses the original file.
  */
 export function resolveAutoProxy(projectDir: string, flagValue: boolean | undefined): boolean {
   if (typeof flagValue === "boolean") {
