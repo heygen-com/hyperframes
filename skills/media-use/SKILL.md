@@ -25,20 +25,20 @@ node <SKILL_DIR>/scripts/resolve.mjs --doctor
 
 HyperFrames owns media _playback_; media-use owns everything else. Each row is enforced by `scripts/lib/coverage.test.mjs` so the claim can't rot.
 
-| HyperFrames gap                            | media-use owns it via                                                                                                                                                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                                                                                                                                  |
-| No third-party brand logos                 | `resolve --type logo` (svgl → simple-icons → GitHub org avatar → domain favicon)                                                                                                                                                                    |
-| No voice / audio generation                | `resolve --type voice` (HeyGen TTS free-usage path; optional local Kokoro) + the audio engine (`audio/scripts/audio.mjs`)                                                                                                                           |
-| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                                                                                                                                  |
-| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                                                                                                                                   |
-| No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                                                                                                                           |
-| No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                                                                                                                                    |
-| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                                                                                                                          |
-| No color-grade authoring                   | `resolve --type grade` emits a paste-ready `data-color-grading` block; `resolve --type lut` freezes validated `.cube` files                                                                                                                         |
-| No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)                                                                                                                     |
-| No video generation                        | HeyGen avatar video + image-to-video (animate any still into a talking clip), photo-avatar, dub/translate — `heygen` CLI free-usage path (`references/operations.md`); optional spec-gated local LTX (`videogen` in `scripts/lib/local-models.mjs`) |
-| Weak local-model defaults                  | HeyGen free-usage path via the `heygen` CLI; local open-source tools only as opt-in alternatives (`scripts/lib/local-run.mjs`)                                                                                                                      |
+| HyperFrames gap                            | media-use owns it via                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                                                                                                                                                                  |
+| No third-party brand logos                 | `resolve --type logo` (svgl → simple-icons → GitHub org avatar → domain favicon)                                                                                                                                                                                                    |
+| No voice / audio generation                | `resolve --type voice` (HeyGen TTS free-usage path; optional local Kokoro) + the audio engine (`audio/scripts/audio.mjs`)                                                                                                                                                           |
+| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                                                                                                                                                                  |
+| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                                                                                                                                                                   |
+| No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                                                                                                                                                           |
+| No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                                                                                                                                                                    |
+| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                                                                                                                                                          |
+| No color-grade authoring                   | `resolve --type grade` emits a paste-ready `data-color-grading` block; `resolve --type lut` freezes validated `.cube` files                                                                                                                                                         |
+| No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)                                                                                                                                                     |
+| No video generation                        | `resolve --type video` — HeyGen avatar video first (free-usage path, sign-in nudge on auth failure), local LTX fallback (`videogen` in `scripts/lib/local-models.mjs`); image-to-video, photo-avatar, dub/translate remain manual `heygen` CLI recipes (`references/operations.md`) |
+| Weak local-model defaults                  | HeyGen free-usage path via the `heygen` CLI; local open-source tools only as opt-in alternatives (`scripts/lib/local-run.mjs`)                                                                                                                                                      |
 
 ## When to use
 
@@ -249,20 +249,21 @@ transcription, and LTX for local video generation. `resolve` spec-checks
 AVAILABLE RAM for those local ladders (`describeModelLadder`); the agent can
 see the ladder and override.
 
-| Type      | Provider / path                                                                                             |
-| --------- | ----------------------------------------------------------------------------------------------------------- |
-| bgm/sfx   | heygen catalog free-usage path                                                                              |
-| image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                               |
-| voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                     |
-| icon      | heygen asset search free-usage path                                                                         |
-| logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                             |
-| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                            |
-| video     | heygen avatar / image-to-video / photo-avatar / dub free-usage path; optional local LTX (`videogen` ladder) |
+| Type      | Provider / path                                                                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bgm/sfx   | heygen catalog free-usage path                                                                                                                                                |
+| image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                                                                                                 |
+| voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
+| icon      | heygen asset search free-usage path                                                                                                                                           |
+| logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                                                                                               |
+| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                              |
+| video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
 private, offline once cached). The `codex` CLI remains the ChatGPT-sub image
 upsell. Cost rule (X4): the agent confirms before an agent-initiated paid call;
-a user-requested one just runs.
+a user-requested one just runs — `heygen.video` is flagged paid (metered free
+allowance) so an agent-initiated `resolve --type video` confirms first.
 
 To force a specific generator (e.g. a user says "make this image with codex"),
 pass `--provider codex`: it pins resolution to that provider and skips the
@@ -425,8 +426,12 @@ prints a one-line diagnostic to stderr and resolve falls through where another
 provider exists (e.g. no `mflux` -> codex image upsell; no `parakeet-mlx` -> whisper.cpp).
 
 `heygen asset search` is a pre-launch command hidden from `heygen --help`, but it
-runs; providers tag requests with the allowlisted `X-HeyGen-Client-Source` header
-(v0.3.0+).
+runs. Every media-use call that shells `heygen` — catalog search AND every
+generating call (TTS, avatar video) — tags requests with the allowlisted
+`X-HeyGen-Client-Source: media-use` header (v0.3.0+), sourced from one shared
+constant (`HEYGEN_CLIENT_SOURCE_ARGV` in `scripts/lib/heygen-cli.mjs`) so a
+future call site can't silently ship untagged. Read-only discovery calls
+(`voice list`, `avatar list`) are intentionally left untagged.
 
 ## Telemetry
 

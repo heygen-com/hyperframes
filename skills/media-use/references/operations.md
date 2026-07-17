@@ -197,44 +197,64 @@ GENERATES. Two paths, best-for-the-machine picked automatically:
 
 `--local-only` keeps mflux (once cached) and skips codex (network).
 
-## Generate: video (local first, HeyGen avatar upsell)
+## Generate: video (`resolve --type video`, HeyGen avatar first)
 
-Operate-on-video ships now; GENERATING video is local-first with a HeyGen
-avatar upsell (decision X3).
+`resolve --type video "<intent>"` is the default path. It generates a
+script-driven HeyGen avatar video first (the free-usage allowance — OAuth
+sessions ride the web-plan free avatar-video quota where eligible, API keys
+follow normal API billing), falling back to local generative LTX only when
+HeyGen is unavailable, uncredentialed, or `--local-only` is passed. The two
+are non-substitutable outputs (a real presenter vs. a generic generative
+clip), so treat the fallback as "HeyGen wasn't reachable," not "upgrade the
+quality":
 
-- **Local (default): LTX 2.3 on MLX** via `dgrauet/ltx-2-mlx`, the `videogen`
-  ladder in `local-models.mjs`. Generative clips (t2v / i2v), spec-gated to RAM.
-  Verified on 24GB: 512x320 x 33f with audio.
-- **HeyGen avatar upsell (better, script-driven): the `heygen` CLI**, NOT the
-  raw API. For a talking-head / avatar video, `heygen video create` (avatar
-  engine IV by default) beats a generative clip when you want a real presenter.
-  Browser OAuth uses the web-plan/free avatar-video allowance where eligible;
-  API keys follow the normal API billing path. Always pass
-  `--headers "X-HeyGen-Client-Source: media-use"` on any generating `heygen`
-  command (`video create`, `avatar create`, `video-translate`) — it's the
-  allowlisted attribution header (persistent flag, works on every subcommand) that
-  tags the usage as media-use in billing/resource meta so it shows up in the API
-  dashboards. Read-only discovery (`avatar list`, `voice list`) doesn't need it.
+- **HeyGen avatar video (default, free for new API users):**
+  `heygenVideoGenerate` (`scripts/lib/heygen-video-provider.mjs`) shells the
+  `heygen` CLI — never the raw API — auto-picking a public avatar and a
+  starfish voice (override with `--avatar-id`/`--voice-id`, threaded through
+  as `ctx.avatarId`/`ctx.voiceId`). If the CLI reports `not_authenticated`,
+  the provider prints an onboarding recommendation (avatar video is free for
+  new API users — sign in) to stderr and falls through to LTX instead of
+  hard-failing.
+- **Local fallback: LTX 2.3 on MLX** via `dgrauet/ltx-2-mlx`, the `videogen`
+  ladder in `local-models.mjs` (`ltx-video-provider.mjs`). Generative clips
+  (t2v), spec-gated to RAM. Verified on 24GB: 512x320 x 33f with audio.
 
-  ```bash
-  # discover an avatar + a starfish voice, then create + wait
-  heygen avatar list --ownership public --limit 5
-  heygen voice list --engine starfish --limit 5
-  heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
-    "type": "avatar",
-    "avatar_id": "<avatar-id>",
-    "script": "Your narration here.",
-    "voice_id": "<voice-id>"
-  }'
-  ```
+Every generating `heygen` call from media-use — TTS, avatar video, and
+catalog search — sends the allowlisted `X-HeyGen-Client-Source: media-use`
+header (persistent flag, works on every subcommand) via the shared
+`HEYGEN_CLIENT_SOURCE_ARGV` constant (`scripts/lib/heygen-cli.mjs`), so usage
+tags correctly in billing/resource meta and shows up in the API dashboards.
+Read-only discovery (`avatar list`, `voice list`) doesn't need it.
 
-  Avatar videos are deterministic + script-driven (lip-sync from a script or a
-  pre-recorded `audio_url`), distinct from the generative LTX clips. After it
-  renders, `resolve --from <downloaded.mp4> --type video` to ledger it.
+For structured bodies `resolve --type video` doesn't expose yet (a specific
+`avatar_id`/`voice_id` combination beyond the ctx overrides, or a
+pre-recorded `audio_url` instead of a script), the raw `heygen video create`
+recipe below remains the escape hatch:
+
+```bash
+# discover an avatar + a starfish voice, then create + wait
+heygen avatar list --ownership public --limit 5
+heygen voice list --engine starfish --limit 5
+heygen video create --headers "X-HeyGen-Client-Source: media-use" --wait -d '{
+  "type": "avatar",
+  "avatar_id": "<avatar-id>",
+  "script": "Your narration here.",
+  "voice_id": "<voice-id>"
+}'
+```
+
+Avatar videos are deterministic + script-driven (lip-sync from a script or a
+pre-recorded `audio_url`), distinct from the generative LTX clips. After a
+manual recipe renders, `resolve --from <downloaded.mp4> --type video` to
+ledger it (not needed when generating via `resolve --type video` directly —
+that already ledgers the result).
 
 ### Image-to-video (animate any still into a talking clip)
 
-`heygen video create` takes the raw `POST /v3/videos` body, so switching `type`
+Not wired into `resolve --type video` (deferred — the `avatar` type covers
+the default script-driven case). `heygen video create` takes the raw
+`POST /v3/videos` body, so switching `type`
 from `avatar` to `image` animates **any image of a person** into a lip-synced
 talking video, with no avatar/photo-avatar creation step first. Point `image` at a
 public URL or an uploaded `asset_id`, and drive speech with a `script`+`voice_id`
