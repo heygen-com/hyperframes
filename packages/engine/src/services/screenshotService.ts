@@ -183,6 +183,26 @@ export async function beginFrameCapture(
 }
 
 /**
+ * True if the page's actual rendered content is taller than the requested
+ * capture height. `captureBeyondViewport` exists for exactly one reason
+ * (#1094): a native `<video>` surface whose content genuinely overflows the
+ * viewport-bound capture path clips its bottom edge to black. A video that
+ * fits entirely inside its composition's declared viewport doesn't have that
+ * problem — ground-truth measurement beats the coarser "has a video, so
+ * always request beyond-viewport" heuristic, which also unnecessarily routes
+ * every video render through a CDP capture path prone to producing phantom
+ * duplicate content on SwiftShader (#2550).
+ */
+export async function pageContentExceedsCaptureHeight(
+  page: Page,
+  requestedHeight: number,
+): Promise<boolean> {
+  const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+  // Small tolerance for subpixel layout rounding, not a real overflow signal.
+  return scrollHeight > requestedHeight + 1;
+}
+
+/**
  * Capture a screenshot using standard Page.captureScreenshot CDP call.
  * Fallback for environments where BeginFrame is unavailable (macOS, Windows).
  *

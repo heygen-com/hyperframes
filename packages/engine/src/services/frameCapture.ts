@@ -28,6 +28,7 @@ import {
   beginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
+  pageContentExceedsCaptureHeight,
   pageScreenshotCapture,
   initTransparentBackground,
   shouldDefaultCaptureBeyondViewport,
@@ -2002,6 +2003,23 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     );
 
     await recordSessionInitTelemetry(session, initStart);
+
+    // Ground-truth-check the upstream captureBeyondViewport request (see
+    // pageContentExceedsCaptureHeight) now that the page is fully settled —
+    // downgrade it when the page doesn't actually overflow the requested
+    // capture height, since the beyond-viewport CDP path is otherwise pure
+    // downside (HF#2550: phantom duplicate content on SwiftShader) for
+    // content it was never needed for.
+    if (session.options.captureBeyondViewport) {
+      const needsBeyondViewport = await pageContentExceedsCaptureHeight(
+        page,
+        session.options.height,
+      );
+      if (!needsBeyondViewport) {
+        session.options.captureBeyondViewport = false;
+        logInitPhase("captureBeyondViewport downgraded: page content fits the capture viewport");
+      }
+    }
 
     // drawElement or transparent-background init — runs after page is fully ready.
     await initDrawElementOrTransparentBackground(session, page, logInitPhase);
