@@ -22,13 +22,9 @@ const ANIMATION_DIR = resolve(SKILL_DIR, "../hyperframes-animation");
 const CORE_CONTRACT_PATH = resolve(SKILL_DIR, "../hyperframes-core/references/frame-worker-core.md");
 const ROLE_DELTA_PATH = resolve(SKILL_DIR, "sub-agents/frame-worker.md");
 
-// Doctrine seam recipes (repo-native cut-the-curve skill). An installed workspace puts
-// every skill side by side; the source repo keeps doctrine skills under .agents/skills —
-// try both, and degrade to no seam inlining when neither exists.
-const SEAMS_DIR = [
-  resolve(SKILL_DIR, "../cut-the-curve/seams"),
-  resolve(SKILL_DIR, "../../.agents/skills/cut-the-curve/seams"),
-].find((dir) => existsSync(dir));
+// Velocity-matched seam recipes (hyperframes-animation/seams, extracted from the
+// cut-the-curve doctrine); absent dir degrades to no seam inlining.
+const SEAMS_DIR = [join(ANIMATION_DIR, "seams")].find((dir) => existsSync(dir));
 
 function field(block, name) {
   const match = block.match(new RegExp(`^-\\s+${name}:\\s*(.+)$`, "im"));

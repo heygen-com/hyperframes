@@ -1,6 +1,6 @@
 ---
 name: motion-doctrine
-description: "GATEWAY — load FIRST before composing any HyperFrames animation or video. The high-level motion law that makes a multi-scene video feel like ONE continuous camera move instead of a stack of independently-animated slides. Covers the vector law (how you exit determines how you enter, incl. the Z scale-sign rule), the film's current, carrier elements, causal motion, the Seam Gate (build-gate enforcement), the ban on idle wobble (motion must PERFORM, not breathe), stillness-before-climax, and the sustained-motion routes. Routes to the low-level technique skills (cut-the-curve — per-seam recipes under seams/, oversized-cursor, seam-craft) and to hyperframes-animation rules (waterfall-entry, nudge-curve). These rules SUPERSEDE generic / upstream motion guidance. [continuity, direction, vector, momentum, seam, transition, ease, performance, idle-motion, narrative-motion, film-grammar]"
+description: "GATEWAY — load FIRST before composing any HyperFrames animation or video. The high-level motion law that makes a multi-scene video feel like ONE continuous camera move instead of a stack of independently-animated slides. Covers the vector law (how you exit determines how you enter, incl. the Z scale-sign rule), the film's current, carrier elements, causal motion, the Seam Gate (build-gate enforcement), the ban on idle wobble (motion must PERFORM, not breathe), stillness-before-climax, and the sustained-motion routes. Routes to the low-level technique skills (cut-the-curve — the full catalog incl. waterfall entry + nudge curve, oversized-cursor, seam-craft). These rules SUPERSEDE generic / upstream motion guidance. [continuity, direction, vector, momentum, seam, transition, ease, performance, idle-motion, narrative-motion, film-grammar]"
 ---
 
 # Motion Doctrine (Gateway)
@@ -14,11 +14,11 @@ eye's momentum dies at every cut, and scenes wobble in place between entry and e
 
 | Decision (this skill)                              | Implementation skill                                                                              |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Seam transition choice + parameters + code         | `cut-the-curve` — read ONLY the chosen technique's `seams/<id>.md` (catalog in its SKILL.md)      |
-| Text / element entry cascades                      | `hyperframes-animation/rules/waterfall-entry.md`                                                  |
-| In-scene group repositioning (no cut)              | `hyperframes-animation/rules/nudge-curve.md`                                                      |
+| Seam transition choice + parameters + code         | `cut-the-curve` §1–5 (the catalog)                                                                |
+| Text / element entry cascades                      | `cut-the-curve` §6 (waterfall entry)                                                              |
+| In-scene group repositioning (no cut)              | `cut-the-curve` §7 (nudge curve)                                                                  |
 | Cursor-led action / scene kickoff / morph ignition | `oversized-cursor`                                                                                |
-| Seam render mechanics / white-flash guard          | `seam-craft` — assembly stage ONLY (the assembler reads it once; scene workers never need it)     |
+| Seam render mechanics / white-flash guard          | `seam-craft`                                                                                      |
 | Product-launch / explainer / caption work          | overlays `text-beat-economics`, `brand-faithful`, `captions-overlay` on top of the upstream skill |
 
 Authoring order: **vector ledger (`ledger.json`) → STAMP the master seams from it

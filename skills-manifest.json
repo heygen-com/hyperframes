@@ -6,7 +6,7 @@
       "files": 144
     },
     "faceless-explainer": {
-      "hash": "9f79853d5973da4e",
+      "hash": "dfc832cc0a7b59ad",
       "files": 22
     },
     "figma": {
@@ -14,7 +14,7 @@
       "files": 2
     },
     "general-video": {
-      "hash": "6393b13c5f348d19",
+      "hash": "a066b31892eb4b08",
       "files": 4
     },
     "hyperframes": {
@@ -22,8 +22,8 @@
       "files": 17
     },
     "hyperframes-animation": {
-      "hash": "7b3cd6bf281b1141",
-      "files": 104
+      "hash": "da28f6bf4b86a917",
+      "files": 110
     },
     "hyperframes-cli": {
       "hash": "3a7a14f0b3e9d421",
@@ -58,11 +58,11 @@
       "files": 132
     },
     "pr-to-video": {
-      "hash": "7df080f468cc73e1",
+      "hash": "64c0a68d4453ebc5",
       "files": 29
     },
     "product-launch-video": {
-      "hash": "e0cc384fe92f59ae",
+      "hash": "3bbe72e8c758a2f0",
       "files": 26
     },
     "remotion-to-hyperframes": {
