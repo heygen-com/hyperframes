@@ -35,6 +35,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "test:dockerfile-workspaces": "node check-dockerfile-workspaces.mjs",
     "build": "node build.mjs",
     "start": "bun dist/server.js",
     "test": "bun test",
