@@ -492,6 +492,24 @@ test("--from registers a derived video as documented", () => {
   cleanup();
 });
 
+test("--from type error lists video exactly once", () => {
+  const result = spawnResolve(["--from", "missing.mp4"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--from requires --type \(one of:/);
+  assert.equal(result.stderr.match(/\bvideo\b/g)?.length, 1);
+});
+
+test("--from uses .mp4 as the default video extension", () => {
+  setup();
+  const source = join(tmp, "extensionless-video");
+  writeFileSync(source, "video bytes");
+
+  const out = runResolve(["--from", source, "--type", "video", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.match(parsed.path, /^\.media\/video\/video_001\.mp4$/);
+  cleanup();
+});
+
 test("unknown type error lists grade and lut", () => {
   try {
     runResolve(["--type", "bogus", "--intent", "x"], { stdio: "pipe" });

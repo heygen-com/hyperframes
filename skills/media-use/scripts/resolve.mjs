@@ -37,7 +37,19 @@ import {
 } from "./lib/heygen-cli.mjs";
 import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
 
-const INGEST_TYPES = [...listTypes(), "video"];
+const INGEST_TYPES = listTypes();
+const DEFAULT_EXT = {
+  bgm: ".wav",
+  sfx: ".mp3",
+  voice: ".wav",
+  image: ".jpg",
+  icon: ".svg",
+  logo: ".svg",
+  brand: ".png",
+  video: ".mp4",
+  grade: ".cube",
+  lut: ".cube",
+};
 
 // resolve shells `fetch`/`freezeUrl` and modern ESM; 18 is the floor where those
 // exist without flags. Named so the --doctor node check verifies something real
@@ -1186,19 +1198,6 @@ function extFromUrl(url) {
     return null;
   }
 }
-
-const DEFAULT_EXT = {
-  bgm: ".wav",
-  sfx: ".mp3",
-  voice: ".wav",
-  image: ".jpg",
-  icon: ".svg",
-  logo: ".svg",
-  brand: ".png",
-  video: ".mp4",
-  grade: ".cube",
-  lut: ".cube",
-};
 
 function defaultExt(type) {
   return DEFAULT_EXT[type] || ".bin";
