@@ -12,7 +12,10 @@ import { fileURLToPath } from "node:url";
 // pins the resolved "preserve substance, adapt form" instruction and asserts the two retired
 // contradictory phrases cannot silently return. validate-docs proves syntax, not intent.
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..", "..");
-const GUIDE = readFileSync(join(REPO_ROOT, "docs", "guides", "claude-design-send-to-hyperframes.md"), "utf8");
+const GUIDE = readFileSync(
+  join(REPO_ROOT, "docs", "guides", "claude-design-send-to-hyperframes.md"),
+  "utf8",
+);
 
 describe("Send-to guide fidelity contract", () => {
   it("carries the resolved 'preserve substance, adapt form' instruction", () => {
