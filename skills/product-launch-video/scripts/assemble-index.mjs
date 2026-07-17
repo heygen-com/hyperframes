@@ -441,6 +441,31 @@ for (const m of mounted) {
   acc += m.durationSeconds;
 }
 const TOTAL = r3(acc);
+
+// ---------- duration expectation (advisory) ----------
+// Frontmatter `duration:` carries the brief's rough length expectation
+// (storyboard-format.md § Frontmatter). Never blocks the build: report where
+// the cut lands, and flag a large gap so the agent judges whether the drift
+// serves the piece.
+let durationNote = "";
+const rawTarget = manifest.globals.extra?.duration;
+if (rawTarget != null && String(rawTarget).trim() !== "") {
+  const targetMatch = String(rawTarget).match(/(\d+(?:\.\d+)?)/);
+  const target = targetMatch ? parseFloat(targetMatch[1]) : NaN;
+  if (!Number.isFinite(target) || target <= 0) {
+    anomalies.push(`frontmatter duration "${rawTarget}" is not parseable (e.g. "22s") — skipped the expectation check`);
+  } else {
+    const diff = r3(TOTAL - target);
+    durationNote = ` (expected ~${target}s, ${diff >= 0 ? "+" : ""}${diff}s)`;
+    const pct = Math.abs((diff / target) * 100);
+    if (pct > 10) {
+      anomalies.push(
+        `total ${TOTAL}s lands ${Math.round(pct)}% ${diff > 0 ? "over" : "under"} the brief's ~${target}s expectation — ` +
+          `judge whether the drift serves the piece (pacing, narration fit); re-pace, or update \`duration:\` if the new length is intended`,
+      );
+    }
+  }
+}
 const startOfFrameNumber = new Map();
 for (const m of mounted) if (m.frame.number != null) startOfFrameNumber.set(m.frame.number, m);
 
@@ -705,7 +730,7 @@ console.log(`  bgm    (track 11): ${bgmEmitted ? "yes" + bgmNote : "no"}`);
 console.log(`  captions (track 2): ${captionsEmitted ? "yes" : "no"}`);
 console.log(`  sfx    (track 20+): ${sfxEmitted}`);
 console.log(`  assets staged:     ${staged}/${wanted.size}`);
-console.log(`  total duration:    ${TOTAL}s`);
+console.log(`  total duration:    ${TOTAL}s${durationNote}`);
 if (repairs.length) {
   console.log(`\nrepaired (frame files updated in place):`);
   for (const rp of repairs) console.log(`  - ${rp}`);
