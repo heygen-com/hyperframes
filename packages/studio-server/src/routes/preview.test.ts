@@ -683,7 +683,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
   >;
 
   async function loadPreviewModule(opts: {
-    resolveProxyImpl?: (projectDir: string, absoluteSourcePath: string) => Promise<string>;
+    resolveProxyImpl?: (
+      projectDir: string,
+      absoluteSourcePath: string,
+      variant?: "h264" | "vp9",
+    ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
       codecName: string;
@@ -727,11 +731,16 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         } | null,
       ) => {
         if (!facts) return { eligible: false, reason: "unknown_codec" };
-        if (facts.hasAlpha) return { eligible: false, reason: "alpha_source" };
         if (!facts.browserHostile) {
           return { eligible: false, reason: "browser_safe_codec" };
         }
         return { eligible: true };
+      },
+      isProxyVariant: (value: string) => value === "h264" || value === "vp9",
+      proxyVariantFor: (facts: { hasAlpha: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+      PROXY_VARIANT_CONFIG: {
+        h264: { extension: ".mp4", contentType: "video/mp4" },
+        vp9: { extension: ".webm", contentType: "video/webm" },
       },
     }));
     return import("./preview.js");
@@ -761,7 +770,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(full.headers.get("Content-Type")).toBe("video/mp4");
       expect(await full.text()).toBe("0123456789proxybytes");
       expect(resolveProxyMock).toHaveBeenCalledTimes(1);
-      expect(resolveProxyMock).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+      );
 
       const ranged = await app.request(
         "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
@@ -841,40 +854,78 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
-    it("rejects alpha-bearing and browser-safe sources before transcoding", async () => {
-      for (const facts of [
-        {
+    it("serves an alpha asset as a VP9 WebM proxy", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mov"), "alpha-video-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.webm");
+        writeFileSync(proxyPath, "vp9-alpha-proxy");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        probeAssetCodecImpl: async () => ({
           codecName: "prores",
           browserHostile: true,
           representativeMime: null,
           hasAlpha: true,
-        },
-        {
+        }),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request("http://localhost/projects/demo/preview/clip.mov?hf-proxy=vp9");
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("video/webm");
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mov"),
+        "vp9",
+      );
+    });
+
+    it("rejects a proxy variant that disagrees with the asset facts", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "video-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=vp9");
+
+      expect(res.status).toBe(422);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects browser-safe sources before transcoding", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "video-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        probeAssetCodecImpl: async () => ({
           codecName: "h264",
           browserHostile: false,
           representativeMime: null,
           hasAlpha: false,
-        },
-      ]) {
-        const projectDir = createProjectDir();
-        writeFileSync(join(projectDir, "clip.mp4"), "video-bytes");
-        const resolveProxyMock = vi.fn(async () => "should-not-be-called");
-        const { registerPreviewRoutes: register } = await loadPreviewModule({
-          resolveProxyImpl: resolveProxyMock,
-          probeAssetCodecImpl: async () => facts,
-        });
-        const app = new Hono();
-        register(app, createAdapter(projectDir));
+        }),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
 
-        const res = await app.request(
-          "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-        );
-        expect(res.status).toBe(422);
-        expect(resolveProxyMock).not.toHaveBeenCalled();
-      }
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+
+      expect(res.status).toBe(422);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
-    it("returns 404 without transcoding when the param value is not exactly h264", async () => {
+    it("returns 404 without transcoding when the param value is not a proxy variant", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
       const resolveProxyMock = vi.fn(async () => "should-not-be-called");
@@ -885,7 +936,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const app = new Hono();
       register(app, createAdapter(projectDir));
 
-      for (const value of ["vp9", "H264", ""]) {
+      for (const value of ["H264", ""]) {
         const res = await app.request(
           `http://localhost/projects/demo/preview/clip.mp4?hf-proxy=${value}`,
         );
@@ -1013,6 +1064,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).toHaveBeenCalledWith(
         projectDir,
         join(projectDir, "/videos/hevc.mp4"),
+        "h264",
       );
     });
 

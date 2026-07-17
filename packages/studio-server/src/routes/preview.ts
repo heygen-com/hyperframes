@@ -23,7 +23,13 @@ import {
   ProxyCapacityError,
   ProxyTranscodeError,
 } from "../helpers/proxyTranscoder.js";
-import { decideMediaProxyEligibility, probeAssetCodec } from "../helpers/mediaCodecMap.js";
+import {
+  decideMediaProxyEligibility,
+  isProxyVariant,
+  probeAssetCodec,
+  proxyVariantFor,
+  PROXY_VARIANT_CONFIG,
+} from "../helpers/mediaCodecMap.js";
 import {
   isAutoProxyEnabled,
   injectMediaCodecMap,
@@ -532,23 +538,28 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const contentType = getMimeType(subPath);
     const isText = /\.(html|css|js|json|svg|txt|md|cube)$/i.test(subPath);
 
-    // `?hf-proxy=h264` (per the KTD's `?variables=`-style negotiation): the
-    // param value must be exactly "h264" (matching play/staticProjectServer),
+    // `?hf-proxy=` follows the asset's alpha-aware proxy variant. The
+    // param value must be recognized (matching play/staticProjectServer),
     // only a video asset can be proxied, and only when auto-proxy is enabled
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
     const proxyParam = c.req.query("hf-proxy");
     if (proxyParam !== undefined) {
       if (
-        proxyParam !== "h264" ||
+        !isProxyVariant(proxyParam) ||
         !contentType.startsWith("video/") ||
         !isAutoProxyEnabled(adapter)
       ) {
         return c.text("not found", 404);
       }
-      const eligibility = decideMediaProxyEligibility(await probeAssetCodec(file));
+      const facts = await probeAssetCodec(file);
+      const eligibility = decideMediaProxyEligibility(facts);
       if (!eligibility.eligible) {
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
+      }
+      if (!facts) return c.text("media proxy unavailable: unknown_codec", 422);
+      if (proxyParam !== proxyVariantFor(facts)) {
+        return c.text("media proxy variant does not match asset", 422);
       }
     }
 
@@ -574,7 +585,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedContentType = contentType;
     if (proxyParam !== undefined) {
       try {
-        servedPath = await resolveProxy(project.dir, file);
+        servedPath = await resolveProxy(project.dir, file, proxyParam);
       } catch (err) {
         if (err instanceof ProxyCapacityError) {
           return c.text(err.message, 503, { "Retry-After": "5" });
@@ -582,7 +593,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }
-      servedContentType = "video/mp4";
+      servedContentType = PROXY_VARIANT_CONFIG[proxyParam].contentType;
     }
 
     const buffer: Buffer = isText

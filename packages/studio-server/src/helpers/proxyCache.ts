@@ -1,9 +1,13 @@
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
+import { PROXY_VARIANT_CONFIG } from "./mediaCodecMap.js";
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024 * 1024;
 const DEFAULT_STALE_TEMP_MS = 60 * 60 * 1000;
 const DEFAULT_MIN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const PROXY_EXTENSIONS: ReadonlySet<string> = new Set(
+  Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
+);
 
 export interface ProxyCacheCleanupOptions {
   maxBytes?: number;
@@ -76,7 +80,7 @@ function readCacheInventory(
     };
     if (dirent.name.startsWith(".tmp-")) {
       if (now - stat.mtimeMs >= staleTempMs) staleTemps.push(entry);
-    } else if (dirent.name.endsWith(".mp4")) {
+    } else if (PROXY_EXTENSIONS.has(extname(dirent.name))) {
       entries.push(entry);
     }
   }

@@ -21,6 +21,7 @@ import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import {
   decideMediaProxyEligibility,
+  proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "@hyperframes/studio-server/media-codec-map";
 import { resolveProxy } from "@hyperframes/studio-server/proxy-transcoder";
@@ -115,15 +116,19 @@ export async function preResolveHostileMediaProxies(
     );
     return;
   }
-  const hostilePathnames = Object.entries(codecMap)
-    .filter(([, facts]) => decideMediaProxyEligibility(facts).eligible)
-    .map(([pathname]) => pathname);
-  if (hostilePathnames.length === 0) return;
+  const hostileEntries = Object.entries(codecMap).filter(
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+  );
+  if (hostileEntries.length === 0) return;
 
   const startedAt = Date.now();
   const results = await Promise.allSettled(
-    hostilePathnames.map((pathname) =>
-      resolveProxy(projectDir, resolve(projectDir, pathname.replace(/^\/+/, ""))),
+    hostileEntries.map(([pathname, facts]) =>
+      resolveProxy(
+        projectDir,
+        resolve(projectDir, pathname.replace(/^\/+/, "")),
+        proxyVariantFor(facts),
+      ),
     ),
   );
   const failed = results.filter((result) => result.status === "rejected").length;

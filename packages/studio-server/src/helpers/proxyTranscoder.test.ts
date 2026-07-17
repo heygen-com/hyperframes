@@ -157,6 +157,35 @@ describe("resolveProxy", () => {
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
+  it("uses VP9 alpha-safe args and a distinct WebM cache path", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "alpha.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const h264Path = getProxyCachePath(projectDir, sourcePath, "h264");
+    const vp9Path = getProxyCachePath(projectDir, sourcePath, "vp9");
+    const resultPromise = resolveProxy(projectDir, sourcePath, "vp9");
+    await flush();
+
+    expect(vp9Path).not.toBe(h264Path);
+    expect(vp9Path).toMatch(/\.webm$/);
+    expect(h264Path).toMatch(/\.mp4$/);
+    const args = calls[0]!.args;
+    expect(args).toContain("libvpx-vp9");
+    expect(args).toContain("yuva420p");
+    expect(args).toContain("libopus");
+    expect(args).toContain("-row-mt");
+    expect(args).toContain("-cpu-used");
+    expect(args).not.toContain("-movflags");
+    expect(args).not.toContain("+faststart");
+    expect(args[args.indexOf("-vf") + 1]).toContain("format=yuva420p");
+
+    succeed(calls[0]!, "fake-vp9-bytes");
+    await expect(resultPromise).resolves.toBe(vp9Path);
+  });
+
   it("returns without spawning on a cache hit", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);

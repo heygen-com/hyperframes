@@ -26,7 +26,7 @@ export interface ProjectConfigPaths {
 export interface ProjectConfigMedia {
   /**
    * Auto-transcode browser-hostile video codecs (e.g. HEVC) to a cached
-   * H.264 proxy for supported preview surfaces. Render always uses the
+   * alpha-aware authoring proxy for supported preview surfaces. Render always uses the
    * original file regardless of this setting. Default true.
    */
   autoProxy?: boolean;

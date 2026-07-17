@@ -13,11 +13,12 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
+import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
- * cached, seekable H.264 authoring proxy. Consumed by the preview/play/static
- * project routes (U3/U4) to serve a `?hf-proxy=h264` request; never used on
+ * cached, seekable authoring proxy. Consumed by the preview/play/static
+ * project routes (U3/U4) to serve a `?hf-proxy=` request; never used on
  * the render path (render always sees the original file).
  *
  * IMPORTANT — request-lifecycle detachment: nothing here accepts or wires an
@@ -31,7 +32,7 @@ import { cleanupProxyCache } from "./proxyCache.js";
  * entry still lands for the next request.
  */
 
-export const PROXY_PARAMS_VERSION = "v2";
+export const PROXY_PARAMS_VERSION = "v3";
 
 const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -165,9 +166,13 @@ function buildProxyCacheKey(source: CanonicalProxySource): string {
     .digest("hex");
 }
 
-function getCanonicalProxyCachePath(source: CanonicalProxySource): string {
+function getCanonicalProxyCachePath(source: CanonicalProxySource, variant: ProxyVariant): string {
   const key = buildProxyCacheKey(source);
-  return join(source.projectDir, CACHE_DIR_NAME, `${key}.mp4`);
+  return join(
+    source.projectDir,
+    CACHE_DIR_NAME,
+    `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
+  );
 }
 
 /**
@@ -175,8 +180,15 @@ function getCanonicalProxyCachePath(source: CanonicalProxySource): string {
  * transcoding anything. Route handlers use this to check cache state (e.g.
  * for ETag/If-None-Match) before deciding whether to await a transcode.
  */
-export function getProxyCachePath(projectDir: string, absoluteSourcePath: string): string {
-  return getCanonicalProxyCachePath(canonicalizeProxySource(projectDir, absoluteSourcePath));
+export function getProxyCachePath(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant = "h264",
+): string {
+  return getCanonicalProxyCachePath(
+    canonicalizeProxySource(projectDir, absoluteSourcePath),
+    variant,
+  );
 }
 
 // --- global concurrency limiter -------------------------------------------
@@ -290,7 +302,11 @@ export function clearFailedTranscodesForTest(): void {
   failedTranscodes.clear();
 }
 
-async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> {
+async function runFfmpeg(
+  sourcePath: string,
+  outputPath: string,
+  variant: ProxyVariant,
+): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
@@ -298,23 +314,20 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
   }
   if (metadata.color.isHdr) await ensureHdrFilters(ffmpegPath);
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+  const pixelFormat = variant === "vp9" ? "yuva420p" : "yuv420p";
   const videoFilter = metadata.color.isHdr
     ? [
         "zscale=t=linear:npl=100",
         "tonemap=hable:desat=0",
         "zscale=p=bt709:t=bt709:m=bt709:r=tv",
         evenScale,
-        "format=yuv420p",
+        `format=${pixelFormat}`,
       ].join(",")
-    : [evenScale, "format=yuv420p"].join(",");
+    : [evenScale, `format=${pixelFormat}`].join(",");
 
   return new Promise((resolvePromise, reject) => {
-    const args = [
-      "-y",
-      "-i",
-      sourcePath,
-      "-vf",
-      videoFilter,
+    const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
+    const h264Args = [
       "-c:v",
       "libx264",
       "-profile:v",
@@ -335,8 +348,26 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
       "aac",
       "-movflags",
       "+faststart",
-      outputPath,
     ];
+    const vp9Args = [
+      "-c:v",
+      "libvpx-vp9",
+      "-pix_fmt",
+      "yuva420p",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-row-mt",
+      "1",
+      "-cpu-used",
+      "4",
+      "-c:a",
+      "libopus",
+    ];
+    const args = [...commonArgs, ...(variant === "vp9" ? vp9Args : h264Args), outputPath];
 
     // Hard ceiling so a hung ffmpeg can never permanently occupy one of the
     // global transcode slots: the child is killed and the slot released via
@@ -372,7 +403,11 @@ async function runFfmpeg(sourcePath: string, outputPath: string): Promise<void> 
   });
 }
 
-async function transcodeToCache(absoluteSourcePath: string, cachePath: string): Promise<string> {
+async function transcodeToCache(
+  absoluteSourcePath: string,
+  cachePath: string,
+  variant: ProxyVariant,
+): Promise<string> {
   await acquireSlot();
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
@@ -382,7 +417,7 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
     mkdirSync(cacheDir, { recursive: true });
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      await runFfmpeg(absoluteSourcePath, tempPath);
+      await runFfmpeg(absoluteSourcePath, tempPath, variant);
       renameSync(tempPath, cachePath);
       maintainProxyCache(cacheDir);
       return cachePath;
@@ -397,7 +432,7 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
 }
 
 /**
- * Resolves the cached H.264 proxy for `absoluteSourcePath`, transcoding it at
+ * Resolves the cached proxy variant for `absoluteSourcePath`, transcoding it at
  * most once per cache key. Concurrent calls for the same key (including a
  * pre-warm call racing an element-triggered one) share one ffmpeg child and
  * one promise; calls for different keys queue through the global concurrency
@@ -407,9 +442,10 @@ async function transcodeToCache(absoluteSourcePath: string, cachePath: string): 
 export async function resolveProxy(
   projectDir: string,
   absoluteSourcePath: string,
+  variant: ProxyVariant = "h264",
 ): Promise<string> {
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source);
+  const cachePath = getCanonicalProxyCachePath(source, variant);
   if (existsSync(cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
@@ -425,7 +461,7 @@ export async function resolveProxy(
   const existing = inFlight.get(cachePath);
   if (existing) return existing;
 
-  const promise = transcodeToCache(source.sourcePath, cachePath)
+  const promise = transcodeToCache(source.sourcePath, cachePath, variant)
     .catch((err: unknown) => {
       if (
         err instanceof ProxyTranscodeError &&

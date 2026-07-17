@@ -8,6 +8,7 @@ import {
   decideMediaProxyEligibility,
   createMediaCodecProbeCache,
   probeAssetCodec,
+  proxyVariantFor,
   scanProjectMediaCodecMap,
 } from "./mediaCodecMap.js";
 
@@ -171,7 +172,7 @@ describe("probeAssetCodec", () => {
 });
 
 describe("decideMediaProxyEligibility", () => {
-  it("allows only hostile opaque video through the H.264 proxy path", () => {
+  it("allows browser-hostile video with or without alpha", () => {
     expect(
       decideMediaProxyEligibility({
         codecName: "hevc",
@@ -180,9 +181,6 @@ describe("decideMediaProxyEligibility", () => {
         hasAlpha: false,
       }),
     ).toEqual({ eligible: true });
-  });
-
-  it("rejects alpha and browser-safe sources before transcoding", () => {
     expect(
       decideMediaProxyEligibility({
         codecName: "prores",
@@ -190,7 +188,18 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: null,
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: false, reason: "alpha_source" });
+    ).toEqual({ eligible: true });
+  });
+
+  it("rejects browser-safe sources even when they carry alpha", () => {
+    expect(
+      decideMediaProxyEligibility({
+        codecName: "vp8",
+        browserHostile: false,
+        representativeMime: "video/webm",
+        hasAlpha: true,
+      }),
+    ).toEqual({ eligible: false, reason: "browser_safe_codec" });
     expect(
       decideMediaProxyEligibility({
         codecName: "h264",
@@ -203,6 +212,19 @@ describe("decideMediaProxyEligibility", () => {
       eligible: false,
       reason: "unknown_codec",
     });
+  });
+});
+
+describe("proxyVariantFor", () => {
+  it("uses VP9 for alpha and H.264 otherwise", () => {
+    const facts = {
+      codecName: "prores",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: true,
+    };
+    expect(proxyVariantFor(facts)).toBe("vp9");
+    expect(proxyVariantFor({ ...facts, hasAlpha: false })).toBe("h264");
   });
 });
 

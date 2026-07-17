@@ -44,7 +44,10 @@ import {
 } from "@hyperframes/studio-server/proxy-transcoder";
 import {
   decideMediaProxyEligibility,
+  isProxyVariant,
   probeAssetCodec,
+  proxyVariantFor,
+  PROXY_VARIANT_CONFIG,
 } from "@hyperframes/studio-server/media-codec-map";
 
 export default defineCommand({
@@ -72,7 +75,7 @@ export default defineCommand({
     proxy: {
       type: "boolean",
       description:
-        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached H.264 proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
+        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached authoring proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
       negativeDescription: "Disable auto-proxying of browser-hostile video codecs",
     },
   },
@@ -192,8 +195,8 @@ export default defineCommand({
  * Registers the `/composition/*` route: serves composition HTML (runtime +
  * `__HF_MEDIA_CODEC_MAP__` injected) and asset files, with byte-Range support
  * (`play` previously did a whole-file `readFileSync`, so seeking/duration
- * probing on media elements never worked) and a `?hf-proxy=h264` branch that
- * serves the cached H.264 authoring proxy for a browser-hostile video asset
+ * probing on media elements never worked) and a `?hf-proxy=` branch that
+ * serves the alpha-aware authoring proxy for a browser-hostile video asset
  * (per docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md,
  * unit U4). Exported standalone (rather than inlined in `run()`) so tests can
  * exercise it via `app.request(...)` without booting a real HTTP listener,
@@ -228,19 +231,26 @@ export async function registerCompositionRoute(
     }
 
     const contentType = assetContentType(filePath);
-    if (ctx.req.query("hf-proxy") === "h264") {
+    const proxyParam = ctx.req.query("hf-proxy");
+    if (proxyParam !== undefined && isProxyVariant(proxyParam)) {
       // Opt-out (or a non-video asset) 404s the param without attempting a
       // transcode; a missing asset already 404'd above.
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
       try {
-        const eligibility = decideMediaProxyEligibility(await probeAssetCodec(filePath));
+        const facts = await probeAssetCodec(filePath);
+        const eligibility = decideMediaProxyEligibility(facts);
         if (!eligibility.eligible) {
           return ctx.text(`Media proxy unavailable: ${eligibility.reason}`, 422);
         }
-        const proxyPath = await resolveProxy(project.dir, filePath);
-        // The proxy IS an mp4 regardless of the source's extension (.mov,
-        // .mkv, ...) — serve its real type, matching the preview route.
-        return buildRangeResponse(proxyPath, "video/mp4", ctx.req.header("Range"));
+        if (!facts || proxyParam !== proxyVariantFor(facts)) {
+          return ctx.text("Media proxy variant does not match asset", 422);
+        }
+        const proxyPath = await resolveProxy(project.dir, filePath, proxyParam);
+        return buildRangeResponse(
+          proxyPath,
+          PROXY_VARIANT_CONFIG[proxyParam].contentType,
+          ctx.req.header("Range"),
+        );
       } catch (err) {
         if (err instanceof ProxyCapacityError) {
           return ctx.text(`Proxy transcode deferred: ${err.message}`, 503, {

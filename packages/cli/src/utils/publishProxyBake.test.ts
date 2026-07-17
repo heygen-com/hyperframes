@@ -49,6 +49,7 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
 
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
   scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
 }));
 
 const { bakeMediaProxies, PROXY_ARCHIVE_PREFIX } = await import("./publishProxyBake.js");
@@ -60,10 +61,10 @@ const { bakeMediaProxies, PROXY_ARCHIVE_PREFIX } = await import("./publishProxyB
 const PROJECT_DIR = resolve("/project");
 
 const tempDirs: string[] = [];
-function tmpProxyFile(content: string): string {
+function tmpProxyFile(content: string, extension = ".mp4"): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-publish-proxy-bake-"));
   tempDirs.push(dir);
-  const path = join(dir, "proxy.mp4");
+  const path = join(dir, `proxy${extension}`);
   writeFileSync(path, content, "utf-8");
   return path;
 }
@@ -108,7 +109,11 @@ describe("bakeMediaProxies", () => {
     expect(html).toContain(proxyEntries[0]!);
     expect(html).not.toContain('src="clip.mp4"');
 
-    expect(mocks.resolveProxy).toHaveBeenCalledWith(PROJECT_DIR, join(PROJECT_DIR, "clip.mp4"));
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      PROJECT_DIR,
+      join(PROJECT_DIR, "clip.mp4"),
+      "h264",
+    );
     expect(mocks.waitForProxy).toHaveBeenCalledWith(expect.any(Promise), 15 * 60 * 1000);
     expect(manifest).toEqual({ proxied: ["/clip.mp4"], skippedAlpha: [], failed: [] });
   });
@@ -191,7 +196,7 @@ describe("bakeMediaProxies", () => {
     expect(html).not.toContain("assets/my%20clip.mp4");
   });
 
-  it("reports an alpha-bearing hostile asset as skipped while keeping HTML on the original", async () => {
+  it("bakes an alpha-bearing hostile asset as a VP9 WebM proxy", async () => {
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mov": {
         codecName: "prores",
@@ -200,6 +205,8 @@ describe("bakeMediaProxies", () => {
         hasAlpha: true,
       },
     });
+    const proxyPath = tmpProxyFile("PROXY_VP9_ALPHA_BYTES", ".webm");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
     const fileContents = new Map<string, Buffer>([
       ["index.html", indexHtml(`<video src="clip.mov" muted></video>`)],
       ["clip.mov", Buffer.from("ORIGINAL_PRORES_4444_BYTES", "utf-8")],
@@ -207,12 +214,18 @@ describe("bakeMediaProxies", () => {
 
     const manifest = await bakeMediaProxies(PROJECT_DIR, fileContents);
 
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
-    expect([...fileContents.keys()].some((k) => k.startsWith(`${PROXY_ARCHIVE_PREFIX}/`))).toBe(
-      false,
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      PROJECT_DIR,
+      join(PROJECT_DIR, "clip.mov"),
+      "vp9",
     );
-    expect(fileContents.get("index.html")?.toString("utf-8")).toContain('src="clip.mov"');
-    expect(manifest).toEqual({ proxied: [], skippedAlpha: ["/clip.mov"], failed: [] });
+    const proxyEntries = [...fileContents.keys()].filter((key) =>
+      key.startsWith(`${PROXY_ARCHIVE_PREFIX}/`),
+    );
+    expect(proxyEntries).toEqual([`${PROXY_ARCHIVE_PREFIX}/proxy.webm`]);
+    expect(fileContents.get(proxyEntries[0]!)?.toString("utf-8")).toBe("PROXY_VP9_ALPHA_BYTES");
+    expect(fileContents.get("index.html")?.toString("utf-8")).toContain(proxyEntries[0]!);
+    expect(manifest).toEqual({ proxied: ["/clip.mov"], skippedAlpha: [], failed: [] });
   });
 
   it("returns deterministic manifest ordering across concurrent transcodes", async () => {

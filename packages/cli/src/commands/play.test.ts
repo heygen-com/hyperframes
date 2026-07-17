@@ -59,10 +59,15 @@ const mediaMocks = vi.hoisted(() => ({
     representativeMime: "video/mp4",
     hasAlpha: false,
   })),
-  decideMediaProxyEligibility: vi.fn(
-    (facts: { hasAlpha: boolean; browserHostile: boolean } | null) =>
-      facts?.hasAlpha ? { eligible: false, reason: "alpha_source" } : { eligible: true },
+  decideMediaProxyEligibility: vi.fn((facts: { browserHostile: boolean } | null) =>
+    facts?.browserHostile ? { eligible: true } : { eligible: false, reason: "browser_safe_codec" },
   ),
+  isProxyVariant: (value: string) => value === "h264" || value === "vp9",
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+  PROXY_VARIANT_CONFIG: {
+    h264: { extension: ".mp4", contentType: "video/mp4" },
+    vp9: { extension: ".webm", contentType: "video/webm" },
+  },
 }));
 
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
@@ -109,7 +114,7 @@ afterEach(() => {
   dir = undefined;
 });
 
-it("rejects direct proxy requests for alpha sources", async () => {
+it("serves direct VP9 proxy requests for alpha sources", async () => {
   const project = tmpProject();
   writeFileSync(join(project.dir, "clip.mov"), "alpha-prores");
   mediaMocks.probeAssetCodec.mockResolvedValueOnce({
@@ -118,17 +123,20 @@ it("rejects direct proxy requests for alpha sources", async () => {
     representativeMime: "video/quicktime",
     hasAlpha: true,
   });
-  mediaMocks.decideMediaProxyEligibility.mockReturnValueOnce({
-    eligible: false,
-    reason: "alpha_source",
-  });
+  const proxyPath = join(project.dir, "proxy.webm");
+  writeFileSync(proxyPath, "vp9-alpha-proxy");
+  mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
-  const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+  const res = await app.request("/composition/clip.mov?hf-proxy=vp9");
 
-  expect(res.status).toBe(422);
-  expect(await res.text()).toContain("alpha_source");
-  expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toBe("video/webm");
+  expect(mocks.resolveProxy).toHaveBeenCalledWith(
+    project.dir,
+    join(project.dir, "clip.mov"),
+    "vp9",
+  );
 });
 
 async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> {
@@ -163,7 +171,11 @@ describe("registerCompositionRoute", () => {
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
-    expect(mocks.resolveProxy).toHaveBeenCalledWith(project.dir, join(project.dir, "clip.mp4"));
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      project.dir,
+      join(project.dir, "clip.mp4"),
+      "h264",
+    );
   });
 
   it("serves ?hf-proxy=h264 for a .mov hostile asset as Content-Type video/mp4 (the proxy IS mp4)", async () => {
