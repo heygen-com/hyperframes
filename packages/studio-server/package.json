@@ -56,6 +56,24 @@
       "node": "./dist/helpers/sourceMutation.js",
       "import": "./src/helpers/sourceMutation.ts",
       "types": "./src/helpers/sourceMutation.ts"
+    },
+    "./media-codec-map": {
+      "bun": "./src/helpers/mediaCodecMap.ts",
+      "node": "./dist/helpers/mediaCodecMap.js",
+      "import": "./src/helpers/mediaCodecMap.ts",
+      "types": "./src/helpers/mediaCodecMap.ts"
+    },
+    "./proxy-transcoder": {
+      "bun": "./src/helpers/proxyTranscoder.ts",
+      "node": "./dist/helpers/proxyTranscoder.js",
+      "import": "./src/helpers/proxyTranscoder.ts",
+      "types": "./src/helpers/proxyTranscoder.ts"
+    },
+    "./media-proxy-preview": {
+      "bun": "./src/helpers/mediaProxyPreview.ts",
+      "node": "./dist/helpers/mediaProxyPreview.js",
+      "import": "./src/helpers/mediaProxyPreview.ts",
+      "types": "./src/helpers/mediaProxyPreview.ts"
     }
   },
   "publishConfig": {
@@ -89,6 +107,18 @@
       "./source-mutation": {
         "import": "./dist/helpers/sourceMutation.js",
         "types": "./dist/helpers/sourceMutation.d.ts"
+      },
+      "./media-codec-map": {
+        "import": "./dist/helpers/mediaCodecMap.js",
+        "types": "./dist/helpers/mediaCodecMap.d.ts"
+      },
+      "./proxy-transcoder": {
+        "import": "./dist/helpers/proxyTranscoder.js",
+        "types": "./dist/helpers/proxyTranscoder.d.ts"
+      },
+      "./media-proxy-preview": {
+        "import": "./dist/helpers/mediaProxyPreview.js",
+        "types": "./dist/helpers/mediaProxyPreview.d.ts"
       }
     },
     "main": "./dist/index.js",

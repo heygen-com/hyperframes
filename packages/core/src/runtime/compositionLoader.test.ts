@@ -951,6 +951,34 @@ describe("loadExternalCompositions", () => {
       });
     });
 
+    it("does not redefine a CSS variable already authored on the host", async () => {
+      const style = document.createElement("style");
+      style.textContent = ":root { --accent: #4287f5; }";
+      document.head.appendChild(style);
+
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-authored-token");
+      host.setAttribute("data-variable-values", '{"accent":"blue"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"accent","type":"string","label":"Accent","default":"red"}
+        ]'>
+          <body><div data-composition-id="card-authored-token"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(host.style.getPropertyValue("--accent")).toBe("");
+      expect(window.getComputedStyle(host).getPropertyValue("--accent")).toBe("#4287f5");
+    });
+
     it("uses declared defaults when host has no data-variable-values", async () => {
       const host = document.createElement("div");
       host.setAttribute("data-composition-src", "https://example.com/card.html");

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { Browser, PuppeteerNode } from "puppeteer-core";
 
@@ -241,10 +245,13 @@ describe("resolveBrowserGpuMode", () => {
 
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
+  const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
 
   afterEach(() => {
     if (originalHeadlessShellPath === undefined) delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
     else process.env.PRODUCER_HEADLESS_SHELL_PATH = originalHeadlessShellPath;
+    if (originalHyperframesBrowserPath === undefined) delete process.env.HYPERFRAMES_BROWSER_PATH;
+    else process.env.HYPERFRAMES_BROWSER_PATH = originalHyperframesBrowserPath;
   });
 
   it("throws a clear error when PRODUCER_HEADLESS_SHELL_PATH points at a missing binary", () => {
@@ -253,6 +260,59 @@ describe("resolveHeadlessShellPath", () => {
     expect(() => resolveHeadlessShellPath({})).toThrow(
       /Chrome binary not found at PRODUCER_HEADLESS_SHELL_PATH/,
     );
+  });
+
+  it("uses HYPERFRAMES_BROWSER_PATH when the CLI resolved a browser explicitly", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-env-"));
+    try {
+      const binary = join(dir, "chrome-headless-shell");
+      writeFileSync(binary, "");
+      delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+      process.env.HYPERFRAMES_BROWSER_PATH = binary;
+
+      expect(resolveHeadlessShellPath({})).toBe(binary);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses chrome-headless-shell from the HyperFrames-managed cache", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-cache-"));
+    try {
+      const binary = join(
+        home,
+        ".cache",
+        "hyperframes",
+        "chrome",
+        "chrome-headless-shell",
+        "linux-152.0.7928.2",
+        "chrome-headless-shell-linux64",
+        "chrome-headless-shell",
+      );
+      mkdirSync(join(binary, ".."), { recursive: true });
+      writeFileSync(binary, "");
+      const olderBinary = binary.replace("linux-152.0.7928.2", "linux-99.0.1.1");
+      mkdirSync(join(olderBinary, ".."), { recursive: true });
+      writeFileSync(olderBinary, "");
+
+      // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+      const stdout = execFileSync(
+        "bun",
+        [
+          "--eval",
+          `import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+        ],
+        { encoding: "utf8", env },
+      );
+
+      expect(stdout).toBe(binary);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 
@@ -324,8 +384,8 @@ describe("browser pool", () => {
     expect(first.browser).toBe(second.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, poolCfg);
-    await releaseBrowser(second.browser, poolCfg);
+    await first.release();
+    await second.release();
   });
 
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
@@ -339,14 +399,14 @@ describe("browser pool", () => {
     expect(a.browser).toBe(b.browser);
     expect(b.browser).toBe(c.browser);
 
-    await releaseBrowser(a.browser, poolCfg);
-    await releaseBrowser(b.browser, poolCfg);
-    await releaseBrowser(c.browser, poolCfg);
+    await a.release();
+    await b.release();
+    await c.release();
   });
 
   it("pool recovers from a disconnected browser", async () => {
     const first = await acquireBrowser(["--no-sandbox"], poolCfg);
-    await releaseBrowser(first.browser, poolCfg);
+    await first.release();
 
     // Simulate Chrome crash
     (first.browser as unknown as { connected: boolean }).connected = false;
@@ -359,15 +419,40 @@ describe("browser pool", () => {
     expect(second.browser).not.toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(2);
 
-    await releaseBrowser(second.browser, poolCfg);
+    await second.release();
   });
 
   it("release at refCount 0 closes the browser", async () => {
     const result = await acquireBrowser(["--no-sandbox"], poolCfg);
     const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
 
-    await releaseBrowser(result.browser, poolCfg);
+    await result.release();
     expect(closeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("releaseBrowser preserves the sole-owner legacy path", async () => {
+    const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
+
+    await releaseBrowser(result.browser);
+
+    expect(closeFn).toHaveBeenCalledTimes(1);
+    await result.release();
+    expect(closeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("releaseBrowser rejects an ambiguous pooled browser handle", async () => {
+    const first = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const second = await acquireBrowser(["--no-sandbox"], poolCfg);
+    const closeFn = first.browser.close as ReturnType<typeof vi.fn>;
+
+    await expect(releaseBrowser(first.browser)).rejects.toThrow(
+      "Cannot release a pooled browser by handle while 2 leases are active",
+    );
+    expect(closeFn).not.toHaveBeenCalled();
+
+    await first.release();
+    await second.release();
   });
 
   it("pool returns a separate browser when forceScreenshot mismatches pooled mode", async () => {
@@ -379,8 +464,8 @@ describe("browser pool", () => {
     expect(second.browser).toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, poolCfg);
-    await releaseBrowser(second.browser, poolCfg);
+    await first.release();
+    await second.release();
   });
 
   it("forceReleaseBrowser does not kill Chrome when other sessions hold refs", async () => {
@@ -394,8 +479,9 @@ describe("browser pool", () => {
     // Should NOT have disconnected — other session still holds a ref
     expect(disconnectFn).not.toHaveBeenCalled();
 
-    // Release the remaining ref normally
-    await releaseBrowser(second.browser, poolCfg);
+    // Each owner releases its own identity; neither can consume the other.
+    result.forceRelease();
+    await second.release();
   });
 
   it("drainBrowserPool is safe to call when no browser is pooled", async () => {

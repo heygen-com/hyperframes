@@ -88,6 +88,8 @@
     // the sync-hyperframes-codegen.yml workflow; complexity/dead-code
     // findings on this file are not actionable from this repo.
     "packages/cli/src/cloud/_gen/**",
+    // Published launcher imports generated dist files that do not exist in a source checkout.
+    "packages/cli/bin/**",
   ],
   "ignoreExports": [
     // Public player-state types are consumed by package users outside this

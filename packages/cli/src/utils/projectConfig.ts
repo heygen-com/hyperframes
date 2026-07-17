@@ -23,12 +23,23 @@ export interface ProjectConfigPaths {
   assets: string;
 }
 
+export interface ProjectConfigMedia {
+  /**
+   * Auto-transcode browser-hostile video codecs (e.g. HEVC) to a cached
+   * H.264 proxy for supported preview surfaces. Render always uses the
+   * original file regardless of this setting. Default true.
+   */
+  autoProxy?: boolean;
+}
+
 export interface ProjectConfig {
   $schema?: string;
   /** Base URL of the registry to pull items from. */
   registry: string;
   /** Target paths for each item type. */
   paths: ProjectConfigPaths;
+  /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
+  media?: ProjectConfigMedia;
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -38,6 +49,9 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
     blocks: "compositions",
     components: "compositions/components",
     assets: "assets",
+  },
+  media: {
+    autoProxy: true,
   },
 };
 
@@ -72,6 +86,12 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
       components: partial.paths?.components ?? DEFAULT_PROJECT_CONFIG.paths.components,
       assets: partial.paths?.assets ?? DEFAULT_PROJECT_CONFIG.paths.assets,
     },
+    media: {
+      autoProxy:
+        typeof partial.media?.autoProxy === "boolean"
+          ? partial.media.autoProxy
+          : DEFAULT_PROJECT_CONFIG.media?.autoProxy,
+    },
   };
 }
 
@@ -91,4 +111,19 @@ export function writeProjectConfig(
  */
 export function loadProjectConfig(projectDir: string): ProjectConfig {
   return readProjectConfig(projectDir) ?? DEFAULT_PROJECT_CONFIG;
+}
+
+/**
+ * Resolve whether auto-proxying of browser-hostile video codecs (HEVC, etc.)
+ * is enabled for a project's live-preview surfaces. A caller's explicit
+ * `--proxy`/`--no-proxy` flag always wins over the project config, in either
+ * direction. Falls back to the committed `hyperframes.json`
+ * `media.autoProxy` setting, and finally to `true` when neither is set.
+ * Render is never affected by this setting: it always uses the original file.
+ */
+export function resolveAutoProxy(projectDir: string, flagValue: boolean | undefined): boolean {
+  if (typeof flagValue === "boolean") {
+    return flagValue;
+  }
+  return loadProjectConfig(projectDir).media?.autoProxy ?? true;
 }

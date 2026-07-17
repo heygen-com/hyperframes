@@ -881,6 +881,44 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toMatch(/card__hf2[\s\S]*Enterprise[\s\S]*light/);
   });
 
+  it("does not redefine an authored CSS variable for a bundled sub-composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head>
+  <style>:root { --accent: #4287f5; } .host-badge { color: var(--accent); }</style>
+</head><body>
+  <div
+    data-composition-id="main"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="5">
+    <div
+      data-composition-id="card"
+      data-composition-src="compositions/card.html"
+      data-variable-values='{"accent":"blue"}'></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/card.html": `<!doctype html>
+<html data-composition-variables='[{"id":"accent","type":"string","label":"Accent","default":"red"}]'>
+  <body>
+    <div
+      data-composition-id="card"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="5"></div>
+  </body>
+</html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain(":root { --accent: #4287f5; }");
+    expect(bundled).not.toMatch(/\[data-composition-id="card[^"]*"\]\s*\{[^}]*--accent:\s*blue/);
+  });
+
   it("scopes external sub-composition styles and classic scripts", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

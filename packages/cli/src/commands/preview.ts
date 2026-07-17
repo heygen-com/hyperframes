@@ -21,6 +21,10 @@ export const examples: Example[] = [
   ],
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
+  [
+    "Disable auto-proxying of browser-hostile video codecs (HEVC, ProRes, AV1)",
+    "hyperframes preview --no-proxy",
+  ],
 ];
 import {
   existsSync,
@@ -56,6 +60,8 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+import { resolveAutoProxy } from "../utils/projectConfig.js";
+import { studioProxyEnv } from "../utils/studioProxyEnv.js";
 import {
   readBackgroundPreviewStatus,
   startBackgroundPreview,
@@ -72,10 +78,12 @@ interface BrowserLaunchOptions {
 
 interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
+  autoProxy?: boolean;
 }
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
   forceNew?: boolean;
+  autoProxy?: boolean;
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -180,6 +188,12 @@ export default defineCommand({
       default: false,
       description:
         "Launch the opened browser with --disable-gpu (requires --browser-path). For hosts where hardware acceleration crashes the graphics driver (e.g. NVIDIA Xid resets); with the system default browser use --no-open instead.",
+    },
+    proxy: {
+      type: "boolean",
+      description:
+        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached H.264 proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
+      negativeDescription: "Disable auto-proxying of browser-hostile video codecs",
     },
   },
   async run({ args }) {
@@ -321,6 +335,9 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
+    // Resolve once so embedded, monorepo-dev, and locally installed Studio
+    // modes all receive identical --proxy/--no-proxy + config semantics.
+    const autoProxy = resolveAutoProxy(dir, args.proxy as boolean | undefined);
 
     if (isDevMode()) {
       if (args.background) {
@@ -335,6 +352,7 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
     }
 
@@ -352,6 +370,7 @@ export default defineCommand({
         userDataDir,
         remoteDebuggingPort,
         browserNoGpu,
+        autoProxy,
       });
     }
 
@@ -391,6 +410,7 @@ export default defineCommand({
     return runEmbeddedMode(dir, startPort, {
       projectName,
       forceNew,
+      autoProxy,
       noOpen,
       browserPath,
       userDataDir,
@@ -924,6 +944,7 @@ async function runDevMode(dir: string, options?: StudioLaunchOptions): Promise<v
   const child = spawn("bun", ["run", "dev"], {
     cwd: studioPkgDir,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
   attachStudioReadyHandler(child, s, pName, dir, options);
@@ -973,6 +994,7 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: studioPkgPath,
     stdio: ["ignore", "pipe", "pipe"],
+    env: studioProxyEnv(options?.autoProxy ?? true),
   });
 
   attachStudioReadyHandler(child, s, pName, dir, options);
@@ -1019,7 +1041,11 @@ async function runEmbeddedMode(
     return;
   }
 
-  const { app } = createStudioServer({ projectDir: dir, projectName: pName });
+  const { app } = createStudioServer({
+    projectDir: dir,
+    projectName: pName,
+    autoProxy: options?.autoProxy,
+  });
   const serverBuildSignature = await loadPreviewServerBuildSignature();
 
   let result: FindPortResult;

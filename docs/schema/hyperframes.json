@@ -40,6 +40,17 @@
           "description": "Where asset files (images, fonts, videos) land. Defaults to `assets`."
         }
       }
+    },
+    "media": {
+      "type": "object",
+      "description": "Media handling options.",
+      "additionalProperties": false,
+      "properties": {
+        "autoProxy": {
+          "type": "boolean",
+          "description": "Automatically create H.264 proxies for browser-hostile video codecs on supported preview surfaces. Defaults to true."
+        }
+      }
     }
   }
 }

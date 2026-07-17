@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -28,16 +29,10 @@ function computePeaks(floats: Float32Array, count: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
-function ffmpegBinary(): string {
-  const configured = process.env.HYPERFRAMES_FFMPEG_PATH?.trim();
-  if (configured) return resolve(configured);
-  return "ffmpeg";
-}
-
 export function decodeAudioPeaks(audioPath: string): Promise<number[]> {
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
-      ffmpegBinary(),
+      findFfBinary("ffmpeg") ?? "ffmpeg",
       [
         "-i",
         audioPath,

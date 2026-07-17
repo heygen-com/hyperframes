@@ -24,8 +24,8 @@ function createProjectDir(): string {
 
 function createAdapter(
   projectDir: string,
-  overrides: Partial<StudioApiAdapter> = {},
-): StudioApiAdapter {
+  overrides: Partial<StudioApiAdapter> & { autoProxy?: boolean } = {},
+): StudioApiAdapter & { autoProxy?: boolean } {
   return {
     listProjects: () => [],
     resolveProject: async (id: string) => ({ id, dir: projectDir }),
@@ -635,5 +635,441 @@ describe("sub-composition preview attribute integrity", () => {
     // attribute here silently breaks getVariables() on the comp route.
     const decoded = attr.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
     expect(JSON.parse(decoded)).toEqual(JSON.parse(decls));
+  });
+});
+
+// ── U3: ?hf-proxy=h264 negotiation + __HF_MEDIA_CODEC_MAP__ injection ───────
+// (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md)
+//
+// Both helpers preview.ts depends on (proxyTranscoder's resolveProxy,
+// mediaCodecMap's scanProjectMediaCodecMap) are mocked here rather than
+// exercised for real: their own behavior (ffmpeg spawning/caching, ffprobe
+// codec detection) is already covered by proxyTranscoder.test.ts and
+// mediaCodecMap.test.ts. This suite only tests preview.ts's own wiring —
+// the route branches, ETag salting, 404/502 mapping, and injection point.
+describe("hf-proxy negotiation and media codec map injection (U3)", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../helpers/proxyTranscoder.js");
+    vi.doUnmock("../helpers/mediaCodecMap.js");
+  });
+
+  class FakeProxyTranscodeError extends Error {
+    readonly exitCode: number | null;
+    readonly stderrTail: string;
+    constructor(message: string, exitCode: number | null, stderrTail: string) {
+      super(message);
+      this.name = "ProxyTranscodeError";
+      this.exitCode = exitCode;
+      this.stderrTail = stderrTail;
+    }
+  }
+
+  class FakeProxyCapacityError extends FakeProxyTranscodeError {}
+
+  type ScanMapImpl = (
+    projectDir: string,
+    htmlSources: Array<{ html: string; compSrcPath?: string }>,
+    options?: unknown,
+  ) => Promise<
+    Record<
+      string,
+      {
+        codecName: string;
+        browserHostile: boolean;
+        representativeMime: string | null;
+      }
+    >
+  >;
+
+  async function loadPreviewModule(opts: {
+    resolveProxyImpl?: (projectDir: string, absoluteSourcePath: string) => Promise<string>;
+    scanMapImpl?: ScanMapImpl;
+    probeAssetCodecImpl?: () => Promise<{
+      codecName: string;
+      browserHostile: boolean;
+      representativeMime: string | null;
+      hasAlpha: boolean;
+    } | null>;
+  }): Promise<typeof import("./preview.js")> {
+    vi.resetModules();
+    const resolveProxy =
+      opts.resolveProxyImpl ??
+      (async () => {
+        throw new FakeProxyTranscodeError(
+          "no resolveProxy impl configured for this test",
+          null,
+          "",
+        );
+      });
+    vi.doMock("../helpers/proxyTranscoder.js", () => ({
+      resolveProxy,
+      ProxyTranscodeError: FakeProxyTranscodeError,
+      ProxyCapacityError: FakeProxyCapacityError,
+      PROXY_PARAMS_VERSION: "v1",
+      getProxyCachePath: () => "",
+    }));
+    vi.doMock("../helpers/mediaCodecMap.js", () => ({
+      scanProjectMediaCodecMap: opts.scanMapImpl ?? (async () => ({})),
+      createMediaCodecProbeCache: () => new Map(),
+      probeAssetCodec:
+        opts.probeAssetCodecImpl ??
+        (async () => ({
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        })),
+      decideMediaProxyEligibility: (
+        facts: {
+          browserHostile: boolean;
+          hasAlpha: boolean;
+        } | null,
+      ) => {
+        if (!facts) return { eligible: false, reason: "unknown_codec" };
+        if (facts.hasAlpha) return { eligible: false, reason: "alpha_source" };
+        if (!facts.browserHostile) {
+          return { eligible: false, reason: "browser_safe_codec" };
+        }
+        return { eligible: true };
+      },
+    }));
+    return import("./preview.js");
+  }
+
+  describe("?hf-proxy=h264 on the static asset route", () => {
+    it("serves proxy bytes with Accept-Ranges on a full request, and a 206 range slice on a Range request", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "0123456789proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const full = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(full.status).toBe(200);
+      expect(full.headers.get("Accept-Ranges")).toBe("bytes");
+      expect(full.headers.get("Content-Type")).toBe("video/mp4");
+      expect(await full.text()).toBe("0123456789proxybytes");
+      expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+      expect(resolveProxyMock).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
+
+      const ranged = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+        {
+          headers: { Range: "bytes=0-9" },
+        },
+      );
+      expect(ranged.status).toBe(206);
+      expect(await ranged.text()).toBe("0123456789");
+      expect(ranged.headers.get("Content-Range")).toBe("bytes 0-9/20");
+    });
+
+    it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "proxy-bytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const first = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(first.status).toBe(200);
+      const etag = first.headers.get("ETag");
+      expect(etag).toBeTruthy();
+      expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+
+      const second = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+        { headers: { "If-None-Match": etag! } },
+      );
+      expect(second.status).toBe(304);
+      // The 304 shortcut never needs the proxy — no second transcode call.
+      expect(resolveProxyMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 404 without transcoding when the asset is missing", async () => {
+      const projectDir = createProjectDir();
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/does-not-exist.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 without transcoding when the asset is not a video", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "notes.txt"), "just text");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/notes.txt?hf-proxy=h264",
+      );
+      expect(res.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects alpha-bearing and browser-safe sources before transcoding", async () => {
+      for (const facts of [
+        {
+          codecName: "prores",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: true,
+        },
+        {
+          codecName: "h264",
+          browserHostile: false,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      ]) {
+        const projectDir = createProjectDir();
+        writeFileSync(join(projectDir, "clip.mp4"), "video-bytes");
+        const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+        const { registerPreviewRoutes: register } = await loadPreviewModule({
+          resolveProxyImpl: resolveProxyMock,
+          probeAssetCodecImpl: async () => facts,
+        });
+        const app = new Hono();
+        register(app, createAdapter(projectDir));
+
+        const res = await app.request(
+          "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+        );
+        expect(res.status).toBe(422);
+        expect(resolveProxyMock).not.toHaveBeenCalled();
+      }
+    });
+
+    it("returns 404 without transcoding when the param value is not exactly h264", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      for (const value of ["vp9", "H264", ""]) {
+        const res = await app.request(
+          `http://localhost/projects/demo/preview/clip.mp4?hf-proxy=${value}`,
+        );
+        expect(res.status).toBe(404);
+      }
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
+    it("maps a ProxyTranscodeError to a 502 carrying the error message", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        throw new FakeProxyTranscodeError("ffmpeg exited with code 1", 1, "unsupported codec");
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(502);
+      expect(await res.text()).toBe("ffmpeg exited with code 1");
+    });
+
+    it("maps a full proxy queue to a retryable 503", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: async () => {
+          throw new FakeProxyCapacityError("media proxy queue is full", null, "");
+        },
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("5");
+    });
+
+    it("rejects a path-traversal attempt through the proxied path (404, no transcode)", async () => {
+      const projectDir = createProjectDir();
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/..%2f..%2f..%2fetc%2fpasswd?hf-proxy=h264",
+      );
+      expect(res.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+
+    it("404s the param when auto-proxy is disabled for the adapter, without transcoding", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir, { autoProxy: false }));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("__HF_MEDIA_CODEC_MAP__ injection into composition HTML", () => {
+    it("keeps HTML byte-identical when the scan finds no proxy-eligible media", async () => {
+      const projectDir = createProjectDir();
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({}),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request("http://localhost/projects/demo/preview");
+      const html = await res.text();
+      expect(html).not.toContain("data-hf-media-codec-map");
+    });
+    it("injects the scanned map naming the hostile fixture, and pre-warms resolveProxy for it", async () => {
+      const projectDir = createProjectDir();
+      const resolveProxyMock = vi.fn(async () => join(projectDir, ".transcode-cache", "x.mp4"));
+      const scanMapMock = vi.fn(async () => ({
+        "/videos/hevc.mp4": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"',
+        },
+      }));
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        scanMapImpl: scanMapMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request("http://localhost/projects/demo/preview");
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("window.__HF_MEDIA_CODEC_MAP__");
+      expect(html).toContain("/videos/hevc.mp4");
+      expect(html).not.toContain("h264.mp4");
+      expect(scanMapMock).toHaveBeenCalled();
+
+      // Pre-warm: fire-and-forget resolveProxy for the hostile entry.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "/videos/hevc.mp4"),
+      );
+    });
+
+    it("escapes script terminators and JavaScript line separators in codec-map keys", async () => {
+      const projectDir = createProjectDir();
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: async () => join(projectDir, ".transcode-cache", "x.mp4"),
+        scanMapImpl: async () => ({
+          "/videos/</script>\u2028\u2029.mp4": {
+            codecName: "hevc",
+            browserHostile: true,
+            representativeMime: null,
+          },
+        }),
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+      const injected = /<script data-hf-media-codec-map>([\s\S]*?)<\/script>/.exec(html)?.[1];
+      expect(injected).toContain("\\u003c/script>");
+      expect(injected).toContain("\\u2028");
+      expect(injected).toContain("\\u2029");
+      expect(injected).not.toContain("</script>");
+    });
+
+    it("does not inject the codec map (and 404s the proxy param) when auto-proxy is disabled", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "bytes");
+      const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+      const scanMapMock = vi.fn(async () => ({
+        "/clip.mp4": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+        },
+      }));
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        scanMapImpl: scanMapMock,
+      });
+
+      const app = new Hono();
+      register(app, createAdapter(projectDir, { autoProxy: false }));
+
+      const res = await app.request("http://localhost/projects/demo/preview");
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("__HF_MEDIA_CODEC_MAP__");
+      expect(scanMapMock).not.toHaveBeenCalled();
+
+      const proxyRes = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(proxyRes.status).toBe(404);
+      expect(resolveProxyMock).not.toHaveBeenCalled();
+    });
   });
 });

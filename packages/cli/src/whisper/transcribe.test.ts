@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import {
   dtwPresetForModel,
+  initialModelForLanguage,
   isWhisperTimeoutError,
   resolveAudioPreparationTimeoutMs,
   resolveWhisperTimeoutMs,
@@ -243,5 +244,23 @@ describe("resolveAudioPreparationTimeoutMs", () => {
   it("falls back to two minutes when duration is unavailable", () => {
     expect(resolveAudioPreparationTimeoutMs(null)).toBe(120_000);
     expect(resolveAudioPreparationTimeoutMs(Number.NaN)).toBe(120_000);
+  });
+});
+
+describe("initialModelForLanguage", () => {
+  test("keeps the default English-only model when no language is specified", () => {
+    expect(initialModelForLanguage("small.en", undefined)).toBe("small.en");
+  });
+
+  test("uses the multilingual model before downloading for explicit German", () => {
+    expect(initialModelForLanguage("small.en", "de")).toBe("small");
+  });
+
+  test("keeps English-only models for English locale variants", () => {
+    expect(initialModelForLanguage("small.en", "en-US")).toBe("small.en");
+  });
+
+  test("keeps an already multilingual model unchanged", () => {
+    expect(initialModelForLanguage("large-v3", "de")).toBe("large-v3");
   });
 });

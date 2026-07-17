@@ -3,10 +3,14 @@ import type { StoryboardResponse } from "../../hooks/useStoryboard";
 import { Button } from "../ui/Button";
 import { StoryboardDirection } from "./StoryboardDirection";
 import { StoryboardGrid } from "./StoryboardGrid";
-import { StoryboardStatusLegend } from "./StoryboardStatusLegend";
 import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
 import { StoryboardSourceEditor, type SourceFile } from "./StoryboardSourceEditor";
 import { StoryboardFrameFocus } from "./StoryboardFrameFocus";
+import { StoryboardReviewGuide } from "./StoryboardReviewGuide";
+import {
+  AgentChatMessageButton,
+  APPLY_STORYBOARD_FEEDBACK_MESSAGE,
+} from "./AgentChatMessageButton";
 import { useFrameComments, type CommentsSubmitState } from "./useFrameComments";
 
 type SubView = "board" | "source";
@@ -35,6 +39,7 @@ export function StoryboardLoaded({
   const [subView, setSubView] = useState<SubView>("board");
   const [sourceDirty, setSourceDirty] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [feedbackMessageCopied, setFeedbackMessageCopied] = useState(false);
   const comments = useFrameComments(data.frames);
   // When the board refreshes off a project change (agent revised frames), the
   // agent has likely consumed the comments file too — re-check so the pending
@@ -43,6 +48,20 @@ export function StoryboardLoaded({
   useEffect(() => {
     void refreshPending();
   }, [data.signature, refreshPending]);
+  useEffect(() => {
+    if (comments.draftCount > 0) setFeedbackMessageCopied(false);
+  }, [comments.draftCount]);
+
+  const saveFeedbackAndCopyMessage = async () => {
+    const saved = await comments.submit();
+    if (!saved) return;
+    try {
+      await navigator.clipboard.writeText(APPLY_STORYBOARD_FEEDBACK_MESSAGE);
+      setFeedbackMessageCopied(true);
+    } catch {
+      setFeedbackMessageCopied(false);
+    }
+  };
   const sourceFiles = useMemo<SourceFile[]>(() => {
     const files: SourceFile[] = [{ path: data.path, label: data.path }];
     if (data.script?.exists) files.push({ path: data.script.path, label: data.script.path });
@@ -82,31 +101,54 @@ export function StoryboardLoaded({
         }
         onSaved={reload}
         onSelectComposition={onSelectComposition}
+        scriptExists={Boolean(data.script?.exists)}
+        commentDraft={comments.drafts[focusedFrame.index] ?? ""}
+        onCommentDraftChange={(text) => comments.setDraft(focusedFrame.index, text)}
+        pendingComment={
+          comments.pending?.find((entry) => entry.frame === focusedFrame.index)?.text ?? null
+        }
+        pendingCommentCount={comments.pending?.length ?? 0}
+        commentDraftCount={comments.draftCount}
+        commentsSubmitState={comments.submitState}
+        commentsSubmitError={comments.submitError}
+        feedbackMessageCopied={feedbackMessageCopied}
+        onFeedbackMessageCopied={() => setFeedbackMessageCopied(true)}
+        onSaveFeedback={() => void saveFeedbackAndCopyMessage()}
         posterVersion={data.signature}
       />
     );
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col bg-neutral-950 text-neutral-200">
-      <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
+    <div className="flex w-full max-w-[100vw] flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-neutral-950 text-neutral-200">
+      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-800 px-4 py-2">
         <SubViewToggle value={subView} onChange={changeSubView} />
         {subView === "board" && (
           <CommentsSubmitBar
             draftCount={comments.draftCount}
             pendingCount={comments.pending?.length ?? 0}
             submitState={comments.submitState}
-            onSubmit={() => void comments.submit()}
+            submitError={comments.submitError}
+            messageCopied={feedbackMessageCopied}
+            onSave={() => void saveFeedbackAndCopyMessage()}
+            onMessageCopied={() => setFeedbackMessageCopied(true)}
           />
         )}
       </div>
       {subView === "board" ? (
         <div className="flex-1 min-h-0 overflow-auto">
-          <div className="mx-auto max-w-[1400px] px-8 py-8">
+          <div className="mx-auto max-w-[1400px] px-4 py-5 sm:px-8 sm:py-8">
             <StoryboardDirection globals={data.globals} frameCount={data.frames.length} />
-            <div className="mt-5">
-              <StoryboardStatusLegend />
-            </div>
+            <StoryboardReviewGuide
+              frames={data.frames}
+              draftCount={comments.draftCount}
+              pendingCount={comments.pending?.length ?? 0}
+              onFeedbackMessageCopied={() => setFeedbackMessageCopied(true)}
+            />
+            <StoryboardWarnings
+              warnings={data.warnings}
+              onOpenSource={() => changeSubView("source")}
+            />
             <StoryboardGrid
               projectId={projectId}
               frames={data.frames}
@@ -135,31 +177,87 @@ function CommentsSubmitBar({
   draftCount,
   pendingCount,
   submitState,
-  onSubmit,
+  submitError,
+  messageCopied,
+  onSave,
+  onMessageCopied,
 }: {
   draftCount: number;
   pendingCount: number;
   submitState: CommentsSubmitState;
-  onSubmit: () => void;
+  submitError: string | null;
+  messageCopied: boolean;
+  onSave: () => void;
+  onMessageCopied: () => void;
 }) {
   return (
-    <div className="ml-auto flex items-center gap-3">
+    <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none">
       {pendingCount > 0 && (
-        <span className="text-xs text-sky-300">
-          {pendingCount} comment{pendingCount > 1 ? "s" : ""} pending — reply anything in your agent
-          chat and it will apply them.
+        <>
+          <span className="text-xs text-sky-300">
+            {messageCopied
+              ? "Feedback saved · Message copied — paste it in your terminal or IDE agent chat."
+              : "Feedback saved · Agent not notified."}
+          </span>
+          <AgentChatMessageButton
+            message={APPLY_STORYBOARD_FEEDBACK_MESSAGE}
+            label={messageCopied ? "Copy again" : "Copy prompt for agent"}
+            onCopied={onMessageCopied}
+          />
+        </>
+      )}
+      {pendingCount === 0 && draftCount === 0 && (
+        <span className="text-xs text-neutral-500">Add frame comments to request changes.</span>
+      )}
+      {submitError && (
+        <span className="max-w-64 truncate text-xs text-red-400" title={submitError}>
+          Couldn’t submit: {submitError}
         </span>
       )}
-      <Button
-        variant="primary"
-        size="sm"
-        loading={submitState === "saving"}
-        disabled={draftCount === 0 || submitState === "saving"}
-        onClick={onSubmit}
-      >
-        {draftCount > 0 ? `Submit comments (${draftCount})` : "Submit comments"}
-      </Button>
+      {draftCount > 0 && (
+        <Button
+          variant="primary"
+          size="sm"
+          loading={submitState === "saving"}
+          disabled={submitState === "saving"}
+          onClick={onSave}
+        >
+          Save &amp; copy message ({draftCount})
+        </Button>
+      )}
     </div>
+  );
+}
+
+function StoryboardWarnings({
+  warnings,
+  onOpenSource,
+}: {
+  warnings: StoryboardResponse["warnings"];
+  onOpenSource: () => void;
+}) {
+  if (warnings.length === 0) return null;
+  return (
+    <details className="mt-3 rounded-lg border border-amber-900/60 bg-amber-950/20 px-4 py-2 text-xs text-amber-200">
+      <summary className="cursor-pointer font-medium">
+        {warnings.length} storyboard warning{warnings.length === 1 ? "" : "s"}
+      </summary>
+      <ul className="mt-2 space-y-1 text-amber-200/80">
+        {warnings.map((warning, index) => (
+          <li key={`${warning.line ?? "unknown"}-${index}`}>
+            {warning.line ? `Line ${warning.line}: ` : ""}
+            {warning.message}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={onOpenSource}
+        className="mt-2 rounded text-amber-100 underline underline-offset-2 hover:text-white"
+      >
+        Open source to fix
+      </button>
+    </details>
   );
 }
 

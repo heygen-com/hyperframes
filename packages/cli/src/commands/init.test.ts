@@ -11,6 +11,7 @@ import {
 } from "./init.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
+const initSource = readFileSync(new URL("./init.ts", import.meta.url), "utf-8");
 const tailwindScript =
   '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js" integrity="sha384-v5YF9xS+gLRWdvrQ0u/WRbCkjSIH0NjHIPe8tBL1ZRrmI7PiSH6LLdzs0aAIMCuh" crossorigin="anonymous"></script>';
 
@@ -47,6 +48,14 @@ function expectScaffoldedScripts(target: string): void {
 }
 
 describe("hyperframes init flag rename", () => {
+  it("selects the language-compatible model before both eager init downloads", () => {
+    expect(initSource).toMatch(
+      /const initialTranscriptionModel = initialModelForLanguage\(\s*modelFlag \?\? DEFAULT_MODEL,\s*languageFlag,?\s*\);/,
+    );
+    expect(initSource.match(/await ensureModel\(initialTranscriptionModel/g)).toHaveLength(2);
+    expect(initSource).not.toMatch(/await ensureModel\(modelFlag/g);
+  });
+
   it("requires an explicit source in non-interactive mode", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");

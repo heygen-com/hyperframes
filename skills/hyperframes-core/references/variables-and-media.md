@@ -105,3 +105,5 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 - For volume fades/ducking, animate `volume` on the timeline (`tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`) rather than swapping `data-volume`. The runtime probes the timeline's volume keyframes and applies them identically in preview and render; `data-volume` is the static baseline for elements no tween touches.
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
+
+Input codecs: render decodes video via FFmpeg (frames are pre-extracted and injected), so HEVC/H.265 assets (8/10-bit) render correctly everywhere; only live preview depends on the browser's codec support (`lint` emits an info-level `hevc_preview_codec` note; use an H.264 proxy for authoring if preview shows black).

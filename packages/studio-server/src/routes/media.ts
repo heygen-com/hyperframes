@@ -6,7 +6,18 @@ import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi"]);
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4",
+  ".mov",
+  ".webm",
+  ".mkv",
+  ".avi",
+  ".m4v",
+  ".mxf",
+  ".mts",
+  ".m2ts",
+  ".ts",
+]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const VIDEO_OUTPUT_EXTENSIONS = new Set([".webm", ".mov"]);
 const QUALITIES = new Set(["fast", "balanced", "best"]);
@@ -126,7 +137,7 @@ export function registerMediaRoutes(
     if (!filePath) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(filePath)) return c.json({ error: "media not found" }, 404);
 
-    return c.json({ path: assetPath, metadata: readMediaMetadata(filePath) });
+    return c.json({ path: assetPath, metadata: await readMediaMetadata(filePath) });
   });
 
   api.post(

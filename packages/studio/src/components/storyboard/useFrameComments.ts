@@ -17,8 +17,10 @@ export interface FrameCommentsValue {
   /** How many frames currently carry a non-empty draft. */
   draftCount: number;
   submitState: CommentsSubmitState;
+  /** Most recent submit failure, shown next to the submit action. */
+  submitError: string | null;
   /** Write the batch to `.hyperframes/frame-comments.json` and clear the drafts. */
-  submit: () => Promise<void>;
+  submit: () => Promise<boolean>;
   /**
    * Comments already submitted but not yet consumed by the agent (the file
    * still exists on disk). Refreshed on mount, after submit, and on window
@@ -34,6 +36,7 @@ export function useFrameComments(frames: StoryboardFrameView[]): FrameCommentsVa
   const { writeProjectFile, readOptionalProjectFile } = useFileManagerContext();
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [submitState, setSubmitState] = useState<CommentsSubmitState>("idle");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, setPending] = useState<FrameCommentEntry[] | null>(null);
 
   const refreshPending = useCallback(async () => {
@@ -61,22 +64,35 @@ export function useFrameComments(frames: StoryboardFrameView[]): FrameCommentsVa
     [drafts],
   );
 
+  // One guarded async transaction owns loading, success, failure, and cleanup state.
+  // fallow-ignore-next-line complexity
   const submit = useCallback(async () => {
-    if (draftCount === 0 || submitState === "saving") return;
+    if (draftCount === 0 || submitState === "saving") return false;
     setSubmitState("saving");
+    setSubmitError(null);
     try {
       const previous = parseCommentsFile(await readOptionalProjectFile(FRAME_COMMENTS_PATH));
       const file = buildCommentsFile(frames, drafts, previous, new Date().toISOString());
       await writeProjectFile(FRAME_COMMENTS_PATH, `${JSON.stringify(file, null, 2)}\n`);
       setDrafts({});
       setPending(file.comments);
-    } catch {
-      // writeProjectFile surfaces save failures through the studio save banner;
-      // just re-arm the button so the user can retry.
+      return true;
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : "Failed to submit comments");
+      return false;
     } finally {
       setSubmitState("idle");
     }
   }, [draftCount, submitState, frames, drafts, readOptionalProjectFile, writeProjectFile]);
 
-  return { drafts, setDraft, draftCount, submitState, submit, pending, refreshPending };
+  return {
+    drafts,
+    setDraft,
+    draftCount,
+    submitState,
+    submitError,
+    submit,
+    pending,
+    refreshPending,
+  };
 }

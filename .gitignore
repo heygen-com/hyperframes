@@ -87,6 +87,8 @@ my-video/
 # never committed. Broadened from .hyperframes/backup/ after preview-generated state
 # leaked into a fixture commit.
 .hyperframes/
+# Studio authoring proxies are generated locally and can grow to multiple GB.
+.transcode-cache/
 examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda
@@ -105,9 +107,34 @@ packages/studio/data/
 # Playwright MCP browser cache
 .playwright-mcp/
 
-# Installed skills (user-specific)
-.agents/
-.claude/skills/
+# Installed skills (user-specific — agent-installed during sessions).
+# .claude/ = Claude Code, .agents/ = Codex CLI (both auto-discover their project skills
+# from these dirs). The two mirror each other and both need the same "ignore agent-installed
+# skills; keep the six repo-native ones" recipe. See .claude/skills/README.md for the
+# packaging notes.
+
+.claude/*
+!.claude/settings.json
+!.claude/skills
+.claude/skills/*
+!.claude/skills/README.md
+!.claude/skills/changelog-video
+!.claude/skills/motion-doctrine
+!.claude/skills/cut-the-curve
+!.claude/skills/seam-craft
+!.claude/skills/captions-overlay
+!.claude/skills/oversized-cursor
+
+.agents/*
+!.agents/skills
+.agents/skills/*
+!.agents/skills/README.md
+!.agents/skills/changelog-video
+!.agents/skills/motion-doctrine
+!.agents/skills/cut-the-curve
+!.agents/skills/seam-craft
+!.agents/skills/captions-overlay
+!.agents/skills/oversized-cursor
 skills-lock.json
 
 # Skills from other PRs (not managed here)
@@ -143,9 +170,8 @@ raycast-*/
 test-runs/
 test-outputs/
 
-# Claude Code worktrees + superpowers docs
-.claude/worktrees/
-.claude/
+# Superpowers docs (Claude Code worktrees + local state are handled above by
+# the blanket .claude/ rule and its re-inclusions)
 docs/superpowers/
 .worktrees
 hyperframes-bench/

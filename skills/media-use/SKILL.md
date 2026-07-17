@@ -392,6 +392,12 @@ removal, upscale, lipsync, translate). Run the tool, then register the output
 with `resolve --from <output> --type <type>` so it joins the ledger + global
 cache.
 
+HEVC/H.265 sources need no conversion for **render** (FFmpeg pre-decodes all
+input video); only live preview depends on the browser's codec support. If an
+HEVC asset previews black, make an H.264 authoring proxy (`ffmpeg -i in.mp4
+-c:v libx264 -crf 18 proxy.mp4`), register it with `resolve --from`, and keep
+either file for the final render.
+
 ## CLI tools used (what to run, and how to enable each)
 
 `resolve` auto-cascades; each provider shells one CLI. HeyGen is the

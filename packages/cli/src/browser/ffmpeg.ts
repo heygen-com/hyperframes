@@ -1,11 +1,8 @@
-// fallow-ignore-file code-duplication
-import { execFileSync, execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
 
-export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
-export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
+export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binaries";
 
 export type H264EncoderMode = "software" | "gpu";
 
@@ -35,81 +32,15 @@ export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean)
   return resolveH264EncoderMode(encoders, gpuRequested);
 }
 
-function chooseBestPathCandidate(
-  name: "ffmpeg" | "ffprobe",
-  candidates: string[],
-): string | undefined {
-  const normalized = candidates.map((s) => s.trim()).filter(Boolean);
-  if (normalized.length === 0) return undefined;
-  const lowerName = name.toLowerCase();
-  const preferredExe = normalized.find((candidate) =>
-    candidate.toLowerCase().endsWith(`${lowerName}.exe`),
-  );
-  if (preferredExe) return preferredExe;
-  const exact = normalized.find((candidate) => candidate.toLowerCase().endsWith(lowerName));
-  if (exact) return exact;
-  const nonShellShim = normalized.find((candidate) => {
-    const lower = candidate.toLowerCase();
-    return !lower.endsWith(".cmd") && !lower.endsWith(".bat");
-  });
-  return nonShellShim ?? normalized[0];
-}
-
-function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
-    return candidate ? resolve(candidate) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// GUI/Dock/launchd-spawned processes on macOS don't inherit the shell PATH, so
-// `which ffmpeg` fails even when ffmpeg is installed via Homebrew. Probe the
-// well-known install dirs as a fallback. (No-op on Windows, where `where` and
-// installer-added PATH entries cover it.)
-const COMMON_BIN_DIRS =
-  process.platform === "win32"
-    ? []
-    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
-
-function findInCommonDirs(name: "ffmpeg" | "ffprobe"): string | undefined {
-  for (const dir of COMMON_BIN_DIRS) {
-    const candidate = `${dir}/${name}`;
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
-function findInProjectLocalBin(name: "ffmpeg" | "ffprobe"): string | undefined {
-  const extension = process.platform === "win32" ? ".exe" : "";
-  const candidate = resolve(".hyperframes", "bin", `${name}${extension}`);
-  return existsSync(candidate) ? candidate : undefined;
-}
-
-function findConfiguredBinary(
-  envName: string,
-  binaryName: "ffmpeg" | "ffprobe",
-): string | undefined {
-  const configured = process.env[envName]?.trim();
-  if (configured) return existsSync(configured) ? resolve(configured) : undefined;
-  return (
-    findOnPath(binaryName) ?? findInProjectLocalBin(binaryName) ?? findInCommonDirs(binaryName)
-  );
-}
-
+// `configuredMustExist`: the CLI surfaces an install hint when a binary is
+// missing, so an env override pointing at a nonexistent file reports as
+// not-found instead of being handed to spawn.
 export function findFFmpeg(): string | undefined {
-  return findConfiguredBinary(FFMPEG_PATH_ENV, "ffmpeg");
+  return findFfBinary("ffmpeg", { configuredMustExist: true });
 }
 
 export function findFFprobe(): string | undefined {
-  return findConfiguredBinary(FFPROBE_PATH_ENV, "ffprobe");
+  return findFfBinary("ffprobe", { configuredMustExist: true });
 }
 
 export function getFFmpegInstallHint(): string {

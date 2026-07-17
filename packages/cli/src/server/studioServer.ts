@@ -26,11 +26,12 @@ import {
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
   getMimeType,
-  type StudioApiAdapter,
+  type PreviewApiAdapter,
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
 } from "@hyperframes/studio-server";
+import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
@@ -167,12 +168,16 @@ async function downloadRemoteGifImageSources(
 // Uses the engine's browser pool so the thumbnail browser and render workers
 // share a single Chrome process instead of running two independent ones.
 
-let _thumbnailBrowser: import("puppeteer-core").Browser | null = null;
-let _thumbnailBrowserInitializing: Promise<import("puppeteer-core").Browser | null> | null = null;
+let _thumbnailBrowserLease: import("@hyperframes/engine").BrowserLease | null = null;
+let _thumbnailBrowserInitializing: Promise<
+  import("@hyperframes/engine").BrowserLease | null
+> | null = null;
 
 async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
-  if (_thumbnailBrowser?.connected) return _thumbnailBrowser;
-  if (_thumbnailBrowserInitializing) return _thumbnailBrowserInitializing;
+  if (_thumbnailBrowserLease?.browser.connected) return _thumbnailBrowserLease.browser;
+  if (_thumbnailBrowserInitializing) {
+    return (await _thumbnailBrowserInitializing)?.browser ?? null;
+  }
 
   _thumbnailBrowserInitializing = (async () => {
     try {
@@ -192,12 +197,12 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
         { forceScreenshot: true },
       );
-      _thumbnailBrowser = acquired.browser;
-      _thumbnailBrowser.on("disconnected", () => {
-        _thumbnailBrowser = null;
+      _thumbnailBrowserLease = acquired;
+      acquired.browser.on("disconnected", () => {
+        if (_thumbnailBrowserLease === acquired) _thumbnailBrowserLease = null;
         _thumbnailBrowserInitializing = null;
       });
-      return _thumbnailBrowser;
+      return acquired;
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -208,16 +213,15 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
     }
   })();
 
-  return _thumbnailBrowserInitializing;
+  return (await _thumbnailBrowserInitializing)?.browser ?? null;
 }
 
 export async function closeThumbnailBrowser(): Promise<void> {
-  if (!_thumbnailBrowser) return;
-  const browser = _thumbnailBrowser;
-  _thumbnailBrowser = null;
+  if (!_thumbnailBrowserLease) return;
+  const lease = _thumbnailBrowserLease;
+  _thumbnailBrowserLease = null;
   _thumbnailBrowserInitializing = null;
-  const { releaseBrowser } = await import("@hyperframes/engine");
-  await releaseBrowser(browser).catch(() => {});
+  await lease.release().catch(() => {});
 }
 
 // ── Server factory ──────────────────────────────────────────────────────────
@@ -226,11 +230,21 @@ export interface StudioServerOptions {
   projectDir: string;
   /** Display name for the project. Defaults to basename of projectDir. */
   projectName?: string;
+  /**
+   * Auto-transcode browser-hostile video codecs to a cached H.264 preview
+   * proxy. The preview command passes its resolved `--proxy`/`--no-proxy` +
+   * `hyperframes.json` value; when omitted, the project's `media.autoProxy`
+   * config (default true) applies.
+   */
+  autoProxy?: boolean | undefined;
 }
 
 export interface StudioServer {
   app: Hono;
   watcher: ProjectWatcher;
+  /** Exposed for tests: the adapter handed to the shared studio API (carries
+   * the resolved `autoProxy` flag the preview routes read). */
+  adapter: PreviewApiAdapter;
 }
 
 export async function loadPreviewServerBuildSignature(): Promise<string> {
@@ -300,7 +314,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     cachedProjectSignature = null;
   });
 
-  const adapter: StudioApiAdapter = {
+  const adapter: PreviewApiAdapter = {
+    // Explicit option wins (preview's resolved --proxy/--no-proxy + config);
+    // otherwise honor the project's hyperframes.json media.autoProxy so every
+    // createStudioServer caller (e.g. the background preview child) gets the
+    // configured behavior without its own plumbing.
+    autoProxy: options.autoProxy ?? resolveAutoProxy(projectDir, undefined),
+
     listProjects: () => [project],
 
     resolveProject: (id: string) => (id === projectId ? project : null),
@@ -782,5 +802,5 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return c.html(html);
   });
 
-  return { app, watcher };
+  return { app, watcher, adapter };
 }

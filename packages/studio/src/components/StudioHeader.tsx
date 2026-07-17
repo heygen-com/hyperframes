@@ -149,14 +149,13 @@ const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
 ];
 
 /** Segmented control switching the main stage between storyboard and preview. */
-function ViewModeToggle() {
+export function ViewModeToggle() {
   const { viewMode, setViewMode } = useViewMode();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const selectMode = (mode: StudioViewMode) => {
     if (mode === viewMode) return;
-    trackStudioEvent("view_mode_toggle", { mode });
-    setViewMode(mode);
+    if (setViewMode(mode)) trackStudioEvent("view_mode_toggle", { mode });
   };
 
   // Complete APG tabs pattern: roving tabIndex + arrow-key navigation.

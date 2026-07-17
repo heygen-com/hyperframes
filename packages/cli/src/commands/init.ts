@@ -45,7 +45,8 @@ import {
 } from "../templates/generators.js";
 import { fetchRemoteTemplate } from "../templates/remote.js";
 import { trackInitTemplate } from "../telemetry/events.js";
-import { hasFFmpeg } from "../whisper/manager.js";
+import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
+import { initialModelForLanguage } from "../whisper/transcribe.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import {
@@ -769,6 +770,10 @@ export default defineCommand({
     const nonInteractive = args["non-interactive"] === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
+    const initialTranscriptionModel = initialModelForLanguage(
+      modelFlag ?? DEFAULT_MODEL,
+      languageFlag,
+    );
     const interactive = !nonInteractive && process.stdout.isTTY === true;
 
     if (skipSkillsFlagIgnored) {
@@ -866,7 +871,7 @@ export default defineCommand({
         try {
           const { ensureWhisper, ensureModel } = await import("../whisper/manager.js");
           await ensureWhisper();
-          await ensureModel(modelFlag);
+          await ensureModel(initialTranscriptionModel);
           console.log("Transcribing...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
           const result = await runTranscribe(sourceFilePath, destDir, {
@@ -1044,7 +1049,7 @@ export default defineCommand({
           await ensureWhisper({
             onProgress: (msg) => spin.message(msg),
           });
-          await ensureModel(modelFlag, {
+          await ensureModel(initialTranscriptionModel, {
             onProgress: (msg) => spin.message(msg),
           });
 

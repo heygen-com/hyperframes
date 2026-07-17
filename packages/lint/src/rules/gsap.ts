@@ -45,6 +45,7 @@ type GsapWindow = {
   end: number;
   properties: string[];
   propertyValues: Record<string, string | number>;
+  fromPropertyValues?: Record<string, string | number>;
   overwriteAuto: boolean;
   method: string;
   raw: string;
@@ -155,6 +156,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       end: animation.position + effectiveDuration,
       properties: Object.keys(animation.properties),
       propertyValues: animation.properties,
+      fromPropertyValues: animation.fromProperties,
       overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
       method: animation.method,
       raw: synthesizeWindowRaw(parsed.timelineVar, animation),
@@ -193,6 +195,29 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
     visibility === "hidden" ||
     display === "none"
   );
+}
+
+function extractStandaloneHiddenSelectors(script: string): Set<string> {
+  const selectors = new Set<string>();
+  const source = stripJsComments(script);
+  const aliases = new Map<string, string>();
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])([^"'`]+)\2\s*;/g,
+  )) {
+    aliases.set(match[1] ?? "", match[3] ?? "");
+  }
+  const pattern = /gsap\.set\s*\(\s*([^,]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source)) !== null) {
+    const target = (match[1] ?? "").trim();
+    const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
+    if (!selector) continue;
+    const body = match[2] ?? "";
+    if (/(?:opacity|autoAlpha)\s*:\s*0(?:\.0+)?\s*(?:,|$)/.test(body)) {
+      selectors.add(selector);
+    }
+  }
+  return selectors;
 }
 
 function oneValue(
@@ -1138,7 +1163,10 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
-  // gsap_from_opacity_noop — CSS opacity:0 + gsap.from({opacity:0}) = invisible forever
+  // CSS/GSAP-hidden reveal safety. A fromTo() whose from-vars make an element
+  // visible but whose destination omits opacity works during sequential seeks,
+  // yet cold render workers restore the authored hidden state and encode it
+  // permanently invisible.
   // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -1170,20 +1198,42 @@ export const gsapRules: LintRule<LintContext>[] = [
       for (const cls of classes) cssOpacityZeroSelectors.add(`.${cls}`);
     }
 
-    if (cssOpacityZeroSelectors.size === 0) return findings;
-
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
       const windows = await cachedExtractGsapWindows(script.content);
+      const hiddenSelectors = new Set([
+        ...cssOpacityZeroSelectors,
+        ...extractStandaloneHiddenSelectors(script.content),
+      ]);
 
       for (const win of windows) {
+        const sel = win.targetSelector;
+        const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
+        if (!hiddenSelectors.has(cssKey)) continue;
+
+        if (
+          win.method === "fromTo" &&
+          win.fromPropertyValues &&
+          isVisibleGsapState(win.fromPropertyValues) &&
+          !win.properties.some((property) => property === "opacity" || property === "autoAlpha")
+        ) {
+          findings.push({
+            code: "gsap_cold_seek_hidden_fromto_missing_reveal",
+            severity: "error",
+            message:
+              `"${sel}" starts hidden, but its gsap.fromTo() makes it visible only in the from-vars ` +
+              "and omits opacity/autoAlpha from the destination. Cold render workers restore the hidden authored state, so the encoded element can stay invisible even when sequential snapshots look correct.",
+            selector: sel,
+            fixHint: `Add \`opacity: 1\` (or \`autoAlpha: 1\`) to the destination vars for "${sel}" so every seek path establishes the visible end state explicitly.`,
+            snippet: truncateSnippet(win.raw),
+          });
+          continue;
+        }
+
         if (win.method !== "from") continue;
         if (!win.properties.includes("opacity")) continue;
         // Only a noop when the tween animates FROM 0 (same as the CSS value)
         if (win.propertyValues["opacity"] !== 0) continue;
-        const sel = win.targetSelector;
-        const cssKey = sel.startsWith("#") || sel.startsWith(".") ? sel : `#${sel}`;
-        if (!cssOpacityZeroSelectors.has(cssKey)) continue;
 
         findings.push({
           code: "gsap_from_opacity_noop",

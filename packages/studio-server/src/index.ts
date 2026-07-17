@@ -11,6 +11,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export {
   consumeFileWriteReceipt,

@@ -75,7 +75,11 @@ export {
   resolveBrowserGpuMode,
   buildChromeArgs,
   ENABLE_BROWSER_POOL,
+  BrowserLeasePool,
   type BuildChromeArgsOptions,
+  type BrowserLaunchFingerprint,
+  type BrowserLease,
+  type BrowserPoolState,
   type CaptureMode,
   type AcquiredBrowser,
 } from "./services/browserManager.js";

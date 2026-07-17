@@ -18,6 +18,19 @@ import {
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
+import {
+  resolveProxy,
+  ProxyCapacityError,
+  ProxyTranscodeError,
+} from "../helpers/proxyTranscoder.js";
+import { decideMediaProxyEligibility, probeAssetCodec } from "../helpers/mediaCodecMap.js";
+import {
+  isAutoProxyEnabled,
+  injectMediaCodecMap,
+  proxyEtagSalt,
+  resolvePreviewMediaCodecProbeCache,
+  type PreviewApiAdapter,
+} from "../helpers/mediaProxyPreview.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -52,7 +65,9 @@ function parseStudioMotionManifestContent(content: string): {
   hasCustomEase: boolean;
 } {
   try {
-    const parsed = JSON.parse(content) as { motions?: Array<{ customEase?: unknown }> };
+    const parsed = JSON.parse(content) as {
+      motions?: Array<{ customEase?: unknown }>;
+    };
     const motions = Array.isArray(parsed.motions) ? parsed.motions : [];
     return {
       hasMotion: motions.length > 0,
@@ -238,11 +253,13 @@ function variablesEtagSalt(raw: string | undefined): string {
  * route should 400; otherwise `values` is the override object (or null when
  * the param is absent) and `raw` feeds the ETag salt.
  */
-function previewVariablesFromRequest(
-  rawVariables: string | undefined,
-):
+function previewVariablesFromRequest(rawVariables: string | undefined):
   | { error: string }
-  | { error?: undefined; raw: string | undefined; values: Record<string, unknown> | null } {
+  | {
+      error?: undefined;
+      raw: string | undefined;
+      values: Record<string, unknown> | null;
+    } {
   const parse = parsePreviewVariablesParam(rawVariables);
   if (!parse.ok) return { error: parse.error };
   return { raw: rawVariables, values: parse.values };
@@ -290,20 +307,31 @@ function resolveProjectMainHtml(
 ): { html: string; compositionPath: string } | null {
   const indexPath = join(projectDir, "index.html");
   if (existsSync(indexPath)) {
-    return { html: readFileSync(indexPath, "utf-8"), compositionPath: "index.html" };
+    return {
+      html: readFileSync(indexPath, "utf-8"),
+      compositionPath: "index.html",
+    };
   }
   const blockHtmlPath = join(projectDir, `${projectId}.html`);
   if (existsSync(blockHtmlPath)) {
-    return { html: readFileSync(blockHtmlPath, "utf-8"), compositionPath: `${projectId}.html` };
+    return {
+      html: readFileSync(blockHtmlPath, "utf-8"),
+      compositionPath: `${projectId}.html`,
+    };
   }
   return null;
 }
 
-export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): void {
+export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
     ETag: etag,
   });
+
+  // One probe cache per server instance (this function runs once per
+  // registered API), reused across every preview request so the mtime-cache
+  // benefit in scanProjectMediaCodecMap actually applies.
+  const mediaCodecProbeCache = resolvePreviewMediaCodecProbeCache(adapter);
 
   // Bundled composition preview
   // fallow-ignore-next-line complexity
@@ -320,7 +348,10 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
-      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
     }
 
     // Normalize + persist data-hf-id to disk before bundle reads it. Idempotent.
@@ -370,6 +401,13 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         mainCompositionPath,
       );
       if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
+      bundled = await injectMediaCodecMap(
+        bundled,
+        adapter,
+        project.dir,
+        mainCompositionPath,
+        mediaCodecProbeCache,
+      );
       return c.html(bundled, 200, previewCacheHeaders(etag));
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
@@ -389,6 +427,13 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
         }
+        fallbackAugmented = await injectMediaCodecMap(
+          fallbackAugmented,
+          adapter,
+          project.dir,
+          fallback.compositionPath,
+          mediaCodecProbeCache,
+        );
         return c.html(fallbackAugmented, 200, previewCacheHeaders(etag));
       }
       return c.text("not found", 404);
@@ -443,7 +488,10 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const etag = `"comp:v2:${compPath}:${signature}${variablesEtagSalt(vars.raw)}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
-      return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
+      return new Response(null, {
+        status: 304,
+        headers: previewCacheHeaders(etag),
+      });
     }
 
     const stamped = pinSubCompHfIds(compFile, compPath);
@@ -461,6 +509,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
+    html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 
@@ -483,10 +532,33 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const contentType = getMimeType(subPath);
     const isText = /\.(html|css|js|json|svg|txt|md|cube)$/i.test(subPath);
 
-    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}"`;
+    // `?hf-proxy=h264` (per the KTD's `?variables=`-style negotiation): the
+    // param value must be exactly "h264" (matching play/staticProjectServer),
+    // only a video asset can be proxied, and only when auto-proxy is enabled
+    // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
+    // so a bogus/disabled request never spawns ffmpeg.
+    const proxyParam = c.req.query("hf-proxy");
+    if (proxyParam !== undefined) {
+      if (
+        proxyParam !== "h264" ||
+        !contentType.startsWith("video/") ||
+        !isAutoProxyEnabled(adapter)
+      ) {
+        return c.text("not found", 404);
+      }
+      const eligibility = decideMediaProxyEligibility(await probeAssetCodec(file));
+      if (!eligibility.eligible) {
+        return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
+      }
+    }
+
+    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}${proxyEtagSalt(proxyParam)}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
-      : { "Cache-Control": "private, max-age=3600, must-revalidate", ETag: etag };
+      : {
+          "Cache-Control": "private, max-age=3600, must-revalidate",
+          ETag: etag,
+        };
 
     if (!isText) {
       const ifNoneMatch = c.req.header("If-None-Match");
@@ -495,9 +567,27 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       }
     }
 
+    // Resolve to the cached proxy (transcoding on miss) only after the 404/304
+    // shortcuts above — the source's own mtime+size already salts the etag,
+    // so a 304 never needs to await a transcode at all.
+    let servedPath = file;
+    let servedContentType = contentType;
+    if (proxyParam !== undefined) {
+      try {
+        servedPath = await resolveProxy(project.dir, file);
+      } catch (err) {
+        if (err instanceof ProxyCapacityError) {
+          return c.text(err.message, 503, { "Retry-After": "5" });
+        }
+        const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
+        return c.text(message, 502);
+      }
+      servedContentType = "video/mp4";
+    }
+
     const buffer: Buffer = isText
       ? Buffer.from(readFileSync(file, "utf-8"), "utf-8")
-      : readFileSync(file);
+      : readFileSync(servedPath);
     const totalSize = buffer.length;
 
     // Support byte-range requests so browsers can seek audio/video elements.
@@ -513,7 +603,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
           status: 206,
           headers: {
             ...cacheHeaders,
-            "Content-Type": contentType,
+            "Content-Type": servedContentType,
             "Content-Range": `bytes ${start}-${safeEnd}/${totalSize}`,
             "Accept-Ranges": "bytes",
             "Content-Length": String(chunkSize),
@@ -525,7 +615,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     return new Response(new Uint8Array(buffer), {
       headers: {
         ...cacheHeaders,
-        "Content-Type": contentType,
+        "Content-Type": servedContentType,
         "Accept-Ranges": "bytes",
         "Content-Length": String(totalSize),
       },

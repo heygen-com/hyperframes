@@ -14,19 +14,26 @@ The skills split into three groups:
 ## Install
 
 <Steps>
-  <Step title="Pick what to install (interactive picker)">
+  <Step title="Install the core set (default)">
+    ```bash
+    npx hyperframes skills update
+    ```
+
+    Installs exactly the core set — the `/hyperframes` router, the `hyperframes-*` domain skills, and `media-use` — and the router installs each creation workflow on demand the first time it routes there. Always installs from the repo's current `main`. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+  </Step>
+  <Step title="Or pick what to install (interactive picker)">
     ```bash
     npx skills add heygen-com/hyperframes --full-depth
     ```
 
-    Opens a picker so you can choose which skills to add — the core set (the router, the `hyperframes-*` domain skills, and `media-use`) is listed under the "Core Skills" group, the on-demand creation workflows under "Other". Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours, so you may get an older copy of a skill. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+    In a terminal this opens a picker — the core set under the "Core Skills" group, the on-demand creation workflows under "Other", nothing pre-selected. Keep `--full-depth`: it installs the current `main`; without it `skills add` fetches the skills.sh registry blob, which lags `main` by hours. The picker is interactive-only: a non-interactive or agent run without `--skill` installs all 19, so agents should use `npx hyperframes skills update` above.
   </Step>
   <Step title="Or install everything at once (skip the picker)">
     ```bash
     npx skills add heygen-com/hyperframes --all --full-depth
     ```
 
-    Writes every skill to your project in one shot. Recommended when you want the full set without selecting from the picker.
+    Writes every skill to your project in one shot. Use this only when you explicitly want the full set up front — the router installs workflows on demand otherwise.
   </Step>
   <Step title="Or install one skill at a time">
     ```bash

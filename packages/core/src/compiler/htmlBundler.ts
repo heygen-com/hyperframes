@@ -1154,9 +1154,10 @@ export function emitRootCompositionVariableStyles(
   variablesByComp: Record<string, Record<string, unknown>> = {},
   overrides: Record<string, unknown> = {},
 ): boolean {
-  const layerFor = makeVariableLayer(document, overrides);
+  const authoredDefines = authoredDefinesPredicate(document);
+  const layerFor = makeVariableLayer(authoredDefines, overrides);
   const rules = [
-    ...hostScopedVariableRules(variablesByComp, overrides),
+    ...hostScopedVariableRules(variablesByComp, overrides, authoredDefines),
     ...rootDeclaredVariableRules(document, layerFor),
     ...declarerVariableRules(document, layerFor),
   ];
@@ -1173,18 +1174,23 @@ type VariableLayer = (
   hostValues: Record<string, unknown>,
 ) => Record<string, unknown>;
 
+function authoredDefinesPredicate(document: Document): (id: string) => boolean {
+  const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
+    .map((s) => s.textContent || "")
+    .join("\n");
+  return (id) => new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+}
+
 /**
  * Layering for one declarer: authored stylesheet definitions win over
  * declared defaults (the runtime's define-if-absent, applied statically) —
  * a var already defined in any authored <style> block is not emitted. Host
  * values and --variables overrides are explicit intent, never filtered.
  */
-function makeVariableLayer(document: Document, overrides: Record<string, unknown>): VariableLayer {
-  const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
-    .map((s) => s.textContent || "")
-    .join("\n");
-  const authoredDefines = (id: string): boolean =>
-    new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+function makeVariableLayer(
+  authoredDefines: (id: string) => boolean,
+  overrides: Record<string, unknown>,
+): VariableLayer {
   return (declared, hostValues) => {
     const out: Record<string, unknown> = {};
     for (const [id, value] of Object.entries(declared)) {
@@ -1200,14 +1206,24 @@ function makeVariableLayer(document: Document, overrides: Record<string, unknown
   };
 }
 
-/** Host-scoped rules: per-instance values inherited by the host's subtree. */
+/**
+ * Host-scoped rules: per-instance values inherited by the host's subtree.
+ * A composition variable, whether a declared default or an explicit
+ * data-variable-values value, never redefines a custom property authored by
+ * another part of the document. Render-time --variables overrides remain
+ * explicit user intent and always win.
+ */
 function hostScopedVariableRules(
   variablesByComp: Record<string, Record<string, unknown>>,
   overrides: Record<string, unknown>,
+  authoredDefines: (id: string) => boolean,
 ): string[] {
   const rules: string[] = [];
   for (const [compId, vars] of Object.entries(variablesByComp)) {
-    const withOverrides = { ...vars };
+    const withOverrides: Record<string, unknown> = {};
+    for (const [id, value] of Object.entries(vars)) {
+      if (!authoredDefines(id)) withOverrides[id] = value;
+    }
     for (const [id, value] of Object.entries(overrides)) {
       if (id in vars) withOverrides[id] = value;
     }
