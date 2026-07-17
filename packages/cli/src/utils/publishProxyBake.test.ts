@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // The error class lives inside this `vi.hoisted` block (not a plain top-level
 // `class`) because `vi.mock` factories run during static-import resolution —
@@ -57,7 +57,7 @@ const { bakeMediaProxies, PROXY_ARCHIVE_PREFIX } = await import("./publishProxyB
 // would otherwise walk `projectDir`) and `resolveProxy` (which would
 // transcode from it) are both mocked above, mirroring `checkBrowser.test.ts`'s
 // `PROJECT: ProjectDir = { dir: "/project", ... }` fixture.
-const PROJECT_DIR = "/project";
+const PROJECT_DIR = resolve("/project");
 
 const tempDirs: string[] = [];
 function tmpProxyFile(content: string): string {
