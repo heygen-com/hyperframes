@@ -23,11 +23,14 @@ description: >
 The host is a REAL talking avatar (lip-synced to the VO), mounted inside the vox page.
 Poster mode (static stills) is the degraded/preview variant.
 
-**Mode selection (ask at most once):**
-- No host wanted / no footage and no generation access → faceless, `/vox-explainer` alone.
-- Host wanted, user has footage of the person speaking the script → **Source B** below.
-- Host wanted, no footage → generate it: Tokyo per-beat (**Source A**, needs Tailscale) or a
-  HeyGen-platform single take (**Source C**, works from any MCP session).
+**Mode selection (ask at most once). Assume the LEAST-privileged user: no Omni/NB2L key,
+no Tokyo access, no HeyGen generation — just one uploaded video of themselves talking.**
+- No host wanted → faceless, `/vox-explainer` alone (fully functional with zero keys —
+  every grammar composes from HF-native components).
+- Host wanted → **DEFAULT: the user uploads one talking video** (self-recorded or exported
+  from any avatar tool) → **Source B** below. This path needs no keys and no internal access.
+- Only if access exists AND the user has no footage: Tokyo per-beat (**Source A**, Tailscale)
+  or a HeyGen-platform single take (**Source C**).
 Either way the piece is the SAME beat map — host beats swap between a mounted avatar and
 pure-graphic treatment, so a faceless and an avatar cut of one piece share everything else.
 
@@ -108,23 +111,32 @@ Use `hyperframes-agent` `integrations/tokyo/` (client.py + fallback.py) — do n
   `ffmpeg -c:v libvpx-vp9 -i host.webm -vf "tpad=stop_mode=clone:stop_duration=1.0" -c:v libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 …`
   (VP9 alpha: decode AND encode via libvpx-vp9 or the alpha silently drops).
 
-## Input source B — bring your own avatar footage (no Tokyo access needed)
+## Input source B — the user's own uploaded footage (DEFAULT path; zero keys, zero access)
 
-When the user UPLOADS an existing talking-head video (self-recorded, HeyGen-generated, or any
-real footage of the person speaking the actual script), the pipeline inverts: **the footage's
+The standard case: the user uploads ONE talking-head video of themselves speaking the actual
+script (self-recorded or exported from any avatar tool). The pipeline inverts: **the footage's
 own audio IS the VO** — you derive the beats from the footage instead of writing them first.
 
 1. **Transcribe** the footage (`hyperframes transcribe` / faster-whisper, word timestamps).
+   If transcription is unavailable, find sentence boundaries with
+   `ffmpeg -af silencedetect=noise=-35dB:d=0.45`; gaps are both between-sentence pauses and
+   intra-sentence periods — disambiguate by matching segment lengths against per-sentence
+   word counts (~2.2 w/s).
 2. **Cut into beats at sentence boundaries** (4–8s each, never split a sentence) — the beat map
    is extracted, not authored. Labels still come from VO keywords per the /vox-explainer contract;
-   grammar choice (§0) and the alternation rhythm apply unchanged (`graphic` beats = host
-   off-screen while the footage AUDIO continues).
-3. **Matte** each host beat (`hyperframes remove-background` → alpha webm) and mount as usual.
-4. **AUDIO CONTRACT unchanged, source inverted:** the beat's `<audio>` is the footage's own
+   grammar choice (§0) and the alternation rhythm apply unchanged. For each segment export
+   video (`-c:v libx264 -an`) AND a wav; `host` beats use their segment's video+audio, `graphic`
+   beats use another segment's WAV as voice-over while the host is off-screen.
+3. **ONE voice for the whole piece:** every beat's audio comes from the SAME footage. Never
+   fill graphic beats with a TTS narrator — a two-voice cut is a defect, not a style.
+4. **Mount.** Preferred zero-tooling mount: the **host-card** (§3) — unmatted footage on a
+   rounded specimen card, any reasonably clean background works. Die-cut sticker mount needs
+   `hyperframes remove-background` (local, no keys) when the collage look is wanted.
+5. **AUDIO CONTRACT unchanged, source inverted:** the beat's `<audio>` is the footage's own
    audio track (stream-copied, never re-encoded, never re-dubbed) at the beat's offsets. If the
    user wants a DIFFERENT script than what the footage says, that is a re-shoot / avatar-generation
    problem — never dub over the lips.
-5. QC gates identical (no-text zone, no freeze tails, lip-sync spot-checks are trivially true
+6. QC gates identical (no-text zone, no freeze tails, lip-sync spot-checks are trivially true
    since audio and lips share a source).
 
 /vox-avatar-edit accepts uploaded footage with zero changes — it only ever needed "a real
@@ -144,16 +156,14 @@ when Tokyo is unreachable and the user has no footage. Two hard rules learned em
    beats use ANOTHER SEGMENT OF THE SAME TAKE as voice-over (audio-only). Never fill graphic
    beats with a second TTS voice — a two-voice cut is a defect, not a style.
 
-Cutting: find line boundaries with `ffmpeg -af silencedetect=noise=-35dB:d=0.45`; gaps are
-both between-line pauses and intra-line periods — disambiguate by matching segment lengths
-against per-line word counts (~2.2 w/s). Export per segment: video (`-c:v libx264 -an`) for
-host beats + wav for every beat. Retime the beat map to the take's real segment durations.
-Mount with the host-card variant (§3) — platform output is unmatted, the card doesn't care.
-AUDIO CONTRACT unchanged: lips and voice stay one unit on every on-camera beat.
+Once the take exists it IS "uploaded footage" — cut, voice, mount and QC exactly per
+Source B (the take arrives with clean studio background, so the host-card mount applies
+directly). Retime the beat map to the take's real segment durations.
 
-## Poster mode (fallback / cheap preview)
+## Poster mode (fallback / cheap preview — REQUIRES the NB2L key)
 
-When Tokyo is unreachable or a fast preview is wanted: per-beat restyled poster stills via
+Only available when `GEMINI_PREFAB_KEY` exists (skip entirely for key-less users — Source B
+never needs it). When Tokyo is unreachable or a fast preview is wanted: per-beat restyled poster stills via
 `../vox-explainer/scripts/nb2l_image.py "<layout prompt>" still.jpg <avatar-frame.jpg>`
 (face-protection rule auto-prepended; identity ArcFace-verified ≥0.88). Bake short labels
 into stills with EXACT spelling; animate as living posters (push-in, prop boil, subtle sway —

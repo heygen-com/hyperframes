@@ -63,11 +63,17 @@ Per beat: `{id, label, vo, visual, camera, transition_out, palette_page}`.
 - Style words (paper, collage, kraft…) NEVER appear inside `vo` or `label` (style/content
   separation — known failure mode is style vocabulary leaking into rendered copy).
 
-### 2. Assets (image generation; everything else HF-native)
+### 2. Assets (HF-native first; image generation only when a key exists)
 
 The preset was chosen in §0. Never mix presets in a piece.
 
-- Photo-like cutouts (people, objects, archival): `scripts/nb2l_image.py "<prompt>" out.jpg` —
+**Zero-key mode (assume this by default):** without `GEMINI_PREFAB_KEY` there are NO generated
+images — and that is fine: specimen, diagram and dark-data grammars compose entirely from
+HF-native components (CSS/SVG/GSAP + the registry), verified end-to-end with zero generated
+assets. Prefer those grammars for key-less users; collage/archive lean on photo cutouts, so
+either ask the user to supply images or steer the grammar choice in §0.
+
+- Photo-like cutouts (people, objects, archival) — KEY-GATED: `scripts/nb2l_image.py "<prompt>" out.jpg` —
   prompt pattern: "vintage copper engraving etching of X, deep purple monochrome ink on plain
   white background, no text, no border". Needs `GEMINI_PREFAB_KEY` in env (Infisical:
   experiment-framework/dev; scope generative-language is handled by the script).
