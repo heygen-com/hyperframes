@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -166,4 +166,16 @@ function main() {
   }
 }
 
-if (pathToFileURL(process.argv[1] ?? "").href === import.meta.url) main();
+// realpath both sides: on macOS /tmp → /private/tmp, and node resolves the main
+// module's symlinks in import.meta.url while argv[1] keeps the invoked spelling —
+// a raw compare silently skips main() when invoked through any symlinked path.
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    return pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) main();
