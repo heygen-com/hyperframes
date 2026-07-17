@@ -323,7 +323,7 @@ describe("hevc_preview_codec", () => {
     expect(findings[0]?.severity).toBe("info");
     expect(findings[0]?.code).toBe("hevc_preview_codec");
     expect(findings[0]?.message).toContain("clip.mp4");
-    expect(findings[0]?.message).toContain("requires a browser with HEVC support");
+    expect(findings[0]?.message).toContain("automatically uses a cached H.264 proxy");
     expect(result.totalErrors).toBe(0);
     expect(result.results[0]?.result.ok).toBe(true);
   });

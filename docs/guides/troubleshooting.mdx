@@ -143,7 +143,7 @@ If your issue is about a specific coding mistake (animations not working, video 
 
     1. Confirm auto-proxying is not disabled: no `--no-proxy` flag, and `media.autoProxy` is not `false` in `hyperframes.json`.
     2. Run `npx hyperframes doctor` to confirm ffmpeg/ffprobe are installed; the proxy transcode needs both.
-    3. Run `npx hyperframes lint`: the info-level `hevc_preview_codec` finding names every affected asset.
+    3. Run `npx hyperframes lint --verbose`: the info-level `hevc_preview_codec` finding names every affected asset.
 
     See [Rendering: Input Video Codecs](/guides/rendering#input-video-codecs).
   </Accordion>

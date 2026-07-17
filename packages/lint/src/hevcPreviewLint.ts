@@ -145,12 +145,12 @@ export async function lintHevcPreviewCodec(
       message:
         `Video file(s) use the HEVC/H.265 codec: ${unique.join(", ")}. ` +
         "The render pipeline pre-decodes video with FFmpeg and never uses the browser's video decoder, so these render correctly. " +
-        "Live preview/player playback requires a browser with HEVC support. " +
-        "If preview playback fails, generate an H.264 proxy (e.g. via the media-use skill) and reference that instead.",
+        "Live preview/player playback automatically uses a cached H.264 proxy when the browser cannot decode HEVC. " +
+        "If playback still fails, verify ffmpeg/ffprobe are installed and auto-proxying is enabled.",
       fixHint:
         unique.length === 1
-          ? `Generate an H.264 proxy for "${unique[0]}" (e.g. via the media-use skill) if it fails to play in preview.`
-          : "Generate H.264 proxies for these files (e.g. via the media-use skill) if they fail to play in preview.",
+          ? `If "${unique[0]}" fails to play in preview, run hyperframes doctor and confirm media.autoProxy is not false.`
+          : "If these files fail to play in preview, run hyperframes doctor and confirm media.autoProxy is not false.",
     },
   ];
 }
