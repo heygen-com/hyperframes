@@ -1421,6 +1421,10 @@ describe("initSandboxRuntimeModular", () => {
       timeline: () => createPaddableMockTimeline(0),
     };
     window.__timelines = { main: createMockTimeline(0) };
+    // Only a real producer render/export page sets this (fileServer.ts's
+    // pre-head script) — required alongside renderCaptureSeekStarted so the
+    // gate doesn't also disable Studio's own preview-iframe rebind.
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 30, fpsSource: "default" };
 
     const postMessageSpy = vi.spyOn(window, "postMessage");
 
@@ -1443,12 +1447,62 @@ describe("initSandboxRuntimeModular", () => {
       Object.defineProperty(video, "duration", { value: 12, configurable: true });
       video.dispatchEvent(new Event("loadedmetadata"));
 
+      // Clears init.ts's internal METADATA_REBIND_DEBOUNCE_MS (100ms, not exported).
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const rebindMessages = postMessageSpy.mock.calls
         .map(([message]) => message as { code?: string } | undefined)
         .filter((message) => message?.code === "timeline_rebind_after_media_metadata");
       expect(rebindMessages).toHaveLength(0);
+    } finally {
+      delete (window as { gsap?: unknown }).gsap;
+    }
+  });
+
+  it("still applies the media-metadata duration rebind after renderSeek in Studio preview (no export render-seek config)", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    document.body.appendChild(video);
+
+    (
+      window as unknown as {
+        gsap?: { timeline: () => ReturnType<typeof createPaddableMockTimeline> };
+      }
+    ).gsap = {
+      timeline: () => createPaddableMockTimeline(0),
+    };
+    window.__timelines = { main: createMockTimeline(0) };
+    // No window.__HF_EXPORT_RENDER_SEEK_CONFIG here — Studio's preview iframe
+    // never sets it, and useTimelinePlayer's overhang fallback drives
+    // renderSeek there too. The rebind must still fire for this case.
+
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+
+    try {
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      Object.defineProperty(video, "duration", { value: 12, configurable: true });
+      video.dispatchEvent(new Event("loadedmetadata"));
+
+      // Clears init.ts's internal METADATA_REBIND_DEBOUNCE_MS (100ms, not exported).
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const rebindMessages = postMessageSpy.mock.calls
+        .map(([message]) => message as { code?: string } | undefined)
+        .filter((message) => message?.code === "timeline_rebind_after_media_metadata");
+      expect(rebindMessages).toHaveLength(1);
     } finally {
       delete (window as { gsap?: unknown }).gsap;
     }

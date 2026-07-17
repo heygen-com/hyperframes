@@ -1619,7 +1619,13 @@ export function initSandboxRuntimeModular(): void {
       // already happened deterministically during the probe stage before
       // capture starts, so once frames are being driven there is nothing left
       // for this self-correction to usefully do.
-      if (renderCaptureSeekStarted) return;
+      //
+      // renderSeek is also the entrypoint Studio's own preview iframe falls
+      // back to for overhanging timelines (useTimelinePlayer), so gate on
+      // both signals — renderCaptureSeekStarted alone would silently disable
+      // this self-correction for a live Studio scrub too, where duration
+      // hasn't been pre-resolved by a probe stage and still needs it.
+      if (renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
