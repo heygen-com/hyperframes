@@ -5,10 +5,11 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { getMimeType } from "@hyperframes/studio-server";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
- * by `play`, `present`, and the static project server. Re-exported from the
+ * by `play` and the static project server. Re-exported from the
  * single shared implementation in
  * `packages/studio-server/src/helpers/mediaProxyPreview.ts` (also used by the
  * studio preview route) so injection behavior cannot drift between surfaces.
@@ -70,33 +71,8 @@ export function injectRuntime(html: string): string {
     : html + `\n${runtimeTag}`;
 }
 
-const ASSET_CONTENT_TYPES: Record<string, string> = {
-  js: "application/javascript",
-  mjs: "application/javascript",
-  css: "text/css",
-  json: "application/json",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  svg: "image/svg+xml",
-  mp4: "video/mp4",
-  m4v: "video/mp4",
-  mov: "video/quicktime",
-  mkv: "video/x-matroska",
-  mxf: "video/mxf",
-  mts: "video/mp2t",
-  m2ts: "video/mp2t",
-  ts: "video/mp2t",
-  webm: "video/webm",
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-};
-
 export function assetContentType(filePath: string): string {
-  const ext = filePath.split(".").pop() ?? "";
-  // Own-property check so an ext like "__proto__" can't resolve to Object.prototype.
-  const type = Object.hasOwn(ASSET_CONTENT_TYPES, ext) ? ASSET_CONTENT_TYPES[ext] : undefined;
-  return type ?? "application/octet-stream";
+  return getMimeType(filePath);
 }
 
 /**

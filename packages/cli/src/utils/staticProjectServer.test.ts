@@ -279,6 +279,24 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
   });
 
+  it.each(["mxf", "mts", "m2ts", "ts", "mkv", "m4v"])(
+    "serves a proxy for .%s camera/container media",
+    async (extension) => {
+      const projectDir = mk();
+      const sourcePath = join(projectDir, `clip.${extension}`);
+      writeFileSync(sourcePath, "original-hostile-bytes");
+      const proxyPath = join(projectDir, "proxy.mp4");
+      writeFileSync(proxyPath, "transcoded-h264-bytes");
+      mocks.resolveProxy.mockResolvedValue(proxyPath);
+      server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+      const res = await fetch(`${server.url}clip.${extension}?hf-proxy=h264`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("transcoded-h264-bytes");
+      expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, sourcePath);
+    },
+  );
+
   it("rejects an alpha-bearing video before attempting a static-server proxy transcode", async () => {
     const projectDir = mk();
     writeFileSync(join(projectDir, "clip.mov"), "prores-4444-alpha-bytes");
