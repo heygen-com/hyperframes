@@ -22,16 +22,8 @@ if (missing.length > 0) {
   throw new Error(`GCP Cloud Run Dockerfile is missing workspace manifests: ${missing.join(", ")}`);
 }
 const requiredSourcePackages = [
-  "core",
-  "engine",
-  "gcp-cloud-run",
-  "lint",
-  "parsers",
-  "producer",
-  "sdk",
-  "sdk-playground",
-  "studio-server",
-];
+  ...dockerfile.matchAll(/bun run --cwd packages\/([^/]+) build/g),
+].map((match) => match[1]);
 const missingSources = requiredSourcePackages.filter((name) => !copiedSources.has(name));
 if (missingSources.length > 0) {
   throw new Error(
