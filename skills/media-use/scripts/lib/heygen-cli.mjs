@@ -10,6 +10,7 @@ export const HEYGEN_INSTALL_COMMAND =
   "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --oauth";
 export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
+export const HEYGEN_CLIENT_SOURCE_ARGV = ["--headers", "X-HeyGen-Client-Source: media-use"];
 
 export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. Install: ${HEYGEN_INSTALL_COMMAND}`;
 export const HEYGEN_NOT_AUTHENTICATED_MESSAGE = `media-use: heygen CLI not authenticated (free usage) — run: ${HEYGEN_AUTH_COMMAND}`;

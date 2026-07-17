@@ -1,18 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { reportHeygenFailure } from "./heygen-cli.mjs";
+import { HEYGEN_CLIENT_SOURCE_ARGV, reportHeygenFailure } from "./heygen-cli.mjs";
 
 export function heygenSearch(subcommand, query, { type, limit = 5, minScore } = {}) {
   // execFileSync with an argv array (no shell), so query/type/etc. are passed as
   // literal arguments — no quoting tricks, no command injection. subcommand is a
   // hardcoded multi-word string (e.g. "audio sounds list"), split into tokens.
   // Tag the caller via the CLI's allowlisted attribution header (heygen >= v0.3.0).
-  const args = [
-    "--headers",
-    "X-HeyGen-Client-Source: media-use",
-    ...subcommand.split(" "),
-    "--query",
-    query,
-  ];
+  const args = [...HEYGEN_CLIENT_SOURCE_ARGV, ...subcommand.split(" "), "--query", query];
   if (type) args.push("--type", type);
   args.push("--limit", String(limit));
   // Server-side score floor. Honored by `audio sounds list`; the `asset search`

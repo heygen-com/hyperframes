@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { reportHeygenFailure } from "./heygen-cli.mjs";
+import { HEYGEN_CLIENT_SOURCE_ARGV, reportHeygenFailure } from "./heygen-cli.mjs";
 
 // Voice / TTS generation via the HeyGen CLI — the only external CLI media-use
 // shells (CLI-only invariant: media-use holds no keys; the CLI owns auth).
@@ -59,7 +59,16 @@ export async function heygenTtsGenerate(intent, ctx) {
   if (!voiceId) return null;
   const p = runJson(
     "heygen",
-    ["voice", "speech", "create", "--text", intent, "--voice-id", voiceId],
+    [
+      ...HEYGEN_CLIENT_SOURCE_ARGV,
+      "voice",
+      "speech",
+      "create",
+      "--text",
+      intent,
+      "--voice-id",
+      voiceId,
+    ],
     "tts",
   );
   return result(p?.data?.audio_url, p?.data?.duration, "heygen.tts", intent);
