@@ -176,6 +176,12 @@ describe("resolveProxy", () => {
     expect(args).toContain("libvpx-vp9");
     expect(args).toContain("yuva420p");
     expect(args).toContain("libopus");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("0");
+    expect(args[args.indexOf("-crf") + 1]).toBe("23");
+    expect(args[args.indexOf("-deadline") + 1]).toBe("good");
+    expect(args[args.indexOf("-auto-alt-ref") + 1]).toBe("0");
+    expect(args[args.indexOf("-metadata:s:v:0") + 1]).toBe("alpha_mode=1");
+    expect(args[args.indexOf("-ac") + 1]).toBe("2");
     expect(args).toContain("-row-mt");
     expect(args).toContain("-cpu-used");
     expect(args).not.toContain("-movflags");
@@ -227,6 +233,24 @@ describe("resolveProxy", () => {
     expect(filter).toContain("bt709");
 
     succeed(calls[1]!);
+    await result;
+  });
+
+  it("preserves alpha on HDR-tagged VP9 proxies by bypassing the opaque tonemap chain", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, true);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "hdr-alpha.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath, "vp9");
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    const filter = calls[0]!.args[calls[0]!.args.indexOf("-vf") + 1];
+    expect(filter).toContain("format=yuva420p");
+    expect(filter).not.toContain("tonemap=");
+    succeed(calls[0]!, "fake-vp9-alpha-bytes");
     await result;
   });
 

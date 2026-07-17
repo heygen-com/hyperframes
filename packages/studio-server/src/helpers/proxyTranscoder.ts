@@ -159,15 +159,17 @@ function canonicalizeProxySource(
   };
 }
 
-function buildProxyCacheKey(source: CanonicalProxySource): string {
+function buildProxyCacheKey(source: CanonicalProxySource, variant: ProxyVariant): string {
   const stat = statSync(source.sourcePath);
   return createHash("sha256")
-    .update(`${source.relativePath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}`)
+    .update(
+      `${source.relativePath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}`,
+    )
     .digest("hex");
 }
 
 function getCanonicalProxyCachePath(source: CanonicalProxySource, variant: ProxyVariant): string {
-  const key = buildProxyCacheKey(source);
+  const key = buildProxyCacheKey(source, variant);
   return join(
     source.projectDir,
     CACHE_DIR_NAME,
@@ -312,18 +314,21 @@ async function runFfmpeg(
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
   }
-  if (metadata.color.isHdr) await ensureHdrFilters(ffmpegPath);
+  // The HDR tonemap filters discard alpha. VP9 is the alpha-preserving proxy
+  // variant, so retain its source color values instead of making it opaque.
+  if (metadata.color.isHdr && variant !== "vp9") await ensureHdrFilters(ffmpegPath);
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
   const pixelFormat = variant === "vp9" ? "yuva420p" : "yuv420p";
-  const videoFilter = metadata.color.isHdr
-    ? [
-        "zscale=t=linear:npl=100",
-        "tonemap=hable:desat=0",
-        "zscale=p=bt709:t=bt709:m=bt709:r=tv",
-        evenScale,
-        `format=${pixelFormat}`,
-      ].join(",")
-    : [evenScale, `format=${pixelFormat}`].join(",");
+  const videoFilter =
+    metadata.color.isHdr && variant !== "vp9"
+      ? [
+          "zscale=t=linear:npl=100",
+          "tonemap=hable:desat=0",
+          "zscale=p=bt709:t=bt709:m=bt709:r=tv",
+          evenScale,
+          `format=${pixelFormat}`,
+        ].join(",")
+      : [evenScale, `format=${pixelFormat}`].join(",");
 
   return new Promise((resolvePromise, reject) => {
     const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
@@ -352,6 +357,12 @@ async function runFfmpeg(
     const vp9Args = [
       "-c:v",
       "libvpx-vp9",
+      "-b:v",
+      "0",
+      "-crf",
+      "23",
+      "-deadline",
+      "good",
       "-pix_fmt",
       "yuva420p",
       "-colorspace",
@@ -364,6 +375,12 @@ async function runFfmpeg(
       "1",
       "-cpu-used",
       "4",
+      "-auto-alt-ref",
+      "0",
+      "-metadata:s:v:0",
+      "alpha_mode=1",
+      "-ac",
+      "2",
       "-c:a",
       "libopus",
     ];

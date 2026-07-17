@@ -214,6 +214,17 @@ describe("decideMediaProxyEligibility", () => {
       reason: "unknown_codec",
     });
   });
+
+  it("does not recycle an alpha VP9 source into the same proxy codec", () => {
+    expect(
+      decideMediaProxyEligibility({
+        codecName: "vp9",
+        browserHostile: true,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        hasAlpha: true,
+      }),
+    ).toEqual({ eligible: false, reason: "proxy_target_codec" });
+  });
 });
 
 describe("proxyVariantFor", () => {

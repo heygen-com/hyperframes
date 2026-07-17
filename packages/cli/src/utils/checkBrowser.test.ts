@@ -505,10 +505,10 @@ describe("preResolveHostileMediaProxies", () => {
   it("does not pre-resolve a hostile asset rejected by the shared proxy policy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.mov": {
-        codecName: "prores",
+      "/alpha.webm": {
+        codecName: "vp9",
         browserHostile: true,
-        representativeMime: null,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
         hasAlpha: true,
       },
     });

@@ -91,6 +91,9 @@ export type MediaProxyEligibility =
 export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
   if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
+  if (facts.hasAlpha && facts.codecName === "vp9") {
+    return { eligible: false, reason: "proxy_target_codec" };
+  }
   return { eligible: true };
 }
 
