@@ -78,6 +78,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onSetManualRotation,
     onSetText,
     onSetTextFieldStyle,
+    onPreviewTextFieldStyle,
     onAddTextField,
     onRemoveTextField,
     onToggleElementHidden,
@@ -346,6 +347,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           onImportFonts={onImportFonts}
           onSetText={onSetText}
           onSetTextFieldStyle={onSetTextFieldStyle}
+          onPreviewTextFieldStyle={onPreviewTextFieldStyle}
           onAddTextField={onAddTextField}
           onRemoveTextField={onRemoveTextField}
         />

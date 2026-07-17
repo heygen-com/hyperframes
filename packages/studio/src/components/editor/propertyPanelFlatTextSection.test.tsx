@@ -256,8 +256,9 @@ describe("FlatTextFieldEditor controls", () => {
     act(() => root.unmount());
   });
 
-  it("live-commits the Size field on input, without requiring blur/Enter", async () => {
+  it("previews Size input immediately and persists once on blur", () => {
     const onSetTextFieldStyle = vi.fn();
+    const onPreviewTextFieldStyle = vi.fn();
     const { host, root } = renderInto(
       <FlatTextSection
         element={makeSingleFieldElement()}
@@ -265,6 +266,7 @@ describe("FlatTextFieldEditor controls", () => {
         fontAssets={[]}
         onSetText={vi.fn()}
         onSetTextFieldStyle={onSetTextFieldStyle}
+        onPreviewTextFieldStyle={onPreviewTextFieldStyle}
         onAddTextField={vi.fn()}
         onRemoveTextField={vi.fn()}
       />,
@@ -275,6 +277,7 @@ describe("FlatTextFieldEditor controls", () => {
     const input = sizeLabel?.parentElement?.querySelector<HTMLInputElement>("input");
     if (!input) throw new Error("expected the Size row's input");
     act(() => {
+      input.focus();
       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         "value",
@@ -282,9 +285,10 @@ describe("FlatTextFieldEditor controls", () => {
       nativeInputValueSetter?.call(input, "24px");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    // liveCommit debounces on a 120ms timer — no blur/Enter dispatched here.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(onPreviewTextFieldStyle).toHaveBeenCalledWith("a", "font-size", "24px");
+    expect(onSetTextFieldStyle).not.toHaveBeenCalled();
+    act(() => {
+      input.blur();
     });
     expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "font-size", "24px");
     act(() => root.unmount());

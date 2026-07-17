@@ -78,6 +78,7 @@ export function PropertyPanelFlat({
   onClearSelection,
   onUngroup,
   onSetStyle,
+  onPreviewStyle,
   onSetAttribute,
   onSetAttributes,
   onSetAttributeLive,
@@ -86,6 +87,7 @@ export function PropertyPanelFlat({
   onRemoveBackground,
   onSetText,
   onSetTextFieldStyle,
+  onPreviewTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
   onAskAgent,
@@ -147,6 +149,7 @@ export function PropertyPanelFlat({
   | "onClearSelection"
   | "onUngroup"
   | "onSetStyle"
+  | "onPreviewStyle"
   | "onSetAttribute"
   | "onSetAttributes"
   | "onSetAttributeLive"
@@ -155,6 +158,7 @@ export function PropertyPanelFlat({
   | "onRemoveBackground"
   | "onSetText"
   | "onSetTextFieldStyle"
+  | "onPreviewTextFieldStyle"
   | "onAddTextField"
   | "onRemoveTextField"
   | "onAskAgent"
@@ -360,6 +364,7 @@ export function PropertyPanelFlat({
           onImportFonts={onImportFonts}
           onSetText={onSetText}
           onSetTextFieldStyle={onSetTextFieldStyle}
+          onPreviewTextFieldStyle={onPreviewTextFieldStyle}
           onAddTextField={onAddTextField}
           onRemoveTextField={onRemoveTextField}
         />
@@ -382,6 +387,7 @@ export function PropertyPanelFlat({
           styles={styles}
           assets={assets}
           onSetStyle={onSetStyle}
+          onPreviewStyle={onPreviewStyle}
           onImportAssets={onImportAssets}
           gsapBorderRadius={gsapBorderRadius}
         />

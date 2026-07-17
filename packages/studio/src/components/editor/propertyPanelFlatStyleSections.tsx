@@ -43,6 +43,7 @@ function FlatFillFields({
   styles,
   assets,
   onSetStyle,
+  onPreviewStyle,
   onImportAssets,
 }: {
   projectId: string;
@@ -50,6 +51,7 @@ function FlatFillFields({
   styles: Record<string, string>;
   assets: string[];
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
@@ -105,6 +107,7 @@ function FlatFillFields({
           label="Color"
           value={styles["background-color"] ?? "transparent"}
           disabled={styleEditingDisabled}
+          onPreview={(next) => onPreviewStyle?.("background-color", next)}
           onCommit={(next) => onSetStyle("background-color", next)}
         />
       ) : preferredFillMode === "Gradient" ? (
@@ -453,6 +456,7 @@ export function FlatStyleSection({
   styles,
   assets,
   onSetStyle,
+  onPreviewStyle,
   onImportAssets,
   gsapBorderRadius,
 }: {
@@ -461,6 +465,7 @@ export function FlatStyleSection({
   styles: Record<string, string>;
   assets: string[];
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
 }) {
@@ -473,6 +478,7 @@ export function FlatStyleSection({
         styles={styles}
         assets={assets}
         onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
         onImportAssets={onImportAssets}
       />
       <FlatStrokeRow styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
