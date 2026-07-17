@@ -4,10 +4,9 @@ import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 import { RULER_H, TRACKS_TOP_PAD, type TimelineRowGeometry } from "./timelineLayout";
 
-/** Disabled until horizontal windowing and stable gesture lifetime land. */
+/** Enabled by default; set the flag to `0` for the release rollback path. */
 export const STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED =
-  import.meta.env.DEV === true &&
-  import.meta.env.VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED === "1";
+  import.meta.env.VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED !== "0";
 
 export interface TimelineVirtualRow {
   readonly index: number;
@@ -102,7 +101,10 @@ export function useTimelineVirtualRows({
     () => rowGeometry.rowKeys.map((rowKey, index) => ({ index, rowKey })),
     [rowGeometry],
   );
-  if (!enabled) return allRows;
+  // TanStack Virtual cannot calculate a range before the scroll viewport has
+  // measurable height. Render the complete logical model for that first paint
+  // so SSR, tests, and a newly mounted timeline never flash an empty treegrid.
+  if (!enabled || viewport.clientHeight <= 0) return allRows;
   return virtualizer.getVirtualItems().map(({ index }) => ({
     index,
     rowKey: rowGeometry.rowKeys[index] ?? index,

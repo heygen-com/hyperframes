@@ -22,6 +22,34 @@ export interface KeyframeCacheEntry {
   easeEach?: string;
 }
 
+export interface FocusedEaseSegment {
+  animationId: string;
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
+  tweenPercentage: number;
+  elementId: string;
+  projectId: string | null;
+  sessionEpoch: number;
+  nonce: number;
+}
+
+type FocusedEaseSegmentTarget = Omit<FocusedEaseSegment, "projectId" | "sessionEpoch" | "nonce">;
+
+interface TimelineSessionIdentity {
+  timelineProjectId: string | null;
+  timelineSessionEpoch: number;
+}
+
+export function isFocusedEaseRequestCurrent(
+  request: FocusedEaseSegment,
+  state: TimelineSessionIdentity & { selectedElementId: string | null },
+): boolean {
+  return (
+    request.projectId === state.timelineProjectId &&
+    request.sessionEpoch === state.timelineSessionEpoch &&
+    request.elementId === state.selectedElementId
+  );
+}
+
 export interface KeyframeSlice {
   /** Selected collapsed (`element:pct`) or expanded (`element:group:animation:clipPct`) diamonds. */
   selectedKeyframes: Set<string>;
@@ -35,22 +63,11 @@ export interface KeyframeSlice {
   /** Union-expand clips (keyframed clips are expanded by default on load). */
   expandClips: (ids: readonly string[]) => void;
 
-  /** elementId scopes the request to one element so a shared (class-selector)
-   * animation id can't open the ease editor on the wrong element. */
-  focusedEaseSegment: {
-    animationId: string;
-    collidingAnimationTargets?: AnimationKeyframeTarget[];
-    tweenPercentage: number;
-    elementId: string;
-  } | null;
-  setFocusedEaseSegment: (
-    target: {
-      animationId: string;
-      collidingAnimationTargets?: AnimationKeyframeTarget[];
-      tweenPercentage: number;
-      elementId: string;
-    } | null,
-  ) => void;
+  /** Project/session/element-scoped request. Its nonce makes stale consumers harmless. */
+  focusedEaseSegment: FocusedEaseSegment | null;
+  focusedEaseRequestNonce: number;
+  setFocusedEaseSegment: (target: FocusedEaseSegmentTarget) => void;
+  clearFocusedEaseSegment: (nonce: number) => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
@@ -60,7 +77,10 @@ export interface KeyframeSlice {
   setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
 }
 
-export function createKeyframeSlice(set: StoreApi<KeyframeSlice>["setState"]): KeyframeSlice {
+export function createKeyframeSlice(
+  set: StoreApi<KeyframeSlice>["setState"],
+  getTimelineSessionIdentity: () => TimelineSessionIdentity,
+): KeyframeSlice {
   return {
     selectedKeyframes: new Set(),
     toggleSelectedKeyframe: (key) =>
@@ -97,7 +117,25 @@ export function createKeyframeSlice(set: StoreApi<KeyframeSlice>["setState"]): K
       }),
 
     focusedEaseSegment: null,
-    setFocusedEaseSegment: (target) => set({ focusedEaseSegment: target }),
+    focusedEaseRequestNonce: 0,
+    setFocusedEaseSegment: (target) =>
+      set((state) => {
+        const nonce = state.focusedEaseRequestNonce + 1;
+        const { timelineProjectId, timelineSessionEpoch } = getTimelineSessionIdentity();
+        return {
+          focusedEaseRequestNonce: nonce,
+          focusedEaseSegment: {
+            ...target,
+            projectId: timelineProjectId,
+            sessionEpoch: timelineSessionEpoch,
+            nonce,
+          },
+        };
+      }),
+    clearFocusedEaseSegment: (nonce) =>
+      set((state) =>
+        state.focusedEaseSegment?.nonce === nonce ? { focusedEaseSegment: null } : state,
+      ),
 
     keyframeCache: new Map(),
     setKeyframeCache: (elementId, data) =>

@@ -20,6 +20,7 @@ import { formatTextFieldPreview } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
+import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -259,6 +260,9 @@ export function PropertyPanelFlat({
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const clearFocusedEaseSegment = usePlayerStore((s) => s.clearFocusedEaseSegment);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -266,11 +270,32 @@ export function PropertyPanelFlat({
   // successor when both share a class-selector animation id.
   const renderedElementId = `${element.sourceFile}#${element.id}`;
   useEffect(() => {
-    if (!focusedEaseSegment || focusedEaseSegment.elementId !== renderedElementId) return;
-    if (gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId)) {
-      setOpenGroupId("motion");
+    if (!focusedEaseSegment) return;
+    if (
+      !isFocusedEaseRequestCurrent(focusedEaseSegment, {
+        timelineProjectId,
+        timelineSessionEpoch,
+        selectedElementId,
+      })
+    ) {
+      clearFocusedEaseSegment(focusedEaseSegment.nonce);
+      return;
     }
-  }, [focusedEaseSegment, gsapAnimations, renderedElementId]);
+    if (focusedEaseSegment.elementId !== renderedElementId) return;
+    if (!gsapAnimations.some((animation) => animation.id === focusedEaseSegment.animationId)) {
+      clearFocusedEaseSegment(focusedEaseSegment.nonce);
+      return;
+    }
+    setOpenGroupId("motion");
+  }, [
+    clearFocusedEaseSegment,
+    focusedEaseSegment,
+    gsapAnimations,
+    renderedElementId,
+    selectedElementId,
+    timelineProjectId,
+    timelineSessionEpoch,
+  ]);
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -6,6 +6,8 @@ import type { TimelineElement } from "../store/playerStore";
 export interface KeyframeDiamondContextMenuState {
   x: number;
   y: number;
+  /** Timeline project session that created this portaled target. */
+  sessionEpoch?: number;
   element: TimelineElement;
   elementId: string;
   percentage: number;

@@ -15,10 +15,12 @@ import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { TimelineElement } from "../player";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
+import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 
 type RenderClipContent = (
   element: TimelineElement,
   style: { clip: string; label: string },
+  context: TimelineClipRenderContext,
 ) => ReactNode;
 type TimelineDropPlacement = Pick<TimelineElement, "start" | "track">;
 

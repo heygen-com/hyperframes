@@ -52,8 +52,29 @@ describe("registerThumbnailRoutes", () => {
         seekTime: 1.2,
         selector: "#title-card",
         format: "jpeg",
+        outputWidth: 240,
+        outputHeight: 135,
+        signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("deduplicates concurrent generation for the same cache key", async () => {
+    const adapter = createAdapter();
+    let resolve!: (buffer: Buffer) => void;
+    const generated = new Promise<Buffer>((done) => (resolve = done));
+    adapter.generateThumbnail = vi.fn(async () => generated);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    const first = app.request("http://localhost/projects/demo/thumbnail/index.html?t=3");
+    const second = app.request("http://localhost/projects/demo/thumbnail/index.html?t=3");
+    await vi.waitFor(() => expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1));
+    resolve(Buffer.from("shared"));
+
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
   });
 
   it("forwards png capture requests and returns a png content type", async () => {

@@ -26,6 +26,7 @@ interface TimelineClipProps {
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
   children?: ReactNode;
 }
 
@@ -51,6 +52,7 @@ export const TimelineClip = memo(function TimelineClip({
   onClick,
   onDoubleClick,
   onContextMenu,
+  onKeyDown,
   children,
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
@@ -95,6 +97,13 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-hidden={el.hidden ? "true" : undefined}
       data-active={isActive ? "" : undefined}
       aria-hidden={isGestureActor ? "true" : undefined}
+      role={isGestureActor ? undefined : "button"}
+      tabIndex={isGestureActor ? undefined : isSelected ? 0 : -1}
+      aria-label={
+        isGestureActor
+          ? undefined
+          : `${displayLabel}, starts ${startLabel} seconds, ends ${endLabel} seconds, duration ${el.duration.toFixed(1)} seconds`
+      }
       className={clipClassName}
       style={style}
       title={
@@ -108,6 +117,7 @@ export const TimelineClip = memo(function TimelineClip({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      onKeyDown={onKeyDown}
     >
       {/* Left trim handle */}
       {showHandles && capabilities.canTrimStart && (

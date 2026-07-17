@@ -1,6 +1,7 @@
 import { useCallback, type ReactNode } from "react";
 import { Timeline } from "../../player";
 import type { TimelineElement } from "../../player";
+import type { TimelineClipRenderContext } from "../../player/components/TimelineTypes";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { TimelineResizeDivider } from "./TimelineResizeDivider";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
@@ -82,6 +83,7 @@ export interface TimelinePaneProps {
   renderClipContent?: (
     element: TimelineElement,
     style: { clip: string; label: string },
+    context: TimelineClipRenderContext,
   ) => ReactNode;
   onFileDrop?: (
     files: File[],

@@ -1,12 +1,56 @@
 import type { Hono } from "hono";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  statSync,
+  readdirSync,
+  unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
+import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
+const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
+const THUMBNAIL_MAX_OUTPUT_HEIGHT = 135;
+const THUMBNAIL_CACHE_MAX_BYTES = 512 * 1024 * 1024;
+const THUMBNAIL_CACHE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const prunedCacheDirs = new Set<string>();
+
+export function pruneThumbnailCache(
+  cacheDir: string,
+  protectedPaths: ReadonlySet<string>,
+  now = Date.now(),
+): void {
+  if (!existsSync(cacheDir)) return;
+  const files = readdirSync(cacheDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const path = join(cacheDir, entry.name);
+      const stat = statSync(path);
+      return { path, bytes: stat.size, mtimeMs: stat.mtimeMs };
+    });
+  const retained = [];
+  for (const file of files) {
+    if (!protectedPaths.has(file.path) && now - file.mtimeMs > THUMBNAIL_CACHE_MAX_AGE_MS) {
+      unlinkSync(file.path);
+    } else {
+      retained.push(file);
+    }
+  }
+  let bytes = retained.reduce((total, file) => total + file.bytes, 0);
+  for (const file of retained.sort((left, right) => left.mtimeMs - right.mtimeMs)) {
+    if (bytes <= THUMBNAIL_CACHE_MAX_BYTES) break;
+    if (protectedPaths.has(file.path)) continue;
+    unlinkSync(file.path);
+    bytes -= file.bytes;
+  }
+}
 
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
@@ -86,8 +130,22 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const outputScale = Math.min(
+      1,
+      THUMBNAIL_MAX_OUTPUT_WIDTH / compW,
+      THUMBNAIL_MAX_OUTPUT_HEIGHT / compH,
+    );
+    const outputWidth = Math.max(1, Math.round(compW * outputScale));
+    const outputHeight = Math.max(1, Math.round(compH * outputScale));
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
+    if (!prunedCacheDirs.has(cacheDir)) {
+      prunedCacheDirs.add(cacheDir);
+      pruneThumbnailCache(
+        cacheDir,
+        new Set([...thumbnailGenerationCoordinator.protectedKeys(), cachePath]),
+      );
+    }
     if (existsSync(cachePath)) {
       return new Response(new Uint8Array(readFileSync(cachePath)), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
@@ -95,29 +153,44 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     }
 
     try {
-      const buffer = await adapter.generateThumbnail({
-        project,
-        compPath,
-        seekTime,
-        width: compW,
-        height: compH,
-        previewUrl,
-        selector,
-        format,
-        selectorIndex,
-      });
+      const buffer = await thumbnailGenerationCoordinator.acquire(
+        cachePath,
+        c.req.raw.signal,
+        async (signal) => {
+          const generated = await adapter.generateThumbnail!({
+            project,
+            compPath,
+            seekTime,
+            width: compW,
+            height: compH,
+            outputWidth,
+            outputHeight,
+            previewUrl,
+            selector,
+            format,
+            selectorIndex,
+            signal,
+          });
+          if (!generated) return null;
+          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+          writeFileSync(cachePath, generated);
+          pruneThumbnailCache(cacheDir, thumbnailGenerationCoordinator.protectedKeys());
+          return generated;
+        },
+      );
       if (!buffer) {
         return c.json(
           { error: "Thumbnail generation failed — Chrome browser may not be available" },
           500,
         );
       }
-      if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
-      writeFileSync(cachePath, buffer);
       return new Response(new Uint8Array(buffer), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return new Response(null, { status: 499 });
+      }
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: `Thumbnail generation failed: ${msg}` }, 500);
     }

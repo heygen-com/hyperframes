@@ -59,7 +59,8 @@ export function useStudioTestHooks({
     } catch {
       isDev = false;
     }
-    if (!isDev || typeof window === "undefined") return;
+    const isBenchmarkBuild = import.meta.env.VITE_STUDIO_TIMELINE_BENCHMARK_ENABLED === "1";
+    if ((!isDev && !isBenchmarkBuild) || typeof window === "undefined") return;
     const api: StudioTestApi = {
       selectByDomId: async (id: string): Promise<boolean> => {
         const element = previewIframeRef.current?.contentDocument?.getElementById(id) ?? null;
