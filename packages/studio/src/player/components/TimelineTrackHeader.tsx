@@ -493,6 +493,7 @@ export function TimelineTrackHeader({
 
   return (
     <div
+      role="rowheader"
       className={`sticky left-0 z-[12] shrink-0 ${
         !isKeyframeLayer
           ? showTrackLabel

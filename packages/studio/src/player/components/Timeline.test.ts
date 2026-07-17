@@ -274,6 +274,34 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  it("renders the complete treegrid while row virtualization is gated off", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: Array.from({ length: 12 }, (_, track) => ({
+        id: `clip-${track}`,
+        tag: "div",
+        start: 0,
+        duration: 2,
+        track,
+      })),
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+    const rows = treegrid?.querySelectorAll('[role="row"]') ?? [];
+    expect(treegrid?.getAttribute("aria-rowcount")).toBe("12");
+    expect(rows).toHaveLength(12);
+    expect(rows[0]?.getAttribute("aria-rowindex")).toBe("1");
+    expect(rows[11]?.getAttribute("aria-rowindex")).toBe("12");
+    expect(treegrid?.querySelectorAll('[role="rowheader"]')).toHaveLength(12);
+    expect(treegrid?.querySelectorAll('[role="gridcell"]')).toHaveLength(12);
+
+    act(() => root.unmount());
+  });
+
   it("renders the gutter without legacy icons or hue dots", () => {
     const { host, root } = renderBasicTimeline();
 

@@ -45,6 +45,11 @@ import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingA
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import {
+  STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED,
+  useTimelineVirtualRows,
+} from "./useTimelineVirtualRows";
+import { resolveTimelineFocusIdentity } from "./timelineFocusIdentity";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -146,6 +151,7 @@ export const Timeline = memo(function Timeline({
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
+  const clipRevealRequest = usePlayerStore((s) => s.clipRevealRequest);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
   // Label mode = comp has keyframed clips (not just when expanded): keeps the layer
   // disclosure + property column visible and reserves a GUTTER before 0s (Figma).
@@ -322,6 +328,34 @@ export const Timeline = memo(function Timeline({
       expandedElements.length,
       displayLayout.totalH,
     ]);
+  const focusIdentity = useMemo(
+    () => resolveTimelineFocusIdentity(expandedElements, selectedElementId),
+    [expandedElements, selectedElementId],
+  );
+  const revealIdentity = useMemo(
+    () => resolveTimelineFocusIdentity(expandedElements, clipRevealRequest?.elementId ?? null),
+    [clipRevealRequest?.elementId, expandedElements],
+  );
+  const pinnedRowKeys = useMemo(
+    () =>
+      [
+        draggedClip?.started ? draggedClip.previewTrack : undefined,
+        resizingClip?.element.track,
+        revealIdentity?.rowKey,
+        clipContextMenu?.element.track,
+        kfContextMenu?.element.track,
+      ].filter((rowKey): rowKey is number => rowKey !== undefined),
+    [clipContextMenu, draggedClip, kfContextMenu, resizingClip, revealIdentity],
+  );
+  const virtualRows = useTimelineVirtualRows({
+    enabled: STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED,
+    scrollRef,
+    viewport,
+    rowGeometry: displayLayout.rowGeometry,
+    sessionEpoch,
+    pinnedRowKeys,
+    focusedRowKey: focusIdentity?.rowKey,
+  });
   const previousLayoutRef = useRef(displayLayout.rowGeometry);
   const previousSessionEpochRef = useRef(sessionEpoch);
   useLayoutEffect(() => {
@@ -578,6 +612,9 @@ export const Timeline = memo(function Timeline({
           theme={theme}
           displayTrackOrder={displayLayout.displayTrackOrder}
           rowHeights={displayLayout.displayRowHeights}
+          rowGeometry={displayLayout.rowGeometry}
+          virtualRows={virtualRows}
+          rowsVirtualized={STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED}
           trackOrder={trackOrder}
           tracks={tracks}
           trackStyles={trackStyles}

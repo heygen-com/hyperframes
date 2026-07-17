@@ -10,7 +10,7 @@ import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
-import { CLIP_Y, CLIP_HANDLE_W, TRACK_H, getTimelineRowHeight } from "./timelineLayout";
+import { CLIP_Y, CLIP_HANDLE_W, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -29,6 +29,8 @@ import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { renderClipChildren } from "./timelineClipChildren";
+import { TimelineTrackRow } from "./TimelineTrackRow";
+import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 
 /**
  * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
@@ -44,6 +46,9 @@ export interface TimelineLaneBaseProps {
   theme: TimelineTheme;
   displayTrackOrder: number[];
   rowHeights: readonly number[];
+  rowGeometry: TimelineRowGeometry;
+  virtualRows: readonly TimelineVirtualRow[];
+  rowsVirtualized: boolean;
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
@@ -126,7 +131,9 @@ export function TimelineLanes({
   trackContentWidth,
   theme,
   displayTrackOrder,
-  rowHeights,
+  rowGeometry,
+  virtualRows,
+  rowsVirtualized,
   trackOrder,
   tracks,
   trackStyles,
@@ -182,16 +189,18 @@ export function TimelineLanes({
     toggleClipExpanded(key);
   };
   return (
-    <>
+    <div
+      role="treegrid"
+      aria-label="Timeline tracks"
+      aria-rowcount={displayTrackOrder.length}
+      className={rowsVirtualized ? "absolute inset-0" : undefined}
+    >
       {
-        // NOTE (deliberate no-virtualization): lanes and their clips render via a
-        // plain `.map()` inside the scroll container rather than a windowing/virtualized
-        // list. NLE clip counts are small (dozens to low hundreds), so the DOM cost is
-        // bounded and virtualization's complexity isn't worth it. TODO: revisit and swap
-        // in a virtualizer if editorial workflows ever push very high clip counts.
         // fallow-ignore-next-line complexity
-        displayTrackOrder.map((trackNum, row) => {
-          const rowHeight = getTimelineRowHeight(row, rowHeights);
+        virtualRows.map(({ index: row, rowKey }) => {
+          const trackNum = displayTrackOrder[row];
+          if (trackNum === undefined) return null;
+          const rowHeight = rowGeometry.getRowHeight(row);
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
@@ -218,14 +227,15 @@ export function TimelineLanes({
           const keyframeClipExpanded =
             keyframeClipKey != null && expandedClipIds.has(keyframeClipKey);
           return (
-            <div
-              key={trackNum}
-              className="relative flex"
-              style={{
-                height: rowHeight,
-                background: rowBackground,
-                borderBottom: `1px solid ${theme.rowBorder}`,
-              }}
+            <TimelineTrackRow
+              key={rowKey}
+              index={row}
+              top={rowGeometry.getRowTop(row)}
+              height={rowHeight}
+              virtualized={rowsVirtualized}
+              expanded={keyframeClip ? keyframeClipExpanded : undefined}
+              background={rowBackground}
+              borderColor={theme.rowBorder}
             >
               <TimelineTrackHeader
                 trackNumber={trackNum}
@@ -253,6 +263,7 @@ export function TimelineLanes({
                 onSeek={onSeek}
               />
               <div
+                role="gridcell"
                 style={{
                   width: trackContentWidth,
                   marginLeft: contentGutter, // room for a 0% diamond left of t=0
@@ -588,10 +599,10 @@ export function TimelineLanes({
                   })
                 }
               </div>
-            </div>
+            </TimelineTrackRow>
           );
         })
       }
-    </>
+    </div>
   );
 }
