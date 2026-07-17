@@ -1,7 +1,8 @@
 import { memo, useRef, useState } from "react";
 import { moveBeatCompositionTime, deleteBeatAtCompositionTime } from "../../utils/beatEditActions";
 import { usePlayerStore } from "../store/playerStore";
-import { CLIP_Y } from "./timelineLayout";
+import { CLIP_Y, getTimelineBeatEntries } from "./timelineLayout";
+import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
 export const BEAT_BAND_H = 14; // dark band height at top of track
 const BEAT_HIT_W = 12; // grab width per beat (px)
@@ -24,23 +25,30 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
   beatStrengths,
   pps,
   highlightTime,
+  renderTimeRange,
 }: {
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
   /** Snap guide time — drawn as a bright line even when it is not a beat. */
   highlightTime?: number | null;
+  renderTimeRange?: TimelineTimeRange;
 }) {
   const visibleBeatTimes = beatTimes && !beatsTooDense(beatTimes, pps) ? beatTimes : null;
   const highlightIsBeat =
     highlightTime != null &&
     visibleBeatTimes?.some((t) => Math.abs(t - highlightTime) < 1e-3) === true;
   if (!visibleBeatTimes && highlightTime == null) return null;
+  const beatEntries = getTimelineBeatEntries(
+    visibleBeatTimes ?? undefined,
+    beatStrengths,
+    renderTimeRange,
+  );
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-      {visibleBeatTimes?.map((t, i) => {
+      {beatEntries.map(({ time: t, index: i, strength: beatStrength }) => {
         const isHighlight = highlightTime != null && Math.abs(t - highlightTime) < 1e-3;
-        const strength = Math.pow(Math.min(1, beatStrengths?.[i] ?? 0.5), 2.2);
+        const strength = Math.pow(Math.min(1, beatStrength ?? 0.5), 2.2);
         const opacity = isHighlight ? 1 : 0.06 + strength * 0.16;
         return (
           <div
@@ -81,10 +89,12 @@ export const BeatStrip = memo(function BeatStrip({
   beatTimes,
   beatStrengths,
   pps,
+  renderTimeRange,
 }: {
   beatTimes: number[] | undefined;
   beatStrengths: number[] | undefined;
   pps: number;
+  renderTimeRange?: TimelineTimeRange;
 }) {
   // Active drag: which beat and how far (px) it's been dragged.
   const [drag, setDrag] = useState<{ index: number; dx: number } | null>(null);
@@ -92,15 +102,21 @@ export const BeatStrip = memo(function BeatStrip({
 
   if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
   const cy = BEAT_BAND_H / 2;
+  const beatEntries = getTimelineBeatEntries(
+    beatTimes,
+    beatStrengths,
+    renderTimeRange,
+    drag ? new Set([drag.index]) : undefined,
+  );
 
   return (
     <div
       className="absolute left-0 right-0 pointer-events-none"
       style={{ top: CLIP_Y, height: BEAT_BAND_H, background: "rgba(0,0,0,0.28)", zIndex: 11 }}
     >
-      {beatTimes.map((t, i) => {
+      {beatEntries.map(({ time: t, index: i, strength: beatStrength }) => {
         // Louder beats → larger, brighter dot. Gamma curve widens the contrast.
-        const strength = Math.pow(Math.min(1, beatStrengths?.[i] ?? 0.5), 2.2);
+        const strength = Math.pow(Math.min(1, beatStrength ?? 0.5), 2.2);
         const r = 1.5 + strength * 2.5;
         const opacity = 0.25 + strength * 0.75;
         const dxPx = drag?.index === i ? drag.dx : 0;

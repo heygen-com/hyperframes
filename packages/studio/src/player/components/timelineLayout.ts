@@ -1,5 +1,7 @@
 import { formatTime } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
@@ -9,6 +11,65 @@ export const LANE_H = 28;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
+
+export function getTimelineRenderTimeRange(
+  viewport: { readonly scrollLeft: number; readonly clientWidth: number },
+  pixelsPerSecond: number,
+  contentOrigin: number,
+  duration: number,
+): TimelineTimeRange {
+  if (!(pixelsPerSecond > 0) || !(duration > 0) || !(viewport.clientWidth > 0)) {
+    return { start: 0, end: 0 };
+  }
+  const overscanPx = viewport.clientWidth * TIMELINE_VIEWPORT_BUDGETS.timeOverscanViewportRatio;
+  const startPx = viewport.scrollLeft - contentOrigin - overscanPx;
+  const endPx = viewport.scrollLeft + viewport.clientWidth - contentOrigin + overscanPx;
+  return {
+    start: Math.min(duration, Math.max(0, startPx / pixelsPerSecond)),
+    end: Math.min(duration, Math.max(0, endPx / pixelsPerSecond)),
+  };
+}
+
+export interface TimelineBeatEntry {
+  readonly index: number;
+  readonly time: number;
+  readonly strength: number | undefined;
+}
+
+function findFirstTimeAtOrAfter(times: readonly number[], target: number): number {
+  let low = 0;
+  let high = times.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if ((times[mid] ?? Number.POSITIVE_INFINITY) < target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+/** Slice sorted beat data without allocating entries outside the render window. */
+export function getTimelineBeatEntries(
+  beatTimes: readonly number[] | undefined,
+  beatStrengths: readonly number[] | undefined,
+  range: TimelineTimeRange | undefined,
+  pinnedIndexes: ReadonlySet<number> = new Set(),
+): readonly TimelineBeatEntry[] {
+  if (!beatTimes?.length) return [];
+  const start = range?.start ?? Number.NEGATIVE_INFINITY;
+  const end = range?.end ?? Number.POSITIVE_INFINITY;
+  const selected = new Set<number>();
+  for (let index = findFirstTimeAtOrAfter(beatTimes, start); index < beatTimes.length; index++) {
+    const time = beatTimes[index];
+    if (time === undefined || time >= end) break;
+    selected.add(index);
+  }
+  for (const index of pinnedIndexes) {
+    if (index >= 0 && index < beatTimes.length) selected.add(index);
+  }
+  return [...selected]
+    .sort((left, right) => left - right)
+    .map((index) => ({ index, time: beatTimes[index]!, strength: beatStrengths?.[index] }));
+}
 
 export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
@@ -258,7 +319,7 @@ export const FIT_ZOOM_HEADROOM = 1.2;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
 // fallow-ignore-next-line complexity
-function getMajorTickInterval(
+export function getTimelineMajorTickInterval(
   duration: number,
   pixelsPerSecond?: number,
   frameRate?: number,
@@ -323,28 +384,55 @@ function roundTickValue(t: number): number {
   return Math.round(t * 1e6) / 1e6;
 }
 
+function isSupportedTickDuration(duration: number): boolean {
+  return duration > 0 && Number.isFinite(duration) && duration <= 14400;
+}
+
+function getTickRange(duration: number, range?: TimelineTimeRange): TimelineTimeRange {
+  return {
+    start: Math.max(0, range?.start ?? 0),
+    end: Math.min(duration, range?.end ?? duration),
+  };
+}
+
+function appendMinorTicks(
+  minor: number[],
+  majorTime: number,
+  minorInterval: number,
+  subdivisions: number,
+  range: TimelineTimeRange,
+  maxTicks: number,
+  majorCount: number,
+): void {
+  for (let part = 1; part < subdivisions && majorCount + minor.length < maxTicks; part++) {
+    const time = majorTime + part * minorInterval;
+    if (time >= range.start - 0.001 && time <= range.end + 0.001) {
+      minor.push(roundTickValue(time));
+    }
+  }
+}
+
 export function generateTicks(
   duration: number,
   pixelsPerSecond?: number,
   frameRate?: number,
+  range?: TimelineTimeRange,
 ): { major: number[]; minor: number[] } {
-  if (duration <= 0 || !Number.isFinite(duration) || duration > 14400)
-    return { major: [], minor: [] };
-  const majorInterval = getMajorTickInterval(duration, pixelsPerSecond, frameRate);
+  if (!isSupportedTickDuration(duration)) return { major: [], minor: [] };
+  const majorInterval = getTimelineMajorTickInterval(duration, pixelsPerSecond, frameRate);
   const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
   const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000; // Safety cap to prevent runaway tick generation
-  for (let i = 0; major.length < maxTicks; i++) {
+  const tickRange = getTickRange(duration, range);
+  const firstMajorIndex = Math.max(0, Math.floor(tickRange.start / majorInterval));
+  for (let i = firstMajorIndex; major.length < maxTicks; i++) {
     const t = i * majorInterval;
-    if (t > duration + 0.001) break;
-    major.push(roundTickValue(t));
+    if (t > tickRange.end + 0.001) break;
+    if (t >= tickRange.start - 0.001) major.push(roundTickValue(t));
     // Emit the (subdivisions - 1) minor ticks between this major and the next.
-    for (let k = 1; k < subdivisions && major.length + minor.length < maxTicks; k++) {
-      const m = t + k * minorInterval;
-      if (m <= duration + 0.001) minor.push(roundTickValue(m));
-    }
+    appendMinorTicks(minor, t, minorInterval, subdivisions, tickRange, maxTicks, major.length);
   }
   return { major, minor };
 }

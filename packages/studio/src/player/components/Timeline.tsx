@@ -7,7 +7,6 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
-import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
@@ -24,6 +23,8 @@ import {
   GUTTER,
   LABEL_COL_W,
   generateTicks,
+  getTimelineRenderTimeRange,
+  getTimelineMajorTickInterval,
   getTimelineContentXFromClient,
   RULER_H,
   type TimelineRowGeometry,
@@ -50,6 +51,8 @@ import {
   useTimelineVirtualRows,
 } from "./useTimelineVirtualRows";
 import { resolveTimelineFocusIdentity } from "./timelineFocusIdentity";
+import { createTimelineClipIndex } from "../lib/timelineClipIndex";
+import { useTimelineRevealClip } from "./useTimelineRevealClip";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -152,6 +155,7 @@ export const Timeline = memo(function Timeline({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const clipRevealRequest = usePlayerStore((s) => s.clipRevealRequest);
+  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
   // Label mode = comp has keyframed clips (not just when expanded): keeps the layer
   // disclosure + property column visible and reserves a GUTTER before 0s (Figma).
@@ -403,28 +407,59 @@ export const Timeline = memo(function Timeline({
   const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
   selectedElementRef.current = selectedElement;
 
-  const {
-    pps,
-    fitPps,
-    displayContentWidth,
-    displayDuration,
-    clipStateVersion,
-    zoomModeRef,
-    manualZoomPercentRef,
-  } = useTimelineGeometry({
-    viewportWidth: viewport.clientWidth,
-    effectiveDuration,
-    zoomMode,
-    manualZoomPercent,
-    ppsRef,
-    fitPpsRef,
-    draggedClip,
-    resizingClip,
-    expandedElements,
-    isDragging,
+  const { pps, fitPps, displayContentWidth, displayDuration, zoomModeRef, manualZoomPercentRef } =
+    useTimelineGeometry({
+      viewportWidth: viewport.clientWidth,
+      effectiveDuration,
+      zoomMode,
+      manualZoomPercent,
+      ppsRef,
+      fitPpsRef,
+      draggedClip,
+      resizingClip,
+      expandedElements,
+      isDragging,
+      scrollRef,
+      lastScrollLeftRef,
+      contentOrigin,
+    });
+  const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
+  const renderTimeRange = useMemo(
+    () => getTimelineRenderTimeRange(viewport, pps, contentOrigin, displayDuration),
+    [contentOrigin, displayDuration, pps, viewport],
+  );
+  const pinnedClipIdentities = useMemo(
+    () =>
+      new Set(
+        [
+          selectedElementId ?? undefined,
+          draggedClip?.element.key ?? draggedClip?.element.id,
+          resizingClip?.element.key ?? resizingClip?.element.id,
+          clipRevealRequest?.elementId,
+          focusedEaseSegment?.elementId,
+          clipContextMenu?.element.key ?? clipContextMenu?.element.id,
+          kfContextMenu?.element.key ?? kfContextMenu?.element.id,
+        ].filter((identity): identity is string => identity !== undefined),
+      ),
+    [
+      clipContextMenu,
+      clipRevealRequest?.elementId,
+      draggedClip,
+      focusedEaseSegment?.elementId,
+      kfContextMenu,
+      resizingClip,
+      selectedElementId,
+    ],
+  );
+  useTimelineRevealClip({
     scrollRef,
-    lastScrollLeftRef,
+    elements: expandedElements,
+    rowGeometry: displayLayout.rowGeometry,
+    pixelsPerSecond: pps,
     contentOrigin,
+    allowHorizontal: zoomMode === "manual",
+    viewportVersion: viewport,
+    sessionEpoch,
   });
 
   const laneGapStrips = useTimelineGapHighlights({
@@ -458,11 +493,6 @@ export const Timeline = memo(function Timeline({
     setManualZoomPercent,
     onSeek,
     contentOrigin,
-  });
-  useTimelineActiveClips({
-    scrollRef,
-    currentTime,
-    clipStateVersion,
   });
 
   const {
@@ -508,10 +538,16 @@ export const Timeline = memo(function Timeline({
   // Frame display mode labels ruler ticks as frame numbers — pass the fps so ticks snap to frames.
   const tickFps = timeDisplayMode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
   const { major, minor } = useMemo(
-    () => generateTicks(displayDuration, pps, tickFps),
-    [displayDuration, pps, tickFps],
+    () =>
+      generateTicks(
+        displayDuration,
+        pps,
+        tickFps,
+        STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED ? renderTimeRange : undefined,
+      ),
+    [displayDuration, pps, renderTimeRange, tickFps],
   );
-  const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
+  const majorTickInterval = getTimelineMajorTickInterval(displayDuration, pps, tickFps);
 
   const getPreviewElement = useCallback(
     (element: TimelineElement): TimelineElement => {
@@ -615,6 +651,9 @@ export const Timeline = memo(function Timeline({
           rowGeometry={displayLayout.rowGeometry}
           virtualRows={virtualRows}
           rowsVirtualized={STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED}
+          clipIndex={clipIndex}
+          renderTimeRange={renderTimeRange}
+          pinnedClipIdentities={pinnedClipIdentities}
           trackOrder={trackOrder}
           tracks={tracks}
           trackStyles={trackStyles}

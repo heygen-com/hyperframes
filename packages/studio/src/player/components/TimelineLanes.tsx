@@ -31,6 +31,12 @@ import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspec
 import { renderClipChildren } from "./timelineClipChildren";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
+import { isTimelineClipActive } from "./useTimelineActiveClips";
+import {
+  queryTimelineClipIndex,
+  type TimelineClipIndex,
+  type TimelineTimeRange,
+} from "../lib/timelineClipIndex";
 
 /**
  * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
@@ -49,6 +55,9 @@ export interface TimelineLaneBaseProps {
   rowGeometry: TimelineRowGeometry;
   virtualRows: readonly TimelineVirtualRow[];
   rowsVirtualized: boolean;
+  clipIndex: TimelineClipIndex;
+  renderTimeRange: TimelineTimeRange;
+  pinnedClipIdentities: ReadonlySet<string>;
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
@@ -134,6 +143,9 @@ export function TimelineLanes({
   rowGeometry,
   virtualRows,
   rowsVirtualized,
+  clipIndex,
+  renderTimeRange,
+  pinnedClipIdentities,
   trackOrder,
   tracks,
   trackStyles,
@@ -202,6 +214,29 @@ export function TimelineLanes({
           if (trackNum === undefined) return null;
           const rowHeight = rowGeometry.getRowHeight(row);
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
+          const indexedRenderElements = rowsVirtualized
+            ? queryTimelineClipIndex(clipIndex, trackNum, renderTimeRange, pinnedClipIdentities)
+            : els;
+          const indexedRenderSet = new Set(indexedRenderElements);
+          const renderElements = rowsVirtualized
+            ? els.filter((element) => {
+                if (indexedRenderSet.has(element)) return true;
+                if (
+                  !multiDragPreview ||
+                  !isMultiDragPassenger(element.key ?? element.id, multiDragPreview)
+                ) {
+                  return false;
+                }
+                const previewStart =
+                  element.start +
+                  multiDragPassengerOffsetPx(element.key ?? element.id, pps, multiDragPreview) /
+                    pps;
+                const previewEnd = previewStart + Math.max(0, element.duration);
+                return previewEnd <= previewStart
+                  ? previewStart >= renderTimeRange.start && previewStart < renderTimeRange.end
+                  : previewStart < renderTimeRange.end && previewEnd > renderTimeRange.start;
+              })
+            : els;
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
@@ -294,6 +329,7 @@ export function TimelineLanes({
                       ? draggedClip.snapTime
                       : null
                   }
+                  renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                 />
                 {/* Beat dots on the active track (the one holding the selection),
                     falling back to the music track when nothing is selected. */}
@@ -302,6 +338,7 @@ export function TimelineLanes({
                     beatTimes={beatAnalysis?.beatTimes}
                     beatStrengths={beatAnalysis?.beatStrengths}
                     pps={pps}
+                    renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                   />
                 )}
                 {isPendingTrack && (
@@ -321,7 +358,7 @@ export function TimelineLanes({
                 )}
                 {
                   // fallow-ignore-next-line complexity
-                  els.map((el) => {
+                  renderElements.map((el) => {
                     const clipStyle = getTrackStyle(el.tag);
                     const elementKey = el.key ?? el.id;
                     // Only the track's active keyframe clip shows expanded lanes;
@@ -368,6 +405,7 @@ export function TimelineLanes({
                         isSelected={isSelected}
                         isHovered={hoveredClip === clipKey}
                         isDragging={false}
+                        isActive={isTimelineClipActive(previewElement, currentTime)}
                         hasCustomContent={!!renderClipContent}
                         capabilities={capabilities}
                         theme={theme}

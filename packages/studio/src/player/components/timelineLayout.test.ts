@@ -14,7 +14,47 @@ import {
   getTimelineRowGeometry,
   trackHeights,
   resolveTimelineAssetDrop,
+  generateTicks,
+  getTimelineBeatEntries,
+  getTimelineRenderTimeRange,
+  getTimelineMajorTickInterval,
 } from "./timelineLayout";
+
+describe("horizontal timeline window", () => {
+  it("adds the shared half-viewport overscan on each side and clamps to duration", () => {
+    expect(getTimelineRenderTimeRange({ scrollLeft: 300, clientWidth: 500 }, 100, 200, 20)).toEqual(
+      { start: 0, end: 8.5 },
+    );
+    expect(
+      getTimelineRenderTimeRange({ scrollLeft: 1_900, clientWidth: 500 }, 100, 200, 20),
+    ).toEqual({ start: 14.5, end: 20 });
+  });
+
+  it("generates globally aligned ticks directly inside the bounded window", () => {
+    const ticks = generateTicks(10_000, 100, undefined, { start: 500.2, end: 501.8 });
+    const interval = getTimelineMajorTickInterval(10_000, 100);
+    expect(ticks.major.every((time) => time >= 500.2 && time <= 501.8)).toBe(true);
+    expect(
+      ticks.major.every((time) => Math.abs(time / interval - Math.round(time / interval)) < 1e-6),
+    ).toBe(true);
+    expect(ticks.major.length + ticks.minor.length).toBeLessThan(100);
+  });
+
+  it("slices beat records with original strength indexes and unions a pinned beat", () => {
+    expect(
+      getTimelineBeatEntries(
+        [0, 1, 2, 3],
+        [0.1, 0.2, 0.3, 0.4],
+        { start: 1, end: 3 },
+        new Set([3]),
+      ),
+    ).toEqual([
+      { index: 1, time: 1, strength: 0.2 },
+      { index: 2, time: 2, strength: 0.3 },
+      { index: 3, time: 3, strength: 0.4 },
+    ]);
+  });
+});
 
 describe("variable timeline row geometry", () => {
   const tracks = [
