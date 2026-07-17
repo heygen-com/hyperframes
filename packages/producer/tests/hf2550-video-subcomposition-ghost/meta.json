@@ -1,0 +1,13 @@
+{
+  "name": "HF#2550: video + sub-composition phantom duplicate on captureBeyondViewport",
+  "description": "Regression for HF#2550: a full-length <video> forced captureBeyondViewport on for every render (resolveVideoCaptureBeyondViewport), regardless of whether the page actually needed it. On SwiftShader, requesting beyond-viewport capture for content that fits entirely within the viewport could composite a stale, vertically-offset paint of the page alongside the fresh one — visible here as a phantom second copy of the flowchart-vertical sub-composition around t=11.3-14.3s. Fixed by pageContentExceedsCaptureHeight downgrading captureBeyondViewport back to false once the page is confirmed not to overflow the requested capture height. Caveat: the underlying bug is timing-dependent — it reproduced reliably (10/10) via a direct CLI render on the same host, but did NOT reproduce (0/2) when run through this harness's in-process mode on unpatched code. Keep this fixture as documentation of a confirmed real-world repro and a best-effort guard, not the sole regression protection — packages/engine/src/services/screenshotService.test.ts's pageContentExceedsCaptureHeight tests are the deterministic guard for the actual fix logic.",
+  "tags": ["video", "sub-composition", "regression", "slow"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}
