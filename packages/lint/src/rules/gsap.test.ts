@@ -1907,6 +1907,187 @@ describe("GSAP rules", () => {
 });
 
 describe("GSAP seek-order safety rules", () => {
+  // ── gsap_relative_value_second_writer ──────────────────────────────────────
+
+  it("gsap_relative_value_second_writer: flags a relative drift over an entrance tween writing the same property", async () => {
+    // Distilled from a production composition: entrance writes y on .tech-node,
+    // then an ambient drift uses y:"-=15" on one of those elements by id.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="tech-node" id="node-gmail"></div>
+    <div class="tech-node" id="node-crm"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('.tech-node', { opacity: 1, y: 0, duration: 1, ease: "power3.out" }, 2);
+    tl.to('#node-gmail', { y: "-=15", duration: 3, repeat: 2, yoyo: true, ease: "sine.inOut" }, 2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.selector).toBe("#node-gmail");
+  });
+
+  it("gsap_relative_value_second_writer: aggregates multiple relative props into ONE finding per tween pair", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="ball"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#ball', { xPercent: 50, yPercent: 0, duration: 0.55 }, 0.2);
+    tl.to('#ball', { xPercent: "-=18", yPercent: "-=10", duration: 1 }, 0.7);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_relative_value_second_writer");
+    expect(findings.length).toBe(1);
+    expect(findings[0]?.message).toContain("xPercent");
+    expect(findings[0]?.message).toContain("yPercent");
+    expect(findings[0]?.message).toMatch(/between 0\.70s and 0\.75s/);
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag when the other writer is a build-time gsap.set (runs on every worker)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="card"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    gsap.set('#card', { y: 20 });
+    tl.to('#card', { y: "+=10", duration: 2 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag back-to-back non-overlapping relative tweens", async () => {
+    // Notification-chain pattern: nudge away, then nudge back, sequentially.
+    // The first tween completes before the second starts, so bases are
+    // identical on every seek path.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="toast"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#toast', { y: "+=10", duration: 0.4 }, 1);
+    tl.to('#toast', { y: "-=10", duration: 0.4 }, 1.4);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag a writer that completes before the relative tween starts", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="chip"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#chip', { y: 0, duration: 0.5 }, 0);
+    tl.to('#chip', { y: "-=15", duration: 2 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: bails on descendant and composition-scoped selectors", async () => {
+    // ".card-a .icon" and ".card-b .icon" are DIFFERENT elements; scoped
+    // selectors across compositions are too. Token-based matching would
+    // mis-join them — the rule must skip rather than guess.
+    const html = `
+<html><body>
+  <div data-composition-id="a" data-width="1920" data-height="1080">
+    <div class="card-a"><span class="icon"></span></div>
+    <div class="card-b"><span class="icon"></span></div>
+    <span class="dot"></span>
+  </div>
+  <div data-composition-id="b" data-width="1920" data-height="1080">
+    <span class="dot"></span>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('.card-a .icon', { y: 0, duration: 2 }, 0);
+    tl.to('.card-b .icon', { y: "-=15", duration: 2 }, 1);
+    tl.to('[data-composition-id="a"] .dot', { x: 100, duration: 2 }, 0);
+    tl.to('[data-composition-id="b"] .dot', { x: "+=40", duration: 2 }, 1);
+    window.__timelines["a"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag a single-writer relative value", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920"><div id="hub-core"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#hub-core', { scale: 0 });
+    tl.to('#hub-core', { y: "-=15", duration: 2, repeat: 1, yoyo: true, ease: "sine.inOut" }, 1.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag a relative POSITION parameter", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { opacity: 0, duration: 1 }, 0);
+    tl.to('#a', { opacity: 1, duration: 1 }, "+=0.5");
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_relative_value_second_writer: does NOT flag relative values in from()/fromTo()", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#a', { y: 10 }, 0);
+    tl.from('#a', { y: "-=30", duration: 1 }, 0.5);
+    tl.fromTo('#a', { y: 0 }, { y: "+=30", duration: 1 }, 2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
   // ── gsap_repeat_refresh_relative_value ─────────────────────────────────────
 
   it("gsap_repeat_refresh_relative_value: flags repeatRefresh with a relative value in the same vars", async () => {
@@ -2265,6 +2446,88 @@ describe("SVG draw-on rules", () => {
 </body></html>`;
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeUndefined();
+  });
+
+  // ── gsap_timeline_set_initial_hide ─────────────────────────────────────────
+
+  it("gsap_timeline_set_initial_hide: warns on tl.set hidden state at position 0", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920">
+    <div class="floating-icon"></div><div id="hub-core"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('.floating-icon', { opacity: 0 });
+    tl.set('#hub-core', { scale: 0 });
+    tl.to('.floating-icon', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(findings.length).toBe(2);
+    expect(findings.every((f) => f.severity === "warning")).toBe(true);
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT warn on immediate gsap.set or mid-timeline sets", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div><div id="b"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    gsap.set('#a', { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    tl.set('#b', { opacity: 0 }, 3);
+    tl.set('#a', { x: 40 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT warn when the target is already hidden by authored CSS", async () => {
+    // Defensive re-assertion: frame 0 is hidden by CSS anyway.
+    const html = `
+<html><body>
+  <style>.card { opacity: 0; }</style>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="card"></div><div id="pin" style="opacity: 0"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('.card', { opacity: 0 }, 0);
+    tl.set('#pin', { scale: 0 }, 0);
+    tl.to('.card', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT warn when a standalone gsap.set already hides the target", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    gsap.set('#a', { opacity: 0 });
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#a', { opacity: 0 }, 0);
+    tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
     expect(finding).toBeUndefined();
   });
 

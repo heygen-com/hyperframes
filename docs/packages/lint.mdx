@@ -108,6 +108,19 @@ Detected issues include:
 - Deprecated attribute names
 - Missing composition dimensions (`data-width`, `data-height`)
 - Invalid `data-start` references to nonexistent clip IDs
+- Seek-order hazards that render differently on cold render workers: relative tween
+  values (`"+=..."`) whose property has a second concurrent writer
+  (`gsap_relative_value_second_writer`), `repeatRefresh` combined with relative values
+  (`gsap_repeat_refresh_relative_value`), function-valued tween vars that measure the
+  DOM or misuse the index parameter (`gsap_function_value_hazard`), DOM measurement
+  reachable from timeline callbacks (`gsap_callback_dom_measurement`), and
+  non-deterministic values like `gsap.utils.random()` / `"random(...)"`
+  (`non_deterministic_code`)
+- SVG draw-on pitfalls: GSAP `strokeDasharray` writes on elements whose CSS declares a
+  multi-component `stroke-dasharray` (`svg_drawon_css_dasharray_conflict`),
+  `getTotalLength()` on paths with no `d` yet (`svg_measure_before_path_d`), and
+  initial-state hides via `tl.set(..., 0)` that never render on frame 0
+  (`gsap_timeline_set_initial_hide`)
 
 <Info>
   For a full list of what the linter catches and how to fix each issue, see [Common Mistakes](/guides/common-mistakes) and [Troubleshooting](/guides/troubleshooting).
