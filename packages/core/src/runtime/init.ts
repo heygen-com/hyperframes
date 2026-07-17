@@ -1593,6 +1593,11 @@ export function initSandboxRuntimeModular(): void {
 
   let metadataRebindDebounceTimerId: number | null = null;
   let metadataRebindApplied = false;
+  // Flips true on the first renderSeek call — the render/producer capture
+  // protocol's signal that it has started deterministically driving frames.
+  // See scheduleMetadataDurationHydration for why this gates the async
+  // metadata rebind off once set.
+  let renderCaptureSeekStarted = false;
   const metadataBoundMedia = new Set<HTMLMediaElement>();
   const volumeKeyframeCache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
 
@@ -1604,6 +1609,17 @@ export function initSandboxRuntimeModular(): void {
     metadataRebindDebounceTimerId = window.setTimeout(() => {
       if (state.tornDown) return;
       metadataRebindDebounceTimerId = null;
+      // The render/producer capture protocol drives frames deterministically
+      // via renderSeek — once it has claimed the timeline, an async
+      // loadedmetadata/durationchange rebind racing that loop is exactly the
+      // "double composite" hazard from HF#2550: this handler runs off its own
+      // debounced browser-side timer, uncoordinated with the capture loop's
+      // own seeks, so a rebind mid-capture can reflow the DOM between one
+      // BeginFrame call and the next. Render-mode duration correction has
+      // already happened deterministically during the probe stage before
+      // capture starts, so once frames are being driven there is nothing left
+      // for this self-correction to usefully do.
+      if (renderCaptureSeekStarted) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
@@ -2254,6 +2270,7 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
+      renderCaptureSeekStarted = true;
       const quantized = quantizeTimeToFrame(
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,

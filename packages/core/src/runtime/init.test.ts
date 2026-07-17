@@ -37,13 +37,18 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
 
 function createPaddableMockTimeline(duration: number): RuntimeTimelineLike {
   const timeline = createMockTimeline(duration) as RuntimeTimelineLike & {
-    to: (_target: object, vars: { duration: number }, position: number) => void;
+    to: (_target: object, vars: { duration: number }, position?: number) => void;
   };
   const baseDuration = timeline.duration;
   let paddedDuration = baseDuration();
   timeline.duration = () => paddedDuration;
+  // Mirrors GSAP: an omitted position appends sequentially at the current end.
   timeline.to = (_target, vars, position) => {
-    paddedDuration = Math.max(paddedDuration, position + Math.max(0, Number(vars.duration) || 0));
+    const resolvedPosition = position ?? paddedDuration;
+    paddedDuration = Math.max(
+      paddedDuration,
+      resolvedPosition + Math.max(0, Number(vars.duration) || 0),
+    );
   };
   return timeline;
 }
@@ -1390,6 +1395,64 @@ describe("initSandboxRuntimeModular", () => {
       expect(player?.getTime()).toBeCloseTo(quantized + 0.5, 5);
     },
   );
+
+  it("ignores the async media-metadata duration rebind once render capture has started seeking frames (regression HF#2550)", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    document.body.appendChild(video);
+
+    // A root timeline with no usable duration yet — mirrors a composition
+    // whose length is derived from a full-length <video> that hasn't reported
+    // its metadata. window.gsap is needed because resolveRootTimelineFromDocument
+    // builds a fresh duration-floor wrapper timeline via gsap.timeline().
+    (
+      window as unknown as {
+        gsap?: { timeline: () => ReturnType<typeof createPaddableMockTimeline> };
+      }
+    ).gsap = {
+      timeline: () => createPaddableMockTimeline(0),
+    };
+    window.__timelines = { main: createMockTimeline(0) };
+
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+
+    try {
+      initSandboxRuntimeModular();
+
+      // The render/producer capture protocol has claimed the timeline and is
+      // now driving frames deterministically (mirrors the engine's
+      // window.__hf.seek(t) -> player.renderSeek(t) bridge).
+      window.__player?.renderSeek(0);
+
+      // Let the runtime's own deferred re-bind attempt (init.ts's
+      // `setTimeout(() => maybePublishRenderReady(), 0)`, unrelated to media
+      // metadata) settle first, so only the metadata path below is under test.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Video metadata resolves late — after capture has started, the exact
+      // HF#2550 race (Docker/slow-I/O environments hit this; fast native
+      // environments resolve metadata before capture begins and never do).
+      Object.defineProperty(video, "duration", { value: 12, configurable: true });
+      video.dispatchEvent(new Event("loadedmetadata"));
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const rebindMessages = postMessageSpy.mock.calls
+        .map(([message]) => message as { code?: string } | undefined)
+        .filter((message) => message?.code === "timeline_rebind_after_media_metadata");
+      expect(rebindMessages).toHaveLength(0);
+    } finally {
+      delete (window as { gsap?: unknown }).gsap;
+    }
+  });
 
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
