@@ -29,6 +29,8 @@ Apply the first matching row; do not evaluate lower state rows:
 | No brief, but `hyperframes.json` or `STORYBOARD.md` exists                                                                    | Resume from project files and recorded preferences. Infer the owning workflow from existing artifacts. If it cannot be determined uniquely, ask one routing-only question; do not run the intent interview. |
 | Fresh creation                                                                                                                | Run the intent layer — `references/intent-interview.md` — then route once using § 2's table.                                                                                                                |
 
+Whenever any row resumes an existing project whose `package.json` scripts pin `hyperframes@<version>` — an operation, an edit, or a briefed/resumable run alike — probe the pin once before the first render-affecting command: `references/maintenance.md`.
+
 If a fresh request does not identify the subject or input, ask what the video is about before routing. Check preferences and recipes before asking anything (`references/intent-interview.md`, step 1). A `figma.com` input or a named recipe changes intake, not routing — the interview's "Adapt orthogonal inputs" section handles both.
 
 ## 2. Route fresh creation
