@@ -314,6 +314,96 @@ describe("commitDraggedClipMove", () => {
     expect(map.c).toBeUndefined(); // unselected clips untouched
   });
 
+  it("collapses a selected expanded child onto its authored composition host", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { updateElement, onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 15, previewTrack: child.track }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track],
+        selectedKeys: new Set(["host", "scene.html#title"]),
+      },
+    );
+
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledWith(host, { start: 13, track: 0 });
+    expect(updateElement).toHaveBeenCalledWith("host", { start: 13, track: 0 });
+    expect(updateElement).not.toHaveBeenCalledWith("scene.html#title", expect.anything());
+  });
+
+  it("keeps an expanded child as the edit target when its host is not selected", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 15, previewTrack: child.track }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track],
+        selectedKeys: new Set(["scene.html#title"]),
+      },
+    );
+
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledWith(child, { start: 15, track: child.track });
+  });
+
+  it("moves a host alias and an ordinary selected clip once each in one batch", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const ordinary = el("ordinary", 1, 20, 3);
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 14, previewTrack: child.track }),
+      {
+        elements: [host, ordinary],
+        trackOrder: [0, child.track, 1],
+        selectedKeys: new Set(["host", "scene.html#title", "ordinary"]),
+      },
+    );
+
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
+    expect(map).toEqual({
+      host: { start: 12, track: 0 },
+      ordinary: { start: 22, track: 1 },
+    });
+  });
+
+  it("applies an expanded-child vertical drag to the selected host lane", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 12, previewTrack: 1, desiredTrack: 1 }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track, 1],
+        selectedKeys: new Set(["host", "scene.html#title"]),
+      },
+    );
+
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
+    expect(map).toEqual({ host: { start: 10, track: 1 } });
+  });
+
   it("multi-selection move clamps shifted clips at 0 and applies the store update optimistically", () => {
     const elements = [el("a", 0, 6, 3), el("b", 1, 2, 3)];
     // Drag 'a' −5s: b would land at −3 → clamps to 0.

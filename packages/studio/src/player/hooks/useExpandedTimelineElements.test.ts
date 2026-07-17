@@ -48,7 +48,49 @@ describe("buildExpandedElements", () => {
     const out = buildExpandedElements(elements, manifest, parentMap, "s3", "s3");
     const child = out.find((e) => e.domId === "stat-1")!;
     expect(child.expandedParentStart).toBe(16);
+    expect(child.expandedHostKey).toBe("s3");
     expect(child.sourceFile).toBe("stats.html");
+  });
+
+  it("keeps repeated same-source composition hosts as distinct move identities", () => {
+    const elements = [
+      el({
+        id: "host-a",
+        key: "index.html#host-a",
+        start: 0,
+        duration: 5,
+        compositionSrc: "scene.html",
+      }),
+      el({
+        id: "host-b",
+        key: "index.html#host-b",
+        start: 8,
+        duration: 5,
+        compositionSrc: "scene.html",
+      }),
+    ];
+    const manifest = [
+      clip({ id: "host-a", start: 0, duration: 5, compositionSrc: "scene.html" }),
+      clip({ id: "child-a", start: 1, duration: 2 }),
+      clip({ id: "host-b", start: 8, duration: 5, compositionSrc: "scene.html" }),
+      clip({ id: "child-b", start: 9, duration: 2 }),
+    ];
+    const parentMap = new Map([
+      ["child-a", "host-a"],
+      ["child-b", "host-b"],
+    ]);
+
+    const childA = buildExpandedElements(elements, manifest, parentMap, "host-a", "host-a").find(
+      (element) => element.domId === "child-a",
+    );
+    const childB = buildExpandedElements(elements, manifest, parentMap, "host-b", "host-b").find(
+      (element) => element.domId === "child-b",
+    );
+
+    expect(childA?.sourceFile).toBe("scene.html");
+    expect(childB?.sourceFile).toBe("scene.html");
+    expect(childA?.expandedHostKey).toBe("index.html#host-a");
+    expect(childB?.expandedHostKey).toBe("index.html#host-b");
   });
 
   // fallow-ignore-next-line code-duplication

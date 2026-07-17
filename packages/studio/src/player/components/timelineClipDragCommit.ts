@@ -5,7 +5,10 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone, normalizeToZones } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
-import { getTimelineEditCapabilities } from "./timelineEditing";
+import {
+  canMoveTimelineElement as canMoveElement,
+  resolveExpandedHostAlias,
+} from "./timelineAuthoredMoveTarget";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import {
   beginTimelineOptimisticGesture,
@@ -74,23 +77,6 @@ const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
-
-/** Whether Studio may write timing to this clip (false for locked/implicit rows). */
-function canMoveElement(element: TimelineElement): boolean {
-  return getTimelineEditCapabilities({
-    tag: element.tag,
-    kind: element.kind,
-    duration: element.duration,
-    domId: element.domId,
-    selector: element.selector,
-    compositionSrc: element.compositionSrc,
-    playbackStart: element.playbackStart,
-    playbackStartAttr: element.playbackStartAttr,
-    sourceDuration: element.sourceDuration,
-    timingSource: element.timingSource,
-    timelineLocked: element.timelineLocked,
-  }).canMove;
-}
 
 /**
  * Optimistically apply + persist a batch of moves with rollback on failure.
@@ -284,6 +270,12 @@ function resolveMultiSelection(
  */
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
+  const hostAlias = resolveExpandedHostAlias(drag, deps);
+  if (hostAlias) {
+    commitDraggedClipMove(hostAlias.drag, { ...deps, selectedKeys: hostAlias.selectedKeys });
+    return;
+  }
+
   const { elements, updateElement, onMoveElement } = deps;
   const dragKey = keyOf(drag.element);
   const isInsert = drag.insertRow != null;
