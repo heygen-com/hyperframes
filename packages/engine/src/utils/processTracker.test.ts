@@ -18,6 +18,24 @@ describe("trackChildProcess", () => {
     killTrackedProcesses();
   });
 
+  it("removes an exited process before its stdio closes", async () => {
+    const proc = spawn("sleep", ["60"], { stdio: "ignore" });
+    const closePromise = new Promise<void>((resolve) => proc.on("close", resolve));
+    const kill = vi.spyOn(proc, "kill");
+    trackChildProcess(proc);
+
+    try {
+      proc.emit("exit", 0, null);
+      killTrackedProcesses();
+
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      kill.mockRestore();
+      proc.kill("SIGKILL");
+      await closePromise;
+    }
+  });
+
   it("removes the process on spawn error", async () => {
     const proc = spawn("/nonexistent-binary-that-does-not-exist", { stdio: "ignore" });
     proc.on("error", () => undefined);
