@@ -128,9 +128,50 @@ describe("computeVideoFrameCoverage", () => {
     // landed in framePaths (mid-extraction crash, partial cache read, …).
     const partial = makeExtracted("a", 5);
     partial.totalFrames = 30;
+    partial.metadata.durationSeconds = 1;
     const reports = computeVideoFrameCoverage(videos, [partial], 30);
     expect(reports[0]!.capturedFrames).toBe(5);
     expect(reports[0]!.ratio).toBeCloseTo(5 / 30, 5);
+  });
+
+  it("credits a non-looping held tail against the source portion only", () => {
+    const videos = [makeVideo({ id: "held", start: 0, end: 10 })];
+    const extracted = [makeExtracted("held", 90)];
+    extracted[0]!.metadata.durationSeconds = 3;
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 90, ratio: 1 });
+  });
+
+  it("still requires the full authored slot for looping clips", () => {
+    const videos = [makeVideo({ id: "loop", start: 0, end: 10, loop: true })];
+    const extracted = [makeExtracted("loop", 90)];
+    extracted[0]!.metadata.durationSeconds = 3;
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 300, capturedFrames: 90 });
+    expect(reports[0]!.ratio).toBeCloseTo(0.3, 5);
+  });
+
+  it("still fails when extraction is truncated before the held-tail source", () => {
+    const videos = [makeVideo({ id: "truncated", start: 0, end: 10 })];
+    const extracted = [makeExtracted("truncated", 60)];
+    extracted[0]!.metadata.durationSeconds = 3;
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 60 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(VideoFrameCoverageError);
+  });
+
+  it("fails closed for invalid or exhausted source durations", () => {
+    const videos = [
+      makeVideo({ id: "zero", start: 0, end: 10 }),
+      makeVideo({ id: "trimmed-away", start: 0, end: 10, mediaStart: 4 }),
+    ];
+    const extracted = [makeExtracted("zero", 0), makeExtracted("trimmed-away", 30)];
+    extracted[0]!.metadata.durationSeconds = 0;
+    extracted[1]!.metadata.durationSeconds = 3;
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 300, capturedFrames: 0 });
+    expect(reports[1]).toMatchObject({ expectedFrames: 300, capturedFrames: 30 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(VideoFrameCoverageError);
   });
 });
 

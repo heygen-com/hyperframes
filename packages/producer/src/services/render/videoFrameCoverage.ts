@@ -140,7 +140,18 @@ export function computeVideoFrameCoverage(
   const reports: VideoFrameCoverageReport[] = [];
   for (const video of videos) {
     const entry = byId.get(video.id);
-    const expectedFrames = expectedFramesForClip(video.start, video.end, fps);
+    const slotFrames = expectedFramesForClip(video.start, video.end, fps);
+    // Non-looping clips intentionally hold their final decoded frame when the
+    // authored slot outlasts the source (#2516). Coverage must therefore
+    // measure the source portion, while still requiring the full slot for
+    // looping clips and for missing extractions (where no hold is possible).
+    const sourceDuration = entry ? entry.metadata.durationSeconds - video.mediaStart : NaN;
+    const hasUsableSourceDuration = Number.isFinite(sourceDuration) && sourceDuration > 0;
+    const sourceFrames =
+      entry && !video.loop && hasUsableSourceDuration
+        ? expectedFramesForClip(0, sourceDuration, fps)
+        : slotFrames;
+    const expectedFrames = entry && !video.loop ? Math.min(slotFrames, sourceFrames) : slotFrames;
     // framePaths is a Map — `size` is the number of distinct captured frames
     // delivered to the runtime injector, which is the load-bearing count
     // (some extractors report a total that includes cache-hit-skipped frames
