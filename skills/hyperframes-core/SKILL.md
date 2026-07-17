@@ -28,6 +28,7 @@ This skill is the **technical contract** — how to build one hyperframes projec
 | `references/brief-format.md`         | author `BRIEF.md` — the confirmed intent document a workflow's Setup writes and every later step reads                                                                             |
 | `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                                                                                   |
 | `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                                                                                 |
+| `references/frame-worker-core.md`    | the shared frame-worker role contract — each narrative workflow's packet builder prepends it to that workflow's `sub-agents/frame-worker.md` delta                                 |
 | `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                                       |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.

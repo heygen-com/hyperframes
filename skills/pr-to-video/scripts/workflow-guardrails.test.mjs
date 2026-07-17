@@ -100,6 +100,10 @@ test("#1092 packets contain selected excerpts but never the full diff", () => {
   assert.doesNotMatch(codePacket, /code-scroll/);
   assert.ok(Buffer.byteLength(codePacket) < 32_000);
   assert.ok(result.every((packet) => packet.path.endsWith(".md")));
+
+  const role = readFileSync(join(project, ".hyperframes", "frame-packets", "_role.md"), "utf8");
+  assert.match(role, /# Frame worker — core contract/);
+  assert.match(role, /# Frame worker — PR-to-video delta/);
 });
 
 test("packet validation is atomic and leaves no partial output on overflow", () => {

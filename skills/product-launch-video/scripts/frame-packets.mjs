@@ -1,5 +1,17 @@
 #!/usr/bin/env node
 
+// Build the per-frame dispatch packets + the worker role payload.
+//
+// Packet (<frame_id>.md) = project inputs + the frame's exact `## Frame N` block
+// + the blueprint body + every cited rule recipe, inlined — so a worker never
+// opens the shared STORYBOARD.md or any skill document. Cited motions are found
+// mechanically: the explicit `- rules:` field when present, plus every valid rule
+// id (a filename under ../hyperframes-animation/rules/) mentioned in the block.
+//
+// _role.md = frame-worker-core.md + this skill's sub-agents/frame-worker.md,
+// concatenated verbatim — the complete worker role, assembled from the two
+// source documents so nothing is hand-maintained twice.
+
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,34 +45,6 @@ function frameId(frame) {
   return basename(src).replace(/\.html?$/i, "");
 }
 
-function sourceExcerpt(block) {
-  const match = block.match(/^### Source excerpt\s*\n+(```[^\n]*\n[\s\S]*?\n```)/im);
-  return match?.[1] ?? null;
-}
-
-function selectedFile(path, heading) {
-  if (!path || !existsSync(path)) return "";
-  return `\n## ${heading}\n\n${readFileSync(path, "utf8").trim()}\n`;
-}
-
-function codeVocabularySection(block) {
-  const focal = field(block, "focal") ?? "";
-  const codeId = focal.match(/\b(code-[a-z0-9-]+)\b/i)?.[1];
-  if (!codeId) return "";
-  const vocabPath = join(SKILL_DIR, "references", "code-vocabulary.md");
-  if (!existsSync(vocabPath)) {
-    return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
-  }
-  const vocab = readFileSync(vocabPath, "utf8");
-  const lines = vocab.split("\n");
-  const exactToken = `\`${codeId.toLowerCase()}\``;
-  const matchingLines = lines.filter((line) => line.toLowerCase().includes(exactToken));
-  if (matchingLines.length === 0) {
-    return `\n## Code block\n\nUse registry block \`${codeId}\`.\n`;
-  }
-  return `\n## Code block excerpt (${codeId})\n\n${matchingLines.join("\n").trim()}\n`;
-}
-
 function knownRuleIds() {
   const rulesDir = join(ANIMATION_DIR, "rules");
   if (!existsSync(rulesDir)) return [];
@@ -69,8 +53,7 @@ function knownRuleIds() {
     .map((name) => name.replace(/\.md$/, ""));
 }
 
-function citedRules(block) {
-  const ruleIds = knownRuleIds();
+function citedRules(block, ruleIds) {
   const explicit = (field(block, "rules") ?? "")
     .split(/[,\s]+/)
     .map((rule) => rule.trim())
@@ -81,7 +64,12 @@ function citedRules(block) {
   return [...new Set([...explicit, ...mentioned])].filter((id) => ruleIds.includes(id));
 }
 
-function resourceSections(block) {
+function selectedFile(path, heading) {
+  if (!path || !existsSync(path)) return "";
+  return `\n## ${heading}\n\n${readFileSync(path, "utf8").trim()}\n`;
+}
+
+function resourceSections(block, ruleIds) {
   let sections = "";
   const blueprint = field(block, "blueprint");
   if (blueprint && blueprint.toLowerCase() !== "compose") {
@@ -90,7 +78,7 @@ function resourceSections(block) {
       `Selected blueprint: ${blueprint}`,
     );
   }
-  for (const rule of citedRules(block)) {
+  for (const rule of citedRules(block, ruleIds)) {
     sections += selectedFile(
       join(ANIMATION_DIR, "rules", `${rule}.md`),
       `Selected motion rule: ${rule}`,
@@ -118,15 +106,11 @@ export function buildFramePackets({
   const storyboard = readFileSync(storyboardPath, "utf8");
   const frames = splitFrames(storyboard);
   if (frames.length === 0) throw new Error("STORYBOARD.md has no frame blocks");
+  const ruleIds = knownRuleIds();
 
   const packets = frames.map((frame) => {
     const id = frameId(frame);
-    const codeFrame = /\bcode-[a-z0-9-]+\b/i.test(field(frame.block, "focal") ?? "");
-    const excerpt = sourceExcerpt(frame.block);
-    if (codeFrame && !excerpt) {
-      throw new Error(`${frame.heading}: code frame requires an upstream-selected Source excerpt`);
-    }
-    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n- Design tokens: ${join(resolve(projectDir), "frame.md")}\n- RULES_DIR: ${join(ANIMATION_DIR, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block)}${codeVocabularySection(frame.block)}`;
+    const packet = `# Frame packet: ${id}\n\n## Project inputs\n\n- Project: ${resolve(projectDir)}\n- Design tokens: ${join(resolve(projectDir), "frame.md")}\n- RULES_DIR: ${join(ANIMATION_DIR, "rules")}\n\n## Assigned storyboard block\n\n${frame.block}\n${resourceSections(frame.block, ruleIds)}`;
     const bytes = Buffer.byteLength(packet);
     if (bytes > maxPacketBytes) {
       throw new Error(`${id}: frame packet is ${bytes} bytes (limit ${maxPacketBytes})`);
@@ -148,7 +132,9 @@ function flag(argv, name, fallback) {
 function main() {
   const argv = process.argv.slice(2);
   const projectDir = resolve(flag(argv, "project", "."));
-  const outDir = resolve(flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets")));
+  const outDir = resolve(
+    flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets")),
+  );
   try {
     const packets = buildFramePackets({
       projectDir,
