@@ -38,6 +38,7 @@ export class ManagedChildProcess {
   private requestedReason: Exclude<ManagedProcessTerminationReason, "exit" | "spawn_error"> | null =
     null;
   private stderrTail = Buffer.alloc(0);
+  private spawned = false;
   private settled = false;
   private deadlineTimer: NodeJS.Timeout | null = null;
   private inactivityTimer: NodeJS.Timeout | null = null;
@@ -54,8 +55,9 @@ export class ManagedChildProcess {
     });
 
     child.stderr?.on("data", this.onStderr);
+    child.once("spawn", this.onSpawn);
     child.once("close", this.onClose);
-    child.once("error", this.onError);
+    child.on("error", this.onError);
     this.installAbort();
     this.installDeadline();
     this.markActivity();
@@ -89,6 +91,10 @@ export class ManagedChildProcess {
     this.options.onStderr?.(chunk.toString());
   };
 
+  private readonly onSpawn = (): void => {
+    this.spawned = true;
+  };
+
   private readonly onClose = (exitCode: number | null, signal: NodeJS.Signals | null): void => {
     this.settle({
       reason: this.requestedReason ?? "exit",
@@ -100,6 +106,7 @@ export class ManagedChildProcess {
   };
 
   private readonly onError = (error: Error): void => {
+    if (this.spawned) return;
     this.settle({
       reason: "spawn_error",
       exitCode: null,
@@ -162,6 +169,7 @@ export class ManagedChildProcess {
     this.clearTimers();
     this.options.signal?.removeEventListener("abort", this.onAbort);
     this.child.stderr?.off("data", this.onStderr);
+    this.child.off("spawn", this.onSpawn);
     this.child.off("close", this.onClose);
     this.child.off("error", this.onError);
     this.resolveOutcome(outcome);

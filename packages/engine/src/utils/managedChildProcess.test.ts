@@ -58,6 +58,36 @@ describe("ManagedChildProcess", () => {
     await expect(managed.wait()).resolves.toMatchObject({ reason: "abort", signal: "SIGKILL" });
   });
 
+  it("keeps escalation and reaping active after a post-spawn error", async () => {
+    vi.useFakeTimers();
+    const child = childProcess();
+    const controller = new AbortController();
+    const managed = new ManagedChildProcess(child, {
+      signal: controller.signal,
+      terminationGraceMs: 50,
+    });
+    child.emit("spawn");
+
+    controller.abort();
+    child.emit("error", new Error("kill EPERM"));
+
+    let reaped = false;
+    void managed.wait().then(() => {
+      reaped = true;
+    });
+    await Promise.resolve();
+    expect(reaped).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(child.kill).toHaveBeenNthCalledWith(1, "SIGTERM");
+    expect(child.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
+    child.emit("error", new Error("kill EPERM"));
+    expect(reaped).toBe(false);
+
+    child.emit("close", null, "SIGKILL");
+    await expect(managed.wait()).resolves.toMatchObject({ reason: "abort", signal: "SIGKILL" });
+  });
+
   it("distinguishes deadline from inactivity and refreshes activity", async () => {
     vi.useFakeTimers();
     const deadlineChild = childProcess();
