@@ -37,6 +37,19 @@ async function listenVideoServer() {
   };
 }
 
+async function listenFailingVideoServer() {
+  const server = http.createServer((req, res) => {
+    res.writeHead(500).end();
+  });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return {
+    server,
+    url: `http://127.0.0.1:${address.port}/video.mp4`,
+  };
+}
+
 function closeServer(server) {
   return new Promise((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
@@ -52,6 +65,7 @@ async function withFakeHeygen(options, run) {
     HEYGEN_CAPTURE_PATH: process.env.HEYGEN_CAPTURE_PATH,
     HEYGEN_VIDEO_MODE: process.env.HEYGEN_VIDEO_MODE,
     HEYGEN_VIDEO_RESPONSE: process.env.HEYGEN_VIDEO_RESPONSE,
+    HEYGEN_DISCOVERY_MODE: process.env.HEYGEN_DISCOVERY_MODE,
     HYPERFRAMES_NO_TELEMETRY: process.env.HYPERFRAMES_NO_TELEMETRY,
   };
 
@@ -60,7 +74,12 @@ async function withFakeHeygen(options, run) {
     `#!/bin/sh
 printf '%s\\n' "$*" >> "$HEYGEN_CAPTURE_PATH"
 case "$*" in
-  *"avatar list"*) printf '%s\\n' '{"data":[{"avatar_id":"avatar-public-1"}]}' ;;
+  *"avatar list"*)
+    case "$HEYGEN_DISCOVERY_MODE" in
+      auth) printf '%s\\n' 'HTTP 401 Unauthorized' >&2; exit 1 ;;
+      *) printf '%s\\n' '{"data":[{"avatar_id":"avatar-public-1"}]}' ;;
+    esac
+    ;;
   *"voice list"*) printf '%s\\n' '{"data":[{"voice_id":"voice-starfish-1"}]}' ;;
   *"video create"*)
     case "$HEYGEN_VIDEO_MODE" in
@@ -77,6 +96,7 @@ esac
   process.env.HEYGEN_CAPTURE_PATH = capturePath;
   process.env.HEYGEN_VIDEO_MODE = options.mode ?? "success";
   process.env.HEYGEN_VIDEO_RESPONSE = options.response ?? "";
+  process.env.HEYGEN_DISCOVERY_MODE = options.discoveryMode ?? "";
   process.env.HYPERFRAMES_NO_TELEMETRY = "1";
 
   try {
@@ -273,5 +293,42 @@ test("falls through on non-JSON and error responses", async (t) => {
 
       assert.equal(result, null);
     });
+  }
+});
+
+test("onboards and returns null when avatar/voice discovery itself is unauthenticated", async (t) => {
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+
+  await withFakeHeygen({ discoveryMode: "auth" }, async ({ invocations }) => {
+    const heygenVideoGenerate = await freshGenerate();
+    const result = await heygenVideoGenerate("Discovery auth failure", {});
+
+    assert.equal(result, null);
+    assert.ok(errors.includes(ONBOARDING_MESSAGE));
+    const calls = invocations();
+    assert.equal(
+      calls.filter((call) => call.includes("video create")).length,
+      0,
+      "must not attempt video create once discovery is unauthenticated",
+    );
+    assert.match(calls[0], /^avatar list /);
+  });
+});
+
+test("download failure after a successful create returns null and logs a diagnostic", async () => {
+  const { server, url } = await listenFailingVideoServer();
+  try {
+    await withFakeHeygen({ response: JSON.stringify({ data: { video_url: url } }) }, async () => {
+      const heygenVideoGenerate = await freshGenerate();
+      const result = await heygenVideoGenerate("Download failure", {
+        avatarId: "avatar-override",
+        voiceId: "voice-override",
+      });
+
+      assert.equal(result, null);
+    });
+  } finally {
+    await closeServer(server);
   }
 });

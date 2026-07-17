@@ -7,55 +7,54 @@ import {
   HEYGEN_AUTH_COMMAND,
   HEYGEN_CLIENT_SOURCE_ARGV,
   reportHeygenFailure,
+  runHeygenJson,
 } from "./heygen-cli.mjs";
 
-function runJson(bin, argv, label) {
-  let out;
-  try {
-    out = execFileSync(bin, argv, {
-      encoding: "utf8",
-      timeout: 120000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch (err) {
-    reportHeygenFailure(err, `${bin} ${label}`);
-    return null;
-  }
-  try {
-    return JSON.parse(out);
-  } catch {
-    return null;
-  }
-}
-
+// Cache only a truthy id -- a transient discovery failure must not poison the
+// cache with `null` and permanently disable heygen.video for the rest of the
+// process. `onError` lets the caller distinguish not_authenticated (and nudge
+// onboarding) from any other discovery failure.
 let cachedAvatarId;
-function defaultAvatarId() {
-  if (cachedAvatarId !== undefined) return cachedAvatarId;
-  const j = runJson(
+function defaultAvatarId(onError) {
+  if (cachedAvatarId) return cachedAvatarId;
+  const j = runHeygenJson(
     "heygen",
     ["avatar", "list", "--ownership", "public", "--limit", "1"],
     "avatar list",
+    onError,
   );
   cachedAvatarId = j?.data?.[0]?.avatar_id || null;
   return cachedAvatarId;
 }
 
 let cachedStarfishVoiceId;
-function defaultStarfishVoiceId() {
-  if (cachedStarfishVoiceId !== undefined) return cachedStarfishVoiceId;
-  const j = runJson(
+function defaultStarfishVoiceId(onError) {
+  if (cachedStarfishVoiceId) return cachedStarfishVoiceId;
+  const j = runHeygenJson(
     "heygen",
     ["voice", "list", "--engine", "starfish", "--limit", "1"],
     "voice list",
+    onError,
   );
   cachedStarfishVoiceId = j?.data?.[0]?.voice_id || null;
   return cachedStarfishVoiceId;
 }
 
 export async function heygenVideoGenerate(intent, ctx) {
-  const avatarId = ctx?.avatarId || defaultAvatarId();
-  const voiceId = ctx?.voiceId || defaultStarfishVoiceId();
-  if (!avatarId || !voiceId) return null;
+  let discoveryFailureReason = null;
+  const captureReason = (reason) => {
+    discoveryFailureReason ??= reason;
+  };
+  const avatarId = ctx?.avatarId || defaultAvatarId(captureReason);
+  const voiceId = ctx?.voiceId || defaultStarfishVoiceId(captureReason);
+  if (!avatarId || !voiceId) {
+    if (discoveryFailureReason === "not_authenticated") {
+      console.error(
+        `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`,
+      );
+    }
+    return null;
+  }
 
   let out;
   try {

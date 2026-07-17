@@ -205,6 +205,17 @@ export function listModels(capability) {
   return tableFor(capability).slice();
 }
 
+// Tokenize an `invoke` template on whitespace first, then substitute each
+// token, so a `{prompt}`/`{model_path}` value with spaces stays a single argv
+// entry. Shared by every local-model provider (mflux, LTX) that builds argv
+// from a MODELS[...].invoke template.
+export function buildArgv(template, vars) {
+  return template
+    .trim()
+    .split(/\s+/)
+    .map((tok) => tok.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`)));
+}
+
 /** Does this machine meet a model's needs? Apple Silicon unified memory counts as VRAM. */
 export function meetsSpecs(model, specs) {
   const n = model.needs || {};

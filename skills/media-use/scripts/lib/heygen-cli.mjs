@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { track } from "./telemetry.mjs";
 
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
@@ -131,6 +132,30 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
 export async function flushHeygenFailureTracking() {
   if (pendingFailureTracking.size === 0) return;
   await Promise.all(pendingFailureTracking);
+}
+
+// Shared discovery/generation helper for the CLI-shelling providers (voice,
+// avatar-video): run a heygen JSON subcommand, report+classify on failure,
+// and hand the caller the classified reason via onError (used by callers that
+// need to distinguish e.g. not_authenticated from other failures).
+export function runHeygenJson(bin, argv, label, onError) {
+  let out;
+  try {
+    out = execFileSync(bin, argv, {
+      encoding: "utf8",
+      timeout: 120000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    reportHeygenFailure(err, `${bin} ${label}`);
+    onError?.(classifyHeygenErrorCode(err));
+    return null;
+  }
+  try {
+    return JSON.parse(out);
+  } catch {
+    return null;
+  }
 }
 
 export function firstSemver(text) {

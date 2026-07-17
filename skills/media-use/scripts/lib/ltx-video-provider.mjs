@@ -3,16 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { probeSpecs } from "./specs.mjs";
-import { selectModel } from "./local-models.mjs";
-
-// Tokenize the invoke template on whitespace first, then substitute each token,
-// so a prompt with spaces stays a single argv entry.
-function buildArgv(template, vars) {
-  return template
-    .trim()
-    .split(/\s+/)
-    .map((tok) => tok.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`)));
-}
+import { buildArgv, selectModel } from "./local-models.mjs";
 
 export async function ltxVideoGenerate(
   intent,

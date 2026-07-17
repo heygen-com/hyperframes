@@ -74,6 +74,8 @@ const { values: args } = parseArgs({
     for: { type: "string" },
     "local-only": { type: "boolean", default: false },
     provider: { type: "string" },
+    "avatar-id": { type: "string" },
+    "voice-id": { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -108,6 +110,8 @@ Options:
                   suggestions (grade only)
   --local-only    Offline: skip every network provider
   --provider      Force one generator (e.g. codex, mflux, kokoro, heygen)
+  --avatar-id     Override the default avatar for heygen.video generation
+  --voice-id      Override the default voice for voice/heygen.video generation
   --json          Output JSON instead of one-line result
   --help, -h      Show this help`);
   process.exit(0);
@@ -354,7 +358,14 @@ async function run() {
   // Offline guard: --local-only skips every remote provider (HeyGen catalog),
   // leaving the project + global cache and any local provider.
   const localOnly = args["local-only"];
-  const ctx = { entity, projectDir, localOnly, provider: args.provider };
+  const ctx = {
+    entity,
+    projectDir,
+    localOnly,
+    provider: args.provider,
+    avatarId: args["avatar-id"],
+    voiceId: args["voice-id"],
+  };
 
   // Adherence nudge (offline, no auto-reuse): the exact-cache floor missed and
   // we're about to fetch/generate. If lexically-similar assets already exist,

@@ -510,6 +510,28 @@ test("--from uses .mp4 as the default video extension", () => {
   cleanup();
 });
 
+test("--avatar-id/--voice-id parse as real CLI flags (regression guard: docs promise them, parseArgs must not reject them)", () => {
+  setup();
+  const result = spawnResolve(
+    [
+      "--type",
+      "video",
+      "--intent",
+      "regression guard",
+      "--local-only",
+      "--avatar-id",
+      "avatar-override",
+      "--voice-id",
+      "voice-override",
+      "--project",
+      tmp,
+    ],
+    { stdio: "pipe" },
+  );
+  assert.doesNotMatch(result.stderr || "", /ERR_PARSE_ARGS_UNKNOWN_OPTION/);
+  cleanup();
+});
+
 test("unknown type error lists grade and lut", () => {
   try {
     runResolve(["--type", "bogus", "--intent", "x"], { stdio: "pipe" });
