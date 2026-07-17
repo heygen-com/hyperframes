@@ -4,7 +4,7 @@ Everything else in the intent layer converges: recommended options, receipts, on
 
 ## When it runs
 
-Triage (`/hyperframes` § 4, step 2) marks the request formed or unformed; only unformed requests enter the round, and only on routes whose `route-briefs.md` entry names pitch-eligible fields. A recipe adoption skips the round — the bundle already carries an approved concept. An autonomous signal never skips it; it moves the round inside (§ The gate, alone).
+Triage (`/hyperframes` → `references/intent-interview.md`, step 2) marks the request formed or unformed; only unformed requests enter the round, and only on routes whose `routes/<workflow>.md` entry names pitch-eligible fields. A recipe adoption skips the round — the bundle already carries an approved concept. An autonomous signal never skips it; it moves the round inside (§ The gate, alone).
 
 Before generating anything, ask what the user is already picturing. An existing idea seeds the round as a pitch of its own and is never displaced by generated ones; a fully formed picture ends the round before it starts — that picture is the concept, and the layer returns to its questions.
 

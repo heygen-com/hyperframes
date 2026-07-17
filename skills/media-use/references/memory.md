@@ -22,7 +22,7 @@ node <SKILL_DIR>/scripts/recipe.mjs list --hyperframes . --workflow product-laun
 node <SKILL_DIR>/scripts/recipe.mjs use --hyperframes . --name weekly-promo   # also: resolve.mjs --type recipe --entity weekly-promo
 ```
 
-The freeze is offered once after the final approval (`hyperframes-core/references/review-loop.md` § 4), and the intent layer (`/hyperframes` § 4) checks for a match before its first question. Adopting a recipe fills the brief, the design spec, and the storyboard skeleton — and unlike preferences it may skip the questions it answers: the bundle was approved as a whole, and adoption itself is the question.
+The freeze is offered once after the final approval (`hyperframes-core/references/review-loop.md` § 4), and the intent layer (`/hyperframes` → `references/intent-interview.md`, step 1) checks for a match before its first question. Adopting a recipe fills the brief, the design spec, and the storyboard skeleton — and unlike preferences it may skip the questions it answers: the bundle was approved as a whole, and adoption itself is the question.
 
 ## Files
 
