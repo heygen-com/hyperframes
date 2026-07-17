@@ -2268,7 +2268,6 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.post("/projects/:id/file-mutations/insert-composition/*", async (c) => {
     const ctx = await resolveFileMutationContext(c, adapter, "insert-composition");
     if ("error" in ctx) return ctx.error;
-    if (!existsSync(ctx.absPath)) return c.json({ error: "not found" }, 404);
 
     const body = (await c.req.json().catch(() => null)) as {
       sourcePath?: unknown;
@@ -2289,7 +2288,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "sourcePath, finite placement, and expectedVersion required" }, 400);
     }
 
-    const before = readFileSync(ctx.absPath, "utf-8");
+    let before: string;
+    try {
+      before = readFileSync(ctx.absPath, "utf-8");
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+        throw error;
+      }
+      return c.json({ error: "not found" }, 404);
+    }
     const currentVersion = fileContentVersion(before);
     if (body.expectedVersion !== currentVersion) {
       return c.json({ error: "file conflict", currentVersion, currentContent: before }, 409);

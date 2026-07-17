@@ -1,6 +1,7 @@
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import type { RecordEditInput } from "./studioFileHistory";
+import { buildProjectApiPath } from "./projectRouting";
 
 interface TimelineCompositionInsertionResult {
   path: string;
@@ -18,7 +19,7 @@ async function insertTimelineComposition(input: {
   track: number;
 }): Promise<TimelineCompositionInsertionResult> {
   const current = await fetch(
-    `/api/projects/${input.projectId}/files/${encodeURIComponent(input.targetPath)}`,
+    buildProjectApiPath(input.projectId, `/files/${encodeURIComponent(input.targetPath)}`),
   );
   if (!current.ok) {
     throw await createStudioSaveHttpError(current, `Failed to read ${input.targetPath}`);
@@ -27,7 +28,10 @@ async function insertTimelineComposition(input: {
   if (typeof snapshot.version !== "string") throw new Error("Missing composition file version");
 
   const response = await fetch(
-    `/api/projects/${input.projectId}/file-mutations/insert-composition/${encodeURIComponent(input.targetPath)}`,
+    buildProjectApiPath(
+      input.projectId,
+      `/file-mutations/insert-composition/${encodeURIComponent(input.targetPath)}`,
+    ),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

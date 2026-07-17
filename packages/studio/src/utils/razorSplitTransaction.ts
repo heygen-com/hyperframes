@@ -2,6 +2,7 @@ import type { TimelineElement } from "../player";
 import type { RecordEditInput } from "../hooks/timelineEditingHelpers";
 import { buildPatchTarget } from "./timelineElementSplit";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
+import { buildProjectApiPath } from "./projectRouting";
 
 type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
@@ -94,7 +95,9 @@ export function buildAtomicCutIntents(
 }
 
 async function readFileVersion(projectId: string, path: string): Promise<string> {
-  const response = await fetch(`/api/projects/${projectId}/files/${encodeURIComponent(path)}`);
+  const response = await fetch(
+    buildProjectApiPath(projectId, `/files/${encodeURIComponent(path)}`),
+  );
   if (!response.ok) throw new Error(`Failed to read ${path} before cut (${response.status})`);
   const body = (await response.json()) as { version?: string };
   const version = body.version ?? response.headers.get("etag") ?? undefined;
@@ -114,7 +117,7 @@ async function requestAtomicCut(
     });
   }
   const transactionToken = `cut:${crypto.randomUUID()}`;
-  const response = await fetch(`/api/projects/${projectId}/file-mutations/split-batch`, {
+  const response = await fetch(buildProjectApiPath(projectId, "/file-mutations/split-batch"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

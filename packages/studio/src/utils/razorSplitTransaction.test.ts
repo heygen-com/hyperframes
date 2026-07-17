@@ -95,7 +95,7 @@ describe("runAtomicCutTransaction", () => {
     const synchronize = vi.fn();
 
     const result = await runAtomicCutTransaction({
-      projectId: "p1",
+      projectId: "launch/demo",
       intents: buildAtomicCutIntents([element()], 2, "index.html"),
       label: "Split timeline clip",
       writeProjectFile,
@@ -105,6 +105,10 @@ describe("runAtomicCutTransaction", () => {
     });
 
     expect(requests.filter((request) => request.url.includes("split-batch"))).toHaveLength(1);
+    expect(requests.map((request) => request.url)).toEqual([
+      "/api/projects/launch%2Fdemo/files/index.html",
+      "/api/projects/launch%2Fdemo/file-mutations/split-batch",
+    ]);
     expect(writeProjectFile).not.toHaveBeenCalled();
     expect(recordEdit).toHaveBeenCalledWith({
       label: "Split timeline clip",

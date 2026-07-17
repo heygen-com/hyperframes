@@ -167,6 +167,32 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(before);
   });
 
+  it("returns 404 when the composition insertion target does not exist", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "child.html"),
+      `<template><div data-composition-id="child" data-duration="3"></div></template>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/insert-composition/missing.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath: "child.html",
+          start: 0,
+          track: 0,
+          expectedVersion: "missing",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
   it("returns empty content for missing files when caller marks the read optional", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

@@ -33,7 +33,7 @@ describe("commitTimelineCompositionInsertion", () => {
     const refresh = vi.fn();
 
     await commitTimelineCompositionInsertion({
-      projectId: "demo",
+      projectId: "launch/demo",
       targetPath: "index.html",
       sourcePath: "headline.html",
       start: 4,
@@ -47,6 +47,10 @@ describe("commitTimelineCompositionInsertion", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/launch%2Fdemo/files/index.html",
+      "/api/projects/launch%2Fdemo/file-mutations/insert-composition/index.html",
+    ]);
     expect(recordEdit).toHaveBeenCalledOnce();
     expect(writeFile).not.toHaveBeenCalled();
     expect(observeVersion).toHaveBeenCalledWith("index.html", "v2");
