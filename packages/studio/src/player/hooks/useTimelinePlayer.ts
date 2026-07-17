@@ -43,6 +43,7 @@ import {
   shouldMutePreviewAudio,
 } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
+import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
@@ -68,6 +69,10 @@ function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[
   });
 }
 
+function resolveTimelineDuration(nextDuration: number | undefined, currentDuration: number) {
+  return nextDuration ?? currentDuration;
+}
+
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -85,10 +90,13 @@ export function useTimelinePlayer() {
   const { setIsPlaying, setCurrentTime, setDuration, setTimelineReady, setElements } =
     usePlayerStore.getState();
 
+  // The fixture lease belongs at this shared synchronization boundary so every
+  // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
     (elements: TimelineElement[], nextDuration?: number) => {
+      if (hasTimelinePerformanceFixtureLease()) return;
       const state = usePlayerStore.getState();
-      const resolvedDuration = nextDuration ?? state.duration;
+      const resolvedDuration = resolveTimelineDuration(nextDuration, state.duration);
       // applyCachedSourceDurations re-applies the cached probe duration: re-derived
       // elements (e.g. after a clip move) can arrive without sourceDuration, which
       // otherwise makes trimmed waveforms lose their window.

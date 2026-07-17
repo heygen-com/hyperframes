@@ -513,6 +513,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
+      data-timeline-element-count={expandedElements.length}
       className={`relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
@@ -529,6 +530,7 @@ export const Timeline = memo(function Timeline({
     >
       <div
         ref={setScrollRef}
+        data-timeline-scroll-viewport
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
