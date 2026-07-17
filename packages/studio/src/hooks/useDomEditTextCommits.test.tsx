@@ -88,6 +88,51 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
+  it("previews headline color and font size without touching its transparent mask", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("expected iframe document");
+    doc.body.innerHTML = `
+      <section class="hl-block">
+        <div class="hl-mask" style="overflow: hidden; background: transparent">
+          <h1 id="headline" class="hl-text">Launch title</h1>
+        </div>
+      </section>
+    `;
+    const headline = doc.getElementById("headline") as HTMLElement;
+    const mask = doc.querySelector<HTMLElement>(".hl-mask")!;
+    const selection = selectionFor(headline);
+    selection.selector = "#headline";
+    selection.tagName = "h1";
+    selection.textFields[0]!.tagName = "h1";
+    const persistDomEditOperations = vi.fn();
+    const hook = renderTextCommitHook({
+      activeCompPath: "index.html",
+      previewIframeRef: { current: iframe },
+      showToast: vi.fn(),
+      domEditSelection: selection,
+      applyDomSelection: vi.fn(),
+      refreshDomEditSelectionFromPreview: vi.fn(),
+      buildDomSelectionFromTarget: vi.fn(async () => null),
+      persistDomEditOperations,
+      queueDomEditSave: async (save) => save(),
+      resolveImportedFontAsset: () => null,
+    });
+
+    act(() => {
+      hook.handleDomTextFieldStylePreview("self", "color", "rgb(12, 34, 56)");
+      hook.handleDomTextFieldStylePreview("self", "font-size", "42px");
+    });
+
+    expect(headline.style.color).toBe("rgb(12, 34, 56)");
+    expect(headline.style.fontSize).toBe("42px");
+    expect(mask.style.color).toBe("");
+    expect(mask.style.fontSize).toBe("");
+    expect(mask.style.background).toBe("transparent");
+    expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
   it("does not let a stale failed fields commit revert newer text", async () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
