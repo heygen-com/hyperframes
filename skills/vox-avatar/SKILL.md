@@ -20,9 +20,16 @@ description: >
 >
 > **v2** (2026-07-16). v1 preserved at git tag `vox-skills-v1`.
 
-The host is a REAL talking avatar (lip-synced to the VO), cut out and mounted as a die-cut
-paper sticker inside the collage — the avatar-video-kit pattern (matting + native backdrop)
-wearing the vox theme. Poster mode (static stills) is the degraded/preview variant.
+The host is a REAL talking avatar (lip-synced to the VO), mounted inside the vox page.
+Poster mode (static stills) is the degraded/preview variant.
+
+**Mode selection (ask at most once):**
+- No host wanted / no footage and no generation access → faceless, `/vox-explainer` alone.
+- Host wanted, user has footage of the person speaking the script → **Source B** below.
+- Host wanted, no footage → generate it: Tokyo per-beat (**Source A**, needs Tailscale) or a
+  HeyGen-platform single take (**Source C**, works from any MCP session).
+Either way the piece is the SAME beat map — host beats swap between a mounted avatar and
+pure-graphic treatment, so a faceless and an avatar cut of one piece share everything else.
 
 ## Primary flow — Tokyo talking avatar
 
@@ -66,6 +73,14 @@ Use `hyperframes-agent` `integrations/tokyo/` (client.py + fallback.py) — do n
   avatar-video-kit `scripts/matte.mjs` → alpha cutout.
 - Mount in the composition as a die-cut sticker: white torn-paper edge (stacked white
   drop-shadow filter ×3) + soft shadow; host on its own track above the collage backdrop.
+- **Host-card mount (specimen grammar — NO matting needed):** mount the host as a rounded
+  specimen card instead of a cutout: 400×520 card, radius 24, paper fill `#e9e4d8`, ±1–2°
+  rotation, name chip sliding in top-left. Works with UNMATTED footage (clean studio
+  background reads as the card's content). Size the `<video>` in PX with `object-fit:cover`
+  and a fixed negative offset to center the face (e.g. 16:9 source in a portrait card:
+  `width:924px; height:520px; left:-262px`) — percentage sizing on framework-managed video
+  is unreliable, and never nest the video inside timed divs. Card enters/exits by y-drop
+  (`y:760 → 0` back.out(1.2) in, `y→780` power2.in out) — the enter/leave IS the transition.
 - The page (whatever the grammar: collage / diagram / dark-data / archive / atlas) is
   HF-native per /vox-explainer, annotated with the shared annotation family
   (`vox-caption-chip`, `vox-thin-arrow`, `vox-highlighter-word`, `vox-source-footnote`) —
@@ -114,6 +129,27 @@ own audio IS the VO** — you derive the beats from the footage instead of writi
 
 /vox-avatar-edit accepts uploaded footage with zero changes — it only ever needed "a real
 talking video" (pre-compose to target AR, edit, conform, remux the footage's voice).
+
+## Input source C — HeyGen-platform single take (no Tokyo, no footage)
+
+Generate the host via the HeyGen platform (HeygenVerse MCP `generate_video`, or app.heygen.com)
+when Tokyo is unreachable and the user has no footage. Two hard rules learned empirically:
+
+1. **ONE take, ALL lines.** Without a pinned avatar_id the platform picks a DIFFERENT
+   presenter (and voice) on every call — `regenerate_video` does not continue the session
+   either. Generating per-beat clips yields a different person per beat. So: one generation
+   containing the ENTIRE script ("single continuous talking-head shot, plain light background,
+   no b-roll, no captions, ~1s pause between parts"), then cut it locally.
+2. **ONE voice for the whole piece.** Host beats use their segment's video+audio; graphic
+   beats use ANOTHER SEGMENT OF THE SAME TAKE as voice-over (audio-only). Never fill graphic
+   beats with a second TTS voice — a two-voice cut is a defect, not a style.
+
+Cutting: find line boundaries with `ffmpeg -af silencedetect=noise=-35dB:d=0.45`; gaps are
+both between-line pauses and intra-line periods — disambiguate by matching segment lengths
+against per-line word counts (~2.2 w/s). Export per segment: video (`-c:v libx264 -an`) for
+host beats + wav for every beat. Retime the beat map to the take's real segment durations.
+Mount with the host-card variant (§3) — platform output is unmatted, the card doesn't care.
+AUDIO CONTRACT unchanged: lips and voice stay one unit on every on-camera beat.
 
 ## Poster mode (fallback / cheap preview)
 
