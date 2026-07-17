@@ -42,7 +42,7 @@
     "player:perf": "bun run --filter @hyperframes/player perf",
     "format:check": "oxfmt --check .",
     "knip": "knip",
-    "test:scripts": "node --import tsx --test scripts/check-tracked-artifacts.test.mjs scripts/check-workspace-contracts.test.mjs scripts/validate-release-channel.test.mjs scripts/draft-changelog.test.ts scripts/set-version.test.ts scripts/release-prepare.test.ts scripts/cli-options.test.ts scripts/changelog-weekly.test.ts scripts/claude-plugin-compression.test.ts scripts/studio-runtime-smoke.test.mjs scripts/verify-packed-manifests.test.mjs",
+    "test:scripts": "node --import tsx --test scripts/check-tracked-artifacts.test.mjs scripts/check-workspace-contracts.test.mjs scripts/validate-release-channel.test.mjs scripts/draft-changelog.test.ts scripts/set-version.test.ts scripts/release-prepare.test.ts scripts/cli-options.test.ts scripts/changelog-weekly.test.ts scripts/claude-plugin-compression.test.ts scripts/studio-runtime-smoke.test.mjs scripts/verify-packed-manifests.test.mjs packages/gcp-cloud-run/check-dockerfile-workspaces.test.mjs",
     "test:skills": "node --test 'skills/**/*.test.mjs'",
     "generate:previews": "tsx scripts/generate-template-previews.ts",
     "generate:catalog-previews": "tsx scripts/generate-catalog-previews.ts",
