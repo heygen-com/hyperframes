@@ -223,7 +223,8 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   const pattern = /gsap\.set\s*\(\s*([^,]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
-    if (indexInsideAnyRange(match.index, functionRanges)) continue;
+    // Skip callback/handler bodies; keep IIFEs (they run at parse time).
+    if (indexInsideNonIifeRange(match.index, source, functionRanges)) continue;
     const target = (match[1] ?? "").trim();
     const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
     if (!selector) continue;
@@ -1000,6 +1001,25 @@ function indexInsideAnyRange(
   ranges: Array<{ start: number; end: number }>,
 ): boolean {
   return ranges.some((range) => index > range.start && index < range.end);
+}
+
+function isIifeBody(source: string, range: { start: number; end: number }): boolean {
+  let j = range.end;
+  while (j < source.length && /\s/.test(source[j]!)) j++;
+  if (source[j] !== ")") return false;
+  j++;
+  while (j < source.length && /\s/.test(source[j]!)) j++;
+  return source[j] === "(" || source.startsWith(".call", j) || source.startsWith(".apply", j);
+}
+
+function indexInsideNonIifeRange(
+  index: number,
+  source: string,
+  ranges: Array<{ start: number; end: number }>,
+): boolean {
+  return ranges.some(
+    (range) => index > range.start && index < range.end && !isIifeBody(source, range),
+  );
 }
 
 // Simple selectors whose authored CSS (style blocks or inline styles) sets

@@ -2568,6 +2568,26 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("gsap_timeline_set_initial_hide: does NOT warn when a load-time IIFE gsap.set already hides", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    (function () {
+      window.__timelines = window.__timelines || {};
+      gsap.set('#a', { opacity: 0 });
+      const tl = gsap.timeline({ paused: true });
+      tl.set('#a', { opacity: 0 }, 0);
+      tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+      window.__timelines["c1"] = tl;
+    })();
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeUndefined();
+  });
+
   it("gsap_timeline_set_initial_hide: does NOT warn when immediateRender is true", async () => {
     const html = `
 <html><body>
