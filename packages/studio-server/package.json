@@ -107,6 +107,18 @@
       "./source-mutation": {
         "import": "./dist/helpers/sourceMutation.js",
         "types": "./dist/helpers/sourceMutation.d.ts"
+      },
+      "./media-codec-map": {
+        "import": "./dist/helpers/mediaCodecMap.js",
+        "types": "./dist/helpers/mediaCodecMap.d.ts"
+      },
+      "./proxy-transcoder": {
+        "import": "./dist/helpers/proxyTranscoder.js",
+        "types": "./dist/helpers/proxyTranscoder.d.ts"
+      },
+      "./media-proxy-preview": {
+        "import": "./dist/helpers/mediaProxyPreview.js",
+        "types": "./dist/helpers/mediaProxyPreview.d.ts"
       }
     },
     "main": "./dist/index.js",
