@@ -15,6 +15,8 @@ description: >
 
 > **v2** (2026-07-16, frame-level dissection of 4 canonical Vox videos — taxonomy in
 > `references-vox-grammar.md` §grammars). v1 (collage-only) preserved at git tag `vox-skills-v1`.
+> Scene-to-scene motion rules measured in `references-vox-transitions.md` (hard cuts on the
+> narration beat, zoom-through exits, oversized-settle entrances — no slide-outs, no crossfades).
 
 > **The front door is `/hyperframes`.** This workflow is autonomous by design: at most one
 > clarifying question, then build through verification. Rendering is user-gated — after
