@@ -14,6 +14,7 @@ function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
     start: 1,
     duration: 4,
     track: 0,
+    domId: "el-1",
     ...overrides,
   };
 }
@@ -77,10 +78,21 @@ describe("canSplitElementAt", () => {
     ).toBe(false);
   });
 
-  it("rejects locked, implicit and sub-composition elements", () => {
+  it("rejects locked and implicit elements while allowing identified compositions", () => {
     expect(canSplitElementAt(element({ timelineLocked: true }), 3)).toBe(false);
     expect(canSplitElementAt(element({ timingSource: "implicit" }), 3)).toBe(false);
-    expect(canSplitElementAt(element({ compositionSrc: "child.html" }), 3)).toBe(false);
+    expect(
+      canSplitElementAt(
+        element({ kind: "composition", compositionSrc: "child.html", playbackRate: 2 }),
+        3,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects missing identity and invalid playback rates", () => {
+    expect(canSplitElementAt(element({ domId: undefined }), 3)).toBe(false);
+    expect(canSplitElementAt(element({ playbackRate: 0 }), 3)).toBe(false);
+    expect(canSplitElementAt(element({ playbackRate: Number.NaN }), 3)).toBe(false);
   });
 });
 

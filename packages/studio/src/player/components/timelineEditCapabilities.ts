@@ -6,11 +6,13 @@ export interface TimelineEditCapabilities {
 
 function isDeterministicTimelineWindow(input: {
   tag: string;
+  kind?: "video" | "audio" | "image" | "element" | "composition";
   compositionSrc?: string;
   playbackStartAttr?: "media-start" | "playback-start";
   sourceDuration?: number;
 }): boolean {
-  if (input.compositionSrc || input.playbackStartAttr != null) return true;
+  if (input.kind === "composition" || input.compositionSrc || input.playbackStartAttr != null)
+    return true;
   if (
     input.sourceDuration != null &&
     Number.isFinite(input.sourceDuration) &&
@@ -27,6 +29,7 @@ export function hasPatchableTimelineTarget(input: { domId?: string; selector?: s
 
 export function getTimelineEditCapabilities(input: {
   tag: string;
+  kind?: "video" | "audio" | "image" | "element" | "composition";
   duration: number;
   domId?: string;
   selector?: string;

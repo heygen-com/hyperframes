@@ -12,6 +12,7 @@ import {
   applyTimelineStackingReorder,
   buildPatchTarget,
   patchIframeDomTiming,
+  playbackStartAttributeForElement,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
   extendRootDurationIfNeeded,
@@ -263,10 +264,7 @@ export function useTimelineEditing({
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
       if (updates.playbackStart != null) {
-        const liveAttr =
-          element.playbackStartAttr === "playback-start"
-            ? "data-playback-start"
-            : "data-media-start";
+        const liveAttr = playbackStartAttributeForElement(element);
         liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { computeDragPreview, type DragPreviewContext } from "./timelineClipDragPreview";
+import {
+  computeDragPreview,
+  computeResizePreview,
+  type DragPreviewContext,
+} from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
 
@@ -140,5 +144,33 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
     // Pointer well above the first lane (into the top pad → rowFloat < 0).
     const next = computeDragPreview(drag, originClientX, yForRow(-0.6), ctx());
     expect(next.insertRow).toBe(0); // a new TOP track will be created on drop
+  });
+});
+
+describe("computeResizePreview — composition source continuity", () => {
+  it("seeds a legacy composition offset and advances it at playback rate", () => {
+    const element = {
+      ...clip("comp", 0, 2, 4, 0, "div"),
+      kind: "composition" as const,
+      playbackRate: 2,
+    };
+    const result = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 4,
+        started: true,
+      },
+      100,
+      { scroll: fakeScroll(), pps: 100, buildSnapTargets: () => [] },
+    );
+
+    expect(result).toMatchObject({
+      previewStart: 3,
+      previewDuration: 3,
+      previewPlaybackStart: 2,
+    });
   });
 });

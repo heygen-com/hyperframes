@@ -111,6 +111,7 @@ export function createTimelineElementFromManifestClip(params: {
     id: identity.id,
     label,
     key: identity.key,
+    kind: clip.kind,
     tag: resolveClipTag(clip),
     start: clip.start,
     duration: clip.duration,
@@ -129,6 +130,8 @@ export function createTimelineElementFromManifestClip(params: {
     selector,
     selectorIndex,
     sourceFile,
+    playbackStart: clip.playbackStart,
+    playbackRate: clip.playbackRate,
   };
 
   if (hostEl) {
@@ -140,6 +143,8 @@ export function createTimelineElementFromManifestClip(params: {
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
   if (clip.kind === "composition" && clip.compositionId) {
+    entry.playbackStart ??= 0;
+    entry.playbackRate ??= 1;
     let resolvedSrc = clip.compositionSrc;
     if (!resolvedSrc) {
       hostEl =
@@ -293,6 +298,14 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       id: identity.id,
       label,
       key: identity.key,
+      kind:
+        compId && compId !== rootComp?.getAttribute("data-composition-id")
+          ? "composition"
+          : tagLower === "video" || tagLower === "audio"
+            ? tagLower
+            : tagLower === "img"
+              ? "image"
+              : "element",
       tag: tagLower,
       start,
       duration: dur,
@@ -308,13 +321,13 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     };
 
     const mediaEl = resolveMediaElement(el);
+    applyMediaMetadataFromElement(entry, el);
     if (mediaEl) {
       if (mediaEl.tagName === "IMG") {
         entry.tag = "img";
       }
       const vol = el.getAttribute("data-volume") ?? mediaEl.getAttribute("data-volume");
       if (vol) entry.volume = parseFloat(vol);
-      applyMediaMetadataFromElement(entry, el);
       // Override AFTER the helper (which sets the raw relative attribute) so the
       // resolved absolute URL wins — the Studio can then fetch the asset
       // regardless of whether the attribute value was relative or absolute.
@@ -344,6 +357,10 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
         entry.src = innerVideo.getAttribute("src") || undefined;
         entry.tag = "video";
       }
+    }
+    if (entry.kind === "composition") {
+      entry.playbackStart ??= 0;
+      entry.playbackRate ??= 1;
     }
 
     els.push(entry);

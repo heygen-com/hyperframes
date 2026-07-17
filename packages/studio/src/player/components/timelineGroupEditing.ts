@@ -181,14 +181,15 @@ function elementKey(element: TimelineElement): string {
   return element.key ?? element.id;
 }
 
-function isMediaTimelineElement(element: TimelineElement): boolean {
+function hasSourcePlaybackOffset(element: TimelineElement): boolean {
   const tag = element.tag.toLowerCase();
-  return tag === "audio" || tag === "video";
+  return element.kind === "composition" || tag === "audio" || tag === "video";
 }
 
 function canTrimEdge(element: TimelineElement, edge: TimelineGroupResizeEdge): boolean {
   const caps = getTimelineEditCapabilities({
     tag: element.tag,
+    kind: element.kind,
     duration: element.duration,
     domId: element.domId,
     selector: element.selector,
@@ -228,7 +229,7 @@ export function buildTimelineGroupResizeMembers(
     start: element.start,
     duration: element.duration,
     playbackStart:
-      edge === "start" && isMediaTimelineElement(element)
+      edge === "start" && hasSourcePlaybackOffset(element)
         ? (element.playbackStart ?? 0)
         : element.playbackStart,
     playbackRate: element.playbackRate,

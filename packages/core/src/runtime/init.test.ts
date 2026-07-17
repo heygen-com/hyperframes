@@ -1097,6 +1097,33 @@ describe("initSandboxRuntimeModular", () => {
     expect(hookHost.style.visibility).toBe("visible");
   });
 
+  it("seeks child compositions in source time using host offset and playback rate", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "3");
+    child.setAttribute("data-duration", "8");
+    child.setAttribute("data-playback-start", "1.5");
+    child.setAttribute("data-playback-rate", "2");
+    root.appendChild(child);
+
+    const childTimeline = createMockTimeline(6);
+    window.__timelines = { main: createMockTimeline(20), child: childTimeline };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(5);
+    expect(childTimeline.time()).toBeCloseTo(5.5);
+
+    window.__player?.renderSeek(10);
+    expect(childTimeline.time()).toBe(6);
+  });
+
   it("keeps the root GSAP render nudge for normal frames but not silent probes", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

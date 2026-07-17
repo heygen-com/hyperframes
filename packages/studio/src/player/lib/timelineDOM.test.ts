@@ -111,6 +111,46 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
 });
 
 describe("createTimelineElementFromManifestClip — source-scoped selector identity", () => {
+  it("preserves composition kind and source timing on first translation", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root" data-composition-file="index.html">
+        <div id="host" data-composition-id="scene" data-composition-src="scene.html"
+          data-playback-start="1.5" data-playback-rate="2"></div>
+      </div>
+    `);
+    const host = doc.getElementById("host");
+
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "host",
+        label: "Scene",
+        kind: "composition",
+        tagName: "div",
+        start: 2,
+        duration: 4,
+        track: 0,
+        compositionId: "scene",
+        parentCompositionId: "root",
+        compositionSrc: "scene.html",
+        playbackStart: 1.5,
+        playbackRate: 2,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: host,
+    });
+
+    expect(element).toMatchObject({
+      kind: "composition",
+      compositionSrc: "scene.html",
+      playbackStart: 1.5,
+      playbackStartAttr: "playback-start",
+      playbackRate: 2,
+      domId: "host",
+    });
+  });
+
   it("ignores an index.html duplicate when indexing a scene.html selector", () => {
     const doc = makeDoc(`
       <div data-composition-id="root" data-composition-file="index.html">

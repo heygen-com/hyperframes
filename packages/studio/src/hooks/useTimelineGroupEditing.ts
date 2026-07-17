@@ -12,6 +12,7 @@ import {
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
   patchIframeDomTiming,
+  playbackStartAttributeForElement,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
@@ -348,10 +349,7 @@ export function useTimelineGroupEditing({
           ["data-duration", formatTimelineAttributeNumber(change.duration)],
         ];
         if (change.playbackStart != null) {
-          const liveAttr =
-            change.element.playbackStartAttr === "playback-start"
-              ? "data-playback-start"
-              : "data-media-start";
+          const liveAttr = playbackStartAttributeForElement(change.element);
           liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
         }
         patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);

@@ -20,6 +20,8 @@ import {
 import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  readElementPlaybackRate,
+  readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
@@ -2632,17 +2634,15 @@ export function initSandboxRuntimeModular(): void {
       if (!node) continue;
       const start = resolveStartForElement(node, 0);
       if (!Number.isFinite(start)) continue;
-      const authoredDuration = resolveDurationForElement(node, {
-        includeAuthoredTimingAttrs: true,
-      });
       const timelineDuration = getTimelineDurationSeconds(timeline);
-      const duration =
-        authoredDuration != null && authoredDuration > 0 ? authoredDuration : timelineDuration;
+      const sourceTime =
+        readElementPlaybackStart(node) +
+        Math.max(0, timeSeconds - start) * readElementPlaybackRate(node);
       const localTime = Math.max(
         0,
-        duration != null && duration > 0
-          ? Math.min(duration, timeSeconds - start)
-          : timeSeconds - start,
+        timelineDuration != null && timelineDuration > 0
+          ? Math.min(timelineDuration, sourceTime)
+          : sourceTime,
       );
       seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline", options);
     }
@@ -2785,15 +2785,13 @@ export function initSandboxRuntimeModular(): void {
       } catch (err) {
         swallow("runtime.init.transport.seek", err);
       }
-      // Sibling timelines (registered in __timelines but not nested under
-      // the root) are paused alongside the master. We do NOT seek them to
-      // absolute position `t` here — child timelines nested under the root
-      // are already propagated via tl.totalTime(), and seeking them again
-      // at absolute `t` would clobber their offset-relative position.
-      // Play/pause propagation for siblings happens in the player.play()
-      // and player.pause() overrides via the adapter layer.
-    } else {
-      seekStandaloneRegisteredTimelines(t, opts);
+      // Root propagation cannot represent an authored child source offset or
+      // playback rate. Re-seek registered children below with their host's
+      // explicit source-time contract.
+    }
+    seekStandaloneRegisteredTimelines(t, opts);
+    if (tl && opts?.activateChildren) {
+      activateSiblingTimelines(tl);
     }
     for (const adapter of state.deterministicAdapters) {
       if (adapter.name === "gsap" && tl) continue;

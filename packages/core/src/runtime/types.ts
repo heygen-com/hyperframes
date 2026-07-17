@@ -64,6 +64,8 @@ export type RuntimeTimelineClip = {
   parentCompositionId: string | null;
   nodePath: string | null;
   compositionSrc: string | null;
+  playbackStart: number;
+  playbackRate: number;
   assetUrl: string | null;
   timelineRole: string | null;
   timelineLabel: string | null;

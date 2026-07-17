@@ -149,19 +149,25 @@ export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageEl
     : null;
 }
 
-export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
-  const mediaStartAttr = el.getAttribute("data-playback-start")
-    ? "playback-start"
-    : el.getAttribute("data-media-start")
-      ? "media-start"
-      : undefined;
-  const mediaStartValue =
-    el.getAttribute("data-playback-start") ?? el.getAttribute("data-media-start");
+function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): void {
+  const playbackStartValue = el.getAttribute("data-playback-start");
+  const legacyMediaStartValue = el.getAttribute("data-media-start");
+  const mediaStartValue = playbackStartValue ?? legacyMediaStartValue;
   if (mediaStartValue != null) {
     const playbackStart = parseFloat(mediaStartValue);
     if (Number.isFinite(playbackStart)) entry.playbackStart = playbackStart;
   }
-  if (mediaStartAttr) entry.playbackStartAttr = mediaStartAttr;
+  if (playbackStartValue != null) entry.playbackStartAttr = "playback-start";
+  else if (legacyMediaStartValue != null) entry.playbackStartAttr = "media-start";
+
+  const authoredPlaybackRate = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
+  if (Number.isFinite(authoredPlaybackRate) && authoredPlaybackRate > 0) {
+    entry.playbackRate = authoredPlaybackRate;
+  }
+}
+
+export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
+  applyPlaybackMetadataFromElement(entry, el);
 
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;
@@ -182,7 +188,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   }
 
   const playbackRate = mediaEl.defaultPlaybackRate;
-  if (Number.isFinite(playbackRate) && playbackRate > 0) {
+  if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {
     entry.playbackRate = playbackRate;
   }
 }

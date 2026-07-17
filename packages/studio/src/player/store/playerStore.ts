@@ -25,6 +25,7 @@ export interface TimelineElement {
   id: string;
   label?: string;
   key?: string;
+  kind?: ClipManifestClip["kind"];
   tag: string;
   start: number;
   duration: number;

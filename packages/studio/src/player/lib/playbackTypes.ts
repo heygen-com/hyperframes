@@ -46,6 +46,8 @@ export interface ClipManifestClip {
   compositionAncestors?: string[];
   parentCompositionId: string | null;
   compositionSrc: string | null;
+  playbackStart?: number;
+  playbackRate?: number;
   assetUrl: string | null;
 }
 

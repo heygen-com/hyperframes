@@ -72,7 +72,6 @@ export interface DragCommitDeps {
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
-
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
 
@@ -80,6 +79,7 @@ let laneChangeGestureSeq = 0;
 function canMoveElement(element: TimelineElement): boolean {
   return getTimelineEditCapabilities({
     tag: element.tag,
+    kind: element.kind,
     duration: element.duration,
     domId: element.domId,
     selector: element.selector,

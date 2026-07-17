@@ -312,10 +312,32 @@ describe("collectRuntimeTimelinePayload", () => {
     comp.setAttribute("data-composition-id", "scene-1");
     comp.setAttribute("data-start", "0");
     comp.setAttribute("data-duration", "10");
+    comp.setAttribute("data-playback-start", "1.5");
+    comp.setAttribute("data-playback-rate", "2");
     root.appendChild(comp);
 
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.clips[0].kind).toBe("composition");
+    expect(result.clips[0].playbackStart).toBe(1.5);
+    expect(result.clips[0].playbackRate).toBe(2);
+  });
+
+  it("defaults a legacy composition host playback window to zero at unit rate", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const comp = document.createElement("div");
+    comp.id = "scene-legacy";
+    comp.setAttribute("data-composition-id", "scene-legacy");
+    comp.setAttribute("data-start", "0");
+    comp.setAttribute("data-duration", "10");
+    root.appendChild(comp);
+
+    const clip = collectRuntimeTimelinePayload(defaultParams).clips[0];
+    expect(clip.playbackStart).toBe(0);
+    expect(clip.playbackRate).toBe(1);
   });
 
   it("collects scenes from composition nodes", () => {
