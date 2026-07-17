@@ -4,11 +4,11 @@ For data-driven / finance / investigation topics. Append to every clip prompt (g
 
 ```
 Vox-style dark data-journalism explainer, vertical 9:16 motion graphics.
-Charcoal page (#1E1B18) with subtle print grain and heavy vignette.
+Charcoal page with subtle print grain and heavy vignette.
 One chart per page: single-color line chart with axis labels and an event callout chip
 pinned to the inflection point, or a two-color pie with one large percentage figure.
 Social-media post cards recreated as flat white UI cards, slightly rotated, stackable.
-Yellow marker-highlighted key words (#FFD21E) sweeping on word by word.
+Yellow marker-highlighted key words sweeping on word by word.
 Black human silhouettes against single-color environment shapes for scene metaphors.
 Faint grids of small numbers as background texture, never readable.
 Transitions: hard cut only - no dissolves.

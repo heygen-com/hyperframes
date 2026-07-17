@@ -92,16 +92,27 @@ def api(method, path, body=None, tok=None, raw=False, timeout=560):
 
 
 def compose_source(src_dir, out_dir, n, layout, canvas):
+    """Prefer the alpha matte (person floats directly on the canvas color — no leftover
+    Tokyo backdrop box, which reads as an unintegrated paste on non-matching canvases)."""
     scale, x, y = LAYOUTS[layout]
     src = os.path.join(src_dir, f"tokyo-beat{n}.mp4")
+    alpha = os.path.join(src_dir, f"tokyo-beat{n}-alpha.webm")
     out = os.path.join(out_dir, f"lay-beat{n}.mp4")
     dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src],
                          capture_output=True, text=True).stdout.strip()
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-threads", "2",
-                    "-f", "lavfi", "-i", f"color={canvas}:s=1080x1920:d={dur}",
-                    "-i", src,
-                    "-filter_complex", f"[1:v]scale={scale}:{scale}[p];[0:v][p]overlay={x}:{y}:shortest=1[v]",
-                    "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "18", out], check=True)
+    if os.path.exists(alpha):
+        # VP9 alpha MUST be decoded with libvpx-vp9 on the INPUT or alpha silently drops.
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-threads", "2",
+                        "-f", "lavfi", "-i", f"color={canvas}:s=1080x1920:d={dur}",
+                        "-c:v", "libvpx-vp9", "-i", alpha,
+                        "-filter_complex", f"[1:v]scale={scale}:-1[p];[0:v][p]overlay={x}:main_h-overlay_h:shortest=1[v]",
+                        "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "18", out], check=True)
+    else:
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-threads", "2",
+                        "-f", "lavfi", "-i", f"color={canvas}:s=1080x1920:d={dur}",
+                        "-i", src,
+                        "-filter_complex", f"[1:v]scale={scale}:{scale}[p];[0:v][p]overlay={x}:{y}:shortest=1[v]",
+                        "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "18", out], check=True)
     return out, src
 
 

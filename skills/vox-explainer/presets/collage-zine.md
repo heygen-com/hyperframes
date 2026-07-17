@@ -4,11 +4,11 @@ Append to every clip prompt, then the mute template.
 
 ```
 Vox-style paper-collage explainer, vertical 9:16 motion graphics.
-Kraft tan paper background (#E7D7B5) with subtle paper grain at 8% opacity and fold creases.
+Kraft tan paper background with subtle paper grain and fold creases.
 Torn-edge, white-bordered photo cutouts with dense halftone dot patterns in deep purple monochrome ink.
-Bold ALL-CAPS cutout labels in vintage newspaper typography with distinct 3-6px drop shadows.
+Bold ALL-CAPS cutout labels in vintage newspaper typography with distinct hard drop shadows.
 Red masking tape strips on photo corners.
-Geometric color blocks in deep purple (#3a2a55), signal red (#D2382B) and mustard.
+Geometric color blocks in deep purple, signal red and mustard.
 Every paper element casts a drop shadow.
 Stop-motion feel with subtle position jitter on cutouts.
 Transitions: whip-pan, hard cut, paper-slide only - no dissolves.

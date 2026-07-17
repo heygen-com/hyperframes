@@ -4,11 +4,11 @@ For tech / product / how-it-works topics. Append to every clip prompt (generatio
 
 ```
 Vox-style editorial diagram explainer, vertical 9:16 motion graphics.
-Clean paper-white page (#F4F1EA) with faint print grain, generous negative space.
+Clean paper-white page with faint print grain, generous negative space.
 Devices and objects drawn as thin dark outline line-art with flat fills, no photorealism.
-Small-caps typewriter labels next to each element; thin 2px blue annotation arrows (#2E5F8A)
+Small-caps typewriter labels next to each element; hairline blue annotation arrows
 drawing on from label to target. Recreated app-UI panels as flat paper cards; hand-drawn
-red circles and bold red arrows (#D2382B) calling out one UI element at a time.
+red circles and bold red arrows calling out one UI element at a time.
 Icon grids and dotted network connector lines between elements.
 One diagram idea per page; motion is arrows drawing, labels sliding, panels settling.
 Transitions: hard cut or straight push only - no dissolves.

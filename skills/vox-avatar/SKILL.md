@@ -87,6 +87,11 @@ Use `hyperframes-agent` `integrations/tokyo/` (client.py + fallback.py) — do n
   micro-motion); the Tokyo clip ends at the audio, so long tails freeze-clone the last frame —
   a 0.5-1.8s frozen host before a hard cut reads as a stutter (empirical). Payoff beat may
   hold ~0.8s but mask the hold with a slow ambient push (scale 1.00->1.02, ease none).
+- **Host media must COVER its clip window (render coverage gate).** Beat = VO + 0.3s but the
+  matted webm ends at the VO — `hyperframes render` aborts below 95% video coverage even when
+  check passes. Extend each host webm past its `data-duration` with a cloned tail:
+  `ffmpeg -c:v libvpx-vp9 -i host.webm -vf "tpad=stop_mode=clone:stop_duration=1.0" -c:v libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 …`
+  (VP9 alpha: decode AND encode via libvpx-vp9 or the alpha silently drops).
 
 ## Input source B — bring your own avatar footage (no Tokyo access needed)
 

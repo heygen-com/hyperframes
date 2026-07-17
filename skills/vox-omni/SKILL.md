@@ -56,6 +56,12 @@ Always end the style block with the mute template:
 `No humans. No dialogue. No narration. No music. Quiet paper-rustle ambience only.`
 (Omni always bakes an audio track; this is the only mute control. VO comes from TTS in step 5.)
 
+**Style-block hygiene (measured failure):** the style block must contain NO hex codes and no
+digit-bearing units — the model renders them as literal on-screen text, especially on light
+diagram pages (`#F4F1EA` and `2px` both appeared baked into frames). Describe colors and
+weights in words ("charcoal page", "hairline blue arrows"); the presets are already scrubbed.
+The text whitelist (step 3 rule 3) cannot protect you from digits you put in the prompt yourself.
+
 ## Step 3 — Generate (scripts/gen_clips.py)
 
 **Prompt-discipline rules (v2 — each kills a measured chaining failure):**

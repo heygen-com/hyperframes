@@ -4,12 +4,12 @@ For historical / war / biography topics. Append to every clip prompt (generation
 
 ```
 Vox-style archival history explainer, vertical 9:16 motion graphics.
-Near-black desk surface (#14110E) with heavy vignette; archival photographs as
+Near-black desk surface with heavy vignette; archival photographs as
 white-bordered paper cards floating at slightly different angles, slow Ken Burns
 push on the focal card. Typewriter small-caps caption chips (black bar, off-white text)
 sliding in from frame edges and staying resident in corners.
 Numbered process labels for sequences. Full-bleed vintage newspaper pages pushed in
-toward the headline. Cream hand-drawn sketch plates (#EFE6CE) with fine line-art.
+toward the headline. Cream hand-drawn sketch plates with fine line-art.
 Film grain and dust over everything; muted sepia tones in photographs.
 Transitions: hard cut or card slide only - no dissolves.
 No modern elements. No dialogue. No narration. No music. Quiet room-tone ambience only.
