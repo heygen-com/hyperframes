@@ -94,6 +94,29 @@ describe("appendCarveBands", () => {
     expect(next.plugins[0].format).toBe("builtin");
     expect(next.plugins[0].pluginName).toBeNull();
   });
+
+  it("replaces a prior carve run's bands instead of stacking on top of them", () => {
+    const afterFirstCarve = appendCarveBands(
+      {
+        version: 1,
+        plugins: [
+          { format: "builtin", path: "Reverb", pluginName: null, name: "Reverb", stateB64: null },
+        ],
+      },
+      [{ freq: 160, gainDb: -1.5, q: 1.5 }],
+    );
+    const afterSecondCarve = appendCarveBands(afterFirstCarve, [
+      { freq: 160, gainDb: -4.6, q: 1.5 },
+    ]);
+    // Only ONE carve band (the new depth), plus the untouched user effect —
+    // not two stacked cuts at the same frequency.
+    expect(afterSecondCarve.plugins).toHaveLength(2);
+    expect(afterSecondCarve.plugins[0].path).toBe("Reverb");
+    const carveEntries = afterSecondCarve.plugins.filter((p) => p.name.startsWith("Carve "));
+    expect(carveEntries).toHaveLength(1);
+    const params = JSON.parse(atob(carveEntries[0].stateB64 ?? ""));
+    expect(params.gain_db).toBe(-4.6);
+  });
 });
 
 describe("projectRelativeAssetPath", () => {

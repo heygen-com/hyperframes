@@ -39,10 +39,10 @@ export function normalizePreviewViewport(doc: Document, win: Window): void {
   win.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
-// Legacy recovery retained until versioned composition manifests complete
-// their compatibility soak across published CDN runtimes.
-// fallow-ignore-next-line complexity
-export function autoHealMissingCompositionIds(doc: Document): void {
+// Scan <style>/<script> text for data-composition-id="..." references. These
+// are compositions the CDN runtime's own code refers to by id but that may not
+// carry the attribute on their host element yet.
+function extractReferencedCompositionIds(doc: Document): Set<string> {
   const compositionIdRe = /data-composition-id=["']([^"']+)["']/gi;
   const referencedIds = new Set<string>();
   const scopedNodes = Array.from(doc.querySelectorAll("style, script"));
@@ -55,7 +55,23 @@ export function autoHealMissingCompositionIds(doc: Document): void {
       if (id) referencedIds.add(id);
     }
   }
+  return referencedIds;
+}
 
+// Resolve a referenced composition id to its candidate host element, trying
+// the loader's own naming conventions before the bare id.
+function resolveCompositionIdHost(doc: Document, compId: string): HTMLElement | null {
+  return (
+    doc.getElementById(`${compId}-layer`) ||
+    doc.getElementById(`${compId}-comp`) ||
+    doc.getElementById(compId)
+  );
+}
+
+// Legacy recovery retained until versioned composition manifests complete
+// their compatibility soak across published CDN runtimes.
+export function autoHealMissingCompositionIds(doc: Document): void {
+  const referencedIds = extractReferencedCompositionIds(doc);
   if (referencedIds.size === 0) return;
 
   const existingIds = new Set<string>();
@@ -67,10 +83,7 @@ export function autoHealMissingCompositionIds(doc: Document): void {
 
   for (const compId of referencedIds) {
     if (compId === "root" || existingIds.has(compId)) continue;
-    const host =
-      doc.getElementById(`${compId}-layer`) ||
-      doc.getElementById(`${compId}-comp`) ||
-      doc.getElementById(compId);
+    const host = resolveCompositionIdHost(doc, compId);
     if (!host) continue;
     if (!host.getAttribute("data-composition-id")) {
       host.setAttribute("data-composition-id", compId);
@@ -236,7 +249,11 @@ export function scrubPreviewAudio(
   }
   if (!doc) return;
   const el = resolveScrubAudioEl(doc, musicId);
-  if (el) applyScrub(el, audioFileTime);
+  // A VST-chain track is permanently muted and fed by the VST preview hook's
+  // own AudioContext/AudioWorklet (packages/studio/src/player/hooks/useVstPreview.ts),
+  // not this raw dry element — scrubbing it here would force-unmute the
+  // untreated source file underneath the processed stream.
+  if (el && !el.hasAttribute("data-vst-chain")) applyScrub(el, audioFileTime);
 }
 
 export function stopScrubPreviewAudio(): void {

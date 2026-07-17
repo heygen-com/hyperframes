@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   FlatGroupHeader,
   FlatRow,
@@ -10,22 +9,9 @@ import {
   FlatSelectRow,
   FlatSlider,
 } from "./propertyPanelFlatPrimitives";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(() => {
-  document.body.innerHTML = "";
-});
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
-}
+setupReactActEnvironment();
 
 describe("FlatRow", () => {
   it("renders the default tier with no reset button", () => {

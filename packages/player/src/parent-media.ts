@@ -376,6 +376,13 @@ export class ParentMediaManager {
 
   // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
+    // A VST-chain track's audio is produced entirely by the studio's VST
+    // pipeline (useVstPreview) through its own AudioContext — the wet,
+    // processed stream. A dry parent proxy here would play the UNPROCESSED
+    // file on top of it, so the effect sounds absent ("all dry"). Leave this
+    // element's audio to the VST pipeline; the observer re-adopts it if the
+    // chain is later removed.
+    if (iframeEl.hasAttribute("data-vst-chain")) return;
     // Skip elements the preloader has demoted — the observer will re-trigger
     // when the preload attribute is promoted to "auto".
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
@@ -428,6 +435,21 @@ export class ParentMediaManager {
           continue;
         }
 
+        // A track becoming (or ceasing to be) VST-chained flips who owns its
+        // audio: adding `data-vst-chain` hands playback to the VST pipeline, so
+        // drop the dry parent proxy; removing it hands playback back here.
+        if (m.type === "attributes" && m.attributeName === "data-vst-chain") {
+          const target = m.target;
+          if (
+            isRealmHtmlMediaElement(target) &&
+            target.matches("audio[data-start], video[data-start]")
+          ) {
+            if (target.hasAttribute("data-vst-chain")) this._detachIframeMedia(target);
+            else this._adoptIframeMedia(target);
+          }
+          continue;
+        }
+
         for (const added of m.addedNodes) {
           if (!isRealmElement(added)) continue;
           const candidates: HTMLMediaElement[] = [];
@@ -466,7 +488,7 @@ export class ParentMediaManager {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["preload"],
+      attributeFilter: ["preload", "data-vst-chain"],
     };
 
     const targets = selectMediaObserverTargets(doc);

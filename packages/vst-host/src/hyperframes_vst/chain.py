@@ -28,6 +28,12 @@ class PluginSpec:
     plugin_name: str | None
     name: str
     state_b64: str | None
+    # Bypass toggle — absent in the JSON means enabled (backward compatible
+    # with chain files written before the field existed). A disabled plugin
+    # is still CONSTRUCTED (so set-param/get-state indices stay aligned with
+    # the chain file) but excluded from the processing board — see
+    # `enabled_plugins`.
+    enabled: bool = True
 
 
 @dataclass
@@ -52,6 +58,7 @@ def load_chain_spec(json_text: str) -> ChainSpec:
                 plugin_name=p.get("pluginName"),
                 name=p.get("name", p["path"]),
                 state_b64=p.get("stateB64"),
+                enabled=p.get("enabled", True) is not False,
             )
         )
     return ChainSpec(version=1, plugins=plugins)
@@ -83,6 +90,15 @@ def _build_external(spec: PluginSpec):
 
 def build_chain(spec: ChainSpec) -> list:
     return [_build_builtin(p) if p.format == "builtin" else _build_external(p) for p in spec.plugins]
+
+
+def enabled_plugins(spec: ChainSpec, built: list) -> list:
+    """The subset of `built` (from `build_chain(spec)`, same order) that should
+    actually process audio. Disabled plugins are constructed but bypassed —
+    keeping the full list's indices aligned with the chain file for
+    set-param/get-state while the processing board skips them. An all-disabled
+    chain yields an empty board, which pedalboard treats as a passthrough."""
+    return [plugin for plugin, p in zip(built, spec.plugins) if p.enabled]
 
 
 def _is_builtin(plugin) -> bool:

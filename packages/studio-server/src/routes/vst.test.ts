@@ -45,6 +45,13 @@ function postCarve(api: Hono, body: Record<string, unknown>): Promise<Response> 
   });
 }
 
+/** Builds an API that resolves `projectId: "p1"` to `projectDir` and POSTs
+ *  `/vst/carve` against it — the shared shape every carve test below needs. */
+function carveViaProjectDir(projectDir: string, body: Record<string, unknown>): Promise<Response> {
+  const api = makeApi({ resolveProject: () => Promise.resolve({ dir: projectDir }) });
+  return postCarve(api, { projectId: "p1", ...body });
+}
+
 describe("vst routes", () => {
   it("POST /vst/start returns the sidecar port and token", async () => {
     const api = makeApi({
@@ -81,11 +88,7 @@ describe("vst routes", () => {
       `#!/bin/sh\necho '{"bands":[{"freq":1000,"gainDb":-4,"q":1.5},{"freq":2500,"gainDb":-2,"q":1.5}]}'\n`,
     );
 
-    const api = makeApi({
-      resolveProject: () => Promise.resolve({ dir: projectDir }),
-    });
-    const res = await postCarve(api, {
-      projectId: "p1",
+    const res = await carveViaProjectDir(projectDir, {
       musicPath: "media/music.wav",
       voicePath: "media/vo.wav",
       maxCutDb: 4,
@@ -98,9 +101,7 @@ describe("vst routes", () => {
 
   it("POST /vst/carve 404s when a track file is missing", async () => {
     const projectDir = createProjectDir();
-    const api = makeApi({ resolveProject: () => Promise.resolve({ dir: projectDir }) });
-    const res = await postCarve(api, {
-      projectId: "p1",
+    const res = await carveViaProjectDir(projectDir, {
       musicPath: "media/nope.wav",
       voicePath: "media/nope.wav",
       maxCutDb: 4,
@@ -113,9 +114,7 @@ describe("vst routes", () => {
     mkdirSync(join(projectDir, "media"), { recursive: true });
     writeFileSync(join(projectDir, "media/vo.wav"), "RIFF");
     installFakeVstHost(projectDir, `#!/bin/sh\necho "boom" >&2; exit 1\n`);
-    const api = makeApi({ resolveProject: () => Promise.resolve({ dir: projectDir }) });
-    const res = await postCarve(api, {
-      projectId: "p1",
+    const res = await carveViaProjectDir(projectDir, {
       musicPath: "media/vo.wav",
       voicePath: "media/vo.wav",
       maxCutDb: 4,

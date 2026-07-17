@@ -157,6 +157,8 @@ export function initSandboxRuntimeModular(): void {
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
   });
+  // TEMP DEBUG — remove after diagnosis
+  (window as unknown as { __hfWebAudioDbg?: unknown }).__hfWebAudioDbg = webAudio;
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
   // plugin so GSAP doesn't log "Invalid property _auto" on every tween build —
@@ -2343,6 +2345,11 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
+        // A VST-chain element is permanently muted by the VST preview hook —
+        // its actual audio plays through a separate AudioWorklet fed by the
+        // sidecar, not this element. Overwriting `.muted` here would
+        // silently swap the processed stream back for the untreated one.
+        if (el.hasAttribute("data-vst-chain")) continue;
         el.muted = effective || el.defaultMuted;
       }
     },
@@ -2352,6 +2359,7 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
+        if (el.hasAttribute("data-vst-chain")) continue;
         const parsed = parseFloat(el.dataset.volume ?? "");
         const clipVolume = Number.isFinite(parsed) ? parsed : 1;
         el.volume = clipVolume * volume;
@@ -2364,6 +2372,7 @@ export function initSandboxRuntimeModular(): void {
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
         if (!(el instanceof HTMLMediaElement)) continue;
+        if (el.hasAttribute("data-vst-chain")) continue;
         el.muted = effective || el.defaultMuted;
       }
     },
@@ -2962,7 +2971,15 @@ export function initSandboxRuntimeModular(): void {
   const scheduleWebAudioForActiveClips = () => {
     if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
     const gen = webAudio.startGeneration();
-    const audioEls = document.querySelectorAll("audio[data-start]");
+    // `data-vst-chain` elements are claimed by the VST preview hook
+    // (packages/studio/src/player/hooks/useVstPreview.ts) — it routes their
+    // audio through its own AudioContext/AudioWorklet fed by the sidecar and
+    // permanently mutes the element. Scheduling one here too would double-
+    // claim it: this transport's own mute/restore lifecycle (see
+    // webAudioTransport.ts's `schedulePlayback`/`stopAll`) would unmute it
+    // again once its native source ends, silently swapping the processed
+    // stream back for the untreated one.
+    const audioEls = document.querySelectorAll("audio[data-start]:not([data-vst-chain])");
     for (const rawEl of audioEls) {
       if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
       const compStart = Number.parseFloat(rawEl.dataset.start ?? "");

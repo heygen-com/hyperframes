@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
@@ -267,6 +267,51 @@ export function parseAudioElements(html: string): AudioElement[] {
   return elements;
 }
 
+/**
+ * Resolve the ffmpeg process timeout from an optional partial config,
+ * falling back to `DEFAULT_CONFIG.ffmpegProcessTimeout`. Shared by every
+ * ffmpeg-invoking helper below.
+ */
+function resolveFfmpegTimeout(
+  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
+): number {
+  return config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+}
+
+/** Create `outputPath`'s parent directory if it doesn't already exist. */
+function ensureOutputDir(outputPath: string): void {
+  const outputDir = dirname(outputPath);
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+}
+
+/**
+ * Build the common `ExtractResult` shape shared by
+ * `extractAudioFromVideo` / `prepareAudioTrack` / `generateSilence`: an
+ * aborted-signal case (function-specific cancelled message), an ffmpeg
+ * failure case (function-specific error formatting via `formatError`), and
+ * the success case.
+ */
+function buildExtractResult(
+  outputPath: string,
+  result: RunFfmpegResult,
+  signal: AbortSignal | undefined,
+  cancelledMessage: string,
+  formatError: (result: RunFfmpegResult) => string,
+): ExtractResult {
+  if (signal?.aborted) {
+    return { success: false, outputPath, durationMs: result.durationMs, error: cancelledMessage };
+  }
+  if (!result.success) {
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      error: formatError(result),
+    };
+  }
+  return { success: true, outputPath, durationMs: result.durationMs };
+}
+
 async function extractAudioFromVideo(
   videoPath: string,
   outputPath: string,
@@ -274,9 +319,8 @@ async function extractAudioFromVideo(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
-  const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const outputDir = dirname(outputPath);
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+  const ffmpegProcessTimeout = resolveFfmpegTimeout(config);
+  ensureOutputDir(outputPath);
 
   const args: string[] = ["-i", videoPath];
   if (options?.startTime !== undefined) args.push("-ss", String(options.startTime));
@@ -286,24 +330,9 @@ async function extractAudioFromVideo(
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
-  if (signal?.aborted) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: result.durationMs,
-      error: "Audio extract cancelled",
-    };
-  }
-  if (!result.success) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: result.durationMs,
-      error:
-        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
-    };
-  }
-  return { success: true, outputPath, durationMs: result.durationMs };
+  return buildExtractResult(outputPath, result, signal, "Audio extract cancelled", (r) =>
+    r.exitCode !== null ? `FFmpeg exited with code ${r.exitCode}` : r.stderr,
+  );
 }
 
 async function prepareAudioTrack(
@@ -314,9 +343,8 @@ async function prepareAudioTrack(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
-  const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const outputDir = dirname(outputPath);
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+  const ffmpegProcessTimeout = resolveFfmpegTimeout(config);
+  ensureOutputDir(outputPath);
   const channelArgs = await stereoOutputArgs(srcPath);
 
   const args = [
@@ -337,24 +365,11 @@ async function prepareAudioTrack(
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
-  if (signal?.aborted) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: result.durationMs,
-      error: "Audio prepare cancelled",
-    };
-  }
-  return {
-    success: result.success,
-    outputPath,
-    durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}: ${result.stderr.slice(-200)}`
-        : result.stderr
-      : undefined,
-  };
+  return buildExtractResult(outputPath, result, signal, "Audio prepare cancelled", (r) =>
+    r.exitCode !== null
+      ? `FFmpeg exited with code ${r.exitCode}: ${r.stderr.slice(-200)}`
+      : r.stderr,
+  );
 }
 
 async function generateSilence(
@@ -363,9 +378,8 @@ async function generateSilence(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
 ): Promise<ExtractResult> {
-  const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-  const outputDir = dirname(outputPath);
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+  const ffmpegProcessTimeout = resolveFfmpegTimeout(config);
+  ensureOutputDir(outputPath);
 
   const args = [
     "-f",
@@ -382,24 +396,9 @@ async function generateSilence(
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
-  if (signal?.aborted) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: result.durationMs,
-      error: "Silence generation cancelled",
-    };
-  }
-  return {
-    success: result.success,
-    outputPath,
-    durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}`
-        : result.stderr
-      : undefined,
-  };
+  return buildExtractResult(outputPath, result, signal, "Silence generation cancelled", (r) =>
+    r.exitCode !== null ? `FFmpeg exited with code ${r.exitCode}` : r.stderr,
+  );
 }
 
 async function mixAudioTracks(

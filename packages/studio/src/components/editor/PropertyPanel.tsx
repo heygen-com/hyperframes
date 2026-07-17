@@ -40,20 +40,6 @@ import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 
-// Re-export helpers that external consumers import from this module
-export {
-  buildInsetClipPathSides,
-  buildStrokeStyleUpdates,
-  buildStrokeWidthStyleUpdates,
-  getCssFilterFunctionPx,
-  getClipPathInsetPx,
-  inferBoxShadowPreset,
-  inferClipPathPreset,
-  normalizePanelPxValue,
-  parseInsetClipPathSides,
-  setCssFilterFunctionPx,
-} from "./propertyPanelHelpers";
-
 // fallow-ignore-next-line complexity
 export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelProps) {
   const {

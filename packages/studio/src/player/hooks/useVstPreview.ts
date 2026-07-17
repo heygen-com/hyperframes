@@ -1,192 +1,24 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TransportMsg, UseVstHostResult } from "../../hooks/useVstHost";
-import type { VstHostApi } from "../../components/editor/propertyPanelVstSection";
-import { isRecord, parseChainFile, type ChainFileJson } from "../../utils/vstChainFile";
-import { VstRingBuffer } from "../lib/vstRingBuffer";
+import {
+  collectVstChainAudioEls,
+  dbg,
+  decodePcmFrame,
+  isLoadAborted,
+  reconcileRemovedTracks,
+  removeFromTrackOrder,
+  reseekLoadedTracks,
+  resumeSuspendedContexts,
+  runVstLoadScan,
+  teardownTrack,
+  type LoadedVstTrack,
+} from "./useVstPreviewHelpers";
 
-const VST_SAMPLE_RATE = 48000;
+export { decodePcmFrame } from "./useVstPreviewHelpers";
+
 const DRIFT_CHECK_INTERVAL_MS = 500;
-/** Tracking-only ring buffer per track (drift bookkeeping) — 1s of headroom. */
-const DRIFT_TRACKER_CAPACITY_SAMPLES = VST_SAMPLE_RATE;
 const RESTART_DELAY_MS = 2000;
-
-// ── Wire-format decode ────────────────────────────────────────────────────
-// Mirrors the sidecar's `encode_frame` (packages/vst-host/.../stream.py):
-// little-endian u32 trackIndex, f64 samplePos, then interleaved f32 stereo.
-
-export interface DecodedPcmFrame {
-  trackIndex: number;
-  samplePos: number;
-  left: Float32Array;
-  right: Float32Array;
-}
-
-export function decodePcmFrame(buf: ArrayBuffer): DecodedPcmFrame {
-  const view = new DataView(buf);
-  const trackIndex = view.getUint32(0, true);
-  const samplePos = view.getFloat64(4, true);
-  const interleaved = new Float32Array(buf, 12);
-  const n = Math.floor(interleaved.length / 2);
-  const left = new Float32Array(n);
-  const right = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    left[i] = interleaved[2 * i];
-    right[i] = interleaved[2 * i + 1];
-  }
-  return { trackIndex, samplePos, left, right };
-}
-
-// ── DOM scan — mirrors timelineIframeHelpers' contentDocument reach-in ──
-
-function resolveVstTrackId(el: HTMLAudioElement): string {
-  return el.id || el.getAttribute("data-hf-id") || el.getAttribute("data-vst-chain") || "track";
-}
-
-function collectVstChainAudioEls(doc: Document): HTMLAudioElement[] {
-  return Array.from(doc.querySelectorAll<HTMLAudioElement>("audio[data-vst-chain]"));
-}
-
-function readFileContent(value: unknown): string | null {
-  if (!isRecord(value)) return null;
-  return typeof value.content === "string" ? value.content : null;
-}
-
-/** Same fetch idiom as propertyPanelVstSection.tsx's readChainFile. */
-async function fetchChainFile(projectId: string, path: string): Promise<ChainFileJson | null> {
-  let response: Response;
-  try {
-    response = await fetch(`/api/projects/${projectId}/files/${encodeURIComponent(path)}`);
-  } catch {
-    return null;
-  }
-  if (!response.ok) return null;
-  const body: unknown = await response.json().catch(() => null);
-  const content = readFileContent(body);
-  if (content === null) return null;
-  return parseChainFile(content);
-}
-
-// ── Loaded-track bookkeeping ──────────────────────────────────────────────
-
-interface LoadedVstTrack {
-  audioEl: HTMLAudioElement;
-  audioContext: AudioContext;
-  workletNode: AudioWorkletNode;
-  /** Wire-format trackIndex — the sidecar's call-order of load-chain (see stream.py's `TrackStream(len(self._tracks), ...)`). */
-  trackIndex: number;
-  originalMuted: boolean;
-  /** Tracks expected write position / drift only — never read for playback. */
-  driftTracker: VstRingBuffer;
-}
-
-async function teardownTrack(track: LoadedVstTrack): Promise<void> {
-  track.audioEl.muted = track.originalMuted;
-  try {
-    await track.audioContext.close();
-  } catch {
-    /* already closed */
-  }
-}
-
-function reseekLoadedTracks(tracks: Iterable<LoadedVstTrack>, timeSec: number): void {
-  const samplePos = timeSec * VST_SAMPLE_RATE;
-  for (const track of tracks) {
-    track.workletNode.port.postMessage({ type: "reset", samplePos });
-    track.driftTracker.reset(samplePos);
-  }
-}
-
-/** Removes `ids` from `order` in place — the unmount-cleanup effect below captures the array once and relies on it never being reassigned. */
-function removeFromTrackOrder(order: string[], ids: readonly string[]): void {
-  for (let i = order.length - 1; i >= 0; i -= 1) {
-    if (ids.includes(order[i])) order.splice(i, 1);
-  }
-}
-
-/** True once EITHER this specific effect run was cancelled (re-render/unmount) OR the whole hook has been permanently suspended by a disconnect (see `suspendedRef`). */
-function isLoadAborted(cancelled: boolean, suspended: boolean): boolean {
-  return cancelled || suspended;
-}
-
-/** A track is already spoken for this session if it's fully loaded, or has already reserved a server-side trackIndex via a prior `loadChain` success (see `loadVstTrack` — a local-wiring failure AFTER that point is never safe to retry, or the two indices would desync). */
-function isTrackAlreadyHandled(
-  trackId: string,
-  loadedTracks: ReadonlyMap<string, LoadedVstTrack>,
-  trackOrder: readonly string[],
-): boolean {
-  return loadedTracks.has(trackId) || trackOrder.includes(trackId);
-}
-
-/** Creates the AudioContext + vst-stream worklet node for one loaded track. */
-async function createTrackPlaybackNode(
-  el: HTMLAudioElement,
-  trackIndex: number,
-  workletModuleUrl: string,
-): Promise<LoadedVstTrack | null> {
-  let audioContext: AudioContext | null = null;
-  try {
-    audioContext = new AudioContext({ sampleRate: VST_SAMPLE_RATE });
-    await audioContext.audioWorklet.addModule(workletModuleUrl);
-    const workletNode = new AudioWorkletNode(audioContext, "vst-stream", {
-      outputChannelCount: [2],
-    });
-    workletNode.connect(audioContext.destination);
-    const originalMuted = el.muted;
-    el.muted = true;
-    return {
-      audioEl: el,
-      audioContext,
-      workletNode,
-      trackIndex,
-      originalMuted,
-      driftTracker: new VstRingBuffer(DRIFT_TRACKER_CAPACITY_SAMPLES, VST_SAMPLE_RATE),
-    };
-  } catch {
-    void audioContext?.close();
-    return null; // chain loaded server-side, but local playback wiring failed — stays dry
-  }
-}
-
-/**
- * Fetches + loads one track's chain and, on success, spins up its playback
- * node. Returns `null` if the track should stay dry (fetch/parse failure,
- * loadChain rejection, or local wiring failure) — the caller leaves the
- * element unmuted in every `null` case.
- */
-async function loadVstTrack(
-  el: HTMLAudioElement,
-  trackId: string,
-  projectId: string,
-  api: VstHostApi,
-  attemptedTrackIds: string[],
-  workletModuleUrl: string,
-): Promise<LoadedVstTrack | null> {
-  const chainPath = el.getAttribute("data-vst-chain");
-  if (!chainPath) return null;
-  const chain = await fetchChainFile(projectId, chainPath);
-  if (!chain) return null; // no index consumed — safe to retry next scan
-  const dryWavPath = el.currentSrc || el.src;
-
-  let trackIndex: number;
-  try {
-    // Resolves with the sidecar-assigned wire trackIndex for this load (see
-    // useVstHost's `assignNextTrackIndex`) — authoritative for THIS call, but
-    // can go stale if anyone (including this same hook, on a later scan)
-    // reloads this trackId again; the `onChainLoaded` subscription below
-    // keeps it current for the lifetime of the loaded track.
-    trackIndex = await api.loadChain(trackId, chain, dryWavPath);
-  } catch {
-    return null; // sidecar rejected the chain (e.g. missing plugin) — retryable
-  }
-
-  // Marks this trackId as having reserved a server-side slot, regardless of
-  // whether local wiring below succeeds (a local failure must never be
-  // retried, or a fresh loadChain would desync from what the sidecar already
-  // holds for this trackId).
-  attemptedTrackIds.push(trackId);
-  return createTrackPlaybackNode(el, trackIndex, workletModuleUrl);
-}
 
 /**
  * Streams live VST-processed audio into the preview.
@@ -225,6 +57,8 @@ export function useVstPreview(
 
   const loadedTracksRef = useRef<Map<string, LoadedVstTrack>>(new Map());
   const trackOrderRef = useRef<string[]>([]);
+  /** trackIds with a `loadChain` call currently in flight — see `isTrackAlreadyHandled`'s doc-comment for why this exists. */
+  const pendingTrackIdsRef = useRef<Set<string>>(new Set());
   const restartAttemptedRef = useRef(false);
   // Set permanently the FIRST time this hook instance observes a disconnect
   // (via `onDisconnect`, below) — never reset back to `false` for the rest of
@@ -257,9 +91,33 @@ export function useVstPreview(
   // which sets it.
   const suspendedRef = useRef(false);
 
+  // `usePlayerStore`'s `currentTime` is a Zustand field the RAF playback loop
+  // deliberately only syncs "once at end" (see useTimelinePlayerLoop.ts) —
+  // updating it every frame would trigger a React re-render 60x/second. The
+  // actual continuously-updating playhead is `liveTime`, a separate
+  // subscribe/notify pub-sub built for exactly this (see playerStore.ts).
+  // Reading `usePlayerStore.getState().currentTime` here for drift-checking
+  // or a transport "play" position would see a value frozen at whatever it
+  // was when playback last stopped — for a fresh play from the start, that's
+  // permanently 0, so every drift check sees the sidecar's real, advancing
+  // position as fully drifted and forces a reseek back to 0 every tick.
+  const liveTimeRef = useRef(0);
+  useEffect(() => {
+    const unsubscribe = liveTime.subscribe((t) => {
+      liveTimeRef.current = t;
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   // Re-run the DOM scans whenever the timeline's elements change — the
   // reliable existing signal that the preview DOM was reloaded/edited.
   const elements = usePlayerStore((s) => s.elements);
+  // Also re-run when the FX panel adds/removes/swaps a chain file: that rewrite
+  // is invisible to `elements`, so the panel bumps this counter to drive the
+  // load effect's content-diff reconcile (see playerStore's vstChainRevision).
+  const vstChainRevision = usePlayerStore((s) => s.vstChainRevision);
 
   // ── Lazily start the sidecar once a vst-chain track appears ─────────────
   useEffect(() => {
@@ -286,49 +144,36 @@ export function useVstPreview(
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
     const audioEls = collectVstChainAudioEls(doc);
+
+    // Reconcile before (re)loading — see `reconcileRemovedTracks`'s
+    // doc-comment. Runs even when no vst-chain elements remain (a full
+    // removal), so the dry element gets unmuted.
+    reconcileRemovedTracks(audioEls, loadedTracksRef.current, trackOrderRef.current);
+
     if (audioEls.length === 0) return;
 
     const workletModuleUrl = new URL("../lib/vstStreamWorklet.js", import.meta.url).href;
     let cancelled = false;
 
-    void (async () => {
-      for (const el of audioEls) {
-        // Re-check on every iteration (not just once, above): a disconnect
-        // can land while this loop is mid-flight awaiting a previous
-        // track's `loadVstTrack` call.
-        if (isLoadAborted(cancelled, suspendedRef.current)) return;
-        const trackId = resolveVstTrackId(el);
-        if (isTrackAlreadyHandled(trackId, loadedTracksRef.current, trackOrderRef.current)) {
-          continue;
-        }
-        const loaded = await loadVstTrack(
-          el,
-          trackId,
-          projectId,
-          api,
-          trackOrderRef.current,
-          workletModuleUrl,
-        );
-        // A disconnect can land while `loadVstTrack` above was in flight —
-        // including AFTER its server-side `load-chain` succeeded and its
-        // local AudioContext/AudioWorkletNode wiring finished (which mutes
-        // `el` as a side effect, see createTrackPlaybackNode). Tear down
-        // fully via `teardownTrack` (not just close the AudioContext) so a
-        // track resolved mid-disconnect doesn't get left muted with no
-        // processed audio ever routed to it — a "half-loaded", permanently
-        // silent state.
-        if (isLoadAborted(cancelled, suspendedRef.current)) {
-          if (loaded) void teardownTrack(loaded);
-          return;
-        }
-        if (loaded) loadedTracksRef.current.set(trackId, loaded);
-      }
-    })();
+    void runVstLoadScan({
+      audioEls,
+      projectId,
+      api,
+      workletModuleUrl,
+      showToast,
+      sendTransport,
+      loadedTracks: loadedTracksRef.current,
+      trackOrder: trackOrderRef.current,
+      pendingTrackIds: pendingTrackIdsRef.current,
+      isAborted: () => isLoadAborted(cancelled, suspendedRef.current),
+      isSuspended: () => suspendedRef.current,
+      liveTimeSec: () => liveTimeRef.current,
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, status, api, elements, iframeRef]);
+  }, [projectId, status, api, elements, vstChainRevision, iframeRef, sendTransport, showToast]);
 
   // ── Resync trackIndex if anyone reloads an already-loaded track's chain ──
   // This connection is now shared with the FX property panel (see the
@@ -377,11 +222,30 @@ export function useVstPreview(
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {
       if (state.isPlaying === prev.isPlaying) return;
+      dbg("transport", { isPlaying: state.isPlaying, loaded: loadedTracksRef.current.size });
       if (loadedTracksRef.current.size === 0) return;
+      const timeSec = liveTimeRef.current;
+      if (state.isPlaying) {
+        resumeSuspendedContexts(loadedTracksRef.current.values());
+      }
       const msg: TransportMsg = state.isPlaying
-        ? { action: "play", timeSec: state.currentTime, rate: state.playbackRate }
+        ? { action: "play", timeSec, rate: state.playbackRate }
         : { action: "pause" };
       sendTransport(msg);
+      // Realign the client rings on BOTH transitions. Play: to the integer
+      // sample position the sidecar starts streaming from (it just seeked to
+      // `timeSec`), and — via reset → setDriftBaseline — anchor drift
+      // measurement to this moment so the one-time play→first-frame latency
+      // isn't misread as drift. Sending transport FIRST, then resetting,
+      // keeps the worklet ring's expected position matching the frames now
+      // on their way; without this reset a stale ring from a previous run
+      // rejects every new frame. Pause: the sidecar streams `_PUMP_LEAD_SEC`
+      // (~0.5s) of audio AHEAD of the playhead as a jitter cushion, all of it
+      // sitting in the worklet ring — pausing only stops the pump, so
+      // without a flush the ring audibly drains that buffered lead for up to
+      // a second after the pause click. The reset zero-fills the ring, so
+      // pause is silent immediately; the next play reseeks anyway.
+      reseekLoadedTracks(loadedTracksRef.current.values(), timeSec);
     });
   }, [sendTransport]);
 
@@ -401,7 +265,14 @@ export function useVstPreview(
   // ── PCM frame routing ──────────────────────────────────────────────────────
   useEffect(() => {
     return onPcmFrame((buf) => {
-      if (loadedTracksRef.current.size === 0) return;
+      // TEMP DEBUG — remove after diagnosis
+      const w = window as unknown as { __vstPcm?: { n: number; dropped: number } };
+      w.__vstPcm = w.__vstPcm ?? { n: 0, dropped: 0 };
+      w.__vstPcm.n += 1;
+      if (loadedTracksRef.current.size === 0) {
+        w.__vstPcm.dropped += 1;
+        return;
+      }
       const frame = decodePcmFrame(buf);
       for (const track of loadedTracksRef.current.values()) {
         if (track.trackIndex !== frame.trackIndex) continue;
@@ -413,6 +284,7 @@ export function useVstPreview(
         return;
       }
       // No loaded track claims this trackIndex — drop the frame.
+      w.__vstPcm.dropped += 1;
     });
   }, [onPcmFrame]);
 
@@ -420,15 +292,15 @@ export function useVstPreview(
   useEffect(() => {
     const interval = setInterval(() => {
       if (loadedTracksRef.current.size === 0) return;
-      const { currentTime } = usePlayerStore.getState();
+      const timeSec = liveTimeRef.current;
       const drifted = Array.from(loadedTracksRef.current.values()).some((track) =>
-        track.driftTracker.needsResync(currentTime),
+        track.driftTracker.needsResync(timeSec),
       );
       if (!drifted) return;
       // The sidecar coalesces repeated seeks server-side — no client-side
       // coalescing needed here.
-      sendTransport({ action: "seek", timeSec: currentTime });
-      reseekLoadedTracks(loadedTracksRef.current.values(), currentTime);
+      sendTransport({ action: "seek", timeSec });
+      reseekLoadedTracks(loadedTracksRef.current.values(), timeSec);
     }, DRIFT_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [sendTransport]);
@@ -447,6 +319,7 @@ export function useVstPreview(
   // ── Crash fallback ──────────────────────────────────────────────────────────
   useEffect(() => {
     return onDisconnect(() => {
+      dbg("disconnect", { wasAlreadySuspended: suspendedRef.current });
       const wasAlreadySuspended = suspendedRef.current;
       // Permanent, one-way: the very first disconnect this hook instance
       // ever observes suspends VST streaming for the rest of its lifetime

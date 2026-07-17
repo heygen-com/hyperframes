@@ -26,6 +26,13 @@ function createForeignFrameMediaDocument(): {
     constructor(tagName: string) {
       this.tagName = tagName;
     }
+
+    // Real DOM elements always have this — matches the actual foreign-realm
+    // elements this class simulates. No attributes are ever set on these
+    // mocks, so it's always false.
+    hasAttribute(): boolean {
+      return false;
+    }
   }
 
   class FrameMedia extends FrameElement {
@@ -267,6 +274,36 @@ describe("HyperframesPlayer parent-frame media", () => {
 
     return video;
   }
+
+  it("does not mute a data-vst-chain iframe element when syncing the muted attribute", () => {
+    // A VST-chain element is permanently muted by the studio's VST preview
+    // hook (packages/studio/src/player/hooks/useVstPreview.ts) — its audio
+    // plays through a separate AudioWorklet fed by the sidecar, not this
+    // element. `_setIframeMediaMuted` (triggered here via the public `muted`
+    // attribute) must skip it, or every mute/unmute sync silently swaps the
+    // processed stream back for the untreated one.
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+
+    const iframe = player.shadowRoot?.querySelector("iframe");
+    if (!(iframe instanceof HTMLIFrameElement)) throw new Error("expected player iframe");
+    const iframeDoc = iframe.contentDocument;
+    if (!iframeDoc) throw new Error("expected player iframe document");
+
+    const vstAudio = iframeDoc.createElement("audio");
+    vstAudio.setAttribute("data-vst-chain", "fx/music.vstchain.json");
+    vstAudio.muted = false;
+    iframeDoc.body.appendChild(vstAudio);
+
+    const plainVideo = iframeDoc.createElement("video");
+    plainVideo.muted = false;
+    iframeDoc.body.appendChild(plainVideo);
+
+    player.setAttribute("muted", "");
+
+    expect(vstAudio.muted).toBe(false);
+    expect(plainVideo.muted).toBe(true);
+  });
 
   it("does not mute iframe media on autoplay fallback inside presenter slideshow", () => {
     const slideshow = document.createElement("hyperframes-slideshow");
@@ -716,13 +753,15 @@ describe("HyperframesPlayer media MutationObserver scoping", () => {
     // Subtree is still required — sub-composition media can be deeply nested
     // inside the host (e.g. wrapper div around the `<audio>`).
     // Attribute observation on "preload" is required so the player creates
-    // parent proxies just-in-time when the preloader promotes a clip.
+    // parent proxies just-in-time when the preloader promotes a clip;
+    // "data-vst-chain" so it drops/restores the dry proxy when a track's VST
+    // ownership flips (see parent-media's _adoptIframeMedia).
     for (const call of observeSpy.mock.calls) {
       expect(call[1]).toEqual({
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["preload"],
+        attributeFilter: ["preload", "data-vst-chain"],
       });
     }
   });

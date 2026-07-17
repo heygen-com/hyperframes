@@ -18,6 +18,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VstHostApi } from "./editor/propertyPanelVstSection";
+import type { SdkSessionPublicationResult } from "../utils/sdkEditTransaction";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -161,7 +162,8 @@ const fakeVstHost = {
     registry: [],
     scan: async () => {},
     openEditor: () => {},
-    loadChain: async () => 0,
+    setParam: () => {},
+    loadChain: async () => ({ trackIndex: 0, sampleRate: 48000, stable: true }),
     getState: async () => [],
   } satisfies VstHostApi,
   status: "ready" as const,
@@ -202,6 +204,7 @@ describe("StudioRightPanel — vstHost wiring", () => {
         React.createElement(StudioRightPanel, {
           designPanelActive: true,
           sdkSession: null,
+          publishSdkSession: (): SdkSessionPublicationResult => "published",
           reloadPreview: () => {},
           domEditSaveTimestampRef: { current: 0 },
           recordEdit: async () => {},

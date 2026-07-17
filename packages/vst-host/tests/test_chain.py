@@ -63,3 +63,34 @@ def test_serialize_states_builtin_roundtrip():
     states = serialize_states(plugins)
     restored = json.loads(base64.b64decode(states[0]))
     assert abs(restored["room_size"] - 0.42) < 1e-6
+
+
+def test_enabled_defaults_true_and_reads_false():
+    spec = load_chain_spec(
+        make_spec_json(
+            [
+                {"format": "builtin", "path": "Reverb", "pluginName": None, "name": "R", "stateB64": None},
+                {"format": "builtin", "path": "Gain", "pluginName": None, "name": "G", "stateB64": None, "enabled": False},
+            ]
+        )
+    )
+    assert spec.plugins[0].enabled is True  # absent -> enabled (old files)
+    assert spec.plugins[1].enabled is False
+
+
+def test_enabled_plugins_filters_the_board_but_build_keeps_all():
+    from hyperframes_vst.chain import enabled_plugins
+
+    spec = load_chain_spec(
+        make_spec_json(
+            [
+                {"format": "builtin", "path": "Reverb", "pluginName": None, "name": "R", "stateB64": None},
+                {"format": "builtin", "path": "Gain", "pluginName": None, "name": "G", "stateB64": None, "enabled": False},
+                {"format": "builtin", "path": "Delay", "pluginName": None, "name": "D", "stateB64": None},
+            ]
+        )
+    )
+    built = build_chain(spec)
+    assert len(built) == 3  # ALL constructed — indices stay chain-file aligned
+    active = enabled_plugins(spec, built)
+    assert [type(p).__name__ for p in active] == ["Reverb", "Delay"]  # bypassed Gain excluded

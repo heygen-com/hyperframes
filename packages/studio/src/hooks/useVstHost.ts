@@ -4,37 +4,31 @@
  * the `VstHostApi` interface `propertyPanelVstSection.tsx` (Task 11)
  * consumes but doesn't provide.
  *
- * Protocol (see `packages/vst-host/src/hyperframes_vst/server.py`): JSON text
- * frames for control commands/events, raw binary `ArrayBuffer` frames for
- * interleaved-stereo PCM (`u32 trackIndex` + `f64 samplePos` + `f32` samples)
- * that this hook forwards unopened to `onPcmFrame` subscribers — decoding is
- * Task 13's job.
+ * The wire protocol (control-JSON parsing, binary-PCM passthrough, the
+ * pending-request bookkeeping, and the `/api/vst/start` + WebSocket connect
+ * sequence) lives in `vstHostWire.ts` — this file is just the React
+ * lifecycle: refs, effects, and the `VstHostApi` methods built on top.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
-import type { VstHostApi, VstRegistryEntry } from "../components/editor/propertyPanelVstSection";
-import { isRecord, type ChainFileJson } from "../utils/vstChainFile";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  LoadChainResult,
+  VstHostApi,
+  VstRegistryEntry,
+} from "../components/editor/propertyPanelVstSection";
+import type { ChainFileJson } from "../utils/vstChainFile";
+import {
+  connectVstSocket,
+  DISCONNECTED_ERROR,
+  parseServerEvent,
+  applyServerEvent,
+  pendingKey,
+  requestVstStart,
+  type PendingScanEntry,
+  type PendingTrackEntry,
+  type VstSocketLike,
+} from "./vstHostWire";
 
-// ── Socket injection seam ─────────────────────────────────────────────────────
-// Production code just calls `new WebSocket(url)`. Tests substitute a fake via
-// `__setSocketFactoryForTests` (module-level override) instead of requiring
-// every caller to thread a WebSocket implementation through the hook's API.
-// `VstSocketLike` is a `Pick` of the real DOM `WebSocket` type, so a real
-// `WebSocket` instance is always assignable to it and a hand-written fake only
-// needs to match these members (see useVstHost.test.tsx's `FakeSocket`).
-
-export type VstSocketLike = Pick<
-  WebSocket,
-  "binaryType" | "onopen" | "onclose" | "onerror" | "onmessage" | "send" | "close"
->;
-
-type SocketFactory = (url: string) => VstSocketLike;
-
-let createSocket: SocketFactory = (url) => new WebSocket(url);
-
-/** Test-only: override (or, passed `null`, restore) the socket constructor. */
-export function __setSocketFactoryForTests(factory: SocketFactory | null): void {
-  createSocket = factory ?? ((url) => new WebSocket(url));
-}
+export { __setSocketFactoryForTests, type VstSocketLike } from "./vstHostWire";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -59,281 +53,12 @@ export interface UseVstHostResult {
    * Broadcasts every `chain-loaded` event this connection sees, regardless of
    * which caller's `loadChain()` triggered it — the sidecar reassigns a
    * track's numeric wire `trackIndex` on every reload (see
-   * `assignNextTrackIndex` below), so a consumer holding an earlier index for
-   * `trackId` (e.g. `useVstPreview`, if the FX panel reloads a chain it
-   * already streamed) must resync from this, not just its own `loadChain`
-   * call's resolved value.
+   * `assignNextTrackIndex` in vstHostWire.ts), so a consumer holding an
+   * earlier index for `trackId` (e.g. `useVstPreview`, if the FX panel
+   * reloads a chain it already streamed) must resync from this, not just its
+   * own `loadChain` call's resolved value.
    */
   onChainLoaded: (cb: (trackId: string, trackIndex: number) => void) => () => void;
-}
-
-// ── Server → client event parsing ─────────────────────────────────────────────
-
-function isRegistryEntry(value: unknown): value is VstRegistryEntry {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.path === "string" &&
-    typeof value.name === "string" &&
-    typeof value.format === "string"
-  );
-}
-
-type ParsedServerEvent =
-  | { kind: "registry"; plugins: VstRegistryEntry[] }
-  | { kind: "chain-loaded"; trackId: string }
-  | { kind: "state"; trackId: string; plugins: string[] }
-  | { kind: "error"; code: string; plugin: string | null; trackId: string | null };
-
-// fallow-ignore-next-line complexity
-function parseServerEvent(raw: string): ParsedServerEvent | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!isRecord(parsed)) return null;
-
-  if (parsed.event === "registry") {
-    const rawPlugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
-    return { kind: "registry", plugins: rawPlugins.filter(isRegistryEntry) };
-  }
-  if (parsed.event === "chain-loaded" && typeof parsed.trackId === "string") {
-    return { kind: "chain-loaded", trackId: parsed.trackId };
-  }
-  if (parsed.event === "state" && typeof parsed.trackId === "string") {
-    const rawPlugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
-    return {
-      kind: "state",
-      trackId: parsed.trackId,
-      plugins: rawPlugins.filter((p): p is string => typeof p === "string"),
-    };
-  }
-  if (parsed.event === "error") {
-    return {
-      kind: "error",
-      code: typeof parsed.code === "string" ? parsed.code : "unknown",
-      plugin: typeof parsed.plugin === "string" ? parsed.plugin : null,
-      trackId: typeof parsed.trackId === "string" ? parsed.trackId : null,
-    };
-  }
-  return null;
-}
-
-// ── Pending request bookkeeping ───────────────────────────────────────────────
-
-type PendingTrackEntry =
-  | { kind: "load-chain"; resolve: (trackIndex: number) => void; reject: (err: Error) => void }
-  | { kind: "get-state"; resolve: (states: string[]) => void; reject: (err: Error) => void };
-
-interface PendingScanEntry {
-  resolve: () => void;
-  reject: (err: Error) => void;
-}
-
-const DISCONNECTED_ERROR = "VST sidecar disconnected";
-
-interface EventDispatchRefs {
-  registry: VstRegistryEntry[];
-  pendingScan: { current: PendingScanEntry | null };
-  pendingTrack: Map<string, PendingTrackEntry>;
-  trackIndex: Map<string, number>;
-  chainLoadedListeners: Set<(trackId: string, trackIndex: number) => void>;
-}
-
-/**
- * Mirrors the sidecar's exact index-assignment rule (server.py's `_dispatch`,
- * `cmd == "load-chain"`):
- *
- *   old = self._tracks.pop(track_id, None)          # drop any existing entry
- *   self._tracks[track_id] = TrackStream(len(self._tracks), ...)  # reinsert at the end
- *
- * A Python dict (like a JS `Map`) preserves insertion order and moves a
- * re-inserted key to the end, so replaying "delete-if-present, then set" with
- * `map.size` as the new index reproduces the server's numbering exactly —
- * including its one real flaw: reloading a track can hand it the same index
- * another still-loaded track already holds (the pop briefly shrinks the map
- * below that other track's assigned position). This function does not paper
- * over that; it exists so a client can detect a collision, since it now
- * assigns indices with the identical rule the server uses.
- */
-function assignNextTrackIndex(map: Map<string, number>, trackId: string): number {
-  map.delete(trackId);
-  const index = map.size;
-  map.set(trackId, index);
-  return index;
-}
-
-/** Resolves/rejects the pending request a server event answers, keyed as described in the module doc. */
-function applyServerEvent(parsed: ParsedServerEvent, refs: EventDispatchRefs): void {
-  switch (parsed.kind) {
-    case "registry":
-      applyRegistryEvent(parsed.plugins, refs);
-      return;
-    case "chain-loaded":
-      applyChainLoadedEvent(parsed.trackId, refs);
-      return;
-    case "state":
-      applyStateEvent(refs.pendingTrack, parsed.trackId, parsed.plugins);
-      return;
-    case "error":
-      applyErrorEvent(parsed, refs);
-      return;
-  }
-}
-
-function applyRegistryEvent(plugins: VstRegistryEntry[], refs: EventDispatchRefs): void {
-  refs.registry.length = 0;
-  refs.registry.push(...plugins);
-  const scanPending = refs.pendingScan.current;
-  refs.pendingScan.current = null;
-  scanPending?.resolve();
-}
-
-/** `error` has no trackId when replying to `scan` (the only non-track-scoped command). */
-function applyErrorEvent(
-  parsed: Extract<ParsedServerEvent, { kind: "error" }>,
-  refs: EventDispatchRefs,
-): void {
-  const message = parsed.plugin ?? parsed.code;
-  if (parsed.trackId === null) {
-    const scanPending = refs.pendingScan.current;
-    refs.pendingScan.current = null;
-    scanPending?.reject(new Error(message));
-    return;
-  }
-  const entry = refs.pendingTrack.get(parsed.trackId);
-  if (entry) {
-    refs.pendingTrack.delete(parsed.trackId);
-    entry.reject(new Error(message));
-  }
-}
-
-/**
- * Always advances the mirrored index map and broadcasts to every
- * `onChainLoaded` subscriber — regardless of whether THIS connection's
- * pending map has a matching `load-chain` request — so a consumer who loaded
- * a track earlier (and isn't the caller of the reload that produced this
- * event) still hears about its new trackIndex.
- */
-function applyChainLoadedEvent(trackId: string, refs: EventDispatchRefs): void {
-  const trackIndex = assignNextTrackIndex(refs.trackIndex, trackId);
-
-  const entry = refs.pendingTrack.get(trackId);
-  if (entry?.kind === "load-chain") {
-    refs.pendingTrack.delete(trackId);
-    entry.resolve(trackIndex);
-  }
-
-  refs.chainLoadedListeners.forEach((cb) => cb(trackId, trackIndex));
-}
-
-function applyStateEvent(
-  pendingTrack: Map<string, PendingTrackEntry>,
-  trackId: string,
-  plugins: string[],
-): void {
-  const entry = pendingTrack.get(trackId);
-  if (entry?.kind !== "get-state") return;
-  pendingTrack.delete(trackId);
-  entry.resolve(plugins);
-}
-
-// ── Start + connect (module-level so each stays a small, single-purpose unit) ──
-
-type StartOutcome =
-  | { ok: true; port: number; token: string }
-  | { ok: false; installHint: string | null; message: string };
-
-interface StartResponseBody {
-  port: number;
-  token: string;
-}
-
-/** Type guard for `/api/vst/start`'s success-path body shape (see routes/vst.ts). */
-function isStartResponseBody(body: unknown): body is StartResponseBody {
-  return isRecord(body) && typeof body.port === "number" && typeof body.token === "string";
-}
-
-/** Names which field `isStartResponseBody` rejected on, for a specific error message. */
-function missingStartField(body: unknown): "port" | "token" {
-  return isRecord(body) && typeof body.port === "number" ? "token" : "port";
-}
-
-/**
- * Parses `/api/vst/start`'s response body (see routes/vst.ts) into a
- * `StartOutcome`. The sidecar requires every WebSocket connection to present
- * a shared-secret `token` (see server.py's `_authenticate`) before any
- * command is processed — `/vst/start` relays it alongside the port, so a
- * response missing it is treated the same as one missing the port: a
- * connection couldn't be safely established from it.
- */
-function parseStartResponse(response: Response, body: unknown): StartOutcome {
-  if (!response.ok) {
-    const hint = isRecord(body) && typeof body.installHint === "string" ? body.installHint : null;
-    const message =
-      isRecord(body) && typeof body.error === "string" ? body.error : "VST sidecar failed to start";
-    return { ok: false, installHint: hint, message };
-  }
-  if (!isStartResponseBody(body)) {
-    return {
-      ok: false,
-      installHint: null,
-      message: `VST sidecar start response missing ${missingStartField(body)}`,
-    };
-  }
-  return { ok: true, port: body.port, token: body.token };
-}
-
-async function requestVstStart(): Promise<StartOutcome> {
-  let response: Response;
-  try {
-    response = await fetch("/api/vst/start", { method: "POST" });
-  } catch (err) {
-    return {
-      ok: false,
-      installHint: null,
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
-  const body: unknown = await response.json().catch(() => null);
-  return parseStartResponse(response, body);
-}
-
-interface SocketHandlers {
-  onMessage: (ev: MessageEvent) => void;
-  onReady: () => void;
-  onDisconnect: () => void;
-}
-
-/**
- * Opens the sidecar WS and resolves once it's open (or rejects if it closes
- * first). `token` is sent as a `?token=` query param — the sidecar's
- * `process_request` handshake hook (server.py's `_authenticate`) rejects the
- * HTTP upgrade before any command can be sent if it's missing or wrong.
- */
-function connectVstSocket(
-  port: number,
-  token: string,
-  handlers: SocketHandlers,
-): Promise<VstSocketLike> {
-  return new Promise<VstSocketLike>((resolve, reject) => {
-    const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
-    const socket = createSocket(`ws://${host}:${port}/?token=${encodeURIComponent(token)}`);
-    socket.binaryType = "arraybuffer";
-    socket.onopen = () => {
-      handlers.onReady();
-      resolve(socket);
-    };
-    socket.onmessage = handlers.onMessage;
-    socket.onclose = () => {
-      handlers.onDisconnect();
-      reject(new Error("VST sidecar socket closed before opening"));
-    };
-    socket.onerror = () => {
-      handlers.onDisconnect();
-    };
-  });
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -345,6 +70,32 @@ export function useVstHost(): UseVstHostResult {
   const socketRef = useRef<VstSocketLike | null>(null);
   const startPromiseRef = useRef<Promise<void> | null>(null);
   const handledDisconnectRef = useRef(false);
+  // Set while this hook instance is unmounted — checked by `ensureStarted`'s
+  // async attempt after its socket finishes connecting, so a connect that
+  // resolves AFTER unmount closes the now-orphaned socket instead of leaving
+  // it open. Without this, an unmounted instance's in-flight connection isn't
+  // cancellable (a `useEffect` cleanup can't interrupt a promise already in
+  // flight), so the socket stays open and keeps streaming from the sidecar
+  // alongside whichever instance actually remounted — two live audio
+  // pipelines mixing into the same output is what reads as "crackling, can't
+  // tell which track" and a stream that never recovers.
+  //
+  // React StrictMode (dev mode) double-invokes this effect on the SAME
+  // component instance — mount, cleanup, mount again — not a fresh instance
+  // with a fresh ref. The reset at the top of the effect body is required:
+  // without it, StrictMode's own diagnostic cleanup pass permanently flips
+  // this to `true` and every later `ensureStarted()` call for the rest of
+  // the component's real lifetime sees a stale "unmounted" flag and closes
+  // its own socket immediately — READING AS A PERMANENT, UNRECOVERABLE
+  // "VST host disconnected" even on a freshly loaded page.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      socketRef.current?.close();
+    };
+  }, []);
 
   // Mutated in place (never reassigned) so any `api` snapshot handed to a
   // caller keeps seeing fresh contents after `scan()` resolves, matching how
@@ -355,8 +106,8 @@ export function useVstHost(): UseVstHostResult {
   const pendingTrackRef = useRef<Map<string, PendingTrackEntry>>(new Map());
 
   // Mirrors the sidecar's `self._tracks` insertion order (see
-  // `assignNextTrackIndex`) — mutated in place, never reassigned, same
-  // rationale as `registryRef` above.
+  // `assignNextTrackIndex` in vstHostWire.ts) — mutated in place, never
+  // reassigned, same rationale as `registryRef` above.
   const trackIndexRef = useRef<Map<string, number>>(new Map());
   const chainLoadedListenersRef = useRef<Set<(trackId: string, trackIndex: number) => void>>(
     new Set(),
@@ -469,6 +220,16 @@ export function useVstHost(): UseVstHostResult {
         onReady: () => setStatus("ready"),
         onDisconnect: handleDisconnect,
       });
+      // This attempt was started before an unmount (StrictMode's dev-mode
+      // phantom mount/unmount included) but only finished connecting after
+      // it — the unmount's cleanup already ran and can't be re-run to close
+      // a socket that didn't exist yet. Close it here instead of handing it
+      // to a component that's gone; otherwise it keeps streaming from the
+      // sidecar alongside whatever instance actually remounted.
+      if (unmountedRef.current) {
+        socket.close();
+        return;
+      }
       socketRef.current = socket;
     })();
 
@@ -497,14 +258,27 @@ export function useVstHost(): UseVstHostResult {
     [sendJson],
   );
 
+  const setParam = useCallback(
+    (trackId: string, pluginIndex: number, param: string, value: number): void => {
+      sendJson({ cmd: "set-param", trackId, pluginIndex, param, value });
+    },
+    [sendJson],
+  );
+
+  // Supersede semantics are per-KIND (see `pendingKey`): a newer load-chain
+  // replaces an older load-chain for the same track, and likewise for
+  // get-state — but the two kinds never clobber each other. They're issued
+  // concurrently for the same track by different consumers of this shared
+  // connection (useVstPreview loads while the FX panel polls state).
   const loadChain = useCallback(
-    (trackId: string, chain: ChainFileJson, wavUrl: string): Promise<number> => {
-      return new Promise<number>((resolve, reject) => {
-        const previous = pendingTrackRef.current.get(trackId);
+    (trackId: string, chain: ChainFileJson, wavUrl: string): Promise<LoadChainResult> => {
+      return new Promise<LoadChainResult>((resolve, reject) => {
+        const key = pendingKey("load-chain", trackId);
+        const previous = pendingTrackRef.current.get(key);
         previous?.reject(
           new Error(`load-chain superseded by a new request for track "${trackId}"`),
         );
-        pendingTrackRef.current.set(trackId, { kind: "load-chain", resolve, reject });
+        pendingTrackRef.current.set(key, { kind: "load-chain", resolve, reject });
         sendJson({ cmd: "load-chain", trackId, chainJson: chain, wavPath: wavUrl });
       });
     },
@@ -514,9 +288,10 @@ export function useVstHost(): UseVstHostResult {
   const getState = useCallback(
     (trackId: string): Promise<string[]> => {
       return new Promise<string[]>((resolve, reject) => {
-        const previous = pendingTrackRef.current.get(trackId);
+        const key = pendingKey("get-state", trackId);
+        const previous = pendingTrackRef.current.get(key);
         previous?.reject(new Error(`get-state superseded by a new request for track "${trackId}"`));
-        pendingTrackRef.current.set(trackId, { kind: "get-state", resolve, reject });
+        pendingTrackRef.current.set(key, { kind: "get-state", resolve, reject });
         sendJson({ cmd: "get-state", trackId });
       });
     },
@@ -528,10 +303,11 @@ export function useVstHost(): UseVstHostResult {
       registry: registryRef.current,
       scan,
       openEditor,
+      setParam,
       loadChain,
       getState,
     }),
-    [scan, openEditor, loadChain, getState],
+    [scan, openEditor, setParam, loadChain, getState],
   );
 
   // ── Transport + subscribers ──────────────────────────────────────────────────

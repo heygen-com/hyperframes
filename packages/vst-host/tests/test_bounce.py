@@ -63,3 +63,30 @@ def test_cli_bounce_exit_codes(dry_wav, tmp_path):
     )
     assert proc.returncode == 3
     assert "PLUGIN_MISSING Gone" in proc.stderr
+
+
+def test_bounce_bypasses_disabled_plugins(dry_wav, tmp_path):
+    """A chain whose only plugin is disabled must bounce bit-identical to dry."""
+    import json
+
+    import numpy as np
+    from pedalboard.io import AudioFile
+
+    chain_path = tmp_path / "disabled.vstchain.json"
+    chain_path.write_text(json.dumps({
+        "version": 1,
+        "plugins": [{
+            "format": "builtin", "path": "Distortion", "pluginName": None,
+            "name": "Distortion", "stateB64": None, "enabled": False,
+        }],
+    }))
+    out = tmp_path / "out.wav"
+    bounce_file(str(dry_wav), str(chain_path), str(out))
+    with AudioFile(str(dry_wav)) as a, AudioFile(str(out)) as b:
+        dry = a.read(a.frames)
+        wet = b.read(b.frames)
+    assert dry.shape == wet.shape
+    # Within WAV-write quantization (the bounce re-encodes the file; a
+    # 16-bit round trip alone is ~3e-5) — NOT within a Distortion's reach,
+    # which the un-bypassed same chain fails by orders of magnitude.
+    assert np.allclose(dry, wet, atol=5e-4)

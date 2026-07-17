@@ -20,14 +20,36 @@ export interface ApplyVstChainOptions {
 const BOUNCE_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Walks up from `startDir` looking for a `packages/vst-host/pyproject.toml`,
+ * returning the `packages/vst-host` dir when found. Searching upward (rather
+ * than a single fixed `../../../vst-host` hop) makes this robust to WHERE the
+ * engine module actually runs from — source vs. `dist/services` vs. a bundled
+ * `dist/index.js` (all at different depths), and to the render process's cwd
+ * being the user's project rather than the package. A fixed hop silently
+ * missed by one level and fell through to the bare command → `spawn
+ * hyperframes-vst ENOENT` at render time.
+ */
+function findMonorepoVstHostDir(startDir: string): string | null {
+  let dir = startDir;
+  for (let i = 0; i < 10; i += 1) {
+    const candidate = join(dir, "packages", "vst-host");
+    if (existsSync(join(candidate, "pyproject.toml"))) return candidate;
+    const parent = resolve(dir, "..");
+    if (parent === dir) break; // reached filesystem root
+    dir = parent;
+  }
+  return null;
+}
+
+/**
  * Resolves the command used to invoke the VST host sidecar.
  *
  * Precedence:
  * 1. `HF_VST_HOST_CMD` env var (space-split) — lets CI/dev machines point at
  *    an arbitrary executable (or, in tests, a fake shell script).
- * 2. `uv run --project <packages/vst-host> hyperframes-vst` when the
- *    monorepo's `packages/vst-host` directory is present relative to this
- *    package (the common case: a source checkout of hyperframes).
+ * 2. `uv run --project <packages/vst-host> hyperframes-vst` when a monorepo
+ *    `packages/vst-host` is found by walking up from this module's directory
+ *    OR the process cwd (a source checkout of hyperframes).
  * 3. Bare `hyperframes-vst` on PATH (an installed/published sidecar).
  */
 export function resolveVstHostCommand(): string[] {
@@ -36,10 +58,10 @@ export function resolveVstHostCommand(): string[] {
     return override.trim().split(/\s+/);
   }
 
-  const servicesDir = fileURLToPath(new URL(".", import.meta.url));
-  const monorepoVstHostDir = resolve(servicesDir, "../../../vst-host");
-  if (existsSync(join(monorepoVstHostDir, "pyproject.toml"))) {
-    return ["uv", "run", "--project", monorepoVstHostDir, "hyperframes-vst"];
+  const moduleDir = fileURLToPath(new URL(".", import.meta.url));
+  const vstHostDir = findMonorepoVstHostDir(moduleDir) ?? findMonorepoVstHostDir(process.cwd());
+  if (vstHostDir) {
+    return ["uv", "run", "--project", vstHostDir, "hyperframes-vst"];
   }
 
   return ["hyperframes-vst"];

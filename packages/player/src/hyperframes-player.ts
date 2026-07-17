@@ -535,7 +535,15 @@ class HyperframesPlayer extends HTMLElement {
     const iframeDoc = this._getSameOriginIframeDocument();
     if (!iframeDoc) return;
     for (const el of iframeDoc.querySelectorAll("video, audio")) {
-      if (isRealmHtmlMediaElement(el)) el.muted = muted || el.defaultMuted;
+      if (!isRealmHtmlMediaElement(el)) continue;
+      // A VST-chain element is permanently muted by the studio's VST preview
+      // hook — its audio plays through a separate AudioWorklet fed by the
+      // sidecar, not this element (see packages/core/src/runtime/init.ts's
+      // onSetMuted, which carries the same exclusion for the in-iframe
+      // runtime's own mute-sync path). Overwriting `.muted` here would
+      // silently swap the processed stream back for the untreated one.
+      if (el.hasAttribute("data-vst-chain")) continue;
+      el.muted = muted || el.defaultMuted;
     }
   }
 

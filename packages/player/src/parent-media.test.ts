@@ -162,3 +162,30 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     expect(mgr.entries[0]).toBe(adopted);
   });
 });
+
+describe("ParentMediaManager VST-chain tracks", () => {
+  it("does not create a dry parent proxy for a data-vst-chain element", () => {
+    const mgr = makeManager();
+    const plain = document.createElement("audio");
+    plain.setAttribute("data-start", "0");
+    plain.setAttribute("src", "https://example.test/plain.mp3");
+    const vst = document.createElement("audio");
+    vst.setAttribute("data-start", "0");
+    vst.setAttribute("data-vst-chain", "fx/x.vstchain.json");
+    vst.setAttribute("src", "https://example.test/vst-dry.mp3");
+    document.body.append(plain, vst);
+
+    // setupFromIframe adopts every audio[data-start] EXCEPT the VST-chained
+    // one — its audio is produced by the VST pipeline's AudioContext, so a dry
+    // proxy here would play the unprocessed file over the effect ("all dry").
+    mgr.setupFromIframe(document);
+
+    const srcs = mgr.entries.map((e) => e.el.src);
+    expect(srcs.some((s) => s.includes("plain.mp3"))).toBe(true);
+    expect(srcs.some((s) => s.includes("vst-dry.mp3"))).toBe(false);
+
+    mgr.teardownObserver();
+    plain.remove();
+    vst.remove();
+  });
+});

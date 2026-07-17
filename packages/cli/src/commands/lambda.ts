@@ -17,7 +17,13 @@ import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import { parseAudioElements } from "@hyperframes/engine";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
+import {
+  parseEnum,
+  parsePositiveInt,
+  requireRenderDimensions,
+  requireSitesCreateProjectDir,
+  resolveValidatedFps,
+} from "../utils/distributedRenderFlags.js";
 
 export const examples: Example[] = [
   ["Deploy the Lambda render stack to AWS", "hyperframes lambda deploy"],
@@ -254,27 +260,15 @@ export default defineCommand({
           stackName,
           region: args.region as string | undefined,
           awsProfile: args.profile as string | undefined,
-          reservedConcurrency: parsePositiveInt(args.concurrency, "--concurrency"),
+          reservedConcurrency: parsePositiveInt(args.concurrency, "--concurrency", "lambda"),
           chromeSource: parseChromeSource(args["chrome-source"]),
-          lambdaMemoryMb: parsePositiveInt(args.memory, "--memory"),
+          lambdaMemoryMb: parsePositiveInt(args.memory, "--memory", "lambda"),
           skipBuild: Boolean(args["skip-build"]),
         });
         return;
       }
       case "sites": {
-        if (args.target !== "create") {
-          console.error(
-            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
-          );
-          process.exit(1);
-        }
-        const projectDir = args.extra as string | undefined;
-        if (!projectDir) {
-          console.error(
-            "[lambda sites create] usage: hyperframes lambda sites create <projectDir>",
-          );
-          process.exit(1);
-        }
+        const projectDir = requireSitesCreateProjectDir(args, "lambda");
         const { runSitesCreate } = await import("./lambda/sites.js");
         await runSitesCreate({
           projectDir,
@@ -292,20 +286,8 @@ export default defineCommand({
           );
           process.exit(1);
         }
-        const width = parsePositiveInt(args.width, "--width");
-        const height = parsePositiveInt(args.height, "--height");
-        if (width === undefined || height === undefined) {
-          console.error("[lambda render] --width and --height are required.");
-          process.exit(1);
-        }
-        const fpsRaw =
-          parseIntFlag(args.fps) ??
-          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
-          30;
-        if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
-          console.error(`[lambda render] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
-          process.exit(1);
-        }
+        const { width, height } = requireRenderDimensions(args, "lambda", "[lambda render]");
+        const fpsRaw = resolveValidatedFps(args, projectDir, "[lambda render]");
 
         // Guard: reject compositions with VST audio chains (plugins can't run in Lambda)
         const compositionHtmlPath = join(projectDir, "index.html");
@@ -343,9 +325,17 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
+          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size", "lambda"),
+          maxParallelChunks: parsePositiveInt(
+            args["max-parallel-chunks"],
+            "--max-parallel-chunks",
+            "lambda",
+          ),
+          targetChunkFrames: parsePositiveInt(
+            args["target-chunk-frames"],
+            "--target-chunk-frames",
+            "lambda",
+          ),
           executionName: args["execution-name"] as string | undefined,
           outputKey: args["output-key"] as string | undefined,
           variables: args.variables as string | undefined,
@@ -353,7 +343,8 @@ export default defineCommand({
           strictVariables: Boolean(args["strict-variables"]),
           json: Boolean(args.json),
           wait: Boolean(args.wait),
-          waitIntervalMs: parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000,
+          waitIntervalMs:
+            parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms", "lambda") ?? 5000,
         });
         return;
       }
@@ -372,20 +363,8 @@ export default defineCommand({
           );
           process.exit(1);
         }
-        const width = parsePositiveInt(args.width, "--width");
-        const height = parsePositiveInt(args.height, "--height");
-        if (width === undefined || height === undefined) {
-          console.error("[lambda render-batch] --width and --height are required.");
-          process.exit(1);
-        }
-        const fpsRaw =
-          parseIntFlag(args.fps) ??
-          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
-          30;
-        if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
-          console.error(`[lambda render-batch] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
-          process.exit(1);
-        }
+        const { width, height } = requireRenderDimensions(args, "lambda", "[lambda render-batch]");
+        const fpsRaw = resolveValidatedFps(args, projectDir, "[lambda render-batch]");
         const { runRenderBatch } = await import("./lambda/render-batch.js");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
         await runRenderBatch({
@@ -401,10 +380,18 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
-          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-          maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-          targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
-          maxConcurrent: parsePositiveInt(args["max-concurrent"], "--max-concurrent"),
+          chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size", "lambda"),
+          maxParallelChunks: parsePositiveInt(
+            args["max-parallel-chunks"],
+            "--max-parallel-chunks",
+            "lambda",
+          ),
+          targetChunkFrames: parsePositiveInt(
+            args["target-chunk-frames"],
+            "--target-chunk-frames",
+            "lambda",
+          ),
+          maxConcurrent: parsePositiveInt(args["max-concurrent"], "--max-concurrent", "lambda"),
           strictVariables: Boolean(args["strict-variables"]),
           dryRun: Boolean(args["dry-run"]),
           json: Boolean(args.json),
@@ -450,44 +437,6 @@ export default defineCommand({
     }
   },
 });
-
-function parseIntFlag(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/**
- * Parse a flag that must be a positive integer (>= 1) when supplied.
- * Negative values or non-integers fail loudly instead of flowing into
- * the SDK and producing opaque AWS validation errors mid-render.
- */
-function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
-  if (n === undefined) return undefined;
-  if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`[lambda] ${flagName} must be a positive integer; got ${n}`);
-  }
-  return n;
-}
-
-/**
- * Parse a string-union flag against a closed set of allowed values.
- * Returns `defaultValue` (which may be `undefined`) when the input is
- * empty; throws with a flag-specific message when the value is set
- * but unrecognised.
- */
-function parseEnum<T extends string>(
-  raw: unknown,
-  allowed: readonly T[],
-  errorPrefix: string,
-  defaultValue: T | undefined,
-): T | undefined {
-  if (raw === undefined || raw === null || raw === "") return defaultValue;
-  const s = String(raw);
-  if ((allowed as readonly string[]).includes(s)) return s as T;
-  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
-}
 
 const FORMATS = [
   "mp4",

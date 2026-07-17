@@ -1,16 +1,12 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { describe, expect, it, vi } from "vitest";
 import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import type { DomEditSelection } from "./domEditing";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(() => {
-  document.body.innerHTML = "";
-});
+setupReactActEnvironment();
 
 function baseElement(overrides: Partial<DomEditSelection> = {}): DomEditSelection {
   return {
@@ -41,16 +37,6 @@ function baseElement(overrides: Partial<DomEditSelection> = {}): DomEditSelectio
     },
     ...overrides,
   } as DomEditSelection;
-}
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
 }
 
 describe("FlatTimingRow", () => {

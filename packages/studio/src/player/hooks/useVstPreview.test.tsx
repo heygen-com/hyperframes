@@ -19,47 +19,12 @@ import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
-import { __setSocketFactoryForTests, useVstHost, type VstSocketLike } from "../../hooks/useVstHost";
-import { usePlayerStore } from "../store/playerStore";
+import { __setSocketFactoryForTests, useVstHost } from "../../hooks/useVstHost";
+import { FakeSocket, required } from "../../hooks/vstSocketTestFixture";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import { decodePcmFrame, useVstPreview } from "./useVstPreview";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// ── Fake WebSocket (mirrors useVstHost.test.tsx's FakeSocket) ────────────────
-
-class FakeSocket implements VstSocketLike {
-  static instances: FakeSocket[] = [];
-  binaryType: BinaryType = "blob";
-  onopen: ((ev: Event) => void) | null = null;
-  onclose: ((ev: CloseEvent) => void) | null = null;
-  onerror: ((ev: Event) => void) | null = null;
-  onmessage: ((ev: MessageEvent) => void) | null = null;
-  sent: string[] = [];
-
-  constructor(public url: string) {
-    FakeSocket.instances.push(this);
-  }
-
-  send(data: string): void {
-    this.sent.push(data);
-  }
-
-  close(): void {
-    this.onclose?.(new CloseEvent("close"));
-  }
-
-  open(): void {
-    this.onopen?.(new Event("open"));
-  }
-
-  emitJson(payload: unknown): void {
-    this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(payload) }));
-  }
-
-  emitBinary(buf: ArrayBuffer): void {
-    this.onmessage?.(new MessageEvent("message", { data: buf }));
-  }
-}
 
 // ── Fake Web Audio (this environment has none at all) ───────────────────────
 
@@ -81,6 +46,14 @@ class FakeAudioContext {
   audioWorklet = { addModule: vi.fn(async () => {}) };
   destination = {};
   close = vi.fn(async () => {});
+  // Real browsers start every new AudioContext "suspended" under the
+  // autoplay policy — resume() (called at the transport play transition,
+  // see useVstPreview.ts's resumeSuspendedContexts) is what makes PCM
+  // audible instead of silently dropped.
+  state: "suspended" | "running" = "suspended";
+  resume = vi.fn(async () => {
+    this.state = "running";
+  });
   constructor(public options?: { sampleRate?: number }) {
     FakeAudioContext.instances.push(this);
   }
@@ -88,17 +61,30 @@ class FakeAudioContext {
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-function required<T>(value: T | null | undefined, label = "value"): T {
-  if (value === null || value === undefined) {
-    throw new Error(`${label} was unexpectedly missing`);
-  }
-  return value;
-}
-
 async function flushAsyncWork(): Promise<void> {
-  for (let i = 0; i < 10; i += 1) {
+  // 30, not 10: loadVstTrack now awaits an extra fetch (resolveLocalWavPath)
+  // before api.loadChain, adding another real microtask hop per track.
+  for (let i = 0; i < 30; i += 1) {
     await Promise.resolve();
   }
+}
+
+/** Opens the first fake socket and flushes surrounding async work. Call inside `act()`. */
+async function openFirstSocket(): Promise<void> {
+  await flushAsyncWork();
+  required(FakeSocket.instances[0], "socket").open();
+  await flushAsyncWork();
+}
+
+/** Emits a chain-loaded event on the first fake socket and flushes surrounding async work. Call inside `act()`. */
+async function emitChainLoaded(payload: {
+  trackId: string;
+  sampleRate: number;
+  stable?: boolean;
+}): Promise<void> {
+  await flushAsyncWork();
+  required(FakeSocket.instances[0], "socket").emitJson({ event: "chain-loaded", ...payload });
+  await flushAsyncWork();
 }
 
 function okJsonResponse(body: unknown): Response {
@@ -112,9 +98,23 @@ function buildFetchMock(chainJson: unknown): ReturnType<typeof vi.fn> {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/vst/start") return okJsonResponse({ port: 4321, token: "test-token" });
+    if (url.includes("/vst/wav-path")) {
+      const subPath = new URL(url, "http://localhost").searchParams.get("path");
+      return okJsonResponse({ path: `/abs/project/${subPath}` });
+    }
     if (url.includes("/files/")) return okJsonResponse({ content: JSON.stringify(chainJson) });
     throw new Error(`unexpected fetch: ${url}`);
   });
+}
+
+/** Finds the worklet node's most recent "reset" postMessage call — the
+ *  shared lookup the ring-realignment tests below need. */
+function findResetCall(
+  node: FakeAudioWorkletNode,
+): { type?: string; samplePos?: number } | undefined {
+  return node.port.postMessage.mock.calls
+    .map((c) => c[0] as { type?: string; samplePos?: number })
+    .find((m) => m && m.type === "reset");
 }
 
 interface Harnessed {
@@ -134,7 +134,7 @@ function mountHarness(
   audioEl.id = "track-1";
   if (includeAudio) {
     audioEl.setAttribute("data-vst-chain", "fx/track-1.vstchain.json");
-    audioEl.setAttribute("src", "dry.wav");
+    audioEl.setAttribute("src", `/api/projects/${projectId ?? "proj-1"}/preview/dry.wav`);
     document.body.append(audioEl);
   }
 
@@ -157,26 +157,26 @@ function mountHarness(
   return { root, audioEl, showToast, fetchMock };
 }
 
+/** Opens the first fake socket (inside `act()`) and returns it — the shared
+ *  "connect, then grab the socket instance" step every loaded-preview setup
+ *  below needs. */
+async function connectAndGetSocket(): Promise<FakeSocket> {
+  await act(async () => {
+    await openFirstSocket();
+  });
+  return required(FakeSocket.instances[0], "socket");
+}
+
 /** Drives a mounted harness to a fully loaded (ready + chain loaded) state. */
 async function setupLoadedPreview(): Promise<Harnessed & { socket: FakeSocket }> {
   const harness = mountHarness("proj-1", { version: 1, plugins: [] });
+  const socket = await connectAndGetSocket();
 
   await act(async () => {
-    await flushAsyncWork();
-    required(FakeSocket.instances[0], "socket").open();
-    await flushAsyncWork();
+    await emitChainLoaded({ trackId: "track-1", sampleRate: 48000 });
   });
 
-  await act(async () => {
-    await flushAsyncWork();
-    required(FakeSocket.instances[0], "socket").emitJson({
-      event: "chain-loaded",
-      trackId: "track-1",
-    });
-    await flushAsyncWork();
-  });
-
-  return { ...harness, socket: required(FakeSocket.instances[0], "socket") };
+  return { ...harness, socket };
 }
 
 beforeEach(() => {
@@ -269,6 +269,52 @@ describe("useVstPreview — chain loading", () => {
     act(() => root.unmount());
   });
 
+  it("retries a load whose effect run was cancelled mid-flight instead of stranding the track", async () => {
+    // Live-repro'd race: effect run A starts the async load; before the
+    // sidecar replies `chain-loaded`, a dependency churn (elements /
+    // vstChainRevision — routine right after mount) re-runs the effect. Run B
+    // scans, sees A's load still pending (`pendingTrackIdsRef` guard), and
+    // skips the track. A then resolves, sees itself cancelled, and tears the
+    // freshly wired track down — with `trackOrderRef` still holding the
+    // "already attempted" reservation, NOTHING ever retried: chain loaded
+    // server-side, zero tracks client-side, transport forever seeing
+    // `loaded: 0` (music silent from the first play).
+    const { root, audioEl } = mountHarness("proj-1", { version: 1, plugins: [] });
+
+    // Let run A get as far as sending `load-chain` (its promise now pending
+    // on the chain-loaded reply we haven't emitted yet).
+    await act(async () => {
+      await openFirstSocket();
+    });
+    const socket = required(FakeSocket.instances[0], "socket");
+    expect(socket.sent.filter((m) => m.includes('"cmd":"load-chain"'))).toHaveLength(1);
+
+    // Mid-flight: re-run the load effect (run B) while A's load is pending.
+    await act(async () => {
+      usePlayerStore.getState().bumpVstChainRevision();
+      await flushAsyncWork();
+    });
+
+    // NOW the sidecar replies — resolving A's load inside a cancelled run.
+    await act(async () => {
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
+      await flushAsyncWork();
+    });
+
+    // The retry (run C, poked by the cancellation handler) re-issues
+    // load-chain; answer it and let it settle.
+    await act(async () => {
+      await flushAsyncWork();
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
+      await flushAsyncWork();
+    });
+
+    expect(socket.sent.filter((m) => m.includes('"cmd":"load-chain"'))).toHaveLength(2);
+    expect(audioEl.muted).toBe(true); // track actually loaded, not stranded dry
+
+    act(() => root.unmount());
+  });
+
   it("does nothing when there is no data-vst-chain audio element in the DOM", async () => {
     const { root, fetchMock } = mountHarness("proj-1", { version: 1, plugins: [] }, false);
 
@@ -299,11 +345,16 @@ describe("useVstPreview — chain loading", () => {
 // ── Transport: play/pause/seek ───────────────────────────────────────────────
 
 describe("useVstPreview — transport", () => {
-  it("sends a play transport message with currentTime + playbackRate when isPlaying flips true", async () => {
+  it("sends a play transport message with the live playhead time + playbackRate when isPlaying flips true", async () => {
     const { root, socket } = await setupLoadedPreview();
 
     act(() => {
-      usePlayerStore.getState().setCurrentTime(4.5);
+      // The real, continuously-updating playhead — see useVstPreview.ts's
+      // liveTimeRef doc-comment for why this reads `liveTime`, not the
+      // Zustand store's `currentTime` (the RAF loop only syncs that "once
+      // at end", so it stays stale/frozen for the entire duration of a
+      // fresh play from the start).
+      liveTime.notify(4.5);
       usePlayerStore.getState().setPlaybackRate(1.5);
       usePlayerStore.getState().setIsPlaying(true);
     });
@@ -312,6 +363,19 @@ describe("useVstPreview — transport", () => {
       .map((raw) => JSON.parse(raw) as Record<string, unknown>)
       .find((msg) => msg.cmd === "transport" && msg.action === "play");
     expect(playMsg).toMatchObject({ action: "play", timeSec: 4.5, rate: 1.5 });
+
+    act(() => root.unmount());
+  });
+
+  it("resumes the track's suspended AudioContext when isPlaying flips true", async () => {
+    const { root } = await setupLoadedPreview();
+    const ctx = required(FakeAudioContext.instances[0], "audio context");
+    expect(ctx.state).toBe("suspended"); // real browsers start every context suspended
+
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+
+    expect(ctx.resume).toHaveBeenCalled();
+    expect(ctx.state).toBe("running");
 
     act(() => root.unmount());
   });
@@ -326,6 +390,33 @@ describe("useVstPreview — transport", () => {
       .map((raw) => JSON.parse(raw) as Record<string, unknown>)
       .find((msg) => msg.cmd === "transport" && msg.action === "pause");
     expect(pauseMsg).toEqual({ cmd: "transport", action: "pause" });
+
+    act(() => root.unmount());
+  });
+
+  it("flushes the worklet ring on pause so the buffered lead cushion doesn't keep playing", async () => {
+    // The sidecar streams ~0.5s AHEAD of the playhead (its _PUMP_LEAD_SEC
+    // jitter cushion), all buffered in the worklet ring. Pause only stops the
+    // pump — without an explicit ring reset the cushion audibly drains for
+    // up to a second after the pause click.
+    const { root } = await setupLoadedPreview();
+    const node = required(FakeAudioWorkletNode.instances[0], "worklet node");
+
+    act(() => {
+      liveTime.notify(3);
+      usePlayerStore.getState().setIsPlaying(true);
+    });
+    node.port.postMessage.mockClear();
+
+    act(() => {
+      liveTime.notify(3.4);
+      usePlayerStore.getState().setIsPlaying(false);
+    });
+
+    expect(node.port.postMessage).toHaveBeenCalledWith({
+      type: "reset",
+      samplePos: Math.floor(3.4 * 48000),
+    });
 
     act(() => root.unmount());
   });
@@ -345,9 +436,169 @@ describe("useVstPreview — transport", () => {
 
     act(() => root.unmount());
   });
+
+  it("floors a fractional seek time to an integer sample position when resetting the worklet", async () => {
+    const { root } = await setupLoadedPreview();
+    const node = required(FakeAudioWorkletNode.instances[0], "worklet node");
+
+    act(() => usePlayerStore.getState().requestSeek(1.234567));
+
+    // The sidecar streams integer sample positions (`int(timeSec * sr)`), and
+    // the ring accepts a block only if its samplePos matches exactly. A
+    // fractional reset target (`1.234567 * 48000 = 59259.216`) could never
+    // match, so every frame would be rejected and the ring would starve.
+    const resetCall = findResetCall(node);
+    expect(resetCall?.samplePos).toBe(Math.floor(1.234567 * 48000));
+    expect(Number.isInteger(resetCall?.samplePos)).toBe(true);
+
+    act(() => root.unmount());
+  });
+
+  it("resets the worklet to the floored live playhead when playback starts", async () => {
+    const { root } = await setupLoadedPreview();
+    const node = required(FakeAudioWorkletNode.instances[0], "worklet node");
+    node.port.postMessage.mockClear();
+
+    // A stale worklet ring from a previous run would reject every new frame;
+    // starting playback must realign it to the integer position the sidecar
+    // begins streaming from (see the play-path reseek in useVstPreview).
+    act(() => {
+      liveTime.notify(4.321);
+      usePlayerStore.getState().setIsPlaying(true);
+    });
+
+    const resetCall = findResetCall(node);
+    expect(resetCall?.samplePos).toBe(Math.floor(4.321 * 48000));
+
+    act(() => root.unmount());
+  });
 });
 
 // ── PCM frame routing ─────────────────────────────────────────────────────────
+
+describe("useVstPreview — incompatible plugin guard", () => {
+  it("keeps the track on dry audio and warns when the sidecar reports the chain unstable", async () => {
+    const harness = mountHarness("proj-1", {
+      version: 1,
+      plugins: [
+        {
+          format: "vst3",
+          path: "/x.vst3",
+          pluginName: "Weird FX",
+          name: "Weird FX",
+          stateB64: null,
+        },
+      ],
+    });
+
+    await act(async () => {
+      await openFirstSocket();
+    });
+    await act(async () => {
+      await emitChainLoaded({ trackId: "track-1", sampleRate: 48000, stable: false });
+    });
+
+    // Dry: the element is never muted and no playback node is created.
+    expect(harness.audioEl.muted).toBe(false);
+    expect(FakeAudioWorkletNode.instances.length).toBe(0);
+    // Warned, naming the offending plugin.
+    expect(harness.showToast).toHaveBeenCalledWith(expect.stringContaining("Weird FX"), "error");
+    expect(harness.showToast.mock.calls[0]?.[0]).toContain("isn't compatible");
+
+    act(() => harness.root.unmount());
+  });
+});
+
+describe("useVstPreview — chain removal reconciliation", () => {
+  it("tears down the track and unmutes the dry element when its chain is removed", async () => {
+    const { root, audioEl } = await setupLoadedPreview();
+    // Loaded → the hook muted the dry element to play the wet stream instead.
+    expect(audioEl.muted).toBe(true);
+
+    // Simulate the FX panel removing the chain: the attribute is gone from the
+    // preview DOM and the elements store refreshes (handleDomAttributeCommit's
+    // refreshAfter). The load effect must reconcile — without this it left the
+    // element muted forever (silent), and never reloaded a replacement chain.
+    await act(async () => {
+      audioEl.removeAttribute("data-vst-chain");
+      usePlayerStore.getState().setElements([]);
+      await flushAsyncWork();
+    });
+
+    expect(audioEl.muted).toBe(false); // dry audio restored
+    act(() => root.unmount());
+  });
+
+  it("re-binds to the fresh element and mutes it after a preview reload replaces the DOM node", async () => {
+    const { root, audioEl } = await setupLoadedPreview();
+    expect(audioEl.muted).toBe(true);
+
+    // A preview reload replaces the composition DOM: the old <audio> node is
+    // gone, a NEW node with the same id/chain takes its place. The old track
+    // is now orphaned — it muted the dead node, so the fresh (unmuted) one
+    // would play dry. NLEContext bumps vstChainRevision on iframe load to make
+    // this reconcile happen; simulate that here.
+    audioEl.remove();
+    const fresh = document.createElement("audio");
+    fresh.id = "track-1";
+    fresh.setAttribute("data-vst-chain", "fx/track-1.vstchain.json");
+    fresh.setAttribute("src", "/api/projects/proj-1/preview/dry.wav");
+    document.body.append(fresh);
+
+    await act(async () => {
+      usePlayerStore.getState().bumpVstChainRevision();
+      await emitChainLoaded({ trackId: "track-1", sampleRate: 48000, stable: true });
+    });
+
+    // The FRESH element is now muted (VST pipeline owns its audio); the old
+    // detached node no longer matters. Without the reload reconcile the fresh
+    // node stayed unmuted → dry bleed.
+    expect(fresh.muted).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
+describe("useVstPreview — chain content swap", () => {
+  it("reloads the track when the chain FILE contents change, not the first-loaded effect", async () => {
+    // Same element + same data-vst-chain path, but the file's CONTENTS change
+    // (the FX panel rewrites it on swap). Element identity is unchanged, so
+    // this is caught only by comparing chain contents — the bug was the
+    // first-loaded effect streaming forever.
+    const chainObj = {
+      version: 1,
+      plugins: [
+        { format: "builtin", path: "Delay", pluginName: null, name: "Delay", stateB64: null },
+      ],
+    };
+    const harness = mountHarness("proj-1", chainObj);
+
+    await act(async () => {
+      await openFirstSocket();
+    });
+    await act(async () => {
+      await emitChainLoaded({ trackId: "track-1", sampleRate: 48000, stable: true });
+    });
+    expect(FakeAudioWorkletNode.instances.length).toBe(1);
+
+    // Swap the effect (rewrite the same file's contents), then re-run the load
+    // effect. The old track must be torn down and reloaded from the new chain.
+    chainObj.plugins = [
+      { format: "builtin", path: "Reverb", pluginName: null, name: "Reverb", stateB64: null },
+    ];
+    await act(async () => {
+      // The real trigger: the FX panel bumps this after rewriting the chain
+      // file (a same-path rewrite is invisible to the `elements` signal).
+      usePlayerStore.getState().bumpVstChainRevision();
+      await emitChainLoaded({ trackId: "track-1", sampleRate: 48000, stable: true });
+    });
+
+    // A SECOND worklet node proves the track reloaded (torn down + rebuilt),
+    // rather than the first-loaded Delay persisting.
+    expect(FakeAudioWorkletNode.instances.length).toBe(2);
+
+    act(() => harness.root.unmount());
+  });
+});
 
 describe("useVstPreview — PCM routing", () => {
   it("routes a PCM frame matching the loaded track's index to its worklet node", async () => {
@@ -407,18 +658,32 @@ interface TwoTrackHarness {
   socket: FakeSocket;
 }
 
+/** Asserts both tracks reverted to unmuted dry playback and a toast fired
+ *  naming `messageSubstring` — the shared "both tracks reverted" outcome
+ *  several tests below check for (a routing collision, or a disconnect). */
+function expectBothTracksRevertedWithToast(
+  audioEl1: HTMLAudioElement,
+  audioEl2: HTMLAudioElement,
+  showToast: ReturnType<typeof vi.fn>,
+  messageSubstring: string,
+): void {
+  expect(audioEl1.muted).toBe(false);
+  expect(audioEl2.muted).toBe(false);
+  expect(showToast).toHaveBeenCalledWith(expect.stringContaining(messageSubstring), "error");
+}
+
 /** Loads two vst-chain tracks (track-1 → index 0, track-2 → index 1) through one shared connection. */
 async function setupTwoLoadedTracks(): Promise<TwoTrackHarness> {
   const audioEl1 = document.createElement("audio");
   audioEl1.id = "track-1";
   audioEl1.setAttribute("data-vst-chain", "fx/track-1.vstchain.json");
-  audioEl1.setAttribute("src", "dry1.wav");
+  audioEl1.setAttribute("src", "/api/projects/proj-1/preview/dry1.wav");
   document.body.append(audioEl1);
 
   const audioEl2 = document.createElement("audio");
   audioEl2.id = "track-2";
   audioEl2.setAttribute("data-vst-chain", "fx/track-2.vstchain.json");
-  audioEl2.setAttribute("src", "dry2.wav");
+  audioEl2.setAttribute("src", "/api/projects/proj-1/preview/dry2.wav");
   document.body.append(audioEl2);
 
   const iframe = document.createElement("iframe");
@@ -434,20 +699,11 @@ async function setupTwoLoadedTracks(): Promise<TwoTrackHarness> {
     return null;
   }
   const root = mountReactHarness(<Harness />);
+  const socket = await connectAndGetSocket();
 
   await act(async () => {
-    await flushAsyncWork();
-    required(FakeSocket.instances[0], "socket").open();
-    await flushAsyncWork();
-  });
-  const socket = required(FakeSocket.instances[0], "socket");
-
-  await act(async () => {
-    await flushAsyncWork();
-    socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
-    await flushAsyncWork();
-    socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
-    await flushAsyncWork();
+    await emitChainLoaded({ trackId: "track-1", sampleRate: 48000 });
+    await emitChainLoaded({ trackId: "track-2", sampleRate: 48000 });
   });
 
   return { root, audioEl1, audioEl2, showToast, socket };
@@ -462,7 +718,7 @@ describe("useVstPreview — trackIndex resync on an external chain reload", () =
     // Only one track was ever loaded, so the sidecar's pop-then-reinsert rule
     // reassigns it the SAME index (0) — no collision, nothing to revert.
     await act(async () => {
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
       await flushAsyncWork();
     });
 
@@ -494,7 +750,7 @@ describe("useVstPreview — trackIndex resync on an external chain reload", () =
     // still pick up the fresh index from the event rather than silently
     // keep routing on a value it never re-derived.
     await act(async () => {
-      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2", sampleRate: 48000 });
       await flushAsyncWork();
     });
 
@@ -527,15 +783,13 @@ describe("useVstPreview — trackIndex resync on an external chain reload", () =
     expect(audioEl2.muted).toBe(true);
 
     await act(async () => {
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
       await flushAsyncWork();
     });
 
     // Both tracks reverted to their original (unmuted) dry playback rather
     // than one silently stealing the other's processed audio stream.
-    expect(audioEl1.muted).toBe(false);
-    expect(audioEl2.muted).toBe(false);
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("routing conflict"), "error");
+    expectBothTracksRevertedWithToast(audioEl1, audioEl2, showToast, "routing conflict");
 
     // A PCM frame at the now-ambiguous index must be dropped for both, not
     // routed to whichever track happens to be first in iteration order.
@@ -624,9 +878,7 @@ describe("useVstPreview — global suspend after any disconnect", () => {
       await flushAsyncWork();
     });
 
-    expect(audioEl1.muted).toBe(false);
-    expect(audioEl2.muted).toBe(false);
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("disconnected"), "error");
+    expectBothTracksRevertedWithToast(audioEl1, audioEl2, showToast, "disconnected");
 
     // A brand-new track appears in the DOM AFTER the disconnect — one this
     // hook never attempted to load and that was never held by
@@ -637,7 +889,7 @@ describe("useVstPreview — global suspend after any disconnect", () => {
     const audioEl3 = document.createElement("audio");
     audioEl3.id = "track-3";
     audioEl3.setAttribute("data-vst-chain", "fx/track-3.vstchain.json");
-    audioEl3.setAttribute("src", "dry3.wav");
+    audioEl3.setAttribute("src", "/api/projects/proj-1/preview/dry3.wav");
     document.body.append(audioEl3);
 
     // Advance past the 2s auto-restart delay so the reconnect attempt opens
@@ -700,16 +952,12 @@ describe("useVstPreview — global suspend after any disconnect", () => {
     const { root, audioEl, showToast } = mountHarness("proj-1", { version: 1, plugins: [] });
 
     await act(async () => {
-      await flushAsyncWork();
-      required(FakeSocket.instances[0], "socket").open();
-      await flushAsyncWork();
+      await openFirstSocket();
     });
     const socket = required(FakeSocket.instances[0], "socket");
 
     await act(async () => {
-      await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
-      await flushAsyncWork();
+      await emitChainLoaded({ trackId: "track-1", sampleRate: 48000 });
     });
 
     // Server-side load-chain succeeded, but local wiring is stuck awaiting

@@ -16,6 +16,15 @@ function fakeServe(dir: string, lines: string): string {
   return script;
 }
 
+/** Points HF_VST_HOST_CMD at a fake sidecar that reports ready immediately on the given port. */
+function useFakeReadySidecar(port: number): void {
+  const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
+  process.env.HF_VST_HOST_CMD = fakeServe(
+    dir,
+    `echo "VST-HOST-LISTENING port=${port} token=tok-${port}"; sleep 60`,
+  );
+}
+
 /**
  * Polls for `path` to exist instead of a single fixed sleep — under CI
  * contention a fixed wait (the previous approach here) can fire before a
@@ -34,11 +43,7 @@ async function waitForFile(path: string, timeoutMs = 2000): Promise<void> {
 
 describe("startVstSidecar", () => {
   it("resolves the announced port", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(
-      dir,
-      `echo "VST-HOST-LISTENING port=9555 token=tok-9555"; sleep 60`,
-    );
+    useFakeReadySidecar(9555);
     const { port, stop } = await startVstSidecar();
     expect(port).toBe(9555);
     expect(getVstSidecar()?.port).toBe(9555);
@@ -46,22 +51,14 @@ describe("startVstSidecar", () => {
   });
 
   it("resolves the announced token alongside the port", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(
-      dir,
-      `echo "VST-HOST-LISTENING port=9560 token=tok-9560"; sleep 60`,
-    );
+    useFakeReadySidecar(9560);
     const { token, stop } = await startVstSidecar();
     expect(token).toBe("tok-9560");
     stop();
   });
 
   it("is a singleton while running", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(
-      dir,
-      `echo "VST-HOST-LISTENING port=9556 token=tok-9556"; sleep 60`,
-    );
+    useFakeReadySidecar(9556);
     const a = await startVstSidecar();
     const b = await startVstSidecar();
     expect(b.port).toBe(a.port);
@@ -99,11 +96,7 @@ describe("startVstSidecar", () => {
     process.env.HF_VST_HOST_CMD = "/definitely/not/here-again";
     await expect(startVstSidecar()).rejects.toThrow(/uv tool install hyperframes-vst-host/);
 
-    const dir = mkdtempSync(join(tmpdir(), "vst-cli-"));
-    process.env.HF_VST_HOST_CMD = fakeServe(
-      dir,
-      `echo "VST-HOST-LISTENING port=9559 token=tok-9559"; sleep 60`,
-    );
+    useFakeReadySidecar(9559);
     const { port, stop } = await startVstSidecar();
     expect(port).toBe(9559);
     stop();

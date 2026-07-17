@@ -36,7 +36,7 @@ import websockets
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
-from .chain import PluginMissingError, build_chain, load_chain_spec, serialize_states
+from .chain import PluginMissingError, build_chain, enabled_plugins, load_chain_spec, serialize_states
 from .scan import builtin_registry, default_plugin_dirs, scan_paths
 from .stream import TrackStream, probe_chain_stability
 
@@ -183,15 +183,19 @@ class VstServer:
                 old = self._tracks.pop(track_id, None)
                 if old:
                     old.close()
+                # The FULL constructed list keeps set-param/get-state indices
+                # aligned with the chain file; only the enabled subset
+                # processes audio (a disabled plugin is bypassed, not gone).
                 self._plugins[track_id] = plugins
+                active = enabled_plugins(spec, plugins)
                 # Probe whether pedalboard can host this chain without emitting
                 # NaN/Inf/runaway output (see probe_chain_stability). An
                 # unstable track is still registered — so its wire index stays
                 # in lockstep with the client's own counter — but flagged so it
                 # never streams; the client then keeps it on dry audio and warns
                 # instead of muting the original into NaN-driven silence.
-                stable = await asyncio.to_thread(probe_chain_stability, msg["wavPath"], plugins)
-                track = TrackStream(len(self._tracks), msg["wavPath"], plugins, stable=stable)
+                stable = await asyncio.to_thread(probe_chain_stability, msg["wavPath"], active)
+                track = TrackStream(len(self._tracks), msg["wavPath"], active, stable=stable)
                 self._tracks[track_id] = track
                 params = [
                     [{"name": k, "value": float(v.raw_value) if hasattr(v, "raw_value") else None}

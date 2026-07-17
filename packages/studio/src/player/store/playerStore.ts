@@ -5,84 +5,12 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
 
-/** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
-export interface KeyframeCacheEntry {
-  format: string;
-  keyframes: Array<{
-    percentage: number;
-    /** Original tween-relative percentage (server mutations need this, not the clip-relative `percentage`). */
-    tweenPercentage?: number;
-    /** Which property group the source tween belongs to (position, scale, rotation, visual, etc.). */
-    propertyGroup?: string;
-    properties: Record<string, number | string>;
-    ease?: string;
-  }>;
-  ease?: string;
-  easeEach?: string;
-}
-
-export interface TimelineElement {
-  id: string;
-  label?: string;
-  key?: string;
-  tag: string;
-  start: number;
-  duration: number;
-  track: number;
-  /**
-   * The data-track-index as written in the source file. Set at the manifest
-   * translation boundary (createTimelineElementFromManifestClip) from the
-   * runtime clip's verbatim track, and preserved through display-lane remaps
-   * (normalizeToZones packs sparse authored tracks onto contiguous display
-   * lanes; expanded sub-comp children get synthetic display rows). Lane edits
-   * must persist THIS space — writing a display-lane number into a sparse file
-   * re-targets the wrong track. For an expanded child the value is in its OWN
-   * source file's coordinate space, not the host timeline's.
-   */
-  authoredTrack?: number;
-  /** Resolved z-index for stacking-aware timeline ordering. */
-  zIndex?: number;
-  /** True when the effective z-index was authored inline or through CSS, not auto. */
-  hasExplicitZIndex?: boolean;
-  /** Canonical CSS stacking context this element's z-index participates in. */
-  stackingContextId?: string | null;
-  /** Nearest parent composition context, matching RuntimeTimelineClip. */
-  parentCompositionId?: string | null;
-  /** Composition ancestry from root to nearest parent, matching RuntimeTimelineClip. */
-  compositionAncestors?: string[];
-  domId?: string;
-  /** Stable `data-hf-id` attribute value — used as primary patch target when present */
-  hfId?: string;
-  /** Best-effort selector used when patching source HTML back from timeline edits */
-  selector?: string;
-  /** Zero-based occurrence index for non-unique selectors */
-  selectorIndex?: number;
-  /** Source composition file that owns this element, when known */
-  sourceFile?: string;
-  src?: string;
-  playbackStart?: number;
-  playbackStartAttr?: "media-start" | "playback-start";
-  playbackRate?: number;
-  sourceDuration?: number;
-  volume?: number;
-  /** Path from data-composition-src — identifies sub-composition elements */
-  compositionSrc?: string;
-  /** Whether this row came from authored clip timing or Studio's full-duration layer fallback. */
-  timingSource?: "authored" | "implicit";
-  /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
-  timelineLocked?: boolean;
-  /** Set by data-hidden on the host element — hides the clip in preview and render. */
-  hidden?: boolean;
-  /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
-  timelineRole?: string;
-  /**
-   * Set by useExpandedTimelineElements on an inline-expanded sub-composition
-   * child: the absolute master-timeline start of the sub-comp host the child
-   * lives in. Presence marks the element as expanded; edits subtract it to get
-   * the child's local (sourceFile-relative) time. Works at any nesting depth.
-   */
-  expandedParentStart?: number;
-}
+// Split into their own module purely to keep this file under the repo's
+// per-file line-count convention — re-exported here so the ~70 existing
+// importers of `TimelineElement`/`KeyframeCacheEntry` from `playerStore`
+// don't need to change.
+export type { KeyframeCacheEntry, TimelineElement } from "../lib/timelineElementTypes";
+import type { KeyframeCacheEntry, TimelineElement } from "../lib/timelineElementTypes";
 
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
@@ -116,6 +44,11 @@ interface PlayerState {
   /** True while a beat dot is being dragged — hides the playhead guideline. */
   beatDragging: boolean;
   elements: TimelineElement[];
+  /** Bumped by the FX panel whenever a track's VST chain file is added /
+   *  removed / swapped. `useVstPreview` watches this to reconcile+reload the
+   *  affected track — the panel and the preview hook are otherwise decoupled
+   *  (a chain-file rewrite is invisible to the timeline `elements` signal). */
+  vstChainRevision: number;
   selectedElementId: string | null;
   playbackRate: number;
   audioMuted: boolean;
@@ -205,6 +138,7 @@ interface PlayerState {
   setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
+  bumpVstChainRevision: () => void;
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
@@ -311,6 +245,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   timelineReady: false,
   beatDragging: false,
   elements: [],
+  vstChainRevision: 0,
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
@@ -510,6 +445,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
+  bumpVstChainRevision: () => set((s) => ({ vstChainRevision: s.vstChainRevision + 1 })),
   // A genuine single selection: always collapse the set to just this element. User
   // intent (timeline click, preview click via applyDomSelection) flows here; DOM sync
   // echoes that must preserve a group go through setSelectionAnchor instead.

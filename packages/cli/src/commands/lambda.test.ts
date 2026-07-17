@@ -20,6 +20,26 @@ vi.mock("./lambda/render.js", () => ({ runRender: runRenderMock }));
 // unrelated to what this test verifies.
 vi.mock("@hyperframes/aws-lambda/sdk", () => ({}));
 
+/** Mock `process.exit` to throw instead of terminating the test runner. */
+function mockProcessExit() {
+  return vi.spyOn(process, "exit").mockImplementation((code?: string | number | null): never => {
+    throw new Error(`process.exit:${code ?? ""}`);
+  });
+}
+
+/** Invoke `hyperframes lambda render <projectDir> --width 1920 --height 1080`. */
+async function runLambdaRenderCommand(projectDir: string): Promise<unknown> {
+  const command = (await import("./lambda.js")).default;
+  return command.run?.({
+    args: {
+      subcommand: "render",
+      target: projectDir,
+      width: "1920",
+      height: "1080",
+    },
+  } as never);
+}
+
 describe("lambda render VST guard", () => {
   let projectDir: string | undefined;
 
@@ -40,25 +60,10 @@ describe("lambda render VST guard", () => {
 </body></html>`,
     );
 
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation((code?: string | number | null): never => {
-        throw new Error(`process.exit:${code ?? ""}`);
-      });
+    const exitSpy = mockProcessExit();
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const command = (await import("./lambda.js")).default;
-
-    await expect(
-      command.run?.({
-        args: {
-          subcommand: "render",
-          target: projectDir,
-          width: "1920",
-          height: "1080",
-        },
-      } as never),
-    ).rejects.toThrow("process.exit:1");
+    await expect(runLambdaRenderCommand(projectDir)).rejects.toThrow("process.exit:1");
 
     // Exactly one exit, at code 1 — if the guard hadn't fired and execution
     // had instead reached `./lambda/render.js`'s real AWS calls, this would
@@ -84,24 +89,11 @@ describe("lambda render VST guard", () => {
 </body></html>`,
     );
 
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation((code?: string | number | null): never => {
-        throw new Error(`process.exit:${code ?? ""}`);
-      });
+    const exitSpy = mockProcessExit();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     runRenderMock.mockClear();
 
-    const command = (await import("./lambda.js")).default;
-
-    await command.run?.({
-      args: {
-        subcommand: "render",
-        target: projectDir,
-        width: "1920",
-        height: "1080",
-      },
-    } as never);
+    await runLambdaRenderCommand(projectDir);
 
     // The guard didn't block this clean composition — execution reached the
     // (mocked) real render path instead of exiting for a VST reason.

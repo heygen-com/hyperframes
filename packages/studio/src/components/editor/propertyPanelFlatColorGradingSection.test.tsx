@@ -1,29 +1,15 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
 } from "./propertyPanelFlatColorGradingSection";
 import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-afterEach(() => {
-  document.body.innerHTML = "";
-});
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
-}
+setupReactActEnvironment();
 
 function neutralGrading() {
   const grading = normalizeHfColorGrading("neutral");

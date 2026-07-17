@@ -1,62 +1,16 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
+import React, { StrictMode, act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
 import type { ChainFileJson } from "../utils/vstChainFile";
 import { mountReactHarness } from "./domSelectionTestHarness";
-import { __setSocketFactoryForTests, useVstHost, type VstSocketLike } from "./useVstHost";
+import { __setSocketFactoryForTests, useVstHost } from "./useVstHost";
+import { FakeSocket, required } from "./vstSocketTestFixture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// ── Fake WebSocket ────────────────────────────────────────────────────────────
-// The hook is injected a socket factory (module-level override, see
-// __setSocketFactoryForTests) rather than requiring callers to pass a
-// WebSocket implementation — production code just calls `new WebSocket(url)`.
-
-class FakeSocket implements VstSocketLike {
-  static instances: FakeSocket[] = [];
-  binaryType: BinaryType = "blob";
-  onopen: ((ev: Event) => void) | null = null;
-  onclose: ((ev: CloseEvent) => void) | null = null;
-  onerror: ((ev: Event) => void) | null = null;
-  onmessage: ((ev: MessageEvent) => void) | null = null;
-  sent: string[] = [];
-
-  constructor(public url: string) {
-    FakeSocket.instances.push(this);
-  }
-
-  send(data: string): void {
-    this.sent.push(data);
-  }
-
-  close(): void {
-    this.onclose?.(new CloseEvent("close"));
-  }
-
-  open(): void {
-    this.onopen?.(new Event("open"));
-  }
-
-  emitJson(payload: unknown): void {
-    this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(payload) }));
-  }
-
-  emitBinary(buf: ArrayBuffer): void {
-    this.onmessage?.(new MessageEvent("message", { data: buf }));
-  }
-}
-
 // ── Test helpers ──────────────────────────────────────────────────────────────
-
-/** Narrows away `null`/`undefined` without a `!` assertion (repo convention). */
-function required<T>(value: T | null | undefined, label = "value"): T {
-  if (value === null || value === undefined) {
-    throw new Error(`${label} was unexpectedly missing`);
-  }
-  return value;
-}
 
 async function flushAsyncWork(): Promise<void> {
   for (let i = 0; i < 8; i += 1) {
@@ -84,6 +38,76 @@ function okStartResponse(port: number, token: string = TEST_TOKEN): Response {
   });
 }
 
+/** Mounts the hook without driving `ensureStarted()` — the caller controls the fetch/socket sequence. */
+function mountUnstartedHost(): { getLatest: () => HookResult | null; root: Root } {
+  let latest: HookResult | null = null;
+  const root = renderVstHost((r) => {
+    latest = r;
+  });
+  return { getLatest: () => latest, root };
+}
+
+/**
+ * Races `promise` against a short timer to prove it settles on its own
+ * (rather than hanging forever) and, if so, whether it rejected. Used by the
+ * "superseded" tests below to confirm a pre-empted pending command's promise
+ * resolves instead of hanging.
+ */
+async function raceSettleOutcome(
+  promise: Promise<unknown>,
+): Promise<{ settled: boolean; rejected: boolean; err: unknown }> {
+  const outcome: { settled: boolean; rejected: boolean; err: unknown } = {
+    settled: false,
+    rejected: false,
+    err: null,
+  };
+  await Promise.race([
+    promise.then(
+      () => {
+        outcome.settled = true;
+      },
+      (err: unknown) => {
+        outcome.settled = true;
+        outcome.rejected = true;
+        outcome.err = err;
+      },
+    ),
+    new Promise<void>((resolve) => setTimeout(resolve, 100)),
+  ]);
+  return outcome;
+}
+
+/** Asserts a `raceSettleOutcome` result rejected with a "superseded" error. */
+function expectSupersededRejection(outcome: {
+  settled: boolean;
+  rejected: boolean;
+  err: unknown;
+}): void {
+  // If this is false, the promise never settled within 100ms — i.e. it hung.
+  expect(outcome.settled).toBe(true);
+  expect(outcome.rejected).toBe(true);
+  expect(outcome.err).toBeInstanceOf(Error);
+  if (outcome.err instanceof Error) {
+    expect(outcome.err.message).toMatch(/superseded/);
+  }
+}
+
+/** Stubs `fetch` with `fetchMock` and calls `ensureStarted()` on a freshly
+ *  mounted (not-yet-started) host, swallowing its rejection — the shared
+ *  "attempt a start that's expected to fail" shape the tests below need. */
+async function ensureStartedFailing(
+  fetchMock: ReturnType<typeof vi.fn>,
+): Promise<{ getLatest: () => HookResult | null; root: Root }> {
+  vi.stubGlobal("fetch", fetchMock);
+  const { getLatest, root } = mountUnstartedHost();
+  await act(async () => {
+    await required<HookResult>(getLatest(), "hook result")
+      .ensureStarted()
+      .catch(() => {});
+  });
+  return { getLatest, root };
+}
+
 async function setupReadyHost(): Promise<{
   getState: () => HookResult;
   socket: FakeSocket;
@@ -93,20 +117,17 @@ async function setupReadyHost(): Promise<{
   const fetchMock = vi.fn(async () => okStartResponse(4321));
   vi.stubGlobal("fetch", fetchMock);
 
-  let latest: HookResult | null = null;
-  const root = renderVstHost((r) => {
-    latest = r;
-  });
+  const { getLatest, root } = mountUnstartedHost();
 
   await act(async () => {
-    const startPromise = required<HookResult>(latest, "hook result").ensureStarted();
+    const startPromise = required<HookResult>(getLatest(), "hook result").ensureStarted();
     await flushAsyncWork();
     required<FakeSocket>(FakeSocket.instances[0], "socket instance").open();
     await startPromise;
   });
 
   return {
-    getState: () => required<HookResult>(latest, "hook result"),
+    getState: () => required<HookResult>(getLatest(), "hook result"),
     socket: required<FakeSocket>(FakeSocket.instances[0], "socket instance"),
     root,
     fetchMock,
@@ -165,22 +186,10 @@ describe("useVstHost — ensureStarted", () => {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-    const fetchMock = vi.fn(async () => missingTokenResponse);
-    vi.stubGlobal("fetch", fetchMock);
+    const { getLatest, root } = await ensureStartedFailing(vi.fn(async () => missingTokenResponse));
 
-    let latest: HookResult | null = null;
-    const root = renderVstHost((r) => {
-      latest = r;
-    });
-
-    await act(async () => {
-      await required<HookResult>(latest, "hook result")
-        .ensureStarted()
-        .catch(() => {});
-    });
-
-    expect(required<HookResult>(latest, "hook result").status).toBe("failed");
-    expect(required<HookResult>(latest, "hook result").api).toBeNull();
+    expect(required<HookResult>(getLatest(), "hook result").status).toBe("failed");
+    expect(required<HookResult>(getLatest(), "hook result").api).toBeNull();
     // No socket should ever have been opened without a valid token.
     expect(FakeSocket.instances).toHaveLength(0);
 
@@ -188,29 +197,19 @@ describe("useVstHost — ensureStarted", () => {
   });
 
   it("sets status to failed and surfaces installHint when the start request fails", async () => {
-    const fetchMock = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ error: "no uv", installHint: "install uv" }), {
-          status: 503,
-          headers: { "content-type": "application/json" },
-        }),
+    const { getLatest, root } = await ensureStartedFailing(
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "no uv", installHint: "install uv" }), {
+            status: 503,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    let latest: HookResult | null = null;
-    const root = renderVstHost((r) => {
-      latest = r;
-    });
-
-    await act(async () => {
-      await required<HookResult>(latest, "hook result")
-        .ensureStarted()
-        .catch(() => {});
-    });
-
-    expect(required<HookResult>(latest, "hook result").status).toBe("failed");
-    expect(required<HookResult>(latest, "hook result").installHint).toBe("install uv");
-    expect(required<HookResult>(latest, "hook result").api).toBeNull();
+    expect(required<HookResult>(getLatest(), "hook result").status).toBe("failed");
+    expect(required<HookResult>(getLatest(), "hook result").installHint).toBe("install uv");
+    expect(required<HookResult>(getLatest(), "hook result").api).toBeNull();
 
     act(() => root.unmount());
   });
@@ -281,12 +280,12 @@ describe("useVstHost — loadChain", () => {
     const { getState, socket, root } = await setupReadyHost();
     const chain: ChainFileJson = { version: 1, plugins: [] };
 
-    const firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
+    let secondResolved = false;
+    let firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
       settled: false,
       rejected: false,
       err: null,
     };
-    let secondResolved = false;
 
     await act(async () => {
       const api = required(getState().api, "api");
@@ -296,7 +295,7 @@ describe("useVstHost — loadChain", () => {
       await flushAsyncWork();
 
       // Only the second request gets a server reply.
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
 
       await secondPromise.then(() => {
         secondResolved = true;
@@ -305,29 +304,56 @@ describe("useVstHost — loadChain", () => {
       // The first promise must settle (reject) on its own — it never gets a
       // matching server reply. Race it against a short timer so an unfixed
       // hang fails the test instead of hanging the whole run.
-      await Promise.race([
-        firstPromise.then(
-          () => {
-            firstOutcome.settled = true;
-          },
-          (err: unknown) => {
-            firstOutcome.settled = true;
-            firstOutcome.rejected = true;
-            firstOutcome.err = err;
-          },
-        ),
-        new Promise<void>((resolve) => setTimeout(resolve, 100)),
-      ]);
+      firstOutcome = await raceSettleOutcome(firstPromise);
     });
 
     expect(secondResolved).toBe(true);
-    // If this is false, the first promise never settled within 100ms — i.e. it hung.
-    expect(firstOutcome.settled).toBe(true);
-    expect(firstOutcome.rejected).toBe(true);
-    expect(firstOutcome.err).toBeInstanceOf(Error);
-    if (firstOutcome.err instanceof Error) {
-      expect(firstOutcome.err.message).toMatch(/superseded/);
-    }
+    expectSupersededRejection(firstOutcome);
+
+    act(() => root.unmount());
+  });
+
+  it("a getState for the same track does NOT supersede an in-flight loadChain (different kinds, different consumers)", async () => {
+    // Live-repro'd collision: useVstPreview's loadChain and the FX panel's
+    // 400ms getState polling run concurrently for the SAME track over this
+    // shared connection. With the pending map keyed by trackId alone, each
+    // poll clobbered + spuriously rejected the in-flight loadChain
+    // ("get-state superseded…"), so on a machine slow enough for the load to
+    // still be pending when a poll landed, the track never loaded — silent
+    // music, transport forever seeing zero loaded tracks.
+    const { getState, socket, root } = await setupReadyHost();
+    const chain: ChainFileJson = { version: 1, plugins: [] };
+
+    let loadResult: unknown = null;
+    let loadError: unknown = null;
+    let stateResult: string[] | null = null;
+
+    await act(async () => {
+      const api = required(getState().api, "api");
+      const loadPromise = api.loadChain("track-1", chain, "/abs/dry.wav");
+      await flushAsyncWork();
+      // Panel poll lands while the load is still in flight.
+      const statePromise = api.getState("track-1");
+      await flushAsyncWork();
+
+      // Sidecar answers both commands, in order.
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
+      socket.emitJson({ event: "state", trackId: "track-1", plugins: ["c3RhdGU="] });
+
+      await loadPromise.then(
+        (r) => {
+          loadResult = r;
+        },
+        (err: unknown) => {
+          loadError = err;
+        },
+      );
+      stateResult = await statePromise;
+    });
+
+    expect(loadError).toBeNull(); // the poll must not have rejected the load
+    expect(loadResult).toMatchObject({ sampleRate: 48000, stable: true });
+    expect(stateResult).toEqual(["c3RhdGU="]);
 
     act(() => root.unmount());
   });
@@ -356,12 +382,12 @@ describe("useVstHost — getState", () => {
   it("rejects the first call's promise as superseded when a second getState for the same trackId is issued first", async () => {
     const { getState, socket, root } = await setupReadyHost();
 
-    const firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
+    let secondResult: string[] | null = null;
+    let firstOutcome: { settled: boolean; rejected: boolean; err: unknown } = {
       settled: false,
       rejected: false,
       err: null,
     };
-    let secondResult: string[] | null = null;
 
     await act(async () => {
       const api = required(getState().api, "api");
@@ -378,29 +404,11 @@ describe("useVstHost — getState", () => {
       // The first promise must settle (reject) on its own — it never gets a
       // matching server reply. Race it against a short timer so an unfixed
       // hang fails the test instead of hanging the whole run.
-      await Promise.race([
-        firstPromise.then(
-          () => {
-            firstOutcome.settled = true;
-          },
-          (err: unknown) => {
-            firstOutcome.settled = true;
-            firstOutcome.rejected = true;
-            firstOutcome.err = err;
-          },
-        ),
-        new Promise<void>((resolve) => setTimeout(resolve, 100)),
-      ]);
+      firstOutcome = await raceSettleOutcome(firstPromise);
     });
 
     expect(secondResult).toEqual(["Reverb.vst3"]);
-    // If this is false, the first promise never settled within 100ms — i.e. it hung.
-    expect(firstOutcome.settled).toBe(true);
-    expect(firstOutcome.rejected).toBe(true);
-    expect(firstOutcome.err).toBeInstanceOf(Error);
-    if (firstOutcome.err instanceof Error) {
-      expect(firstOutcome.err.message).toMatch(/superseded/);
-    }
+    expectSupersededRejection(firstOutcome);
 
     act(() => root.unmount());
   });
@@ -419,13 +427,13 @@ describe("useVstHost — trackIndex mirroring", () => {
       const api = required(getState().api, "api");
       const p1 = api.loadChain("track-1", chain, "/abs/dry1.wav");
       await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
-      indexTrack1 = await p1;
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
+      indexTrack1 = (await p1).trackIndex;
 
       const p2 = api.loadChain("track-2", chain, "/abs/dry2.wav");
       await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
-      indexTrack2 = await p2;
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2", sampleRate: 48000 });
+      indexTrack2 = (await p2).trackIndex;
     });
 
     expect(indexTrack1).toBe(0);
@@ -456,18 +464,18 @@ describe("useVstHost — trackIndex mirroring", () => {
 
       const p1 = api.loadChain("track-1", chain, "/abs/dry1.wav");
       await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
       await p1;
 
       const p2 = api.loadChain("track-2", chain, "/abs/dry2.wav");
       await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-2" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-2", sampleRate: 48000 });
       await p2;
 
       // Reload track-1's chain (e.g. the FX panel adding/removing an effect).
       const p3 = api.loadChain("track-1", chain, "/abs/dry1.wav");
       await flushAsyncWork();
-      socket.emitJson({ event: "chain-loaded", trackId: "track-1" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-1", sampleRate: 48000 });
       await p3;
     });
 
@@ -489,7 +497,7 @@ describe("useVstHost — trackIndex mirroring", () => {
       });
 
       // Nobody is awaiting a loadChain promise here — the event still fires.
-      socket.emitJson({ event: "chain-loaded", trackId: "track-9" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-9", sampleRate: 48000 });
       await flushAsyncWork();
     });
 
@@ -497,7 +505,7 @@ describe("useVstHost — trackIndex mirroring", () => {
 
     required<() => void>(unsubscribe, "unsubscribe")();
     await act(async () => {
-      socket.emitJson({ event: "chain-loaded", trackId: "track-9" });
+      socket.emitJson({ event: "chain-loaded", trackId: "track-9", sampleRate: 48000 });
       await flushAsyncWork();
     });
     expect(observed).toHaveLength(1); // no further notifications after unsubscribing
@@ -550,6 +558,100 @@ describe("useVstHost — disconnect", () => {
     expect(disconnects).toHaveLength(1);
     expect(getState().status).toBe("failed");
     expect(getState().api).toBeNull();
+
+    act(() => root.unmount());
+  });
+});
+
+// ── unmount cleanup ───────────────────────────────────────────────────────────
+// A genuine unmount (component removed from the tree for good) must close
+// any open/in-flight socket — otherwise it keeps streaming from the sidecar
+// alongside whatever else is running, which is what a live repro traced back
+// to two competing live audio pipelines mixing into one output ("crackling,
+// can't tell which track", never recovering).
+
+describe("useVstHost — unmount cleanup", () => {
+  it("closes an already-open socket when the hook unmounts", async () => {
+    const { socket, root } = await setupReadyHost();
+
+    expect(socket.closed).toBe(false);
+    act(() => root.unmount());
+    expect(socket.closed).toBe(true);
+  });
+
+  it("closes a connection that finishes AFTER unmount instead of leaking it", async () => {
+    const fetchMock = vi.fn(async () => okStartResponse(4321));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getLatest, root } = mountUnstartedHost();
+
+    let ensureStartedPromise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      ensureStartedPromise = required<HookResult>(getLatest(), "hook result").ensureStarted();
+      await flushAsyncWork();
+    });
+
+    const socket = required<FakeSocket>(FakeSocket.instances[0], "socket instance");
+    // Unmount BEFORE the socket finishes connecting (`open()` never called
+    // yet) — simulates a StrictMode phantom mount whose async attempt is
+    // still in flight when React discards it.
+    act(() => root.unmount());
+    expect(socket.closed).toBe(false); // not open yet — nothing to close
+
+    // The connection now resolves, after unmount already ran.
+    await act(async () => {
+      socket.open();
+      await ensureStartedPromise;
+    });
+
+    expect(socket.closed).toBe(true);
+  });
+});
+
+// ── StrictMode double-invoke ──────────────────────────────────────────────────
+// React StrictMode (enabled in packages/studio/src/main.tsx, dev-mode only)
+// double-invokes effects on mount: mount, cleanup, mount again — on the SAME
+// component instance and the SAME refs, not a fresh remount with fresh state.
+// A regression here: the unmount-cleanup effect above sets `unmountedRef` to
+// `true` unconditionally and nothing ever reset it back to `false` for the
+// real, surviving mount — so StrictMode's own diagnostic cleanup pass
+// permanently poisoned every later `ensureStarted()` call for the rest of the
+// component's real lifetime, closing its own socket immediately after
+// connecting. That read as a permanent, unrecoverable "VST host disconnected"
+// even on a freshly loaded page — caught only by actually running the hook
+// under a real `<StrictMode>` wrapper, not by unmount/remount tests using two
+// separate root instances (those don't share refs, so they can't reproduce
+// same-instance state leaking across the double-invoke).
+
+describe("useVstHost — StrictMode double-invoke", () => {
+  it("still connects successfully after StrictMode's mount/cleanup/mount on the same instance", async () => {
+    const fetchMock = vi.fn(async () => okStartResponse(4321));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const state: { latest: HookResult | null } = { latest: null };
+    function Harness() {
+      const result = useVstHost();
+      state.latest = result;
+      return null;
+    }
+    const root = mountReactHarness(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+
+    await act(async () => {
+      const startPromise = required<HookResult>(state.latest, "hook result").ensureStarted();
+      await flushAsyncWork();
+      required<FakeSocket>(FakeSocket.instances[0], "socket instance").open();
+      await startPromise;
+    });
+
+    // The connection StrictMode's phantom cleanup pass may have closed is a
+    // separate, expected socket instance — what matters is the CURRENT state
+    // the component ends up in after settling.
+    expect(state.latest?.status).toBe("ready");
+    expect(state.latest?.api).not.toBeNull();
 
     act(() => root.unmount());
   });

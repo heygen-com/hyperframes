@@ -150,6 +150,14 @@ export function NLEProvider({
     // reload (the comp may not ship the plugin until it actually uses one).
     ensureMotionPathPluginLoaded(iframeRef.current);
     onIframeRef?.(iframeRef.current);
+    // A preview reload replaces the composition DOM — including every
+    // `<audio data-vst-chain>` element. Any VST track useVstPreview loaded
+    // against the PREVIOUS document is now orphaned: it muted a dead element
+    // (so the fresh, unmuted one plays dry) and its stream starves. Bumping
+    // this after the reload settles makes useVstPreview reconcile against the
+    // new DOM — tear the stale track down and reload it against the live
+    // element. (Idempotent when nothing changed: the chain-key check no-ops.)
+    usePlayerStore.getState().bumpVstChainRevision();
   }, [baseOnIframeLoad, iframeRef, onIframeRef]);
 
   const {

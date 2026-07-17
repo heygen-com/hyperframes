@@ -28,7 +28,13 @@ import {
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
+import {
+  parseEnum,
+  parsePositiveInt,
+  requireRenderDimensions,
+  requireSitesCreateProjectDir,
+  resolveValidatedFps,
+} from "../utils/distributedRenderFlags.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -411,8 +417,8 @@ function machineVars(
   ];
   const cpu = args.cpu as string | undefined;
   const memory = args.memory as string | undefined;
-  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances");
-  const timeout = parsePositiveInt(args.timeout, "--timeout");
+  const maxInstances = parsePositiveInt(args["max-instances"], "--max-instances", "cloudrun");
+  const timeout = parsePositiveInt(args.timeout, "--timeout", "cloudrun");
   if (cpu) vars.push("-var", `cpu=${cpu}`);
   if (memory) vars.push("-var", `memory=${memory}`);
   if (maxInstances !== undefined) vars.push("-var", `max_instances=${maxInstances}`);
@@ -450,19 +456,8 @@ function writeCloudBuildConfig(image: string): string {
 
 // ── sites create ──────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 async function runSites(args: Record<string, unknown>): Promise<void> {
-  if (args.target !== "create") {
-    console.error(
-      `[cloudrun sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
-    );
-    process.exit(1);
-  }
-  const projectDir = args.extra as string | undefined;
-  if (!projectDir) {
-    console.error("[cloudrun sites create] usage: hyperframes cloudrun sites create <projectDir>");
-    process.exit(1);
-  }
+  const projectDir = requireSitesCreateProjectDir(args, "cloudrun");
   const state = readState(args);
   const { deploySite } = await import("@hyperframes/gcp-cloud-run/sdk");
   const handle = await deploySite({
@@ -491,18 +486,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
     );
     process.exit(1);
   }
-  const width = parsePositiveInt(args.width, "--width");
-  const height = parsePositiveInt(args.height, "--height");
-  if (width === undefined || height === undefined) {
-    console.error("[cloudrun render] --width and --height are required.");
-    process.exit(1);
-  }
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps !== 24 && fps !== 30 && fps !== 60) {
-    console.error(`[cloudrun render] --fps must be 24, 30, or 60; got ${fps}.`);
-    process.exit(1);
-  }
+  const { width, height } = requireRenderDimensions(args, "cloudrun", "[cloudrun render]");
+  const fps = resolveValidatedFps(args, projectDir, "[cloudrun render]");
   const state = readState(args);
   const variables = resolveAndValidateVariables(args, resolve(projectDir));
   const config = buildRenderConfig(args, fps, width, height, variables);
@@ -532,7 +517,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
+  const intervalMs =
+    parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms", "cloudrun") ?? 5000;
   let progress = await getRenderProgress({ executionName: handle.executionName });
   while (progress.status === "running") {
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -602,18 +588,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     );
     process.exit(1);
   }
-  const width = parsePositiveInt(args.width, "--width");
-  const height = parsePositiveInt(args.height, "--height");
-  if (width === undefined || height === undefined) {
-    console.error("[cloudrun render-batch] --width and --height are required.");
-    process.exit(1);
-  }
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps !== 24 && fps !== 30 && fps !== 60) {
-    console.error(`[cloudrun render-batch] --fps must be 24, 30, or 60; got ${fps}.`);
-    process.exit(1);
-  }
+  const { width, height } = requireRenderDimensions(args, "cloudrun", "[cloudrun render-batch]");
+  const fps = resolveValidatedFps(args, projectDir, "[cloudrun render-batch]");
   if (!existsSync(resolve(batchPath))) {
     console.error(`[cloudrun render-batch] batch file not found: ${batchPath}`);
     process.exit(1);
@@ -637,7 +613,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
 
   const state = readState(args);
   const maxConcurrent =
-    parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
+    parsePositiveInt(args["max-concurrent"], "--max-concurrent", "cloudrun") ??
+    DEFAULT_BATCH_MAX_CONCURRENT;
   const { deploySite, renderToCloudRun } = await import("@hyperframes/gcp-cloud-run/sdk");
 
   // Upload the project once; every entry reuses the same content-addressed
@@ -793,9 +770,17 @@ export function buildRenderConfig(
     format: parseFormat(args.format),
     codec: parseCodec(args.codec),
     quality: parseQuality(args.quality),
-    chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
-    maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
-    targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
+    chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size", "cloudrun"),
+    maxParallelChunks: parsePositiveInt(
+      args["max-parallel-chunks"],
+      "--max-parallel-chunks",
+      "cloudrun",
+    ),
+    targetChunkFrames: parsePositiveInt(
+      args["target-chunk-frames"],
+      "--target-chunk-frames",
+      "cloudrun",
+    ),
     outputResolution,
     // Set only when true so the wire shape stays sparse for the common
     // canonical-preset path (matches how the flag flows through
@@ -848,32 +833,6 @@ function parseOutputResolution(raw: unknown): {
 
 // ── parse helpers ─────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
-function parseIntFlag(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = Number.parseInt(String(raw), 10);
-  return Number.isFinite(n) ? n : undefined;
-}
-function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
-  const n = parseIntFlag(raw);
-  if (n === undefined) return undefined;
-  if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`[cloudrun] ${flagName} must be a positive integer; got ${n}`);
-  }
-  return n;
-}
-// fallow-ignore-next-line complexity
-function parseEnum<T extends string>(
-  raw: unknown,
-  allowed: readonly T[],
-  errorPrefix: string,
-  defaultValue: T | undefined,
-): T | undefined {
-  if (raw === undefined || raw === null || raw === "") return defaultValue;
-  const s = String(raw);
-  if ((allowed as readonly string[]).includes(s)) return s as T;
-  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
-}
 const FORMATS = ["mp4", "mov", "png-sequence", "webm"] as const;
 const CODECS = ["h264", "h265"] as const;
 const QUALITIES = ["draft", "standard", "high"] as const;
