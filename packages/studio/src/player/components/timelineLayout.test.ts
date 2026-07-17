@@ -10,6 +10,8 @@ import {
   getTimelineRowFromY,
   getTimelineRowOffsets,
   getTimelineCanvasHeight,
+  createTimelineRowGeometry,
+  getTimelineRowGeometry,
   trackHeights,
   resolveTimelineAssetDrop,
 } from "./timelineLayout";
@@ -55,6 +57,23 @@ describe("variable timeline row geometry", () => {
     expect(getTimelineCanvasHeight(heights)).toBe(
       RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + 2 * LANE_H + TRACKS_BOTTOM_PAD,
     );
+  });
+
+  it("reuses one immutable geometry snapshot for one height array", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    const first = getTimelineRowGeometry(heights);
+    expect(getTimelineRowGeometry(heights)).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.rowOffsets)).toBe(true);
+  });
+
+  it("looks up row boundaries through the precomputed geometry", () => {
+    const geometry = createTimelineRowGeometry([4, 8, 12], [48, 104, 76]);
+    expect(geometry.getRowIndex(8)).toBe(1);
+    expect(geometry.getRowFromY(geometry.getRowTop(1))).toBe(1);
+    expect(geometry.getRowFromY(geometry.getRowTop(2) - 0.001)).toBeLessThan(2);
+    expect(geometry.getRowFromY(geometry.getRowTop(2))).toBe(2);
+    expect(geometry.canvasHeight).toBe(RULER_H + TRACKS_TOP_PAD + 228 + TRACKS_BOTTOM_PAD);
   });
 });
 

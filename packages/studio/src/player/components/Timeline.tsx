@@ -1,6 +1,5 @@
-import { useRef, useMemo, useCallback, useState, useEffect, memo } from "react";
+import { useRef, useMemo, useCallback, useState, useEffect, useLayoutEffect, memo } from "react";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
-import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
@@ -26,8 +25,13 @@ import {
   LABEL_COL_W,
   generateTicks,
   getTimelineContentXFromClient,
+  RULER_H,
+  type TimelineRowGeometry,
 } from "./timelineLayout";
-import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
+import {
+  useTimelineScrollViewport,
+  type TimelineScrollViewportSnapshot,
+} from "./useTimelineScrollViewport";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
@@ -40,6 +44,7 @@ import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
+import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -55,6 +60,35 @@ export {
   shouldHandleTimelineDeleteKey,
   getDefaultDroppedTrack,
 } from "./timelineLayout";
+
+export function getTimelineVisibleTimeRange(
+  viewport: Pick<TimelineScrollViewportSnapshot, "scrollLeft" | "clientWidth">,
+  pixelsPerSecond: number,
+  contentOrigin: number,
+  duration: number,
+): { start: number; end: number } {
+  if (!(pixelsPerSecond > 0) || !(duration > 0)) return { start: 0, end: 0 };
+  const start = Math.max(0, (viewport.scrollLeft - contentOrigin) / pixelsPerSecond);
+  const end = Math.min(
+    duration,
+    Math.max(start, (viewport.scrollLeft + viewport.clientWidth - contentOrigin) / pixelsPerSecond),
+  );
+  return { start: Math.min(start, duration), end };
+}
+
+export function getTimelineScrollTopForGeometryChange(
+  previous: TimelineRowGeometry,
+  next: TimelineRowGeometry,
+  scrollTop: number,
+): number {
+  const anchor = previous.getRowPositionFromY(scrollTop + RULER_H);
+  if (anchor.row < 0 || anchor.row >= previous.rowKeys.length) return scrollTop;
+  const anchorKey = previous.rowKeys[anchor.row];
+  if (anchorKey === undefined) return scrollTop;
+  const nextRow = next.getRowIndex(anchorKey);
+  if (nextRow < 0) return scrollTop;
+  return Math.max(0, scrollTop + next.getRowTop(nextRow) - previous.getRowTop(anchor.row));
+}
 
 export const Timeline = memo(function Timeline({
   onSeek,
@@ -73,6 +107,7 @@ export const Timeline = memo(function Timeline({
   onSplitElement: onSplitElementOverride,
   onSelectElement,
   theme: themeOverrides,
+  sessionEpoch = 0,
 }: TimelineProps = {}) {
   const {
     onMoveElement,
@@ -100,7 +135,7 @@ export const Timeline = memo(function Timeline({
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
-  const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
+  const musicElement = usePlayerStore((s) => getTimelineElementIndexes(s.elements).musicElement);
   const beatEdits = usePlayerStore((s) => s.beatEdits);
   const adjustedBeatAnalysis = useMemo(
     () => remapBeatAnalysisToComposition(beatAnalysis, musicElement, beatEdits),
@@ -177,8 +212,20 @@ export const Timeline = memo(function Timeline({
 
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   useAutoExpandKeyframedClips(gsapAnimations);
-  const { tracks, trackStyles, trackOrder, trackOrderRef, laneCounts, rowHeights, rowHeightsRef } =
-    useTimelineTrackLayout(expandedElements, gsapAnimations, selectedElementId, selectedElementIds);
+  const {
+    tracks,
+    trackStyles,
+    trackOrder,
+    trackOrderRef,
+    laneCounts,
+    rowGeometry,
+    rowGeometryRef,
+  } = useTimelineTrackLayout(
+    expandedElements,
+    gsapAnimations,
+    selectedElementId,
+    selectedElementIds,
+  );
   const expandedElementsRef = useRef(expandedElements);
   expandedElementsRef.current = expandedElements;
 
@@ -243,7 +290,7 @@ export const Timeline = memo(function Timeline({
     ppsRef,
     durationRef,
     trackOrderRef,
-    rowHeightsRef,
+    rowGeometryRef,
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
     onResizeElement: pinnedOnResizeElement,
@@ -261,19 +308,46 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
-      rowHeightsRef,
+      rowGeometryRef,
       contentOrigin,
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
     });
 
-  const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowHeights);
-  const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
-    timelineReady,
-    expandedElements.length,
-    displayLayout.totalH,
-  ]);
+  const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
+  const { viewport, showShortcutHint, setScrollRef, syncScrollViewport } =
+    useTimelineScrollViewport(scrollRef, [
+      timelineReady,
+      expandedElements.length,
+      displayLayout.totalH,
+    ]);
+  const previousLayoutRef = useRef(displayLayout.rowGeometry);
+  const previousSessionEpochRef = useRef(sessionEpoch);
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const previousGeometry = previousLayoutRef.current;
+    if (previousSessionEpochRef.current !== sessionEpoch) {
+      previousSessionEpochRef.current = sessionEpoch;
+      lastScrollLeftRef.current = 0;
+      if (scroll) {
+        scroll.scrollLeft = 0;
+        scroll.scrollTop = 0;
+        syncScrollViewport(scroll);
+      }
+    } else if (scroll && previousGeometry !== displayLayout.rowGeometry) {
+      const nextScrollTop = getTimelineScrollTopForGeometryChange(
+        previousGeometry,
+        displayLayout.rowGeometry,
+        scroll.scrollTop,
+      );
+      if (nextScrollTop !== scroll.scrollTop) {
+        scroll.scrollTop = nextScrollTop;
+        syncScrollViewport(scroll);
+      }
+    }
+    previousLayoutRef.current = displayLayout.rowGeometry;
+  }, [displayLayout.rowGeometry, sessionEpoch, syncScrollViewport]);
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
@@ -304,7 +378,7 @@ export const Timeline = memo(function Timeline({
     zoomModeRef,
     manualZoomPercentRef,
   } = useTimelineGeometry({
-    viewportWidth,
+    viewportWidth: viewport.clientWidth,
     effectiveDuration,
     zoomMode,
     manualZoomPercent,
@@ -379,7 +453,7 @@ export const Timeline = memo(function Timeline({
     setShowPopover,
     elementsRef: expandedElementsRef,
     trackOrderRef,
-    rowHeightsRef,
+    rowGeometryRef,
     onSelectElement,
     contentOrigin,
   });
@@ -459,6 +533,7 @@ export const Timeline = memo(function Timeline({
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
+          syncScrollViewport(e.currentTarget, true);
         }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}

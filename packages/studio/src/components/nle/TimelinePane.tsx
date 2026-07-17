@@ -122,6 +122,7 @@ export function TimelinePane({
     persistTimelineH,
     containerRef,
     timelineDisabled,
+    timelineSessionEpoch,
   } = useNLEContext();
 
   // Move/resize/split come from the timeline edit context, not props — the
@@ -266,6 +267,7 @@ export function TimelinePane({
         >
           <div className="flex-shrink-0">{timelineToolbar}</div>
           <Timeline
+            sessionEpoch={timelineSessionEpoch}
             onSeek={seek}
             onDrillDown={handleDrillDown}
             renderClipContent={renderClipContent}

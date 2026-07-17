@@ -7,7 +7,6 @@ import {
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
-import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
 import {
   buildTimelineGroupResizeMembers,
@@ -33,6 +32,8 @@ import {
   rollbackLatestTimelineOptimisticGesture,
 } from "./timelineOptimisticRevision";
 import { commitTimelineGroupResize } from "./timelineGroupResizeCommit";
+import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import type { TimelineRowGeometry } from "./timelineLayout";
 
 export type {
   DraggedClipState,
@@ -48,7 +49,7 @@ interface UseTimelineClipDragInput {
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
   trackOrderRef: React.RefObject<number[]>;
-  rowHeightsRef?: React.RefObject<readonly number[]>;
+  rowGeometryRef?: React.RefObject<TimelineRowGeometry>;
   onMoveElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
@@ -85,7 +86,7 @@ export function useTimelineClipDrag({
   ppsRef,
   durationRef,
   trackOrderRef,
-  rowHeightsRef,
+  rowGeometryRef,
   onMoveElement,
   onMoveElements,
   onResizeElement,
@@ -100,12 +101,11 @@ export function useTimelineClipDrag({
   const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
   const rawBeatStrengths = usePlayerStore((s) => s.beatAnalysis?.beatStrengths ?? EMPTY_BEAT_TIMES);
   const beatEdits = usePlayerStore((s) => s.beatEdits);
-  const musicStart = usePlayerStore((s) => s.elements.find(isMusicTrack)?.start ?? 0);
-  const musicPlaybackStart = usePlayerStore(
-    (s) => s.elements.find(isMusicTrack)?.playbackStart ?? 0,
-  );
-  const musicDuration = usePlayerStore((s) => s.elements.find(isMusicTrack)?.duration ?? 0);
-  const musicSrc = usePlayerStore((s) => s.elements.find(isMusicTrack)?.src ?? null);
+  const musicElement = usePlayerStore((s) => getTimelineElementIndexes(s.elements).musicElement);
+  const musicStart = musicElement?.start ?? 0;
+  const musicPlaybackStart = musicElement?.playbackStart ?? 0;
+  const musicDuration = musicElement?.duration ?? 0;
+  const musicSrc = musicElement?.src ?? null;
 
   const adjustedBeatTimes = useMemo(() => {
     if (rawBeatTimes === EMPTY_BEAT_TIMES || musicDuration === 0) return EMPTY_BEAT_TIMES;
@@ -230,23 +230,21 @@ export function useTimelineClipDrag({
       // Build the audio-track set once per gesture (see snapTargetsCacheRef): it
       // only feeds zone-aware drop placement and is frozen while dragging.
       if (!dragAudioTracksRef.current) {
-        dragAudioTracksRef.current = new Set(
-          elementsRef.current.filter(isAudioTimelineElement).map((e) => e.track),
-        );
+        dragAudioTracksRef.current = getTimelineElementIndexes(elementsRef.current).audioTracks;
       }
       return computeDragPreview(drag, clientX, clientY, {
         scroll: scrollRef.current,
         pps: ppsRef.current,
         duration: durationRef.current,
         trackOrder: trackOrderRef.current,
-        rowHeights: rowHeightsRef?.current,
+        rowHeights: rowGeometryRef?.current.rowHeights,
         elements: elementsRef.current,
         selectedKeys: usePlayerStore.getState().selectedElementIds,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
       });
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, rowHeightsRef, buildSnapTargets],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, buildSnapTargets],
   );
 
   // Recompute the trim preview for a pointer x. Shared by the pointermove resize

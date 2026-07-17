@@ -84,32 +84,125 @@ function validRowHeight(height: number | undefined): number {
   return height;
 }
 
-/** Cumulative top offsets, including the final bottom boundary. */
-export function getTimelineRowOffsets(rowHeights: readonly number[]): number[] {
-  const offsets = [0];
-  for (const height of rowHeights) {
-    offsets.push((offsets[offsets.length - 1] ?? 0) + validRowHeight(height));
-  }
-  return offsets;
+export interface TimelineRowGeometry {
+  readonly rowKeys: readonly number[];
+  readonly rowHeights: readonly number[];
+  /** Cumulative row boundaries, including the final bottom boundary. */
+  readonly rowOffsets: readonly number[];
+  readonly rowsHeight: number;
+  readonly canvasHeight: number;
+  getRowIndex(rowKey: number): number;
+  getRowHeight(row: number): number;
+  getRowTop(row: number): number;
+  getRowFromY(contentY: number): number;
+  getRowPositionFromY(contentY: number): {
+    rowFloat: number;
+    row: number;
+    fraction: number;
+    rowHeight: number;
+  };
 }
 
-export function getTimelineRowHeight(row: number, rowHeights: readonly number[] = []): number {
+const rowGeometryCache = new WeakMap<readonly number[], TimelineRowGeometry>();
+const EMPTY_ROW_HEIGHTS: readonly number[] = Object.freeze([]);
+
+/** Build the immutable row snapshot shared by rendering and hit testing. */
+export function createTimelineRowGeometry(
+  rowKeys: readonly number[],
+  rowHeights: readonly number[],
+): TimelineRowGeometry {
+  const heights = Object.freeze(rowHeights.map(validRowHeight));
+  const keys = Object.freeze(
+    heights.map((_, row) => {
+      const key = rowKeys[row];
+      return key !== undefined && Number.isFinite(key) ? key : row;
+    }),
+  );
+  const offsets = [0];
+  for (const height of heights) offsets.push((offsets.at(-1) ?? 0) + height);
+  Object.freeze(offsets);
+  const rowIndexByKey = new Map(keys.map((key, row) => [key, row]));
+
+  const getRowHeight = (row: number) => validRowHeight(heights[row]);
+  const getRowOffset = (row: number) => {
+    if (heights.length === 0) return row * TRACK_H;
+    if (row <= 0) return row * getRowHeight(0);
+    if (row >= heights.length) {
+      return (offsets[heights.length] ?? 0) + (row - heights.length) * TRACK_H;
+    }
+    const wholeRow = Math.floor(row);
+    return (offsets[wholeRow] ?? 0) + (row - wholeRow) * getRowHeight(wholeRow);
+  };
+  const getRowFromY = (contentY: number) => {
+    const y = contentY - RULER_H - TRACKS_TOP_PAD;
+    if (heights.length === 0) return y / TRACK_H;
+    if (y < 0) return y / getRowHeight(0);
+    const rowsHeight = offsets[heights.length] ?? 0;
+    if (y >= rowsHeight) return heights.length + (y - rowsHeight) / TRACK_H;
+
+    // First boundary strictly greater than y. Unlike the old linear scan this
+    // stays logarithmic for large timelines and uses the precomputed offsets.
+    let low = 1;
+    let high = heights.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if ((offsets[mid] ?? 0) > y) high = mid;
+      else low = mid + 1;
+    }
+    const row = low - 1;
+    return row + (y - (offsets[row] ?? 0)) / getRowHeight(row);
+  };
+  const geometry: TimelineRowGeometry = {
+    rowKeys: keys,
+    rowHeights: heights,
+    rowOffsets: offsets,
+    rowsHeight: offsets.at(-1) ?? 0,
+    canvasHeight: RULER_H + TRACKS_TOP_PAD + (offsets.at(-1) ?? 0) + TRACKS_BOTTOM_PAD,
+    getRowIndex: (rowKey) => rowIndexByKey.get(rowKey) ?? -1,
+    getRowHeight,
+    getRowTop: (row) => RULER_H + TRACKS_TOP_PAD + getRowOffset(row),
+    getRowFromY,
+    getRowPositionFromY: (contentY) => {
+      const rowFloat = getRowFromY(contentY);
+      const row = Math.floor(rowFloat);
+      return { rowFloat, row, fraction: rowFloat - row, rowHeight: getRowHeight(row) };
+    },
+  };
+  return Object.freeze(geometry);
+}
+
+/** Compatibility accessor; repeated calls for one height-array reuse one snapshot. */
+export function getTimelineRowGeometry(rowHeights: readonly number[]): TimelineRowGeometry {
+  const cached = rowGeometryCache.get(rowHeights);
+  if (cached) return cached;
+  const geometry = createTimelineRowGeometry(
+    rowHeights.map((_, row) => row),
+    rowHeights,
+  );
+  rowGeometryCache.set(rowHeights, geometry);
+  return geometry;
+}
+
+/** Cumulative top offsets, including the final bottom boundary. */
+export function getTimelineRowOffsets(rowHeights: readonly number[]): number[] {
+  return [...getTimelineRowGeometry(rowHeights).rowOffsets];
+}
+
+export function getTimelineRowHeight(
+  row: number,
+  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
+): number {
   return validRowHeight(rowHeights[row]);
 }
 
 function getTimelineRowOffset(row: number, rowHeights: readonly number[]): number {
-  if (rowHeights.length === 0) return row * TRACK_H;
-  const offsets = getTimelineRowOffsets(rowHeights);
-  if (row <= 0) return row * getTimelineRowHeight(0, rowHeights);
-  if (row >= rowHeights.length) {
-    return (offsets[rowHeights.length] ?? 0) + (row - rowHeights.length) * TRACK_H;
-  }
-  const wholeRow = Math.floor(row);
-  const fraction = row - wholeRow;
-  return (offsets[wholeRow] ?? 0) + fraction * getTimelineRowHeight(wholeRow, rowHeights);
+  return getTimelineRowGeometry(rowHeights).getRowTop(row) - RULER_H - TRACKS_TOP_PAD;
 }
 
-export function getTimelineRowTop(row: number, rowHeights: readonly number[] = []): number {
+export function getTimelineRowTop(
+  row: number,
+  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
+): number {
   return RULER_H + TRACKS_TOP_PAD + getTimelineRowOffset(row, rowHeights);
 }
 
@@ -118,34 +211,18 @@ export function getTimelineRowTop(row: number, rowHeights: readonly number[] = [
  * space y (used for insert-row / drop-lane decisions). Locates the concrete row
  * from cumulative offsets, then returns its local fractional position.
  */
-export function getTimelineRowFromY(contentY: number, rowHeights: readonly number[] = []): number {
-  const y = contentY - RULER_H - TRACKS_TOP_PAD;
-  if (rowHeights.length === 0) return y / TRACK_H;
-  if (y < 0) return y / getTimelineRowHeight(0, rowHeights);
-
-  const offsets = getTimelineRowOffsets(rowHeights);
-  for (let row = 0; row < rowHeights.length; row += 1) {
-    const bottom = offsets[row + 1] ?? 0;
-    if (y < bottom) {
-      const top = offsets[row] ?? 0;
-      return row + (y - top) / getTimelineRowHeight(row, rowHeights);
-    }
-  }
-  return rowHeights.length + (y - (offsets[rowHeights.length] ?? 0)) / TRACK_H;
+export function getTimelineRowFromY(
+  contentY: number,
+  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
+): number {
+  return getTimelineRowGeometry(rowHeights).getRowFromY(contentY);
 }
 
 export function getTimelineRowPositionFromY(
   contentY: number,
-  rowHeights: readonly number[] = [],
+  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
 ): { rowFloat: number; row: number; fraction: number; rowHeight: number } {
-  const rowFloat = getTimelineRowFromY(contentY, rowHeights);
-  const row = Math.floor(rowFloat);
-  return {
-    rowFloat,
-    row,
-    fraction: rowFloat - row,
-    rowHeight: getTimelineRowHeight(row, rowHeights),
-  };
+  return getTimelineRowGeometry(rowHeights).getRowPositionFromY(contentY);
 }
 
 /** Fractional insert band for the concrete row under a pointer. */
@@ -440,8 +517,7 @@ export function getTimelineCanvasHeight(trackCountOrHeights: number | readonly n
     typeof trackCountOrHeights === "number"
       ? trackHeights(trackCountOrHeights)
       : trackCountOrHeights;
-  const rowsHeight = getTimelineRowOffsets(heights).at(-1) ?? 0;
-  return RULER_H + TRACKS_TOP_PAD + rowsHeight + TRACKS_BOTTOM_PAD;
+  return getTimelineRowGeometry(heights).canvasHeight;
 }
 
 /* ── UI helpers ───────────────────────────────────────────────────── */
