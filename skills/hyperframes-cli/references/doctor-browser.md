@@ -37,7 +37,12 @@ Common issues:
   headless shell — dies at startup. This is a host-level block, not a HyperFrames or
   Chrome install problem: compile checks and audio still pass, only rendering is
   unavailable. State the blocker and deliver the checked composition; render outside the
-  sandbox or via `render --docker` / cloud rendering where available.
+  sandbox or via `render --docker` / cloud rendering where available. **Do not build a
+  substitute rasterizer** (magick/PIL/SVG frame pipelines) — on a blocked-browser host
+  the deliverable IS the checked composition plus this blocker note, and rendering is
+  handed to `--docker`, cloud, or the user. Write your final summary the moment the
+  blocker is identified, BEFORE any optional fallback work: a later session failure must
+  not erase the report of work already done.
 
 ## browser
 

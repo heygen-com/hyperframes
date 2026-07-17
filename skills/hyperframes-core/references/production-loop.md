@@ -18,4 +18,9 @@ The shipped narrative workflows implement these stages with their own scripts; a
 
 The Frames stage follows the plan's citations: a scene planned on a blueprint or on named rules is built by reading that recipe's body (`hyperframes-animation/blueprints/<id>.md`, `rules/<id>.md`) before its motion is written — names come from the indexes, never invented, and a scene the plan left uncited gets its citation at build time, not improvised motion.
 
+## Scheduling economics (facts you can't see from inside the session)
+
+- **External generations are independent work.** Image plates, TTS, BGM, video gen: fire every generation whose prompt is already known **concurrently or in the background**, and overlap the wait with reading or building. Three image plates generated one-after-another cost ~3× the wall time of firing them together.
+- **Attaching an image re-prices your whole context.** A mid-session image inspection (especially at original detail) invalidates the prompt cache — the next request re-sends your entire history at full price. Batch visual checks (one contact sheet beats N single-frame views) and schedule them at phase boundaries, not mid-build.
+
 Two attach points carry the user's voice into this loop: the plan that starts it was approved at `review-loop.md` § 1 (collaborative) or posted as a heads-up (autonomous), and nothing renders before the § 4 final look. Everything between those two is yours to schedule.
