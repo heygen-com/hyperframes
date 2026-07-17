@@ -149,7 +149,7 @@ export default defineCommand({
 
     clack.intro(c.bold("hyperframes publish"));
     const publishSpinner = clack.spinner();
-    publishSpinner.start("Uploading project...");
+    publishSpinner.start("Preparing project...");
 
     try {
       // Resolution order (per hyperframes.json's `media.autoProxy`): an
@@ -158,10 +158,12 @@ export default defineCommand({
       const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
       const fileMap = buildPublishFileMap(dir);
+      let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {
-        await bakeMediaProxies(dir, fileMap);
+        proxyBakeManifest = await bakeMediaProxies(dir, fileMap);
       }
       const archive = zipPublishFileMap(fileMap);
+      publishSpinner.message("Uploading project...");
 
       const published = await publishProjectArchive(dir, {
         public: args.public === true,
@@ -174,6 +176,14 @@ export default defineCommand({
       console.log();
       console.log(`  ${c.dim("Project")}    ${c.accent(published.title)}`);
       console.log(`  ${c.dim("Files")}      ${String(published.fileCount)}`);
+      if (proxyBakeManifest) {
+        console.log(`  ${c.dim("Proxies")}    ${String(proxyBakeManifest.proxied.length)} baked`);
+        if (proxyBakeManifest.skippedAlpha.length > 0) {
+          console.log(
+            `  ${c.dim("Proxy note")} ${String(proxyBakeManifest.skippedAlpha.length)} alpha source(s) kept original`,
+          );
+        }
+      }
 
       if (published.claimed) {
         // The server returns the same id on an in-place update, a fresh id on create.

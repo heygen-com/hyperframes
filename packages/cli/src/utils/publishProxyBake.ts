@@ -102,10 +102,6 @@ export async function bakeMediaProxies(
     if (facts.hasAlpha) {
       // Alpha sources are never proxied: an H.264 proxy would destroy the
       // transparency (e.g. ProRes 4444 alpha). Keep the original in place.
-      console.warn(
-        `hyperframes publish: skipping proxy for "${pathname}" (source has an alpha channel; ` +
-          "H.264 proxying would destroy the transparency, keeping the original)",
-      );
       manifest.skippedAlpha.push(pathname);
       continue;
     }
@@ -139,6 +135,9 @@ export async function bakeMediaProxies(
     }),
   );
 
+  manifest.proxied.sort();
+  manifest.skippedAlpha.sort();
+  manifest.failed.sort((a, b) => a.path.localeCompare(b.path));
   if (manifest.failed.length > 0) throw new ProxyBakeError(manifest);
   if (proxyByAbsolutePath.size === 0) return manifest;
 

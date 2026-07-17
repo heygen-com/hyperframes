@@ -191,7 +191,7 @@ describe("bakeMediaProxies", () => {
     expect(html).not.toContain("assets/my%20clip.mp4");
   });
 
-  it("skips an alpha-bearing hostile asset (transparency preservation) with a warning; HTML stays on the original", async () => {
+  it("reports an alpha-bearing hostile asset as skipped while keeping HTML on the original", async () => {
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mov": {
         codecName: "prores",
@@ -200,8 +200,6 @@ describe("bakeMediaProxies", () => {
         hasAlpha: true,
       },
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-
     const fileContents = new Map<string, Buffer>([
       ["index.html", indexHtml(`<video src="clip.mov" muted></video>`)],
       ["clip.mov", Buffer.from("ORIGINAL_PRORES_4444_BYTES", "utf-8")],
@@ -214,11 +212,28 @@ describe("bakeMediaProxies", () => {
       false,
     );
     expect(fileContents.get("index.html")?.toString("utf-8")).toContain('src="clip.mov"');
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toContain("alpha");
     expect(manifest).toEqual({ proxied: [], skippedAlpha: ["/clip.mov"], failed: [] });
+  });
 
-    warnSpy.mockRestore();
+  it("returns deterministic manifest ordering across concurrent transcodes", async () => {
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/z.mov": { codecName: "hevc", browserHostile: true, representativeMime: null },
+      "/a.mov": { codecName: "hevc", browserHostile: true, representativeMime: null },
+    });
+    const zProxy = tmpProxyFile("Z");
+    const aProxy = tmpProxyFile("A");
+    mocks.resolveProxy.mockImplementation(async (_projectDir, sourcePath) =>
+      sourcePath.endsWith("z.mov") ? zProxy : aProxy,
+    );
+    const fileContents = new Map<string, Buffer>([
+      ["index.html", indexHtml(`<video src="z.mov"></video>`, `<video src="a.mov"></video>`)],
+      ["z.mov", Buffer.from("Z")],
+      ["a.mov", Buffer.from("A")],
+    ]);
+
+    const manifest = await bakeMediaProxies(PROJECT_DIR, fileContents);
+
+    expect(manifest.proxied).toEqual(["/a.mov", "/z.mov"]);
   });
 
   it("is a no-op when no asset is browser-hostile", async () => {
