@@ -40,7 +40,7 @@ After init, let `<PROJECT_ROOT>` be `videos/<project>` and run every subsequent 
 - **Collaborative:** wait for the user to sign in or explicitly choose `offline` / `go`.
 - **Autonomous:** state the status and continue through the available local engines.
 
-Do not silently omit a required capability when no offline provider exists; surface the blocker. Do not fold this decision into another question or write keys into a per-repo `.env`. Auth ownership and offline fallbacks: `/media-use` § Providers.
+Do not silently omit a required capability when no offline provider exists; surface the blocker. Do not fold this decision into another question or write keys into a per-repo `.env`. Auth ownership and offline fallbacks: `/media-use` `references/setup-providers.md` § Providers.
 
 **Gate:** `hyperframes.json` and `BRIEF.md` exist; the preference-backed answers were recorded (brief contract § 2); sign-in status was shown (signed in, or continuing offline).
 

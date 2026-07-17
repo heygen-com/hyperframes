@@ -994,7 +994,7 @@ function runDoctor() {
     fix: nodeOk ? "" : `upgrade Node to >= v${MIN_NODE_VERSION}`,
   });
 
-  // ffmpeg AND ffprobe are both strictly required (see SKILL.md); the exit code
+  // ffmpeg AND ffprobe are both strictly required (see references/setup-providers.md); the exit code
   // must reflect that so a script gating on `--doctor` doesn't pass with ffprobe
   // missing and then break at the first probe call.
   const ffmpeg = checks.find((check) => check.name === "ffmpeg on PATH");

@@ -7,7 +7,7 @@ import { listTypes, getProviders } from "./registry.mjs";
 import { CAPABILITIES, listModels } from "./local-models.mjs";
 
 // Capstone: media-use must actually OWN each hyperframes media weakness. This
-// test enforces the weakness→owner matrix in SKILL.md so a claim can't rot — if
+// test enforces the weakness→owner matrix in references/meta.md so a claim can't rot — if
 // a capability's entrypoint disappears, this fails.
 
 const SKILL = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

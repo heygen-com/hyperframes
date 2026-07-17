@@ -260,3 +260,11 @@ reuse across many scripts, create a reusable **Photo Avatar** once instead
 (`heygen avatar create`). Ledger the result with
 `resolve --from <downloaded.mp4> --type video`. Docs:
 <https://developers.heygen.com/image-to-video>.
+
+## HEVC / H.265 sources
+
+HEVC/H.265 sources need no conversion for **render** (FFmpeg pre-decodes all
+input video); only live preview depends on the browser's codec support. If an
+HEVC asset previews black, make an H.264 authoring proxy (`ffmpeg -i in.mp4
+-c:v libx264 -crf 18 proxy.mp4`), register it with `resolve --from`, and keep
+either file for the final render.

@@ -53,7 +53,7 @@ Every relative-path command below runs with `$PROJECT_DIR` as its working direct
 - **Collaborative:** wait for the user to sign in or explicitly choose `offline` / `go`.
 - **Autonomous:** state the status and continue through the available local engines.
 
-Do not silently omit a required capability when no offline provider exists; surface the blocker. Do not fold this decision into another question or write keys into a per-repo `.env`. Auth ownership and offline fallbacks: `/media-use` § Providers.
+Do not silently omit a required capability when no offline provider exists; surface the blocker. Do not fold this decision into another question or write keys into a per-repo `.env`. Auth ownership and offline fallbacks: `/media-use` `references/setup-providers.md` § Providers.
 
 **Gate:** `hyperframes.json` and `BRIEF.md` exist; the PR ref is captured in the brief; the preference-backed answers were recorded (brief contract § 2); sign-in status was shown (signed in, or continuing offline).
 

@@ -33,7 +33,7 @@ The **music is the spine** — establish one track before anything else. This sk
 - **Collaborative:** wait for sign-in or an explicit choice to continue offline with the local provider.
 - **Autonomous:** state the status and continue through the available local provider.
 
-If no offline provider can satisfy the required music capability, surface the blocker. Never write keys into a per-repo `.env`. Auth ownership and offline fallbacks live in `/media-use` § Providers. The resulting track lands at `assets/bgm.mp3`. Stage supplied images or videos so frames can use them on the beat grid; otherwise typography carries the video.
+If no offline provider can satisfy the required music capability, surface the blocker. Never write keys into a per-repo `.env`. Auth ownership and offline fallbacks live in `/media-use` `references/setup-providers.md` § Providers. The resulting track lands at `assets/bgm.mp3`. Stage supplied images or videos so frames can use them on the beat grid; otherwise typography carries the video.
 
 **Lyric videos:** for lyrics synced to the vocals, get word/line timing by transcribing the track via `/media-use`, or ask the user for the lyrics text and place lines on the beat grid.
 
