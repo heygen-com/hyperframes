@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TransportMsg, UseVstHostResult } from "../../hooks/useVstHost";
+import { STUDIO_VST_ENABLED } from "../../components/editor/manualEditingAvailability";
 import {
   collectVstChainAudioEls,
   dbg,
@@ -121,6 +122,7 @@ export function useVstPreview(
 
   // ── Lazily start the sidecar once a vst-chain track appears ─────────────
   useEffect(() => {
+    if (!STUDIO_VST_ENABLED) return;
     if (!projectId || status !== "idle") return;
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;

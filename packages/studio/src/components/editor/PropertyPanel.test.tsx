@@ -675,6 +675,52 @@ function audioElement() {
   };
 }
 
+describe("PropertyPanel — STUDIO_VST_ENABLED gate", () => {
+  it(
+    "does not render the VST FX section for an audio element by default (flag off)",
+    async () => {
+      const { host, root } = await renderPanel(false, audioElement() as never);
+      expect(host.querySelector('[data-vst-install-hint="true"]')).toBeNull();
+      expect(host.querySelector("[data-vst-add-effect]")).toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "renders the VST FX section for an audio element once STUDIO_VST_ENABLED is on",
+    async () => {
+      vi.doMock("./manualEditingAvailability", async () => {
+        const actual = await vi.importActual<typeof import("./manualEditingAvailability")>(
+          "./manualEditingAvailability",
+        );
+        return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: false, STUDIO_VST_ENABLED: true };
+      });
+      vi.resetModules();
+      const { PropertyPanel } = await import("./PropertyPanel");
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      const props = {
+        element: audioElement(),
+        assets: [],
+        onSetStyle: vi.fn(),
+        onSetText: vi.fn(),
+        onSetAttributeLive: vi.fn(),
+      } as unknown as PropertyPanelProps;
+      act(() => {
+        root.render(<PropertyPanel {...props} />);
+      });
+      expect(
+        host.querySelector('[data-vst-install-hint="true"]') ||
+          host.querySelector("[data-vst-add-effect]"),
+      ).not.toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
 // All FlatGroup titles currently mounted (open row + every collapsed row).
 function flatGroupTitles(host: HTMLElement): string[] {
   const open = Array.from(

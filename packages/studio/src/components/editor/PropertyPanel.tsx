@@ -30,6 +30,7 @@ import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
   STUDIO_GSAP_PANEL_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
+  STUDIO_VST_ENABLED,
 } from "./manualEditingAvailability";
 import { PropertyPanelFlat } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
@@ -374,7 +375,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           />
         )}
 
-        {sections.vstFx && (
+        {STUDIO_VST_ENABLED && sections.vstFx && (
           <VstSection
             projectId={projectId}
             element={element}

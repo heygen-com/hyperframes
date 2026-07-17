@@ -24,6 +24,10 @@ import { FakeSocket, required } from "../../hooks/vstSocketTestFixture";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { decodePcmFrame, useVstPreview } from "./useVstPreview";
 
+vi.mock("../../components/editor/manualEditingAvailability", () => ({
+  STUDIO_VST_ENABLED: true,
+}));
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ── Fake Web Audio (this environment has none at all) ───────────────────────
