@@ -18,7 +18,8 @@ import type { ResizingClipState } from "./useTimelineClipDrag";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { Rect } from "../../utils/marqueeGeometry";
-import { TimelineLanes, type TimelineLaneBaseProps } from "./TimelineLanes";
+import { TimelineLanes } from "./TimelineLanes";
+import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 

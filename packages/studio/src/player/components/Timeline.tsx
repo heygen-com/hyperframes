@@ -53,6 +53,7 @@ import {
 import { resolveTimelineFocusIdentity } from "./timelineFocusIdentity";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import { useTimelineRevealClip } from "./useTimelineRevealClip";
+import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -152,6 +153,7 @@ export const Timeline = memo(function Timeline({
   const duration = usePlayerStore((s) => s.duration);
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const clipRevealRequest = usePlayerStore((s) => s.clipRevealRequest);
@@ -204,6 +206,7 @@ export const Timeline = memo(function Timeline({
     x: number;
     y: number;
     element: TimelineElement;
+    sessionEpoch: number;
   } | null>(null);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
@@ -315,14 +318,12 @@ export const Timeline = memo(function Timeline({
   const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =
     useTimelineAssetDrop({
       scrollRef,
-      ppsRef,
-      durationRef,
       trackOrderRef,
       rowGeometryRef,
-      contentOrigin,
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
+      sessionEpoch,
     });
 
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
@@ -332,6 +333,25 @@ export const Timeline = memo(function Timeline({
       expandedElements.length,
       displayLayout.totalH,
     ]);
+  // A zero-sized viewport has no meaningful visible range. Keep the complete
+  // logical timeline mounted until layout is measurable, then hand ownership
+  // to the row/clip virtualizers together so the first paint cannot be blank.
+  const rowVirtualizationActive =
+    STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED &&
+    viewport.clientWidth > 0 &&
+    viewport.clientHeight > 0;
+  const previousThumbnailProjectRef = useRef(timelineProjectId);
+  useEffect(() => {
+    thumbnailScheduler.setScrolling(viewport.isScrolling);
+    return () => thumbnailScheduler.setScrolling(false);
+  }, [viewport.isScrolling]);
+  useEffect(() => {
+    const previousProject = previousThumbnailProjectRef.current;
+    previousThumbnailProjectRef.current = timelineProjectId;
+    if (previousProject && previousProject !== timelineProjectId) {
+      thumbnailScheduler.invalidateProject(previousProject);
+    }
+  }, [timelineProjectId]);
   const focusIdentity = useMemo(
     () => resolveTimelineFocusIdentity(expandedElements, selectedElementId),
     [expandedElements, selectedElementId],
@@ -352,7 +372,7 @@ export const Timeline = memo(function Timeline({
     [clipContextMenu, draggedClip, kfContextMenu, resizingClip, revealIdentity],
   );
   const virtualRows = useTimelineVirtualRows({
-    enabled: STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED,
+    enabled: rowVirtualizationActive,
     scrollRef,
     viewport,
     rowGeometry: displayLayout.rowGeometry,
@@ -426,6 +446,10 @@ export const Timeline = memo(function Timeline({
   const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
   const renderTimeRange = useMemo(
     () => getTimelineRenderTimeRange(viewport, pps, contentOrigin, displayDuration),
+    [contentOrigin, displayDuration, pps, viewport],
+  );
+  const visibleTimeRange = useMemo(
+    () => getTimelineVisibleTimeRange(viewport, pps, contentOrigin, displayDuration),
     [contentOrigin, displayDuration, pps, viewport],
   );
   const pinnedClipIdentities = useMemo(
@@ -504,6 +528,7 @@ export const Timeline = memo(function Timeline({
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    handlePointerCancel,
   } = useTimelineRangeSelection({
     scrollRef,
     ppsRef,
@@ -516,10 +541,11 @@ export const Timeline = memo(function Timeline({
     isDragging,
     setShowPopover,
     elementsRef: expandedElementsRef,
-    trackOrderRef,
+    clipIndex,
     rowGeometryRef,
     onSelectElement,
     contentOrigin,
+    sessionEpoch,
   });
   setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
 
@@ -543,9 +569,9 @@ export const Timeline = memo(function Timeline({
         displayDuration,
         pps,
         tickFps,
-        STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED ? renderTimeRange : undefined,
+        rowVirtualizationActive ? renderTimeRange : undefined,
       ),
-    [displayDuration, pps, renderTimeRange, tickFps],
+    [displayDuration, pps, renderTimeRange, rowVirtualizationActive, tickFps],
   );
   const majorTickInterval = getTimelineMajorTickInterval(displayDuration, pps, tickFps);
 
@@ -630,7 +656,8 @@ export const Timeline = memo(function Timeline({
         }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onLostPointerCapture={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handlePointerCancel}
       >
         <TimelineCanvas
           major={major}
@@ -650,9 +677,10 @@ export const Timeline = memo(function Timeline({
           rowHeights={displayLayout.displayRowHeights}
           rowGeometry={displayLayout.rowGeometry}
           virtualRows={virtualRows}
-          rowsVirtualized={STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED}
+          rowsVirtualized={rowVirtualizationActive}
           clipIndex={clipIndex}
           renderTimeRange={renderTimeRange}
+          visibleTimeRange={visibleTimeRange}
           pinnedClipIdentities={pinnedClipIdentities}
           trackOrder={trackOrder}
           tracks={tracks}
@@ -672,6 +700,7 @@ export const Timeline = memo(function Timeline({
           playheadRef={playheadRef}
           onDrillDown={onDrillDown}
           onSelectElement={onSelectElement}
+          onDeleteElement={_onDeleteElement}
           setHoveredClip={setHoveredClip}
           setShowPopover={setShowPopover}
           setRangeSelection={setRangeSelection}
@@ -697,7 +726,7 @@ export const Timeline = memo(function Timeline({
             setSelectedElementId(el.key ?? el.id);
             onSelectElement?.(el);
             dismissGapMenu();
-            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
+            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el, sessionEpoch });
           }}
           onContextMenuLane={(e, track, time) => {
             if (draggedClip?.started || resizingClip) return;

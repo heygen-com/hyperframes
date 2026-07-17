@@ -186,10 +186,13 @@ export interface StudioApiAdapter {
     seekTime: number;
     width: number;
     height: number;
+    outputWidth: number;
+    outputHeight: number;
     previewUrl: string;
     selector?: string;
     format?: "jpeg" | "png";
     selectorIndex?: number;
+    signal: AbortSignal;
   }) => Promise<Buffer | null>;
 
   /** Optional: resolve session ID to project (multi-project mode). */

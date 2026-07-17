@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -15,6 +17,7 @@ interface ClipContextMenuState {
   x: number;
   y: number;
   element: TimelineElement;
+  sessionEpoch: number;
 }
 
 /** Resolved model for the empty-lane-space (track gap) context menu. */
@@ -54,6 +57,44 @@ interface TimelineOverlaysProps {
   onHoverGapAction: (action: "close-gap" | "close-all" | null) => void;
 }
 
+interface TimelineContextTargetInput {
+  capturedElement: TimelineElement;
+  targetSessionEpoch: number | undefined;
+  sessionEpoch: number;
+  selectedElementId: string | null;
+  elements: readonly TimelineElement[];
+}
+
+/** The captured project session and current selection jointly own a context target. */
+export function resolveTimelineContextElement({
+  capturedElement,
+  targetSessionEpoch,
+  sessionEpoch,
+  selectedElementId,
+  elements,
+}: TimelineContextTargetInput): TimelineElement | null {
+  const identity = capturedElement.key ?? capturedElement.id;
+  if (targetSessionEpoch !== sessionEpoch) return null;
+  if (selectedElementId !== identity) return null;
+  return elements.some((element) => (element.key ?? element.id) === identity)
+    ? capturedElement
+    : null;
+}
+
+function readTimelineContextElement(
+  capturedElement: TimelineElement,
+  targetSessionEpoch: number | undefined,
+): TimelineElement | null {
+  const state = usePlayerStore.getState();
+  return resolveTimelineContextElement({
+    capturedElement,
+    targetSessionEpoch,
+    sessionEpoch: state.timelineSessionEpoch,
+    selectedElementId: state.selectedElementId,
+    elements: state.elements,
+  });
+}
+
 // The timeline's floating overlays, rendered as siblings above the scroll area:
 // the shortcut hint, the range-edit popover, the keyframe-diamond context menu,
 // and the clip context menu.
@@ -83,6 +124,45 @@ export function TimelineOverlays({
   onCloseAllTrackGaps,
   onHoverGapAction,
 }: TimelineOverlaysProps) {
+  const elements = usePlayerStore((state) => state.elements);
+  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+  const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+  const kfTargetSessionEpoch = kfContextMenu?.sessionEpoch;
+  const clipTargetSessionEpoch = clipContextMenu?.sessionEpoch;
+  const keyframeElement = kfContextMenu
+    ? resolveTimelineContextElement({
+        capturedElement: kfContextMenu.element,
+        targetSessionEpoch: kfTargetSessionEpoch,
+        sessionEpoch,
+        selectedElementId,
+        elements,
+      })
+    : null;
+  const clipElement = clipContextMenu
+    ? resolveTimelineContextElement({
+        capturedElement: clipContextMenu.element,
+        targetSessionEpoch: clipTargetSessionEpoch,
+        sessionEpoch,
+        selectedElementId,
+        elements,
+      })
+    : null;
+  const gapSessionEpochRef = useRef(sessionEpoch);
+
+  useEffect(() => {
+    if (kfContextMenu && !keyframeElement) setKfContextMenu(null);
+  }, [keyframeElement, kfContextMenu, setKfContextMenu]);
+
+  useEffect(() => {
+    if (clipContextMenu && !clipElement) setClipContextMenu(null);
+  }, [clipContextMenu, clipElement, setClipContextMenu]);
+
+  useEffect(() => {
+    if (gapSessionEpochRef.current === sessionEpoch) return;
+    gapSessionEpochRef.current = sessionEpoch;
+    if (gapContextMenu) onDismissGapContextMenu();
+  }, [gapContextMenu, onDismissGapContextMenu, sessionEpoch]);
+
   return (
     <>
       {showShortcutHint && !showPopover && !rangeSelection && (
@@ -102,17 +182,32 @@ export function TimelineOverlays({
         />
       )}
 
-      {kfContextMenu && (
+      {kfContextMenu && keyframeElement && (
         <KeyframeDiamondContextMenu
-          state={kfContextMenu}
+          state={{ ...kfContextMenu, element: keyframeElement }}
           onClose={() => setKfContextMenu(null)}
-          onDelete={(...args) => onDeleteKeyframe?.(...args)}
-          onDeleteAll={(element) => onDeleteAllKeyframes?.(element)}
-          onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
+          onDelete={(...args) => {
+            if (!readTimelineContextElement(keyframeElement, kfTargetSessionEpoch)) return;
+            onDeleteKeyframe?.(...args);
+          }}
+          onDeleteAll={() => {
+            const element = readTimelineContextElement(keyframeElement, kfTargetSessionEpoch);
+            if (element) onDeleteAllKeyframes?.(element);
+          }}
+          onChangeEase={(elId, pct, ease) => {
+            if (!readTimelineContextElement(keyframeElement, kfTargetSessionEpoch)) return;
+            onChangeKeyframeEase?.(elId, pct, ease);
+          }}
           onMoveToPlayhead={
-            onMoveKeyframeToPlayhead ? (...args) => onMoveKeyframeToPlayhead(...args) : undefined
+            onMoveKeyframeToPlayhead
+              ? (_element, ...args) => {
+                  const element = readTimelineContextElement(keyframeElement, kfTargetSessionEpoch);
+                  if (element) onMoveKeyframeToPlayhead(element, ...args);
+                }
+              : undefined
           }
           onCopyProperties={(elId, pct) => {
+            if (!readTimelineContextElement(keyframeElement, kfTargetSessionEpoch)) return;
             const kfData = keyframeCache.get(elId);
             const kf = kfData?.keyframes.find((k) => k.percentage === pct);
             if (kf) {
@@ -122,17 +217,22 @@ export function TimelineOverlays({
         />
       )}
 
-      {clipContextMenu && (
+      {clipContextMenu && clipElement && (
         <ClipContextMenu
           x={clipContextMenu.x}
           y={clipContextMenu.y}
-          element={clipContextMenu.element}
+          element={clipElement}
           currentTime={currentTime}
           onClose={() => setClipContextMenu(null)}
-          onSplit={(el, time) => onSplitElement?.(el, time)}
-          onDelete={(el) => {
+          onSplit={(_element, time) => {
+            const element = readTimelineContextElement(clipElement, clipTargetSessionEpoch);
+            if (element) onSplitElement?.(element, time);
+          }}
+          onDelete={() => {
+            const element = readTimelineContextElement(clipElement, clipTargetSessionEpoch);
+            if (!element) return;
             pinZoomBeforeEdit();
-            onDeleteElement?.(el);
+            onDeleteElement?.(element);
           }}
         />
       )}

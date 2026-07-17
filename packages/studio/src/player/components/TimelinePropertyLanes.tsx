@@ -125,6 +125,9 @@ export function TimelinePropertyLanes({
       {lanes.map(({ group, animations: groupAnimations, keyframes }, laneIndex) => (
         <div
           key={group}
+          role="row"
+          aria-level={2}
+          aria-label={`${group} keyframes`}
           data-property-group={group}
           data-timeline-property-lane=""
           data-timeline-lane-top={getTimelineLaneTop(laneIndex)}

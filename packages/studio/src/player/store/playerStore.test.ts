@@ -53,6 +53,78 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("focusedEaseSegment", () => {
+    it("scopes each request to the active timeline session and advances its nonce", () => {
+      const store = usePlayerStore.getState();
+      store.beginTimelineSession("ease-project-a");
+      store.setSelectedElementId("index.html#hero");
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 50,
+      });
+      const first = usePlayerStore.getState().focusedEaseSegment;
+
+      expect(first).toMatchObject({
+        projectId: "ease-project-a",
+        sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
+        elementId: "index.html#hero",
+      });
+
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 75,
+      });
+      const second = usePlayerStore.getState().focusedEaseSegment;
+      expect(second?.nonce).toBe((first?.nonce ?? 0) + 1);
+    });
+
+    it("only clears the request whose nonce was consumed", () => {
+      const store = usePlayerStore.getState();
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 50,
+      });
+      const firstNonce = usePlayerStore.getState().focusedEaseSegment?.nonce;
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 75,
+      });
+      const second = usePlayerStore.getState().focusedEaseSegment;
+      if (firstNonce === undefined || !second) throw new Error("expected focused ease requests");
+
+      store.clearFocusedEaseSegment(firstNonce);
+      expect(usePlayerStore.getState().focusedEaseSegment).toBe(second);
+
+      store.clearFocusedEaseSegment(second.nonce);
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    });
+
+    it("clears the request on reset without reusing its nonce", () => {
+      const store = usePlayerStore.getState();
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 50,
+      });
+      const firstNonce = usePlayerStore.getState().focusedEaseSegment?.nonce;
+      if (firstNonce === undefined) throw new Error("expected focused ease request");
+
+      store.reset();
+      expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+
+      store.setFocusedEaseSegment({
+        elementId: "index.html#hero",
+        animationId: "hero-position",
+        tweenPercentage: 75,
+      });
+      expect(usePlayerStore.getState().focusedEaseSegment?.nonce).toBe(firstNonce + 1);
+    });
+  });
+
   describe("setIsPlaying", () => {
     it("sets isPlaying to true", () => {
       usePlayerStore.getState().setIsPlaying(true);

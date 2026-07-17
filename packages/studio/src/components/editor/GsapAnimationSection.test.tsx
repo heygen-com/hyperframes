@@ -10,6 +10,10 @@ import { GsapAnimationSection } from "./GsapAnimationSection";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const animationCardMock = vi.hoisted(() => ({
+  consumers: [] as Array<{ tweenPercentage: number | null; consume: () => void }>,
+}));
+
 vi.mock("./AnimationCard", () => ({
   AnimationCard: ({
     animation,
@@ -19,20 +23,27 @@ vi.mock("./AnimationCard", () => ({
     animation: GsapAnimation;
     focusedSegment: { tweenPercentage: number } | null;
     onFocusSegmentConsumed: () => void;
-  }) => (
-    <button
-      type="button"
-      data-testid={`animation-${animation.id}`}
-      data-focused={focusedSegment ? String(focusedSegment.tweenPercentage) : ""}
-      onClick={onFocusSegmentConsumed}
-    />
-  ),
+  }) => {
+    animationCardMock.consumers.push({
+      tweenPercentage: focusedSegment?.tweenPercentage ?? null,
+      consume: onFocusSegmentConsumed,
+    });
+    return (
+      <button
+        type="button"
+        data-testid={`animation-${animation.id}`}
+        data-focused={focusedSegment ? String(focusedSegment.tweenPercentage) : ""}
+        onClick={onFocusSegmentConsumed}
+      />
+    );
+  },
 }));
 
 vi.mock("./GsapAddAnimationControl", () => ({ GsapAddAnimationControl: () => null }));
 
 afterEach(() => {
   document.body.innerHTML = "";
+  animationCardMock.consumers = [];
   usePlayerStore.getState().reset();
 });
 
@@ -76,6 +87,8 @@ function renderSection(elementId: string) {
 
 describe("GsapAnimationSection", () => {
   it("consumes a shared animation id only for the focused element", () => {
+    usePlayerStore.getState().beginTimelineSession("project-a");
+    usePlayerStore.getState().setSelectedElementId("index.html#second");
     usePlayerStore.getState().setFocusedEaseSegment({
       elementId: "index.html#second",
       animationId: sharedAnimation.id,
@@ -94,6 +107,65 @@ describe("GsapAnimationSection", () => {
     view.render("index.html#second");
     expect(card.dataset.focused).toBe("50");
     act(() => card.click());
+    expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("does not let an older consumer clear a newer request for the same animation", () => {
+    const store = usePlayerStore.getState();
+    store.beginTimelineSession("project-a");
+    store.setSelectedElementId("index.html#first");
+    store.setFocusedEaseSegment({
+      elementId: "index.html#first",
+      animationId: sharedAnimation.id,
+      tweenPercentage: 25,
+    });
+    const view = renderSection("index.html#first");
+    const staleConsumer = animationCardMock.consumers.at(-1)?.consume;
+    if (!staleConsumer) throw new Error("expected first focus consumer");
+
+    act(() => {
+      store.setFocusedEaseSegment({
+        elementId: "index.html#first",
+        animationId: sharedAnimation.id,
+        tweenPercentage: 75,
+      });
+    });
+    const current = usePlayerStore.getState().focusedEaseSegment;
+    const currentConsumer = animationCardMock.consumers.at(-1)?.consume;
+    if (!current || !currentConsumer) throw new Error("expected replacement focus request");
+
+    act(() => staleConsumer());
+    expect(usePlayerStore.getState().focusedEaseSegment).toBe(current);
+
+    act(() => currentConsumer());
+    expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("rejects and clears a request from an earlier project session", () => {
+    const store = usePlayerStore.getState();
+    store.beginTimelineSession("project-a");
+    store.setSelectedElementId("index.html#first");
+    store.setFocusedEaseSegment({
+      elementId: "index.html#first",
+      animationId: sharedAnimation.id,
+      tweenPercentage: 50,
+    });
+    const view = renderSection("index.html#first");
+    const staleRequest = usePlayerStore.getState().focusedEaseSegment;
+    if (!staleRequest) throw new Error("expected focused ease request");
+
+    act(() => {
+      store.beginTimelineSession("project-b");
+      store.setSelectedElementId("index.html#first");
+      usePlayerStore.setState({ focusedEaseSegment: staleRequest });
+    });
+
+    const card = view.host.querySelector<HTMLButtonElement>(
+      "[data-testid='animation-shared-animation']",
+    );
+    expect(card?.dataset.focused).toBe("");
     expect(usePlayerStore.getState().focusedEaseSegment).toBeNull();
     act(() => view.root.unmount());
   });

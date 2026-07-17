@@ -12,7 +12,7 @@ import { useRenderClipContent } from "./useRenderClipContent";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePlayerStore.setState({ thumbnailsEnabled: false });
+  usePlayerStore.setState({ thumbnailMode: "hidden" });
   document.body.innerHTML = "";
 });
 
@@ -107,7 +107,7 @@ describe("useRenderClipContent", () => {
   });
 
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
-    usePlayerStore.setState({ thumbnailsEnabled: true });
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
 
     const cases: Array<{ content: ReactNode; type: unknown }> = [
       {

@@ -47,7 +47,12 @@ const COLLIDING_TARGET: TimelineKeyframeTarget = {
 afterEach(() => {
   document.body.innerHTML = "";
   trackStudioSegmentEaseEdit.mockClear();
-  usePlayerStore.setState({ focusedEaseSegment: null });
+  usePlayerStore.setState({
+    focusedEaseSegment: null,
+    focusedEaseRequestNonce: 0,
+    timelineProjectId: null,
+    timelineSessionEpoch: 0,
+  });
 });
 
 describe("useTimelineKeyframeHandlers", () => {
@@ -90,7 +95,7 @@ describe("useTimelineKeyframeHandlers", () => {
     const root = mountReactHarness(<Harness />);
     act(() => onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));
 
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       collidingAnimationTargets: [
         { animationId: "position-tween", tweenPercentage: 100 },
@@ -98,7 +103,10 @@ describe("useTimelineKeyframeHandlers", () => {
       ],
       tweenPercentage: 100,
       elementId: ELEMENT.id,
+      projectId: null,
+      sessionEpoch: 0,
     });
+    expect(usePlayerStore.getState().focusedEaseSegment?.nonce).toBeGreaterThan(0);
     act(() => root.unmount());
   });
 
@@ -129,11 +137,14 @@ describe("useTimelineKeyframeHandlers", () => {
     // Selecting a segment must NOT move the playhead.
     act(() => onSelectSegment?.(ELEMENT.id, FLAT_TWEEN_TARGET));
     expect(onSeek).not.toHaveBeenCalled();
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       tweenPercentage: 100,
       elementId: ELEMENT.id,
+      projectId: null,
+      sessionEpoch: 0,
     });
+    expect(usePlayerStore.getState().focusedEaseSegment?.nonce).toBeGreaterThan(0);
     expect(usePlayerStore.getState().focusedEaseSegment?.collidingAnimationTargets).toBeUndefined();
     expect(setSelectedElementId).toHaveBeenCalledWith(ELEMENT.id);
     expect(onSelectElement).toHaveBeenCalledWith(ELEMENT);
@@ -141,6 +152,41 @@ describe("useTimelineKeyframeHandlers", () => {
     // Clicking the keyframe itself still seeks to it (start 1 + 50% of 2 = 2).
     act(() => onClickKeyframe?.(ELEMENT, TARGET));
     expect(onSeek).toHaveBeenCalledExactlyOnceWith(2);
+    act(() => root.unmount());
+  });
+
+  it("scopes a keyframe context target to the opening timeline session", () => {
+    const setKfContextMenu = vi.fn();
+    usePlayerStore.setState({ timelineSessionEpoch: 4 });
+
+    function Harness() {
+      const { onContextMenuKeyframe } = useTimelineKeyframeHandlers({
+        expandedElements: [ELEMENT],
+        keyframeCache: new Map(),
+        setSelectedElementId: vi.fn(),
+        setKfContextMenu,
+        toggleSelectedKeyframe: vi.fn(),
+      });
+      return (
+        <button
+          type="button"
+          onContextMenu={(event) => onContextMenuKeyframe(event, ELEMENT.id, TARGET)}
+        />
+      );
+    }
+
+    const root = mountReactHarness(<Harness />);
+    const button = document.querySelector("button");
+    expect(button).not.toBeNull();
+    act(() => {
+      button!.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 20 }),
+      );
+    });
+
+    expect(setKfContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ elementId: ELEMENT.id, sessionEpoch: 4, x: 14, y: 22 }),
+    );
     act(() => root.unmount());
   });
 });

@@ -69,14 +69,20 @@ async function collectHeapBytes(client) {
 async function collectRun(page) {
   return page.evaluate(async () => {
     const longTasks = [];
+    const longAnimationFrames = [];
     const scroller = findTimelineScroller();
     const observer = observeLongTasks(longTasks);
+    const animationFrameObserver = observeLongAnimationFrames(longAnimationFrames);
     const { interactions, frameIntervals } = await measureScrollInteractions(scroller);
     observer?.disconnect();
+    animationFrameObserver?.disconnect();
     return {
       interactionP95Ms: percentileInPage(interactions, 0.95),
       frameIntervalP95Ms: percentileInPage(frameIntervals, 0.95),
       longestTaskMs: Math.max(0, ...longTasks),
+      longAnimationFrames: longAnimationFrames
+        .sort((left, right) => right.duration - left.duration)
+        .slice(0, 5),
       scrollWidth: scroller.scrollWidth,
       scrollHeight: scroller.scrollHeight,
       diagnostics: window.__studioTest.readTimelinePerformanceDiagnostics(),
@@ -107,6 +113,35 @@ async function collectRun(page) {
         for (const entry of list.getEntries()) longTaskDurations.push(entry.duration);
       });
       performanceObserver.observe({ entryTypes: ["longtask"] });
+      return performanceObserver;
+    }
+
+    function observeLongAnimationFrames(entries) {
+      if (
+        typeof PerformanceObserver !== "function" ||
+        !PerformanceObserver.supportedEntryTypes.includes("long-animation-frame")
+      ) {
+        return null;
+      }
+      const performanceObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          entries.push({
+            duration: entry.duration,
+            blockingDuration: entry.blockingDuration,
+            scripts: entry.scripts
+              .sort((left, right) => right.duration - left.duration)
+              .slice(0, 5)
+              .map((script) => ({
+                duration: script.duration,
+                forcedStyleAndLayoutDuration: script.forcedStyleAndLayoutDuration,
+                functionName: script.functionName,
+                invokerType: script.invokerType,
+                sourceURL: script.sourceURL,
+              })),
+          });
+        }
+      });
+      performanceObserver.observe({ type: "long-animation-frame", buffered: false });
       return performanceObserver;
     }
 
@@ -196,13 +231,15 @@ try {
     { timeout: 30_000 },
   );
   await waitForStudioTestHookSettle(page);
+  const budgets = await page.evaluate(() => window.__studioTest.timelineViewportBudgets);
 
-  await loadFixtureAndWait(page, 1_000, PROFILE);
+  const summary = await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
+  for (let index = 0; index < budgets.warmupRuns; index += 1) {
+    await collectRun(page);
+  }
   await client.send("HeapProfiler.collectGarbage");
   const baselineHeapBytes = await collectHeapBytes(client);
 
-  const summary = await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
-  const budgets = await page.evaluate(() => window.__studioTest.timelineViewportBudgets);
   const measuredMaxReliableScrollWidth = await measureMaximumReliableScrollWidth(page);
 
   const runs = [];
@@ -210,9 +247,8 @@ try {
     TIER === "primary" ? budgets.interactionP95Ms : budgets.constrainedInteractionP95Ms;
   const frameIntervalLimitMs =
     TIER === "primary" ? budgets.frameIntervalP95Ms : budgets.constrainedFrameIntervalP95Ms;
-  for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
-    const run = await collectRun(page);
-    if (index >= budgets.warmupRuns) runs.push(run);
+  for (let index = 0; index < budgets.measuredRuns; index += 1) {
+    runs.push(await collectRun(page));
   }
   for (const run of runs) {
     run.passed =
@@ -224,9 +260,24 @@ try {
       run.diagnostics.mountedTimelineDescendants < budgets.maxMountedTimelineDescendants;
   }
 
+  await page.evaluate(() => {
+    const elements = window.__playerStore?.getState().elements;
+    window.__timelineBenchmarkPreviousElements = elements ? new WeakRef(elements) : null;
+    window.__timelineBenchmarkPreviousElement = elements?.at(-1)
+      ? new WeakRef(elements.at(-1))
+      : null;
+  });
+  await loadFixtureAndWait(page, 1_000, PROFILE);
+  // React keeps the previous committed tree as its alternate. A second bounded
+  // project snapshot replaces both sides before GC, so this measures retained
+  // application resources rather than the renderer's expected one-commit history.
   await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
   const returnedHeapBytes = await collectHeapBytes(client);
+  const retainedFixture = await page.evaluate(() => ({
+    elements: window.__timelineBenchmarkPreviousElements?.deref() !== undefined,
+    element: window.__timelineBenchmarkPreviousElement?.deref() !== undefined,
+  }));
   const memoryReturned =
     returnedHeapBytes <= baselineHeapBytes * (1 + budgets.memoryReturnToleranceRatio);
   const passingRuns = runs.filter((run) => run.passed).length;
@@ -273,6 +324,7 @@ try {
       baselineHeapBytes,
       returnedHeapBytes,
       memoryReturned,
+      retainedFixture,
     },
   };
   console.log(JSON.stringify(evidence, null, 2));
