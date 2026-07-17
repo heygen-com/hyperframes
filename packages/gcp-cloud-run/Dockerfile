@@ -114,13 +114,13 @@ COPY packages/studio-server/ packages/studio-server/
 # workspace packages are not prebuilt in a fresh clone, so producer's esbuild
 # resolution otherwise fails on parsers/core compiler entrypoints. Generate
 # embedded font data so glyph layout matches production.
-RUN bun run --cwd packages/core build \
-    && bun run --cwd packages/core build:hyperframes-runtime:modular \
-    && bun run --cwd packages/parsers build \
+RUN bun run --cwd packages/parsers build \
     && bun run --cwd packages/lint build \
+    && bun run --cwd packages/studio-server build \
+    && bun run --cwd packages/core build \
+    && bun run --cwd packages/core build:hyperframes-runtime:modular \
     && bun run --cwd packages/sdk build \
     && bun run --cwd packages/sdk-playground build \
-    && bun run --cwd packages/studio-server build \
     && bun run --cwd packages/engine build \
     && (cd packages/producer && bunx tsx scripts/generate-font-data.ts) \
     && bun run --cwd packages/producer build \
