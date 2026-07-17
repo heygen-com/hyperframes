@@ -243,9 +243,10 @@ export function useTimelineGroupEditing({
       // duration change), so nothing timing-related changed — the batch only
       // rewrites data-track-index, which the renderer never reads (documented
       // in core runtime/timeline.ts; track is a studio lane concept). The live
-      // DOM patch above + the gesture owner's optimistic store update fully
-      // cover the UI, so after the persist there is nothing to GSAP-shift and
-      // nothing for the preview to recompute: skip the fallback below entirely.
+      // DOM patch above + the gesture owner's optimistic store update cover the
+      // in-flight UI; after the complete lane + z transaction, that owner
+      // refreshes the preview so its runtime manifest converges to disk. There
+      // is still nothing to GSAP-shift here, so skip this fallback entirely.
       // Running it anyway is what made the mirrored z-order lane move blink —
       // a zero-delta batch yields no scriptText, and finishGroupTimingGsapFallback
       // used to full-reload the iframe when there was no script to soft-swap

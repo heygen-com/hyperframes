@@ -20,6 +20,7 @@ export function FlatRow({
   liveCommit,
   suffix,
   dropdown,
+  onPreview,
   onCommit,
   onReset,
 }: {
@@ -31,6 +32,7 @@ export function FlatRow({
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
+  onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
   onReset?: () => void;
 }) {
@@ -52,6 +54,7 @@ export function FlatRow({
             disabled={disabled}
             liveCommit={liveCommit}
             align="right"
+            onPreview={onPreview}
             onCommit={(nextValue) => {
               track("metric", label);
               onCommit(nextValue);

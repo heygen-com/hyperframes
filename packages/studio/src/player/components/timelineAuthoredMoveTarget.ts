@@ -36,10 +36,27 @@ export function resolveExpandedHostAlias(
   drag: DraggedClipState,
   deps: ExpandedHostAliasDeps,
 ): { drag: DraggedClipState; selectedKeys: ReadonlySet<string> } | null {
+  const selectedKeys = deps.selectedKeys;
+  if (!selectedKeys) return null;
+
+  const collapsedKeys = new Set(selectedKeys);
+  const candidates = deps.elements.includes(drag.element)
+    ? deps.elements
+    : [...deps.elements, drag.element];
+  for (const element of candidates) {
+    const hostKey = element.expandedHostKey;
+    const childKey = getTimelineElementIdentity(element);
+    if (hostKey && collapsedKeys.has(hostKey) && collapsedKeys.has(childKey)) {
+      collapsedKeys.delete(childKey);
+    }
+  }
+
   const hostKey = drag.element.expandedHostKey;
   const childKey = getTimelineElementIdentity(drag.element);
-  const selectedKeys = deps.selectedKeys;
-  if (!hostKey || !selectedKeys?.has(hostKey) || !selectedKeys.has(childKey)) return null;
+  if (!hostKey || collapsedKeys.has(childKey)) {
+    if (collapsedKeys.size === selectedKeys.size) return null;
+    return { drag, selectedKeys: collapsedKeys };
+  }
 
   const host = deps.elements.find((element) => getTimelineElementIdentity(element) === hostKey);
   if (!host || !canMoveTimelineElement(host)) return null;
@@ -47,10 +64,6 @@ export function resolveExpandedHostAlias(
   const delta = drag.previewStart - drag.element.start;
   const mapTrack = (track: number | undefined): number | undefined =>
     track === drag.element.track ? host.track : track;
-  const collapsedKeys = new Set(selectedKeys);
-  collapsedKeys.delete(childKey);
-  collapsedKeys.add(hostKey);
-
   return {
     drag: {
       ...drag,

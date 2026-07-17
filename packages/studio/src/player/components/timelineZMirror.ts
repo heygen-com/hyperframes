@@ -1,7 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import { classifyZone } from "./timelineZones";
 import { isLaneFree, timeRangesOverlap } from "./timelineCollision";
-import { authoredTrackForLane, sameSourceFile } from "./timelineClipDragCommit";
+import { authoredTrackForLane, sameSourceFile } from "./timelineAuthoredTrack";
 import { samePaintScope } from "./timelineStackingSync";
 
 /**

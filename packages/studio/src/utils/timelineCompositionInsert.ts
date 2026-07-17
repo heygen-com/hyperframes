@@ -72,7 +72,15 @@ export async function commitTimelineCompositionInsertion(input: {
       throw error;
     }
     input.selectHost(`${input.targetPath}#${result.hostId}`);
-    input.resync?.();
-    input.refresh();
+    try {
+      input.resync?.();
+    } catch (error) {
+      console.error("[Studio] Composition insertion committed but preview resync failed", error);
+    }
+    try {
+      input.refresh();
+    } catch (error) {
+      console.error("[Studio] Composition insertion committed but refresh failed", error);
+    }
   });
 }

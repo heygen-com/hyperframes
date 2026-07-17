@@ -1934,7 +1934,27 @@ async function foldAtomicCutFile(
   const respond = (data: unknown, status?: number) =>
     status ? c.json(data, status) : c.json(data);
 
-  for (const cut of file.targets) {
+  const orderedTargets = file.targets
+    .map((cut, index) => ({ cut, index }))
+    .sort((left, right) => {
+      const locatorKey = (entry: AtomicCutTarget): string | null =>
+        !entry.target.id && !entry.target.hfId && entry.target.selector
+          ? entry.target.selector
+          : null;
+      const leftKey = locatorKey(left.cut);
+      const rightKey = locatorKey(right.cut);
+      if (leftKey && rightKey) {
+        return (
+          leftKey.localeCompare(rightKey) ||
+          (right.cut.target.selectorIndex ?? 0) - (left.cut.target.selectorIndex ?? 0)
+        );
+      }
+      if (leftKey) return -1;
+      if (rightKey) return 1;
+      return left.index - right.index;
+    })
+    .map(({ cut }) => cut);
+  for (const cut of orderedTargets) {
     const baseId = cut.originalId || cut.target.id || "clip";
     const split = splitElementInHtml(after, cut.target, cut.splitTime, `${baseId}-split`, {
       start: cut.elementStart,
@@ -2436,17 +2456,21 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       } catch (error) {
         const conflicts: string[] = [];
         for (const file of written.reverse()) {
-          const current = readFileSync(file.absPath, "utf-8");
-          if (current !== file.after) {
+          try {
+            const current = readFileSync(file.absPath, "utf-8");
+            if (current !== file.after) {
+              conflicts.push(file.path);
+              continue;
+            }
+            writeFileSync(file.absPath, file.before, "utf-8");
+            recordFileWriteReceipt(file.absPath, {
+              path: file.path,
+              version: fileContentVersion(file.before),
+              writeToken,
+            });
+          } catch {
             conflicts.push(file.path);
-            continue;
           }
-          writeFileSync(file.absPath, file.before, "utf-8");
-          recordFileWriteReceipt(file.absPath, {
-            path: file.path,
-            version: fileContentVersion(file.before),
-            writeToken,
-          });
         }
         return c.json(
           {

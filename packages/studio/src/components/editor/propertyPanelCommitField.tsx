@@ -12,12 +12,14 @@ export function CommitField({
   value,
   disabled,
   liveCommit,
+  align = "left",
   onPreview,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
   liveCommit?: boolean;
+  align?: "left" | "right";
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
@@ -30,9 +32,9 @@ export function CommitField({
   valueRef.current = value;
   draftRef.current = draft;
 
-  const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wheelActiveRef = useRef(false);
-  const wheelTransaction = useInspectorGestureTransaction({
+  const gestureActiveRef = useRef(false);
+  const gestureSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureTransaction = useInspectorGestureTransaction({
     sourceValue: value,
     onPreview: (nextValue) => {
       setDraft(nextValue);
@@ -40,46 +42,72 @@ export function CommitField({
     },
     onCommit,
   });
-  const wheelTransactionRef = useRef(wheelTransaction);
-  wheelTransactionRef.current = wheelTransaction;
+  const gestureTransactionRef = useRef(gestureTransaction);
+  gestureTransactionRef.current = gestureTransaction;
 
-  const settleWheel = () => {
-    if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
-    wheelTimerRef.current = null;
-    if (!wheelActiveRef.current) return false;
-    wheelActiveRef.current = false;
-    wheelTransaction.settle();
+  const clearGestureSettleTimer = () => {
+    if (!gestureSettleTimerRef.current) return;
+    clearTimeout(gestureSettleTimerRef.current);
+    gestureSettleTimerRef.current = null;
+  };
+  const settleGesture = () => {
+    clearGestureSettleTimer();
+    if (!gestureActiveRef.current) return false;
+    gestureActiveRef.current = false;
+    gestureTransaction.settle();
     return true;
+  };
+  const scheduleGestureSettle = () => {
+    clearGestureSettleTimer();
+    gestureSettleTimerRef.current = setTimeout(() => {
+      gestureSettleTimerRef.current = null;
+      if (!gestureActiveRef.current) return;
+      gestureActiveRef.current = false;
+      gestureTransactionRef.current.settle();
+    }, 250);
+  };
+  const cancelGesture = () => {
+    clearGestureSettleTimer();
+    gestureActiveRef.current = false;
+    gestureTransaction.cancel();
   };
   const commitDraft = (nextValue: string) => {
     setDraft(nextValue);
     onPreview?.(nextValue);
     if (nextValue !== valueRef.current) onCommit(nextValue);
   };
+  const cancelGestureFromKeyEvent = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!gestureActiveRef.current) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelGesture();
+    return true;
+  };
+  const previewNumericKeyStep = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const direction = arrowDirection(event.key);
+    if (direction === null) return;
+    const nextDraft = adjustNumericToken(draftRef.current, direction, event);
+    if (!nextDraft) return;
+    event.preventDefault();
+    dirtyRef.current = false;
+    gestureActiveRef.current = true;
+    gestureTransaction.preview(nextDraft);
+    scheduleGestureSettle();
+  };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      cancelGestureFromKeyEvent(event);
+      return;
+    }
     if (event.key === "Escape") {
-      if (!wheelActiveRef.current) return;
-      event.preventDefault();
-      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
-      wheelTimerRef.current = null;
-      wheelActiveRef.current = false;
-      wheelTransaction.cancel();
+      cancelGestureFromKeyEvent(event);
       return;
     }
     if (event.key === "Enter") {
       event.currentTarget.blur();
       return;
     }
-    const direction = arrowDirection(event.key);
-    if (direction === null) return;
-    settleWheel();
-    const nextDraft = adjustNumericToken(draft, direction, event);
-    if (!nextDraft) return;
-    event.preventDefault();
-    dirtyRef.current = true;
-    setDraft(nextDraft);
-    if (liveCommit) onPreview?.(nextDraft);
-    commitDraft(nextDraft);
+    previewNumericKeyStep(event);
   };
 
   useEffect(() => {
@@ -99,19 +127,14 @@ export function CommitField({
       event.preventDefault();
       event.stopPropagation();
       dirtyRef.current = false;
-      wheelActiveRef.current = true;
-      wheelTransactionRef.current.preview(nextDraft);
-      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
-      wheelTimerRef.current = setTimeout(() => {
-        wheelTimerRef.current = null;
-        wheelActiveRef.current = false;
-        wheelTransactionRef.current.settle();
-      }, 180);
+      gestureActiveRef.current = true;
+      gestureTransactionRef.current.preview(nextDraft);
+      scheduleGestureSettle();
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => {
       el.removeEventListener("wheel", handler);
-      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+      clearGestureSettleTimer();
     };
   }, [disabled]);
 
@@ -125,13 +148,13 @@ export function CommitField({
         focusedRef.current = true;
       }}
       onChange={(event) => {
-        settleWheel();
+        settleGesture();
         dirtyRef.current = true;
         setDraft(event.target.value);
         if (liveCommit) onPreview?.(event.target.value);
       }}
       onBlur={() => {
-        if (settleWheel()) {
+        if (settleGesture()) {
           focusedRef.current = false;
           return;
         }
@@ -147,7 +170,9 @@ export function CommitField({
       }}
       onKeyDown={handleKeyDown}
       title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
-      className="min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
     />
   );
 }

@@ -113,7 +113,8 @@ function resolveTrack(
   duration: number,
 ): number {
   const clips = descendants(root, "[data-start][data-duration]").filter(
-    (element) => element !== root,
+    (element) =>
+      element !== root && element.parentElement?.closest("[data-composition-id]") === root,
   );
   const tracks = [...new Set(clips.map((clip) => numberAttribute(clip, "data-track-index")))].sort(
     (a, b) => a - b,
@@ -137,7 +138,13 @@ function resolveTrack(
 }
 
 function uniqueHostId(root: Element, base: string): string {
-  const ids = new Set(descendants(root, "[id]").map((element) => element.id));
+  const ids = new Set([
+    ...descendants(root, "[id]").map((element) => element.id),
+    ...descendants(root, "[data-composition-id]").flatMap((element) => {
+      const id = element.getAttribute("data-composition-id");
+      return id ? [id] : [];
+    }),
+  ]);
   if (!ids.has(base)) return base;
   let suffix = 2;
   while (ids.has(`${base}_${suffix}`)) suffix += 1;

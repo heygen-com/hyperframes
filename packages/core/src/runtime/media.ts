@@ -1,5 +1,6 @@
 import { swallow } from "./diagnostics";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
+import { normalizePlaybackRate } from "./playbackRate.js";
 
 export function readElementPlaybackRate(el: Element): number {
   const authored = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
@@ -9,7 +10,7 @@ export function readElementPlaybackRate(el: Element): number {
       : el instanceof HTMLMediaElement
         ? el.defaultPlaybackRate
         : 1;
-  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
+  return normalizePlaybackRate(raw);
 }
 
 export function readElementPlaybackStart(el: Element): number {

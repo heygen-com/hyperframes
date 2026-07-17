@@ -14,7 +14,7 @@ export function useInspectorGestureTransaction<T>({
   const activeRef = useRef<{ before: T; latest: T } | null>(null);
   const previewRef = useRef(onPreview);
   const commitRef = useRef(onCommit);
-  sourceRef.current = sourceValue;
+  if (!activeRef.current) sourceRef.current = sourceValue;
   previewRef.current = onPreview;
   commitRef.current = onCommit;
 
@@ -36,6 +36,7 @@ export function useInspectorGestureTransaction<T>({
     const active = activeRef.current;
     activeRef.current = null;
     if (active && !Object.is(active.before, active.latest)) {
+      sourceRef.current = active.latest;
       // Restore the captured baseline before the persistent commit captures
       // rollback state. The commit reapplies `latest` synchronously, so this
       // is not visible but a failed save can now correctly restore `before`.
@@ -47,10 +48,13 @@ export function useInspectorGestureTransaction<T>({
   const cancel = useCallback(() => {
     const active = activeRef.current;
     activeRef.current = null;
-    if (active && !Object.is(active.before, active.latest)) previewRef.current(active.before);
+    if (active && !Object.is(active.before, active.latest)) {
+      sourceRef.current = active.before;
+      previewRef.current(active.before);
+    }
   }, []);
 
-  useEffect(() => cancel, [cancel, sourceValue]);
+  useEffect(() => cancel, [cancel]);
 
   return { begin, preview, settle, cancel, activeRef };
 }

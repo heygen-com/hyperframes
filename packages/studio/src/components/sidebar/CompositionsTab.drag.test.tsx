@@ -68,15 +68,20 @@ describe("composition card drag", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("offers a keyboard-focusable add-at-playhead action without opening the card", () => {
+  it("offers pointer and keyboard add-at-playhead actions without opening the card", () => {
     const { host, onSelect, onAddToTimeline } = mount();
     const add = host.querySelector<HTMLButtonElement>(
       '[aria-label="Add headline to timeline at playhead"]',
     );
     if (!add) throw new Error("add action did not render");
-    act(() => add.click());
+    act(() => {
+      add.click();
+      add.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      add.click();
+    });
 
-    expect(onAddToTimeline).toHaveBeenCalledWith("compositions/headline.html");
+    expect(onAddToTimeline).toHaveBeenCalledTimes(2);
+    expect(onAddToTimeline).toHaveBeenLastCalledWith("compositions/headline.html");
     expect(onSelect).not.toHaveBeenCalled();
   });
 });

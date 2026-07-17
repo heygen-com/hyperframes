@@ -110,6 +110,24 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   });
 });
 
+describe("parseTimelineFromDOM — canonical playback rate", () => {
+  it.each([
+    ["10", 5],
+    ["0.01", 0.1],
+  ])("clamps authored rate %s to %s for trim and split math", (authored, expected) => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="nested" class="clip" data-composition-src="scene.html"
+          data-start="0" data-duration="5" data-playback-rate="${authored}"></div>
+      </div>
+    `);
+
+    const nested = parseTimelineFromDOM(doc, 10).find((entry) => entry.domId === "nested");
+
+    expect(nested?.playbackRate).toBe(expected);
+  });
+});
+
 describe("createTimelineElementFromManifestClip — source-scoped selector identity", () => {
   it("preserves composition kind and source timing on first translation", () => {
     const doc = makeDoc(`

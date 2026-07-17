@@ -28,6 +28,7 @@ import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallb
 import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
+import { useStudioPlaybackContextOptional } from "../../contexts/StudioContext";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -85,6 +86,11 @@ export const Timeline = memo(function Timeline({
     onSplitElement: onSplitElementOverride,
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
+  const playbackContext = useStudioPlaybackContextOptional();
+  const setRefreshKey = playbackContext?.setRefreshKey;
+  const refreshAfterLaneMove = useCallback(() => {
+    setRefreshKey?.((key) => key + 1);
+  }, [setRefreshKey]);
   useMusicBeatAnalysis();
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
@@ -226,6 +232,7 @@ export const Timeline = memo(function Timeline({
     setRangeSelectionRef,
     readZIndex: zSyncEnabled ? readClipZIndex : undefined,
     onStackingPatches: zSyncEnabled ? applyStackingPatches : undefined,
+    refreshAfterLaneMove,
   });
 
   const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =

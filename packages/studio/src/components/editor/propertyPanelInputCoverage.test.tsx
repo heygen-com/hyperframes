@@ -356,7 +356,10 @@ describe.each(["classic", "flat"] as const)("shared %s input telemetry", (ui) =>
       (input) => input.value === "#FF0000",
     );
     if (!hex) throw new Error("expected color hex input");
-    act(() => changeInput(hex, "#00FF00"));
+    act(() => {
+      changeInput(hex, "#00FF00");
+      blurInput(hex);
+    });
 
     expect(trackStudioEvent).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenLastCalledWith("design_input", {

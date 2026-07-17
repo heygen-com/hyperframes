@@ -238,7 +238,11 @@ describe("FlatStyleSection — Stroke and Radius", () => {
       (input) => !host.contains(input),
     );
     if (!hexInput) throw new Error("expected the color picker's hex input");
-    act(() => setInputValue(hexInput, "#112233"));
+    act(() => {
+      setInputValue(hexInput, "#112233");
+      hexInput.focus();
+      hexInput.blur();
+    });
     expect(onSetStyle).toHaveBeenCalledWith("border-color", "rgb(17, 34, 51)");
     act(() => root.unmount());
   });

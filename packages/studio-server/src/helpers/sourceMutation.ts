@@ -298,6 +298,19 @@ export function splitElementInHtml(
   const clone = el.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
+  const compositionId = clone.getAttribute("data-composition-id");
+  if (compositionId) {
+    const usedCompositionIds = new Set(
+      Array.from(document.querySelectorAll("[data-composition-id]"), (node) =>
+        node.getAttribute("data-composition-id"),
+      ),
+    );
+    const base = `${compositionId}-split`;
+    let nextCompositionId = base;
+    let suffix = 2;
+    while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
+    clone.setAttribute("data-composition-id", nextCompositionId);
+  }
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.

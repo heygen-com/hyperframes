@@ -91,4 +91,48 @@ describe("commitTimelineCompositionInsertion", () => {
     expect(writeFile).toHaveBeenCalledWith("index.html", "before", "after");
     expect(refresh).not.toHaveBeenCalled();
   });
+
+  it("keeps a durable insertion successful and refreshes when resync fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(response({ content: "before", version: "v1" }))
+        .mockResolvedValueOnce(
+          response({
+            path: "index.html",
+            hostId: "headline",
+            before: "before",
+            after: "after",
+            version: "v2",
+          }),
+        ),
+    );
+    const refresh = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      commitTimelineCompositionInsertion({
+        projectId: "demo",
+        targetPath: "index.html",
+        sourcePath: "headline.html",
+        start: 4,
+        track: 2,
+        writeFile: vi.fn(),
+        recordEdit: vi.fn(),
+        selectHost: vi.fn(),
+        resync: () => {
+          throw new Error("resync failed");
+        },
+        refresh,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[Studio] Composition insertion committed but preview resync failed",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
+  });
 });

@@ -76,6 +76,10 @@ function readDurationAttribute(el: Element | null | undefined): number {
   return isFinitePositive(duration) ? duration : 0;
 }
 
+function normalizePlaybackRate(raw: number): number {
+  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
+}
+
 export function isTimelineIgnoredElement(el: Element): boolean {
   return Boolean(
     el.closest(
@@ -162,7 +166,7 @@ function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): 
 
   const authoredPlaybackRate = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
   if (Number.isFinite(authoredPlaybackRate) && authoredPlaybackRate > 0) {
-    entry.playbackRate = authoredPlaybackRate;
+    entry.playbackRate = normalizePlaybackRate(authoredPlaybackRate);
   }
 }
 
@@ -189,7 +193,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
 
   const playbackRate = mediaEl.defaultPlaybackRate;
   if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {
-    entry.playbackRate = playbackRate;
+    entry.playbackRate = normalizePlaybackRate(playbackRate);
   }
 }
 

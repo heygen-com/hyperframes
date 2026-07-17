@@ -90,8 +90,8 @@ function postCutBatch(
     path: string;
     expectedVersion: string;
     targets: Array<{
-      target: { id: string };
-      originalId: string;
+      target: { id?: string; hfId?: string; selector?: string; selectorIndex?: number };
+      originalId?: string;
       splitTime: number;
       elementStart: number;
       elementDuration: number;
@@ -681,6 +681,52 @@ describe("registerFileRoutes", () => {
       version: payload.files[0].version,
       writeToken: "cut-test",
     });
+  });
+
+  it("cuts multiple id-less selector targets against their original indices", async () => {
+    const projectDir = createProjectDir();
+    const before =
+      '<div class="clip" data-start="0" data-duration="4">A</div><div class="other" data-start="0" data-duration="4">Other</div><div class="clip" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { selector: ".clip", selectorIndex: 0 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { selector: ".other", selectorIndex: 0 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { selector: ".clip", selectorIndex: 1 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+        ],
+      },
+    ]);
+    const payload = (await response.json()) as {
+      files?: Array<{ after: string; splitCount: number }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.files?.[0]?.splitCount).toBe(3);
+    expect(payload.files?.[0]?.after.match(/class="clip"/g) ?? []).toHaveLength(4);
+    expect(payload.files?.[0]?.after.match(/class="other"/g) ?? []).toHaveLength(2);
+    expect(payload.files?.[0]?.after).toContain(">A</div>");
+    expect(payload.files?.[0]?.after).toContain(">B</div>");
   });
 
   it("rejects a stale multi-file cut before writing either file", async () => {

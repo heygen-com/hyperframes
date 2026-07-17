@@ -73,6 +73,57 @@ describe("insertCompositionIntoSource", () => {
     expect(second.html.match(/data-composition-src="headline.html"/g)).toHaveLength(2);
   });
 
+  it("reserves existing composition identities even when host ids are missing", () => {
+    const dir = project();
+    const existingParent = `<!doctype html><html><body>
+      <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="6">
+        <div data-composition-id="headline" data-composition-src="headline.html" data-start="0" data-duration="1" data-track-index="0"></div>
+      </div>
+    </body></html>`;
+    writeFileSync(join(dir, "index.html"), existingParent);
+    writeFileSync(join(dir, "headline.html"), child);
+
+    const result = insertCompositionIntoSource({
+      projectDir: dir,
+      targetPath: "index.html",
+      sourcePath: "headline.html",
+      parentSource: existingParent,
+      start: 2,
+      desiredTrack: 0,
+    });
+    const document = parseHTML(result.html).document;
+    const ids = Array.from(document.querySelectorAll("[data-composition-id]")).map((element) =>
+      element.getAttribute("data-composition-id"),
+    );
+
+    expect(result.hostId).toBe("headline_2");
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("ignores nested composition internals when resolving a parent track collision", () => {
+    const dir = project();
+    const inlineParent = `<!doctype html><html><body>
+      <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="6">
+        <div data-composition-id="nested" data-composition-src="nested.html" data-start="0" data-duration="6" data-track-index="0">
+          <div data-start="2" data-duration="3" data-track-index="2"></div>
+        </div>
+      </div>
+    </body></html>`;
+    writeFileSync(join(dir, "index.html"), inlineParent);
+    writeFileSync(join(dir, "headline.html"), child);
+
+    const result = insertCompositionIntoSource({
+      projectDir: dir,
+      targetPath: "index.html",
+      sourcePath: "headline.html",
+      parentSource: inlineParent,
+      start: 2,
+      desiredTrack: 2,
+    });
+
+    expect(result.track).toBe(2);
+  });
+
   it("inserts into a template-root parent composition", () => {
     const dir = project();
     const templateParent = `<template><div data-composition-id="parent" data-width="1920" data-height="1080" data-duration="2"></div></template>`;
