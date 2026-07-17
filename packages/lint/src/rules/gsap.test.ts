@@ -1926,6 +1926,26 @@ describe("GSAP seek-order safety rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
+  it("gsap_repeat_refresh_relative_value: does NOT flag relative values nested in callback vars", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="el"></div><div id="other"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#el', {
+      x: 100,
+      repeatRefresh: true,
+      onComplete: () => gsap.to('#other', { y: "-=15" }),
+    }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeat_refresh_relative_value");
+    expect(finding).toBeUndefined();
+  });
+
   it("gsap_repeat_refresh_relative_value: does NOT flag repeatRefresh without relative values", async () => {
     const html = `
 <html><body>
@@ -2163,6 +2183,25 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("svg_drawon_css_dasharray_conflict: does NOT flag a descendant-scoped CSS dasharray", async () => {
+    const html = `
+<html><body>
+  <style>.decorative-frame .wire { stroke-dasharray: 10 10; }</style>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="line" class="wire" d="M 0 0 L 100 0"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#line', { strokeDasharray: 100 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeUndefined();
+  });
+
   it("svg_drawon_css_dasharray_conflict: does NOT flag a single-component CSS dasharray", async () => {
     const html = `
 <html><body>
@@ -2250,21 +2289,42 @@ describe("SVG draw-on rules", () => {
     expect(finding?.severity).toBe("error");
   });
 
+  it("svg_measure_before_path_d: ERROR when only a different path has a d assignment", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="alpha"/><path id="beta"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const alpha = document.getElementById('alpha');
+    const beta = document.getElementById('beta');
+    beta.setAttribute('d', 'M0 0 L10 10');
+    const length = alpha.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#alpha', { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("no d");
+  });
+
   it("svg_measure_before_path_d: WARNING when d is only assigned inside a function body", async () => {
-    // The motivating composition measures a path whose d is assigned only inside
-    // a tl.add callback — statically undecidable order, so warning (not error).
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave"/></svg></div>
   <script>
     window.__timelines = window.__timelines || {};
+    const wave = document.getElementById('wave');
     function setupPath() {
-      const p = document.getElementById('wave');
-      p.setAttribute('d', 'M 0 0 L 500 500');
+      wave.setAttribute('d', 'M 0 0 L 500 500');
     }
     const tl = gsap.timeline({ paused: true });
     tl.add(setupPath, 2);
-    const wave = document.getElementById('wave');
     const length = wave.getTotalLength();
     tl.to('#wave', { strokeDashoffset: 0, duration: 1 }, 3);
     window.__timelines["c1"] = tl;

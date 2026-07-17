@@ -11,6 +11,7 @@ interface LintParsedGsap {
     duration?: number;
     ease?: string;
     extras?: Record<string, unknown>;
+    resolvedStart?: number;
     /** True for an off-timeline `gsap.set(...)` (applied once at load). */
     global?: boolean;
   }>;
@@ -146,18 +147,23 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
 
   const windows: GsapWindow[] = [];
   for (const animation of parsed.animations) {
-    // Skip animations with string positions (e.g. "+=1", "<") — their absolute
-    // timing depends on runtime evaluation and can't be statically linted.
-    if (typeof animation.position !== "number") continue;
+    const start =
+      animation.resolvedStart ??
+      (typeof animation.position === "number" ? animation.position : null);
+    if (start === null) continue;
     const repeat = extrasNumber(animation.extras?.repeat);
-    const cycleCount = repeat > 0 ? repeat + 1 : 1;
+    const infiniteRepeat = repeat < 0;
+    const cycleCount = infiniteRepeat ? 1 : repeat > 0 ? repeat + 1 : 1;
     const effectiveDuration =
       animation.method === "set" ? 0 : (animation.duration ?? 0) * cycleCount;
     windows.push({
       targetSelector: animation.targetSelector,
       targetIdentity: animation.targetIdentity,
-      position: animation.position,
-      end: animation.position + effectiveDuration,
+      position: start,
+      end:
+        infiniteRepeat && animation.method !== "set"
+          ? Number.POSITIVE_INFINITY
+          : start + effectiveDuration,
       properties: Object.keys(animation.properties),
       propertyValues: animation.properties,
       fromPropertyValues: animation.fromProperties,
@@ -663,6 +669,46 @@ function enclosingObjectLiteral(source: string, index: number): string | null {
   return null;
 }
 
+function objectLiteralHasTopLevelRelativeValue(objectLiteral: string): boolean {
+  let depth = 0;
+  let inString: '"' | "'" | "`" | null = null;
+  for (let i = 0; i < objectLiteral.length; i++) {
+    const ch = objectLiteral[i] ?? "";
+    const prev = objectLiteral[i - 1] ?? "";
+    if (inString) {
+      if (ch === inString && prev !== "\\") inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = ch;
+      if (depth === 1 && /^[+-]=/.test(objectLiteral.slice(i + 1))) return true;
+      continue;
+    }
+    if (ch === "{" || ch === "(" || ch === "[") depth++;
+    else if (ch === "}" || ch === ")" || ch === "]") depth--;
+  }
+  return false;
+}
+
+function isInsideGsapTweenVars(source: string, index: number, timelineVars: string[]): boolean {
+  let depth = 0;
+  for (let i = index; i >= 0; i--) {
+    const ch = source[i];
+    if (ch === "}") depth++;
+    else if (ch === "{") {
+      if (depth === 0) {
+        const before = source.slice(Math.max(0, i - 240), i).replace(/\s+/g, " ");
+        const receivers = ["gsap", ...timelineVars].map(escapeRegExp).join("|");
+        return new RegExp(`(?:${receivers})\\.(?:set|to|from|fromTo|timeline)\\b[\\s\\S]*$`).test(
+          before,
+        );
+      }
+      depth--;
+    }
+  }
+  return false;
+}
+
 /** An expression starting at `start`, ending at the first `,` / closer at depth 0. */
 function sliceExpression(source: string, start: number): string {
   let depth = 0;
@@ -679,6 +725,14 @@ function sliceExpression(source: string, start: number): string {
 
 type ParsedFunctionValue = { firstParam: string | null; body: string };
 
+function normalizeFirstParam(raw: string): string | null {
+  let param = raw.trim().replace(/=.*$/, "").trim();
+  param = param.replace(/\s*:\s*[\w$|<>,\s[\].]+$/, "").trim();
+  if (!param || /^[[{]/.test(param)) return null;
+  if (!/^[A-Za-z_$][\w$]*$/.test(param)) return null;
+  return param;
+}
+
 /** Parse a function-shaped source string into its first parameter and body. */
 function parseFunctionValueSource(code: string): ParsedFunctionValue | null {
   const src = code.trim();
@@ -687,7 +741,7 @@ function parseFunctionValueSource(code: string): ParsedFunctionValue | null {
     src.match(/^(?:async\s*)?\(([^)]*)\)\s*=>/) ??
     src.match(/^(?:async\s*)?([A-Za-z_$][\w$]*)\s*=>/);
   if (!match) return null;
-  const firstParam = (match[1] ?? "").split(",")[0]?.trim().replace(/=.*$/, "").trim() || null;
+  const firstParam = normalizeFirstParam((match[1] ?? "").split(",")[0] ?? "");
   return { firstParam, body: src.slice(match[0].length) };
 }
 
@@ -706,19 +760,20 @@ const NUMBER_METHODS = new Set([
   "valueOf",
 ]);
 
-// GSAP function values receive (index, target, targets) — index is a NUMBER.
-// A method call on the first parameter that isn't a number method means the
-// author assumed it was the element, which throws at tween init.
-function callsNonNumberMethodOnFirstParam(fn: ParsedFunctionValue): string | null {
+// Index is a NUMBER — non-number member access on the first param throws at init.
+function firstParamMemberAccessHazard(fn: ParsedFunctionValue): string | null {
   if (!fn.firstParam) return null;
   const pattern = new RegExp(
-    `\\b${escapeRegExp(fn.firstParam)}\\s*\\.\\s*([A-Za-z_$][\\w$]*)\\s*\\(`,
+    `\\b${escapeRegExp(fn.firstParam)}\\s*\\.\\s*([A-Za-z_$][\\w$]*)`,
     "g",
   );
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(fn.body)) !== null) {
-    const method = match[1] ?? "";
-    if (!NUMBER_METHODS.has(method)) return method;
+    const member = match[1] ?? "";
+    const after = fn.body.slice(match.index + match[0].length);
+    const isCall = /^\s*\(/.test(after);
+    if (isCall && NUMBER_METHODS.has(member)) continue;
+    return member;
   }
   return null;
 }
@@ -1739,7 +1794,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(source)) !== null) {
         const objectLiteral = enclosingObjectLiteral(source, match.index);
-        if (!objectLiteral || !/["'`][+-]=/.test(objectLiteral)) continue;
+        if (!objectLiteral || !objectLiteralHasTopLevelRelativeValue(objectLiteral)) continue;
         findings.push({
           code: "gsap_repeat_refresh_relative_value",
           severity: "error",
@@ -1791,20 +1846,20 @@ export const gsapRules: LintRule<LintContext>[] = [
           if (!fn) continue;
           const readsSensitive = TRANSFORM_SENSITIVE_READ.test(fn.body);
           const readsInvariant = TRANSFORM_INVARIANT_READ.test(fn.body);
-          const badMethod = callsNonNumberMethodOnFirstParam(fn);
-          if (!readsSensitive && !readsInvariant && !badMethod) continue;
+          const badMember = firstParamMemberAccessHazard(fn);
+          if (!readsSensitive && !readsInvariant && !badMember) continue;
           const reason = readsSensitive
             ? "reads transform-sensitive geometry, so its result depends on the worker's own seek order"
-            : badMethod
-              ? `calls .${badMethod}() on its first parameter — GSAP function values receive (index, target, targets), ` +
+            : badMember
+              ? `accesses .${badMember} on its first parameter — GSAP function values receive (index, target, targets), ` +
                 "so the first parameter is a NUMBER and this throws at tween init"
               : "measures layout at tween init, which is deterministic across cold render workers only while the measured layout never animates";
           findings.push({
             code: "gsap_function_value_hazard",
-            severity: readsSensitive || badMethod ? "error" : "warning",
+            severity: readsSensitive || badMember ? "error" : "warning",
             message: `Function-valued tween var for ${prop} on "${anim.targetSelector}" ${reason}. Each render worker initializes tweens independently.`,
             selector: anim.targetSelector,
-            fixHint: badMethod
+            fixHint: badMember
               ? "Use the SECOND parameter for the element: (index, target) => ... — or index arithmetic like (i) => i * 20."
               : "Compute the value once at build time (before the timeline is registered) and pass a constant, or derive it from fixed composition coordinates.",
             snippet: truncateSnippet(raw),
@@ -1864,7 +1919,8 @@ export const gsapRules: LintRule<LintContext>[] = [
         });
       };
 
-      for (const timelineVar of collectTimelineVarNames(source)) {
+      const timelineVars = collectTimelineVarNames(source);
+      for (const timelineVar of timelineVars) {
         const callPattern = new RegExp(
           `\\b${escapeRegExp(timelineVar)}\\.(?:add|call)\\s*\\(`,
           "g",
@@ -1878,18 +1934,23 @@ export const gsapRules: LintRule<LintContext>[] = [
           const site = match[0] + firstArg + ", ...)";
           if (callbackExpressionHazard(firstArg)) report(site, site);
         }
+
+        const eventCallbackPattern = new RegExp(
+          `\\b${escapeRegExp(timelineVar)}\\.eventCallback\\s*\\(\\s*["']on[A-Za-z]+["']\\s*,`,
+          "g",
+        );
+        while ((match = eventCallbackPattern.exec(source)) !== null) {
+          const expression = sliceExpression(source, eventCallbackPattern.lastIndex);
+          const site = match[0] + expression + ")";
+          if (callbackExpressionHazard(expression)) report(site, site);
+        }
       }
 
-      const eventCallbackPattern = /\.eventCallback\s*\(\s*["']on[A-Za-z]+["']\s*,/g;
+      const varsCallbackPattern =
+        /\bon(?:Start|Update|Complete|Repeat|ReverseComplete|Interrupt|Overwrite)\s*:\s*/g;
       let match: RegExpExecArray | null;
-      while ((match = eventCallbackPattern.exec(source)) !== null) {
-        const expression = sliceExpression(source, eventCallbackPattern.lastIndex);
-        const site = match[0] + expression + ")";
-        if (callbackExpressionHazard(expression)) report(site, site);
-      }
-
-      const varsCallbackPattern = /\bon(?:Start|Update|Complete|Repeat|ReverseComplete)\s*:\s*/g;
       while ((match = varsCallbackPattern.exec(source)) !== null) {
+        if (!isInsideGsapTweenVars(source, match.index, timelineVars)) continue;
         const expression = sliceExpression(source, varsCallbackPattern.lastIndex);
         const site = match[0] + expression;
         if (callbackExpressionHazard(expression)) report(site, site);
@@ -1936,14 +1997,18 @@ export const gsapRules: LintRule<LintContext>[] = [
     const findings: HyperframeLintFinding[] = [];
     const tagsByToken = indexTagsByToken(tags);
 
-    // Selector tokens whose CSS declares a multi-component stroke-dasharray.
     const multiDashTokens = new Set<string>();
     for (const style of styles) {
       for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
         if (!selectorList || !body) continue;
         const value = readStyleProperty(body, "stroke-dasharray");
         if (!value || !isMultiComponentDasharray(value)) continue;
-        for (const token of targetedSelectorTokens(selectorList)) multiDashTokens.add(token);
+        // Skip combinator groups — scope-dependent, unsafe to correlate by leaf token.
+        for (const group of selectorList.split(",")) {
+          const trimmed = group.trim();
+          if (!trimmed || /[\s>+~]/.test(trimmed)) continue;
+          for (const token of targetedSelectorTokens(trimmed)) multiDashTokens.add(token);
+        }
       }
     }
     for (const tag of tags) {
@@ -1958,44 +2023,58 @@ export const gsapRules: LintRule<LintContext>[] = [
       const varTokens = resolveScriptElementTokens(source, tags);
       const reported = new Set<string>();
 
-      // GSAP dasharray writers: `X.set/to/fromTo("selector"|elementVar, { ... })`
-      // whose vars object writes strokeDasharray.
       const writerPattern =
-        /\b[\w$]+\.(?:set|to|fromTo)\s*\(\s*(?:(["'])([^"'`]+)\1|([A-Za-z_$][\w$]*))\s*,\s*\{/g;
+        /\b[\w$]+\.(set|to|fromTo)\s*\(\s*(?:(["'])([^"'`]+)\2|([A-Za-z_$][\w$]*))\s*,\s*\{/g;
       let match: RegExpExecArray | null;
       while ((match = writerPattern.exec(source)) !== null) {
+        const method = match[1] ?? "";
         const braceIndex = match.index + match[0].length - 1;
-        const varsObject = matchBalanced(source, braceIndex, "{", "}");
-        if (!varsObject) continue;
-        const propMatch = varsObject.match(/\bstrokeDasharray\s*:\s*/);
-        if (!propMatch || propMatch.index === undefined) continue;
-        const valueSource = sliceExpression(varsObject, propMatch.index + propMatch[0].length);
-        if (gsapDasharrayValueLooksMultiComponent(valueSource)) continue;
+        const firstVars = matchBalanced(source, braceIndex, "{", "}");
+        if (!firstVars) continue;
+        const varsObjects = [firstVars];
+        if (method === "fromTo") {
+          const afterFirst = source.slice(braceIndex + firstVars.length);
+          const secondOpen = /^\s*,\s*\{/.exec(afterFirst);
+          if (secondOpen) {
+            const secondBrace = braceIndex + firstVars.length + secondOpen[0].length - 1;
+            const secondVars = matchBalanced(source, secondBrace, "{", "}");
+            if (secondVars) varsObjects.push(secondVars);
+          }
+        }
 
-        const quotedSelector = match[2];
+        const quotedSelector = match[3];
         const targetTokens = quotedSelector
           ? targetedSelectorTokens(quotedSelector)
-          : (varTokens.get(match[3] ?? "") ?? new Set<string>());
+          : (varTokens.get(match[4] ?? "") ?? new Set<string>());
         if (targetTokens.size === 0) continue;
         const expanded = elementLevelTokens(targetTokens, tagsByToken);
-        const conflictToken = [...expanded].find((token) => multiDashTokens.has(token));
-        if (!conflictToken) continue;
-        const targetLabel = quotedSelector ?? match[3] ?? "";
-        if (reported.has(targetLabel + conflictToken)) continue;
-        reported.add(targetLabel + conflictToken);
-        findings.push({
-          code: "svg_drawon_css_dasharray_conflict",
-          severity: "error",
-          message:
-            `GSAP writes strokeDasharray on "${targetLabel}", but its CSS ("${conflictToken}") declares a multi-component ` +
-            'stroke-dasharray. GSAP merges dash lists per component, so the CSS gap survives (e.g. "641.4px, 10px") — ' +
-            "the draw-on hide only hides one gap's worth and the line stays visible the whole scene.",
-          selector: quotedSelector ?? undefined,
-          fixHint:
-            `Remove the CSS stroke-dasharray from "${conflictToken}" (decorative dashes belong on a separate element), ` +
-            "or set the full two-component value in GSAP: `strokeDasharray: `${len} ${len}``.",
-          snippet: truncateSnippet(match[0] + varsObject.slice(1)),
-        });
+
+        for (const varsObject of varsObjects) {
+          const propMatch =
+            varsObject.match(/\bstrokeDasharray\s*:\s*/) ??
+            varsObject.match(/["']stroke-dasharray["']\s*:\s*/);
+          if (!propMatch || propMatch.index === undefined) continue;
+          const valueSource = sliceExpression(varsObject, propMatch.index + propMatch[0].length);
+          if (gsapDasharrayValueLooksMultiComponent(valueSource)) continue;
+          const conflictToken = [...expanded].find((token) => multiDashTokens.has(token));
+          if (!conflictToken) continue;
+          const targetLabel = quotedSelector ?? match[4] ?? "";
+          if (reported.has(targetLabel + conflictToken)) continue;
+          reported.add(targetLabel + conflictToken);
+          findings.push({
+            code: "svg_drawon_css_dasharray_conflict",
+            severity: "error",
+            message:
+              `GSAP writes strokeDasharray on "${targetLabel}", but its CSS ("${conflictToken}") declares a multi-component ` +
+              'stroke-dasharray. GSAP merges dash lists per component, so the CSS gap survives (e.g. "641.4px, 10px") — ' +
+              "the draw-on hide only hides one gap's worth and the line stays visible the whole scene.",
+            selector: quotedSelector ?? undefined,
+            fixHint:
+              `Remove the CSS stroke-dasharray from "${conflictToken}" (decorative dashes belong on a separate element), ` +
+              'or set the full two-component value in GSAP: strokeDasharray: "${len} ${len}".',
+            snippet: truncateSnippet(match[0] + firstVars.slice(1)),
+          });
+        }
       }
     }
     return findings;
@@ -2073,14 +2152,14 @@ export const gsapRules: LintRule<LintContext>[] = [
         );
         if (assignedBeforeInScope) continue;
 
-        const anyAssignmentExists = dAssignments.length > 0;
+        const sameVarAssignmentExists = dAssignments.some((a) => a.varName === varName);
         const tokenLabel = [...tokens].join(", ");
         if (reported.has(tokenLabel)) continue;
         reported.add(tokenLabel);
         findings.push({
           code: "svg_measure_before_path_d",
-          severity: anyAssignmentExists ? "warning" : "error",
-          message: anyAssignmentExists
+          severity: sameVarAssignmentExists ? "warning" : "error",
+          message: sameVarAssignmentExists
             ? `getTotalLength() is called on "${tokenLabel}", whose \`d\` is only assigned inside a function body — ` +
               "if the measure runs before that function (e.g. the function is a timeline callback), the length is 0 " +
               "and the dash animation is dead."

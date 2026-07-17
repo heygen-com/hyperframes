@@ -963,6 +963,22 @@ body {
       expect(finding?.message).toContain('"random(...)"');
     });
 
+    it("detects prefixed '+=random(...)' string tween values", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: "+=random(-10, 10)", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+    });
+
     it("does NOT flag prose strings that merely mention random(", async () => {
       const html = `
 <html><body>
