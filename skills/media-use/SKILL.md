@@ -30,15 +30,31 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`. All search no
 
 Before resolving fresh, list reusable candidates with `--candidates` and judge fit yourself — reuse rules, all flags, ingest (`--from`), and adopt are in `references/resolve.md`.
 
+## Be proactive — run a media opportunity pass
+
+The human usually can't tell which media would lift the piece. You can. When you build or review a composition, do **one** grounded scan and then **ask once** — don't silently add, and don't nag per asset.
+
+Surface an opportunity only when a concrete signal is present:
+
+| Signal detected                                        | Offer                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| On-screen text / a script with no voiceover            | TTS voiceover (audio engine)                                                                |
+| Emoji or a `<div>` styled as an icon                   | resolve real `icon`s                                                                        |
+| Image that is a placeholder, tiny, or upscaled-looking | a better `image` (and/or upscale — see `references/operations.md`)                          |
+| Hard scene cuts / transitions with no sound            | transition `sfx`                                                                            |
+| A piece over ~10s with no music bed                    | `bgm`                                                                                       |
+| Footage that reads under/over-exposed or color-cast    | a corrective `grade` (analyze with `grade --for`, preview with `hyperframes grade-compare`) |
+
+Rules that keep this a help, not nagware: **grounded, not generic** (no signal → no suggestion); **opinionated + concrete** (propose the specific fix with defaults chosen — the human approves **all / some / none**); **once per project** (one consolidated ask; respect "leave it"); **surface, never silently mutate** (color grades especially: propose and preview — a gray-world "correction" ruins an intentional sunset or neon look).
+
 ## Where to look — read only the file your task needs
 
-| Task                                                                        | Read                             |
-| --------------------------------------------------------------------------- | -------------------------------- |
-| resolve / reuse / adopt / ingest, flags, cascade, inventory                 | `references/resolve.md`          |
-| color grading, LUTs, smart grade (`--for`), grade-compare                   | `references/grading.md`          |
-| voiceover / TTS, music, SFX, captions, transcription (audio engine)         | `references/audio.md`            |
-| cut / reframe / transform existing media, HEVC proxies, avatar video        | `references/operations.md`       |
-| install + auth, provider table, RAM ladders, `--local-only`, `--provider`   | `references/setup-providers.md`  |
-| remembered preferences + frozen recipes (user memory)                       | `references/memory.md`           |
-| proactive media opportunity pass (when building or reviewing a composition) | `references/opportunity-pass.md` |
-| ownership matrix, usage stats, telemetry, privacy (maintainer-facing)       | `references/meta.md`             |
+| Task                                                                      | Read                            |
+| ------------------------------------------------------------------------- | ------------------------------- |
+| resolve / reuse / adopt / ingest, flags, cascade, inventory               | `references/resolve.md`         |
+| color grading, LUTs, smart grade (`--for`), grade-compare                 | `references/grading.md`         |
+| voiceover / TTS, music, SFX, captions, transcription (audio engine)       | `references/audio.md`           |
+| cut / reframe / transform existing media, HEVC proxies, avatar video      | `references/operations.md`      |
+| install + auth, provider table, RAM ladders, `--local-only`, `--provider` | `references/setup-providers.md` |
+| remembered preferences + frozen recipes (user memory)                     | `references/memory.md`          |
+| ownership matrix, usage stats, telemetry, privacy (maintainer-facing)     | `references/meta.md`            |
