@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-paper-backdrop",
+  "type": "hyperframes:component",
+  "title": "Vox Paper Backdrop",
+  "description": "Studio-white paper stage for the specimen grammar: low-frequency turbulence mottling + bright sweep + corner vignette, three code layers, zero assets. Mount once as the bottom layer.",
+  "tags": [
+    "vox",
+    "backdrop",
+    "paper",
+    "specimen",
+    "texture"
+  ],
+  "files": [
+    {
+      "path": "vox-paper-backdrop.html",
+      "target": "compositions/components/vox-paper-backdrop.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

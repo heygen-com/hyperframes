@@ -9,6 +9,13 @@
   .vox-arrow.blue .va-head { fill: #2E5F8A; }
   .vox-arrow.red path, .vox-arrow.red polyline { stroke: #D2382B; stroke-width: 2.5; }
   .vox-arrow.red .va-head { fill: #D2382B; }
+  /* .hand: specimen-grammar refinement (measured vs Cooper Black ref) — single-bend Q curve,
+     3.5px stroke, SMALL head (≤16px), and a displacement filter for hand wobble. Requires the
+     #rough filter from vox-print-ink. Pink (.pink) is the anatomy-annotation color; blue points
+     at world objects. */
+  .vox-arrow.hand { filter: url(#rough); }
+  .vox-arrow.hand path { stroke-width: 3.5; }
+  .vox-arrow.pink path { stroke: #de6e96; } .vox-arrow.pink .va-head { fill: #de6e96; }
 </style>
 <svg class="vox-arrow blue" width="220" height="90" viewBox="0 0 220 90">
   <path class="va-line" d="M6 10 C 60 70, 140 78, 204 46"/>

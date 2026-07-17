@@ -1,0 +1,13 @@
+<!-- vox-anno-label: the OTHER half of Vox's two-tier text system.
+     Tier 1 (this): plain uppercase letterspaced label, NO background — used for annotations
+       (BEFORE / AFTER / LOST AT 16 PX / CROSSBAR / THIS FONT). Sits near its target, often
+       paired with a thin hand arrow.
+     Tier 2 (vox-caption-chip): dark chip — used for WORDS inside kinetic sentences and event
+       callouts, never for anatomy annotations.
+     Mixing the tiers up is the #1 register mistake (measured against the Cooper Black reference). -->
+<style>
+  .vox-lbl { display: inline-block; font-family: "Archivo", "Helvetica Neue", sans-serif;
+    font-weight: 600; font-size: 26px; letter-spacing: .16em; color: #1a1a1a; text-transform: uppercase; }
+  .vox-lbl.dim { color: rgba(26,26,26,.72); font-size: 20px; letter-spacing: .18em; }
+</style>
+<span class="vox-lbl">Lost at 16 px</span>

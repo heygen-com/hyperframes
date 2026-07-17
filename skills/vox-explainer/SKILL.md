@@ -30,7 +30,7 @@ All artifacts in `videos/<project>/`. Phases: **grammar → beats → assets →
 
 ### 0. Pick the page grammar (one per piece — this is the biggest quality lever)
 
-"Vox style" is not one look; it is a FAMILY of page grammars sharing an annotation philosophy.
+"Vox style" is not one look; it is a FAMILY of SIX page grammars sharing an annotation philosophy.
 Pick by topic, before writing beats:
 
 | Grammar | Preset | Topic fit | Page basis |
@@ -40,6 +40,7 @@ Pick by topic, before writing beats:
 | dark-data | `presets/dark-data.md` | data, finance, investigation | charcoal, annotated charts, social cards |
 | archive | `presets/archive.md` | history, war, biography | near-black desk, floating photo cards |
 | atlas | `presets/atlas.md` | geopolitics, international | grayscale map, country fills, timeline bar |
+| specimen | `presets/specimen.md` | typography, branding, object stories | studio-paper void, everything is a card, print-ink type |
 
 A piece may borrow ONE page from a second grammar (e.g. an archive page inside an atlas piece)
 but has a single home grammar. The annotation components (§3) work across all five.

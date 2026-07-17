@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-print-ink",
+  "type": "hyperframes:component",
+  "title": "Vox Print Ink",
+  "description": "Print-craft bundle: ink-edge roughening (feDisplacementMap), magenta/cyan misregistration shadows, halftone dot fills. The reason code type reads as printed specimen instead of vector.",
+  "tags": [
+    "vox",
+    "texture",
+    "print",
+    "typography",
+    "specimen"
+  ],
+  "files": [
+    {
+      "path": "vox-print-ink.html",
+      "target": "compositions/components/vox-print-ink.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

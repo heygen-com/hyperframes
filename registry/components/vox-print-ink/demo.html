@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Print Ink demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#fbf9f4;display:grid;place-items:center;position:relative}</style></head>
+<body>
+<!-- vox-print-ink: the print-craft bundle for display type (specimen grammar).
+     .ink    — feTurbulence+feDisplacementMap roughens ink edges (never on small text: <40px blurs)
+     .misreg — magenta/cyan offset shadows fake print misregistration
+     .halftone-* — dot-screen fills for flat shapes (yellow stamp circles, sign panels)
+     Include the #rough filter defs ONCE per composition. Page grain: pair with vox-paper-backdrop. -->
+<style>
+  .ink { filter: url(#rough); }
+  .misreg { text-shadow: 3px 2px 0 rgba(197,64,120,.16), -3px -1px 0 rgba(64,150,197,.14); }
+  .halftone-y { background-color: #f2df1c;
+    background-image: radial-gradient(rgba(0,0,0,.05) 1.4px, transparent 1.6px); background-size: 9px 9px; }
+  .halftone-p { background-color: #f6f1e4;
+    background-image: radial-gradient(rgba(120,90,40,.05) 1px, transparent 1.3px); background-size: 7px 7px; }
+</style>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="rough" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="4" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="7"/>
+    </filter>
+    <filter id="grainy"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="11" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.45 0 0 0 0 0.42 0 0 0 0 0.38 0 0 0 0.10 0"/></filter>
+  </defs>
+</svg>
+<span class="ink misreg" style="font-family:'Shrikhand',serif;font-size:120px;color:#b8457c">Bloom</span>
+
+</body></html>

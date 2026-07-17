@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-specimen-card",
+  "type": "hyperframes:component",
+  "title": "Vox Specimen Card",
+  "description": "Rounded paper card with halftone texture and annotation sub-label \u2014 the specimen-grammar unit (objects, wordmarks, even the host are cards). Pop entrance 0.35s back.out(1.6), ~1.7s swap rhythm.",
+  "tags": [
+    "vox",
+    "card",
+    "specimen",
+    "layout"
+  ],
+  "files": [
+    {
+      "path": "vox-specimen-card.html",
+      "target": "compositions/components/vox-specimen-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+<!-- vox-paper-backdrop: the specimen-grammar stage — studio-white paper, NOT flat white.
+     Three code layers: low-frequency turbulence mottling (paper clouds), a bright studio sweep
+     high-center, and a soft corner vignette. Mount ONCE as the composition's bottom layer.
+     Tune: --paper (base), feColorMatrix alpha row (mottle strength, default .10). -->
+<style>
+  .vox-backdrop { position: absolute; inset: 0; background: var(--paper, #fbf9f4); }
+  .vox-backdrop .vb-sweep { position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 120% 90% at 50% 38%, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 55%),
+      radial-gradient(ellipse 140% 110% at 50% 55%, rgba(0,0,0,0) 62%, rgba(88,80,62,.10) 100%); }
+</style>
+<div class="vox-backdrop">
+  <svg width="1920" height="1080" style="position:absolute;inset:0" preserveAspectRatio="none">
+    <filter id="vb-clouds">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.016" numOctaves="3" seed="6" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.72  0 0 0 0 0.70  0 0 0 0 0.64  0 0 0 0.10 0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#vb-clouds)"/>
+  </svg>
+  <div class="vb-sweep"></div>
+</div>

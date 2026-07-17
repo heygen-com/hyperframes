@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-letter-anatomy",
+  "type": "hyperframes:component",
+  "title": "Vox Letter Anatomy",
+  "description": "Typography anatomy overlays: yellow baseline pads, pink foot/terminal pills, dashed construction lines, with the progressive-annotation helper voxAnatomyPop (pads first, pills second).",
+  "tags": [
+    "vox",
+    "typography",
+    "annotation",
+    "anatomy",
+    "specimen"
+  ],
+  "files": [
+    {
+      "path": "vox-letter-anatomy.html",
+      "target": "compositions/components/vox-letter-anatomy.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

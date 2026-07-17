@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Specimen Card demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#fbf9f4;display:grid;place-items:center;position:relative}</style></head>
+<body>
+<!-- vox-specimen-card: the specimen-grammar unit — EVERYTHING on the white stage is a rounded
+     card: a scanned object, a wordmark specimen, even the host. Paper fill with halftone dots,
+     24px radius, flat (near-zero shadow, per measured reference), ±1-2° rotation, centered mark
+     + small annotation sub-label. Entrance: center scale-in .35s back.out(1.6) ("photo-card pop");
+     swap rhythm ~1.7s/card, hard cuts. Never stack transforms: rotate on the card, tween a wrapper. -->
+<style>
+  .vox-specimen { position: relative; width: 480px; height: 620px; border-radius: 24px;
+    background: #f6f1e4; box-shadow: 0 1px 0 rgba(0,0,0,.06); display: grid; place-items: center;
+    overflow: hidden;
+    background-image: radial-gradient(rgba(120,90,40,.05) 1px, transparent 1.3px); background-size: 7px 7px; }
+  .vox-specimen .vs-sub { position: absolute; bottom: 36px; font-family: "Archivo", "Helvetica Neue", sans-serif;
+    font-weight: 600; font-size: 20px; letter-spacing: .18em; color: rgba(26,26,26,.72); }
+</style>
+<div class="vox-specimen" style="transform: rotate(-2deg)">
+  <span style="font-family:'Shrikhand',serif;font-size:96px;color:#d96a2b">MUNCH</span>
+  <span class="vs-sub">EST. 1996</span>
+</div>
+
+</body></html>

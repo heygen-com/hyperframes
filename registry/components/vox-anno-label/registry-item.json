@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-anno-label",
+  "type": "hyperframes:component",
+  "title": "Vox Annotation Label",
+  "description": "Plain uppercase letterspaced label with no background \u2014 tier 1 of Vox's two-tier text system (tier 2 is vox-caption-chip, reserved for sentence words and events). For BEFORE/AFTER/anatomy callouts.",
+  "tags": [
+    "vox",
+    "label",
+    "typography",
+    "annotation"
+  ],
+  "files": [
+    {
+      "path": "vox-anno-label.html",
+      "target": "compositions/components/vox-anno-label.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

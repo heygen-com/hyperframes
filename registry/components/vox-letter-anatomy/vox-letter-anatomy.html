@@ -1,0 +1,29 @@
+<!-- vox-letter-anatomy: typography-anatomy overlays (specimen grammar, Cooper Black reference).
+     Semantics from the source: YELLOW pad = baseline zone (under every compared letter),
+     PINK pill = foot/serif/terminal zone (pinned to the exact letterform part), and in full
+     anatomy diagrams the arrows are PINK (blue arrows are for pointing at world objects).
+     Progressive annotation: pads pop first (all specimens), pills second, labels+arrows third.
+       voxAnatomyPop(tl, selector, atT) — pops .va-pad then .va-pill children in sequence. -->
+<style>
+  .vox-anatomy { position: relative; display: inline-block; isolation: isolate; }
+  .vox-anatomy .va-pad { position: absolute; height: 38px; background: #f2df1c; z-index: -1; }
+  .vox-anatomy .va-pill { position: absolute; width: 96px; height: 34px; border-radius: 17px;
+    background: rgba(222,110,150,.75); }
+  .vox-anatomy .va-dash { position: absolute; border-top: 3px dashed rgba(26,26,26,.45); }
+</style>
+<div class="vox-anatomy">
+  <span style="font-family:'Shrikhand',serif;font-size:230px;line-height:1;color:#3a90bd">Y</span>
+  <span class="va-pad" style="left:-12%;right:-12%;bottom:2px"></span>
+  <span class="va-pill" style="left:8%;bottom:0"></span>
+  <span class="va-dash" style="left:-20%;right:-20%;bottom:38px"></span>
+</div>
+<script>
+  function voxAnatomyPop(tl, selector, atT) {
+    var root = document.querySelector(selector);
+    var pads = root.querySelectorAll(".va-pad"), pills = root.querySelectorAll(".va-pill");
+    tl.set(pads, { scaleX: 0, transformOrigin: "0% 50%" }, 0);
+    tl.set(pills, { scale: 0, transformOrigin: "50% 50%" }, 0);
+    tl.fromTo(pads, { scaleX: 0 }, { scaleX: 1, duration: .35, ease: "power2.inOut", stagger: .1 }, atT);
+    tl.fromTo(pills, { scale: 0 }, { scale: 1, duration: .25, ease: "back.out(2.5)", stagger: .12 }, atT + .45);
+  }
+</script>
