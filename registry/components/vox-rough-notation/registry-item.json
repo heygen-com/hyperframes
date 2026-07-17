@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "vox-rough-notation",
+  "type": "hyperframes:component",
+  "title": "Vox Rough Notation",
+  "description": "Hand-drawn word annotations absorbed from @remotion/rough-notation as pure HyperFrames code: seeded sketchy strokes + dashoffset draw-on, seek-safe, zero deps. Seven types (circle, underline, box, highlight, strike, crossed-off, bracket) with the roughnotation.com palette; highlight paints under the ink.",
+  "tags": [
+    "vox",
+    "annotation",
+    "rough-notation",
+    "gsap",
+    "hand-drawn"
+  ],
+  "files": [
+    {
+      "path": "vox-rough-notation.html",
+      "target": "compositions/components/vox-rough-notation.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

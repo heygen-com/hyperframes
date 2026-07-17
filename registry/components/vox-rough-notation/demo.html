@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=720, height=1280">
+<title>Vox Rough Notation demo</title><style>html,body{width:720px;height:1280px;margin:0;overflow:hidden;background:#F2F0EB;display:grid;place-items:center}</style></head>
+<body><!-- vox-rough-notation: hand-drawn word annotations, absorbed from @remotion/rough-notation as
+     pure HyperFrames code (seeded sketchy Q-curve paths + stroke-dashoffset draw-on, seek-safe,
+     zero deps). Seven types: circle / underline / box / highlight / strike / crossed-off / bracket.
+     Call voxNotate(tl, targetSel, type, atT, opts) after the target is laid out.
+     opts: seed, color, width, dur, pad, block (skip glyph-box shrink for block targets),
+     shrink [offsetFrac, heightFrac] (compensates line-height inflation; default [.26,.52] for
+     lh≈2 sentences — use ~[.10,.80] for tight single words).
+     Palette from the roughnotation.com originals: underline #D9442B on #FFEBEE, circle #2461E6
+     on #E3F2FD, box #0E8A5F, highlight #FFD84A (drawn UNDER the ink, butt caps), strike #1B5E20,
+     crossed-off #E23B2E, bracket #6A1B9A. Default draw ≈ .5s (original: 1000ms, 2 passes).
+     Requires: .rn-svg { position:absolute; overflow:visible; pointer-events:none; }
+               .rn-svg path { fill:none; stroke-linecap:round; stroke-linejoin:round; }
+     and a positioned annotated element (give the text z-index:1 so highlight sits under ink). -->
+<script>
+  function voxRoughPath(pts, seed, passes) {
+    function mulberry32(a){return function(){a|=0;a=(a+0x6d2b79f5)|0;var t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+    var r = mulberry32(seed), d = "";
+    for (var p = 0; p < (passes || 2); p++) {
+      d += "M" + (pts[0][0]+(r()-.5)*5) + " " + (pts[0][1]+(r()-.5)*5);
+      for (var i = 1; i < pts.length; i++) {
+        var midx = (pts[i-1][0]+pts[i][0])/2 + (r()-.5)*6, midy = (pts[i-1][1]+pts[i][1])/2 + (r()-.5)*6;
+        d += " Q" + midx + " " + midy + " " + (pts[i][0]+(r()-.5)*5) + " " + (pts[i][1]+(r()-.5)*5);
+      }
+    }
+    return d;
+  }
+  function voxEllipsePts(w, h, n) {
+    var pts = [], cx = w/2, cy = h/2;
+    for (var i = 0; i <= n; i++) { var a = -.5 + i/n * 2.15 * Math.PI;
+      pts.push([cx + Math.cos(a)*w*.56, cy + Math.sin(a)*h*.72]); }
+    return pts;
+  }
+  function voxNotate(tl, targetSel, type, atT, opts) {
+    opts = opts || {};
+    var el = document.querySelector(targetSel);
+    var stage = document.getElementById("root");
+    var r0 = el.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+    var x = r0.left - sr.left, y = r0.top - sr.top, w = r0.width, h = r0.height;
+    if (!opts.block) { var s = opts.shrink || [.26, .52]; y += h*s[0]; h *= s[1]; }
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "rn-svg");
+    svg.style.zIndex = (type === "highlight") ? "0" : "2";
+    var pad = opts.pad || 14;
+    svg.style.left = (x - pad) + "px"; svg.style.top = (y - pad) + "px";
+    svg.setAttribute("width", w + pad*2); svg.setAttribute("height", h + pad*2);
+    var seed = opts.seed || 7, color = opts.color || "#de6e96", sw = opts.width || 3.5;
+    var shapes = [];
+    if (type === "circle")           shapes = [voxEllipsePts(w + pad*2, h + pad*2, 22)];
+    else if (type === "underline")   shapes = [[[pad, h+pad-2],[w/3+pad, h+pad+1],[2*w/3+pad, h+pad-3],[w+pad, h+pad]]];
+    else if (type === "strike")      shapes = [[[pad, h/2+pad],[w/3+pad, h/2+pad-3],[2*w/3+pad, h/2+pad+3],[w+pad, h/2+pad]]];
+    else if (type === "box")         shapes = [[[pad,pad],[w+pad,pad],[w+pad,h+pad],[pad,h+pad],[pad,pad]]];
+    else if (type === "highlight")   shapes = [[[pad, h/2+pad],[w+pad, h/2+pad]]];
+    else if (type === "crossed-off") shapes = [[[pad,pad],[w+pad,h+pad]], [[w+pad,pad],[pad,h+pad]]];
+    else if (type === "bracket")     shapes = [[[pad+16,pad],[pad,pad+4],[pad,h+pad-4],[pad+16,h+pad]],
+                                               [[w+pad-16,pad],[w+pad,pad+4],[w+pad,h+pad-4],[w+pad-16,h+pad]]];
+    var t = atT;
+    shapes.forEach(function (pts, si) {
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", voxRoughPath(pts, seed + si*13, type === "highlight" ? 1 : 2));
+      path.setAttribute("stroke", color);
+      path.setAttribute("stroke-width", type === "highlight" ? h*.9 : sw);
+      if (type === "highlight") { path.setAttribute("opacity", ".62"); path.style.strokeLinecap = "butt"; }
+      svg.appendChild(path);
+      var L = path.getTotalLength();
+      tl.set(path, { strokeDasharray: L, strokeDashoffset: L }, 0);
+      tl.fromTo(path, { strokeDashoffset: L }, { strokeDashoffset: 0, duration: opts.dur || .5, ease: "power2.inOut" }, t);
+      t += (opts.dur || .5) * .75;
+    });
+    (el.closest("section") || stage).appendChild(svg);
+  }
+</script>
+</body></html>
