@@ -194,6 +194,61 @@ interface ElementPatchBatchFileResult {
   backupPath?: string | null;
 }
 
+interface AtomicCutTarget {
+  target: MutationTarget;
+  originalId?: string;
+  splitTime: number;
+  elementStart: number;
+  elementDuration: number;
+  playbackStart?: number;
+  playbackRate?: number;
+  isComposition?: boolean;
+}
+
+interface AtomicCutFileRequest {
+  path: string;
+  expectedVersion: string;
+  targets: AtomicCutTarget[];
+}
+
+function isAtomicCutTarget(value: unknown): value is AtomicCutTarget {
+  if (!value || typeof value !== "object") return false;
+  const target = value as Partial<AtomicCutTarget>;
+  return (
+    !!target.target &&
+    typeof target.target === "object" &&
+    Number.isFinite(target.splitTime) &&
+    Number.isFinite(target.elementStart) &&
+    Number.isFinite(target.elementDuration) &&
+    Number(target.elementDuration) > 0
+  );
+}
+
+function isAtomicCutFileRequest(value: unknown): value is AtomicCutFileRequest {
+  if (!value || typeof value !== "object") return false;
+  const file = value as Partial<AtomicCutFileRequest>;
+  return (
+    typeof file.path === "string" &&
+    file.path.length > 0 &&
+    typeof file.expectedVersion === "string" &&
+    Array.isArray(file.targets) &&
+    file.targets.length > 0 &&
+    file.targets.every(isAtomicCutTarget)
+  );
+}
+
+let atomicCutTail: Promise<unknown> = Promise.resolve();
+
+/** Serialize cut actions so a rapid second gesture observes the first one's bytes. */
+function serializeAtomicCut<T>(task: () => Promise<T>): Promise<T> {
+  const next = atomicCutTail.then(task, task);
+  atomicCutTail = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 function isElementPatchRequest(value: unknown): value is ElementPatchRequest {
   if (typeof value !== "object" || value === null) return false;
   if (!("target" in value) || typeof value.target !== "object" || value.target === null) {
@@ -1857,6 +1912,83 @@ async function executeGsapMutationRecast(
   }
 }
 
+interface FoldedAtomicCutFile {
+  path: string;
+  absPath: string;
+  before: string;
+  after: string;
+  splitCount: number;
+  skippedSelectors: string[];
+}
+
+/** Fold every split and optional GSAP retarget for one file without touching disk. */
+async function foldAtomicCutFile(
+  c: RouteContext,
+  file: AtomicCutFileRequest,
+  absPath: string,
+  before: string,
+): Promise<FoldedAtomicCutFile | Response> {
+  let after = before;
+  let splitCount = 0;
+  const skippedSelectors = new Set<string>();
+  const respond = (data: unknown, status?: number) =>
+    status ? c.json(data, status) : c.json(data);
+
+  for (const cut of file.targets) {
+    const baseId = cut.originalId || cut.target.id || "clip";
+    const split = splitElementInHtml(after, cut.target, cut.splitTime, `${baseId}-split`, {
+      start: cut.elementStart,
+      duration: cut.elementDuration,
+      playbackStart: cut.playbackStart,
+      playbackRate: cut.playbackRate,
+      stampPlaybackStart: cut.isComposition,
+    });
+    if (!split.matched || !split.newId) {
+      return c.json(
+        { error: `Cut target was not found or was outside its authored bounds in ${file.path}` },
+        400,
+      );
+    }
+    after = split.html;
+    splitCount++;
+
+    if (!cut.originalId) continue;
+    const block = extractGsapScriptBlock(after);
+    if (!block) continue;
+    const result = await executeGsapMutation(
+      {
+        type: "split-animations",
+        originalId: cut.originalId,
+        newId: split.newId,
+        splitTime: cut.splitTime,
+        elementStart: cut.elementStart,
+        elementDuration: cut.elementDuration,
+      },
+      block,
+      respond,
+    );
+    if (result instanceof Response) return result;
+    let script = typeof result === "string" ? result : result.script;
+    if (typeof result !== "string") {
+      for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
+    }
+    if (script !== block.scriptText) {
+      const parser = await loadGsapParser();
+      script = parser.syncPositionHoldsBeforeKeyframes(script);
+      after = block.replaceScript(script);
+    }
+  }
+
+  return {
+    path: file.path,
+    absPath,
+    before,
+    after,
+    splitCount,
+    skippedSelectors: [...skippedSelectors],
+  };
+}
+
 // ── Upload file processing ──────────────────────────────────────────────────
 
 async function processUploadedFiles(
@@ -2201,6 +2333,143 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       originalContent,
       removeElementFromHtml(originalContent, parsed.target),
     );
+  });
+
+  api.post("/projects/:id/file-mutations/split-batch", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      files?: unknown;
+      transactionToken?: unknown;
+    } | null;
+    if (
+      !Array.isArray(body?.files) ||
+      body.files.length === 0 ||
+      !body.files.every(isAtomicCutFileRequest)
+    ) {
+      return c.json({ error: "files with path, expectedVersion, and cut targets required" }, 400);
+    }
+    const files = body.files as AtomicCutFileRequest[];
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+
+    return serializeAtomicCut(async () => {
+      const seen = new Set<string>();
+      const prepared: FoldedAtomicCutFile[] = [];
+      for (const file of files) {
+        const absPath = resolveWithinProject(project.dir, file.path);
+        if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
+        if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
+        seen.add(absPath);
+
+        let before: string;
+        try {
+          before = readFileSync(absPath, "utf-8");
+        } catch {
+          return c.json({ error: `not found: ${file.path}` }, 404);
+        }
+        const currentVersion = fileContentVersion(before);
+        if (currentVersion !== file.expectedVersion) {
+          return c.json(
+            {
+              error: `file conflict: ${file.path}`,
+              path: file.path,
+              currentVersion,
+              currentContent: before,
+            },
+            409,
+          );
+        }
+        let folded: FoldedAtomicCutFile | Response;
+        try {
+          folded = await foldAtomicCutFile(c, file, absPath, before);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Cut transform failed";
+          return c.json({ error: message }, 400);
+        }
+        if (folded instanceof Response) return folded;
+        prepared.push(folded);
+      }
+
+      // Lazy GSAP parsing above can yield; revalidate every base before the first write.
+      for (const file of prepared) {
+        const current = readFileSync(file.absPath, "utf-8");
+        if (current !== file.before) {
+          return c.json(
+            {
+              error: `file conflict: ${file.path}`,
+              path: file.path,
+              currentVersion: fileContentVersion(current),
+              currentContent: current,
+            },
+            409,
+          );
+        }
+      }
+
+      const backups = new Map<string, string | null>();
+      for (const file of prepared) {
+        const backup = snapshotBeforeWrite(project.dir, file.absPath);
+        if (backup.error) {
+          return c.json(
+            { error: `Failed to create backup for ${file.path}: ${backup.error}` },
+            500,
+          );
+        }
+        backups.set(file.path, backupPathForResponse(project.dir, backup.backupPath));
+      }
+
+      const writeToken = createWriteToken(
+        typeof body.transactionToken === "string"
+          ? body.transactionToken
+          : c.req.header("X-Hyperframes-Write-Token"),
+      );
+      const written: FoldedAtomicCutFile[] = [];
+      try {
+        for (const file of prepared) {
+          writeFileSync(file.absPath, file.after, "utf-8");
+          written.push(file);
+          recordFileWriteReceipt(file.absPath, {
+            path: file.path,
+            version: fileContentVersion(file.after),
+            writeToken,
+          });
+        }
+      } catch (error) {
+        const conflicts: string[] = [];
+        for (const file of written.reverse()) {
+          const current = readFileSync(file.absPath, "utf-8");
+          if (current !== file.after) {
+            conflicts.push(file.path);
+            continue;
+          }
+          writeFileSync(file.absPath, file.before, "utf-8");
+          recordFileWriteReceipt(file.absPath, {
+            path: file.path,
+            version: fileContentVersion(file.before),
+            writeToken,
+          });
+        }
+        return c.json(
+          {
+            error: error instanceof Error ? error.message : "Cut write failed",
+            outcome: conflicts.length ? "aborted-with-conflicts" : "aborted-restored",
+            conflicts,
+          },
+          conflicts.length ? 409 : 500,
+        );
+      }
+
+      const result = prepared.map((file) => ({
+        path: file.path,
+        before: file.before,
+        after: file.after,
+        version: fileContentVersion(file.after),
+        writeToken,
+        backupPath: backups.get(file.path) ?? null,
+        splitCount: file.splitCount,
+        skippedSelectors: file.skippedSelectors,
+      }));
+      return c.json({ ok: true, outcome: "committed", files: result });
+    });
   });
 
   api.post("/projects/:id/file-mutations/split-element/*", async (c) => {

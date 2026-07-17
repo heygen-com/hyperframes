@@ -258,7 +258,13 @@ export function splitElementInHtml(
   target: SourceMutationTarget,
   splitTime: number,
   newId: string,
-  fallbackTiming?: { start: number; duration: number },
+  fallbackTiming?: {
+    start: number;
+    duration: number;
+    playbackStart?: number;
+    playbackRate?: number;
+    stampPlaybackStart?: boolean;
+  },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
@@ -306,11 +312,16 @@ export function splitElementInHtml(
     ? "data-playback-start"
     : el.hasAttribute("data-media-start")
       ? "data-media-start"
-      : null;
+      : fallbackTiming?.stampPlaybackStart
+        ? "data-playback-start"
+        : null;
   if (playbackStartAttr) {
-    const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
+    const currentTrim =
+      parseFloat(el.getAttribute(playbackStartAttr) ?? "") || fallbackTiming?.playbackStart || 0;
     const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate = Number.isFinite(rateRaw) ? rateRaw : 1;
+    const rate =
+      Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : (fallbackTiming?.playbackRate ?? 1);
+    el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),

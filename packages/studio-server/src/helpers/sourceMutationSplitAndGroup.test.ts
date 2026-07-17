@@ -103,6 +103,20 @@ describe("splitElementInHtml", () => {
     const result = splitElementInHtml(mediaSource, { id: "box" }, 3, "box-split");
     expect(result.html).toMatch(/id="box-split"[^>]*data-playback-start="2"/);
   });
+
+  it("stamps a legacy composition offset and advances the second half by playback rate", () => {
+    const result = splitElementInHtml(source, { id: "box" }, 3, "box-split", {
+      start: 1,
+      duration: 6,
+      playbackStart: 1.5,
+      playbackRate: 2,
+      stampPlaybackStart: true,
+    });
+
+    const { document } = parseHTML(result.html);
+    expect(document.getElementById("box")?.getAttribute("data-playback-start")).toBe("1.5");
+    expect(document.getElementById("box-split")?.getAttribute("data-playback-start")).toBe("5.5");
+  });
 });
 
 describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {

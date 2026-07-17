@@ -17,19 +17,30 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe("useRazorSplit mutation versions", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("observes each out-of-band mutation version before the OCC writer runs", async () => {
+  it("observes the batch version without a redundant client forward write", async () => {
     const original = '<div id="clip" data-start="0" data-duration="4">Clip</div>';
     const htmlSplit =
       '<div id="clip" data-start="0" data-duration="2">Clip</div><div id="clip-split" data-start="2" data-duration="2">Clip</div>';
     const final = `${htmlSplit}<script>window.__timelines = {}</script>`;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.includes("/files/")) return jsonResponse({ content: original });
-      if (url.includes("/file-mutations/split-element/")) {
-        return jsonResponse({ ok: true, changed: true, content: htmlSplit, version: '"v-html"' });
-      }
-      if (url.includes("/gsap-mutations/")) {
-        return jsonResponse({ ok: true, changed: true, after: final, version: '"v-gsap"' });
+      if (url.includes("/files/")) return jsonResponse({ content: original, version: '"v0"' });
+      if (url.includes("/file-mutations/split-batch")) {
+        return jsonResponse({
+          ok: true,
+          outcome: "committed",
+          files: [
+            {
+              path: "index.html",
+              before: original,
+              after: final,
+              version: '"v-cut"',
+              writeToken: "cut-1",
+              splitCount: 1,
+              skippedSelectors: [],
+            },
+          ],
+        });
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -78,8 +89,8 @@ describe("useRazorSplit mutation versions", () => {
       );
     });
 
-    expect(order).toEqual(['observe:index.html:"v-html"', 'observe:index.html:"v-gsap"', "write"]);
-    expect(writeProjectFile).toHaveBeenCalledWith("index.html", final, original);
+    expect(order).toEqual(['observe:index.html:"v-cut"']);
+    expect(writeProjectFile).not.toHaveBeenCalled();
     expect(recordEdit).toHaveBeenCalledTimes(1);
 
     act(() => root.unmount());

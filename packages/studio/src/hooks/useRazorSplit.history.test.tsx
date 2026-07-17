@@ -67,43 +67,36 @@ function mountRazorSplit(opts: { gsap?: boolean; previewStamp?: boolean } = {}):
     onChange: () => {},
   });
 
-  // Faithful stand-in for the studio-server file-mutation endpoints: the server
-  // writes the split to disk itself, then returns the patched content.
+  // Faithful stand-in for the atomic server cut: one forward file write and one
+  // response carrying the canonical history snapshots.
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
-    if (u.includes("/gsap-mutations/")) {
-      if (opts.gsap) {
-        // Mirror the server: rewrites the GSAP script for the new id, writes to
-        // disk, returns the final content.
-        disk["index.html"] = SPLIT_GSAP;
-        const version = `"test-gsap-${SPLIT_GSAP.length}"`;
-        return new Response(JSON.stringify({ ok: true, after: SPLIT_GSAP, version }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ETag: version },
-        });
-      }
-      // The fixture has no GSAP script — mirror the server's 400 response.
-      return new Response(JSON.stringify({ error: "no GSAP script found in file" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (u.includes("/file-mutations/split-element/")) {
-      disk["index.html"] = SPLIT;
-      const version = `"test-split-${SPLIT.length}"`;
+    if (u.includes("/file-mutations/split-batch")) {
+      const before = disk["index.html"];
+      disk["index.html"] = finalContent;
+      const version = `"test-cut-${finalContent.length}"`;
       return new Response(
         JSON.stringify({
           ok: true,
-          changed: true,
-          content: SPLIT,
-          newId: "clip1-split",
-          version,
+          outcome: "committed",
+          files: [
+            {
+              path: "index.html",
+              before,
+              after: finalContent,
+              version,
+              writeToken: "test-cut",
+              splitCount: 1,
+              skippedSelectors: [],
+            },
+          ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json", ETag: version } },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
     if (u.includes("/files/")) {
-      return new Response(JSON.stringify({ content: disk["index.html"] }), {
+      const content = disk["index.html"];
+      return new Response(JSON.stringify({ content, version: `"test-${content.length}"` }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

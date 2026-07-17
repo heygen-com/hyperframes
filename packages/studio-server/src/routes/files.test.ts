@@ -84,6 +84,27 @@ function postElementPatchBatches(
   });
 }
 
+function postCutBatch(
+  app: Hono,
+  files: Array<{
+    path: string;
+    expectedVersion: string;
+    targets: Array<{
+      target: { id: string };
+      originalId: string;
+      splitTime: number;
+      elementStart: number;
+      elementDuration: number;
+    }>;
+  }>,
+): Promise<Response> {
+  return app.request("http://localhost/projects/demo/file-mutations/split-batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files, transactionToken: "cut-test" }),
+  });
+}
+
 describe("registerFileRoutes", () => {
   it("CAS-inserts one composition host and leaves stale requests side-effect free", async () => {
     const projectDir = createProjectDir();
@@ -613,6 +634,113 @@ describe("registerFileRoutes", () => {
     expect(payload.changed).toBe(true);
     expect(payload.version).toBe(fileContentVersion(payload.content!));
     expect(response.headers.get("etag")).toBe(payload.version);
+  });
+
+  it("folds multiple same-file cuts and writes one canonical file result", async () => {
+    const projectDir = createProjectDir();
+    const before =
+      '<div id="a" data-start="0" data-duration="4">A</div><div id="b" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { id: "a" },
+            originalId: "a",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { id: "b" },
+            originalId: "b",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+        ],
+      },
+    ]);
+    const payload = (await response.json()) as {
+      files: Array<{ after: string; version: string; splitCount: number }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.files).toHaveLength(1);
+    expect(payload.files[0].splitCount).toBe(2);
+    expect(payload.files[0].after).toContain('id="a-split"');
+    expect(payload.files[0].after).toContain('id="b-split"');
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(payload.files[0].after);
+    expect(consumeFileWriteReceipt(join(projectDir, "index.html"))).toEqual({
+      path: "index.html",
+      version: payload.files[0].version,
+      writeToken: "cut-test",
+    });
+  });
+
+  it("rejects a stale multi-file cut before writing either file", async () => {
+    const projectDir = createProjectDir();
+    const beforeA = '<div id="a" data-start="0" data-duration="4">A</div>';
+    const beforeB = '<div id="b" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), beforeA);
+    writeFileSync(join(projectDir, "b.html"), beforeB);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const target = (id: string) => ({
+      target: { id },
+      originalId: id,
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    });
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(beforeA),
+        targets: [target("a")],
+      },
+      { path: "b.html", expectedVersion: '"stale"', targets: [target("b")] },
+    ]);
+
+    expect(response.status).toBe(409);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(beforeA);
+    expect(readFileSync(join(projectDir, "b.html"), "utf-8")).toBe(beforeB);
+  });
+
+  it("serializes rapid cuts so a stale successor cannot fragment the first result", async () => {
+    const projectDir = createProjectDir();
+    const before = '<div id="clip" data-start="0" data-duration="4">Clip</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const request = () =>
+      postCutBatch(app, [
+        {
+          path: "index.html",
+          expectedVersion: fileContentVersion(before),
+          targets: [
+            {
+              target: { id: "clip" },
+              originalId: "clip",
+              splitTime: 2,
+              elementStart: 0,
+              elementDuration: 4,
+            },
+          ],
+        },
+      ]);
+
+    const [first, second] = await Promise.all([request(), request()]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    const after = readFileSync(join(projectDir, "index.html"), "utf-8");
+    expect(after.match(/id="clip-split"/g) ?? []).toHaveLength(1);
   });
 
   // A realistic sub-composition: markup + GSAP wrapped in a <template>, tweens

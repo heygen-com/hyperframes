@@ -509,6 +509,7 @@ export function useTimelineEditing({
     domEditSaveTimestampRef,
     reloadPreview,
     isRecordingRef,
+    forceReloadSdkSession,
   });
 
   return {
