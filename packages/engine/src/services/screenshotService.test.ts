@@ -159,6 +159,16 @@ describe("pageContentExceedsCaptureHeight", () => {
     await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(false);
   });
 
+  it("tolerates exactly one CSS pixel past the requested height", async () => {
+    const page = makeFakePageWithScrollHeight(1921);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(false);
+  });
+
+  it("detects content just beyond the rounding tolerance", async () => {
+    const page = makeFakePageWithScrollHeight(1922);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
+  });
+
   it("is true when the page genuinely overflows the requested height", async () => {
     const page = makeFakePageWithScrollHeight(2007);
     await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);

@@ -192,6 +192,10 @@ export async function beginFrameCapture(
  * always request beyond-viewport" heuristic, which also unnecessarily routes
  * every video render through a CDP capture path prone to producing phantom
  * duplicate content on SwiftShader (#2550).
+ *
+ * Callers measure once after page settle. Hyperframes compositions have a
+ * fixed-height, overflow-clipped render surface; timeline animation may move
+ * pixels within that surface but must not grow document flow during capture.
  */
 export async function pageContentExceedsCaptureHeight(
   page: Page,

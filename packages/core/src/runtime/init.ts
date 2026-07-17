@@ -1595,6 +1595,7 @@ export function initSandboxRuntimeModular(): void {
   let metadataRebindApplied = false;
   // Flips true on the first renderSeek call — the render/producer capture
   // protocol's signal that it has started deterministically driving frames.
+  // One-way for this page lifetime; every producer render gets a fresh runtime.
   // See scheduleMetadataDurationHydration for why this gates the async
   // metadata rebind off once set.
   let renderCaptureSeekStarted = false;
