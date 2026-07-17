@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyMediaColor, pixelFormatHasAlpha, probeMediaMetadata } from "./mediaMetadata.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("classifyMediaColor", () => {
   it("detects HDR PQ from BT.2020 + smpte2084 metadata", () => {
@@ -123,7 +125,8 @@ describe("probeMediaMetadata", () => {
     });
   });
 
-  it("supports an async runner (the default execFile path is promise-based)", async () => {
+  it("supports an injected async runner without requiring local ffprobe", async () => {
+    vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");
     const metadata = await probeMediaMetadata("/tmp/clip.mp4", async () => ({
       status: 0,
       stdout: JSON.stringify({

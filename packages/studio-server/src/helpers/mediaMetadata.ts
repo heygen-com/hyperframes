@@ -184,10 +184,11 @@ export async function probeMediaMetadata(
     return { kind, color: classifyMediaColor(null) };
   }
 
-  // Best-effort, like the hevc_preview_codec lint rule: an env override
-  // pointing at a missing file, or no ffprobe on PATH at all, degrades to
-  // "unavailable" rather than spawning a doomed-to-ENOENT child process.
-  const ffprobePath = findFfBinary("ffprobe", { configuredMustExist: true });
+  // The default runner degrades a missing ffprobe to "unavailable" without
+  // spawning; injected runners own execution and receive the normal command.
+  const ffprobePath =
+    findFfBinary("ffprobe", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffprobe");
   if (!ffprobePath) {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe unavailable" };
   }

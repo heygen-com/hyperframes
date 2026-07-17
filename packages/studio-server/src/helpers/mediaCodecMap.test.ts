@@ -166,9 +166,7 @@ describe("probeAssetCodec", () => {
     writeFileSync(videoPath, "fake video bytes");
     process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
 
-    await expect(
-      probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" })),
-    ).resolves.toBeNull();
+    await expect(probeAssetCodec(videoPath)).resolves.toBeNull();
   });
 });
 
@@ -214,9 +212,7 @@ describe("scanProjectMediaCodecMap", () => {
     writeFileSync(join(project, "clip.mp4"), "fake video bytes");
     process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
 
-    const map = await scanProjectMediaCodecMap(project, [{ html: videoHtml("clip.mp4") }], {
-      runner: makeRunner({ [join(project, "clip.mp4")]: "hevc" }),
-    });
+    const map = await scanProjectMediaCodecMap(project, [{ html: videoHtml("clip.mp4") }]);
 
     expect(map).toEqual({});
   });
