@@ -12,6 +12,8 @@ interface TimelineClipProps {
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
+  /** Visual-only drag actor; excluded from clip identity and viewport queries. */
+  isGestureActor?: boolean;
   isActive?: boolean;
   hasCustomContent: boolean;
   capabilities: TimelineEditCapabilities;
@@ -36,6 +38,7 @@ export const TimelineClip = memo(function TimelineClip({
   isSelected,
   isHovered,
   isDragging = false,
+  isGestureActor = false,
   isActive = false,
   hasCustomContent,
   capabilities,
@@ -85,12 +88,13 @@ export const TimelineClip = memo(function TimelineClip({
 
   return (
     <div
-      data-clip="true"
-      data-el-id={el.key ?? el.id}
+      data-clip={isGestureActor ? undefined : "true"}
+      data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
       data-active={isActive ? "" : undefined}
+      aria-hidden={isGestureActor ? "true" : undefined}
       className={clipClassName}
       style={style}
       title={

@@ -45,6 +45,19 @@ export interface DragPreviewContext {
   audioTracks?: ReadonlySet<number>;
 }
 
+/** Content-space position for the stable viewport drag actor. */
+export function getTimelineDragOverlayPosition(
+  drag: DraggedClipState,
+  scroll: Pick<HTMLDivElement, "scrollLeft" | "scrollTop" | "getBoundingClientRect"> | null,
+): { left: number; top: number } | null {
+  if (!drag.started || !scroll) return null;
+  const rect = scroll.getBoundingClientRect();
+  return {
+    left: drag.pointerClientX - rect.left + scroll.scrollLeft - drag.pointerOffsetX,
+    top: drag.pointerClientY - rect.top + scroll.scrollTop - drag.pointerOffsetY,
+  };
+}
+
 /**
  * Max start a drag may reach. Allow dragging past the current content into the
  * rendered timeline extent (the viewport-fill keeps that ≥ the viewport width).
@@ -331,29 +344,22 @@ export function computeResizePreview(
 
 /**
  * Apply a rigid group-resize preview: fold the grabbed clip's raw delta into the
- * session, preview every non-grabbed member through the store (`updateElement`),
- * and set the grabbed clip's preview state (it renders from resizingClip state, so
- * its store value stays pristine until commit — like the single-clip path).
+ * session and publish a coordinator-owned projection. Canonical elements stay
+ * pristine until the exactly-once commit.
  */
 export function previewGroupResize(
   session: TimelineGroupResizeSession,
   next: ResizePreviewResult,
-  grabbedKey: string,
-  updateElement: (
-    key: string,
-    patch: { start: number; duration: number; playbackStart?: number },
+  setResizeState: (
+    v: ResizePreviewResult & { groupPreview: TimelineGroupResizeSession["changes"] },
   ) => void,
-  setResizeState: (v: ResizePreviewResult) => void,
 ): void {
   const grabbedChange = applyTimelineGroupResizePreview(session, next);
-  for (const c of session.changes) {
-    if (c.key === grabbedKey) continue;
-    updateElement(c.key, { start: c.start, duration: c.duration, playbackStart: c.playbackStart });
-  }
   setResizeState({
     originScrollLeft: next.originScrollLeft,
     previewStart: grabbedChange?.start ?? next.previewStart,
     previewDuration: grabbedChange?.duration ?? next.previewDuration,
     previewPlaybackStart: grabbedChange?.playbackStart ?? next.previewPlaybackStart,
+    groupPreview: session.changes,
   });
 }

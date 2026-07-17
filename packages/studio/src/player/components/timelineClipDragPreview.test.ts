@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { computeDragPreview, type DragPreviewContext } from "./timelineClipDragPreview";
+import {
+  computeDragPreview,
+  getTimelineDragOverlayPosition,
+  type DragPreviewContext,
+} from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
 
@@ -187,5 +191,34 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
       trackOrder: [0, 1],
     });
     expect(next.insertRow).toBe(0);
+  });
+});
+
+describe("getTimelineDragOverlayPosition", () => {
+  it("keeps the gesture actor under the pointer across two-axis autoscroll", () => {
+    const { drag } = horizontalDrag(moodboard, 0.5, 2);
+    const scroll = {
+      scrollLeft: 500,
+      scrollTop: 300,
+      getBoundingClientRect: () => ({ left: 20, top: 40 }),
+    } as Pick<HTMLDivElement, "scrollLeft" | "scrollTop" | "getBoundingClientRect">;
+    expect(
+      getTimelineDragOverlayPosition(
+        {
+          ...drag,
+          pointerClientX: 900,
+          pointerClientY: 700,
+          pointerOffsetX: 25,
+          pointerOffsetY: 10,
+        },
+        scroll,
+      ),
+    ).toEqual({ left: 1_355, top: 950 });
+  });
+
+  it("does not mount an actor before threshold or without the stable viewport", () => {
+    const { drag } = horizontalDrag(moodboard, 0.5, 2);
+    expect(getTimelineDragOverlayPosition({ ...drag, started: false }, fakeScroll())).toBeNull();
+    expect(getTimelineDragOverlayPosition(drag, null)).toBeNull();
   });
 });

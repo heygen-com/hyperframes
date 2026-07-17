@@ -42,8 +42,10 @@ function renderResizeHarness(
   const onResizeElement = vi.fn();
   const onResizeElements = vi.fn().mockResolvedValue(undefined);
   let setResizingClip: ((s: ResizingClipState | null) => void) | null = null;
+  let resizingClip: ResizingClipState | null = null;
+  let epoch = 0;
 
-  function Harness() {
+  function Harness({ sessionEpoch }: { sessionEpoch: number }) {
     const hook = useTimelineClipDrag({
       scrollRef: { current: scroll },
       ppsRef: { current: 100 },
@@ -53,13 +55,20 @@ function renderResizeHarness(
       onResizeElements: options.wireGroupResize === false ? undefined : onResizeElements,
       setShowPopover: vi.fn(),
       setRangeSelectionRef: { current: vi.fn() },
+      sessionEpoch,
     });
     setResizingClip = hook.setResizingClip;
+    resizingClip = hook.resizingClip;
     return null;
   }
 
-  const root = mountReactHarness(<Harness />);
+  const root = mountReactHarness(<Harness sessionEpoch={epoch} />);
   const apply = setResizingClip!;
+  const dispatchPointer = (type: string, clientX: number, pointerId?: number) => {
+    const event = new MouseEvent(type, { bubbles: true, clientX, clientY: 0 });
+    if (pointerId !== undefined) Object.defineProperty(event, "pointerId", { value: pointerId });
+    window.dispatchEvent(event);
+  };
 
   return {
     onResizeElement,
@@ -67,9 +76,13 @@ function renderResizeHarness(
     storeById(id: string) {
       return usePlayerStore.getState().elements.find((e) => e.id === id)!;
     },
-    startResize(element: TimelineElement, edge: "start" | "end") {
+    getResizeProjection() {
+      return resizingClip?.groupPreview ?? [];
+    },
+    startResize(element: TimelineElement, edge: "start" | "end", pointerId?: number) {
       act(() => {
         apply({
+          pointerId,
           element,
           edge,
           originClientX: 0,
@@ -80,15 +93,31 @@ function renderResizeHarness(
         });
       });
     },
-    movePointer(clientX: number) {
+    movePointer(clientX: number, pointerId?: number) {
       act(() => {
-        window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX, clientY: 0 }));
+        dispatchPointer("pointermove", clientX, pointerId);
       });
     },
-    async dropPointer() {
+    async dropPointer(pointerId?: number) {
       await act(async () => {
-        window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+        dispatchPointer("pointerup", 0, pointerId);
       });
+    },
+    async moveAndDropPointer(clientX: number, pointerId?: number) {
+      await act(async () => {
+        dispatchPointer("pointermove", clientX, pointerId);
+        dispatchPointer("pointerup", clientX, pointerId);
+      });
+    },
+    cancelPointer(pointerId?: number) {
+      act(() => dispatchPointer("pointercancel", 0, pointerId));
+    },
+    losePointerCapture(pointerId?: number) {
+      act(() => dispatchPointer("lostpointercapture", 0, pointerId));
+    },
+    setSessionEpoch(next: number) {
+      epoch = next;
+      act(() => root.render(<Harness sessionEpoch={epoch} />));
     },
     pressEscape() {
       act(() => {
@@ -161,14 +190,73 @@ describe("useTimelineClipDrag — single-clip resize (unchanged path)", () => {
   });
 });
 
+describe("useTimelineClipDrag — gesture lifecycle", () => {
+  it("commits the final same-turn pointer move exactly once", async () => {
+    const a = el("a", { duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end", 7);
+    await h.moveAndDropPointer(75, 7);
+    await h.dropPointer(7);
+    expect(h.onResizeElement).toHaveBeenCalledTimes(1);
+    expect(h.onResizeElement).toHaveBeenCalledWith(a, expect.objectContaining({ duration: 2.75 }));
+    h.unmount();
+  });
+
+  it("ignores another pointer and cancels without committing", async () => {
+    const a = el("a", { duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end", 7);
+    h.movePointer(50, 8);
+    await h.dropPointer(8);
+    expect(h.onResizeElement).not.toHaveBeenCalled();
+    h.cancelPointer(7);
+    await h.dropPointer(7);
+    expect(h.onResizeElement).not.toHaveBeenCalled();
+    expect(h.storeById("a").duration).toBe(2);
+    h.unmount();
+  });
+
+  it("cancels an active projection when the project epoch changes", () => {
+    const a = el("a", { duration: 2 });
+    const h = renderResizeHarness([a], []);
+    h.startResize(a, "end", 7);
+    h.movePointer(50, 7);
+    h.setSessionEpoch(1);
+    expect(h.getResizeProjection()).toHaveLength(0);
+    expect(h.onResizeElement).not.toHaveBeenCalled();
+    expect(h.storeById("a").duration).toBe(2);
+    h.unmount();
+  });
+
+  it("treats lost capture and unmount as cancellation", async () => {
+    const a = el("a", { duration: 2 });
+    const lost = renderResizeHarness([a], []);
+    lost.startResize(a, "end", 7);
+    lost.movePointer(50, 7);
+    lost.losePointerCapture(7);
+    await lost.dropPointer(7);
+    expect(lost.onResizeElement).not.toHaveBeenCalled();
+    lost.unmount();
+
+    const unmounted = renderResizeHarness([a], []);
+    unmounted.startResize(a, "end", 9);
+    unmounted.movePointer(50, 9);
+    unmounted.unmount();
+    expect(unmounted.onResizeElement).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().elements[0]?.duration).toBe(2);
+  });
+});
+
 describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
-  it("previews the non-grabbed member through the store, grabbed stays out until commit", () => {
+  it("previews every member without mutating canonical elements", () => {
     const { h } = startGroupResize(); // grabbed asks +0.5
 
-    // Non-grabbed member is previewed in the store; the grabbed clip renders from
-    // resizingClip state, so its store value is still the original until commit.
-    expect(h.storeById("b").duration).toBe(3.5);
+    expect(h.getResizeProjection()).toEqual([
+      expect.objectContaining({ key: "a", duration: 2.5 }),
+      expect.objectContaining({ key: "b", duration: 3.5 }),
+    ]);
     expect(h.storeById("a").duration).toBe(2);
+    expect(h.storeById("b").duration).toBe(3);
     h.unmount();
   });
 
@@ -186,6 +274,7 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
       { coalesceKey: expect.stringMatching(/^clip-group-resize:/) },
     );
     expect(h.storeById("a").duration).toBe(2.5);
+    expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").duration).toBe(3.5);
     h.unmount();
   });
@@ -213,7 +302,10 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
     });
     h.startResize(a, "end");
     h.movePointer(50);
-    expect(h.storeById("b").duration).toBe(3.5);
+    expect(h.getResizeProjection()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "b", duration: 3.5 })]),
+    );
+    expect(h.storeById("b").duration).toBe(3);
 
     await h.dropPointer();
     expect(h.storeById("a").duration).toBe(2);
@@ -229,12 +321,13 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
     h.unmount();
   });
 
-  it("Escape rolls back the previewed non-grabbed member and persists nothing", () => {
+  it("Escape discards the projection and persists nothing", () => {
     const { h } = startGroupResize();
-    expect(h.storeById("b").duration).toBe(3.5); // previewed
+    expect(h.getResizeProjection()).toHaveLength(2);
 
     h.pressEscape();
-    expect(h.storeById("b").duration).toBe(3); // restored
+    expect(h.getResizeProjection()).toHaveLength(0);
+    expect(h.storeById("b").duration).toBe(3);
     expect(h.onResizeElement).not.toHaveBeenCalled();
     h.unmount();
   });
