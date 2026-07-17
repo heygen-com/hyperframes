@@ -1049,6 +1049,10 @@ const UPD_ARRAY_SCRIPT = `
   const tl = gsap.timeline({ paused: true });
   tl.to("#dot", { keyframes: [{ x: 0, y: 0 }, { x: 50, y: 80 }, { x: 100, y: 0 }], duration: 1 }, 0.2);
 `;
+const UPD_MOTION_PATH_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#title", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 40 }] }, duration: 1, ease: "power1.inOut" }, 0.2);
+`;
 
 describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
   function expectParity(
@@ -1098,6 +1102,17 @@ describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
     expect(updateKeyframeRecast(UPD_OBJ_SCRIPT, "bad-id", 50, { opacity: 0.4 })).toBe(
       UPD_OBJ_SCRIPT,
     );
+  });
+
+  it("updates the authored tween ease for synthetic motion-path keyframes", () => {
+    const id = acornId(UPD_MOTION_PATH_SCRIPT);
+    const ease = "spring(0.42)";
+    const acorn = updateKeyframeAcorn(UPD_MOTION_PATH_SCRIPT, id, 100, {}, ease);
+    const recast = updateKeyframeRecast(UPD_MOTION_PATH_SCRIPT, id, 100, {}, ease);
+
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+    expect(parseGsapScript(acorn).animations[0]?.ease).toBe(ease);
+    expect(parseGsapScript(recast).animations[0]?.ease).toBe(ease);
   });
 
   // KNOWN DIVERGENCE (acorn-array bug, follow-up — NOT a test artifact):

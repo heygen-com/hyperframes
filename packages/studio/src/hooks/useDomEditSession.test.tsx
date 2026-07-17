@@ -314,7 +314,7 @@ describe("bulk segment ease commits", () => {
     gsapCommitMutation.mockClear();
     gsapCommitMutation.batch.mockClear();
     let updateSegmentEase:
-      | ((animationIds: string[], tweenPct: number, ease: string) => void)
+      | ((targets: Array<{ animationId: string; tweenPercentage: number }>, ease: string) => void)
       | undefined;
 
     function Probe() {
@@ -362,17 +362,22 @@ describe("bulk segment ease commits", () => {
       expect(updateSegmentEase).toBeTypeOf("function");
       if (!updateSegmentEase) return;
       const options = { label: "Update segment ease", softReload: true };
-      updateSegmentEase(["move-x", "move-y", "fade"], 100, "power2.inOut");
+      const targets = [
+        { animationId: "move-x", tweenPercentage: 20 },
+        { animationId: "move-y", tweenPercentage: 50 },
+        { animationId: "fade", tweenPercentage: 80 },
+      ];
+      updateSegmentEase(targets, "power2.inOut");
 
       expect(gsapCommitMutation).not.toHaveBeenCalled();
       expect(gsapCommitMutation.batch).toHaveBeenCalledTimes(1);
       expect(gsapCommitMutation.batch).toHaveBeenCalledWith(
-        ["move-x", "move-y", "fade"].map((animationId) => ({
+        targets.map(({ animationId, tweenPercentage }) => ({
           selection,
           mutation: {
             type: "update-keyframe",
             animationId,
-            percentage: 100,
+            percentage: tweenPercentage,
             properties: {},
             ease: "power2.inOut",
           },
@@ -383,7 +388,7 @@ describe("bulk segment ease commits", () => {
 
       gsapCommitMutation.mockClear();
       gsapCommitMutation.batch.mockClear();
-      updateSegmentEase(["fade"], 25, "none");
+      updateSegmentEase([{ animationId: "fade", tweenPercentage: 25 }], "none");
       expect(gsapCommitMutation).toHaveBeenCalledTimes(1);
       expect(gsapCommitMutation).toHaveBeenCalledWith(
         selection,
@@ -399,7 +404,7 @@ describe("bulk segment ease commits", () => {
       expect(gsapCommitMutation.batch).not.toHaveBeenCalled();
 
       gsapCommitMutation.mockClear();
-      updateSegmentEase([], 50, "linear");
+      updateSegmentEase([], "linear");
       expect(gsapCommitMutation).not.toHaveBeenCalled();
       expect(gsapCommitMutation.batch).not.toHaveBeenCalled();
     } finally {

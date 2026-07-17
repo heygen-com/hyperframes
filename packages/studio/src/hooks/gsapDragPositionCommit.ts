@@ -259,6 +259,54 @@ export async function commitGsapPositionFromDrag(
 
   const backfillDefaults: Record<string, number> = { x: baseGsapX, y: baseGsapY };
   const ct = usePlayerStore.getState().currentTime;
+  if (anim.arcPath?.enabled) {
+    const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+    const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+    const keyframes = anim.keyframes?.keyframes ?? [];
+    const pointIndex = keyframes.findIndex((kf) => Math.abs(kf.percentage - pct) < 0.05);
+    if (pointIndex >= 0) {
+      await callbacks.commitMutation(
+        selection,
+        {
+          type: "update-motion-path-point",
+          animationId: anim.id,
+          pointIndex,
+          x: newX,
+          y: newY,
+        },
+        { label: "Move layer (waypoint)", softReload: true, beforeReload: restoreOffset },
+      );
+      setActiveKeyframePct(null);
+      parkPlayheadOnKeyframe(anim, pct);
+      return;
+    }
+
+    const tweenStart = resolveTweenStart(anim);
+    const tweenDuration = resolveTweenDuration(anim);
+    if (tweenStart === null || tweenDuration <= 0 || keyframes.length < 2) return;
+    const temporalKeyframes = [
+      ...keyframes.map((kf) => ({
+        percentage: kf.percentage,
+        properties: { ...kf.properties },
+        ...(kf.ease ? { ease: kf.ease } : {}),
+      })),
+      { percentage: pct, properties: { x: newX, y: newY } },
+    ].sort((a, b) => a.percentage - b.percentage);
+    await callbacks.commitMutation(
+      selection,
+      {
+        type: "replace-with-keyframes",
+        animationId: anim.id,
+        targetSelector: anim.targetSelector,
+        position: roundTo3(tweenStart),
+        duration: roundTo3(tweenDuration),
+        keyframes: temporalKeyframes,
+        ease: "none",
+      },
+      { label: "Move layer (new keyframe)", softReload: true, beforeReload: restoreOffset },
+    );
+    return;
+  }
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
     const effectiveAnim = newId ? { ...anim, id: newId } : anim;

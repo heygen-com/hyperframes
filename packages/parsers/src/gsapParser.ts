@@ -2499,6 +2499,21 @@ export function updateKeyframeInScript(
     return recast.print(arrLoc.parsed.ast).code;
   }
 
+  // motionPath waypoints are exposed to Studio as synthetic keyframes, while
+  // their source representation owns one tween-level ease. Route an ease-only
+  // segment edit to that authored owner instead of silently no-oping because a
+  // literal keyframes block does not exist.
+  if (
+    arrLoc &&
+    !arrVal &&
+    ease !== undefined &&
+    Object.keys(properties).length === 0 &&
+    findPropertyNode(arrLoc.target.call.varsArg, "motionPath")
+  ) {
+    applyUpdatesToCall(arrLoc.target.call, { ease });
+    return recast.print(arrLoc.parsed.ast).code;
+  }
+
   const ctx = locateKeyframeCtx(script, animationId, percentage);
   if (!ctx) return script;
   const { loc, kfNode } = ctx;

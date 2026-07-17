@@ -879,7 +879,21 @@ export function updateKeyframeInScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode) return script;
+  if (!kfPropNode) {
+    // motionPath waypoints are exposed to Studio as synthetic keyframes, but
+    // GSAP authors one ease for the whole motionPath tween. An ease-only edit
+    // therefore belongs on the tween instead of a nonexistent keyframes block.
+    if (
+      ease !== undefined &&
+      Object.keys(properties).length === 0 &&
+      findPropertyNode(target.call.varsArg, "motionPath")
+    ) {
+      const ms = new MagicString(script);
+      upsertProp(ms, target.call.varsArg, "ease", ease);
+      return ms.toString();
+    }
+    return script;
+  }
 
   // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
   // — GSAP distributes them evenly, and the runtime read assigns even percentages
