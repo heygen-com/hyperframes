@@ -50,6 +50,7 @@ type GsapWindow = {
   propertyValues: Record<string, string | number>;
   fromPropertyValues?: Record<string, string | number>;
   overwriteAuto: boolean;
+  immediateRender: boolean;
   method: string;
   /** True for an off-timeline `gsap.set(...)` (applied once at load). */
   global?: boolean;
@@ -168,6 +169,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       propertyValues: animation.properties,
       fromPropertyValues: animation.fromProperties,
       overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
+      immediateRender: unwrapRaw(animation.extras?.immediateRender) === "true",
       method: animation.method,
       global: animation.global,
       raw: synthesizeWindowRaw(parsed.timelineVar, animation),
@@ -211,6 +213,7 @@ function isHiddenGsapState(values: Record<string, string | number>): boolean {
 function extractStandaloneHiddenSelectors(script: string): Set<string> {
   const selectors = new Set<string>();
   const source = stripJsComments(script);
+  const functionRanges = collectFunctionBodyRanges(source);
   const aliases = new Map<string, string>();
   for (const match of source.matchAll(
     /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])([^"'`]+)\2\s*;/g,
@@ -220,6 +223,7 @@ function extractStandaloneHiddenSelectors(script: string): Set<string> {
   const pattern = /gsap\.set\s*\(\s*([^,]+?)\s*,\s*\{([\s\S]*?)\}\s*\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
+    if (indexInsideAnyRange(match.index, functionRanges)) continue;
     const target = (match[1] ?? "").trim();
     const selector = /^(["'`])([^"'`]+)\1$/.exec(target)?.[2] ?? aliases.get(target);
     if (!selector) continue;
@@ -1864,6 +1868,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       const windows = await cachedExtractGsapWindows(script.content);
       for (const win of windows) {
         if (win.method === "from" || win.method === "fromTo") continue;
+        if (win.overwriteAuto) continue;
         if (targetHasNoStableIdentity(win.targetSelector, win.targetIdentity)) continue;
         const relativeProps = Object.entries(win.propertyValues)
           .filter(([, value]) => isRelativeTweenValue(value))
@@ -1872,10 +1877,6 @@ export const gsapRules: LintRule<LintContext>[] = [
         const target = { selector: win.targetSelector, identity: win.targetIdentity };
         for (const other of windows) {
           if (other === win) continue;
-          // Writer-active-at-start: a writer starting at the same position counts
-          // (the relative tween's base still depends on how far along the writer
-          // is when the worker first renders), a writer completing at or before
-          // the start does not.
           if (other.position > win.position || other.end <= win.position) continue;
           const sharedProps = relativeProps.filter((prop) => other.properties.includes(prop));
           if (sharedProps.length === 0) continue;
@@ -1892,12 +1893,13 @@ export const gsapRules: LintRule<LintContext>[] = [
             .map((prop) => `${prop}: "${win.propertyValues[prop]}"`)
             .join(", ");
           const overlapEnd = Math.min(win.end, other.end);
+          const formatTime = (t: number): string => (Number.isFinite(t) ? `${t.toFixed(2)}s` : "∞");
           findings.push({
             code: "gsap_relative_value_second_writer",
             severity: "error",
             message:
               `Relative value(s) ${values} on "${win.targetSelector}" start while another writer for the same ` +
-              `propert${sharedProps.length > 1 ? "ies" : "y"} is active between ${win.position.toFixed(2)}s and ${overlapEnd.toFixed(2)}s. ` +
+              `propert${sharedProps.length > 1 ? "ies" : "y"} is active between ${formatTime(win.position)} and ${formatTime(overlapEnd)}. ` +
               "Relative tweens capture their base at tween init: the sequential path inits mid-flight of the other " +
               "writer, a cold render worker landing later inits with its end state — the same frame renders at two " +
               "different positions (snap at chunk boundaries).",
@@ -2234,18 +2236,15 @@ export const gsapRules: LintRule<LintContext>[] = [
         ...cssHiddenSelectors,
         ...extractStandaloneHiddenSelectors(script.content),
       ]);
-      // Windows preserve source order; sets after the first tween are not
-      // initial-state authoring.
-      const firstTweenIndex = windows.findIndex((win) => win.method !== "set");
-      const initialSets = firstTweenIndex < 0 ? windows : windows.slice(0, firstTweenIndex);
-      for (const win of initialSets) {
-        if (win.method !== "set" || win.position !== 0) continue;
-        // Off-timeline gsap.set(...) applies immediately at load — it IS the fix.
-        if (win.global) continue;
+      const isInstantHold = (win: GsapWindow): boolean =>
+        win.method === "set" ||
+        ((win.method === "to" || win.method === "fromTo") && win.end === win.position);
+      const firstTweenIndex = windows.findIndex((win) => !isInstantHold(win));
+      const initialHolds = firstTweenIndex < 0 ? windows : windows.slice(0, firstTweenIndex);
+      for (const win of initialHolds) {
+        if (!isInstantHold(win) || win.position !== 0) continue;
+        if (win.global || win.immediateRender) continue;
         if (targetHasNoStableIdentity(win.targetSelector, win.targetIdentity)) continue;
-        // Exempt when every targeted element is already hidden — matched by the
-        // target's own tokens or by ANY selector of the elements it resolves to
-        // (an id-targeted set over a CSS-hidden class, e.g. `.ball { opacity: 0 }`).
         const targetTokens = [...targetedSelectorTokens(win.targetSelector)];
         const hiddenByToken =
           targetTokens.length > 0 && targetTokens.every((token) => alreadyHidden.has(token));

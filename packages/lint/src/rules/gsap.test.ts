@@ -2088,6 +2088,23 @@ describe("GSAP seek-order safety rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("gsap_relative_value_second_writer: does NOT flag when the relative writer has overwrite auto", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { y: 100, duration: 2 }, 0);
+    tl.to('#a', { y: "-=15", duration: 1, overwrite: "auto" }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_relative_value_second_writer");
+    expect(finding).toBeUndefined();
+  });
+
   // ── gsap_repeat_refresh_relative_value ─────────────────────────────────────
 
   it("gsap_repeat_refresh_relative_value: flags repeatRefresh with a relative value in the same vars", async () => {
@@ -2523,6 +2540,79 @@ describe("SVG draw-on rules", () => {
     const tl = gsap.timeline({ paused: true });
     tl.set('#a', { opacity: 0 }, 0);
     tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT exempt a gsap.set nested inside a callback", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div><button id="btn"></button></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#a', { opacity: 0 }, 0);
+    tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    document.getElementById('btn').addEventListener('click', () => {
+      gsap.set('#a', { opacity: 0 });
+    });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT warn when immediateRender is true", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#a', { opacity: 0, immediateRender: true }, 0);
+    tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: warns on zero-duration tl.to at position 0", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { opacity: 0, duration: 0 }, 0);
+    tl.to('#a', { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: does NOT warn on mutated position variables resolved as 0", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    let outroStart = 0;
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { opacity: 1, duration: 1 }, 0);
+    outroStart = 5;
+    tl.set('#a', { opacity: 0 }, outroStart);
     window.__timelines["c1"] = tl;
   </script>
 </body></html>`;
