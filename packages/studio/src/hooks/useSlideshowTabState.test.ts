@@ -69,6 +69,13 @@ describe("useSlideshowTabState", () => {
     harness.unmount();
   });
 
+  it("still detects a malformed island — presence-only, not full manifest validation", () => {
+    const malformed = `<html><body><script type="application/hyperframes-slideshow+json">{not valid json</script></body></html>`;
+    const harness = renderHook({ editingFileContent: malformed, rightPanelTab: "design" });
+    expect(harness.getState().isSlideshowComposition).toBe(true);
+    harness.unmount();
+  });
+
   it("bounces rightPanelTab off 'slideshow' to 'renders' on a non-slideshow composition", () => {
     const harness = renderHook({ editingFileContent: PLAIN_HTML, rightPanelTab: "slideshow" });
     expect(harness.setRightPanelTabCalls).toEqual(["renders"]);

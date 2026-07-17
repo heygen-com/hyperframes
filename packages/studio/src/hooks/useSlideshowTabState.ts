@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type MutableRefObject } from "react";
-import { slideshowIslandRegex } from "@hyperframes/core/slideshow";
+import { SLIDESHOW_ISLAND_TYPE, slideshowIslandRegex } from "@hyperframes/core/slideshow";
 import type { SceneInfo } from "../components/panels/SlideshowPanel";
 import type { IframeWindow } from "../player/lib/playbackTypes";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -27,11 +27,13 @@ export function useSlideshowTabState(params: {
 
   // Presence-only (not full manifest validation): a malformed island should
   // still surface the Slideshow tab so the user can see/fix it, rather than
-  // making the whole panel disappear.
-  const isSlideshowComposition = useMemo(
-    () => Boolean(editingFileContent && slideshowIslandRegex("i").test(editingFileContent)),
-    [editingFileContent],
-  );
+  // making the whole panel disappear. The plain substring check short-circuits
+  // the regex scan on every non-slideshow file (the common case) without
+  // paying for a full-content RegExp pass.
+  const isSlideshowComposition = useMemo(() => {
+    if (!editingFileContent || !editingFileContent.includes(SLIDESHOW_ISLAND_TYPE)) return false;
+    return slideshowIslandRegex("i").test(editingFileContent);
+  }, [editingFileContent]);
 
   // Derive scene list from the live clip manifest in the preview iframe.
   const slideshowScenes = useMemo<SceneInfo[]>(() => {
