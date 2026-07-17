@@ -1,5 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { resolveEditingSections } from "@hyperframes/core/editing";
+import { useEffect, useRef, useState } from "react";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import type { DomEditSelection } from "./domEditing";
@@ -25,30 +24,11 @@ import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
 } from "./propertyPanelFlatColorGradingSection";
-
-type EditingSections = ReturnType<typeof resolveEditingSections>;
-
-type FlatGroupDescriptor = {
-  id: string;
-  title: string;
-  summary?: string;
-  accessory?: ReactNode;
-  content: ReactNode;
-};
-
-// Type-only fallback for the Motion effect-card callbacks. Used solely to
-// satisfy FlatMotionSection's required-callback shape when the effect list is
-// gated off (showEffects === false, so none of these are ever invoked). Keeps
-// the gated-off path free of `!` non-null assertions — the real, narrowed
-// handlers flow through only when the double-gate below passes.
-const EMPTY_GSAP_EFFECT_HANDLERS = {
-  onAddAnimation: () => {},
-  onUpdateProperty: () => {},
-  onUpdateMeta: () => {},
-  onDeleteAnimation: () => {},
-  onAddProperty: () => {},
-  onRemoveProperty: () => {},
-};
+import {
+  EMPTY_GSAP_EFFECT_HANDLERS,
+  type EditingSections,
+  type FlatGroupDescriptor,
+} from "./propertyPanelFlatDescriptors";
 
 /**
  * The flat "Ledger" inspector shell (design_handoff_studio_inspector).
