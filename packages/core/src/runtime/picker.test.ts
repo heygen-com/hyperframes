@@ -1,32 +1,25 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { createPickerModule } from "./picker";
 
-// jsdom does not implement CSS.escape — polyfill with a spec-adjacent version.
-// (Parallel polyfills already live in compositionLoader.test.ts /
-// startResolver.test.ts, but each test file runs in an isolated environment.)
+// jsdom does not implement CSS.escape — polyfill a compact spec-adjacent
+// version. Parallel (simpler) polyfills already live in compositionLoader.test.ts
+// / startResolver.test.ts, but they don't handle the leading-digit case this
+// test needs. Each test file runs in an isolated environment, so we duplicate
+// rather than import.
 beforeAll(() => {
   const css = globalThis.CSS as { escape?: (input: string) => string } | undefined;
   if (!css || typeof css.escape !== "function") {
     (globalThis as { CSS?: { escape: (input: string) => string } }).CSS = {
       ...(css ?? {}),
       escape: (value: string) => {
-        let out = "";
-        for (let i = 0; i < value.length; i += 1) {
-          const ch = value[i] ?? "";
-          const code = ch.charCodeAt(0);
-          const isDigit = code >= 48 && code <= 57;
-          const isAlpha = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-          const isWordSafe = isAlpha || code === 45 || code === 95 || code >= 128; // - _ non-ASCII
-          const leadingDigit = i === 0 && isDigit;
-          if (leadingDigit) {
-            out += `\\${code.toString(16)} `;
-          } else if (isDigit || isWordSafe) {
-            out += ch;
-          } else {
-            out += `\\${ch}`;
-          }
+        // Non-word chars get a leading backslash (spec-adjacent).
+        const escaped = value.replace(/([^\w-])/g, "\\$1");
+        // A leading digit must be encoded as `\<hex> ` (space terminator) per CSS spec.
+        const first = value.charCodeAt(0);
+        if (first >= 48 && first <= 57) {
+          return `\\${first.toString(16)} ${escaped.slice(1)}`;
         }
-        return out;
+        return escaped;
       },
     };
   }
