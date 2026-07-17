@@ -11,6 +11,8 @@ interface LintParsedGsap {
     duration?: number;
     ease?: string;
     extras?: Record<string, unknown>;
+    /** True for an off-timeline `gsap.set(...)` (applied once at load). */
+    global?: boolean;
   }>;
   timelineVar: string;
 }
@@ -48,6 +50,8 @@ type GsapWindow = {
   fromPropertyValues?: Record<string, string | number>;
   overwriteAuto: boolean;
   method: string;
+  /** True for an off-timeline `gsap.set(...)` (applied once at load). */
+  global?: boolean;
   raw: string;
 };
 
@@ -159,6 +163,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       fromPropertyValues: animation.fromProperties,
       overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
       method: animation.method,
+      global: animation.global,
       raw: synthesizeWindowRaw(parsed.timelineVar, animation),
     });
   }
@@ -584,6 +589,333 @@ function scanScriptsForRegexMatches(
     }
   }
   return hits;
+}
+
+// ── Seek-order safety helpers ───────────────────────────────────────────────
+//
+// The renderer distributes frames across workers; cold render workers seek
+// non-linearly straight into their range instead of playing sequentially from 0.
+// Any state that depends on seek ORDER — relative tween bases, callback-measured
+// geometry, per-init random values — renders differently per worker, visible as
+// position jumps or dead animation at chunk boundaries.
+
+// DOM reads split by transform sensitivity. Transform-sensitive reads report
+// live animated geometry, so their result depends on the worker's own seek
+// order. Transform-invariant layout reads (intrinsic size, path geometry) give
+// the same answer on every worker as long as layout itself is not animated.
+const TRANSFORM_SENSITIVE_READ =
+  /\.getBoundingClientRect\s*\(|\bgetComputedStyle\s*\(|\bgsap\.getProperty\s*\(/;
+const TRANSFORM_INVARIANT_READ =
+  /\.(?:getTotalLength|getBBox)\s*\(|\.(?:offsetWidth|offsetHeight|clientWidth|clientHeight)\b/;
+// Measurement set for CALLBACK analysis: gsap.getProperty is deliberately
+// excluded — callbacks that read animated values to drive derived output
+// (scramble text, typewriter cursors) are per-frame deterministic and
+// seek-idempotent, so they render the same on every worker.
+const CALLBACK_MEASUREMENT_PATTERN =
+  /\.(?:getBoundingClientRect|getTotalLength|getBBox)\s*\(|\bgetComputedStyle\s*\(|\.(?:offsetWidth|offsetHeight|clientWidth|clientHeight)\b/;
+
+function indexTagsByToken(tags: OpenTag[]): Map<string, OpenTag[]> {
+  const tagsByToken = new Map<string, OpenTag[]>();
+  const addToken = (token: string, tag: OpenTag): void => {
+    const list = tagsByToken.get(token);
+    if (list) list.push(tag);
+    else tagsByToken.set(token, [tag]);
+  };
+  for (const tag of tags) {
+    const id = readAttr(tag.raw, "id");
+    if (id) addToken(`#${id}`, tag);
+    for (const cls of readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [])
+      addToken(`.${cls}`, tag);
+  }
+  return tagsByToken;
+}
+
+/** Source from the delimiter at `openIndex` to its matching closer, inclusive. */
+function matchBalanced(
+  source: string,
+  openIndex: number,
+  open: string,
+  close: string,
+): string | null {
+  let depth = 0;
+  for (let i = openIndex; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return source.slice(openIndex, i + 1);
+    }
+  }
+  return null;
+}
+
+/** The nearest object literal `{...}` enclosing `index` (comment-stripped source). */
+function enclosingObjectLiteral(source: string, index: number): string | null {
+  let depth = 0;
+  for (let i = index; i >= 0; i--) {
+    const ch = source[i];
+    if (ch === "}") depth++;
+    else if (ch === "{") {
+      if (depth === 0) return matchBalanced(source, i, "{", "}");
+      depth--;
+    }
+  }
+  return null;
+}
+
+/** An expression starting at `start`, ending at the first `,` / closer at depth 0. */
+function sliceExpression(source: string, start: number): string {
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i] ?? "";
+    if ("({[".includes(ch)) depth++;
+    else if (")}]".includes(ch)) {
+      if (depth === 0) return source.slice(start, i);
+      depth--;
+    } else if (ch === "," && depth === 0) return source.slice(start, i);
+  }
+  return source.slice(start);
+}
+
+type ParsedFunctionValue = { firstParam: string | null; body: string };
+
+/** Parse a function-shaped source string into its first parameter and body. */
+function parseFunctionValueSource(code: string): ParsedFunctionValue | null {
+  const src = code.trim();
+  const match =
+    src.match(/^(?:async\s+)?function\s*[\w$]*\s*\(([^)]*)\)/) ??
+    src.match(/^(?:async\s*)?\(([^)]*)\)\s*=>/) ??
+    src.match(/^(?:async\s*)?([A-Za-z_$][\w$]*)\s*=>/);
+  if (!match) return null;
+  const firstParam = (match[1] ?? "").split(",")[0]?.trim().replace(/=.*$/, "").trim() || null;
+  return { firstParam, body: src.slice(match[0].length) };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Methods that exist on numbers: calling them on the (index) first parameter of
+// a GSAP function value is valid and must not be flagged.
+const NUMBER_METHODS = new Set([
+  "toFixed",
+  "toString",
+  "toPrecision",
+  "toExponential",
+  "toLocaleString",
+  "valueOf",
+]);
+
+// GSAP function values receive (index, target, targets) — index is a NUMBER.
+// A method call on the first parameter that isn't a number method means the
+// author assumed it was the element, which throws at tween init.
+function callsNonNumberMethodOnFirstParam(fn: ParsedFunctionValue): string | null {
+  if (!fn.firstParam) return null;
+  const pattern = new RegExp(
+    `\\b${escapeRegExp(fn.firstParam)}\\s*\\.\\s*([A-Za-z_$][\\w$]*)\\s*\\(`,
+    "g",
+  );
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(fn.body)) !== null) {
+    const method = match[1] ?? "";
+    if (!NUMBER_METHODS.has(method)) return method;
+  }
+  return null;
+}
+
+/** Names of timeline variables (`const tl = gsap.timeline(...)`) in a script. */
+function collectTimelineVarNames(source: string): string[] {
+  return [...source.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*gsap\.timeline\b/g)]
+    .map((m) => m[1] ?? "")
+    .filter(Boolean);
+}
+
+// Named function bodies in a script (declarations plus `const f = ...` function
+// expressions and arrows). Expression-bodied arrows keep their single line.
+function collectNamedFunctionBodies(source: string): Map<string, string> {
+  const bodies = new Map<string, string>();
+  const declPattern = /(?:^|[^.\w$])function\s+([A-Za-z_$][\w$]*)\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = declPattern.exec(source)) !== null) {
+    const braceIndex = source.indexOf("{", declPattern.lastIndex);
+    if (braceIndex < 0) continue;
+    const body = matchBalanced(source, braceIndex, "{", "}");
+    if (body) bodies.set(match[1] ?? "", body);
+  }
+  const assignPattern =
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b[^{]*|\([^)]*\)\s*=>\s*|[A-Za-z_$][\w$]*\s*=>\s*)/g;
+  while ((match = assignPattern.exec(source)) !== null) {
+    const bodyStart = assignPattern.lastIndex;
+    const body =
+      source[bodyStart] === "{"
+        ? matchBalanced(source, bodyStart, "{", "}")
+        : sliceExpression(source, bodyStart);
+    if (body) bodies.set(match[1] ?? "", body);
+  }
+  return bodies;
+}
+
+// Two-hop closure: functions whose body measures the DOM directly, plus
+// functions that call one of those (bounded fixpoint — no deep recursion).
+function collectMeasuringFunctionNames(bodies: Map<string, string>): Set<string> {
+  const measuring = new Set<string>();
+  for (const [name, body] of bodies) {
+    if (CALLBACK_MEASUREMENT_PATTERN.test(body)) measuring.add(name);
+  }
+  for (let pass = 0; pass < 3; pass++) {
+    let grew = false;
+    for (const [name, body] of bodies) {
+      if (measuring.has(name)) continue;
+      for (const measured of measuring) {
+        if (new RegExp(`\\b${escapeRegExp(measured)}\\s*\\(`).test(body)) {
+          measuring.add(name);
+          grew = true;
+          break;
+        }
+      }
+    }
+    if (!grew) break;
+  }
+  return measuring;
+}
+
+function expressionReachesMeasurement(expression: string, measuring: Set<string>): boolean {
+  if (CALLBACK_MEASUREMENT_PATTERN.test(expression)) return true;
+  for (const name of measuring) {
+    if (new RegExp(`\\b${escapeRegExp(name)}\\b`).test(expression)) return true;
+  }
+  return false;
+}
+
+// Resolve script-level element variables to the simple selector tokens they can
+// denote: literal getElementById/querySelector lookups, template-literal ids
+// matched against the document's actual ids, and script-assigned class names
+// (createElementNS + setAttribute("class", ...)). Anything else stays unresolved.
+function resolveScriptElementTokens(source: string, tags: OpenTag[]): Map<string, Set<string>> {
+  const documentIds = tags.map((tag) => readAttr(tag.raw, "id")).filter((id) => id !== null);
+  const tokensByVar = new Map<string, Set<string>>();
+  const add = (name: string, token: string): void => {
+    const tokens = tokensByVar.get(name) ?? new Set<string>();
+    tokens.add(token);
+    tokensByVar.set(name, tokens);
+  };
+
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.getElementById\(\s*(["'])([^"'`]+)\2/g,
+  )) {
+    add(match[1] ?? "", `#${match[3] ?? ""}`);
+  }
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.getElementById\(\s*`([^`]*)`/g,
+  )) {
+    const template = match[2] ?? "";
+    const staticParts = template.split(/\$\{[^}]*\}/);
+    // A template with no literal segments (`getElementById(\`${name}\`)`) would
+    // match EVERY id in the document — treat it as unresolved instead.
+    if (staticParts.every((part) => part === "")) continue;
+    const idPattern = new RegExp(`^${staticParts.map(escapeRegExp).join(".*")}$`);
+    for (const id of documentIds) {
+      if (idPattern.test(id)) add(match[1] ?? "", `#${id}`);
+    }
+  }
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.querySelector\(\s*(["'])([^"'`]+)\2/g,
+  )) {
+    for (const token of targetedSelectorTokens(match[3] ?? "")) add(match[1] ?? "", token);
+  }
+  for (const match of source.matchAll(
+    /\b([A-Za-z_$][\w$]*)\.setAttribute\(\s*(["'])class\2\s*,\s*(["'])([^"'`]*)\3/g,
+  )) {
+    for (const cls of (match[4] ?? "").split(/\s+/).filter(Boolean)) add(match[1] ?? "", `.${cls}`);
+  }
+  for (const match of source.matchAll(/\b([A-Za-z_$][\w$]*)\.className\s*=\s*(["'])([^"'`]*)\2/g)) {
+    for (const cls of (match[3] ?? "").split(/\s+/).filter(Boolean)) add(match[1] ?? "", `.${cls}`);
+  }
+  return tokensByVar;
+}
+
+/** Expand selector tokens to the FULL token sets of the elements they resolve to. */
+function elementLevelTokens(
+  tokens: Iterable<string>,
+  tagsByToken: Map<string, OpenTag[]>,
+): Set<string> {
+  const expanded = new Set<string>(tokens);
+  for (const token of [...expanded]) {
+    for (const tag of tagsByToken.get(token) ?? []) {
+      for (const own of tagSimpleSelectors(tag)) expanded.add(own);
+    }
+  }
+  return expanded;
+}
+
+function isMultiComponentDasharray(value: string): boolean {
+  const normalized = value.replace(/!important\s*$/i, "").trim();
+  if (!normalized || /^none$/i.test(normalized)) return false;
+  return normalized.split(/[\s,]+/).filter(Boolean).length >= 2;
+}
+
+// A GSAP strokeDasharray value that is a static string/template with >= 2
+// components is the explicit "L L" fix form — safe. Variables and numbers are
+// the common single-component draw-on form (the pathLength trick).
+function gsapDasharrayValueLooksMultiComponent(valueSource: string): boolean {
+  const literal = valueSource.trim().match(/^(["'`])([\s\S]*)\1$/)?.[2];
+  if (literal === undefined) return false;
+  return isMultiComponentDasharray(literal.replace(/\$\{[^}]*\}/g, "0"));
+}
+
+/** Byte ranges of every function body (declarations, expressions, block arrows). */
+function collectFunctionBodyRanges(source: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const openerPatterns = [/\bfunction\b[^{;()]*\([^)]*\)\s*\{/g, /=>\s*\{/g];
+  for (const pattern of openerPatterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(source)) !== null) {
+      const braceIndex = match.index + match[0].length - 1;
+      const body = matchBalanced(source, braceIndex, "{", "}");
+      if (body) ranges.push({ start: braceIndex, end: braceIndex + body.length });
+    }
+  }
+  return ranges;
+}
+
+function indexInsideAnyRange(
+  index: number,
+  ranges: Array<{ start: number; end: number }>,
+): boolean {
+  return ranges.some((range) => index > range.start && index < range.end);
+}
+
+// Simple selectors whose authored CSS (style blocks or inline styles) sets
+// opacity to EXACTLY zero. The declaration regex is boundary-anchored so
+// `opacity: 0.98` never matches; it ends at `;` or end of input, which also
+// catches a final declaration without a trailing semicolon.
+function collectCssOpacityZeroSelectors(
+  styles: LintContext["styles"],
+  tags: OpenTag[],
+): Set<string> {
+  const selectors = new Set<string>();
+  const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
+
+  for (const style of styles) {
+    for (const [, selector, body] of style.content.matchAll(
+      /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
+    )) {
+      if (body && opacityExactlyZero.test(body)) {
+        selectors.add((selector ?? "").trim());
+      }
+    }
+  }
+
+  for (const tag of tags) {
+    const inlineStyle = readAttr(tag.raw, "style");
+    if (!inlineStyle || !opacityExactlyZero.test(inlineStyle)) continue;
+    const id = readAttr(tag.raw, "id");
+    if (id) selectors.add(`#${id}`);
+    for (const cls of readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? []) {
+      selectors.add(`.${cls}`);
+    }
+  }
+  return selectors;
 }
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
@@ -1170,33 +1502,7 @@ export const gsapRules: LintRule<LintContext>[] = [
   // fallow-ignore-next-line complexity
   async ({ styles, scripts, tags }) => {
     const findings: HyperframeLintFinding[] = [];
-    const cssOpacityZeroSelectors = new Set<string>();
-
-    // Single owner of "this declaration list sets opacity to EXACTLY zero" —
-    // boundary-anchored so `opacity: 0.98` never matches. Works for both a CSS
-    // block body (brace already stripped by the block regex) and an inline
-    // style attribute: the declaration ends at `;` or at end of input, which
-    // also catches a final declaration without a trailing semicolon.
-    const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
-
-    for (const style of styles) {
-      for (const [, selector, body] of style.content.matchAll(
-        /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-      )) {
-        if (body && opacityExactlyZero.test(body)) {
-          cssOpacityZeroSelectors.add((selector ?? "").trim());
-        }
-      }
-    }
-
-    for (const tag of tags) {
-      const inlineStyle = readAttr(tag.raw, "style");
-      if (!inlineStyle || !opacityExactlyZero.test(inlineStyle)) continue;
-      const id = readAttr(tag.raw, "id");
-      const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
-      if (id) cssOpacityZeroSelectors.add(`#${id}`);
-      for (const cls of classes) cssOpacityZeroSelectors.add(`.${cls}`);
-    }
+    const cssOpacityZeroSelectors = collectCssOpacityZeroSelectors(styles, tags);
 
     for (const script of scripts) {
       if (!/gsap\.timeline/.test(script.content)) continue;
@@ -1286,18 +1592,7 @@ export const gsapRules: LintRule<LintContext>[] = [
       layoutSubtreeRanges.some((r) => tag.index > r.start && tag.index < r.end);
 
     // Resolve a simple #id / .class token to the element tag(s) it matches.
-    const tagsByToken = new Map<string, OpenTag[]>();
-    const addToken = (token: string, tag: OpenTag): void => {
-      const list = tagsByToken.get(token);
-      if (list) list.push(tag);
-      else tagsByToken.set(token, [tag]);
-    };
-    for (const tag of tags) {
-      const id = readAttr(tag.raw, "id");
-      if (id) addToken(`#${id}`, tag);
-      for (const cls of readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [])
-        addToken(`.${cls}`, tag);
-    }
+    const tagsByToken = indexTagsByToken(tags);
 
     // True only when the selector resolves to at least one element AND every resolved
     // element is html-in-canvas. Unresolvable selectors (no match) are NOT exempt — we
@@ -1432,6 +1727,177 @@ export const gsapRules: LintRule<LintContext>[] = [
     return findings;
   },
 
+  // gsap_repeat_refresh_relative_value — repeatRefresh re-resolves the tween's values
+  // on every repeat iteration, so a relative value ACCUMULATES per cycle. A cold render
+  // worker seeking non-linearly into iteration N skips the accumulation a sequential
+  // playhead performed, so workers disagree on where the element is.
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const source = stripJsComments(script.content);
+      const pattern = /repeatRefresh\s*:\s*true\b/g;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(source)) !== null) {
+        const objectLiteral = enclosingObjectLiteral(source, match.index);
+        if (!objectLiteral || !/["'`][+-]=/.test(objectLiteral)) continue;
+        findings.push({
+          code: "gsap_repeat_refresh_relative_value",
+          severity: "error",
+          message:
+            '`repeatRefresh: true` combined with a relative value ("+="/"-=") accumulates per repeat iteration. ' +
+            "A cold render worker seeking non-linearly into iteration N never performed the earlier iterations' " +
+            "accumulation, so its rendered position diverges from the sequential path.",
+          fixHint:
+            "Remove `repeatRefresh: true`, or replace the relative value with absolute endpoints (e.g. a fromTo()) " +
+            "so each iteration resolves to the same state on every seek path.",
+          snippet: truncateSnippet(objectLiteral),
+        });
+      }
+    }
+    return findings;
+  },
+
+  // gsap_function_value_hazard — function-valued tween vars re-run at tween INIT,
+  // which is seek-order-dependent. A value reading transform-SENSITIVE geometry
+  // (getBoundingClientRect/getComputedStyle/gsap.getProperty) captures whatever state
+  // the worker's own seek order produced — error. Transform-INVARIANT layout reads
+  // (offsetWidth, getTotalLength, ...) are deterministic across cold render workers
+  // unless the measured layout itself animates — warning. GSAP function values receive
+  // (index, target, targets) — index is a NUMBER, so a method call on the first
+  // parameter (assuming it is the element) throws at init — error. Pure-index
+  // arithmetic, gsap.utils.wrap/distribute, and closures over constants are statically
+  // opaque or safe and are never flagged.
+  //
+  // Uses the raw parser output instead of the windows machinery: windows drop tweens
+  // with string positions ("+=0.5", labels), and position is irrelevant to whether a
+  // VALUE is hazardous.
+  async ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const parseGsapScript = await loadParseGsapScript();
+    for (const script of scripts) {
+      if (!/gsap\.timeline/.test(script.content)) continue;
+      const parsed = parseGsapScript(script.content);
+      for (const anim of parsed.animations) {
+        const raw = synthesizeWindowRaw(parsed.timelineVar, anim);
+        const entries = [
+          ...Object.entries(anim.properties),
+          ...Object.entries(anim.fromProperties ?? {}),
+        ];
+        for (const [prop, value] of entries) {
+          if (typeof value !== "string" || !value.startsWith("__raw:")) continue;
+          const fn = parseFunctionValueSource(value.slice(6));
+          // Non-function raw values (gsap.utils.wrap(...), identifiers, arithmetic)
+          // are statically opaque — conservatively skipped.
+          if (!fn) continue;
+          const readsSensitive = TRANSFORM_SENSITIVE_READ.test(fn.body);
+          const readsInvariant = TRANSFORM_INVARIANT_READ.test(fn.body);
+          const badMethod = callsNonNumberMethodOnFirstParam(fn);
+          if (!readsSensitive && !readsInvariant && !badMethod) continue;
+          const reason = readsSensitive
+            ? "reads transform-sensitive geometry, so its result depends on the worker's own seek order"
+            : badMethod
+              ? `calls .${badMethod}() on its first parameter — GSAP function values receive (index, target, targets), ` +
+                "so the first parameter is a NUMBER and this throws at tween init"
+              : "measures layout at tween init, which is deterministic across cold render workers only while the measured layout never animates";
+          findings.push({
+            code: "gsap_function_value_hazard",
+            severity: readsSensitive || badMethod ? "error" : "warning",
+            message: `Function-valued tween var for ${prop} on "${anim.targetSelector}" ${reason}. Each render worker initializes tweens independently.`,
+            selector: anim.targetSelector,
+            fixHint: badMethod
+              ? "Use the SECOND parameter for the element: (index, target) => ... — or index arithmetic like (i) => i * 20."
+              : "Compute the value once at build time (before the timeline is registered) and pass a constant, or derive it from fixed composition coordinates.",
+            snippet: truncateSnippet(raw),
+          });
+        }
+      }
+    }
+    return findings;
+  },
+
+  // gsap_callback_dom_measurement — DOM measurement reachable from timeline callbacks
+  // (tl.add(fn) / tl.call(fn) / eventCallback / onStart-style vars). The capture path
+  // seeks with suppressEvents=false (core/src/adapters/gsap.ts), so callbacks re-fire
+  // on EVERY seek, including rewinds — and a cold render worker executes them against
+  // whatever DOM state its own non-linear seek order produced. Geometry measured
+  // inside a callback is therefore seek-order-dependent, and anything measured before
+  // the callback ran (e.g. a build-time getTotalLength() on a path whose `d` the
+  // callback assigns) is stale or zero. Warning, not error: gsap.getProperty-style
+  // derived-output callbacks were excluded, but the remaining reads can still be
+  // legitimate when the measured layout is static.
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const script of scripts) {
+      const source = stripJsComments(script.content);
+      if (!/gsap\.timeline/.test(source)) continue;
+      const bodies = collectNamedFunctionBodies(source);
+      const measuring = collectMeasuringFunctionNames(bodies);
+
+      // A callback argument is hazardous when it is an inline function whose body
+      // reaches a measurement, or a bare reference to a measuring function. Call
+      // expressions (`tl.add(build())`) execute at BUILD time, not as callbacks —
+      // conservatively skipped.
+      const callbackExpressionHazard = (expression: string): boolean => {
+        const trimmed = expression.trim();
+        const inline = parseFunctionValueSource(trimmed);
+        if (inline) return expressionReachesMeasurement(inline.body, measuring);
+        if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) return measuring.has(trimmed);
+        return false;
+      };
+      // The callback site goes into the structured `selector` field: the linter
+      // dedupes on code+selector+message, and a constant message would collapse
+      // distinct callback sites into a single finding.
+      const report = (site: string, snippet: string): void => {
+        findings.push({
+          code: "gsap_callback_dom_measurement",
+          severity: "warning",
+          message:
+            "Timeline callback reaches DOM measurement (getBoundingClientRect/getTotalLength/getComputedStyle/...). " +
+            "The renderer seeks with suppressEvents=false, so callbacks re-fire on every seek — and a cold render " +
+            "worker runs them against whatever DOM state its own non-linear seek order produced. Measured geometry is " +
+            "seek-order-dependent, and values measured at build time (before the callback ran) are stale or zero.",
+          selector: truncateSnippet(site, 120),
+          fixHint:
+            "Do all measurement and DOM setup synchronously at build time, before registering the timeline — " +
+            "or derive geometry from fixed composition coordinates instead of measuring.",
+          snippet: truncateSnippet(snippet),
+        });
+      };
+
+      for (const timelineVar of collectTimelineVarNames(source)) {
+        const callPattern = new RegExp(
+          `\\b${escapeRegExp(timelineVar)}\\.(?:add|call)\\s*\\(`,
+          "g",
+        );
+        let match: RegExpExecArray | null;
+        while ((match = callPattern.exec(source)) !== null) {
+          const parenIndex = match.index + match[0].length - 1;
+          const argsWithParens = matchBalanced(source, parenIndex, "(", ")");
+          if (!argsWithParens) continue;
+          const firstArg = sliceExpression(argsWithParens.slice(1, -1), 0);
+          const site = match[0] + firstArg + ", ...)";
+          if (callbackExpressionHazard(firstArg)) report(site, site);
+        }
+      }
+
+      const eventCallbackPattern = /\.eventCallback\s*\(\s*["']on[A-Za-z]+["']\s*,/g;
+      let match: RegExpExecArray | null;
+      while ((match = eventCallbackPattern.exec(source)) !== null) {
+        const expression = sliceExpression(source, eventCallbackPattern.lastIndex);
+        const site = match[0] + expression + ")";
+        if (callbackExpressionHazard(expression)) report(site, site);
+      }
+
+      const varsCallbackPattern = /\bon(?:Start|Update|Complete|Repeat|ReverseComplete)\s*:\s*/g;
+      while ((match = varsCallbackPattern.exec(source)) !== null) {
+        const expression = sliceExpression(source, varsCallbackPattern.lastIndex);
+        const site = match[0] + expression;
+        if (callbackExpressionHazard(expression)) report(site, site);
+      }
+    }
+    return findings;
+  },
+
   // gsap_group_selector_keyframes
   ({ scripts }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -1455,6 +1921,178 @@ export const gsapRules: LintRule<LintContext>[] = [
           `each with their own keyframes object.`,
         snippet: truncateSnippet(snippet),
       });
+    }
+    return findings;
+  },
+
+  // svg_drawon_css_dasharray_conflict — GSAP sets/tweens strokeDasharray on an element
+  // whose CSS declares a MULTI-component stroke-dasharray (e.g. `10 10`). GSAP merges
+  // dash lists per component, so `strokeDasharray: 641.4` over CSS `10 10` computes to
+  // "641.4px, 10px" — the gap stays 10px and the hide-then-draw-on trick silently
+  // fails: the line is visible the whole scene. A static two-component GSAP value is
+  // the explicit fix form and is not flagged.
+  // fallow-ignore-next-line complexity
+  ({ scripts, styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const tagsByToken = indexTagsByToken(tags);
+
+    // Selector tokens whose CSS declares a multi-component stroke-dasharray.
+    const multiDashTokens = new Set<string>();
+    for (const style of styles) {
+      for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+        if (!selectorList || !body) continue;
+        const value = readStyleProperty(body, "stroke-dasharray");
+        if (!value || !isMultiComponentDasharray(value)) continue;
+        for (const token of targetedSelectorTokens(selectorList)) multiDashTokens.add(token);
+      }
+    }
+    for (const tag of tags) {
+      const inlineValue = readStyleProperty(readAttr(tag.raw, "style") ?? "", "stroke-dasharray");
+      if (!inlineValue || !isMultiComponentDasharray(inlineValue)) continue;
+      for (const token of tagSimpleSelectors(tag)) multiDashTokens.add(token);
+    }
+    if (multiDashTokens.size === 0) return findings;
+
+    for (const script of scripts) {
+      const source = stripJsComments(script.content);
+      const varTokens = resolveScriptElementTokens(source, tags);
+      const reported = new Set<string>();
+
+      // GSAP dasharray writers: `X.set/to/fromTo("selector"|elementVar, { ... })`
+      // whose vars object writes strokeDasharray.
+      const writerPattern =
+        /\b[\w$]+\.(?:set|to|fromTo)\s*\(\s*(?:(["'])([^"'`]+)\1|([A-Za-z_$][\w$]*))\s*,\s*\{/g;
+      let match: RegExpExecArray | null;
+      while ((match = writerPattern.exec(source)) !== null) {
+        const braceIndex = match.index + match[0].length - 1;
+        const varsObject = matchBalanced(source, braceIndex, "{", "}");
+        if (!varsObject) continue;
+        const propMatch = varsObject.match(/\bstrokeDasharray\s*:\s*/);
+        if (!propMatch || propMatch.index === undefined) continue;
+        const valueSource = sliceExpression(varsObject, propMatch.index + propMatch[0].length);
+        if (gsapDasharrayValueLooksMultiComponent(valueSource)) continue;
+
+        const quotedSelector = match[2];
+        const targetTokens = quotedSelector
+          ? targetedSelectorTokens(quotedSelector)
+          : (varTokens.get(match[3] ?? "") ?? new Set<string>());
+        if (targetTokens.size === 0) continue;
+        const expanded = elementLevelTokens(targetTokens, tagsByToken);
+        const conflictToken = [...expanded].find((token) => multiDashTokens.has(token));
+        if (!conflictToken) continue;
+        const targetLabel = quotedSelector ?? match[3] ?? "";
+        if (reported.has(targetLabel + conflictToken)) continue;
+        reported.add(targetLabel + conflictToken);
+        findings.push({
+          code: "svg_drawon_css_dasharray_conflict",
+          severity: "error",
+          message:
+            `GSAP writes strokeDasharray on "${targetLabel}", but its CSS ("${conflictToken}") declares a multi-component ` +
+            'stroke-dasharray. GSAP merges dash lists per component, so the CSS gap survives (e.g. "641.4px, 10px") — ' +
+            "the draw-on hide only hides one gap's worth and the line stays visible the whole scene.",
+          selector: quotedSelector ?? undefined,
+          fixHint:
+            `Remove the CSS stroke-dasharray from "${conflictToken}" (decorative dashes belong on a separate element), ` +
+            "or set the full two-component value in GSAP: `strokeDasharray: `${len} ${len}``.",
+          snippet: truncateSnippet(match[0] + varsObject.slice(1)),
+        });
+      }
+    }
+    return findings;
+  },
+
+  // svg_measure_before_path_d — getTotalLength() on a <path> that has no static `d`
+  // attribute in the HTML. In Chrome getTotalLength() on a d-less path returns 0,
+  // silently killing dash animations (offset 0 == length 0 == nothing to draw). If a
+  // d assignment exists but only inside a function body, execution order is statically
+  // undecidable — WARNING; if NO d assignment exists anywhere — ERROR. Element
+  // identity is resolved conservatively (literal / template getElementById,
+  // querySelector); createElementNS-built paths and unresolved variables are skipped.
+  // fallow-ignore-next-line complexity
+  ({ scripts, styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const tagsByToken = indexTagsByToken(tags);
+    // CSS `d: path(...)` supplies geometry statically — treat like a static attribute.
+    const cssProvidesD = styles.some((style) => /\bd\s*:\s*path\(/.test(style.content));
+
+    for (const script of scripts) {
+      const source = stripJsComments(script.content);
+      const varTokens = resolveScriptElementTokens(source, tags);
+      const functionRanges = collectFunctionBodyRanges(source);
+      const createdVars = new Set(
+        [...source.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*document\.createElementNS\(/g)].map(
+          (m) => m[1] ?? "",
+        ),
+      );
+      // `d` assignments come in two forms: direct setAttribute('d', ...) and the
+      // GSAP attr plugin (`gsap.set(wire, { attr: { d: "..." } })`). Both count,
+      // with the same lexical-order semantics.
+      const dAssignments = [
+        ...[...source.matchAll(/\b([A-Za-z_$][\w$]*)\.setAttribute\(\s*["']d["']\s*,/g)].map(
+          (m) => ({ varName: m[1] ?? "", index: m.index ?? 0 }),
+        ),
+        ...[
+          ...source.matchAll(
+            /\.(?:set|to|fromTo)\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*\{[^{}]*\battr\s*:\s*\{[^{}]*\bd\s*:/g,
+          ),
+        ].map((m) => ({ varName: m[1] ?? "", index: m.index ?? 0 })),
+      ];
+      const reported = new Set<string>();
+
+      const measurePattern = /\b([A-Za-z_$][\w$]*)\.getTotalLength\s*\(/g;
+      let match: RegExpExecArray | null;
+      while ((match = measurePattern.exec(source)) !== null) {
+        const varName = match[1] ?? "";
+        if (createdVars.has(varName)) continue;
+        const tokens = varTokens.get(varName);
+        if (!tokens || tokens.size === 0) continue;
+        // Only <path> elements without a static d attribute qualify.
+        const resolvedTags = [...tokens].flatMap((token) => tagsByToken.get(token) ?? []);
+        const dLessPaths = resolvedTags.filter(
+          (tag) => tag.name.toLowerCase() === "path" && readAttr(tag.raw, "d") === null,
+        );
+        if (dLessPaths.length === 0 || dLessPaths.length !== resolvedTags.length) continue;
+        if (cssProvidesD) continue;
+
+        // A same-variable d assignment lexically before the measure, in scope of the
+        // measure (top-level, or a function body containing the measure), is the
+        // legitimate synchronous assign-then-measure pattern.
+        const measureIndex = match.index;
+        const assignedBeforeInScope = dAssignments.some(
+          (assign) =>
+            assign.varName === varName &&
+            assign.index < measureIndex &&
+            (!indexInsideAnyRange(assign.index, functionRanges) ||
+              functionRanges.some(
+                (range) =>
+                  assign.index > range.start &&
+                  assign.index < range.end &&
+                  measureIndex > range.start &&
+                  measureIndex < range.end,
+              )),
+        );
+        if (assignedBeforeInScope) continue;
+
+        const anyAssignmentExists = dAssignments.length > 0;
+        const tokenLabel = [...tokens].join(", ");
+        if (reported.has(tokenLabel)) continue;
+        reported.add(tokenLabel);
+        findings.push({
+          code: "svg_measure_before_path_d",
+          severity: anyAssignmentExists ? "warning" : "error",
+          message: anyAssignmentExists
+            ? `getTotalLength() is called on "${tokenLabel}", whose \`d\` is only assigned inside a function body — ` +
+              "if the measure runs before that function (e.g. the function is a timeline callback), the length is 0 " +
+              "and the dash animation is dead."
+            : `getTotalLength() is called on "${tokenLabel}", but the path has no static \`d\` attribute and no d ` +
+              "assignment exists anywhere — getTotalLength() returns 0 in Chrome, silently killing dash animations.",
+          selector: tokenLabel,
+          fixHint:
+            "Assign the path's `d` synchronously at build time (top level, before measuring), or author a static " +
+            "d attribute in the HTML.",
+          snippet: truncateSnippet(match[0] + ")"),
+        });
+      }
     }
     return findings;
   },

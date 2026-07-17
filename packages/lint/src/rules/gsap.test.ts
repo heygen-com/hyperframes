@@ -1905,3 +1905,451 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 });
+
+describe("GSAP seek-order safety rules", () => {
+  // ── gsap_repeat_refresh_relative_value ─────────────────────────────────────
+
+  it("gsap_repeat_refresh_relative_value: flags repeatRefresh with a relative value in the same vars", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { x: "+=100", duration: 1, repeat: 4, repeatRefresh: true }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeat_refresh_relative_value");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("gsap_repeat_refresh_relative_value: does NOT flag repeatRefresh without relative values", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { x: 100, duration: 1, repeat: 4, repeatRefresh: true }, 0);
+    tl.to('#a', { y: "+=10", duration: 1 }, 6);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeat_refresh_relative_value");
+    expect(finding).toBeUndefined();
+  });
+
+  // ── gsap_function_value_hazard ─────────────────────────────────────────────
+
+  it("gsap_function_value_hazard: flags a function value that measures the DOM", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div class="chip"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('.chip', { x: (i, target) => target.getBoundingClientRect().width / 2, duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_function_value_hazard");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("gsap_function_value_hazard: flags a method call on the first (index) parameter", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div class="chip"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to('.chip', { x: (el) => el.getAttribute("data-x"), duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_function_value_hazard");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_function_value_hazard: WARNS (not errors) on transform-invariant layout reads", async () => {
+    // Marquee pattern: x: () => -track.offsetWidth is deterministic across
+    // workers while the measured layout is static — warning severity.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="track"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const track = document.getElementById('track');
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#track', { x: () => -track.offsetWidth, duration: 8, ease: "none" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_function_value_hazard");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("gsap_function_value_hazard: does NOT flag pure-index arithmetic, ternaries, wrap, or closures", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div class="chip"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const baseOffset = 40;
+    const tl = gsap.timeline({ paused: true });
+    tl.to('.chip', { x: (i) => i * 20, duration: 1 }, 0);
+    tl.to('.chip', { y: (i) => (i % 2 === 0 ? -50 : 50), duration: 1 }, 0);
+    tl.to('.chip', { rotation: gsap.utils.wrap([-10, 10]), duration: 1 }, 1);
+    tl.to('.chip', { scale: (i) => baseOffset + i * 0.1, duration: 1 }, 2);
+    tl.to('.chip', { opacity: (i) => Number(i.toFixed(2)), duration: 1 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_function_value_hazard");
+    expect(finding).toBeUndefined();
+  });
+
+  // ── gsap_callback_dom_measurement ──────────────────────────────────────────
+
+  it("gsap_callback_dom_measurement: flags a tl.add callback reaching measurement two hops away", async () => {
+    // Distilled from a production composition: tl.add(() => setupConnectors())
+    // where setupConnectors measures via getCenter -> getBoundingClientRect.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="p1"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    function getCenter(el) {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+    function setupConnectors() {
+      const orb = document.querySelector('#p1');
+      const center = getCenter(orb);
+      const length = orb.getTotalLength();
+      gsap.set(orb, { strokeDashoffset: length });
+    }
+    const tl = gsap.timeline({ paused: true });
+    tl.add(() => setupConnectors(), 2.5);
+    tl.to('#p1', { strokeDashoffset: 0, duration: 1 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_callback_dom_measurement");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    // The callback site is reported in the structured selector field (the
+    // linter dedupes on code+selector+message).
+    expect(finding?.selector).toContain("setupConnectors");
+  });
+
+  it("gsap_callback_dom_measurement: does NOT flag gsap.getProperty-driven derived-output callbacks", async () => {
+    // Scramble/typewriter pattern: onUpdate reads the animated value to derive
+    // text output — per-frame deterministic and seek-idempotent.
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="counter"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const state = { n: 0 };
+    const el = document.getElementById('counter');
+    const tl = gsap.timeline({ paused: true });
+    tl.to(state, { n: 100, duration: 2, onUpdate: () => { el.textContent = String(Math.round(gsap.getProperty(state, "n"))); } }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_callback_dom_measurement");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_callback_dom_measurement: flags onUpdate / eventCallback referencing a measuring function", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const measureNow = () => document.getElementById('a').offsetWidth;
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#a', { x: 100, duration: 1, onUpdate: measureNow }, 0);
+    tl.eventCallback("onComplete", () => { const h = document.getElementById('a').clientHeight; });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_callback_dom_measurement");
+    expect(findings.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gsap_callback_dom_measurement: does NOT flag build-time measurement or non-measuring callbacks", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="p1" d="M 0 0 L 100 100"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const path = document.getElementById('p1');
+    const length = path.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#p1', { strokeDasharray: length + " " + length, strokeDashoffset: length }, 0);
+    tl.add("chapter-two", 2);
+    tl.to('#p1', { strokeDashoffset: 0, duration: 1, onComplete: () => console.log("done") }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_callback_dom_measurement");
+    expect(finding).toBeUndefined();
+  });
+});
+
+describe("SVG draw-on rules", () => {
+  // ── svg_drawon_css_dasharray_conflict ──────────────────────────────────────
+
+  it("svg_drawon_css_dasharray_conflict: flags the draw-on trick over CSS 'stroke-dasharray: 10 10'", async () => {
+    // Distilled from a production composition: script-created path gets the
+    // sync-line class, whose CSS declares a decorative two-component dash.
+    const html = `
+<html><body>
+  <style>
+    .sync-line { stroke: rgba(0, 163, 255, 0.3); stroke-width: 2; fill: none; stroke-dasharray: 10 10; }
+  </style>
+  <div data-composition-id="c1" data-width="1080" data-height="1920"><svg id="svg-overlay"></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const svg = document.getElementById('svg-overlay');
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", "sync-line");
+    path.setAttribute("d", "M 210 410 L 540 960");
+    svg.appendChild(path);
+    const pathLength = path.getTotalLength();
+    tl.set(path, { strokeDasharray: pathLength, strokeDashoffset: pathLength }, 0);
+    tl.to(path, { strokeDashoffset: 0, duration: 1.2, ease: "power1.inOut" }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("svg_drawon_css_dasharray_conflict: flags a quoted-selector write over an inline multi-component dash", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="wire" style="stroke-dasharray: 8 8" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wire', { strokeDasharray: 141.4, strokeDashoffset: 141.4 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeDefined();
+  });
+
+  it("svg_drawon_css_dasharray_conflict: does NOT flag a single-component CSS dasharray", async () => {
+    const html = `
+<html><body>
+  <style>.wire { stroke-dasharray: 12; }</style>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="wire" class="wire" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wire', { strokeDasharray: 141.4, strokeDashoffset: 141.4 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeUndefined();
+  });
+
+  it("svg_drawon_css_dasharray_conflict: does NOT flag a full two-component GSAP value (the fix form)", async () => {
+    const html = `
+<html><body>
+  <style>.wire { stroke-dasharray: 10 10; }</style>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="wire" class="wire" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const len = 141.4;
+    tl.set('#wire', { strokeDasharray: \`\${len} \${len}\`, strokeDashoffset: len }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeUndefined();
+  });
+
+  it("svg_drawon_css_dasharray_conflict: treats an all-interpolation template id as unresolved (multi-composition safe)", async () => {
+    // getElementById(\`\${name}\`) has no literal segment — it must NOT match
+    // every id in the document (here it would mis-join to the OTHER
+    // composition's dashed element).
+    const html = `
+<html><body>
+  <style>.wire-b { stroke-dasharray: 10 10; }</style>
+  <div data-composition-id="a" data-width="1920" data-height="1080">
+    <svg><path id="line-a" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <div data-composition-id="b" data-width="1920" data-height="1080">
+    <svg><path id="line-b" class="wire-b" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const name = "line-a";
+    const target = document.getElementById(\`\${name}\`);
+    tl.set(target, { strokeDasharray: 141.4, strokeDashoffset: 141.4 }, 0);
+    window.__timelines["a"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeUndefined();
+  });
+
+  // ── svg_measure_before_path_d ──────────────────────────────────────────────
+
+  it("svg_measure_before_path_d: ERROR when no d assignment exists anywhere", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave" class="line"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const wave = document.getElementById('wave');
+    const length = wave.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wave', { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+  });
+
+  it("svg_measure_before_path_d: WARNING when d is only assigned inside a function body", async () => {
+    // The motivating composition measures a path whose d is assigned only inside
+    // a tl.add callback — statically undecidable order, so warning (not error).
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    function setupPath() {
+      const p = document.getElementById('wave');
+      p.setAttribute('d', 'M 0 0 L 500 500');
+    }
+    const tl = gsap.timeline({ paused: true });
+    tl.add(setupPath, 2);
+    const wave = document.getElementById('wave');
+    const length = wave.getTotalLength();
+    tl.to('#wave', { strokeDashoffset: 0, duration: 1 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("svg_measure_before_path_d: no finding for a static d attribute in the HTML", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave" d="M 0 0 L 500 500"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const wave = document.getElementById('wave');
+    const length = wave.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wave', { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeUndefined();
+  });
+
+  it("svg_measure_before_path_d: no finding for top-level assign-then-measure", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const wave = document.getElementById('wave');
+    wave.setAttribute('d', 'M 0 0 L 500 500');
+    const length = wave.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wave', { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeUndefined();
+  });
+
+  it("svg_measure_before_path_d: no finding for a top-level GSAP attr-plugin d assignment before the measure", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg><path id="wave"/></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const wave = document.getElementById('wave');
+    gsap.set(wave, { attr: { d: "M 0 0 L 100 100" } });
+    const length = wave.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set('#wave', { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeUndefined();
+  });
+
+  it("svg_measure_before_path_d: no finding for createElementNS-built paths", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><svg id="overlay"></svg></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const overlay = document.getElementById('overlay');
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", "M 0 0 L 100 100");
+    overlay.appendChild(line);
+    const length = line.getTotalLength();
+    const tl = gsap.timeline({ paused: true });
+    tl.set(line, { strokeDashoffset: length }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
+    expect(finding).toBeUndefined();
+  });
+});

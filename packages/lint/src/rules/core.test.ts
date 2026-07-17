@@ -927,6 +927,56 @@ body {
       const finding = result.findings.find((f) => f.code === "non_deterministic_code");
       expect(finding).toBeUndefined();
     });
+
+    it("detects gsap.utils.random() in script content", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: gsap.utils.random(-100, 100), duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("gsap.utils.random");
+    });
+
+    it("detects GSAP 'random(...)' string tween values", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".chip", { x: "random(-100, 100)", duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+      expect(finding?.message).toContain('"random(...)"');
+    });
+
+    it("does NOT flag prose strings that merely mention random(", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const note = "avoid random(seed) helpers in render code";
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeUndefined();
+    });
   });
 
   describe("composition_self_attribute_selector", () => {
