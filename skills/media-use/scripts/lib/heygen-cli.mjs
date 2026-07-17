@@ -154,7 +154,7 @@ export function runHeygenJson(bin, argv, label, onError) {
   try {
     return JSON.parse(out);
   } catch {
-    console.error(`media-use: \`${bin} ${label}\` returned invalid JSON`);
+    console.error(`media-use: \`${bin} ${label}\` returned non-JSON output`);
     return null;
   }
 }

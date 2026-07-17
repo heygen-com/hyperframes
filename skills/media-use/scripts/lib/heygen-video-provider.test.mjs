@@ -4,10 +4,10 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { HEYGEN_AUTH_COMMAND, HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
+import { HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
+import { AVATAR_VIDEO_SIGNIN_MESSAGE } from "./heygen-video-provider.mjs";
 
 const VIDEO_FIXTURE = Buffer.from("tiny heygen video fixture");
-const ONBOARDING_MESSAGE = `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`;
 let importCount = 0;
 
 async function freshGenerate() {
@@ -263,7 +263,7 @@ test("prints auth onboarding and reports an unauthenticated create failure", asy
     });
 
     assert.equal(result, null);
-    assert.ok(errors.includes(ONBOARDING_MESSAGE));
+    assert.ok(errors.includes(AVATAR_VIDEO_SIGNIN_MESSAGE));
     assert.ok(errors.includes(HEYGEN_NOT_AUTHENTICATED_MESSAGE));
   });
 });
@@ -280,7 +280,7 @@ test("reports other create failures without auth onboarding", async (t) => {
     });
 
     assert.equal(result, null);
-    assert.ok(!errors.includes(ONBOARDING_MESSAGE));
+    assert.ok(!errors.includes(AVATAR_VIDEO_SIGNIN_MESSAGE));
     assert.ok(errors.includes("media-use: `heygen video create` failed: provider unavailable"));
   });
 });
@@ -316,7 +316,7 @@ test("onboards and returns null when avatar/voice discovery itself is unauthenti
 
     assert.equal(result, null);
     assert.equal(
-      errors.filter((message) => message === ONBOARDING_MESSAGE).length,
+      errors.filter((message) => message === AVATAR_VIDEO_SIGNIN_MESSAGE).length,
       1,
       "onboarding message must fire exactly once, not once per failed discovery call",
     );
