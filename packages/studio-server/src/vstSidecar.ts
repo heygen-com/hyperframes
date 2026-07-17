@@ -1,18 +1,16 @@
 /**
- * Lifecycle for the VST host sidecar (`packages/vst-host`), shared by both
- * `hyperframes preview` (CLI, via `packages/cli/src/vst/sidecar.ts`'s
- * re-export of this module) and the Studio Vite dev server. Spawns the
- * sidecar's `serve` subcommand, waits for its ready handshake on stdout, and
- * tracks the single running instance for the lifetime of this process.
- * `hyperframes preview` registers the running child with the same
- * signal-driven shutdown paths it uses for its own studio child processes so
- * Ctrl-C during a preview session also tears the sidecar down.
+ * Lifecycle for the VST host sidecar (`heygen-com/hyperframes-vst-host` on
+ * PyPI as `hyperframes-vst-host`), shared by both `hyperframes preview` (CLI,
+ * via `packages/cli/src/vst/sidecar.ts`'s re-export of this module) and the
+ * Studio Vite dev server. Spawns the sidecar's `serve` subcommand, waits for
+ * its ready handshake on stdout, and tracks the single running instance for
+ * the lifetime of this process. `hyperframes preview` registers the running
+ * child with the same signal-driven shutdown paths it uses for its own
+ * studio child processes so Ctrl-C during a preview session also tears the
+ * sidecar down.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
 
 // Captures the shared-secret token the sidecar prints alongside its port
 // (see server.py's `_authenticate`/`start`) — required by every WS command,
@@ -46,28 +44,20 @@ let spawningChild: ChildProcess | null = null;
  * Precedence:
  * 1. `HF_VST_HOST_CMD` env var (space-split) — lets CI/dev machines point at
  *    an arbitrary executable (or, in tests, a fake shell script).
- * 2. `uv run --project <packages/vst-host> hyperframes-vst` when the
- *    monorepo's `packages/vst-host` directory is present relative to this
- *    package (the common case: a source checkout of hyperframes).
- * 3. Bare `hyperframes-vst` on PATH (an installed/published sidecar).
+ * 2. Bare `hyperframes-vst` on PATH (an installed/published sidecar — see
+ *    `uv tool install hyperframes-vst-host`).
  *
  * Duplicated from `@hyperframes/engine`'s `resolveVstHostCommand`
  * (packages/engine/src/services/vstBounce.ts) — that package doesn't export
  * it from its public entry point or a subpath, so this module carries its own
- * copy with a package-relative monorepo path. Exported for reuse by
- * `vstCarve.ts`, which spawns the same sidecar's `carve` verb; `HF_VST_HOST_CMD`
- * is the test seam (see vstSidecar.test.ts) for both call sites.
+ * copy. Exported for reuse by `vstCarve.ts`, which spawns the same sidecar's
+ * `carve` verb; `HF_VST_HOST_CMD` is the test seam (see vstSidecar.test.ts)
+ * for both call sites.
  */
 export function resolveVstHostCommand(): string[] {
   const override = process.env.HF_VST_HOST_CMD;
   if (override && override.trim().length > 0) {
     return override.trim().split(/\s+/);
-  }
-
-  const thisDir = fileURLToPath(new URL(".", import.meta.url));
-  const monorepoVstHostDir = resolve(thisDir, "../../vst-host");
-  if (existsSync(join(monorepoVstHostDir, "pyproject.toml"))) {
-    return ["uv", "run", "--project", monorepoVstHostDir, "hyperframes-vst"];
   }
 
   return ["hyperframes-vst"];

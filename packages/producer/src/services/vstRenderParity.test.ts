@@ -1,10 +1,12 @@
 /**
  * End-to-end integration test for the VST render path: a composition with a
  * `data-vst-chain` audio track is rendered through the real
- * `processCompositionAudio` mixer, which shells out to the Python
- * `packages/vst-host` sidecar (via `applyVstChainToWav`,
- * `packages/engine/src/services/vstBounce.ts`) to bounce the dry track
- * through a plugin chain before mixing.
+ * `processCompositionAudio` mixer, which shells out to the Python VST host
+ * sidecar (via `applyVstChainToWav`, `packages/engine/src/services/vstBounce.ts`)
+ * to bounce the dry track through a plugin chain before mixing. The sidecar
+ * itself lives in the standalone `heygen-com/hyperframes-vst-host` repo,
+ * published to PyPI as `hyperframes-vst-host` — install with
+ * `uv tool install hyperframes-vst-host` to run this test locally.
  *
  * Uses a BUILTIN pedalboard plugin (`Gain`) rather than a real VST3/AU
  * bundle: builtins are deterministic (see chain.py / Task 7's nondeterminism
@@ -12,28 +14,24 @@
  * reproducibility across two independent runs without depending on any
  * plugin being installed on the host machine.
  *
- * Skips when `uv` isn't on PATH or `packages/vst-host` doesn't exist next to
- * this checkout — both are required to spawn the sidecar via
- * `resolveVstHostCommand()`'s monorepo `uv run --project <vst-host> ...` path.
+ * Skips when `hyperframes-vst` isn't on PATH — required to spawn the sidecar
+ * via `resolveVstHostCommand()`'s bare-PATH fallback.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseAudioElements, processCompositionAudio } from "@hyperframes/engine";
 import { computeAudioResidualRmsDb } from "../utils/audioRegression.js";
 
-const HAS_UV = spawnSync("uv", ["--version"], { encoding: "utf-8" }).status === 0;
-
-// Mirrors resolveVstHostCommand's own monorepo-detection logic
+// Mirrors resolveVstHostCommand's own bare-PATH fallback
 // (packages/engine/src/services/vstBounce.ts) so the skip condition matches
 // exactly what the sidecar spawn will look for.
-const VST_HOST_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../../vst-host");
-const HAS_VST_HOST = existsSync(join(VST_HOST_DIR, "pyproject.toml"));
+const HAS_VST_HOST_CLI =
+  spawnSync("hyperframes-vst", ["--help"], { encoding: "utf-8" }).status === 0;
 
-describe.skipIf(!HAS_UV || !HAS_VST_HOST)("VST render parity (integration)", () => {
+describe.skipIf(!HAS_VST_HOST_CLI)("VST render parity (integration)", () => {
   let projectDir: string;
   let workRoot: string;
   let outRoot: string;

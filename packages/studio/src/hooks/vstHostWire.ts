@@ -5,7 +5,8 @@
  * connect sequence. Nothing here holds React state — it's all plain
  * functions and module-level helpers the hook wires into refs/effects.
  *
- * Protocol (see `packages/vst-host/src/hyperframes_vst/server.py`): JSON text
+ * Protocol (see `hyperframes_vst/server.py` in the
+ * `heygen-com/hyperframes-vst-host` repo): JSON text
  * frames for control commands/events, raw binary `ArrayBuffer` frames for
  * interleaved-stereo PCM (`u32 trackIndex` + `f64 samplePos` + `f32` samples)
  * that the hook forwards unopened to `onPcmFrame` subscribers — decoding is

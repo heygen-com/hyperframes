@@ -1,14 +1,14 @@
 /**
  * VST Bounce Service
  *
- * Spawns the `hyperframes-vst` Python sidecar (packages/vst-host) to apply a
- * VST plugin chain to a dry WAV track before it's mixed into the composition.
+ * Spawns the `hyperframes-vst` Python sidecar to apply a VST plugin chain to
+ * a dry WAV track before it's mixed into the composition. The sidecar lives
+ * in the standalone `heygen-com/hyperframes-vst-host` repo, published to
+ * PyPI as `hyperframes-vst-host` (`uv tool install hyperframes-vst-host`).
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join } from "node:path";
 import { trackChildProcess } from "../utils/processTracker.js";
 
 export interface ApplyVstChainOptions {
@@ -20,48 +20,23 @@ export interface ApplyVstChainOptions {
 const BOUNCE_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
- * Walks up from `startDir` looking for a `packages/vst-host/pyproject.toml`,
- * returning the `packages/vst-host` dir when found. Searching upward (rather
- * than a single fixed `../../../vst-host` hop) makes this robust to WHERE the
- * engine module actually runs from — source vs. `dist/services` vs. a bundled
- * `dist/index.js` (all at different depths), and to the render process's cwd
- * being the user's project rather than the package. A fixed hop silently
- * missed by one level and fell through to the bare command → `spawn
- * hyperframes-vst ENOENT` at render time.
- */
-function findMonorepoVstHostDir(startDir: string): string | null {
-  let dir = startDir;
-  for (let i = 0; i < 10; i += 1) {
-    const candidate = join(dir, "packages", "vst-host");
-    if (existsSync(join(candidate, "pyproject.toml"))) return candidate;
-    const parent = resolve(dir, "..");
-    if (parent === dir) break; // reached filesystem root
-    dir = parent;
-  }
-  return null;
-}
-
-/**
  * Resolves the command used to invoke the VST host sidecar.
  *
  * Precedence:
  * 1. `HF_VST_HOST_CMD` env var (space-split) — lets CI/dev machines point at
  *    an arbitrary executable (or, in tests, a fake shell script).
- * 2. `uv run --project <packages/vst-host> hyperframes-vst` when a monorepo
- *    `packages/vst-host` is found by walking up from this module's directory
- *    OR the process cwd (a source checkout of hyperframes).
- * 3. Bare `hyperframes-vst` on PATH (an installed/published sidecar).
+ * 2. Bare `hyperframes-vst` on PATH (an installed/published sidecar — see
+ *    `uv tool install hyperframes-vst-host`).
+ *
+ * Duplicated in `@hyperframes/studio-server`'s `vstSidecar.ts` — this package
+ * doesn't export the function from its public entry point or a subpath, so
+ * that module carries its own copy (see its docblock for the full why).
  */
+// fallow-ignore-next-line code-duplication
 export function resolveVstHostCommand(): string[] {
   const override = process.env.HF_VST_HOST_CMD;
   if (override && override.trim().length > 0) {
     return override.trim().split(/\s+/);
-  }
-
-  const moduleDir = fileURLToPath(new URL(".", import.meta.url));
-  const vstHostDir = findMonorepoVstHostDir(moduleDir) ?? findMonorepoVstHostDir(process.cwd());
-  if (vstHostDir) {
-    return ["uv", "run", "--project", vstHostDir, "hyperframes-vst"];
   }
 
   return ["hyperframes-vst"];

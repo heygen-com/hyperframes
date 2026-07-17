@@ -21,7 +21,7 @@ export function dbg(e: string, d?: unknown): void {
 }
 
 // ── Wire-format decode ────────────────────────────────────────────────────
-// Mirrors the sidecar's `encode_frame` (packages/vst-host/.../stream.py):
+// Mirrors the sidecar's `encode_frame` (stream.py in heygen-com/hyperframes-vst-host):
 // little-endian u32 trackIndex, f64 samplePos, then interleaved f32 stereo.
 
 export interface DecodedPcmFrame {

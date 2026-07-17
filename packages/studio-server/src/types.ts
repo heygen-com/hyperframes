@@ -207,7 +207,8 @@ export interface StudioApiAdapter {
   /**
    * Optional: start the VST host sidecar and return its bound port + the
    * shared-secret token the sidecar generated for this run (see
-   * `packages/vst-host/src/hyperframes_vst/server.py`'s `_authenticate`).
+   * `hyperframes_vst/server.py`'s `_authenticate` in the
+   * `heygen-com/hyperframes-vst-host` repo).
    * Absent means VST plugin hosting isn't supported in this studio mode. The
    * browser connects directly to `ws://localhost:<port>/?token=<token>` —
    * both are simply relayed back to the client, not proxied. The token

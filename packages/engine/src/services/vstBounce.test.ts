@@ -55,15 +55,8 @@ describe("resolveVstHostCommand", () => {
     expect(resolveVstHostCommand()).toEqual(["/opt/custom", "vst-host"]);
   });
 
-  it("finds the monorepo packages/vst-host by walking up (not a fixed hop)", () => {
+  it("falls back to the bare hyperframes-vst command on PATH", () => {
     delete process.env.HF_VST_HOST_CMD;
-    const cmd = resolveVstHostCommand();
-    // In this monorepo checkout it must resolve to the uv-run form pointing at
-    // a real packages/vst-host — never the bare fallback (that ENOENTs at
-    // render time when the sidecar isn't installed on PATH).
-    expect(cmd.slice(0, 3)).toEqual(["uv", "run", "--project"]);
-    expect(cmd[3]?.endsWith("/packages/vst-host")).toBe(true);
-    expect(cmd[4]).toBe("hyperframes-vst");
-    expect(existsSync(join(cmd[3] ?? "", "pyproject.toml"))).toBe(true);
+    expect(resolveVstHostCommand()).toEqual(["hyperframes-vst"]);
   });
 });
