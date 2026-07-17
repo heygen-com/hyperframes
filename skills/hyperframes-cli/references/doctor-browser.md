@@ -31,6 +31,13 @@ Common issues:
 - **Missing FFmpeg** — install via `brew install ffmpeg` (macOS) or your package manager.
 - **Missing bundled Chrome** — run `npx hyperframes browser ensure`.
 - **Low memory** — close other Chromes, reduce `--workers`, or use `--quality draft`.
+- **Chrome exits instantly inside an agent sandbox (macOS)** — seatbelt-style sandboxes
+  (e.g. codex `workspace-write`) block Chromium's Mach port bootstrap
+  (`MachPortRendezvous`; openai/codex#21292), so every Chrome — bundled, system, or
+  headless shell — dies at startup. This is a host-level block, not a HyperFrames or
+  Chrome install problem: compile checks and audio still pass, only rendering is
+  unavailable. State the blocker and deliver the checked composition; render outside the
+  sandbox or via `render --docker` / cloud rendering where available.
 
 ## browser
 
