@@ -58,6 +58,7 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
+import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
@@ -65,7 +66,6 @@ import {
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
-type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
@@ -196,7 +196,13 @@ export function StudioApp() {
     },
     [timelineEditing.handleTimelineGroupMove],
   );
-  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const {
+    addAssetAtPlayhead: handleAddAssetAtPlayhead,
+    addCompositionAtPlayhead: handleAddCompositionAtPlayhead,
+  } = useTimelineAddAtPlayhead(
+    timelineEditing.handleTimelineAssetDrop,
+    timelineEditing.handleTimelineCompositionDrop,
+  );
   const {
     activeBlockParams,
     setActiveBlockParams,
@@ -369,14 +375,13 @@ export function StudioApp() {
   });
   handleToggleRecordingRef.current = handleToggleRecording;
   const recordingToggle = STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined;
-  const canvasRectRef = useRef<CanvasRect | null>(null);
+  const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
       canvasRectRef.current = null;
       return;
     }
-    const r = previewIframe.getBoundingClientRect();
-    canvasRectRef.current = { left: r.left, top: r.top, width: r.width, height: r.height };
+    canvasRectRef.current = previewIframe.getBoundingClientRect();
   }, [gestureState, previewIframe]);
   const handlePreviewIframeRef = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -511,6 +516,7 @@ export function StudioApp() {
                         lintFindingCount={lintModal?.length ?? findingsByFile.size}
                         lintFindingsByFile={findingsByFile}
                         onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                        onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                       />
                     }
                     right={
@@ -540,6 +546,7 @@ export function StudioApp() {
                     handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
                     handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
                     handleTimelineBlockDrop={handleTimelineBlockDrop}
+                    handleTimelineCompositionDrop={timelineEditing.handleTimelineCompositionDrop}
                     handlePreviewBlockDrop={handlePreviewBlockDrop}
                     handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
                     handleTimelineElementMove={timelineEditing.handleTimelineElementMove}

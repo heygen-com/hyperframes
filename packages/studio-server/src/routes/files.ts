@@ -75,6 +75,10 @@ import {
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
+import {
+  CompositionInsertionError,
+  insertCompositionIntoSource,
+} from "../helpers/compositionInsertion.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -2106,6 +2110,74 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     return c.json({
       ok: true,
       backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
+    });
+  });
+
+  api.post("/projects/:id/file-mutations/insert-composition/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "insert-composition");
+    if ("error" in ctx) return ctx.error;
+    if (!existsSync(ctx.absPath)) return c.json({ error: "not found" }, 404);
+
+    const body = (await c.req.json().catch(() => null)) as {
+      sourcePath?: unknown;
+      start?: unknown;
+      track?: unknown;
+      expectedVersion?: unknown;
+    } | null;
+    if (
+      !body ||
+      typeof body.sourcePath !== "string" ||
+      typeof body.start !== "number" ||
+      !Number.isFinite(body.start) ||
+      body.start < 0 ||
+      typeof body.track !== "number" ||
+      !Number.isFinite(body.track) ||
+      typeof body.expectedVersion !== "string"
+    ) {
+      return c.json({ error: "sourcePath, finite placement, and expectedVersion required" }, 400);
+    }
+
+    const before = readFileSync(ctx.absPath, "utf-8");
+    const currentVersion = fileContentVersion(before);
+    if (body.expectedVersion !== currentVersion) {
+      return c.json({ error: "file conflict", currentVersion, currentContent: before }, 409);
+    }
+
+    let insertion: ReturnType<typeof insertCompositionIntoSource>;
+    try {
+      insertion = insertCompositionIntoSource({
+        projectDir: ctx.project.dir,
+        targetPath: ctx.filePath,
+        sourcePath: body.sourcePath,
+        parentSource: before,
+        start: body.start,
+        desiredTrack: body.track,
+      });
+    } catch (error) {
+      if (error instanceof CompositionInsertionError) {
+        return c.json({ error: error.message }, error.status);
+      }
+      throw error;
+    }
+
+    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
+    if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
+    writeFileSync(ctx.absPath, insertion.html, "utf-8");
+    const version = fileContentVersion(insertion.html);
+    const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+    recordFileWriteReceipt(ctx.absPath, { path: ctx.filePath, version, writeToken });
+    c.header("ETag", version);
+    return c.json({
+      ok: true,
+      path: ctx.filePath,
+      hostId: insertion.hostId,
+      track: insertion.track,
+      duration: insertion.duration,
+      before,
+      after: insertion.html,
+      version,
+      writeToken,
+      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
   });
 

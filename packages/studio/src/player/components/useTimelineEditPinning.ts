@@ -12,6 +12,7 @@ interface UseTimelineEditPinningInput {
   onFileDrop: TimelineDropCallbacks["onFileDrop"];
   onAssetDrop: TimelineDropCallbacks["onAssetDrop"];
   onBlockDrop: TimelineDropCallbacks["onBlockDrop"];
+  onCompositionDrop: TimelineDropCallbacks["onCompositionDrop"];
 }
 
 // Wrap every mutating timeline edit so the zoom pins to the current on-screen
@@ -29,6 +30,7 @@ export function useTimelineEditPinning({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
+  onCompositionDrop,
 }: UseTimelineEditPinningInput) {
   const pinTimelineZoom = usePlayerStore((s) => s.pinTimelineZoom);
   // Pin the timeline zoom to the current on-screen scale on the FIRST edit, so a
@@ -106,6 +108,15 @@ export function useTimelineEditPinning({
       }),
     [onBlockDrop, pinZoomBeforeEdit],
   );
+  const pinnedOnCompositionDrop = useMemo(
+    () =>
+      onCompositionDrop &&
+      ((...args: Parameters<typeof onCompositionDrop>) => {
+        pinZoomBeforeEdit();
+        return onCompositionDrop(...args);
+      }),
+    [onCompositionDrop, pinZoomBeforeEdit],
+  );
 
   return {
     pinZoomBeforeEdit,
@@ -117,5 +128,6 @@ export function useTimelineEditPinning({
     pinnedOnFileDrop,
     pinnedOnAssetDrop,
     pinnedOnBlockDrop,
+    pinnedOnCompositionDrop,
   };
 }

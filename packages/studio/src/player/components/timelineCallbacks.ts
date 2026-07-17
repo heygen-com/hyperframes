@@ -22,6 +22,10 @@ export interface TimelineDropCallbacks {
     blockName: string,
     placement: { start: number; track: number },
   ) => Promise<void> | void;
+  onCompositionDrop?: (
+    sourcePath: string,
+    placement: { start: number; track: number },
+  ) => Promise<void> | void;
 }
 
 export interface TimelineEditCallbacks {

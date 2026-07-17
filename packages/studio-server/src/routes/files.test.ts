@@ -85,6 +85,67 @@ function postElementPatchBatches(
 }
 
 describe("registerFileRoutes", () => {
+  it("CAS-inserts one composition host and leaves stale requests side-effect free", async () => {
+    const projectDir = createProjectDir();
+    const before = `<!doctype html><html><body><div data-composition-id="main" data-width="640" data-height="360" data-duration="2"></div></body></html>`;
+    writeFileSync(join(projectDir, "index.html"), before);
+    writeFileSync(
+      join(projectDir, "child.html"),
+      `<template><div data-composition-id="child" data-width="640" data-height="360" data-duration="3"></div></template>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const insert = (expectedVersion: string) =>
+      app.request("http://localhost/projects/demo/file-mutations/insert-composition/index.html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcePath: "child.html", start: 4, track: 0, expectedVersion }),
+      });
+
+    const response = await insert(fileContentVersion(before));
+    const result = (await response.json()) as { after: string; hostId: string; version: string };
+
+    expect(response.status).toBe(200);
+    expect(result.after).toBe(readFileSync(join(projectDir, "index.html"), "utf-8"));
+    expect(result.after).toContain('data-duration="7"');
+    expect(result.after).toContain(`id="${result.hostId}"`);
+    expect(result.version).toBe(fileContentVersion(result.after));
+
+    const committed = result.after;
+    const stale = await insert(fileContentVersion(before));
+    expect(stale.status).toBe(409);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(committed);
+  });
+
+  it.each([
+    ["index.html", 400],
+    ["missing.html", 404],
+    ["../outside.html", 400],
+  ])("rejects invalid composition source %s without writing", async (sourcePath, status) => {
+    const projectDir = createProjectDir();
+    const before = `<!doctype html><html><body><div data-composition-id="main" data-width="640" data-height="360" data-duration="2"></div></body></html>`;
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/insert-composition/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath,
+          start: 0,
+          track: 0,
+          expectedVersion: fileContentVersion(before),
+        }),
+      },
+    );
+
+    expect(response.status).toBe(status);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(before);
+  });
+
   it("returns empty content for missing files when caller marks the read optional", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

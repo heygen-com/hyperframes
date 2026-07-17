@@ -1,0 +1,94 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { commitTimelineCompositionInsertion } from "./timelineCompositionInsert";
+
+afterEach(() => vi.unstubAllGlobals());
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("commitTimelineCompositionInsertion", () => {
+  it("records one history entry, then selects and refreshes once", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ content: "before", version: "v1" }))
+      .mockResolvedValueOnce(
+        response({
+          path: "index.html",
+          hostId: "headline",
+          before: "before",
+          after: "after",
+          version: "v2",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const writeFile = vi.fn();
+    const recordEdit = vi.fn();
+    const observeVersion = vi.fn();
+    const selectHost = vi.fn();
+    const resync = vi.fn();
+    const refresh = vi.fn();
+
+    await commitTimelineCompositionInsertion({
+      projectId: "demo",
+      targetPath: "index.html",
+      sourcePath: "headline.html",
+      start: 4,
+      track: 2,
+      writeFile,
+      recordEdit,
+      observeVersion,
+      selectHost,
+      resync,
+      refresh,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(recordEdit).toHaveBeenCalledOnce();
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(observeVersion).toHaveBeenCalledWith("index.html", "v2");
+    expect(selectHost).toHaveBeenCalledWith("index.html#headline");
+    expect(resync).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("CAS-restores the server write when history registration fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(response({ content: "before", version: "v1" }))
+        .mockResolvedValueOnce(
+          response({
+            path: "index.html",
+            hostId: "headline",
+            before: "before",
+            after: "after",
+            version: "v2",
+          }),
+        ),
+    );
+    const writeFile = vi.fn();
+    const refresh = vi.fn();
+
+    await expect(
+      commitTimelineCompositionInsertion({
+        projectId: "demo",
+        targetPath: "index.html",
+        sourcePath: "headline.html",
+        start: 4,
+        track: 2,
+        writeFile,
+        recordEdit: vi.fn().mockRejectedValue(new Error("history failed")),
+        selectHost: vi.fn(),
+        refresh,
+      }),
+    ).rejects.toThrow("history failed");
+
+    expect(writeFile).toHaveBeenCalledWith("index.html", "before", "after");
+    expect(refresh).not.toHaveBeenCalled();
+  });
+});

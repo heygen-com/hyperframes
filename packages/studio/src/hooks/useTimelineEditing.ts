@@ -473,19 +473,21 @@ export function useTimelineEditing({
     ],
   );
 
-  const { handleTimelineAssetDrop, handleTimelineFileDrop } = useTimelineAssetDropOps({
-    projectIdRef,
-    activeCompPath,
-    timelineElements,
-    showToast,
-    writeProjectFile,
-    recordEdit,
-    domEditSaveTimestampRef,
-    reloadPreview,
-    uploadProjectFiles,
-    isRecordingRef,
-    forceReloadSdkSession,
-  });
+  const { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop } =
+    useTimelineAssetDropOps({
+      projectIdRef,
+      activeCompPath,
+      timelineElements,
+      showToast,
+      writeProjectFile,
+      recordEdit,
+      domEditSaveTimestampRef,
+      reloadPreview,
+      uploadProjectFiles,
+      isRecordingRef,
+      forceReloadSdkSession,
+      observeProjectFileVersion,
+    });
 
   const handleBlockedTimelineEdit = useCallback(
     (_element: TimelineElement) => {
@@ -520,6 +522,7 @@ export function useTimelineEditing({
     handleRazorSplitAll,
     handleTimelineAssetDrop,
     handleTimelineFileDrop,
+    handleTimelineCompositionDrop,
     handleBlockedTimelineEdit,
     ...groupEditing,
   };

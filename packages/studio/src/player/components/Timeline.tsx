@@ -52,6 +52,7 @@ export const Timeline = memo(function Timeline({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
+  onCompositionDrop,
   onDeleteElement: _onDeleteElement,
   onMoveElement: onMoveElementOverride,
   onMoveElements: onMoveElementsOverride,
@@ -169,6 +170,7 @@ export const Timeline = memo(function Timeline({
     pinnedOnFileDrop,
     pinnedOnAssetDrop,
     pinnedOnBlockDrop,
+    pinnedOnCompositionDrop,
   } = useTimelineEditPinning({
     ppsRef,
     fitPpsRef,
@@ -179,6 +181,7 @@ export const Timeline = memo(function Timeline({
     onFileDrop,
     onAssetDrop,
     onBlockDrop,
+    onCompositionDrop,
   });
 
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
@@ -234,6 +237,7 @@ export const Timeline = memo(function Timeline({
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
+      onCompositionDrop: pinnedOnCompositionDrop,
     });
 
   const displayTrackOrder = useMemo(() => {
@@ -399,7 +403,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
           const rect = scrollRef.current.getBoundingClientRect();
