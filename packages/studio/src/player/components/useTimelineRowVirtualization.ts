@@ -24,7 +24,7 @@ interface UseTimelineRowVirtualizationInput {
   selectedElementId: string | null;
   revealElementId: string | null;
   draggedRowKey?: number;
-  resizingRowKey?: number;
+  resizingElementIds?: readonly string[];
   clipContextMenuRowKey?: number;
   keyframeContextMenuRowKey?: number;
   lastScrollLeftRef: RefObject<number>;
@@ -55,7 +55,7 @@ export function useTimelineRowVirtualization({
   selectedElementId,
   revealElementId,
   draggedRowKey,
-  resizingRowKey,
+  resizingElementIds,
   clipContextMenuRowKey,
   keyframeContextMenuRowKey,
   lastScrollLeftRef,
@@ -77,11 +77,18 @@ export function useTimelineRowVirtualization({
     () => resolveTimelineFocusIdentity(elements, revealElementId),
     [elements, revealElementId],
   );
+  const resizingRowKeys = useMemo(
+    () =>
+      resizingElementIds
+        ?.map((elementId) => resolveTimelineFocusIdentity(elements, elementId)?.rowKey)
+        .filter((rowKey): rowKey is number => rowKey !== undefined) ?? [],
+    [elements, resizingElementIds],
+  );
   const pinnedRowKeys = useMemo(
     () =>
       [
         draggedRowKey,
-        resizingRowKey,
+        ...resizingRowKeys,
         revealIdentity?.rowKey,
         clipContextMenuRowKey,
         keyframeContextMenuRowKey,
@@ -90,7 +97,7 @@ export function useTimelineRowVirtualization({
       clipContextMenuRowKey,
       draggedRowKey,
       keyframeContextMenuRowKey,
-      resizingRowKey,
+      resizingRowKeys,
       revealIdentity,
     ],
   );

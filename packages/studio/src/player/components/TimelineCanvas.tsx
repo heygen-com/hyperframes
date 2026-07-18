@@ -1,8 +1,7 @@
 import { memo } from "react";
 import { TimelineRuler } from "./TimelineRuler";
 import { PlayheadIndicator } from "./PlayheadIndicator";
-import { getTimelineEditCapabilities, type TimelineRangeSelection } from "./timelineEditing";
-import { getRenderedTimelineElement } from "./timelineTheme";
+import type { TimelineRangeSelection } from "./timelineEditing";
 import {
   RULER_H,
   CLIP_Y,
@@ -19,13 +18,11 @@ import type { ResizingClipState } from "./useTimelineClipDrag";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { Rect } from "../../utils/marqueeGeometry";
-import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes } from "./TimelineLanes";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
-import { renderClipChildren } from "./timelineClipChildren";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
-import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -65,15 +62,6 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   const beatDragging = usePlayerStore((s) => s.beatDragging);
   const draggedElement = draggedClip?.element ?? null;
   const draggedElementIdentity = draggedElement ? getTimelineElementIdentity(draggedElement) : null;
-  const activeDraggedElement =
-    draggedClip?.started === true && draggedElement && draggedElementIdentity
-      ? getRenderedTimelineElement({
-          element: draggedElement,
-          draggedElementId: draggedElementIdentity,
-          previewStart: draggedClip.previewStart,
-          previewTrack: draggedClip.previewTrack,
-        })
-      : null;
   // The drag ghost follows the cursor freely (both axes) — CapCut-style. The
   // "magnetic" affordance is a highlight on the destination lane (draggedRowIndex),
   // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
@@ -94,22 +82,6 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           selectedKeys: selectedElementIds,
         }
       : null;
-  const activeDraggedPosition =
-    draggedClip?.started === true && activeDraggedElement && scrollRef.current
-      ? {
-          left:
-            draggedClip.pointerClientX -
-            scrollRef.current.getBoundingClientRect().left +
-            scrollRef.current.scrollLeft -
-            draggedClip.pointerOffsetX,
-          top:
-            draggedClip.pointerClientY -
-            scrollRef.current.getBoundingClientRect().top +
-            scrollRef.current.scrollTop -
-            draggedClip.pointerOffsetY,
-        }
-      : null;
-
   return (
     <div
       className="relative"
@@ -235,47 +207,18 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         />
       )}
 
-      {/* Drag ghost */}
-      {activeDraggedElement && activeDraggedPosition && (
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            top: activeDraggedPosition.top,
-            left: activeDraggedPosition.left,
-            width: Math.max(activeDraggedElement.duration * props.pps, 4),
-            height: draggedClipHeight,
-            zIndex: 40,
-          }}
-        >
-          <TimelineClip
-            el={{ ...activeDraggedElement, start: 0 }}
-            pps={props.pps}
-            clipY={0}
-            isSelected={
-              props.selectedElementId === (activeDraggedElement.key ?? activeDraggedElement.id)
-            }
-            isHovered={false}
-            isDragging={true}
-            isActive={isTimelineClipActive(activeDraggedElement, props.currentTime)}
-            hasCustomContent={!!props.renderClipContent}
-            capabilities={getTimelineEditCapabilities(activeDraggedElement)}
-            theme={props.theme}
-            isComposition={!!activeDraggedElement.compositionSrc}
-            onHoverStart={() => {}}
-            onHoverEnd={() => {}}
-            onResizeStart={() => {}}
-            onClick={() => {}}
-            onDoubleClick={() => {}}
-          >
-            {renderClipChildren(
-              activeDraggedElement,
-              props.getTrackStyle(activeDraggedElement.tag),
-              props.renderClipContent,
-              props.renderClipOverlay,
-            )}
-          </TimelineClip>
-        </div>
-      )}
+      <TimelineGestureOverlay
+        drag={draggedClip}
+        scrollRef={scrollRef}
+        pixelsPerSecond={props.pps}
+        rowHeight={draggedClipHeight}
+        selectedElementId={props.selectedElementId}
+        currentTime={props.currentTime}
+        theme={props.theme}
+        getTrackStyle={props.getTrackStyle}
+        renderClipContent={props.renderClipContent}
+        renderClipOverlay={props.renderClipOverlay}
+      />
 
       {/* Marquee (rubber-band) multi-select rectangle — mirrors the canvas
           MarqueeOverlay look: semi-transparent accent fill + dashed border. */}
