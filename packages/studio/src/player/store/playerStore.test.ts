@@ -490,29 +490,36 @@ describe("usePlayerStore", () => {
     });
   });
 
-  describe("clipRevealRequest", () => {
-    it("starts null and carries the requested element id", () => {
-      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
-      usePlayerStore.getState().requestClipReveal("el-1");
-      expect(usePlayerStore.getState().clipRevealRequest?.elementId).toBe("el-1");
-    });
+  describe("timelineFocus", () => {
+    it("stamps project scope and carries the requested logical id", () => {
+      usePlayerStore.getState().beginTimelineSession("project-a");
+      usePlayerStore.getState().requestTimelineFocus("clip:el-1");
+      expect(usePlayerStore.getState().timelineFocus).toMatchObject({
+        id: "clip:el-1",
+        projectId: "project-a",
+        sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
+      });
+      const store = usePlayerStore.getState();
+      store.requestTimelineFocus("clip:el-1");
+      const first = usePlayerStore.getState().timelineFocus;
+      if (!first) throw new Error("expected timeline focus request");
+      store.clearTimelineFocus(first.nonce);
+      store.reset();
+      store.requestTimelineFocus("clip:el-1");
+      const second = usePlayerStore.getState().timelineFocus;
+      expect(second?.nonce).toBe(first.nonce + 1);
 
-    it("bumps the nonce on repeat requests for the same clip", () => {
-      usePlayerStore.getState().requestClipReveal("el-1");
-      const first = usePlayerStore.getState().clipRevealRequest;
-      usePlayerStore.getState().requestClipReveal("el-1");
-      const second = usePlayerStore.getState().clipRevealRequest;
-      expect(second?.nonce).not.toBe(first?.nonce);
-    });
-
-    it("clears via clearClipRevealRequest and on reset", () => {
-      usePlayerStore.getState().requestClipReveal("el-1");
-      usePlayerStore.getState().clearClipRevealRequest();
-      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
-
-      usePlayerStore.getState().requestClipReveal("el-2");
-      usePlayerStore.getState().reset();
-      expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+      store.beginTimelineSession("project-a");
+      store.requestTimelineFocus("clip:el-1");
+      const stale = usePlayerStore.getState().timelineFocus;
+      if (!stale) throw new Error("expected timeline focus request");
+      store.requestTimelineFocus("clip:el-2");
+      const replacement = usePlayerStore.getState().timelineFocus;
+      if (!replacement) throw new Error("expected replacement timeline focus request");
+      store.clearTimelineFocus(stale.nonce);
+      expect(usePlayerStore.getState().timelineFocus).toBe(replacement);
+      store.beginTimelineSession("project-b");
+      expect(usePlayerStore.getState().timelineFocus).toBeNull();
     });
   });
 

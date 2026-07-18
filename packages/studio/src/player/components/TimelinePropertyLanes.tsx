@@ -128,6 +128,7 @@ export function TimelinePropertyLanes({
           key={group}
           id={timelineLogicalRowCellId(timelinePropertyRowId(elementId, group), "content")}
           data-property-group={group}
+          data-timeline-element-id={elementId}
           data-timeline-property-lane=""
           data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
           className="absolute"

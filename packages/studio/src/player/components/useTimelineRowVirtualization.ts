@@ -14,9 +14,9 @@ interface UseTimelineRowVirtualizationInput {
   viewport: TimelineScrollViewportSnapshot;
   rowGeometry: TimelineRowGeometry;
   sessionEpoch: number;
-  elements: TimelineElement[];
+  elements: readonly TimelineElement[];
   selectedElementId: string | null;
-  revealElementId: string | null;
+  focusedRowKey?: number;
   draggedRowKey?: number;
   resizingRowKey?: number;
   clipContextMenuRowKey?: number;
@@ -40,7 +40,7 @@ export function useTimelineRowVirtualization({
   sessionEpoch,
   elements,
   selectedElementId,
-  revealElementId,
+  focusedRowKey,
   draggedRowKey,
   resizingRowKey,
   clipContextMenuRowKey,
@@ -69,29 +69,27 @@ export function useTimelineRowVirtualization({
       scroll.removeEventListener("focusout", handleFocusOut);
     };
   }, [scrollRef, sessionEpoch]);
-  const focusIdentity = useMemo(
+  const selectedIdentity = useMemo(
     () => resolveTimelineFocusIdentity(elements, selectedElementId),
     [elements, selectedElementId],
-  );
-  const revealIdentity = useMemo(
-    () => resolveTimelineFocusIdentity(elements, revealElementId),
-    [elements, revealElementId],
   );
   const pinnedRowKeys = useMemo(
     () =>
       [
         draggedRowKey,
         resizingRowKey,
-        revealIdentity?.rowKey,
+        selectedIdentity?.rowKey,
+        focusedRowKey,
         clipContextMenuRowKey,
         keyframeContextMenuRowKey,
       ].filter((rowKey): rowKey is number => rowKey !== undefined),
     [
       clipContextMenuRowKey,
       draggedRowKey,
+      focusedRowKey,
       keyframeContextMenuRowKey,
       resizingRowKey,
-      revealIdentity,
+      selectedIdentity,
     ],
   );
   const virtualRows = useTimelineVirtualRows({
@@ -101,7 +99,7 @@ export function useTimelineRowVirtualization({
     rowGeometry,
     sessionEpoch,
     pinnedRowKeys,
-    focusedRowKey: domFocusedRowKey ?? focusIdentity?.rowKey,
+    focusedRowKey: domFocusedRowKey ?? focusedRowKey,
   });
 
   const previousLayoutRef = useRef(rowGeometry);
