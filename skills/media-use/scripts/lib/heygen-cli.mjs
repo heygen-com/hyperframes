@@ -6,14 +6,16 @@ import { track } from "./telemetry.mjs";
 // needs — so anything below this can't authenticate for free usage at all.
 export const HEYGEN_MIN_VERSION = "0.3.0";
 // Free-usage path is OAuth (`--oauth` → subscription/free credits); `--api-key`
-// bills API credits, so the onboarding steers to OAuth.
+// bills API credits, so the onboarding steers to OAuth. Keep pipe-to-shell
+// installer text out of the runtime module; the docs are the safer source of
+// truth for platform-specific setup.
 export const HEYGEN_INSTALL_COMMAND =
-  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --oauth";
+  "Install the CLI from https://developers.heygen.com/cli, then run: heygen auth login --oauth";
 export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
 export const HEYGEN_CLIENT_SOURCE_ARGV = ["--headers", "X-HeyGen-Client-Source: media-use"];
 
-export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. Install: ${HEYGEN_INSTALL_COMMAND}`;
+export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. ${HEYGEN_INSTALL_COMMAND}`;
 export const HEYGEN_NOT_AUTHENTICATED_MESSAGE = `media-use: heygen CLI not authenticated (free usage) — run: ${HEYGEN_AUTH_COMMAND}`;
 export const HEYGEN_OUTDATED_MESSAGE = `media-use: heygen CLI is outdated — run: ${HEYGEN_UPDATE_COMMAND}  (need >= v${HEYGEN_MIN_VERSION})`;
 
