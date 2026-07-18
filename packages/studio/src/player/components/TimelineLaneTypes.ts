@@ -49,7 +49,6 @@ export interface TimelineLaneBaseProps {
   setResizingClip: (value: ResizingClipState | null) => void;
   setDraggedClip: (value: DraggedClipState | null) => void;
   setSelectedElementId: (id: string | null) => void;
-  syncClipDragAutoScroll: (x: number, y: number) => void;
   shiftClickClipRef: React.RefObject<{
     element: TimelineElement;
     anchorX: number;

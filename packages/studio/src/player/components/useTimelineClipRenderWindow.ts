@@ -14,7 +14,7 @@ interface UseTimelineClipRenderWindowInput {
   duration: number;
   selectedElementId?: string;
   draggedElementId?: string;
-  resizingElementId?: string;
+  resizingElementIds?: readonly string[];
   revealElementId?: string;
   focusedEaseElementId?: string;
   clipContextMenuElementId?: string;
@@ -34,7 +34,7 @@ export function useTimelineClipRenderWindow({
   duration,
   selectedElementId,
   draggedElementId,
-  resizingElementId,
+  resizingElementIds,
   revealElementId,
   focusedEaseElementId,
   clipContextMenuElementId,
@@ -56,7 +56,7 @@ export function useTimelineClipRenderWindow({
         [
           selectedElementId,
           draggedElementId,
-          resizingElementId,
+          ...(resizingElementIds ?? []),
           revealElementId,
           focusedEaseElementId,
           clipContextMenuElementId,
@@ -68,7 +68,7 @@ export function useTimelineClipRenderWindow({
       draggedElementId,
       focusedEaseElementId,
       keyframeContextMenuElementId,
-      resizingElementId,
+      resizingElementIds,
       revealElementId,
       selectedElementId,
     ],
