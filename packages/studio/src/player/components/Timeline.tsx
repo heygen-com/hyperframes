@@ -252,18 +252,15 @@ export const Timeline = memo(function Timeline({
     sessionEpoch,
   });
 
-  const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =
-    useTimelineAssetDrop({
-      scrollRef,
-      ppsRef,
-      durationRef,
-      trackOrderRef,
-      rowGeometryRef,
-      contentOrigin,
-      onFileDrop: pinnedOnFileDrop,
-      onAssetDrop: pinnedOnAssetDrop,
-      onBlockDrop: pinnedOnBlockDrop,
-    });
+  const assetDrop = useTimelineAssetDrop({
+    scrollRef,
+    trackOrderRef,
+    rowGeometryRef,
+    onFileDrop: pinnedOnFileDrop,
+    onAssetDrop: pinnedOnAssetDrop,
+    onBlockDrop: pinnedOnBlockDrop,
+    sessionEpoch,
+  });
 
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
   const { viewport, showShortcutHint, setScrollRef, syncScrollViewport } =
@@ -423,11 +420,11 @@ export const Timeline = memo(function Timeline({
   if (!timelineReady || expandedElements.length === 0) {
     return (
       <TimelineEmptyState
-        isDragOver={isDragOver}
+        isDragOver={assetDrop.isDragOver}
         onFileDrop={!!onFileDrop}
-        onDragOver={handleAssetDragOver}
-        onDragLeave={() => clearDropPreview()}
-        onDrop={handleAssetDrop}
+        onDragOver={assetDrop.handleAssetDragOver}
+        onDragLeave={assetDrop.handleAssetDragLeave}
+        onDrop={assetDrop.handleAssetDrop}
       />
     );
   }
@@ -460,9 +457,9 @@ export const Timeline = memo(function Timeline({
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
           syncScrollViewport(e.currentTarget, true);
         }}
-        onDragOver={handleAssetDragOver}
-        onDragLeave={() => clearDropPreview()}
-        onDrop={handleAssetDrop}
+        onDragOver={assetDrop.handleAssetDragOver}
+        onDragLeave={assetDrop.handleAssetDragLeave}
+        onDrop={assetDrop.handleAssetDrop}
         onPointerDown={(e) => {
           // Let interactive controls (keyframe nav/toggle, caret, inputs) handle
           // their own clicks — scrubbing here would preventDefault and eat them.
