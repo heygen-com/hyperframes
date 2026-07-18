@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
-import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
+import {
+  getTimelineRenderTimeRange,
+  getTimelineVisibleTimeRange,
+} from "./timelineViewportGeometry";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 
 interface UseTimelineClipRenderWindowInput {
@@ -37,6 +40,10 @@ export function useTimelineClipRenderWindow({
     () => getTimelineRenderTimeRange(viewport, pixelsPerSecond, contentOrigin, duration),
     [contentOrigin, duration, pixelsPerSecond, viewport],
   );
+  const visibleTimeRange = useMemo(
+    () => getTimelineVisibleTimeRange(viewport, pixelsPerSecond, contentOrigin, duration),
+    [contentOrigin, duration, pixelsPerSecond, viewport],
+  );
   const pinnedClipIdentities = useMemo(
     () =>
       new Set(
@@ -60,5 +67,5 @@ export function useTimelineClipRenderWindow({
       selectedElementId,
     ],
   );
-  return { clipIndex, renderTimeRange, pinnedClipIdentities };
+  return { clipIndex, renderTimeRange, visibleTimeRange, pinnedClipIdentities };
 }

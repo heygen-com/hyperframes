@@ -61,7 +61,6 @@ export {
   getTimelineScrollTopForGeometryChange,
   getTimelineVisibleTimeRange,
 } from "./timelineViewportGeometry";
-
 export const Timeline = memo(function Timeline({
   onSeek,
   onDrillDown,
@@ -310,23 +309,23 @@ export const Timeline = memo(function Timeline({
       setKfContextMenu,
       toggleSelectedKeyframe,
     });
-
-  const { clipIndex, renderTimeRange, pinnedClipIdentities } = useTimelineClipRenderWindow({
-    tracks,
-    viewport,
-    pixelsPerSecond: pps,
-    contentOrigin,
-    duration: displayDuration,
-    selectedElementId: selectedElementId ?? undefined,
-    draggedElementId: draggedClip?.element.key ?? draggedClip?.element.id,
-    resizingElementIds:
-      resizingClip?.groupPreview?.map((change) => change.key) ??
-      (resizingClip ? [resizingClip.element.key ?? resizingClip.element.id] : undefined),
-    focusedElementId: pinnedElementId,
-    focusedEaseElementId: focusedEaseSegment?.elementId,
-    clipContextMenuElementId: clipContextMenu?.element.key ?? clipContextMenu?.element.id,
-    keyframeContextMenuElementId: kfContextMenu?.element.key ?? kfContextMenu?.element.id,
-  });
+  const { clipIndex, renderTimeRange, visibleTimeRange, pinnedClipIdentities } =
+    useTimelineClipRenderWindow({
+      tracks,
+      viewport,
+      pixelsPerSecond: pps,
+      contentOrigin,
+      duration: displayDuration,
+      selectedElementId: selectedElementId ?? undefined,
+      draggedElementId: draggedClip?.element.key ?? draggedClip?.element.id,
+      resizingElementIds:
+        resizingClip?.groupPreview?.map((change) => change.key) ??
+        (resizingClip ? [resizingClip.element.key ?? resizingClip.element.id] : undefined),
+      focusedElementId: pinnedElementId,
+      focusedEaseElementId: focusedEaseSegment?.elementId,
+      clipContextMenuElementId: clipContextMenu?.element.key ?? clipContextMenu?.element.id,
+      keyframeContextMenuElementId: kfContextMenu?.element.key ?? kfContextMenu?.element.id,
+    });
   useTimelineActiveClips({
     scrollRef,
     currentTime,
@@ -499,6 +498,7 @@ export const Timeline = memo(function Timeline({
           rowsVirtualized={rowVirtualizationActive}
           clipIndex={clipIndex}
           renderTimeRange={renderTimeRange}
+          visibleTimeRange={visibleTimeRange}
           pinnedClipIdentities={pinnedClipIdentities}
           trackOrder={trackOrder}
           tracks={tracks}

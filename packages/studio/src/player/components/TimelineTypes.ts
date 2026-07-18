@@ -4,6 +4,11 @@ import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
 
+export interface TimelineClipRenderContext {
+  priority: "overscan" | "visible" | "interaction";
+  rich: boolean;
+}
+
 export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
   sessionEpoch?: number;
@@ -12,6 +17,7 @@ export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverri
   renderClipContent?: (
     element: TimelineElement,
     style: { clip: string; label: string },
+    context: TimelineClipRenderContext,
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
