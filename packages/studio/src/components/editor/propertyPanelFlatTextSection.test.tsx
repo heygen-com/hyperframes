@@ -490,7 +490,7 @@ describe("FlatTextSection — multi-field", () => {
 
     const contentTextarea = host.querySelector<HTMLTextAreaElement>("textarea");
     expect(contentTextarea?.value).toBe("First line\nSecond line\nThird line");
-    expect(contentTextarea?.classList).toContain("field-sizing-content");
+    expect(contentTextarea?.classList).toContain("[field-sizing:content]");
     expect(contentTextarea?.classList).toContain("resize-y");
     expect(contentTextarea?.classList).toContain("overflow-y-auto");
 
