@@ -214,29 +214,6 @@ function formatSeconds(sec: number): string {
   return sec.toFixed(6);
 }
 
-/*
-  // Bare paths in concat directives — NOT `file://` URLs. Two failure
-  // modes on the round trip to a working shape:
-  //   1. `file:///C:/…` — FFmpeg 8.x on Windows fails to open URL-form
-  //      paths from the concat demuxer with "Impossible to open
-  //      file:///C:/…" (its `file:` protocol strips the scheme leaving
-  //      `///C:/…`, which Windows path parsing then rejects). Field-
-  //      signal reports ts=1784169914 / 1784177061 / 1784177375 (all
-  //      win32/x64 CLI 0.7.59; the last isolated the module's arg shape
-  //      vs a working manual `apad=whole_dur` command).
-  //   2. Bare `/tmp/…` when the concat script was fed via `pipe:0` —
-  //      FFmpeg's URL joiner resolves absolute POSIX paths against the
-  //      base `pipe:` URL, producing `pipe:/tmp/…` which the demuxer
-  //      then tries to open as a pipe. Broke Linux CI (regression shard
-  //      + producer integration) once the `file://` prefix was dropped.
-  // Fix: emit bare paths AND materialize the concat script into a real
-  // file (see `concatListPath`/`concatListContent` on the pad-concat
-  // step), matching sibling `assemble.ts`'s concat convention. A real
-  // file's directory becomes the base URL, and absolute paths in the
-  // script resolve as-is on both platforms. The single-quote escaping
-  // (`'\''`) is the concat demuxer's own escape rule.
-*/
-
 /**
  * Pad or trim `audio.aac` so its exact duration matches `frameCount / fps`
  * for the assembled video.

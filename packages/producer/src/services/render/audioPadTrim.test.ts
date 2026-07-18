@@ -25,10 +25,7 @@ import {
 
 describe("buildPadTrimAudioArgs", () => {
   it("emits a decode/filter/re-encode pad plan when audio is shorter than target", () => {
-    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0, {
-      sampleRate: 48000,
-      channels: 2,
-    });
+    const plan = buildPadTrimAudioPlan("/tmp/in.aac", "/tmp/out.aac", 4.0, 5.0);
     expect(plan.operation).toBe("pad");
     expect(plan.steps).toHaveLength(1);
     const args = plan.steps[0]!.args;
@@ -36,7 +33,7 @@ describe("buildPadTrimAudioArgs", () => {
     expect(args[args.indexOf("-af") + 1]).toBe("apad=whole_dur=5.000000");
     expect(args[args.indexOf("-t") + 1]).toBe("5.000000");
     expect(args[args.indexOf("-c:a") + 1]).toBe("aac");
-    // Cleanup includes BOTH the silence tail and the concat list script.
+    // The single-step filter plan has no intermediate artifacts to clean up.
     expect(plan.cleanupPaths).toEqual([]);
   });
 
