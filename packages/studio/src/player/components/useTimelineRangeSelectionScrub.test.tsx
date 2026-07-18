@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { getTimelineRowGeometry } from "./timelineLayout";
+import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,7 +61,6 @@ function setup(): { handlers: () => Handlers; seekFromX: ReturnType<typeof vi.fn
   const dragScrollRaf = { current: 0 };
   const isDragging = { current: false };
   const elementsRef = { current: [] };
-  const trackOrderRef = { current: [] };
   const rowGeometryRef = { current: getTimelineRowGeometry([]) };
 
   function Probe(): null {
@@ -75,7 +75,8 @@ function setup(): { handlers: () => Handlers; seekFromX: ReturnType<typeof vi.fn
       isDragging,
       setShowPopover: vi.fn(),
       elementsRef,
-      trackOrderRef,
+      clipIndex: createTimelineClipIndex([]),
+      sessionEpoch: 0,
       rowGeometryRef,
       contentOrigin: 0,
     });

@@ -1,5 +1,7 @@
-import { RULER_H, CLIP_Y, getTimelineRowHeight, getTimelineRowTop } from "./timelineLayout";
+import { RULER_H, CLIP_Y, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import { queryTimelineClipIndex, type TimelineClipIndex } from "../lib/timelineClipIndex";
+import type { TimelineElement } from "../store/playerStore";
 
 /** Pointer must travel at least this far (either axis) before a pointerdown on
  *  the empty timeline body becomes a marquee drag instead of a plain click. */
@@ -62,23 +64,22 @@ export function getMarqueeRect(
 /**
  * A clip's rendered rect in canvas/content coordinates (the same space the
  * marquee rect lives in): x from the shared content origin + start * pps, y from the clip's row
- * index within the visible track order (cumulative row top + CLIP_Y).
+ * index within the canonical row geometry (cumulative row top + CLIP_Y).
  * Returns null when the clip's track is not currently displayed.
  */
 export function getTimelineClipRect(
   clip: Pick<MarqueeClipInput, "start" | "duration" | "track">,
-  trackOrder: number[],
+  rowGeometry: TimelineRowGeometry,
   pps: number,
   contentOrigin: number,
-  rowHeights: readonly number[] = [],
 ): Rect | null {
-  const row = trackOrder.indexOf(clip.track);
+  const row = rowGeometry.getRowIndex(clip.track);
   if (row < 0 || !Number.isFinite(pps) || pps <= 0) return null;
   return {
     left: contentOrigin + clip.start * pps,
-    top: getTimelineRowTop(row, rowHeights) + CLIP_Y,
+    top: rowGeometry.getRowTop(row) + CLIP_Y,
     width: Math.max(clip.duration * pps, MIN_CLIP_W),
-    height: getTimelineRowHeight(row, rowHeights) - CLIP_Y * 2,
+    height: TRACK_H - CLIP_Y * 2,
   };
 }
 
@@ -90,29 +91,56 @@ export interface MarqueeSelectionResult {
   primaryId: string | null;
 }
 
+/** Narrow a marquee hit test to the intersecting logical rows and time span. */
+export function getMarqueeClipCandidates(input: {
+  clipIndex: TimelineClipIndex;
+  rowGeometry: TimelineRowGeometry;
+  marquee: Rect;
+  pps: number;
+  contentOrigin: number;
+}): readonly TimelineElement[] {
+  if (!(input.pps > 0) || input.marquee.width <= 0 || input.marquee.height <= 0) return [];
+  const lastRow = input.rowGeometry.rowKeys.length - 1;
+  const first = Math.max(0, Math.floor(input.rowGeometry.getRowFromY(input.marquee.top)));
+  const last = Math.min(
+    lastRow,
+    Math.floor(input.rowGeometry.getRowFromY(input.marquee.top + input.marquee.height)),
+  );
+  if (first > last) return [];
+  const paddingSeconds = MIN_CLIP_W / input.pps;
+  const start = Math.max(
+    0,
+    (input.marquee.left - input.contentOrigin) / input.pps - paddingSeconds,
+  );
+  const end =
+    (input.marquee.left + input.marquee.width - input.contentOrigin) / input.pps + paddingSeconds;
+  if (end <= start) return [];
+
+  const candidates: TimelineElement[] = [];
+  for (let row = first; row <= last; row += 1) {
+    const rowKey = input.rowGeometry.rowKeys[row];
+    if (rowKey === undefined) continue;
+    candidates.push(...queryTimelineClipIndex(input.clipIndex, rowKey, { start, end }));
+  }
+  return candidates;
+}
+
 /**
  * Live marquee selection: every clip whose rendered rect intersects the marquee.
  * `baseSelection` (shift/cmd-additive) is unioned in but never affects primaryId.
  */
 export function computeMarqueeSelection(input: {
   clips: MarqueeClipInput[];
-  trackOrder: number[];
+  rowGeometry: TimelineRowGeometry;
   pps: number;
   contentOrigin: number;
   marquee: Rect;
   baseSelection?: Iterable<string>;
-  rowHeights?: readonly number[];
 }): MarqueeSelectionResult {
   const ids = new Set<string>(input.baseSelection ?? []);
   let primaryId: string | null = null;
   for (const clip of input.clips) {
-    const rect = getTimelineClipRect(
-      clip,
-      input.trackOrder,
-      input.pps,
-      input.contentOrigin,
-      input.rowHeights,
-    );
+    const rect = getTimelineClipRect(clip, input.rowGeometry, input.pps, input.contentOrigin);
     if (rect && rectsOverlap(rect, input.marquee)) {
       ids.add(clip.id);
       primaryId = clip.id;
