@@ -49,7 +49,7 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
 
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
   scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
-  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
 }));
 
 const { bakeMediaProxies, PROXY_ARCHIVE_PREFIX } = await import("./publishProxyBake.js");
@@ -196,7 +196,7 @@ describe("bakeMediaProxies", () => {
     expect(html).not.toContain("assets/my%20clip.mp4");
   });
 
-  it("bakes an alpha-bearing hostile asset as a VP9 WebM proxy", async () => {
+  it("bakes an alpha-bearing hostile asset as a VP8 WebM proxy", async () => {
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mov": {
         codecName: "prores",
@@ -205,7 +205,7 @@ describe("bakeMediaProxies", () => {
         hasAlpha: true,
       },
     });
-    const proxyPath = tmpProxyFile("PROXY_VP9_ALPHA_BYTES", ".webm");
+    const proxyPath = tmpProxyFile("PROXY_VP8_ALPHA_BYTES", ".webm");
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const fileContents = new Map<string, Buffer>([
       ["index.html", indexHtml(`<video src="clip.mov" muted></video>`)],
@@ -217,13 +217,13 @@ describe("bakeMediaProxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       PROJECT_DIR,
       join(PROJECT_DIR, "clip.mov"),
-      "vp9",
+      "vp8",
     );
     const proxyEntries = [...fileContents.keys()].filter((key) =>
       key.startsWith(`${PROXY_ARCHIVE_PREFIX}/`),
     );
     expect(proxyEntries).toEqual([`${PROXY_ARCHIVE_PREFIX}/proxy.webm`]);
-    expect(fileContents.get(proxyEntries[0]!)?.toString("utf-8")).toBe("PROXY_VP9_ALPHA_BYTES");
+    expect(fileContents.get(proxyEntries[0]!)?.toString("utf-8")).toBe("PROXY_VP8_ALPHA_BYTES");
     expect(fileContents.get("index.html")?.toString("utf-8")).toContain(proxyEntries[0]!);
     expect(manifest).toEqual({ proxied: ["/clip.mov"], skippedAlpha: [], failed: [] });
   });

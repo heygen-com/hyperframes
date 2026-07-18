@@ -686,7 +686,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     resolveProxyImpl?: (
       projectDir: string,
       absoluteSourcePath: string,
-      variant?: "h264" | "vp9",
+      variant?: "h264" | "vp8",
     ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
@@ -736,20 +736,20 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         }
         return { eligible: true };
       },
-      isProxyVariant: (value: string) => value === "h264" || value === "vp9",
+      isProxyVariant: (value: string) => value === "h264" || value === "vp8",
       isProxyVariantRequest: (value: string) =>
-        value === "auto" || value === "h264" || value === "vp9",
-      proxyVariantFor: (facts: { hasAlpha: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+        value === "auto" || value === "h264" || value === "vp8",
+      proxyVariantFor: (facts: { hasAlpha: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
       resolveProxyVariantRequest: (
-        request: "auto" | "h264" | "vp9",
+        request: "auto" | "h264" | "vp8",
         facts: { hasAlpha: boolean },
       ) => {
-        const expected = facts.hasAlpha ? "vp9" : "h264";
+        const expected = facts.hasAlpha ? "vp8" : "h264";
         return request === "auto" || request === expected ? expected : null;
       },
       PROXY_VARIANT_CONFIG: {
         h264: { extension: ".mp4", contentType: "video/mp4" },
-        vp9: { extension: ".webm", contentType: "video/webm" },
+        vp8: { extension: ".webm", contentType: "video/webm" },
       },
     }));
     return import("./preview.js");
@@ -863,12 +863,12 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
 
-    it("serves an alpha asset as a VP9 WebM proxy", async () => {
+    it("serves an alpha asset as a VP8 WebM proxy", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mov"), "alpha-video-bytes");
       const resolveProxyMock = vi.fn(async () => {
         const proxyPath = join(projectDir, "proxy.webm");
-        writeFileSync(proxyPath, "vp9-alpha-proxy");
+        writeFileSync(proxyPath, "vp8-alpha-proxy");
         return proxyPath;
       });
       const { registerPreviewRoutes: register } = await loadPreviewModule({
@@ -883,14 +883,14 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const app = new Hono();
       register(app, createAdapter(projectDir));
 
-      const res = await app.request("http://localhost/projects/demo/preview/clip.mov?hf-proxy=vp9");
+      const res = await app.request("http://localhost/projects/demo/preview/clip.mov?hf-proxy=vp8");
 
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toBe("video/webm");
       expect(resolveProxyMock).toHaveBeenCalledWith(
         projectDir,
         join(projectDir, "clip.mov"),
-        "vp9",
+        "vp8",
       );
     });
 
@@ -904,7 +904,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const app = new Hono();
       register(app, createAdapter(projectDir));
 
-      const res = await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=vp9");
+      const res = await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=vp8");
 
       expect(res.status).toBe(422);
       expect(resolveProxyMock).not.toHaveBeenCalled();

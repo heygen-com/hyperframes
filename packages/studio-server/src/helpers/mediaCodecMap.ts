@@ -23,7 +23,7 @@ export interface AssetCodecFacts {
    * the runtime always proxies rather than probing `canPlayType`). */
   representativeMime: string | null;
   /** Source carries an alpha channel (ffprobe pix_fmt). Alpha sources use a
-   * VP9/WebM proxy so their transparency is preserved. */
+   * VP8/WebM proxy so their transparency is preserved across Chromium builds. */
   hasAlpha: boolean;
 }
 
@@ -47,7 +47,7 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
   vp9: 'video/webm; codecs="vp09.00.10.08"',
 };
 
-export type ProxyVariant = "h264" | "vp9";
+export type ProxyVariant = "h264" | "vp8";
 export type ProxyVariantRequest = ProxyVariant | "auto";
 
 export const PROXY_VARIANT_CONFIG: Record<
@@ -55,7 +55,7 @@ export const PROXY_VARIANT_CONFIG: Record<
   { extension: ".mp4" | ".webm"; contentType: "video/mp4" | "video/webm" }
 > = {
   h264: { extension: ".mp4", contentType: "video/mp4" },
-  vp9: { extension: ".webm", contentType: "video/webm" },
+  vp8: { extension: ".webm", contentType: "video/webm" },
 };
 
 export function isProxyVariant(value: string): value is ProxyVariant {
@@ -67,7 +67,7 @@ export function isProxyVariantRequest(value: string): value is ProxyVariantReque
 }
 
 export function proxyVariantFor(facts: AssetCodecFacts): ProxyVariant {
-  return facts.hasAlpha ? "vp9" : "h264";
+  return facts.hasAlpha ? "vp8" : "h264";
 }
 
 export function resolveProxyVariantRequest(
@@ -78,10 +78,7 @@ export function resolveProxyVariantRequest(
   return request === "auto" || request === expected ? expected : null;
 }
 
-export type MediaProxyIneligibilityReason =
-  | "browser_safe_codec"
-  | "proxy_target_codec"
-  | "unknown_codec";
+export type MediaProxyIneligibilityReason = "browser_safe_codec" | "unknown_codec";
 
 export type MediaProxyEligibility =
   | { eligible: true }
@@ -91,9 +88,6 @@ export type MediaProxyEligibility =
 export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
   if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
-  if (facts.hasAlpha && facts.codecName === "vp9") {
-    return { eligible: false, reason: "proxy_target_codec" };
-  }
   return { eligible: true };
 }
 

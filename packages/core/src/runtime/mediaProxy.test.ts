@@ -174,7 +174,7 @@ describe("maybeProxyProactively", () => {
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
 
-  it("swaps an alpha-bearing hostile entry to a VP9 proxy", () => {
+  it("swaps an alpha-bearing hostile entry to a VP8 proxy", () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
       "/video.mov": {
         codecName: "prores",
@@ -188,7 +188,7 @@ describe("maybeProxyProactively", () => {
 
     maybeProxyProactively(el);
 
-    expect(proxyVariant(el)).toBe("vp9");
+    expect(proxyVariant(el)).toBe("vp8");
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 
@@ -237,7 +237,7 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
 
-  it("swaps a mapped alpha entry to a VP9 proxy", () => {
+  it("swaps a mapped alpha entry to a VP8 proxy", () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
       "/video.mov": {
         codecName: "prores",
@@ -251,7 +251,7 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
 
     handleMetadataForProxy(el);
 
-    expect(proxyVariant(el)).toBe("vp9");
+    expect(proxyVariant(el)).toBe("vp8");
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 

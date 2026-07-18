@@ -215,7 +215,7 @@ describe("decideMediaProxyEligibility", () => {
     });
   });
 
-  it("does not recycle an alpha VP9 source into the same proxy codec", () => {
+  it("proxies an alpha VP9 source to the Chromium-compatible VP8 variant", () => {
     expect(
       decideMediaProxyEligibility({
         codecName: "vp9",
@@ -223,19 +223,19 @@ describe("decideMediaProxyEligibility", () => {
         representativeMime: 'video/webm; codecs="vp09.00.10.08"',
         hasAlpha: true,
       }),
-    ).toEqual({ eligible: false, reason: "proxy_target_codec" });
+    ).toEqual({ eligible: true });
   });
 });
 
 describe("proxyVariantFor", () => {
-  it("uses VP9 for alpha and H.264 otherwise", () => {
+  it("uses VP8 for alpha and H.264 otherwise", () => {
     const facts = {
       codecName: "prores",
       browserHostile: true,
       representativeMime: null,
       hasAlpha: true,
     };
-    expect(proxyVariantFor(facts)).toBe("vp9");
+    expect(proxyVariantFor(facts)).toBe("vp8");
     expect(proxyVariantFor({ ...facts, hasAlpha: false })).toBe("h264");
   });
 });
@@ -248,7 +248,7 @@ describe("resolveProxyVariantRequest", () => {
       representativeMime: null,
       hasAlpha: true,
     };
-    expect(resolveProxyVariantRequest("auto", facts)).toBe("vp9");
+    expect(resolveProxyVariantRequest("auto", facts)).toBe("vp8");
     expect(resolveProxyVariantRequest("h264", facts)).toBeNull();
   });
 });

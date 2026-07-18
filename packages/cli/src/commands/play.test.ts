@@ -62,16 +62,16 @@ const mediaMocks = vi.hoisted(() => ({
   decideMediaProxyEligibility: vi.fn((facts: { browserHostile: boolean } | null) =>
     facts?.browserHostile ? { eligible: true } : { eligible: false, reason: "browser_safe_codec" },
   ),
-  isProxyVariant: (value: string) => value === "h264" || value === "vp9",
-  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp9",
-  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
-  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp9", facts: { hasAlpha?: boolean }) => {
-    const expected = facts.hasAlpha ? "vp9" : "h264";
+  isProxyVariant: (value: string) => value === "h264" || value === "vp8",
+  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp8",
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
+  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp8", facts: { hasAlpha?: boolean }) => {
+    const expected = facts.hasAlpha ? "vp8" : "h264";
     return request === "auto" || request === expected ? expected : null;
   },
   PROXY_VARIANT_CONFIG: {
     h264: { extension: ".mp4", contentType: "video/mp4" },
-    vp9: { extension: ".webm", contentType: "video/webm" },
+    vp8: { extension: ".webm", contentType: "video/webm" },
   },
 }));
 
@@ -119,7 +119,7 @@ afterEach(() => {
   dir = undefined;
 });
 
-it("serves direct VP9 proxy requests for alpha sources", async () => {
+it("serves direct VP8 proxy requests for alpha sources", async () => {
   const project = tmpProject();
   writeFileSync(join(project.dir, "clip.mov"), "alpha-prores");
   mediaMocks.probeAssetCodec.mockResolvedValueOnce({
@@ -129,7 +129,7 @@ it("serves direct VP9 proxy requests for alpha sources", async () => {
     hasAlpha: true,
   });
   const proxyPath = join(project.dir, "proxy.webm");
-  writeFileSync(proxyPath, "vp9-alpha-proxy");
+  writeFileSync(proxyPath, "vp8-alpha-proxy");
   mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
@@ -140,7 +140,7 @@ it("serves direct VP9 proxy requests for alpha sources", async () => {
   expect(mocks.resolveProxy).toHaveBeenCalledWith(
     project.dir,
     join(project.dir, "clip.mov"),
-    "vp9",
+    "vp8",
   );
 });
 

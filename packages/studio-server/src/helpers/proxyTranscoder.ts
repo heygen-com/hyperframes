@@ -32,7 +32,7 @@ import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
  * entry still lands for the next request.
  */
 
-export const PROXY_PARAMS_VERSION = "v3";
+export const PROXY_PARAMS_VERSION = "v4";
 
 const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -314,13 +314,13 @@ async function runFfmpeg(
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
   }
-  // The HDR tonemap filters discard alpha. VP9 is the alpha-preserving proxy
+  // The HDR tonemap filters discard alpha. VP8 is the alpha-preserving proxy
   // variant, so retain its source color values instead of making it opaque.
-  if (metadata.color.isHdr && variant !== "vp9") await ensureHdrFilters(ffmpegPath);
+  if (metadata.color.isHdr && variant !== "vp8") await ensureHdrFilters(ffmpegPath);
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
-  const pixelFormat = variant === "vp9" ? "yuva420p" : "yuv420p";
+  const pixelFormat = variant === "vp8" ? "yuva420p" : "yuv420p";
   const videoFilter =
-    metadata.color.isHdr && variant !== "vp9"
+    metadata.color.isHdr && variant !== "vp8"
       ? [
           "zscale=t=linear:npl=100",
           "tonemap=hable:desat=0",
@@ -354,9 +354,9 @@ async function runFfmpeg(
       "-movflags",
       "+faststart",
     ];
-    const vp9Args = [
+    const vp8Args = [
       "-c:v",
-      "libvpx-vp9",
+      "libvpx",
       "-b:v",
       "0",
       "-crf",
@@ -371,8 +371,6 @@ async function runFfmpeg(
       "bt709",
       "-color_trc",
       "bt709",
-      "-row-mt",
-      "1",
       "-cpu-used",
       "4",
       "-auto-alt-ref",
@@ -384,7 +382,7 @@ async function runFfmpeg(
       "-c:a",
       "libopus",
     ];
-    const args = [...commonArgs, ...(variant === "vp9" ? vp9Args : h264Args), outputPath];
+    const args = [...commonArgs, ...(variant === "vp8" ? vp8Args : h264Args), outputPath];
 
     // Hard ceiling so a hung ffmpeg can never permanently occupy one of the
     // global transcode slots: the child is killed and the slot released via

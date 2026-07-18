@@ -20,7 +20,7 @@
  * `cloud render` never calls this: it builds and zips the file map without an
  * intermediate baking transform (R2 in the plan).
  *
- * Alpha-bearing sources bake as VP9/WebM so transparency survives. A failed
+ * Alpha-bearing sources bake as VP8/WebM so transparency survives. A failed
  * hostile transcode aborts publish with a
  * structured manifest rather than silently shipping an unplayable asset.
  */
@@ -52,7 +52,7 @@ export const PROXY_ARCHIVE_PREFIX = "_proxy";
 
 export interface ProxyBakeManifest {
   proxied: string[];
-  /** @deprecated Alpha sources are proxied as VP9; retained as an always-empty compatibility field. */
+  /** @deprecated Alpha sources are proxied as VP8; retained as an always-empty compatibility field. */
   skippedAlpha: string[];
   failed: Array<{ path: string; error: string }>;
 }

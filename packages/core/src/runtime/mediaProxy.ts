@@ -15,7 +15,7 @@ export type MediaCodecMapEntry = {
   codecName: string;
   browserHostile: boolean;
   representativeMime: string | null;
-  /** Source carries an alpha channel and therefore needs a VP9/WebM proxy.
+  /** Source carries an alpha channel and therefore needs a VP8/WebM proxy.
    * Optional so pre-alpha-aware maps stay assignable; absent means "no alpha detected". */
   hasAlpha?: boolean;
 };
@@ -163,7 +163,7 @@ function lookupCodecMapEntry(
 
 function appendProxyParam(src: string, entry: MediaCodecMapEntry | null): string {
   const url = new URL(src, document.baseURI);
-  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp9" : "h264") : "auto");
+  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto");
   return url.href;
 }
 
@@ -291,7 +291,7 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
  * auto-proxying is enabled and served, so its absence means a `?hf-proxy=`
  * request would 404 — never swap there. When the map is present but has no
  * entry for this key, swapping stays allowed (unlisted-asset rescue). A
- * mapped alpha entries select the VP9/WebM proxy variant.
+ * mapped alpha entries select the VP8/WebM proxy variant.
  */
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;

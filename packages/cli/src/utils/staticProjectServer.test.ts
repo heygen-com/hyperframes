@@ -69,16 +69,16 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
   probeAssetCodec: mocks.probeAssetCodec,
   decideMediaProxyEligibility: mocks.decideMediaProxyEligibility,
-  isProxyVariant: (value: string) => value === "h264" || value === "vp9",
-  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp9",
-  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
-  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp9", facts: { hasAlpha?: boolean }) => {
-    const expected = facts.hasAlpha ? "vp9" : "h264";
+  isProxyVariant: (value: string) => value === "h264" || value === "vp8",
+  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp8",
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
+  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp8", facts: { hasAlpha?: boolean }) => {
+    const expected = facts.hasAlpha ? "vp8" : "h264";
     return request === "auto" || request === expected ? expected : null;
   },
   PROXY_VARIANT_CONFIG: {
     h264: { extension: ".mp4", contentType: "video/mp4" },
-    vp9: { extension: ".webm", contentType: "video/webm" },
+    vp8: { extension: ".webm", contentType: "video/webm" },
   },
 }));
 
@@ -311,7 +311,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     },
   );
 
-  it("serves an alpha-bearing video through a VP9 WebM proxy", async () => {
+  it("serves an alpha-bearing video through a VP8 WebM proxy", async () => {
     const projectDir = mk();
     writeFileSync(join(projectDir, "clip.mov"), "prores-4444-alpha-bytes");
     mocks.probeAssetCodec.mockResolvedValueOnce({
@@ -321,7 +321,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
       representativeMime: null,
     });
     const proxyPath = join(projectDir, "proxy.webm");
-    writeFileSync(proxyPath, "vp9-alpha-proxy");
+    writeFileSync(proxyPath, "vp8-alpha-proxy");
     mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
@@ -333,7 +333,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
       join(projectDir, "clip.mov"),
-      "vp9",
+      "vp8",
     );
   });
 

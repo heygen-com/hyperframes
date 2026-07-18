@@ -466,4 +466,34 @@ describe("FlatTextSection — multi-field", () => {
 
     act(() => root.unmount());
   });
+
+  it("keeps Content expandable and grows it with multiline text", () => {
+    const element = makeMultiFieldElement();
+    element.textFields[0].value = "First line\nSecond line\nThird line";
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatTextSection
+          element={element}
+          styles={{}}
+          fontAssets={[]}
+          onSetText={vi.fn()}
+          onSetTextFieldStyle={vi.fn()}
+          onAddTextField={vi.fn()}
+          onRemoveTextField={vi.fn()}
+        />,
+      );
+    });
+
+    const contentTextarea = host.querySelector<HTMLTextAreaElement>("textarea");
+    expect(contentTextarea?.value).toBe("First line\nSecond line\nThird line");
+    expect(contentTextarea?.classList).toContain("field-sizing-content");
+    expect(contentTextarea?.classList).toContain("resize-y");
+    expect(contentTextarea?.classList).toContain("overflow-y-auto");
+
+    act(() => root.unmount());
+  });
 });

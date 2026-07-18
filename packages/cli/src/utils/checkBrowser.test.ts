@@ -69,7 +69,7 @@ vi.mock("./staticProjectServer.js", () => ({
 vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/studio-server/media-codec-map")>()),
   scanProjectMediaCodecMap: mocks.scanProjectMediaCodecMap,
-  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp9" : "h264"),
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
 }));
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,

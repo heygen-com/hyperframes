@@ -73,7 +73,7 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
  * responses). No second concurrency limiter here — the transcoder's own
  * global bound throttles both pre-warm and element-triggered calls.
  * Pre-warm failures are swallowed; an actual `?hf-proxy=` request surfaces
- * them as a 502. Alpha-bearing entries pre-warm their VP9/WebM variant.
+ * them as a 502. Alpha-bearing entries pre-warm their VP8/WebM variant.
  *
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
