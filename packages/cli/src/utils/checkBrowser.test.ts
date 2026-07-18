@@ -502,7 +502,7 @@ describe("preResolveHostileMediaProxies", () => {
     );
   });
 
-  it("does not pre-resolve a hostile asset rejected by the shared proxy policy", async () => {
+  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/alpha.webm": {
@@ -515,7 +515,12 @@ describe("preResolveHostileMediaProxies", () => {
 
     await preResolveHostileMediaProxies(projectDir, "<html></html>");
 
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      join(projectDir, "alpha.webm"),
+      "vp8",
+    );
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {
