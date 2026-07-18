@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.63"
+  description="Released - 2026-07-18"
+  tags={["Release", "Media Use"]}
+>
+Media Use now releases incomplete asset reservations when downloads, cache imports, or LUT
+generation fail, preventing zero-byte placeholders from being mistaken for valid media. Missing
+HeyGen CLI guidance now points to the official setup docs instead of embedding pipe-to-shell
+installer text.
+
+## Fixes
+
+- **Media Use:** Clean failed asset reservations ([49113eb08](https://github.com/heygen-com/hyperframes/commit/49113eb08487b2c53b7404bc26c5e419244ae97f), [#2627](https://github.com/heygen-com/hyperframes/pull/2627))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.62...v0.7.63).
+</Update>
+
+<Update
   label="HyperFrames v0.7.62"
   description="Released - 2026-07-18"
   tags={["Release", "Studio", "Producer", "CLI"]}

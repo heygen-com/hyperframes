@@ -3,7 +3,7 @@
   "name": "hyperframes",
   "displayName": "HyperFrames by HeyGen",
   "description": "Write HTML, render video. Compositions, Tailwind v4 styles, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website capture for HyperFrames.",
-  "version": "0.7.62",
+  "version": "0.7.63",
   "author": {
     "name": "HeyGen",
     "email": "hyperframes@heygen.com"
