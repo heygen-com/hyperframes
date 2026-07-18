@@ -79,6 +79,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       {
         audioCodec: "aac",
         preserveAudioPrimingEditList: normalizeResult.operation === "trim",
+        durationSeconds: normalizeResult.targetDurationSeconds,
       },
       job.config.fps,
     );

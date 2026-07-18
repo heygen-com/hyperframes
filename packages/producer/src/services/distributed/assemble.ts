@@ -323,7 +323,11 @@ export async function assemble(
         audioForMux,
         muxOutputPath,
         abortSignal,
-        { audioCodec: "aac", preserveAudioPrimingEditList },
+        {
+          audioCodec: "aac",
+          preserveAudioPrimingEditList,
+          durationSeconds: padTrimResult.targetDurationSeconds,
+        },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {
