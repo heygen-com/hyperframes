@@ -29,6 +29,7 @@ export interface TimelinePerformanceFixture {
 }
 
 const TRACK_COUNT = 1_000;
+let fixtureLeaseActive = false;
 const PROFILE_GEOMETRY: Readonly<
   Record<TimelinePerformanceFixtureProfile, { duration: number; clipDuration: number }>
 > = Object.freeze({
@@ -38,6 +39,15 @@ const PROFILE_GEOMETRY: Readonly<
   "composition-heavy": { duration: 900, clipDuration: 12 },
   "remote-unsupported": { duration: 900, clipDuration: 12 },
 });
+
+/** Prevent live iframe discovery from replacing an explicitly loaded dev fixture. */
+export function setTimelinePerformanceFixtureLease(active: boolean): void {
+  fixtureLeaseActive = active;
+}
+
+export function hasTimelinePerformanceFixtureLease(): boolean {
+  return fixtureLeaseActive;
+}
 
 function validateFixtureSpec(spec: TimelinePerformanceFixtureSpec) {
   if (spec.elementCount !== 1_000 && spec.elementCount !== 50_000) {

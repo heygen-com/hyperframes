@@ -441,6 +441,21 @@ describe("usePlayerStore", () => {
   });
 
   describe("reset", () => {
+    it("increments the session epoch only for a hard project switch", () => {
+      usePlayerStore.getState().beginTimelineSession("project-a");
+      const firstEpoch = usePlayerStore.getState().timelineSessionEpoch;
+
+      usePlayerStore.getState().reset();
+      expect(usePlayerStore.getState().timelineSessionEpoch).toBe(firstEpoch);
+
+      usePlayerStore.getState().beginTimelineSession("project-a");
+      expect(usePlayerStore.getState().timelineSessionEpoch).toBe(firstEpoch);
+
+      usePlayerStore.getState().beginTimelineSession("project-b");
+      expect(usePlayerStore.getState().timelineSessionEpoch).toBe(firstEpoch + 1);
+      expect(usePlayerStore.getState().timelineProjectId).toBe("project-b");
+    });
+
     it("resets all state to defaults", () => {
       // Mutate everything
       const store = usePlayerStore.getState();

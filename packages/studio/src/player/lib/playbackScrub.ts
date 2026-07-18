@@ -1,6 +1,6 @@
 import { usePlayerStore } from "../store/playerStore";
-import { isMusicTrack } from "../../utils/timelineInspector";
 import { scrubPreviewAudio, stopScrubPreviewAudio } from "./timelineIframeHelpers";
+import { getTimelineElementIndexes } from "./timelineElementIndexes";
 
 export { stopScrubPreviewAudio };
 
@@ -8,7 +8,7 @@ export { stopScrubPreviewAudio };
 // Skipped when audio is muted or the time falls outside the music clip.
 export function scrubMusicAtSeek(iframe: HTMLIFrameElement | null, nextTime: number): void {
   const s = usePlayerStore.getState();
-  const music = s.elements.find(isMusicTrack);
+  const music = getTimelineElementIndexes(s.elements).musicElement;
   if (!music || s.audioMuted) return;
   const rel = nextTime - music.start;
   const audioFileTime = rel >= 0 && rel <= music.duration ? (music.playbackStart ?? 0) + rel : null;
