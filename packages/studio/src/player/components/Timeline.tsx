@@ -245,19 +245,19 @@ export const Timeline = memo(function Timeline({
     sessionEpoch,
   });
 
-  const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =
-    useTimelineAssetDrop({
-      scrollRef,
-      ppsRef,
-      durationRef,
-      trackOrderRef,
-      rowGeometryRef,
-      contentOrigin,
-      onFileDrop: pinnedOnFileDrop,
-      onAssetDrop: pinnedOnAssetDrop,
-      onBlockDrop: pinnedOnBlockDrop,
-      onCompositionDrop: pinnedOnCompositionDrop,
-    });
+  const assetDrop = useTimelineAssetDrop({
+    scrollRef,
+    ppsRef,
+    durationRef,
+    trackOrderRef,
+    rowGeometryRef,
+    contentOrigin,
+    onFileDrop: pinnedOnFileDrop,
+    onAssetDrop: pinnedOnAssetDrop,
+    onBlockDrop: pinnedOnBlockDrop,
+    onCompositionDrop: pinnedOnCompositionDrop,
+    sessionEpoch,
+  });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
   const resizingElementIds =
     resizingClip?.groupPreview?.map((change) => change.key) ??
@@ -436,11 +436,11 @@ export const Timeline = memo(function Timeline({
   if (!timelineReady || expandedElements.length === 0) {
     return (
       <TimelineEmptyState
-        isDragOver={isDragOver}
+        isDragOver={assetDrop.isDragOver}
         onFileDrop={!!onFileDrop}
-        onDragOver={handleAssetDragOver}
-        onDragLeave={() => clearDropPreview()}
-        onDrop={handleAssetDrop}
+        onDragOver={assetDrop.handleAssetDragOver}
+        onDragLeave={assetDrop.handleAssetDragLeave}
+        onDrop={assetDrop.handleAssetDrop}
       />
     );
   }
@@ -450,7 +450,7 @@ export const Timeline = memo(function Timeline({
       ref={setContainerRef}
       aria-label="Timeline"
       data-timeline-element-count={expandedElements.length}
-      className={`relative border-t select-none h-full overflow-hidden ${isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${assetDrop.isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={updateRazorGuide}
       onMouseLeave={clearRazorGuide}
       style={{
@@ -472,9 +472,9 @@ export const Timeline = memo(function Timeline({
           syncScrollViewport(e.currentTarget, true);
         }}
         {...rowWindow.timelineFocusProps}
-        onDragOver={handleAssetDragOver}
-        onDragLeave={() => clearDropPreview()}
-        onDrop={handleAssetDrop}
+        onDragOver={assetDrop.handleAssetDragOver}
+        onDragLeave={assetDrop.handleAssetDragLeave}
+        onDrop={assetDrop.handleAssetDrop}
         onPointerDown={(e) => {
           // Let interactive controls (keyframe nav/toggle, caret, inputs) handle
           // their own clicks — scrubbing here would preventDefault and eat them.
