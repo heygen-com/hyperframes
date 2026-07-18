@@ -13,7 +13,10 @@ import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/stud
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
-import { findElementForSelection } from "../components/editor/domEditingElement";
+import {
+  findElementForSelection,
+  findElementForTimelineElement,
+} from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -137,6 +140,12 @@ export function findTimelineElementInIframe(
   try {
     const doc = iframe?.contentDocument;
     if (!doc) return null;
+    if (element.kind === "composition" && element.compositionSrc) {
+      return findElementForTimelineElement(doc, element, {
+        activeCompositionPath,
+        isMasterView: true,
+      });
+    }
     return findElementForSelection(
       doc,
       {

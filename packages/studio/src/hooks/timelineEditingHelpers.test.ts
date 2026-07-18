@@ -142,6 +142,32 @@ describe("applyTimelineStackingReorder", () => {
 });
 
 describe("patchIframeDomTiming", () => {
+  it("patches a top-level composition host in its parent source file", () => {
+    const iframe = makeIframeWith(`
+      <div data-composition-id="root">
+        <div
+          id="scene-host"
+          data-composition-id="scene"
+          data-composition-src="compositions/scene.html"
+          data-start="2"
+        ></div>
+      </div>
+    `);
+    const host = iframe.contentDocument?.getElementById("scene-host");
+    const target = el({
+      id: "scene-host",
+      tag: "div",
+      kind: "composition",
+      domId: "scene-host",
+      sourceFile: "index.html",
+      compositionSrc: "compositions/scene.html",
+    });
+
+    patchIframeDomTiming(iframe, target, [["data-start", "9"]], "index.html");
+
+    expect(host?.getAttribute("data-start")).toBe("9");
+  });
+
   it("resolves selectorIndex within the element's source file", () => {
     const iframe = makeIframeWith(`
       <div data-composition-id="root">
