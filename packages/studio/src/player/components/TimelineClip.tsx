@@ -12,6 +12,7 @@ interface TimelineClipProps {
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
+  isActive?: boolean;
   hasCustomContent: boolean;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
@@ -35,6 +36,7 @@ export const TimelineClip = memo(function TimelineClip({
   isSelected,
   isHovered,
   isDragging = false,
+  isActive = false,
   hasCustomContent,
   capabilities,
   theme = defaultTimelineTheme,
@@ -88,6 +90,8 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
+      data-active={isActive ? "" : undefined}
+      tabIndex={-1}
       className={clipClassName}
       style={style}
       title={
