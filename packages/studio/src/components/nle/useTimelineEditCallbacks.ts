@@ -193,12 +193,15 @@ export function useTimelineEditCallbacks({
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
-      onDeleteAllKeyframes: (element) => {
+      onDeleteAllKeyframes: (element, animationId) => {
         // Hold the element where it is (collapse keyframes to a static set) rather
         // than deleting the whole animation — deleting strands a stale GSAP base
         // that the next drag adds to, flinging the element off-screen.
         const elementKey = getTimelineElementIdentity(element);
-        const anim = resolveElementAnimations(elementKey).find((animation) => animation.keyframes);
+        const animations = resolveElementAnimations(elementKey);
+        const anim = animationId
+          ? animations.find((animation) => animation.id === animationId)
+          : animations.find((animation) => animation.keyframes);
         if (!anim) return;
         void buildDomSelectionForTimelineElement(element).then((selection) => {
           if (selection) handleGsapRemoveAllKeyframes(anim.id, selection);

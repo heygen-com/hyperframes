@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DragCommitDeps } from "./timelineClipDragCommit";
 import {
@@ -21,6 +21,7 @@ interface TrackGapMenuAnchor {
   y: number;
   track: number;
   time: number;
+  sessionEpoch: number;
 }
 
 /** Gap strips to paint on one lane while a menu row is hovered. */
@@ -32,9 +33,9 @@ export interface TrackGapHighlight {
 /**
  * Track-gap context menu (right-click on empty lane space) — state, the
  * derived menu model, and the two commit actions. Extracted from Timeline.tsx
- * as a cohesive unit (600-line studio cap); behavior identical.
+ * as a cohesive unit (600-line studio cap).
  *
- * Only the ANCHOR (and the hovered row) is state; the menu model (gap under
+ * Only the session-stamped ANCHOR (and the hovered row) is state; the menu model (gap under
  * the pointer, compaction, movability) derives from live `tracks` so an open
  * menu reflects concurrent edits. `gapHighlight` — the strips TimelineCanvas
  * paints while "Close gap" / "Close all gaps" is hovered — derives the same
@@ -55,12 +56,16 @@ export function useTrackGapMenu({
   onMoveElements: DragCommitDeps["onMoveElements"];
 }) {
   const updateElement = usePlayerStore((s) => s.updateElement);
+  const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const [gapContextMenu, setGapContextMenu] = useState<TrackGapMenuAnchor | null>(null);
   const [hoveredGapAction, setHoveredGapAction] = useState<"close-gap" | "close-all" | null>(null);
 
   const gapMenuLaneElements = useMemo(
-    () => (gapContextMenu ? (tracks.find(([t]) => t === gapContextMenu.track)?.[1] ?? []) : null),
-    [gapContextMenu, tracks],
+    () =>
+      gapContextMenu?.sessionEpoch === sessionEpoch
+        ? (tracks.find(([t]) => t === gapContextMenu.track)?.[1] ?? [])
+        : null,
+    [gapContextMenu, sessionEpoch, tracks],
   );
   const gapMenuModel = useMemo(() => {
     if (!gapContextMenu || !gapMenuLaneElements) return null;
@@ -99,7 +104,12 @@ export function useTrackGapMenu({
   }, [gapContextMenu, gapMenuLaneElements, hoveredGapAction]);
 
   const closeTrackGap = useCallback(() => {
-    if (!gapContextMenu || !gapMenuLaneElements) return;
+    if (
+      !gapContextMenu ||
+      !gapMenuLaneElements ||
+      gapContextMenu.sessionEpoch !== usePlayerStore.getState().timelineSessionEpoch
+    )
+      return;
     commitCloseTrackGap(gapMenuLaneElements, gapContextMenu.time, {
       elements: expandedElementsRef.current,
       trackOrder: trackOrderRef.current,
@@ -117,7 +127,12 @@ export function useTrackGapMenu({
     onMoveElements,
   ]);
   const closeAllTrackGaps = useCallback(() => {
-    if (!gapMenuLaneElements) return;
+    if (
+      !gapContextMenu ||
+      !gapMenuLaneElements ||
+      gapContextMenu.sessionEpoch !== usePlayerStore.getState().timelineSessionEpoch
+    )
+      return;
     commitCloseAllTrackGaps(gapMenuLaneElements, {
       elements: expandedElementsRef.current,
       trackOrder: trackOrderRef.current,
@@ -126,6 +141,7 @@ export function useTrackGapMenu({
       onMoveElements,
     });
   }, [
+    gapContextMenu,
     gapMenuLaneElements,
     expandedElementsRef,
     trackOrderRef,
@@ -134,14 +150,21 @@ export function useTrackGapMenu({
     onMoveElements,
   ]);
 
-  const openGapMenu = useCallback((anchor: TrackGapMenuAnchor) => {
+  const openGapMenu = useCallback((anchor: Omit<TrackGapMenuAnchor, "sessionEpoch">) => {
     setHoveredGapAction(null);
-    setGapContextMenu(anchor);
+    setGapContextMenu({
+      ...anchor,
+      sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
+    });
   }, []);
   const dismissGapMenu = useCallback(() => {
     setHoveredGapAction(null);
     setGapContextMenu(null);
   }, []);
+
+  useEffect(() => {
+    if (gapContextMenu && gapContextMenu.sessionEpoch !== sessionEpoch) dismissGapMenu();
+  }, [dismissGapMenu, gapContextMenu, sessionEpoch]);
 
   return {
     gapMenuModel,
