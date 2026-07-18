@@ -39,7 +39,7 @@ function createTimelineHost() {
   return host;
 }
 
-function renderDiamonds(onClickKeyframe = vi.fn()) {
+function renderDiamonds(onClickKeyframe = vi.fn(), onShiftClickKeyframe = vi.fn()) {
   const host = createTimelineHost();
   const root = createRoot(host);
   act(() => {
@@ -58,12 +58,15 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
         isSelected
         currentPercentage={0}
         elementId="clip-1"
+        clipStart={10}
+        clipDuration={10}
         selectedKeyframes={new Set()}
         onClickKeyframe={onClickKeyframe}
+        onShiftClickKeyframe={onShiftClickKeyframe}
       />,
     );
   });
-  return { host, root, onClickKeyframe };
+  return { host, root, onClickKeyframe, onShiftClickKeyframe };
 }
 
 function renderRetimeLane(onMoveKeyframe = vi.fn().mockResolvedValue(true), strict = false) {
@@ -120,6 +123,27 @@ function renderRetimeLane(onMoveKeyframe = vi.fn().mockResolvedValue(true), stri
 }
 
 describe("TimelineClipDiamonds", () => {
+  it("gives keyframes time-based names and native keyboard selection semantics", () => {
+    const { host, root, onClickKeyframe } = renderDiamonds();
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]')!;
+    expect(diamond.getAttribute("aria-label")).toBe("Motion keyframe at 15s");
+    expect(diamond.getAttribute("aria-pressed")).toBe("false");
+    act(() => diamond.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })));
+    expect(onClickKeyframe).toHaveBeenCalledWith(50);
+    act(() => root.unmount());
+  });
+
+  it("uses Shift+Space's native click for additive keyframe selection", () => {
+    const { host, root, onClickKeyframe, onShiftClickKeyframe } = renderDiamonds();
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]')!;
+    act(() =>
+      diamond.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0, shiftKey: true })),
+    );
+    expect(onShiftClickKeyframe).toHaveBeenCalledWith("clip-1", 50);
+    expect(onClickKeyframe).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
   it("publishes retime previews after StrictMode effect replay", () => {
     const { diamond, host, root } = renderRetimeLane(undefined, true);
     const initialLeft = diamond.style.left;
@@ -659,6 +683,7 @@ describe("TimelineClipDiamonds", () => {
   const renderSegmentLane = (lastAmbiguous: boolean) => {
     const host = createTimelineHost();
     const root = createRoot(host);
+    const onSelectSegment = vi.fn();
     const kf = (percentage: number, extra: Record<string, unknown> = {}) => ({
       percentage,
       tweenPercentage: percentage,
@@ -691,13 +716,15 @@ describe("TimelineClipDiamonds", () => {
           isSelected
           currentPercentage={0}
           elementId="clip-1"
+          clipStart={10}
+          clipDuration={10}
           selectedKeyframes={new Set()}
-          onSelectSegment={vi.fn()}
+          onSelectSegment={onSelectSegment}
           groupAware
         />,
       );
     });
-    return { host, root };
+    return { host, onSelectSegment, root };
   };
 
   it("shows the inline ease button on a colliding merged segment (bulk edit)", () => {
@@ -710,8 +737,14 @@ describe("TimelineClipDiamonds", () => {
   });
 
   it("shows the inline ease button on single-animation merged segments", () => {
-    const { host, root } = renderSegmentLane(false);
+    const { host, onSelectSegment, root } = renderSegmentLane(false);
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
+    const ease = host.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]")!;
+    expect(ease.getAttribute("aria-label")).toBe("Edit none easing after 10s");
+    expect(ease.classList.contains("opacity-0")).toBe(true);
+    act(() => ease.click());
+    expect(onSelectSegment).toHaveBeenCalledOnce();
+    expect(usePlayerStore.getState().requestedSeekTime).toBeNull();
     act(() => root.unmount());
   });
 

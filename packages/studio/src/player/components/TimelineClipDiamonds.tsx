@@ -11,6 +11,7 @@ import {
   beginTimelineKeyframeRetime,
   type TimelineKeyframeRetimeHandle,
 } from "./useTimelineKeyframeHandlers";
+import { timelineEaseFocusId, timelineKeyframeFocusId } from "./timelineNavigationIdentity";
 
 export interface TimelineDiamondKeyframe {
   percentage: number;
@@ -42,7 +43,10 @@ interface TimelineClipDiamondsProps {
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
+  clipStart?: number;
+  clipDuration?: number;
   selectedKeyframes: ReadonlySet<string>;
+  rovingTargetId?: string | null;
   onClickKeyframe?: (percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
@@ -89,6 +93,10 @@ const DIAMOND_RATIO = 0.8;
 const KF_MIN_PCT = -5;
 const KF_MAX_PCT = 105;
 
+function keyframeTimeLabel(clipStart: number, clipDuration: number, percentage: number): string {
+  return `${Number((clipStart + (clipDuration * percentage) / 100).toFixed(2))}s`;
+}
+
 function keyframeTarget(
   keyframe: TimelineDiamondKeyframe,
   groupAware: boolean,
@@ -113,7 +121,10 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   isSelected,
   currentPercentage,
   elementId,
+  clipStart = 0,
+  clipDuration = 0,
   selectedKeyframes,
+  rovingTargetId = null,
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
@@ -136,10 +147,6 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
   // on drop re-keys the diamond from source.
   const [preview, setPreview] = useState<{ kfKey: string; clipPct: number } | null>(null);
-  // Index of the segment whose mid-point ease button is revealed on hover, like
-  // Figma. Null = no segment hovered → no button shown (resting state is just
-  // the connector line + diamonds).
-  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
   // The button element can re-render (reposition/unmount) synchronously from
   // the state updates onClickKeyframe/onMoveKeyframe trigger, before the
   // browser gets to auto-synthesize the "click" event that normally follows
@@ -205,6 +212,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         // so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
+        const focusId = timelineEaseFocusId(elementId, target);
         return (
           <Fragment key={`line-${i}-${prev.percentage}-${kf.percentage}`}>
             <div
@@ -223,7 +231,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             />
             {onSelectSegment && kf.animationId !== undefined && (
               <div
-                className="absolute"
+                className="group absolute"
                 data-keyframe-ease-segment=""
                 style={{
                   left: x1,
@@ -233,38 +241,36 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                   transform: "translateY(-50%)",
                   pointerEvents: "auto",
                 }}
-                onMouseEnter={() => setHoveredSegment(i)}
-                onMouseLeave={() => setHoveredSegment((h) => (h === i ? null : h))}
               >
-                {hoveredSegment === i && (
-                  <button
-                    type="button"
-                    data-keyframe-ease-button=""
-                    aria-label={`Edit ${ease} easing`}
-                    title={`Edit ${ease} easing`}
-                    className="absolute flex items-center justify-center rounded"
-                    style={{
-                      left: "50%",
-                      top: "50%",
-                      width: 16,
-                      height: 16,
-                      transform: "translate(-50%, -50%)",
-                      zIndex: 3,
-                      pointerEvents: "auto",
-                      padding: 0,
-                      border: "1px solid rgba(255, 255, 255, 0.14)",
-                      background: "#171717",
-                      cursor: "pointer",
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectSegment(target);
-                    }}
-                  >
-                    <MiniCurveSvg ease={ease} active size={12} />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  data-keyframe-ease-button=""
+                  data-timeline-focus-id={focusId}
+                  tabIndex={focusId === rovingTargetId ? 0 : -1}
+                  aria-label={`Edit ${ease} easing after ${keyframeTimeLabel(clipStart, clipDuration, prev.percentage)}`}
+                  title={`Edit ${ease} easing`}
+                  className="absolute flex items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  style={{
+                    left: "50%",
+                    top: "50%",
+                    width: 16,
+                    height: 16,
+                    transform: "translate(-50%, -50%)",
+                    zIndex: 3,
+                    pointerEvents: "auto",
+                    padding: 0,
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    background: "#171717",
+                    cursor: "pointer",
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectSegment(target);
+                  }}
+                >
+                  <MiniCurveSvg ease={ease} active size={12} />
+                </button>
               </div>
             )}
           </Fragment>
@@ -273,6 +279,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
 
       {sorted.map((kf, i) => {
         const target = keyframeTarget(kf, groupAware);
+        const focusId = timelineKeyframeFocusId(elementId, target);
         const kfKey = timelineKeyframeSelectionKey(elementId, target);
         // While dragging this diamond, render it at the live preview clip-%.
         const renderPct = preview?.kfKey === kfKey ? preview.clipPct : kf.percentage;
@@ -334,10 +341,14 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             key={`${i}-${kf.percentage}`}
             type="button"
             className="absolute"
+            data-timeline-focus-id={focusId}
             data-keyframe-group={groupAware ? kf.propertyGroup : undefined}
             data-keyframe-percentage={
               groupAware ? (kf.tweenPercentage ?? kf.percentage) : undefined
             }
+            tabIndex={focusId === rovingTargetId ? 0 : -1}
+            aria-label={`${kf.propertyGroup ?? "Motion"} keyframe at ${keyframeTimeLabel(clipStart, clipDuration, kf.percentage)}`}
+            aria-pressed={isKfSelected}
             style={{
               left: leftPx,
               top: centerY,
@@ -355,6 +366,13 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             onPointerDown={onPointerDown}
             onPointerMove={canDrag ? (e) => retimeHandleRef.current?.update(e) : undefined}
             onPointerUp={onPointerUp}
+            onClick={(e) => {
+              if (e.detail !== 0) return;
+              e.stopPropagation();
+              suppressNextClick();
+              if (e.shiftKey) onShiftClickKeyframe?.(target);
+              else onClickKeyframe?.(target);
+            }}
             onPointerCancel={
               canDrag
                 ? (e) => {
