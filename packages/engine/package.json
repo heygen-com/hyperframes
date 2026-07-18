@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.7.61",
+  "version": "0.7.62",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
