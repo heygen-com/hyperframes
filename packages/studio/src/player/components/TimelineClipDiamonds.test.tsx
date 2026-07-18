@@ -3,22 +3,44 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
 import { TimelineClipDiamonds, TimelineDiamondLane } from "./TimelineClipDiamonds";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
+  usePlayerStore.setState({ elements: [], timelineSessionEpoch: 0 });
 });
 
+const RETIME_ELEMENT: TimelineElement = {
+  id: "clip-1",
+  label: "Clip",
+  tag: "div",
+  start: 0,
+  duration: 10,
+  track: 0,
+};
+
 function pointerEvent(type: string, init: PointerEventInit): Event {
-  if (typeof PointerEvent === "function") return new PointerEvent(type, init);
-  return new MouseEvent(type, init);
+  const event =
+    typeof PointerEvent === "function" ? new PointerEvent(type, init) : new MouseEvent(type, init);
+  if (!("pointerId" in event)) {
+    Object.defineProperty(event, "pointerId", { value: init.pointerId ?? 0 });
+  }
+  return event;
+}
+
+function createTimelineHost() {
+  const host = document.createElement("div");
+  host.setAttribute("data-timeline-scroll-viewport", "");
+  document.body.append(host);
+  return host;
 }
 
 function renderDiamonds(onClickKeyframe = vi.fn()) {
-  const host = document.createElement("div");
-  document.body.append(host);
+  const host = createTimelineHost();
   const root = createRoot(host);
   act(() => {
     root.render(
@@ -42,6 +64,59 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
     );
   });
   return { host, root, onClickKeyframe };
+}
+
+function renderRetimeLane(onMoveKeyframe = vi.fn().mockResolvedValue(true), strict = false) {
+  usePlayerStore.setState({ elements: [RETIME_ELEMENT] });
+  const host = createTimelineHost();
+  const root = createRoot(host);
+  const onClickKeyframe = vi.fn();
+  const lane = (
+    <TimelineDiamondLane
+      keyframesData={{
+        format: "percentage",
+        keyframes: [
+          {
+            percentage: 0,
+            tweenPercentage: 0,
+            propertyGroup: "position",
+            animationId: "anim-1",
+            properties: { x: 0 },
+          },
+          {
+            percentage: 50,
+            tweenPercentage: 50,
+            propertyGroup: "position",
+            animationId: "anim-1",
+            properties: { x: 100 },
+          },
+          {
+            percentage: 100,
+            tweenPercentage: 100,
+            propertyGroup: "position",
+            animationId: "anim-1",
+            properties: { x: 200 },
+          },
+        ],
+      }}
+      clipWidthPx={200}
+      clipHeightPx={48}
+      accentColor="#4ba3d2"
+      isSelected
+      currentPercentage={0}
+      elementId="clip-1"
+      selectedKeyframes={new Set()}
+      onClickKeyframe={onClickKeyframe}
+      onMoveKeyframe={onMoveKeyframe}
+      groupAware
+    />
+  );
+  act(() => {
+    root.render(strict ? <React.StrictMode>{lane}</React.StrictMode> : lane);
+  });
+  const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+  expect(diamond).not.toBeNull();
+  return { diamond: diamond!, host, onClickKeyframe, onMoveKeyframe, root };
 }
 
 describe("TimelineClipDiamonds", () => {
@@ -81,6 +156,23 @@ describe("TimelineClipDiamonds", () => {
     act(() => root.unmount());
   });
 
+  it("publishes retime previews after StrictMode effect replay", () => {
+    const { diamond, host, root } = renderRetimeLane(undefined, true);
+    const initialLeft = diamond.style.left;
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointermove", { bubbles: true, clientX: 120, pointerId: 7 }),
+      );
+    });
+    expect(host.querySelector<HTMLButtonElement>('button[title="50%"]')?.style.left).not.toBe(
+      initialLeft,
+    );
+    act(() => root.unmount());
+  });
+
   it("treats primary pointerup without drag as a keyframe click", () => {
     const { host, root, onClickKeyframe } = renderDiamonds();
     const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
@@ -115,8 +207,7 @@ describe("TimelineClipDiamonds", () => {
   it("treats a drag-armed press that resolves to a no-op move as a click", () => {
     const onClickKeyframe = vi.fn();
     const onMoveKeyframe = vi.fn();
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     act(() => {
       root.render(
@@ -183,8 +274,7 @@ describe("TimelineClipDiamonds", () => {
   it("reselects a retimed keyframe with its post-move tween percentage", () => {
     const onClickKeyframe = vi.fn();
     const onMoveKeyframe = vi.fn().mockResolvedValue(true);
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     act(() => {
       root.render(
@@ -258,8 +348,7 @@ describe("TimelineClipDiamonds", () => {
 
   it("composes a rapid second retime from the pending position", () => {
     const onMoveKeyframe = vi.fn().mockResolvedValue(true);
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     act(() => {
       root.render(
@@ -332,6 +421,19 @@ describe("TimelineClipDiamonds", () => {
       },
       85,
     );
+
+    act(() => {
+      usePlayerStore.setState({ timelineSessionEpoch: 1 });
+      diamond!.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+      );
+      diamond!.dispatchEvent(pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120 }));
+    });
+    expect(onMoveKeyframe).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ percentage: 50 }),
+      60,
+    );
     act(() => root.unmount());
   });
 
@@ -340,8 +442,7 @@ describe("TimelineClipDiamonds", () => {
     ["rejects", () => Promise.reject(new Error("retime failed"))],
   ])("clears a failed pending retime when the callback %s", async (_label, settle) => {
     const onMoveKeyframe = vi.fn().mockImplementationOnce(settle).mockResolvedValue(true);
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     act(() => {
       root.render(
@@ -415,6 +516,141 @@ describe("TimelineClipDiamonds", () => {
     act(() => root.unmount());
   });
 
+  it("commits once from the stable viewport after the source lane unmounts", () => {
+    const { diamond, onMoveKeyframe, root } = renderRetimeLane();
+
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      root.unmount();
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 7 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 140, pointerId: 7 }),
+      );
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledExactlyOnceWith(
+      {
+        percentage: 50,
+        tweenPercentage: 50,
+        propertyGroup: "position",
+        animationId: "anim-1",
+      },
+      60,
+    );
+  });
+
+  it("includes horizontal viewport scrolling in the retime destination", () => {
+    const { diamond, host, onMoveKeyframe, root } = renderRetimeLane();
+
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      host.scrollLeft = 20;
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 60);
+    act(() => root.unmount());
+  });
+
+  it("ignores another pointer and lets the owning pointer finish", () => {
+    const { diamond, onMoveKeyframe, root } = renderRetimeLane();
+
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 140, pointerId: 8 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 7 }),
+      );
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
+  it("cancels without mutation on pointer cancel or Escape and allows the next retime", () => {
+    const { diamond, onMoveKeyframe, root } = renderRetimeLane();
+
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointercancel", {
+          bubbles: true,
+          button: 0,
+          clientX: 120,
+          pointerId: 7,
+        }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 7 }),
+      );
+
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 9 }),
+      );
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 9 }),
+      );
+
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 11 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 11 }),
+      );
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
+  it("cancels on project switch or source removal without poisoning the next gesture", () => {
+    const { diamond, onMoveKeyframe, root } = renderRetimeLane();
+
+    act(() => {
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 7 }),
+      );
+      usePlayerStore.setState({ timelineSessionEpoch: 1 });
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 7 }),
+      );
+
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 9 }),
+      );
+      usePlayerStore.setState({ elements: [] });
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 9 }),
+      );
+
+      usePlayerStore.setState({ elements: [RETIME_ELEMENT] });
+      diamond.dispatchEvent(
+        pointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, pointerId: 11 }),
+      );
+      window.dispatchEvent(
+        pointerEvent("pointerup", { bubbles: true, button: 0, clientX: 120, pointerId: 11 }),
+      );
+    });
+
+    expect(onMoveKeyframe).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
   // Regression: onClickKeyframe's state updates can re-render the diamond
   // button out from under the gesture before the browser auto-synthesizes the
   // "click" event that follows a button's pointerdown+pointerup. That orphaned
@@ -424,8 +660,7 @@ describe("TimelineClipDiamonds", () => {
   // own clip. suppressClickRef lets that ancestor ignore the stray click.
   it("arms suppressClickRef synchronously on a keyframe click", () => {
     const suppressClickRef = { current: false };
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     act(() => {
       root.render(
@@ -458,8 +693,7 @@ describe("TimelineClipDiamonds", () => {
   });
 
   const renderSegmentLane = (lastAmbiguous: boolean) => {
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     const kf = (percentage: number, extra: Record<string, unknown> = {}) => ({
       percentage,
@@ -532,8 +766,7 @@ describe("TimelineClipDiamonds", () => {
   it("hides the inline ease button on a segment with no source animation id", () => {
     // A runtime-scanned keyframe has no animationId, so there is no tween to
     // target; the segment ending on it must not render a (dead) ease button.
-    const host = document.createElement("div");
-    document.body.append(host);
+    const host = createTimelineHost();
     const root = createRoot(host);
     const kf = (percentage: number, animationId?: string) => ({
       percentage,
