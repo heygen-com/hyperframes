@@ -69,7 +69,7 @@ describe("runAssembleStage audio duration parity", () => {
       "/tmp/audio.duration-normalized.m4a",
       "/tmp/output.mp4",
       undefined,
-      { audioCodec: "aac", preserveAudioPrimingEditList: true },
+      { audioCodec: "aac", preserveAudioPrimingEditList: true, durationSeconds: 1 },
       { num: 30, den: 1 },
     );
   });
