@@ -389,6 +389,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     );
 
     await flushMuxCodecResolution();
+    expect(calls[0]!.args).toContain("-shortest");
     expect(calls[0]!.args).toContain("-t");
     expect(calls[0]!.args).toContain("16.066667");
     emitClose(calls[0]!.proc, 0);

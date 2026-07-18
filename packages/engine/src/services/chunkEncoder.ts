@@ -709,6 +709,13 @@ export async function muxVideoWithAudio(
     args.push("-r", fpsToFfmpegArg(fps));
   }
   if (config?.durationSeconds !== undefined) {
+    // Stream-copying a normalized AAC sidecar can preserve a longer packet
+    // timeline than its container/edit-list duration.  `-t` alone limits the
+    // output timestamp window but does not prevent the copied audio stream's
+    // tail from extending the MP4 timeline.  When an explicit video-derived
+    // duration is supplied, also stop at the shortest stream so the final
+    // mux boundary is deterministic.
+    args.push("-shortest");
     args.push("-t", String(config.durationSeconds));
   }
   args.push("-y", outputPath);
