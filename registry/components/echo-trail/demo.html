@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  echo-trail demo. FULL-BLEED light mount: the primitive fills the whole
+  1920x1080 frame on a light token block. Non-default path, echoes, delta,
+  and accent values prove the variable path.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Echo Trail Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #eef0f3);
+      }
+
+      #root {
+        --bg: #eef0f3;
+        --fg: #14161b;
+        --muted: #5b6472;
+        --surface: #ffffff;
+        --border: #d3d8e0;
+        --brand: #0f9d58;
+        --accent: #1d4ed8;
+        --accent-2: #7c3aed;
+        --radius: 18px;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 42%, #f7f8fa 0%, var(--bg, #eef0f3) 72%);
+      }
+
+      .mount-bleed {
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="echo-trail-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="echo-trail-mount"
+        class="mount-bleed clip"
+        data-composition-id="echo-trail"
+        data-composition-src="./echo-trail.html"
+        data-variable-values='{"path":"arc","echoes":5,"delta":0.12,"accent":"violet"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["echo-trail-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

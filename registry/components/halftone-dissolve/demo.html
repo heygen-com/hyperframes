@@ -1,0 +1,147 @@
+<!doctype html>
+<!--
+  halftone-dissolve demo. A full-bleed 1920x1080 LIGHT host mounts the
+  primitive through data-composition-src with non-default variables
+  (center direction, large dots, blue accent) and supplies both scene
+  slots to prove the slot path while the primitive stays elastic.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Halftone Dissolve Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f5f6f8);
+      }
+
+      #root {
+        --bg: #f5f6f8;
+        --fg: #101318;
+        --muted: #5b6472;
+        --surface: #ffffff;
+        --border: #d7dce4;
+        --brand: #14a35e;
+        --accent: #2f6fed;
+        --accent-2: #7a5cd6;
+        --radius: 24px;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .mount-stage {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+
+      .demo-scene {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        gap: 24px;
+        font-family: var(--font-display, system-ui, sans-serif);
+      }
+
+      .demo-scene .panel {
+        display: grid;
+        place-items: center;
+        gap: 18px;
+        width: 720px;
+        height: 420px;
+        border: 1px solid var(--border, #d7dce4);
+        border-radius: var(--radius, 24px);
+        background: var(--surface, #ffffff);
+        box-shadow: 0 30px 70px rgba(16, 19, 24, 0.08);
+      }
+
+      .demo-scene .word {
+        color: var(--fg, #101318);
+        font-size: 84px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .demo-scene .tag {
+        color: var(--muted, #5b6472);
+        font-family: var(--font-mono, monospace);
+        font-size: 26px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .demo-scene.b .panel {
+        border-color: color-mix(in srgb, var(--accent, #2f6fed) 40%, var(--border, #d7dce4));
+        background: color-mix(in srgb, var(--accent, #2f6fed) 6%, var(--surface, #ffffff));
+      }
+
+      .demo-scene.b .word {
+        color: var(--accent, #2f6fed);
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="halftone-dissolve-a">
+      <div class="demo-scene a">
+        <div class="panel">
+          <span class="tag">Scene A</span>
+          <span class="word">Before</span>
+        </div>
+      </div>
+    </template>
+    <template data-slot="halftone-dissolve-b">
+      <div class="demo-scene b">
+        <div class="panel">
+          <span class="tag">Scene B</span>
+          <span class="word">After</span>
+        </div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="halftone-dissolve-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.5"
+      data-fps="30"
+    >
+      <div
+        id="halftone-dissolve-mount"
+        class="mount-stage clip"
+        data-composition-id="halftone-dissolve"
+        data-composition-src="./halftone-dissolve.html"
+        data-variable-values='{"direction":"center","dot_size":"large","dissolve_at":1.0,"accent":"blue"}'
+        data-start="0"
+        data-duration="3.5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["halftone-dissolve-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

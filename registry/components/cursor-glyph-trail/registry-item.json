@@ -1,0 +1,90 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-glyph-trail",
+  "type": "hyperframes:component",
+  "title": "Cursor Glyph Trail",
+  "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
+  "tags": ["motion-primitive", "demonstrate", "trail", "cursor", "glyphs", "deterministic"],
+  "jobs": ["demonstrate"],
+  "family": "demonstrate",
+  "profile": "stamp-decay",
+  "evidence": "Wave L1 frame study: jh3yy stamp-and-decay contact sheet (2069614221747224613/sheet-01)",
+  "syncPoints": [{ "id": "travel-complete", "phase": "in", "offset": 2.4 }],
+  "files": [
+    {
+      "path": "cursor-glyph-trail.html",
+      "target": "compositions/components/cursor-glyph-trail.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "glyphs",
+      "type": "string",
+      "role": "content",
+      "label": "Glyphs",
+      "description": "Stamp charset; one glyph per stamp is chosen deterministically.",
+      "default": "░▒▓+·×"
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Arc-length spacing between stamps along the path.",
+      "default": "med",
+      "options": [
+        { "value": "low", "label": "Low" },
+        { "value": "med", "label": "Medium" },
+        { "value": "high", "label": "High" }
+      ]
+    },
+    {
+      "id": "path",
+      "type": "enum",
+      "role": "timing",
+      "label": "Path",
+      "description": "Authored travel path preset.",
+      "default": "sweep",
+      "options": [
+        { "value": "sweep", "label": "Sweep" },
+        { "value": "arc", "label": "Arc" },
+        { "value": "zigzag", "label": "Zigzag" }
+      ]
+    },
+    {
+      "id": "fade",
+      "type": "number",
+      "role": "timing",
+      "label": "Fade",
+      "description": "Per-stamp decay window in seconds, clamped 0.3 to 1.5.",
+      "default": 0.8
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Trail and actor color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the settled actor holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

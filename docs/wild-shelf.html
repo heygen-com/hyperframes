@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The wild shelf: six candidates from the frame study</title>
+  <style>
+    :root {
+      --bg: #0c0e10;
+      --panel: #14171a;
+      --ink: #eef1f0;
+      --muted: #8b9490;
+      --teal: #2dd4bf;
+      --amber: #f59e0b;
+      --line: #23282c;
+      --display: Inter, ui-sans-serif, system-ui, sans-serif;
+      --mono: "SFMono-Regular", Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: radial-gradient(circle at 20% 0%, #12181c, var(--bg) 60%);
+      color: var(--ink);
+      font-family: var(--display);
+      padding: 56px 0 80px;
+    }
+    .page { width: min(1280px, calc(100% - 48px)); margin: 0 auto; }
+    .eyebrow {
+      font-family: var(--mono); font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.22em; text-transform: uppercase; color: var(--teal);
+      margin-bottom: 20px;
+    }
+    h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); font-weight: 850; letter-spacing: -0.045em; line-height: 0.98; }
+    h1 em { font-style: normal; color: var(--teal); }
+    .lede { max-width: 720px; margin: 22px 0 46px; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      overflow: hidden;
+    }
+    .card .head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 16px 20px 12px;
+    }
+    .card h2 { font-family: var(--mono); font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+    .card .src {
+      font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .card .src b { color: var(--amber); font-weight: 700; }
+    .player { background: #000; }
+    .card p {
+      padding: 14px 20px 18px; color: var(--muted); font-size: 0.9rem; line-height: 1.55;
+    }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow">Wave L candidates / from the 30fps frame study</p>
+    <h1>The <em>wild</em> shelf</h1>
+    <p class="lede">Six moves reverse-engineered from the masters' own frames: jh3yy's stamp-and-decay trail, ordinaryfolk's reshaping facets and traveling light, alexwidua's tactile blob, and the textures they all imply. Candidates, not heroes, until you say so.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="head"><h2>cursor-glyph-trail</h2><span class="src">after <b>jh3yy</b></span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/cursor-glyph-trail.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>An actor deposits dithered glyphs at its past positions; each fades where it was stamped, density riding velocity. Time made visible.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>echo-trail</h2><span class="src">the onion skin</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/echo-trail.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A moving element carries ghosted copies of itself from moments ago, collapsing into the settled state at rest.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>facet-morph</h2><span class="src">after <b>ordinaryfolk</b></span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/facet-morph.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A faceted mass reshapes between silhouettes, every triangle re-lit from its angle to the key light as it moves.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>light-sweep-pass</h2><span class="src">after <b>ordinaryfolk</b></span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/light-sweep-pass.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A key light travels once across the scene; every highlight and shadow answers it in lockstep, then it settles.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>soft-blob-touch</h2><span class="src">after <b>alexwidua</b></span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/soft-blob-touch.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A granular soft body leans toward a touch and springs back with preserved momentum. The tactile AI orb.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>halftone-dissolve</h2><span class="src">the texture register</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/halftone-dissolve.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>One scene becomes the next through a growing field of halftone dots, smallest first, ordered by a seeded map.</p>
+      </div>
+    </div>
+  </main>
+  <script src="/hyperframes-player.global.js"></script>
+  <script src="/hyperframes-player-embed.js"></script>
+  <script src="/qa-autoplay.js"></script>
+</body>
+</html>

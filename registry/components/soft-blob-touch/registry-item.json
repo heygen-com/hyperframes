@@ -1,0 +1,96 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "soft-blob-touch",
+  "type": "hyperframes:component",
+  "title": "Soft Blob Touch",
+  "description": "A granular soft blob idles with slow internal drift; a scripted touch dot decel-arrives, the blob deforms toward it with an attraction bulge, then recovers with a velocity-preserving spring. No hard edges anywhere.",
+  "tags": ["motion-primitive", "product-demo", "material", "blob", "touch", "grain"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "material",
+  "evidence": "Wave L L4: the AI-orb material beat from the frame study (alexwidua 1702356241186476225 sheet-02, a granular blob leaning toward a finger and springing back)",
+  "syncPoints": [{ "id": "touch", "phase": "in", "offset": 1.6 }],
+  "files": [
+    {
+      "path": "soft-blob-touch.html",
+      "target": "compositions/components/soft-blob-touch.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "touch_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Touch X",
+      "description": "Touch point, percent of host width.",
+      "default": 66,
+      "min": 8,
+      "max": 92,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "touch_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Touch Y",
+      "description": "Touch point, percent of host height.",
+      "default": 38,
+      "min": 8,
+      "max": 92,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "touch_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Touch at",
+      "description": "Seconds from mount start when the dot makes contact.",
+      "default": 1.6,
+      "min": 0.9,
+      "max": 10,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "grain",
+      "type": "enum",
+      "role": "style",
+      "label": "Grain",
+      "description": "Speck register for the granular body.",
+      "default": "fine",
+      "options": [
+        { "value": "fine", "label": "Fine" },
+        { "value": "coarse", "label": "Coarse" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Body tint: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the frame leaves. None holds the settled blob.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}
