@@ -73,7 +73,8 @@ export interface TimelineEditCallbacks {
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplitAll?: (splitTime: number) => Promise<void> | void;
   onDeleteKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
-  onDeleteAllKeyframes?: (element: TimelineElement) => void;
+  onDeleteAllKeyframes?: (element: TimelineElement, animationId?: string) => void;
+  onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
   onMoveKeyframeToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;
   /** Drag-to-retime: `keyframe` identifies the dragged keyframe (its percentage
    *  is clip-relative), `toClipPercentage` is the neighbour-clamped drop. */

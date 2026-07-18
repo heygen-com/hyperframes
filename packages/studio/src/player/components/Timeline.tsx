@@ -12,7 +12,7 @@ import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineCanvas } from "./TimelineCanvas";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
-import { TimelineOverlays } from "./TimelineOverlays";
+import { TimelineOverlays, type ClipContextMenuState } from "./TimelineOverlays";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
@@ -141,11 +141,7 @@ export const Timeline = memo(function Timeline({
   const shiftHeld = useTimelineShiftModifier();
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
-  const [clipContextMenu, setClipContextMenu] = useState<{
-    x: number;
-    y: number;
-    element: TimelineElement;
-  } | null>(null);
+  const [clipContextMenu, setClipContextMenu] = useState<ClipContextMenuState | null>(null);
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el;
   }, []);
@@ -557,7 +553,12 @@ export const Timeline = memo(function Timeline({
             setSelectedElementId(el.key ?? el.id);
             onSelectElement?.(el);
             dismissGapMenu();
-            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
+            setClipContextMenu({
+              x: e.clientX,
+              y: e.clientY,
+              element: el,
+              sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
+            });
           }}
           onContextMenuLane={(e, track, time) => {
             if (draggedClip?.started || resizingClip) return;
@@ -568,6 +569,8 @@ export const Timeline = memo(function Timeline({
         {activeTool === "razor" && razorGuideX !== null && <TimelineRazorGuide x={razorGuideX} />}
       </div>
       <TimelineOverlays
+        elements={expandedElements}
+        elementsRef={expandedElementsRef}
         theme={theme}
         showShortcutHint={showShortcutHint}
         showPopover={showPopover}

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import {
   KeyframeDiamondContextMenu,
@@ -9,6 +9,10 @@ import {
 } from "./KeyframeDiamondContextMenu";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
 
 const element = { id: "box", start: 0, duration: 2, track: 0 } as unknown as TimelineElement;
 
@@ -86,5 +90,16 @@ describe("KeyframeDiamondContextMenu", () => {
 
     act(() => root.unmount());
     host.remove();
+  });
+
+  // The layer-wide delete takes every keyframed tween. Opened from a diamond it
+  // has to stay on that diamond's own lane, or right-clicking the opacity lane
+  // silently clears position too.
+  it("deletes all keyframes from the animation that opened the menu", () => {
+    const onDeleteAll = vi.fn();
+
+    clickMenuItem("Delete All Keyframes", { onDeleteAll });
+
+    expect(onDeleteAll).toHaveBeenCalledExactlyOnceWith(element, "box-to-1-position");
   });
 });

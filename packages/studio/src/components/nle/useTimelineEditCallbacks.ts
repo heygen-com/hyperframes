@@ -189,17 +189,22 @@ export function useTimelineEditCallbacks({
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
-      onDeleteAllKeyframes: (element) => {
+      onDeleteAllKeyframes: (element, animationId) => {
         // Hold the element where it is (collapse keyframes to a static set) rather
         // than deleting the whole animation — deleting strands a stale GSAP base
         // that the next drag adds to, flinging the element off-screen.
         const elementKey = getTimelineElementIdentity(element);
-        // Every keyframed tween on the layer, not just the first: a layer with
-        // position AND opacity keyframes left the second one keyframed, so
-        // "Delete All Keyframes" visibly did half the job.
-        const anims = resolveElementAnimations(elementKey).filter(
-          (animation) => animation.keyframes,
-        );
+        // An explicit animation id scopes the delete to the lane whose menu was
+        // opened; without one this is the layer-wide action, and that means
+        // EVERY keyframed tween, not just the first. A layer with position AND
+        // opacity keyframes used to leave the second one keyframed, so "Delete
+        // All Keyframes" visibly did half the job. A stale id matches nothing
+        // and deletes nothing, which is the point: it never falls back to a
+        // lane the user did not click.
+        const animations = resolveElementAnimations(elementKey);
+        const anims = animationId
+          ? animations.filter((animation) => animation.id === animationId)
+          : animations.filter((animation) => animation.keyframes);
         if (anims.length === 0) return;
         void buildDomSelectionForTimelineElement(element).then(async (selection) => {
           if (!selection) return;
