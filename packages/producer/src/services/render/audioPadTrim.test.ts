@@ -91,6 +91,7 @@ describe("buildPadTrimAudioArgs", () => {
     expect(operation).toBe("trim");
     const filterIdx = args.indexOf("-af");
     expect(args[filterIdx + 1]).toBe("atrim=duration=15.000000,asetpts=PTS-STARTPTS");
+    expect(args[args.indexOf("-t") + 1]).toBe("15.000000");
     const codecIdx = args.indexOf("-c:a");
     expect(args[codecIdx + 1]).toBe("aac");
     expect(args[args.indexOf("-b:a") + 1]).toBe("192k");

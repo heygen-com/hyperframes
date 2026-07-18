@@ -201,6 +201,12 @@ export function buildPadTrimAudioPlan(
           audioPath,
           "-af",
           `atrim=duration=${targetSec},asetpts=PTS-STARTPTS`,
+          // `atrim` limits decoded samples but does not cap muxer timestamps
+          // introduced by encoder delay/flush.  The output duration contract
+          // is enforced at the container boundary as well; without `-t`, a
+          // long primed source can retain its original tail after re-encode.
+          "-t",
+          targetSec,
           "-c:a",
           "aac",
           "-b:a",
