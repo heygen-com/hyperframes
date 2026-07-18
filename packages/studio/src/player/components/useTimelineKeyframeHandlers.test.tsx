@@ -5,13 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
+import * as telemetry from "../../telemetry/events";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const trackStudioSegmentEaseEdit = vi.hoisted(() => vi.fn());
-vi.mock("../../telemetry/events", () => ({ trackStudioSegmentEaseEdit }));
 
 const ELEMENT: TimelineElement = {
   id: "clip-1",
@@ -46,7 +44,7 @@ const COLLIDING_TARGET: TimelineKeyframeTarget = {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  trackStudioSegmentEaseEdit.mockClear();
+  vi.restoreAllMocks();
   usePlayerStore.setState({ focusedEaseSegment: null });
 });
 
@@ -78,6 +76,9 @@ function mountHandlers(options: Partial<Parameters<typeof useTimelineKeyframeHan
 
 describe("useTimelineKeyframeHandlers", () => {
   it("tracks opening the segment ease editor when a timeline segment is selected", () => {
+    const trackStudioSegmentEaseEdit = vi
+      .spyOn(telemetry, "trackStudioSegmentEaseEdit")
+      .mockImplementation(() => {});
     const { root, handlers } = mountHandlers();
     act(() => handlers.onSelectSegment?.(ELEMENT.id, TARGET));
 

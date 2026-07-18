@@ -93,20 +93,6 @@ export const DIAMOND_RATIO = 0.8;
 export const KF_MIN_PCT = -5;
 export const KF_MAX_PCT = 105;
 
-export type DragState = {
-  kfKey: string;
-  startX: number;
-  fromClipPct: number;
-  moved: boolean;
-  /** Latest pointer x, flushed to the preview once per frame. */
-  lastX: number;
-  /** Index in the sorted row, needed by the neighbour clamp off the render path. */
-  index: number;
-  /** Escape was pressed: the drag is dead, and the pointerup that follows is
-   *  swallowed rather than falling through to the click branch. */
-  cancelled?: boolean;
-};
-
 /**
  * The full identity of a diamond, used by every callback and by the selection
  * key. Collapsed clip rows and expanded property lanes read the same cache, so
@@ -115,7 +101,11 @@ export type DragState = {
  * the other, and would strip the animation id the retime/delete mutations use to
  * pick between two animations that collide at one percentage.
  */
-export function keyframeTarget(keyframe: TimelineDiamondKeyframe): TimelineKeyframeTarget {
+export function keyframeTarget(
+  // The identity fields only, so callers holding a narrower keyframe row (the
+  // retime coordinator's) build the same key instead of re-listing the shape.
+  keyframe: Omit<TimelineDiamondKeyframe, "properties">,
+): TimelineKeyframeTarget {
   return {
     percentage: keyframe.percentage,
     tweenPercentage: keyframe.tweenPercentage,
