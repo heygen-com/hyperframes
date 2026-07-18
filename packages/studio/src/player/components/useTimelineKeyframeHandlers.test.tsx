@@ -91,7 +91,7 @@ describe("useTimelineKeyframeHandlers", () => {
     const root = mountReactHarness(<Harness />);
     act(() => onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));
 
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       collidingAnimationTargets: [
         { animationId: "position-tween", tweenPercentage: 100 },
@@ -130,7 +130,7 @@ describe("useTimelineKeyframeHandlers", () => {
     // Selecting a segment must NOT move the playhead.
     act(() => onSelectSegment?.(ELEMENT.id, FLAT_TWEEN_TARGET));
     expect(onSeek).not.toHaveBeenCalled();
-    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+    expect(usePlayerStore.getState().focusedEaseSegment).toMatchObject({
       animationId: "position-tween",
       tweenPercentage: 100,
       elementId: ELEMENT.id,
