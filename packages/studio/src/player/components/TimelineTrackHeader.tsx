@@ -25,6 +25,7 @@ import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { LayerDisclosureRow } from "./LayerDisclosureRow";
 import { LABEL_COL_W, LANE_H, getTimelineLaneTop } from "./timelineLayout";
 import type { TimelineTheme } from "./timelineTheme";
+import { timelineLogicalRowCellId, timelinePropertyRowId } from "./timelineNavigationIdentity";
 
 interface TimelineTrackHeaderProps {
   trackNumber: number;
@@ -407,6 +408,10 @@ function PropertyGroupHeaderRow({
 
   return (
     <div
+      id={timelineLogicalRowCellId(
+        timelinePropertyRowId(expandedElement.key ?? expandedElement.id, lane.group),
+        "header",
+      )}
       data-property-group={lane.group}
       data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
       className="absolute left-0 flex items-center gap-1 px-1.5 text-[10px] text-white/65"
@@ -493,6 +498,7 @@ export function TimelineTrackHeader({
 
   return (
     <div
+      role="rowheader"
       className={`sticky left-0 z-[12] shrink-0 ${
         !isKeyframeLayer
           ? showTrackLabel
