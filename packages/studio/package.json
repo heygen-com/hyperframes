@@ -61,6 +61,7 @@
     "@hyperframes/sdk": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-virtual": "^3.14.6",
     "bpm-detective": "^2.0.5",
     "dompurify": "^3.2.4",
     "gsap": "^3.13.0",

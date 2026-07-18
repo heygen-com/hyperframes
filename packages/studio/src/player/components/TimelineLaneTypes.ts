@@ -6,6 +6,8 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import type { TrackVisualStyle } from "./timelineIcons";
 import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
+import type { TimelineRowGeometry } from "./timelineLayout";
+import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 
 /** Props shared by TimelineCanvas and its lane renderer. */
 export interface TimelineLaneBaseProps {
@@ -16,6 +18,9 @@ export interface TimelineLaneBaseProps {
   theme: TimelineTheme;
   displayTrackOrder: number[];
   rowHeights: readonly number[];
+  rowGeometry: TimelineRowGeometry;
+  virtualRows: readonly TimelineVirtualRow[];
+  rowsVirtualized: boolean;
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
