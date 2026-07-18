@@ -6,6 +6,7 @@ import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/s
 import { computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
+import { defaultThumbnailMode, type ThumbnailMode } from "../lib/thumbnailPolicy";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 
@@ -114,7 +115,7 @@ interface PlayerState extends KeyframeSlice {
   loopEnabled: boolean;
   /** Timeline zoom: 'fit' auto-scales to viewport, 'manual' uses manualZoomPercent */
   zoomMode: ZoomMode;
-  thumbnailsEnabled: boolean;
+  thumbnailMode: ThumbnailMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
   /**
@@ -202,7 +203,7 @@ interface PlayerState extends KeyframeSlice {
     >,
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
-  setThumbnailsEnabled: (enabled: boolean) => void;
+  setThumbnailMode: (mode: ThumbnailMode) => void;
   setManualZoomPercent: (percent: number) => void;
   bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
@@ -329,7 +330,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
   loopEnabled: false,
   zoomMode: "fit",
-  thumbnailsEnabled: readStudioUiPreferences().thumbnailsEnabled ?? false,
+  thumbnailMode: defaultThumbnailMode(readStudioUiPreferences().thumbnailMode),
   manualZoomPercent: 100,
   zEditVersion: 0,
   timelinePps: 100,
@@ -456,9 +457,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     writeStudioUiPreferences({ audioMuted: muted });
     set({ audioMuted: muted });
   },
-  setThumbnailsEnabled: (enabled) => {
-    writeStudioUiPreferences({ thumbnailsEnabled: enabled });
-    set({ thumbnailsEnabled: enabled });
+  setThumbnailMode: (mode) => {
+    writeStudioUiPreferences({ thumbnailMode: mode });
+    set({ thumbnailMode: mode });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
   setZoomMode: (mode) => set({ zoomMode: mode }),
@@ -587,7 +588,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   reset: () => set(createTimelineResetState()),
 }));
 
-// Dev-only bug-bash handle; guard import.meta.env for non-Vite bundlers.
 function isDevBuild(): boolean {
   try {
     return import.meta.env.DEV === true;
