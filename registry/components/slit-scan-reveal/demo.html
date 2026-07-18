@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  slit-scan-reveal demo. A full-bleed 1920x1080 LIGHT host mounts the
+  primitive through data-composition-src with non-default variables
+  (column axis, wider spread, earlier resolve, violet accent) while the
+  primitive stays elastic to its host.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Slit Scan Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f5f6f8);
+      }
+
+      #root {
+        --bg: #f5f6f8;
+        --fg: #101318;
+        --muted: #5b6472;
+        --surface: #ffffff;
+        --border: #d7dce4;
+        --brand: #14a35e;
+        --accent: #2f6fed;
+        --accent-2: #7a5cd6;
+        --radius: 24px;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .mount-stage {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="slit-scan-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="slit-scan-reveal-mount"
+        class="mount-stage clip"
+        data-composition-id="slit-scan-reveal"
+        data-composition-src="./slit-scan-reveal.html"
+        data-variable-values='{"axis":"cols","spread":1.0,"resolve_at":2.0,"accent":"violet"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["slit-scan-reveal-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

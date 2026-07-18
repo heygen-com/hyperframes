@@ -1,0 +1,81 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "particle-text-dissolve",
+  "type": "hyperframes:component",
+  "title": "Particle Text Dissolve",
+  "description": "Text assembles from a seeded particle cloud (or dissolves into it): per-particle targets sampled once from the rendered text bitmap at mount, table-driven particles, zero per-particle tweens, one onUpdate painter.",
+  "tags": ["motion-primitive", "text-effects", "particles", "canvas", "deterministic", "experiment"],
+  "jobs": ["emphasize"],
+  "family": "text-effects",
+  "profile": "materialize",
+  "evidence": "Wave M8 experiment: particle-image-reveal donor (fixed-seed LCG, pure function of table and time), targets from an offscreen text-raster readback",
+  "syncPoints": [{ "id": "text-locked", "phase": "in", "offset": 2.8 }],
+  "files": [
+    {
+      "path": "particle-text-dissolve.html",
+      "target": "compositions/components/particle-text-dissolve.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "The line that assembles from (or dissolves into) the particle cloud.",
+      "default": "Dissolve"
+    },
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "timing",
+      "label": "Direction",
+      "description": "in assembles the text from the cloud and holds it crisp; out erases the text into the cloud and holds empty.",
+      "default": "in",
+      "options": [
+        { "value": "in", "label": "Assemble in" },
+        { "value": "out", "label": "Dissolve out" }
+      ]
+    },
+    {
+      "id": "density",
+      "type": "enum",
+      "role": "style",
+      "label": "Density",
+      "description": "Particle count cap for the field.",
+      "default": "med",
+      "options": [
+        { "value": "low", "label": "Low" },
+        { "value": "med", "label": "Medium" },
+        { "value": "high", "label": "High" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Text and particle color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the end state holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

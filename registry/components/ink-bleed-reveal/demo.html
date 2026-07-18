@@ -1,0 +1,118 @@
+<!doctype html>
+<!--
+  ink-bleed-reveal demo. This standalone composition mounts the primitive
+  FULL-BLEED through data-composition-src on a light paper register.
+  Non-default blobs and accent values prove the variable path, and a slotted
+  wordmark proves the mark slot (the default token monogram never renders
+  here).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Ink Bleed Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f7f4ee);
+      }
+
+      #root {
+        --bg: #f7f4ee;
+        --fg: #1d1b16;
+        --muted: #6d675c;
+        --surface: #fffdf8;
+        --border: #ddd6c8;
+        --brand: #14a35e;
+        --accent: #2f6fed;
+        --accent-2: #7a5cd6;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: "SF Mono", ui-monospace, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          var(--bg, #fbf9f4) 0%,
+          color-mix(in srgb, var(--bg, #f7f4ee) 92%, var(--fg, #1d1b16)) 100%
+        );
+      }
+
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+
+      .demo-mark {
+        display: grid;
+        justify-items: center;
+        gap: 18px;
+        color: color-mix(in srgb, var(--accent, #2f6fed) 55%, var(--fg, #1d1b16));
+        font-family: var(--font-display, "Inter", system-ui, sans-serif);
+      }
+
+      .demo-mark-word {
+        font-size: 170px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: 0.04em;
+      }
+
+      .demo-mark-label {
+        font-family: var(--font-mono, ui-monospace, monospace);
+        font-size: 24px;
+        letter-spacing: 0.32em;
+        color: var(--muted, #6d675c);
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="ink-bleed-reveal-mark">
+      <div class="demo-mark">
+        <div class="demo-mark-word">INK</div>
+        <div class="demo-mark-label">BLEED REVEAL</div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="ink-bleed-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+      data-fps="30"
+    >
+      <div
+        id="ink-bleed-reveal-mount"
+        class="mount-bleed clip"
+        data-composition-id="ink-bleed-reveal"
+        data-composition-src="./ink-bleed-reveal.html"
+        data-variable-values='{"blobs":6,"accent":"blue"}'
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ink-bleed-reveal-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

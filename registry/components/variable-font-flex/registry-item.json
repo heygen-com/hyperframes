@@ -1,0 +1,77 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "variable-font-flex",
+  "type": "hyperframes:component",
+  "title": "Variable Font Flex",
+  "description": "A word lands while its variable-font weight and width axes flex from hairline-condensed to black-wide with per-character stagger; font-size eases inversely so the letterforms gain mass while the box holds.",
+  "tags": ["motion-primitive", "experiment", "type", "variable-font", "deterministic"],
+  "jobs": ["emphasize"],
+  "family": "text-effects",
+  "profile": "axis-flex",
+  "evidence": "Wave M experiment M5: variable-font axis animation with optical compensation; Roboto Flex Variable pinned via @fontsource-variable/roboto-flex@5.2.8",
+  "syncPoints": [{ "id": "flex-settled", "phase": "in", "offset": 1.6 }],
+  "files": [
+    {
+      "path": "variable-font-flex.html",
+      "target": "compositions/components/variable-font-flex.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "The word whose variable-font axes flex.",
+      "default": "FLEX"
+    },
+    {
+      "id": "axis",
+      "type": "enum",
+      "role": "style",
+      "label": "Axis",
+      "description": "Which variable-font axes animate: weight, width, or both.",
+      "default": "both",
+      "options": [
+        { "value": "weight", "label": "Weight" },
+        { "value": "width", "label": "Width" },
+        { "value": "both", "label": "Both" }
+      ]
+    },
+    {
+      "id": "stagger",
+      "type": "number",
+      "role": "timing",
+      "label": "Stagger",
+      "description": "Seconds between per-character flex starts, clamped 0 to 0.25.",
+      "default": 0.06
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Word color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the carved word holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

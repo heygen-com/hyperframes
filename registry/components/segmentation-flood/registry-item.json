@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "segmentation-flood",
+  "type": "hyperframes:component",
+  "title": "Segmentation Flood",
+  "description": "Machine-vision read of a slotted subject: translucent accent segmentation masks flood on in quantized scanline steps, each region gets a thin bracket and mono label chip, a deterministic 2-frame HUD flicker rides the pass, then the labeled read settles clean.",
+  "tags": ["motion-primitive", "product-demo", "ai", "hud", "canvas", "deterministic", "experiment"],
+  "jobs": ["demonstrate"],
+  "family": "product-demo",
+  "profile": "machine-read",
+  "evidence": "Wave M3 experiment slate; gmunk segmentation contact sheet 2031767296331702694/sheet-02 (red masks flooding in scanline steps under HUD flicker), tokenized",
+  "syncPoints": [{ "id": "flood", "phase": "in", "offset": 0.8 }],
+  "files": [
+    {
+      "path": "segmentation-flood.html",
+      "target": "compositions/components/segmentation-flood.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "regions",
+      "type": "string",
+      "role": "content",
+      "label": "Regions",
+      "description": "Comma-separated region labels; 2 to 4 are used, one translucent mask + bracket + mono chip each.",
+      "default": "Figure, Signal, Ground"
+    },
+    {
+      "id": "flood_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Flood at",
+      "description": "Seconds from mount start when the segmentation pass begins. Clamped so the pass and any exit stay inside the clip.",
+      "default": 0.8
+    },
+    {
+      "id": "flicker",
+      "type": "enum",
+      "role": "style",
+      "label": "Flicker",
+      "description": "Deterministic 2-frame HUD luminance toggle riding the flood pass.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Mask, bracket, and chip color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the labeled read holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

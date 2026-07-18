@@ -1,0 +1,334 @@
+<!doctype html>
+<!--
+  slit-scan-reveal: HyperFrames video primitive (time)
+
+  The frame's rows sample the subject at offset times. The subject is an
+  authored token mark (an accent-ringed disc with an orbit dot) whose
+  motion is one pure position function pos(t): it sweeps in from the wing
+  on a decaying sine bob and rests dead-center. A canvas painter draws the
+  frame as row (or column) slices, slice i showing the subject's state at
+  t - offset(i): arrival smears through time, near bands leading, far
+  bands trailing. On the resolve cue the offsets collapse to zero with one
+  eased pass, the smear zips shut, and the subject holds coherent.
+
+  Variables (declared in data-composition-variables below):
+    - axis ("rows" | "cols"): horizontal row slices or vertical column
+      slices.
+    - spread (seconds): the maximum sampling offset across the frame.
+    - resolve_at (seconds): when the offsets start collapsing to zero
+      (0.6s eased collapse). Clamped so the collapse and any exit stay
+      inside the clip.
+    - accent ("green" | "blue" | "violet"): green rides --brand, blue
+      rides --accent, violet rides --accent-2.
+    - exit ("none" | "fade" | "up", default none): frame roots own
+      transitions; the default holds the resolved mark to the last pixel.
+
+  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
+    the subject's travel and the collapse are authored against the cues;
+    HOLD = D - (resolve end) - OUT, truly still (after the collapse every
+    slice samples the same resting state, so repaints are identical).
+    OUT_BASE = 0.45s only when exit != none.
+
+  Determinism (canvas 2D law): per-slice offset jitter comes from one
+  table computed once during synchronous timeline construction from fixed
+  LCG seed 0x51175c4e. Every painted frame is a pure
+  function of (that table, the timeline's current time): the timeline's
+  onUpdate clears the canvas and, for every slice, clips to the slice band
+  and redraws the whole subject at its sampled time from scratch. pos(t)
+  is closed-form (cubic ease + integer sine cycles that end at zero), so
+  any sampled time is exact. No Math.random, no wall clock, no
+  incremental state: eventful seeks repaint identically in any order and
+  either direction.
+
+  Mount contract: the runtime clones only this template. #root fills the
+  host box (no data-width/data-height, container-type: size, cqmin units),
+  is styled via #root only, and registers one paused timeline under the
+  LITERAL "slit-scan-reveal" key. All DOM state is set with explicit
+  endpoints (gsap.set + fromTo) so any seek order lands identical frames.
+-->
+<html
+  lang="en"
+  data-composition-id="slit-scan-reveal"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "axis", "type": "enum", "role": "style", "label": "Axis", "description": "rows smears arrival across horizontal slices; cols across vertical slices.", "default": "rows", "options": [{ "value": "rows", "label": "Rows" }, { "value": "cols", "label": "Columns" }] },
+    { "id": "spread", "type": "number", "role": "timing", "label": "Spread", "description": "Maximum sampling offset in seconds across the frame; larger smears further through time.", "default": 0.45 },
+    { "id": "resolve_at", "type": "number", "role": "timing", "label": "Resolve at", "description": "Seconds from mount start when the offsets start collapsing to zero. Clamped so the collapse and any exit stay inside the clip.", "default": 2.2 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Subject ring and orbit color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the resolved mark holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Slit Scan Reveal</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="slit-scan-reveal" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-display, "Inter", system-ui, sans-serif);
+            pointer-events: none;
+          }
+
+          .ssr-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .ssr-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          .ssr-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+        </style>
+
+        <div
+          id="slit-scan-reveal-clip"
+          class="ssr-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="ssr-stage">
+            <canvas class="ssr-canvas" aria-hidden="true"></canvas>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".ssr-stage");
+            var canvas = root.querySelector(".ssr-canvas");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            var axis = vars.axis === "cols" ? "cols" : "rows";
+            var spreadRaw = parseFloat(vars.spread);
+            var spread = isFinite(spreadRaw) ? Math.min(Math.max(0.1, spreadRaw), 1.2) : 0.45;
+            var resolveRaw = parseFloat(vars.resolve_at);
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+            // Envelope. The collapse is 0.6s; resolve_at is clamped so the
+            // collapse and any exit always fit inside the clip.
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var OUT = exit === "none" ? 0 : 0.45;
+            var COLLAPSE = 0.6;
+            var resolveAt = isFinite(resolveRaw) ? resolveRaw : 2.2;
+            resolveAt = Math.min(
+              Math.max(0.4, resolveAt),
+              Math.max(0.4, duration - COLLAPSE - OUT - 0.1),
+            );
+            // The subject's travel ends just before the collapse begins so
+            // the zip-shut lands on a resting subject.
+            var MOVE_START = 0.25;
+            var MOVE_END = Math.max(MOVE_START + 0.6, resolveAt - 0.1);
+            var OUT_START = duration - OUT;
+
+            // Canvas raster basis, fixed once at mount (elastic root).
+            var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+            var box = root.getBoundingClientRect();
+            var cssW = Math.max(1, Math.round(box.width) || 640);
+            var cssH = Math.max(1, Math.round(box.height) || 360);
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            var ctx = canvas.getContext("2d");
+            var minDim = Math.min(canvas.width, canvas.height);
+
+            // Resolve tokens to concrete colors once at mount so canvas
+            // fills never depend on style recalc during seeks.
+            var hostDoc = root.ownerDocument;
+            function resolveColor(cssColor, fallback) {
+              var probe = hostDoc.createElement("span");
+              probe.style.color = cssColor;
+              root.appendChild(probe);
+              var value = getComputedStyle(probe).color || fallback;
+              probe.remove();
+              return value;
+            }
+            var accentColor = resolveColor(accentColors[accent], "#71f5a7");
+            var surfaceColor = resolveColor("var(--surface, #14171c)", "#14171c");
+            var fgColor = resolveColor("var(--fg, #f8fafc)", "#f8fafc");
+
+            // Seeded per-slice offset jitter: a stable table, computed once.
+            var SLICES = 96;
+            var jitter = (function () {
+              var state = 0x51175c4e;
+              function next() {
+                state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+                return state / 4294967296;
+              }
+              var rows = [];
+              for (var i = 0; i < SLICES; i += 1) {
+                rows.push(0.96 + 0.08 * next());
+              }
+              return rows;
+            })();
+
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+
+            // The subject's authored motion: ONE pure position function.
+            // Cubic-eased sweep from the wing to dead center with a
+            // decaying two-cycle sine bob (integer cycles, exactly zero at
+            // u = 1) and a settling scale. The sweep runs ACROSS the slice
+            // axis (rows: left wing in, cols: top wing down) so every band
+            // cuts the travel and the offsets read as a staircase smear,
+            // not a local skew. Defined for every t; clamped flat outside
+            // [MOVE_START, MOVE_END], so sampled times before mount or
+            // into the hold are exact and still.
+            function subjectState(t) {
+              var u = clamp01((t - MOVE_START) / (MOVE_END - MOVE_START));
+              var e = 1 - Math.pow(1 - u, 3);
+              var decay = (1 - u) * (1 - u);
+              var travel = -0.16 + 0.66 * e;
+              var bob = 0.5 + 0.15 * Math.sin(Math.PI * 2 * 2 * u) * decay;
+              return {
+                x: (axis === "rows" ? travel : bob) * canvas.width,
+                y: (axis === "rows" ? bob : travel) * canvas.height,
+                rot: 0.5 * Math.sin(Math.PI * 2 * u) * decay,
+                scale: 0.82 + 0.18 * e,
+                appear: clamp01(u / 0.12),
+              };
+            }
+
+            // Draw the whole subject (token disc + accent ring + orbit dot)
+            // at one sampled state. Callers clip to a slice band first.
+            function drawSubject(s) {
+              if (s.appear <= 0) return;
+              var r = 0.15 * minDim * s.scale;
+              ctx.save();
+              ctx.translate(s.x, s.y);
+              ctx.rotate(s.rot);
+              ctx.globalAlpha = s.appear;
+              // Disc body.
+              ctx.fillStyle = surfaceColor;
+              ctx.beginPath();
+              ctx.arc(0, 0, r, 0, Math.PI * 2);
+              ctx.fill();
+              // Accent ring.
+              ctx.strokeStyle = accentColor;
+              ctx.lineWidth = Math.max(1, 0.016 * minDim);
+              ctx.beginPath();
+              ctx.arc(0, 0, r, 0, Math.PI * 2);
+              ctx.stroke();
+              // Inner core.
+              ctx.fillStyle = fgColor;
+              ctx.globalAlpha = s.appear * 0.92;
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+              ctx.fill();
+              // Orbit dot: the asymmetry that makes the smear legible.
+              ctx.fillStyle = accentColor;
+              ctx.globalAlpha = s.appear;
+              ctx.beginPath();
+              ctx.arc(r * 0.72, 0, r * 0.13, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            }
+
+            // Pure repaint: for every slice, clip to its band and draw the
+            // subject at t - offset(slice) * collapse(t).
+            function paint(t) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              var collapse = 1 - clamp01((t - resolveAt) / COLLAPSE);
+              // Eased collapse: smooth both ends (power2.inOut shape).
+              collapse =
+                collapse < 0.5
+                  ? 2 * collapse * collapse
+                  : 1 - Math.pow(-2 * collapse + 2, 2) / 2;
+              if (collapse <= 0) {
+                // Resolved: one coherent draw, no per-slice clipping.
+                drawSubject(subjectState(t));
+                return;
+              }
+              var along = axis === "rows" ? canvas.height : canvas.width;
+              var band = along / SLICES;
+              for (var i = 0; i < SLICES; i += 1) {
+                var frac = i / (SLICES - 1);
+                var offset = spread * frac * jitter[i] * collapse;
+                var s = subjectState(t - offset);
+                if (s.appear <= 0) continue;
+                ctx.save();
+                ctx.beginPath();
+                if (axis === "rows") {
+                  ctx.rect(0, i * band, canvas.width, band + 1);
+                } else {
+                  ctx.rect(i * band, 0, band + 1, canvas.height);
+                }
+                ctx.clip();
+                drawSubject(s);
+                ctx.restore();
+              }
+            }
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                paint(tl.time());
+              },
+            });
+
+            // Anchor tween: an inert plain-object tween spanning the full
+            // authored duration so tl.time() covers [0, D] and onUpdate
+            // repaints the canvas on every eventful seek.
+            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
+
+            // HOLD: truly still. After the collapse every slice samples the
+            // same resting state, so the canvas repaints one coherent mark.
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            paint(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["slit-scan-reveal"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

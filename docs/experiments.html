@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The experiments: ten Wave M candidates</title>
+  <style>
+    :root {
+      --bg: #0c0e10;
+      --panel: #14171a;
+      --ink: #eef1f0;
+      --muted: #8b9490;
+      --teal: #2dd4bf;
+      --amber: #f59e0b;
+      --line: #23282c;
+      --display: Inter, ui-sans-serif, system-ui, sans-serif;
+      --mono: "SFMono-Regular", Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: radial-gradient(circle at 20% 0%, #12181c, var(--bg) 60%);
+      color: var(--ink);
+      font-family: var(--display);
+      padding: 56px 0 80px;
+    }
+    .page { width: min(1280px, calc(100% - 48px)); margin: 0 auto; }
+    .eyebrow {
+      font-family: var(--mono); font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.22em; text-transform: uppercase; color: var(--teal);
+      margin-bottom: 20px;
+    }
+    h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); font-weight: 850; letter-spacing: -0.045em; line-height: 0.98; }
+    h1 em { font-style: normal; color: var(--teal); }
+    .lede { max-width: 720px; margin: 22px 0 46px; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      overflow: hidden;
+    }
+    .card .head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 16px 20px 12px;
+    }
+    .card h2 { font-family: var(--mono); font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+    .card .src {
+      font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .card .src b { color: var(--amber); font-weight: 700; }
+    .player { background: #000; }
+    .card p {
+      padding: 14px 20px 18px; color: var(--muted); font-size: 0.9rem; line-height: 1.55;
+    }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow">Wave M experiments / demand, frame study, and the scout</p>
+    <h1>The <em>experiments</em></h1>
+    <p class="lede">Ten more candidates: the texture registers from Codrops, gmunk's machine vision, the type crafts, and the time laws. Watch, then choose.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="head"><h2>ascii-render-pass</h2><span class="src">the texture king</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/ascii-render-pass.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A scene renders as living ASCII, resolving from coarse glyph noise to a legible fine grid.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>ordered-dither-pass</h2><span class="src">premium lofi</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/ordered-dither-pass.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Bayer dithering carries the scene from pure 2-tone noise to clean, or dissolves it the other way.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>segmentation-flood</h2><span class="src">after gmunk</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/segmentation-flood.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Machine-vision masks flood the subject in scanline steps, brackets and labels landing per region.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>slit-scan-reveal</h2><span class="src">time as material</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/slit-scan-reveal.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Every row of the frame lives at a different moment; the subject smears through time until now catches up.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>variable-font-flex</h2><span class="src">breathing type</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/variable-font-flex.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A word lands by inflating through real weight and width axes while its box never moves.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>stitched-text-draw</h2><span class="src">embroidered</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/stitched-text-draw.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Letters sew themselves on: stitch dashes, a leading needle, a thread tail that settles.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>ink-bleed-reveal</h2><span class="src">liquid</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/ink-bleed-reveal.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Ink blobs bloom through paper, merge like liquid, and resolve into the mark.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>particle-text-dissolve</h2><span class="src">both directions</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/particle-text-dissolve.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>Text condenses from a particle cloud behind a wipe front, or scatters back into one.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>modal-morph</h2><span class="src">the open-it-up beat</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/modal-morph.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A small card grows into a full panel, its contents re-flowing continuously the whole way.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h2>stop-motion-cadence</h2><span class="src">hand-made time</span></div>
+        <div class="player" data-hf-player="true" data-src="/public/qa/stop-motion-cadence.html" data-width="1920" data-height="1080" style="aspect-ratio: 16/9;"></div>
+        <p>A collage throw at 8-12 quantized frames per second: squash on hits, boil on edges, sparkles that live three frames.</p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/hyperframes-player.global.js"></script>
+  <script src="/hyperframes-player-embed.js"></script>
+  <script src="/qa-autoplay.js"></script>
+</body>
+</html>

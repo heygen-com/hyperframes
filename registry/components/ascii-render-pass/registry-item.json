@@ -1,0 +1,81 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ascii-render-pass",
+  "type": "hyperframes:component",
+  "title": "ASCII Render Pass",
+  "description": "A slotted scene renders as live ASCII: a canvas samples the source's luminance grid (rasterized once at mount) and draws glyphs from a density ramp charset; resolution steps coarse to fine as the piece resolves, then holds legible-fine.",
+  "tags": ["motion-primitive", "experiment", "texture", "ascii", "quantize"],
+  "jobs": ["reveal"],
+  "family": "effects",
+  "profile": "texture",
+  "evidence": "Wave M M1: Codrops 'Efecto: Building Real-Time ASCII and Dithering Effects with WebGL Shaders' (2026-01-04), the coded-motion ASCII wave from the wild scout",
+  "syncPoints": [{ "id": "resolve", "phase": "in", "offset": 1.4 }],
+  "files": [
+    {
+      "path": "ascii-render-pass.html",
+      "target": "compositions/components/ascii-render-pass.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "charset",
+      "type": "string",
+      "role": "style",
+      "label": "Charset",
+      "description": "Density ramp, dark to light. A leading space keeps dark cells empty.",
+      "default": " .:-=+*#%@"
+    },
+    {
+      "id": "grid",
+      "type": "enum",
+      "role": "style",
+      "label": "Grid",
+      "description": "Final cell pitch the resolve lands on.",
+      "default": "med",
+      "options": [
+        { "value": "coarse", "label": "Coarse" },
+        { "value": "med", "label": "Medium" },
+        { "value": "fine", "label": "Fine" }
+      ]
+    },
+    {
+      "id": "resolve_at",
+      "type": "number",
+      "role": "timing",
+      "label": "Resolve at",
+      "description": "Seconds from mount start when the coarse-to-fine resolve begins.",
+      "default": 1.4,
+      "min": 0.6,
+      "max": 10,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "How the frame leaves. None holds the fine render.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

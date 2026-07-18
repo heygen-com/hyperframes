@@ -1,0 +1,463 @@
+<!doctype html>
+<!--
+  ascii-render-pass: HyperFrames video primitive (Wave M experiment, texture)
+
+  A slotted scene renders as live ASCII: the source is rasterized ONCE at
+  mount to an offscreen canvas, its luminance grid is sampled per cell, and
+  each cell draws a glyph from a density ramp charset. Resolution animates
+  coarse to fine on a stepped pitch ladder as the piece resolves, then
+  holds legible-fine. The DOM source itself never displays; the canvas is
+  the whole picture.
+
+  The scene is a SLOT. Callers supply content by placing an inert template
+  anywhere in the HOST page (templates never render, and the runtime wipes
+  the host clip's own children on mount):
+
+    <template data-slot="ascii-render-pass-scene"> ... </template>
+
+  Slot content is rasterized through an SVG foreignObject snapshot, so it
+  must be self-contained: inline styles or rules carried by host <style>
+  tags (which are copied into the snapshot), data-URI images only, system
+  or already-active fonts. External resources do not load inside the
+  snapshot. When no slot exists, the primitive rasterizes a token monogram
+  tile drawn synchronously from contract tokens (no snapshot involved).
+
+  Variables (declared in data-composition-variables below):
+    - charset (string): density ramp, dark to light, first glyph may be a
+      space so dark cells stay empty. Default " .:-=+*#%@".
+    - grid ("coarse" | "med" | "fine", default "med"): final cell pitch.
+    - resolve_at (seconds): when the coarse-to-fine resolve begins.
+    - accent ("green" | "blue" | "violet", default "green"): glyph ink;
+      green rides --brand, blue rides --accent, violet rides --accent-2.
+    - exit ("none" | "fade" | "up", default "none"): frame roots own
+      transitions; the default holds the fine render to the cut.
+
+  Envelope, fixed segments with elastic HOLD only (never timeScale):
+    0.00s        canvas fades up over 0.5s at the coarsest pitch
+    resolve_at   pitch ladder steps coarse to fine over 1.2s (5 steps,
+                 powers of sqrt(2)); a per-cell hash shimmer rides the
+                 steps and lands at zero on the final step
+    then         legible-fine HOLD, truly still
+    OUT = 0.45s  only when exit is not none
+
+  Determinism (canvas 2D law): the raster, its luminance summed-area
+  table, and every resolved color are fixed once at mount. Every painted
+  frame is a pure function of (that raster, the timeline's current time):
+  the timeline's onUpdate clears the canvas and redraws every glyph from
+  scratch. Cell shimmer uses a stateless integer hash of (column, row,
+  ladder step), not a stream; there is no Math.random, no wall clock, no
+  incremental state. Eventful seeks (suppressEvents false, the engine's
+  render path) land identical frames in any order and either direction.
+  The no-slot monogram raster is drawn synchronously before the timeline
+  registers; a slotted raster arrives from the snapshot decode and
+  repaints the current frame, after which all frames are pure f(t).
+-->
+<html
+  lang="en"
+  data-composition-id="ascii-render-pass"
+  data-composition-duration="4"
+  data-composition-variables='[
+    { "id": "charset", "type": "string", "role": "style", "label": "Charset", "description": "Density ramp, dark to light. A leading space keeps dark cells empty.", "default": " .:-=+*#%@" },
+    { "id": "grid", "type": "enum", "role": "style", "label": "Grid", "description": "Final cell pitch the resolve lands on.", "default": "med", "options": [{ "value": "coarse", "label": "Coarse" }, { "value": "med", "label": "Medium" }, { "value": "fine", "label": "Fine" }] },
+    { "id": "resolve_at", "type": "number", "role": "timing", "label": "Resolve at", "description": "Seconds from mount start when the coarse-to-fine resolve begins.", "default": 1.4, "min": 0.6, "max": 10, "step": 0.1, "unit": "s" },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the fine render holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>ASCII Render Pass</title>
+  </head>
+  <body>
+    <template>
+      <div id="root" data-composition-id="ascii-render-pass" data-duration="4" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+
+          #root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            color: var(--fg, #f8fafc);
+            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+            pointer-events: none;
+          }
+
+          .arp-clip {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: var(--bg, transparent);
+          }
+
+          .arp-stage {
+            position: absolute;
+            inset: 0;
+            will-change: transform, opacity;
+          }
+
+          .arp-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+          }
+        </style>
+
+        <div
+          id="ascii-render-pass-clip"
+          class="arp-clip clip"
+          data-start="0"
+          data-duration="4"
+          data-track-index="0"
+        >
+          <div class="arp-stage">
+            <canvas class="arp-canvas" aria-hidden="true"></canvas>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = root.querySelector(".arp-stage");
+            var canvas = root.querySelector(".arp-canvas");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function num(value, fallback, min, max) {
+              var n = Number(value);
+              if (!isFinite(n)) n = fallback;
+              return Math.max(min, Math.min(max, n));
+            }
+
+            var charset =
+              typeof vars.charset === "string" && vars.charset.length >= 2
+                ? vars.charset
+                : " .:-=+*#%@";
+            var grid = vars.grid === "coarse" || vars.grid === "fine" ? vars.grid : "med";
+            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+            // Each enum choice routes to a DIFFERENT contract token so the
+            // variable stays meaningful under a theme.
+            var accentColors = {
+              green: "var(--brand, #71f5a7)",
+              blue: "var(--accent, #61a8ff)",
+              violet: "var(--accent-2, #c5a3ff)",
+            };
+            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
+              ? vars.accent
+              : "green";
+            // Bundler mirrors composition variables as scoped CSS custom
+            // props; when this unit's accent variable shadows the --accent
+            // token ("blue" is a valid CSS color), fall back to the literal.
+            var computedAccent = getComputedStyle(root).getPropertyValue("--accent").trim();
+            if (
+              computedAccent === "green" ||
+              computedAccent === "blue" ||
+              computedAccent === "violet"
+            ) {
+              accentColors.blue = "#61a8ff";
+            }
+
+            // Envelope.
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
+            var OUT = exit === "none" ? 0 : 0.45;
+            var RESOLVE = Math.min(1.2, Math.max(0.5, duration - OUT - 1.0));
+            var FADE_IN = 0.5;
+            var maxAt = Math.max(0.6, duration - RESOLVE - OUT - 0.05);
+            var resolveAt = num(vars.resolve_at, 1.4, 0.6, maxAt);
+            var OUT_START = duration - OUT;
+
+            // Canvas raster basis, fixed once at mount. Elastic root: the
+            // host box decides the resolution.
+            var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+            var box = root.getBoundingClientRect();
+            var cssW = Math.max(1, Math.round(box.width) || 640);
+            var cssH = Math.max(1, Math.round(box.height) || 360);
+            canvas.width = Math.round(cssW * dpr);
+            canvas.height = Math.round(cssH * dpr);
+            var ctx = canvas.getContext("2d");
+
+            // Resolve tokens to concrete values once at mount so nothing in
+            // the paint path depends on style recalc during seeks.
+            var hostDoc = root.ownerDocument;
+            function resolveColor(cssColor, fallback) {
+              var probe = hostDoc.createElement("span");
+              probe.style.color = cssColor;
+              root.appendChild(probe);
+              var out = getComputedStyle(probe).color || fallback;
+              probe.remove();
+              return out;
+            }
+            var bgColor = resolveColor("var(--bg, #0b0c0e)", "#0b0c0e");
+            var inkColor = resolveColor(accentColors[accent], "#71f5a7");
+            var probeFont = hostDoc.createElement("span");
+            probeFont.style.fontFamily =
+              'var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace)';
+            root.appendChild(probeFont);
+            var monoFamily = getComputedStyle(probeFont).fontFamily || "monospace";
+            probeFont.remove();
+
+            // Source raster: cssW x cssH capped to 1280 wide, composited
+            // over the resolved bg so luminance never depends on alpha.
+            var rasterScale = Math.min(1, 1280 / cssW);
+            var rw = Math.max(1, Math.round(cssW * rasterScale));
+            var rh = Math.max(1, Math.round(cssH * rasterScale));
+            var raster = hostDoc.createElement("canvas");
+            raster.width = rw;
+            raster.height = rh;
+            var rctx = raster.getContext("2d");
+
+            // Luminance summed-area table so any cell's average is O(1) and
+            // a pure function of the fixed raster.
+            var sat = null; // Float64Array (rw+1)*(rh+1)
+            function buildSat() {
+              var data = rctx.getImageData(0, 0, rw, rh).data;
+              var table = new Float64Array((rw + 1) * (rh + 1));
+              for (var y = 0; y < rh; y += 1) {
+                var rowSum = 0;
+                for (var x = 0; x < rw; x += 1) {
+                  var i = (y * rw + x) * 4;
+                  rowSum +=
+                    (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255;
+                  table[(y + 1) * (rw + 1) + (x + 1)] = table[y * (rw + 1) + (x + 1)] + rowSum;
+                }
+              }
+              sat = table;
+            }
+            function cellLuma(x0, y0, x1, y1) {
+              // Raster-space integer rect, clamped.
+              if (x1 <= x0 || y1 <= y0) return 0;
+              var s = rw + 1;
+              var sum =
+                sat[y1 * s + x1] - sat[y0 * s + x1] - sat[y1 * s + x0] + sat[y0 * s + x0];
+              return sum / ((x1 - x0) * (y1 - y0));
+            }
+
+            function paintMonogram(target, w, h) {
+              // Synchronous token monogram raster: a surface tile with one
+              // display glyph, same vocabulary as the slot-less siblings.
+              var m = Math.min(w, h);
+              target.fillStyle = bgColor;
+              target.fillRect(0, 0, w, h);
+              var tile = m * 0.52;
+              var x = (w - tile) / 2;
+              var y = (h - tile) / 2;
+              var r = m * 0.05;
+              target.fillStyle = resolveColor(
+                "color-mix(in srgb, var(--surface, #14171c) 72%, " + accentColors[accent] + ")",
+                "#1a2a22",
+              );
+              target.beginPath();
+              if (target.roundRect) target.roundRect(x, y, tile, tile, r);
+              else target.rect(x, y, tile, tile);
+              target.fill();
+              target.fillStyle = resolveColor(
+                "color-mix(in srgb, var(--fg, #f8fafc) 30%, " + accentColors[accent] + ")",
+                "#a8f5c8",
+              );
+              target.font = "600 " + Math.round(m * 0.3) + "px " + monoFamily;
+              target.textAlign = "center";
+              target.textBaseline = "middle";
+              target.fillText("H", w / 2, h / 2 + m * 0.012);
+            }
+
+            // SLOT. Rasterized through an SVG foreignObject snapshot of the
+            // slot markup plus every host <style> tag and the resolved
+            // contract tokens, so host-authored rules and theme values
+            // apply inside the snapshot.
+            var slotTemplate = null;
+            try {
+              slotTemplate = hostDoc.querySelector(
+                'template[data-slot="ascii-render-pass-scene"]',
+              );
+            } catch (error) {
+              slotTemplate = null;
+            }
+
+            var rasterReady = false;
+            function finishRaster() {
+              buildSat();
+              rasterReady = true;
+              root.setAttribute("data-arp-raster", "ready");
+              paint(tl ? tl.time() : 0);
+            }
+
+            if (slotTemplate) {
+              var tokenNames = [
+                "--bg", "--fg", "--muted", "--surface", "--border", "--brand",
+                "--accent", "--accent-2", "--font-display", "--font-body",
+                "--font-mono", "--radius", "--space-1", "--space-2", "--space-3",
+                "--dur-beat", "--ease-standard", "--ease-emphasis",
+              ];
+              var rootStyle = getComputedStyle(root);
+              var tokenDecl = "";
+              for (var ti = 0; ti < tokenNames.length; ti += 1) {
+                var tv = rootStyle.getPropertyValue(tokenNames[ti]).trim();
+                if (tv) tokenDecl += tokenNames[ti] + ":" + tv + ";";
+              }
+              var styleTexts = "";
+              var styleTags = hostDoc.querySelectorAll("style");
+              for (var si = 0; si < styleTags.length; si += 1) {
+                styleTexts += styleTags[si].textContent || "";
+              }
+              var wrapper = hostDoc.createElement("div");
+              wrapper.setAttribute(
+                "style",
+                "width:" + rw + "px;height:" + rh + "px;overflow:hidden;position:relative;" +
+                  "display:grid;place-items:center;background:" + bgColor + ";" + tokenDecl,
+              );
+              wrapper.appendChild(hostDoc.importNode(slotTemplate.content, true));
+              var styleEl = hostDoc.createElement("style");
+              styleEl.textContent = styleTexts;
+              wrapper.insertBefore(styleEl, wrapper.firstChild);
+              var serialized = new XMLSerializer().serializeToString(wrapper);
+              var svgMarkup =
+                // No xmlns on foreignObject: a default xmlns declaration
+                // applies to the declaring element itself and would eject
+                // foreignObject from the SVG namespace (renders blank). The
+                // serialized wrapper div already carries the XHTML namespace.
+                '<svg xmlns="http://www.w3.org/2000/svg" width="' + rw + '" height="' + rh +
+                '"><foreignObject width="' + rw + '" height="' + rh + '">' +
+                serialized + "</foreignObject></svg>";
+              var snapshot = new Image();
+              snapshot.onload = function () {
+                rctx.fillStyle = bgColor;
+                rctx.fillRect(0, 0, rw, rh);
+                rctx.drawImage(snapshot, 0, 0, rw, rh);
+                try {
+                  finishRaster();
+                } catch (error) {
+                  // Tainted or unreadable snapshot: fall back to the monogram.
+                  paintMonogram(rctx, rw, rh);
+                  finishRaster();
+                }
+              };
+              snapshot.onerror = function () {
+                paintMonogram(rctx, rw, rh);
+                finishRaster();
+              };
+              snapshot.src =
+                "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
+            } else {
+              paintMonogram(rctx, rw, rh);
+            }
+
+            // Final cell pitch (display px) per grid enum; the ladder steps
+            // down from 4x on powers of sqrt(2). Stepped, not continuous:
+            // each step is a stable re-sample, the digital resolve.
+            var rowsFinal = { coarse: 22, med: 36, fine: 54 };
+            var cellFinal = Math.max(4, cssH / rowsFinal[grid]);
+            var LADDER = [4, 2.83, 2, 1.41, 1];
+            var LAST = LADDER.length - 1;
+
+            function clamp01(v) {
+              return v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+            // Stateless integer hash for per-cell shimmer: pure function of
+            // (col, row, step), no stream, no state.
+            function hash01(cx, cy, step) {
+              var h = Math.imul(cx + 1, 0x9e3779b1) ^ Math.imul(cy + 1, 0x85ebca6b) ^
+                Math.imul(step + 1, 0xc2b2ae35);
+              h = Math.imul(h ^ (h >>> 15), 0x27d4eb2f);
+              h = (h ^ (h >>> 13)) >>> 0;
+              return h / 4294967296;
+            }
+
+            var glyphs = charset.split("");
+            var GN = glyphs.length;
+
+            // Pure repaint from (raster tables, t).
+            function paint(timeSeconds) {
+              ctx.fillStyle = bgColor;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              if (!rasterReady) return;
+              var t = timeSeconds;
+              var fade = clamp01(t / FADE_IN);
+              fade = 1 - (1 - fade) * (1 - fade); // power2.out
+              if (fade <= 0) return;
+              var rp = clamp01((t - resolveAt) / RESOLVE);
+              rp = rp * rp * (3 - 2 * rp); // smoothstep across the ladder
+              var step = Math.min(LAST, Math.floor(rp * LAST + 1e-6));
+              if (rp >= 1) step = LAST;
+              var cell = cellFinal * LADDER[step];
+              var cols = Math.ceil(cssW / cell);
+              var rows = Math.ceil(cssH / cell);
+              var cellDev = cell * dpr;
+              ctx.font = "600 " + cellDev * 0.92 + "px " + monoFamily;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = inkColor;
+              // Shimmer amplitude decays to exactly zero on the final step
+              // so the HOLD is truly still.
+              var shimmerAmp = step === LAST && rp >= 1 ? 0 : 0.16;
+              for (var cy = 0; cy < rows; cy += 1) {
+                for (var cx = 0; cx < cols; cx += 1) {
+                  var x0 = Math.round(cx * cell * rasterScale);
+                  var y0 = Math.round(cy * cell * rasterScale);
+                  var x1 = Math.min(rw, Math.round((cx + 1) * cell * rasterScale));
+                  var y1 = Math.min(rh, Math.round((cy + 1) * cell * rasterScale));
+                  var luma = cellLuma(x0, Math.min(y0, rh), x1, Math.min(y1, rh));
+                  var idx = Math.round(luma * (GN - 1));
+                  if (idx <= 0 && glyphs[0] === " ") continue;
+                  var alpha = (0.3 + 0.7 * luma) * fade;
+                  if (shimmerAmp > 0) {
+                    alpha *= 1 - shimmerAmp + shimmerAmp * hash01(cx, cy, step);
+                  }
+                  if (alpha <= 0.01) continue;
+                  ctx.globalAlpha = clamp01(alpha);
+                  ctx.fillText(
+                    glyphs[idx],
+                    (cx + 0.5) * cellDev,
+                    (cy + 0.5) * cellDev,
+                  );
+                }
+              }
+              ctx.globalAlpha = 1;
+            }
+
+            gsap.set(stage, { opacity: 1, y: "0cqh" });
+
+            var tl = gsap.timeline({
+              paused: true,
+              onUpdate: function () {
+                paint(tl.time());
+              },
+            });
+
+            // Anchor tween: spans the full authored duration so onUpdate
+            // (the canvas repaint) fires for every eventful seek in [0, D]
+            // and holds keep tl.time() honest.
+            tl.to({ t: 0 }, { t: 1, duration: duration, ease: "none" }, 0);
+
+            // HOLD: legible-fine, truly still (shimmer amplitude is zero
+            // past the final ladder step; the raster never changes).
+
+            // OUT: optional departure; exit none holds until the frame cuts.
+            if (exit === "up") {
+              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            } else if (exit === "fade") {
+              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
+            }
+
+            tl.seek(0);
+            paint(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["ascii-render-pass"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

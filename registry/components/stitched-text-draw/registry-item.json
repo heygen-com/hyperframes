@@ -1,0 +1,68 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "stitched-text-draw",
+  "type": "hyperframes:component",
+  "title": "Stitched Text Draw",
+  "description": "Text drawn as thread stitches: a single-stroke display alphabet draws via attribute-driven dashoffset with stitch-tuned dash patterns, seeded angle jitter, needle-hole dots, a leading needle, and a thread-tail overshoot per letter.",
+  "tags": ["motion-primitive", "experiment", "type", "craft", "stitch", "deterministic"],
+  "jobs": ["reveal"],
+  "family": "text-effects",
+  "profile": "thread-stitch",
+  "evidence": "Wave M experiment M6: wild-scout stitched-line text draw (score 16), thread-stitch wordmark reveal for craft/authenticity beats",
+  "syncPoints": [{ "id": "stitch-done", "phase": "in", "offset": 3.05 }],
+  "files": [
+    {
+      "path": "stitched-text-draw.html",
+      "target": "compositions/components/stitched-text-draw.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "text",
+      "type": "string",
+      "role": "content",
+      "label": "Text",
+      "description": "Uppercased A-Z 0-9 and space, clamped to 12 characters.",
+      "default": "STITCH"
+    },
+    {
+      "id": "stitch",
+      "type": "enum",
+      "role": "style",
+      "label": "Stitch",
+      "description": "Dash/gap scale, thread width, and jitter amplitude.",
+      "default": "fine",
+      "options": [
+        { "value": "fine", "label": "Fine" },
+        { "value": "coarse", "label": "Coarse" }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "enum",
+      "role": "style",
+      "label": "Accent",
+      "description": "Thread color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "default": "green",
+      "options": [
+        { "value": "green", "label": "Green" },
+        { "value": "blue", "label": "Blue" },
+        { "value": "violet", "label": "Violet" }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "enum",
+      "role": "timing",
+      "label": "Exit",
+      "description": "Optional departure. Default none: the stitched word holds until the frame cuts.",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "fade", "label": "Fade" },
+        { "value": "up", "label": "Up" }
+      ]
+    }
+  ]
+}

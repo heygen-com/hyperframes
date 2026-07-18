@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  segmentation-flood demo. A full-bleed 1920x1080 LIGHT host mounts the
+  primitive through data-composition-src with non-default variables (four
+  regions, blue accent, earlier flood cue) and supplies the subject slot
+  to prove the slot path while the primitive stays elastic.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Segmentation Flood Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg, #f5f6f8);
+      }
+
+      #root {
+        --bg: #f5f6f8;
+        --fg: #101318;
+        --muted: #5b6472;
+        --surface: #ffffff;
+        --border: #d7dce4;
+        --brand: #14a35e;
+        --accent: #2f6fed;
+        --accent-2: #7a5cd6;
+        --radius: 24px;
+        --font-display: "Inter", system-ui, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .mount-stage {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+
+      .demo-subject {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          160deg,
+          color-mix(in srgb, var(--surface, #ffffff) 92%, var(--accent, #2f6fed)) 0%,
+          var(--surface, #ffffff) 60%
+        );
+        font-family: var(--font-display, system-ui, sans-serif);
+      }
+
+      .demo-subject .block {
+        position: absolute;
+        border: 1px solid var(--border, #d7dce4);
+        border-radius: var(--radius, 24px);
+        background: color-mix(in srgb, var(--muted, #5b6472) 10%, var(--surface, #ffffff));
+        box-shadow: 0 24px 60px rgba(16, 19, 24, 0.07);
+      }
+
+      .demo-subject .block.round {
+        border-radius: 50%;
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="segmentation-flood-subject">
+      <div class="demo-subject">
+        <div class="block" style="left: 10%; top: 16%; width: 26%; height: 26%"></div>
+        <div class="block round" style="left: 62%; top: 12%; width: 22%; height: 34%"></div>
+        <div class="block" style="left: 16%; top: 60%; width: 22%; height: 25%"></div>
+        <div class="block round" style="left: 58%; top: 62%; width: 26%; height: 23%"></div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="segmentation-flood-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.5"
+      data-fps="30"
+    >
+      <div
+        id="segmentation-flood-mount"
+        class="mount-stage clip"
+        data-composition-id="segmentation-flood"
+        data-composition-src="./segmentation-flood.html"
+        data-variable-values='{"regions":"Chassis, Payload, Horizon, Beacon","flood_at":0.6,"accent":"blue"}'
+        data-start="0"
+        data-duration="4.5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["segmentation-flood-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
