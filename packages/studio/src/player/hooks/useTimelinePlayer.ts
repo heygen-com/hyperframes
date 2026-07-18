@@ -47,26 +47,7 @@ import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
-
-/**
- * Whether the derived elements differ from the current ones in any field that
- * affects rendering (identity, timing, track, or source length) — used to skip
- * redundant store writes.
- */
-function timelineElementsChanged(prev: TimelineElement[], next: TimelineElement[]): boolean {
-  if (next.length !== prev.length) return true;
-  return next.some((el, i) => {
-    const p = prev[i];
-    return (
-      !p ||
-      el.id !== p.id ||
-      el.start !== p.start ||
-      el.duration !== p.duration ||
-      el.track !== p.track ||
-      el.sourceDuration !== p.sourceDuration
-    );
-  });
-}
+import { timelineElementsChanged } from "./timelinePlayerSync";
 
 export function useTimelinePlayer() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
