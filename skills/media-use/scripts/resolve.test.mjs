@@ -16,6 +16,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
+import { HEYGEN_NOT_FOUND_MESSAGE } from "./lib/heygen-cli.mjs";
 import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
@@ -160,8 +161,8 @@ test("bundled SFX resolve without HeyGen on PATH", () => {
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.provenance.provider, "bundled.sfx");
-  assert.match(parsed.advisory?.message ?? "", /developers\.heygen\.com\/cli/);
-  assert.doesNotMatch(parsed.advisory?.message ?? "", /\|\s*bash/);
+  assert.equal(parsed.advisory?.message, HEYGEN_NOT_FOUND_MESSAGE);
+  assert.equal(parsed.advisory.message.includes("| bash"), false);
   assert.ok(existsSync(join(tmp, parsed.path)));
   cleanup();
 });
