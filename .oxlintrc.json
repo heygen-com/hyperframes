@@ -5,6 +5,7 @@
   },
   "plugins": ["react", "typescript"],
   "ignorePatterns": [
+    ".scratch/",
     "dist/",
     "coverage/",
     "node_modules/",
