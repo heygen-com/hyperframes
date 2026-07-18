@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.64"
+  description="Released - 2026-07-18"
+  tags={["Release", "Studio", "Lint", "Core"]}
+>
+Studio editing is more predictable: multi-selection drags now keep composition positions in sync,
+and Acorn-based atomic cuts stay isolated from Recast behind explicit operation-family gates.
+Preview and render compilation now share a semantic-parity contract, while local `.scratch` files
+no longer pollute lint runs.
+
+## Fixes
+
+- **Studio:** Keep composition multi-drag positions in sync ([f7911d10b](https://github.com/heygen-com/hyperframes/commit/f7911d10b0a7deac6fe4630947b53434d237ad21), [#2629](https://github.com/heygen-com/hyperframes/pull/2629))
+- **Lint:** Ignore local .scratch directories in oxlint ([452e9074f](https://github.com/heygen-com/hyperframes/commit/452e9074f413677b0040c7ea231dacf3f0470c0e), [#2624](https://github.com/heygen-com/hyperframes/pull/2624))
+- **Studio:** Keep atomic Acorn splits Recast-free ([8dd7e3dfc](https://github.com/heygen-com/hyperframes/commit/8dd7e3dfc57dd1f44f50818cd9eea5225edd0ec0))
+- **Studio:** Read writer environment explicitly ([022e260ac](https://github.com/heygen-com/hyperframes/commit/022e260ac3096fd4826e14e1924aba2cfd1a84c6))
+- **Studio:** Select writer for atomic cuts ([710a8f1db](https://github.com/heygen-com/hyperframes/commit/710a8f1db2568b078a894ccfde87a07aefcecab8))
+
+## Internal
+
+- **Core:** Own edit protocol contract ([562544f68](https://github.com/heygen-com/hyperframes/commit/562544f68de4f769cdb1faac633b7c8341dbd0fb))
+- **Compiler:** Enforce preview render parity ([f0956e594](https://github.com/heygen-com/hyperframes/commit/f0956e59447de4bf1f02fcc3f765ac8461edd00b))
+- **Studio:** Gate SDK operation families ([38c2d0693](https://github.com/heygen-com/hyperframes/commit/38c2d069333e0d6deae746de970539e8a4d94a5d))
+- **Studio:** Gate Acorn writer migration ([43788c6dd](https://github.com/heygen-com/hyperframes/commit/43788c6dda35badd9333f53a91c5e88f56d502be))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.63...v0.7.64).
+</Update>
+
+<Update
   label="HyperFrames v0.7.63"
   description="Released - 2026-07-18"
   tags={["Release", "Media Use"]}
