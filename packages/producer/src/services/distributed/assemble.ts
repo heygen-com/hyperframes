@@ -292,7 +292,6 @@ export async function assemble(
     let normalizedAudio: {
       path: string;
       preserveAudioPrimingEditList: boolean;
-      durationSeconds: number;
     } | null = null;
     if (audioPath !== null && existsSync(audioPath)) {
       const paddedAudioPath = join(workDir, "audio-padded.m4a");
@@ -307,8 +306,7 @@ export async function assemble(
       }
       normalizedAudio = {
         path: paddedAudioPath,
-        preserveAudioPrimingEditList: padTrimResult.operation === "trim",
-        durationSeconds: padTrimResult.targetDurationSeconds,
+        preserveAudioPrimingEditList: padTrimResult.operation !== "copy",
       };
       log.info("[assemble] audio normalized for mux", {
         operation: padTrimResult.operation,
@@ -332,7 +330,6 @@ export async function assemble(
         {
           audioCodec: "aac",
           preserveAudioPrimingEditList: normalizedAudio.preserveAudioPrimingEditList,
-          durationSeconds: normalizedAudio.durationSeconds,
         },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );

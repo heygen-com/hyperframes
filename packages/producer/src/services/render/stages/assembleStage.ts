@@ -78,8 +78,7 @@ export async function runAssembleStage(input: AssembleStageInput): Promise<Assem
       abortSignal,
       {
         audioCodec: "aac",
-        preserveAudioPrimingEditList: normalizeResult.operation === "trim",
-        durationSeconds: normalizeResult.targetDurationSeconds,
+        preserveAudioPrimingEditList: normalizeResult.operation !== "copy",
       },
       job.config.fps,
     );

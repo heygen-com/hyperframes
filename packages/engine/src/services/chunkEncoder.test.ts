@@ -373,29 +373,6 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
 });
 
 describe("muxVideoWithAudio audio codec handling", () => {
-  it("caps copied audio to the encoded video duration", async () => {
-    const { spawn, calls } = createSpawnSpy();
-    vi.resetModules();
-    vi.doMock("child_process", () => ({ spawn }));
-
-    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
-    const muxPromise = muxVideoWithAudio(
-      "/tmp/video-only.mp4",
-      "/tmp/audio.duration-normalized.m4a",
-      "/tmp/output.mp4",
-      undefined,
-      { audioCodec: "aac", durationSeconds: 16.066667 },
-      { num: 30, den: 1 },
-    );
-
-    await flushMuxCodecResolution();
-    expect(calls[0]!.args).toContain("-shortest");
-    expect(calls[0]!.args).toContain("-t");
-    expect(calls[0]!.args).toContain("16.066667");
-    emitClose(calls[0]!.proc, 0);
-    await expect(muxPromise).resolves.toMatchObject({ success: true });
-  });
-
   it("copies HyperFrames AAC sidecars into MP4 instead of re-encoding", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

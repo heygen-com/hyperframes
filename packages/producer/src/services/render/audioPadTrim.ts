@@ -14,13 +14,13 @@
  *     "audio cuts off early" or "video shows a frozen final frame" bugs.
  *
  * The fix: post-pad/trim audio to *exactly* `frameCount / fps` seconds at
- * assemble time. Pad by concat-copying a generated silence tail. For trim,
- * decode and filter to the exact target before re-encoding into an M4A
- * container; packet-copying AAC can only cut on packet boundaries.
+ * assemble time. Both branches decode/filter and re-encode AAC. Concatenating
+ * ADTS packets with `-c:a copy` is unsafe because concat timestamp estimation
+ * can stretch the terminal packet in the final MP4.
  */
 
 import { spawn } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import {
   extractAudioMetadata,
   formatFfmpegError,
@@ -90,21 +90,11 @@ export interface PadTrimAudioResult {
   error?: string;
 }
 
-export type PadTrimAudioStepKind = "copy" | "trim" | "pad-silence" | "pad-concat";
+export type PadTrimAudioStepKind = "copy" | "trim" | "normalize";
 
 export interface PadTrimAudioStep {
   kind: PadTrimAudioStepKind;
   args: string[];
-  /**
-   * Concat-demuxer script materialization. When both fields are set, the
-   * runner writes `concatListContent` to `concatListPath` synchronously
-   * before spawning ffmpeg, and the step's `args` reference that path via
-   * `-i concatListPath`. Feeding the concat script through a real file
-   * (instead of `pipe:0`) is what makes bare-path directives work on both
-   * Linux and Windows — see `concatFileLine` for the platform history.
-   */
-  concatListPath?: string;
-  concatListContent?: string;
 }
 
 export interface PadTrimAudioPlan {
@@ -132,7 +122,6 @@ export function buildPadTrimAudioPlan(
   outputPath: string,
   sourceDurationSeconds: number,
   targetDurationSeconds: number,
-  audioInfo: Pick<AudioProbeInfo, "sampleRate" | "channels"> = {},
 ): PadTrimAudioPlan {
   const delta = targetDurationSeconds - sourceDurationSeconds;
   const targetSec = formatSeconds(targetDurationSeconds);
@@ -144,48 +133,28 @@ export function buildPadTrimAudioPlan(
     };
   }
   if (delta > 0) {
-    const padDur = formatSeconds(delta);
-    const silencePath = `${outputPath}.pad-silence.aac`;
-    const concatListPath = `${outputPath}.concat-list.txt`;
     return {
       operation: "pad",
       steps: [
         {
-          kind: "pad-silence",
+          kind: "normalize",
           args: [
-            "-f",
-            "lavfi",
             "-i",
-            `anullsrc=channel_layout=${channelLayoutForChannels(audioInfo.channels)}:sample_rate=${sampleRateForFilter(audioInfo.sampleRate)}`,
+            audioPath,
+            "-af",
+            `apad=whole_dur=${targetSec}`,
             "-t",
-            padDur,
+            targetSec,
             "-c:a",
             "aac",
             "-b:a",
             "192k",
             "-y",
-            silencePath,
-          ],
-        },
-        {
-          kind: "pad-concat",
-          args: [
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concatListPath,
-            "-c:a",
-            "copy",
-            "-y",
             outputPath,
           ],
-          concatListPath,
-          concatListContent: `${concatFileLine(audioPath)}\n${concatFileLine(silencePath)}\n`,
         },
       ],
-      cleanupPaths: [silencePath, concatListPath],
+      cleanupPaths: [],
     };
   }
   // Packet-copy trimming snaps to AAC frame boundaries (typically 1024
@@ -245,20 +214,7 @@ function formatSeconds(sec: number): string {
   return sec.toFixed(6);
 }
 
-function sampleRateForFilter(sampleRate: number | undefined): number {
-  return sampleRate !== undefined && Number.isFinite(sampleRate) && sampleRate > 0
-    ? Math.round(sampleRate)
-    : 48000;
-}
-
-function channelLayoutForChannels(channels: number | undefined): string {
-  if (channels === 1) return "mono";
-  if (channels === 6) return "5.1";
-  if (channels === 8) return "7.1";
-  return "stereo";
-}
-
-function concatFileLine(path: string): string {
+/*
   // Bare paths in concat directives — NOT `file://` URLs. Two failure
   // modes on the round trip to a working shape:
   //   1. `file:///C:/…` — FFmpeg 8.x on Windows fails to open URL-form
@@ -279,8 +235,7 @@ function concatFileLine(path: string): string {
   // file's directory becomes the base URL, and absolute paths in the
   // script resolve as-is on both platforms. The single-quote escaping
   // (`'\''`) is the concat demuxer's own escape rule.
-  return `file '${path.replace(/'/g, "'\\''")}'`;
-}
+*/
 
 /**
  * Pad or trim `audio.aac` so its exact duration matches `frameCount / fps`
@@ -344,7 +299,6 @@ export async function padOrTrimAudioToVideoFrameCount(
     input.outputPath,
     audioInfo.durationSeconds,
     targetDurationSeconds,
-    audioInfo,
   );
 
   try {
@@ -353,9 +307,6 @@ export async function padOrTrimAudioToVideoFrameCount(
       // needs one. Doing this here (instead of piping via `pipe:0` in the
       // runner) is what makes the demuxer's URL resolution treat
       // absolute paths as absolute — see `concatFileLine` for context.
-      if (step.concatListPath !== undefined && step.concatListContent !== undefined) {
-        writeFileSync(step.concatListPath, step.concatListContent, "utf-8");
-      }
       const ffmpegResult = await runner(step.args);
       if (!ffmpegResult.success) {
         return {
