@@ -64,6 +64,7 @@ export interface TimelineLogicalRow {
   logicalIndex: number;
   level: 1 | 2;
   parentId: string | null;
+  elementId: string | null;
   expandable: boolean;
   expanded: boolean;
   propertyGroup?: PropertyGroupName;
@@ -209,6 +210,7 @@ export function buildTimelineLogicalRows({
       logicalIndex: rows.length,
       level: 1,
       parentId: null,
+      elementId: null,
       expandable: lanes.length > 0,
       expanded,
       items: clipItems(trackId, elements),
@@ -223,6 +225,7 @@ export function buildTimelineLogicalRows({
         logicalIndex: rows.length,
         level: 2,
         parentId: trackId,
+        elementId: activeId,
         expandable: false,
         expanded: false,
         propertyGroup: lane.group,
@@ -233,7 +236,7 @@ export function buildTimelineLogicalRows({
   return rows;
 }
 
-function locateTarget(rows: readonly TimelineLogicalRow[], id: string) {
+export function locateTimelineLogicalTarget(rows: readonly TimelineLogicalRow[], id: string) {
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex]!;
     if (row.id === id) return { row, rowIndex, itemIndex: -1, target: row };
@@ -260,7 +263,7 @@ export function resolveTimelineNavigationTarget(
   key: TimelineNavigationKey,
   options: TimelineNavigationOptions = {},
 ): TimelineLogicalTarget | null {
-  const current = locateTarget(rows, currentId);
+  const current = locateTimelineLogicalTarget(rows, currentId);
   if (!current) return null;
   const { row, rowIndex, itemIndex, target } = current;
 
@@ -297,26 +300,26 @@ export function resolveTimelineFocusFallback(
   nextRows: readonly TimelineLogicalRow[],
   currentId: string,
 ): TimelineLogicalTarget | null {
-  const unchanged = locateTarget(nextRows, currentId);
+  const unchanged = locateTimelineLogicalTarget(nextRows, currentId);
   if (unchanged) return unchanged.target;
-  const previous = locateTarget(previousRows, currentId);
+  const previous = locateTimelineLogicalTarget(previousRows, currentId);
   if (!previous) return null;
 
   if (previous.itemIndex >= 0) {
     for (let index = previous.itemIndex - 1; index >= 0; index -= 1) {
-      const candidate = locateTarget(nextRows, previous.row.items[index]!.id);
+      const candidate = locateTimelineLogicalTarget(nextRows, previous.row.items[index]!.id);
       if (candidate) return candidate.target;
     }
     for (let index = previous.itemIndex + 1; index < previous.row.items.length; index += 1) {
-      const candidate = locateTarget(nextRows, previous.row.items[index]!.id);
+      const candidate = locateTimelineLogicalTarget(nextRows, previous.row.items[index]!.id);
       if (candidate) return candidate.target;
     }
   }
 
-  const survivingRow = locateTarget(nextRows, previous.row.id);
+  const survivingRow = locateTimelineLogicalTarget(nextRows, previous.row.id);
   if (survivingRow) return survivingRow.target;
   if (previous.row.parentId) {
-    const parent = locateTarget(nextRows, previous.row.parentId);
+    const parent = locateTimelineLogicalTarget(nextRows, previous.row.parentId);
     if (parent) return parent.target;
   }
   return nextRows[previous.rowIndex] ?? nextRows[previous.rowIndex - 1] ?? null;

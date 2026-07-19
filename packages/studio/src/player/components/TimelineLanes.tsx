@@ -23,7 +23,7 @@ import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
-import { buildTimelineLogicalRows, type TimelineLogicalRow } from "./timelineKeyboardNavigation";
+import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -46,6 +46,7 @@ export function TimelineLanes({
   displayTrackOrder,
   rowGeometry,
   virtualRows,
+  logicalRows,
   rowsVirtualized,
   clipIndex,
   renderTimeRange,
@@ -98,32 +99,15 @@ export function TimelineLanes({
 }: TimelineLanesProps) {
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
-  const { logicalRows, logicalRowsByTrack } = useMemo(() => {
-    const rows = buildTimelineLogicalRows({
-      tracks,
-      displayTrackOrder,
-      laneCounts,
-      selectedElementId,
-      selectedElementIds,
-      expandedClipIds: STUDIO_KEYFRAMES_ENABLED ? expandedClipIds : new Set(),
-      gsapAnimations,
-    });
+  const logicalRowsByTrack = useMemo(() => {
     const byTrack = new Map<number, TimelineLogicalRow[]>();
-    for (const logicalRow of rows) {
+    for (const logicalRow of logicalRows) {
       const trackRows = byTrack.get(logicalRow.physicalTrackKey) ?? [];
       trackRows.push(logicalRow);
       byTrack.set(logicalRow.physicalTrackKey, trackRows);
     }
-    return { logicalRows: rows, logicalRowsByTrack: byTrack };
-  }, [
-    displayTrackOrder,
-    expandedClipIds,
-    gsapAnimations,
-    laneCounts,
-    selectedElementId,
-    selectedElementIds,
-    tracks,
-  ]);
+    return byTrack;
+  }, [logicalRows]);
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);
     trackStudioKeyframeLaneExpand({ expanded: willExpand });

@@ -8,6 +8,7 @@ import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { timelineClipFocusId } from "../../player/components/timelineNavigationIdentity";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, truncateMiddle, formatDuration } from "./assetHelpers";
@@ -133,7 +134,7 @@ export function AssetCard({
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
-  const requestClipReveal = usePlayerStore((s) => s.requestClipReveal);
+  const requestTimelineFocus = usePlayerStore((s) => s.requestTimelineFocus);
   const elements = usePlayerStore((s) => s.elements);
   const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
   const clearPreviewAsset = useAssetPreviewStore((s) => s.clearPreviewAsset);
@@ -158,7 +159,7 @@ export function AssetCard({
           const clipKey = clip.key ?? clip.id;
           setSelectedElementId(clipKey);
           // Scroll the timeline so the selected clip is actually visible.
-          requestClipReveal(clipKey);
+          requestTimelineFocus(timelineClipFocusId(clipKey));
           return;
         }
       }
@@ -171,7 +172,7 @@ export function AssetCard({
       asset,
       projectId,
       setSelectedElementId,
-      requestClipReveal,
+      requestTimelineFocus,
       setPreviewAsset,
       clearPreviewAsset,
     ],

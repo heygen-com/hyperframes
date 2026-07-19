@@ -48,6 +48,8 @@ export function TimelineTrackRow({
         aria-level={logicalRow.level}
         aria-expanded={logicalRow.expandable ? logicalRow.expanded : undefined}
         data-timeline-logical-row-id={logicalRow.id}
+        data-timeline-focus-id={logicalRow.id}
+        tabIndex={-1}
         className="flex"
         style={{ height }}
       >
