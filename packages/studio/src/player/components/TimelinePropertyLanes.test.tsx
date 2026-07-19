@@ -281,7 +281,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => root.unmount());
   });
 
-  it("reveals one midpoint ease button per segment on hover, regardless of selection", () => {
+  it("keeps one focusable midpoint ease button mounted per segment", () => {
     const animations = [
       animation("position-tween", "position", [
         { percentage: 0, properties: { x: 0 } },
@@ -295,12 +295,11 @@ describe("TimelinePropertyLanes", () => {
     expect(segments).toHaveLength(2);
     expect(segments.map((segment) => segment.style.left)).toEqual(["0px", "100px"]);
     expect(laneDiamonds(host, "position")).toHaveLength(3);
-    // Resting state: no button until a segment is hovered.
-    expect(laneEaseButtons(host, "position")).toHaveLength(0);
-
-    // Hovering reveals exactly one button — the hovered segment's.
-    expect(revealEaseButton(segments[0]!)).not.toBeNull();
-    expect(laneEaseButtons(host, "position")).toHaveLength(1);
+    const buttons = laneEaseButtons(host, "position");
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => button.classList.contains("focus-visible:opacity-100"))).toBe(
+      true,
+    );
 
     // The ease button is available on hover even when the element is NOT selected
     // (a lane shows for the track's active/primary clip, not only the selected one).
@@ -323,7 +322,7 @@ describe("TimelinePropertyLanes", () => {
     });
     const unselectedSegments = laneEaseSegments(host, "position");
     expect(unselectedSegments).toHaveLength(2);
-    expect(revealEaseButton(unselectedSegments[0]!)).not.toBeNull();
+    expect(laneEaseButtons(host, "position")).toHaveLength(2);
     act(() => root.unmount());
   });
 

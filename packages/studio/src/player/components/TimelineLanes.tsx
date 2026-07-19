@@ -24,6 +24,8 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
+import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -47,6 +49,7 @@ export function TimelineLanes({
   rowGeometry,
   virtualRows,
   logicalRows,
+  focusedTargetId,
   rowsVirtualized,
   clipIndex,
   renderTimeRange,
@@ -113,12 +116,22 @@ export function TimelineLanes({
     trackStudioKeyframeLaneExpand({ expanded: willExpand });
     toggleClipExpanded(key);
   };
+  const keyboard = useTimelineKeyboardActor({
+    logicalRows,
+    focusedTargetId,
+    rowGeometry,
+    scrollRef,
+    onToggleRow: (row) => {
+      if (row.elementId) toggleClipExpandedTracked(row.elementId);
+    },
+  });
   return (
     <div
       role="treegrid"
       aria-label="Timeline tracks"
-      aria-multiselectable="true"
       aria-rowcount={logicalRows.length}
+      onFocus={keyboard.onFocus}
+      onKeyDown={keyboard.onKeyDown}
       className={rowsVirtualized ? "absolute inset-0" : undefined}
     >
       {
@@ -190,6 +203,7 @@ export function TimelineLanes({
               virtualized={rowsVirtualized}
               background={rowBackground}
               borderColor={theme.rowBorder}
+              rovingTargetId={keyboard.rovingTargetId}
             >
               <TimelineTrackHeader
                 trackNumber={trackNum}
@@ -215,6 +229,7 @@ export function TimelineLanes({
                 onToggleTrackHidden={onToggleTrackHidden}
                 onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
                 onSeek={onSeek}
+                rovingTargetId={keyboard.rovingTargetId}
               />
               <div
                 role="gridcell"
@@ -291,20 +306,12 @@ export function TimelineLanes({
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
                     const isComposition = !!el.compositionSrc;
-                    // elementKey (el.key ?? el.id) is already unique per clip; do NOT
-                    // fold in the map index, or a splice/reorder remounts every clip
-                    // at/after the change (DOM flash, drag interruption).
                     const clipKey = elementKey;
                     const isDraggingClip =
                       draggedClip?.started === true &&
                       (draggedElement?.key ?? draggedElement?.id) === elementKey;
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
-                    // Passenger of a live multi-drag: slide by the SAME formation
-                    // delta (the grabbed clip's group-clamped delta) via a
-                    // compositor transform on a same-geometry wrapper (absolute
-                    // inset-0 → identical offset parent, so the clip's own
-                    // left/top are preserved), plus the ghost's elevated z/opacity.
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
                     const passengerOffsetPx = isPassenger
@@ -329,6 +336,9 @@ export function TimelineLanes({
                         capabilities={capabilities}
                         theme={theme}
                         isComposition={isComposition}
+                        tabIndex={
+                          keyboard.rovingTargetId === timelineClipFocusId(elementKey) ? 0 : -1
+                        }
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
                         onResizeStart={
@@ -466,41 +476,55 @@ export function TimelineLanes({
                           renderClipContent,
                           renderClipOverlay,
                         )}
-                        {STUDIO_KEYFRAMES_ENABLED &&
-                          !showsLanes &&
-                          keyframeCache?.get(elementKey) && (
-                            <TimelineClipDiamonds
-                              keyframesData={keyframeCache.get(elementKey)!}
-                              clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                              clipHeightPx={rowHeight - 2 * CLIP_Y}
-                              beatsActive={beatStripOnTrack}
-                              accentColor={clipStyle.accent}
-                              isSelected={isSelected}
-                              currentPercentage={
-                                previewElement.duration > 0
-                                  ? ((currentTime - previewElement.start) /
-                                      previewElement.duration) *
-                                    100
-                                  : 0
-                              }
-                              elementId={elementKey}
-                              selectedKeyframes={selectedKeyframes}
-                              onClickKeyframe={(pct) =>
-                                onClickKeyframe?.(previewElement, { percentage: pct })
-                              }
-                              onShiftClickKeyframe={(elId, pct) =>
-                                onShiftClickKeyframe?.(elId, { percentage: pct })
-                              }
-                              onContextMenuKeyframe={(e, elId, pct) =>
-                                onContextMenuKeyframe?.(e, elId, { percentage: pct })
-                              }
-                              onMoveKeyframe={onMoveKeyframe}
-                              onSelectSegment={onSelectSegment}
-                              suppressClickRef={suppressClickRef}
-                            />
-                          )}
                       </TimelineClip>
                     );
+                    const compactDiamonds = STUDIO_KEYFRAMES_ENABLED &&
+                      !showsLanes &&
+                      keyframeCache?.get(elementKey) && (
+                        <div
+                          key={`${clipKey}-diamonds`}
+                          className="absolute pointer-events-none"
+                          style={{
+                            left: previewElement.start * pps,
+                            top: CLIP_Y,
+                            width: Math.max(previewElement.duration * pps, 4),
+                            height: rowHeight - 2 * CLIP_Y,
+                            zIndex: isSelected ? 11 : 6,
+                          }}
+                        >
+                          <TimelineClipDiamonds
+                            keyframesData={keyframeCache.get(elementKey)!}
+                            clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                            clipHeightPx={rowHeight - 2 * CLIP_Y}
+                            beatsActive={beatStripOnTrack}
+                            accentColor={clipStyle.accent}
+                            isSelected={isSelected}
+                            currentPercentage={
+                              previewElement.duration > 0
+                                ? ((currentTime - previewElement.start) / previewElement.duration) *
+                                  100
+                                : 0
+                            }
+                            elementId={elementKey}
+                            clipStart={previewElement.start}
+                            clipDuration={previewElement.duration}
+                            selectedKeyframes={selectedKeyframes}
+                            rovingTargetId={keyboard.rovingTargetId}
+                            onClickKeyframe={(pct) =>
+                              onClickKeyframe?.(previewElement, { percentage: pct })
+                            }
+                            onShiftClickKeyframe={(elId, pct) =>
+                              onShiftClickKeyframe?.(elId, { percentage: pct })
+                            }
+                            onContextMenuKeyframe={(e, elId, pct) =>
+                              onContextMenuKeyframe?.(e, elId, { percentage: pct })
+                            }
+                            onMoveKeyframe={onMoveKeyframe}
+                            onSelectSegment={onSelectSegment}
+                            suppressClickRef={suppressClickRef}
+                          />
+                        </div>
+                      );
                     const propertyLanes = showsLanes && (
                       <TimelinePropertyLanes
                         key={`${clipKey}-property-lanes`}
@@ -518,6 +542,7 @@ export function TimelineLanes({
                         }
                         elementId={elementKey}
                         selectedKeyframes={selectedKeyframes}
+                        rovingTargetId={keyboard.rovingTargetId}
                         onSelectSegment={(target) => onSelectSegment?.(elementKey, target)}
                         onClickKeyframe={(target) => onClickKeyframe?.(previewElement, target)}
                         onShiftClickKeyframe={(target) =>
@@ -539,7 +564,7 @@ export function TimelineLanes({
                         suppressClickRef={suppressClickRef}
                       />
                     );
-                    if (!isPassenger) return [clip, propertyLanes];
+                    if (!isPassenger) return [clip, compactDiamonds, propertyLanes];
                     return (
                       <div
                         key={clipKey}
@@ -552,6 +577,7 @@ export function TimelineLanes({
                         }}
                       >
                         {clip}
+                        {compactDiamonds}
                         {propertyLanes}
                       </div>
                     );

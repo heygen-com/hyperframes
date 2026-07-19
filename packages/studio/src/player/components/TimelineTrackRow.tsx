@@ -12,6 +12,7 @@ interface TimelineTrackRowProps {
   virtualized: boolean;
   background: string;
   borderColor: string;
+  rovingTargetId?: string | null;
   children: ReactNode;
 }
 
@@ -26,6 +27,7 @@ export function TimelineTrackRow({
   virtualized,
   background,
   borderColor,
+  rovingTargetId = null,
   children,
 }: TimelineTrackRowProps) {
   return (
@@ -49,7 +51,7 @@ export function TimelineTrackRow({
         aria-expanded={logicalRow.expandable ? logicalRow.expanded : undefined}
         data-timeline-logical-row-id={logicalRow.id}
         data-timeline-focus-id={logicalRow.id}
-        tabIndex={-1}
+        tabIndex={rovingTargetId === logicalRow.id ? 0 : -1}
         className="flex"
         style={{ height }}
       >
