@@ -444,6 +444,7 @@ export function useTimelineKeyframeHandlers({
       setKfContextMenu({
         x: e.clientX + 4,
         y: e.clientY + 2,
+        sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
         element: el,
         elementId: elId,
         percentage: target.percentage,
