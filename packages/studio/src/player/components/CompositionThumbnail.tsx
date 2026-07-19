@@ -1,5 +1,7 @@
-import { memo, useCallback, useState, useRef } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -11,6 +13,10 @@ interface CompositionThumbnailProps {
   duration?: number;
   width?: number;
   height?: number;
+  projectId?: string;
+  sessionEpoch?: number;
+  priority?: ThumbnailPriority;
+  rich?: boolean;
 }
 
 const CLIP_HEIGHT = 66;
@@ -34,9 +40,8 @@ export function buildCompositionThumbnailUrl({
   const thumbnailBase = previewUrl
     .replace("/preview/comp/", "/thumbnail/")
     .replace(/\/preview$/, "/thumbnail/index.html");
-  const midTime = seekTime + duration / 2;
   const thumbnailUrl = new URL(thumbnailBase, origin);
-  thumbnailUrl.searchParams.set("t", midTime.toFixed(2));
+  thumbnailUrl.searchParams.set("t", (seekTime + duration / 2).toFixed(2));
   thumbnailUrl.searchParams.set("v", THUMBNAIL_URL_VERSION);
   if (selector) {
     thumbnailUrl.searchParams.set("selector", selector);
@@ -47,6 +52,23 @@ export function buildCompositionThumbnailUrl({
   return thumbnailUrl.toString();
 }
 
+async function loadCompositionImage(url: string, signal: AbortSignal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`Composition thumbnail failed (${response.status})`);
+  const blob = await response.blob();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  const objectUrl = URL.createObjectURL(blob);
+  return {
+    value: { kind: "image" as const, url: objectUrl, aspect: 16 / 9 },
+    weight:
+      TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth *
+      TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight *
+      4,
+    dispose: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+/** Server-rendered composition poster, deduplicated and budgeted by project/session. */
 export const CompositionThumbnail = memo(function CompositionThumbnail({
   previewUrl,
   label,
@@ -55,31 +77,12 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   selectorIndex,
   seekTime = 2,
   duration = 5,
+  projectId = previewUrl,
+  sessionEpoch = 0,
+  priority = "visible",
 }: CompositionThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  const [aspect, setAspect] = useState(16 / 9);
-  const roRef = useRef<ResizeObserver | null>(null);
-
-  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
-    roRef.current?.disconnect();
-    if (!el) return;
-
-    const measured = el.parentElement?.clientWidth || el.clientWidth;
-    // fallow-ignore-next-line code-duplication
-    setContainerWidth(measured);
-
-    const target = el.parentElement || el;
-    roRef.current = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
-    });
-    roRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => {
-    roRef.current?.disconnect();
-  });
-
+  const observerRef = useRef<ResizeObserver | null>(null);
   const url = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime,
@@ -88,57 +91,59 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selectorIndex,
     origin: window.location.origin,
   });
-  const frameW = Math.max(48, Math.round(CLIP_HEIGHT * aspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const request = useMemo(
+    () => ({
+      key: createThumbnailKey({ kind: "composition", url }),
+      projectId,
+      sessionEpoch,
+      kind: "composition" as const,
+      priority,
+      rich: true,
+      load: (signal: AbortSignal) => loadCompositionImage(url, signal),
+    }),
+    [priority, projectId, sessionEpoch, url],
+  );
+  const snapshot = useThumbnailLease(request);
+  const value =
+    snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value : null;
+  const frameWidth = Math.max(48, Math.round(CLIP_HEIGHT * (value?.aspect ?? 16 / 9)));
+  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameWidth)) : 1;
+
+  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    if (!element) return;
+    const target = element.parentElement ?? element;
+    setContainerWidth(target.clientWidth);
+    observerRef.current = new ResizeObserver(([entry]) =>
+      setContainerWidth(entry.contentRect.width),
+    );
+    observerRef.current.observe(target);
+  }, []);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      <img
-        src={url}
-        alt=""
-        draggable={false}
-        loading="eager"
-        onLoad={(e) => {
-          const img = e.currentTarget;
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            setAspect(img.naturalWidth / img.naturalHeight);
-          }
-          setLoaded(true);
-        }}
-        className="hidden"
-      />
-
-      {loaded && (
-        <div
-          className="absolute inset-0 flex"
-          style={{ animation: "hf-thumb-fade 200ms ease-out", mixBlendMode: "lighten" }}
-        >
-          {Array.from({ length: frameCount }).map((_, i) => (
-            <div
-              key={i}
-              className="relative h-full flex-shrink-0 overflow-hidden"
-              style={{ width: frameW }}
-            >
-              <img
-                src={url}
-                alt=""
-                draggable={false}
-                className="absolute inset-0 h-full w-full object-cover"
-                style={{ opacity: 0.7 }}
-              />
-            </div>
+      {value && (
+        <div className="absolute inset-0 flex">
+          {Array.from({ length: frameCount }, (_, index) => (
+            <img
+              key={index}
+              src={value.url}
+              alt=""
+              draggable={false}
+              className="h-full flex-shrink-0 object-cover opacity-70"
+              style={{ width: frameWidth }}
+            />
           ))}
         </div>
       )}
-
+      {snapshot.status === "loading" && (
+        <div className="absolute inset-0 animate-pulse bg-white/[0.035]" />
+      )}
       {label && (
-        <div className="absolute left-3 top-0 bottom-0 flex items-center" style={{ zIndex: 10 }}>
+        <div className="absolute inset-y-0 left-3 z-10 flex items-center">
           <span
             className="block max-w-full truncate text-[10px] font-semibold leading-none"
-            style={{
-              color: labelColor,
-              textShadow: loaded ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
-            }}
+            style={{ color: labelColor }}
           >
             {label}
           </span>
