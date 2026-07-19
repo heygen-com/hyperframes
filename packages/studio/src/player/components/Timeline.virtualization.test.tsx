@@ -75,13 +75,13 @@ describe("Timeline row virtualization", () => {
     await act(async () => root.render(React.createElement(Timeline, { sessionEpoch: 3 })));
     await act(async () => {});
 
-    const list = host.querySelector<HTMLElement>('[role="list"]');
-    const rows = list?.querySelectorAll('[role="listitem"]') ?? [];
+    const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+    const rows = treegrid?.querySelectorAll('[role="row"]') ?? [];
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(16);
-    expect(rows[0]?.getAttribute("aria-posinset")).toBe("1");
-    expect(rows[0]?.getAttribute("aria-setsize")).toBe("1000");
-    expect(list?.parentElement?.style.height).toBe(`${getTimelineCanvasHeight(1_000)}px`);
+    expect(rows[0]?.getAttribute("aria-rowindex")).toBe("1");
+    expect(treegrid?.getAttribute("aria-rowcount")).toBe("1000");
+    expect(treegrid?.parentElement?.style.height).toBe(`${getTimelineCanvasHeight(1_000)}px`);
 
     const firstRow = rows[0] as HTMLElement;
     const focusedControl = firstRow.querySelector<HTMLButtonElement>("button");
@@ -95,7 +95,7 @@ describe("Timeline row virtualization", () => {
         scroller.dispatchEvent(new Event("scroll"));
       });
     }
-    expect(list?.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
+    expect(treegrid?.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
     expect(document.activeElement).toBe(focusedControl);
 
     act(() => root.unmount());

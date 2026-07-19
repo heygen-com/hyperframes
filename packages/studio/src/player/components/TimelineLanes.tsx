@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
@@ -22,6 +23,7 @@ import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
+import { buildTimelineLogicalRows, type TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -96,6 +98,32 @@ export function TimelineLanes({
 }: TimelineLanesProps) {
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
+  const { logicalRows, logicalRowsByTrack } = useMemo(() => {
+    const rows = buildTimelineLogicalRows({
+      tracks,
+      displayTrackOrder,
+      laneCounts,
+      selectedElementId,
+      selectedElementIds,
+      expandedClipIds: STUDIO_KEYFRAMES_ENABLED ? expandedClipIds : new Set(),
+      gsapAnimations,
+    });
+    const byTrack = new Map<number, TimelineLogicalRow[]>();
+    for (const logicalRow of rows) {
+      const trackRows = byTrack.get(logicalRow.physicalTrackKey) ?? [];
+      trackRows.push(logicalRow);
+      byTrack.set(logicalRow.physicalTrackKey, trackRows);
+    }
+    return { logicalRows: rows, logicalRowsByTrack: byTrack };
+  }, [
+    displayTrackOrder,
+    expandedClipIds,
+    gsapAnimations,
+    laneCounts,
+    selectedElementId,
+    selectedElementIds,
+    tracks,
+  ]);
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);
     trackStudioKeyframeLaneExpand({ expanded: willExpand });
@@ -103,8 +131,10 @@ export function TimelineLanes({
   };
   return (
     <div
-      role="list"
+      role="treegrid"
       aria-label="Timeline tracks"
+      aria-multiselectable="true"
+      aria-rowcount={logicalRows.length}
       className={rowsVirtualized ? "absolute inset-0" : undefined}
     >
       {
@@ -112,6 +142,9 @@ export function TimelineLanes({
         virtualRows.map(({ index: row, rowKey }) => {
           const trackNum = displayTrackOrder[row];
           if (trackNum === undefined) return null;
+          const trackLogicalRows = logicalRowsByTrack.get(trackNum) ?? [];
+          const logicalRow = trackLogicalRows[0];
+          if (!logicalRow) return null;
           const rowHeight = rowGeometry.getRowHeight(row);
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
           const indexedRenderElements = rowsVirtualized
@@ -166,7 +199,8 @@ export function TimelineLanes({
               key={rowKey}
               index={row}
               rowKey={rowKey}
-              rowCount={displayTrackOrder.length}
+              logicalRow={logicalRow}
+              propertyRows={trackLogicalRows.slice(1)}
               top={rowGeometry.getRowTop(row)}
               height={rowHeight}
               virtualized={rowsVirtualized}
@@ -199,6 +233,7 @@ export function TimelineLanes({
                 onSeek={onSeek}
               />
               <div
+                role="gridcell"
                 style={{
                   width: trackContentWidth,
                   marginLeft: contentGutter, // room for a 0% diamond left of t=0
