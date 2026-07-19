@@ -6,6 +6,7 @@ import { AudioWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
+import { effectiveThumbnailMode } from "../player/lib/thumbnailPolicy";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -90,7 +91,8 @@ export function useRenderClipContent({
 }: UseRenderClipContentOptions) {
   // Self-sourced (not threaded via App) so the toggle gates generation without
   // App.tsx plumbing. Off by default -> plain clip bars, snappy timeline (#2428).
-  const thumbnailsEnabled = usePlayerStore((s) => s.thumbnailsEnabled);
+  const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
+  const effectiveMode = effectiveThumbnailMode(thumbnailMode);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
     // fallow-ignore-next-line complexity
@@ -100,7 +102,7 @@ export function useRenderClipContent({
 
       // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
-      if (!thumbnailsEnabled) {
+      if (effectiveMode === "hidden") {
         return el.tag === "audio" ? renderAudioClip(el, pid, style.label) : null;
       }
 
@@ -192,6 +194,6 @@ export function useRenderClipContent({
 
       return null;
     },
-    [projectIdRef, compIdToSrc, activePreviewUrl, effectiveTimelineDuration, thumbnailsEnabled],
+    [projectIdRef, compIdToSrc, activePreviewUrl, effectiveTimelineDuration, effectiveMode],
   );
 }
