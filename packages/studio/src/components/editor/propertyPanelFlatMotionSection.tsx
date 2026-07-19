@@ -12,6 +12,7 @@ import {
 } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { usePlayerStore } from "../../player";
+import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import { GsapAddAnimationControl } from "./GsapAddAnimationControl";
 
 export function FlatTimingRow({
@@ -138,14 +139,24 @@ export function FlatMotionSection({
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const trackedCallbacks = withTrackedGsapAnimationCallbacks(callbacks, track);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-  const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
+  const clearFocusedEaseSegment = usePlayerStore((s) => s.clearFocusedEaseSegment);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   // Only consume a focus request aimed at the element THIS panel renders (not
   // the store's selectedElementId, which flips synchronously during async
   // selection resolution), so a shared class-selector animation id can't open
   // the wrong element's editor.
   const renderedElementId = `${element.sourceFile}#${element.id}`;
   const focusedHere =
-    focusedEaseSegment && focusedEaseSegment.elementId === renderedElementId
+    focusedEaseSegment &&
+    focusedEaseSegment.elementId === renderedElementId &&
+    isFocusedEaseRequestCurrent(focusedEaseSegment, {
+      timelineProjectId,
+      timelineSessionEpoch,
+      selectedElementId,
+    }) &&
+    animations.some((animation) => animation.id === focusedEaseSegment.animationId)
       ? focusedEaseSegment
       : null;
 
@@ -182,7 +193,11 @@ export function FlatMotionSection({
                   defaultExpanded={index === 0}
                   flat
                   focusedSegment={focusedHere?.animationId === anim.id ? focusedHere : null}
-                  onFocusSegmentConsumed={() => setFocusedEaseSegment(null)}
+                  onFocusSegmentConsumed={() => {
+                    if (focusedHere?.animationId === anim.id) {
+                      clearFocusedEaseSegment(focusedHere.nonce);
+                    }
+                  }}
                 />
               ))}
               <GsapAddAnimationControl

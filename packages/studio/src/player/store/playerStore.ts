@@ -304,6 +304,7 @@ function createTimelineResetState() {
     selectedKeyframes: new Set<string>(),
     expandedClipIds: new Set<string>(),
     selectedElementIds: new Set<string>(),
+    focusedEaseSegment: null,
     clipRevealRequest: null,
     keyframeCache: new Map(),
     gsapAnimations: new Map(),
@@ -343,7 +344,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
 
-  ...createKeyframeSlice(set),
+  ...createKeyframeSlice(set, get),
 
   activeKeyframePct: null,
   setActiveKeyframePct: (pct) => set({ activeKeyframePct: pct }),
@@ -537,6 +538,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             selectedElementIds,
             activeKeyframePct: null,
             motionPathArmed: false,
+            focusedEaseSegment: null,
           }
         : { selectedElementId: id, selectedElementIds };
     }),
@@ -546,9 +548,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setSelectionAnchor: (id) =>
     set((s) => {
       if (id != null && s.selectedElementIds.size > 1 && s.selectedElementIds.has(id)) {
-        return { selectedElementId: id };
+        return {
+          selectedElementId: id,
+          focusedEaseSegment: id === s.selectedElementId ? s.focusedEaseSegment : null,
+        };
       }
-      return { selectedElementId: id, selectedElementIds: id ? new Set([id]) : new Set<string>() };
+      return {
+        selectedElementId: id,
+        selectedElementIds: id ? new Set([id]) : new Set<string>(),
+        focusedEaseSegment: id === s.selectedElementId ? s.focusedEaseSegment : null,
+      };
     }),
   updateElement: (elementId, updates) =>
     set((state) => ({

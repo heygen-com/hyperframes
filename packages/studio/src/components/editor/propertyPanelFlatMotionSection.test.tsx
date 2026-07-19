@@ -275,16 +275,17 @@ describe("FlatMotionSection", () => {
   it("forwards focused bulk segment easing through the flat animation card", () => {
     const onUpdateKeyframeEase = vi.fn();
     const onUpdateSegmentEase = vi.fn();
-    usePlayerStore.setState({
-      focusedEaseSegment: {
-        elementId: "index.html#hero",
-        animationId: "a1",
-        tweenPercentage: 50,
-        collidingAnimationTargets: [
-          { animationId: "a1", tweenPercentage: 50 },
-          { animationId: "a2", tweenPercentage: 75 },
-        ],
-      },
+    const store = usePlayerStore.getState();
+    store.beginTimelineSession("project-a");
+    store.setSelectedElementId("index.html#hero");
+    store.setFocusedEaseSegment({
+      elementId: "index.html#hero",
+      animationId: "a1",
+      tweenPercentage: 50,
+      collidingAnimationTargets: [
+        { animationId: "a1", tweenPercentage: 50 },
+        { animationId: "a2", tweenPercentage: 75 },
+      ],
     });
     const { host, root } = renderInto(
       <FlatMotionSection

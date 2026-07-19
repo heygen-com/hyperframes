@@ -1,5 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { resolveEditingSections } from "@hyperframes/core/editing";
+import { useEffect, useRef, useState } from "react";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import type { DomEditSelection } from "./domEditing";
@@ -20,34 +19,16 @@ import { formatTextFieldPreview } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
+import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
 } from "./propertyPanelFlatColorGradingSection";
-
-type EditingSections = ReturnType<typeof resolveEditingSections>;
-
-type FlatGroupDescriptor = {
-  id: string;
-  title: string;
-  summary?: string;
-  accessory?: ReactNode;
-  content: ReactNode;
-};
-
-// Type-only fallback for the Motion effect-card callbacks. Used solely to
-// satisfy FlatMotionSection's required-callback shape when the effect list is
-// gated off (showEffects === false, so none of these are ever invoked). Keeps
-// the gated-off path free of `!` non-null assertions — the real, narrowed
-// handlers flow through only when the double-gate below passes.
-const EMPTY_GSAP_EFFECT_HANDLERS = {
-  onAddAnimation: () => {},
-  onUpdateProperty: () => {},
-  onUpdateMeta: () => {},
-  onDeleteAnimation: () => {},
-  onAddProperty: () => {},
-  onRemoveProperty: () => {},
-};
+import {
+  EMPTY_GSAP_EFFECT_HANDLERS,
+  type EditingSections,
+  type FlatGroupDescriptor,
+} from "./propertyPanelFlatDescriptors";
 
 /**
  * The flat "Ledger" inspector shell (design_handoff_studio_inspector).
@@ -259,6 +240,8 @@ export function PropertyPanelFlat({
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
+  const timelineProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   // Identity of the element THIS panel actually renders (not the store's
   // selectedElementId, which flips synchronously on selection while the panel
   // still renders the previous element during async DOM-selection resolution):
@@ -266,11 +249,27 @@ export function PropertyPanelFlat({
   // successor when both share a class-selector animation id.
   const renderedElementId = `${element.sourceFile}#${element.id}`;
   useEffect(() => {
-    if (!focusedEaseSegment || focusedEaseSegment.elementId !== renderedElementId) return;
-    if (gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId)) {
-      setOpenGroupId("motion");
-    }
-  }, [focusedEaseSegment, gsapAnimations, renderedElementId]);
+    if (!focusedEaseSegment) return;
+    if (
+      !isFocusedEaseRequestCurrent(focusedEaseSegment, {
+        timelineProjectId,
+        timelineSessionEpoch,
+        selectedElementId,
+      })
+    )
+      return;
+    if (focusedEaseSegment.elementId !== renderedElementId) return;
+    if (!gsapAnimations.some((animation) => animation.id === focusedEaseSegment.animationId))
+      return;
+    setOpenGroupId("motion");
+  }, [
+    focusedEaseSegment,
+    gsapAnimations,
+    renderedElementId,
+    selectedElementId,
+    timelineProjectId,
+    timelineSessionEpoch,
+  ]);
 
   const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
