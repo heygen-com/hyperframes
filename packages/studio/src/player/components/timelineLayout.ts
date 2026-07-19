@@ -1,6 +1,11 @@
 import type { ZoomMode } from "../store/playerStore";
+import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
-export { formatTimelineTickLabel, generateTicks } from "./timelineRulerGeometry";
+export {
+  formatTimelineTickLabel,
+  generateTicks,
+  getTimelineMajorTickInterval,
+} from "./timelineRulerGeometry";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
@@ -10,6 +15,47 @@ export const LANE_H = 28;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
+
+export interface TimelineBeatEntry {
+  readonly index: number;
+  readonly time: number;
+  readonly strength: number | undefined;
+}
+
+function findFirstTimeAtOrAfter(times: readonly number[], target: number): number {
+  let low = 0;
+  let high = times.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if ((times[mid] ?? Number.POSITIVE_INFINITY) < target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+/** Slice sorted beat data without allocating entries outside the render window. */
+export function getTimelineBeatEntries(
+  beatTimes: readonly number[] | undefined,
+  beatStrengths: readonly number[] | undefined,
+  range: TimelineTimeRange | undefined,
+  pinnedIndexes: ReadonlySet<number> = new Set(),
+): readonly TimelineBeatEntry[] {
+  if (!beatTimes?.length) return [];
+  const start = range?.start ?? Number.NEGATIVE_INFINITY;
+  const end = range?.end ?? Number.POSITIVE_INFINITY;
+  const selected = new Set<number>();
+  for (let index = findFirstTimeAtOrAfter(beatTimes, start); index < beatTimes.length; index++) {
+    const time = beatTimes[index];
+    if (time === undefined || time >= end) break;
+    selected.add(index);
+  }
+  for (const index of pinnedIndexes) {
+    if (index >= 0 && index < beatTimes.length) selected.add(index);
+  }
+  return [...selected]
+    .sort((left, right) => left - right)
+    .map((index) => ({ index, time: beatTimes[index]!, strength: beatStrengths?.[index] }));
+}
 
 export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
