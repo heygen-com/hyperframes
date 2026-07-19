@@ -40,6 +40,7 @@
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:timeline-virtualization": "node tests/e2e/timeline-virtualization.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {
