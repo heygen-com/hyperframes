@@ -17,6 +17,8 @@ import {
   shouldShowTimelineShortcutHint,
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
+  getTimelineVisibleTimeRange,
+  getTimelineScrollTopForGeometryChange,
 } from "./Timeline";
 import {
   CLIP_Y,
@@ -32,6 +34,7 @@ import {
   getTimelineDisplayContentWidth,
   getTimelineFitPps,
   getTimelineLaneTop,
+  createTimelineRowGeometry,
 } from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
@@ -42,6 +45,25 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
+});
+
+describe("timeline viewport geometry", () => {
+  it("derives a clamped visible time range from the raw viewport", () => {
+    expect(
+      getTimelineVisibleTimeRange({ scrollLeft: 300, clientWidth: 500 }, 100, 200, 20),
+    ).toEqual({ start: 1, end: 6 });
+    expect(getTimelineVisibleTimeRange({ scrollLeft: 0, clientWidth: 100 }, 100, 200, 20)).toEqual({
+      start: 0,
+      end: 0,
+    });
+  });
+
+  it("keeps the same row anchored when a row above it expands", () => {
+    const previous = createTimelineRowGeometry([1, 2, 3], [48, 48, 48]);
+    const next = createTimelineRowGeometry([1, 2, 3], [104, 48, 48]);
+    const scrollTop = previous.getRowTop(2) - RULER_H + 6;
+    expect(getTimelineScrollTopForGeometryChange(previous, next, scrollTop)).toBe(scrollTop + 56);
+  });
 });
 
 function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {

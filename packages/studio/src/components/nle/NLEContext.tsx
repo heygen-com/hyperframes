@@ -48,6 +48,7 @@ export interface NLEContextValue {
   compositionLoading: boolean;
   setCompositionLoading: (loading: boolean) => void;
   timelineDisabled: boolean;
+  timelineSessionEpoch: number;
   hasLoadedOnceRef: React.MutableRefObject<boolean>;
   // preview composition size (for preview block drop)
   previewCompositionSize: { width: number; height: number } | null;
@@ -103,7 +104,7 @@ export function NLEProvider({
   // project would otherwise keep rendering (and re-fetching from) the old project
   // after switching.
   useEffect(() => {
-    usePlayerStore.getState().reset();
+    usePlayerStore.getState().beginTimelineSession(projectId);
     useAssetPreviewStore.getState().clearPreviewAsset();
   }, [projectId]);
 
@@ -289,6 +290,7 @@ export function NLEProvider({
     setCompositionLoadingRaw(loading);
   }, []);
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
+  const timelineSessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
 
   useEffect(() => {
     onCompositionLoadingChange?.(compositionLoading);
@@ -319,6 +321,7 @@ export function NLEProvider({
     compositionLoading,
     setCompositionLoading,
     timelineDisabled,
+    timelineSessionEpoch,
     hasLoadedOnceRef,
     previewCompositionSize,
     setPreviewCompositionSize,

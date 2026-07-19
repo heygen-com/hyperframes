@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement, type ZoomMode } from "../store/playerStore";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
 import {
@@ -78,13 +78,6 @@ export function useTimelineGeometry({
     resizeGhostEndPx,
   });
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
-  const clipStateVersion = useMemo(
-    () =>
-      expandedElements
-        .map((el) => `${el.key ?? el.id}:${el.start}:${el.duration}:${el.track}`)
-        .join("|"),
-    [expandedElements],
-  );
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
   const manualZoomPercentRef = useRef(manualZoomPercent);
@@ -92,7 +85,7 @@ export function useTimelineGeometry({
   fitPpsRef.current = fitPps;
 
   // Restore the horizontal scroll offset after an edit re-derives the elements
-  // (clipStateVersion changes) so the reload doesn't jump the view. Only in manual
+  // (the immutable element snapshot changes) so the reload doesn't jump the view. Only in manual
   // (pinned) mode — fit mode hides the x-scrollbar (scrollLeft is always 0) — and
   // never mid-drag (auto-scroll owns the offset then). rAF waits for the new layout
   // so the clamp reads the post-resync scrollWidth. zoomMode is a legitimate dep:
@@ -109,7 +102,7 @@ export function useTimelineGeometry({
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipStateVersion, zoomMode]);
+  }, [expandedElements, zoomMode]);
   // Publish the live scale so edit handlers OUTSIDE <Timeline> (the keyboard-delete
   // path) can pin the zoom via pinTimelineZoomToCurrent without threading geometry.
   // In a useEffect (not the render body) so React-18 concurrent replay — Suspense
@@ -125,7 +118,7 @@ export function useTimelineGeometry({
     fitPps,
     displayContentWidth,
     displayDuration,
-    clipStateVersion,
+    clipStateVersion: expandedElements,
     zoomModeRef,
     manualZoomPercentRef,
   };

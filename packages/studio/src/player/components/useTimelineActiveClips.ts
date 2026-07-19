@@ -13,7 +13,7 @@ interface ActiveClipRecord {
 interface UseTimelineActiveClipsInput {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   currentTime: number;
-  clipStateVersion: string;
+  clipStateVersion: unknown;
 }
 
 function readFiniteNumber(value: string | undefined): number | null {

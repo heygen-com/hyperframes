@@ -1,7 +1,7 @@
 import { useCallback, useState, type RefObject } from "react";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { usePlayerStore } from "../store/playerStore";
-import { resolveTimelineAssetDrop } from "./timelineLayout";
+import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
@@ -9,7 +9,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   ppsRef: RefObject<number>;
   durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
-  rowHeightsRef: RefObject<readonly number[]>;
+  rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
 }
 
@@ -47,7 +47,7 @@ export function useTimelineAssetDrop({
   ppsRef,
   durationRef,
   trackOrderRef,
-  rowHeightsRef,
+  rowGeometryRef,
   contentOrigin,
   onFileDrop,
   onAssetDrop,
@@ -82,7 +82,7 @@ export function useTimelineAssetDrop({
           contentOrigin,
           pixelsPerSecond: ppsRef.current,
           duration: durationRef.current,
-          rowHeights: rowHeightsRef.current,
+          rowHeights: rowGeometryRef.current.rowHeights,
           trackOrder: trackOrderRef.current,
         },
         clientX,
@@ -91,7 +91,7 @@ export function useTimelineAssetDrop({
       const start = Math.max(0, usePlayerStore.getState().currentTime);
       return { start, track };
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, rowHeightsRef, contentOrigin],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, contentOrigin],
   );
 
   const handleAssetDrop = useCallback(

@@ -15,6 +15,7 @@ import {
   type MarqueeClipInput,
 } from "./timelineMarquee";
 import type { Rect } from "../../utils/marqueeGeometry";
+import type { TimelineRowGeometry } from "./timelineLayout";
 
 interface UseTimelineRangeSelectionInput {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -29,7 +30,7 @@ interface UseTimelineRangeSelectionInput {
   setShowPopover: (v: boolean) => void;
   elementsRef: React.RefObject<TimelineElement[]>;
   trackOrderRef: React.RefObject<number[]>;
-  rowHeightsRef: React.RefObject<readonly number[]>;
+  rowGeometryRef: React.RefObject<TimelineRowGeometry>;
   onSelectElement?: (element: TimelineElement | null) => void;
   contentOrigin: number;
 }
@@ -106,7 +107,7 @@ export function useTimelineRangeSelection({
   setShowPopover,
   elementsRef,
   trackOrderRef,
-  rowHeightsRef,
+  rowGeometryRef,
   onSelectElement,
   contentOrigin,
 }: UseTimelineRangeSelectionInput) {
@@ -175,12 +176,12 @@ export function useTimelineRangeSelection({
         marquee,
         elementsRef.current ?? [],
         trackOrderRef.current ?? [],
-        rowHeightsRef.current,
+        rowGeometryRef.current.rowHeights,
         ppsRef.current,
         contentOrigin,
       );
     },
-    [toContentPoint, elementsRef, trackOrderRef, rowHeightsRef, ppsRef, contentOrigin],
+    [toContentPoint, elementsRef, trackOrderRef, rowGeometryRef, ppsRef, contentOrigin],
   );
 
   const stopMarqueeAutoScroll = useCallback(() => {
