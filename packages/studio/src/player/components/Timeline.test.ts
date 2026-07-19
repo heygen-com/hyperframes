@@ -274,6 +274,32 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  it("renders the complete track list while row virtualization is gated off", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: Array.from({ length: 12 }, (_, track) => ({
+        id: `clip-${track}`,
+        tag: "div",
+        start: 0,
+        duration: 2,
+        track,
+      })),
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    const list = host.querySelector<HTMLElement>('[role="list"]');
+    const rows = list?.querySelectorAll('[role="listitem"]') ?? [];
+    expect(rows).toHaveLength(12);
+    expect(rows[0]?.getAttribute("aria-posinset")).toBe("1");
+    expect(rows[0]?.getAttribute("aria-setsize")).toBe("12");
+    expect(rows[11]?.getAttribute("aria-posinset")).toBe("12");
+
+    act(() => root.unmount());
+  });
+
   it("renders the gutter without legacy icons or hue dots", () => {
     const { host, root } = renderBasicTimeline();
 

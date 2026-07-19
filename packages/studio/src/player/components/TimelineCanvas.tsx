@@ -125,7 +125,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
 
       {/* Breathing room between the sticky ruler and the first track lane — the
           top half of the CapCut-style padding (see TRACKS_TOP_PAD). */}
-      <div aria-hidden="true" style={{ height: TRACKS_TOP_PAD }} />
+      <div aria-hidden="true" style={{ height: props.rowsVirtualized ? 0 : TRACKS_TOP_PAD }} />
 
       <TimelineLanes
         {...props}
@@ -142,7 +142,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
       {/* Breathing room below the last track lane (~1.5 track heights) — a real
           scrollable surface, so a clip can be dragged into the void to create a
           new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
-      <div aria-hidden="true" style={{ height: TRACKS_BOTTOM_PAD }} />
+      <div aria-hidden="true" style={{ height: props.rowsVirtualized ? 0 : TRACKS_BOTTOM_PAD }} />
 
       {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
           menu row would collapse; a quiet tint for every gap on the selected
