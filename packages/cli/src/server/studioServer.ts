@@ -483,9 +483,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return null;
       }
       let page: import("puppeteer-core").Page | null = null;
+      const closePage = () => void page?.close().catch(() => {});
+      opts.signal.addEventListener("abort", closePage, { once: true });
       try {
         page = await browser.newPage();
-        await page.setViewport({ width: opts.width || 1920, height: opts.height || 1080 });
+        if (opts.signal.aborted) return null;
+        const width = opts.width || 1920;
+        const height = opts.height || 1080;
+        await page.setViewport({
+          width,
+          height,
+          deviceScaleFactor: Math.max(
+            0.1,
+            Math.min(1, opts.outputWidth / width, opts.outputHeight / height),
+          ),
+        });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
         await page
           .waitForFunction(
@@ -543,12 +555,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         )) as Buffer;
         return screenshot;
       } catch (err) {
-        console.warn(
-          "[Studio] Thumbnail generation failed:",
-          err instanceof Error ? err.message : err,
-        );
+        if (!opts.signal.aborted) {
+          console.warn(
+            "[Studio] Thumbnail generation failed:",
+            err instanceof Error ? err.message : err,
+          );
+        }
         return null;
       } finally {
+        opts.signal.removeEventListener("abort", closePage);
         await page?.close().catch(() => {});
       }
     },
