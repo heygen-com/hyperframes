@@ -1,5 +1,6 @@
-import { formatTime } from "../lib/time";
 import type { ZoomMode } from "../store/playerStore";
+
+export { formatTimelineTickLabel, generateTicks } from "./timelineRulerGeometry";
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
@@ -180,123 +181,6 @@ export const MIN_TIMELINE_EXTENT_S = 60;
 export const FIT_ZOOM_HEADROOM = 1.2;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
-// fallow-ignore-next-line complexity
-function getMajorTickInterval(
-  duration: number,
-  pixelsPerSecond?: number,
-  frameRate?: number,
-): number {
-  // "Nice" NLE steps: 1-2-5 sub-second decades, then 1s/2s/5s/10s/15s/30s,
-  // minute multiples, and 15m/30m/1h so ultra-zoomed-out long comps still get
-  // readable (non-colliding) labels instead of the old 10m fallback everywhere.
-  const zoomIntervals = [
-    0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600,
-  ];
-  let interval: number;
-  if (Number.isFinite(pixelsPerSecond) && (pixelsPerSecond ?? 0) > 0) {
-    const targetMajorPx = 88;
-    interval =
-      zoomIntervals.find((candidate) => candidate * (pixelsPerSecond ?? 0) >= targetMajorPx) ??
-      3600;
-  } else {
-    const durationIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
-    const target = duration / 6;
-    interval = durationIntervals.find((candidate) => candidate >= target) ?? 60;
-  }
-  // Frame display mode: labels are frame numbers, so a major step must be a
-  // WHOLE number of frames — sub-frame steps produce duplicate/uneven labels
-  // (e.g. 0.02s at 30fps is 0.6 frames → "0, 1, 1, 2, 2…"). Snap UP (ceil) so
-  // the label spacing never drops below the readability target.
-  if (Number.isFinite(frameRate) && (frameRate ?? 0) > 0) {
-    const fps = frameRate ?? 0;
-    return Math.max(1, Math.ceil(interval * fps - 1e-6)) / fps;
-  }
-  return interval;
-}
-
-// How many equal parts to split each major interval into for minor ticks. Prefer
-// quarters (4) so the midpoint stays a minor tick; fall back to halves (2) then
-// none (0) as ticks get too dense to read (< ~8px apart). In frame display mode
-// the subdivision must also keep minor ticks on WHOLE frames (a minor tick at a
-// sub-frame time is not a seekable position), so only divisors of the major
-// step's frame count qualify — quarters, then fifths (15/30-frame majors),
-// thirds, halves.
-// fallow-ignore-next-line complexity
-function getMinorSubdivisions(
-  majorInterval: number,
-  pixelsPerSecond?: number,
-  frameRate?: number,
-): number {
-  const pps = Number.isFinite(pixelsPerSecond) ? (pixelsPerSecond ?? 0) : 0;
-  if (pps <= 0) return 4; // no zoom info (duration-fit mode): quarter ticks
-  const fps = Number.isFinite(frameRate) ? (frameRate ?? 0) : 0;
-  const majorFrames = fps > 0 ? Math.round(majorInterval * fps) : 0;
-  const candidates = fps > 0 ? [4, 5, 3, 2] : [4, 2];
-  for (const parts of candidates) {
-    if (fps > 0 && majorFrames % parts !== 0) continue;
-    if ((majorInterval / parts) * pps >= 8) return parts;
-  }
-  return 0;
-}
-
-// Ticks are exact multiples of the interval (multiplied per index, never
-// accumulated with `+=`, so long rulers don't drift), then rounded to 1µs to
-// keep values/keys clean without disturbing frame-exact positions like 2/30s.
-function roundTickValue(t: number): number {
-  return Math.round(t * 1e6) / 1e6;
-}
-
-export function generateTicks(
-  duration: number,
-  pixelsPerSecond?: number,
-  frameRate?: number,
-): { major: number[]; minor: number[] } {
-  if (duration <= 0 || !Number.isFinite(duration) || duration > 14400)
-    return { major: [], minor: [] };
-  const majorInterval = getMajorTickInterval(duration, pixelsPerSecond, frameRate);
-  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
-  const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
-  const major: number[] = [];
-  const minor: number[] = [];
-  const maxTicks = 2000; // Safety cap to prevent runaway tick generation
-  for (let i = 0; major.length < maxTicks; i++) {
-    const t = i * majorInterval;
-    if (t > duration + 0.001) break;
-    major.push(roundTickValue(t));
-    // Emit the (subdivisions - 1) minor ticks between this major and the next.
-    for (let k = 1; k < subdivisions && major.length + minor.length < maxTicks; k++) {
-      const m = t + k * minorInterval;
-      if (m <= duration + 0.001) minor.push(roundTickValue(m));
-    }
-  }
-  return { major, minor };
-}
-
-export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number) {
-  if (!Number.isFinite(time)) return "00:00";
-  const safeTime = Math.max(0, time);
-  if (majorInterval < 0.1) {
-    const totalHundredths = Math.round(safeTime * 100);
-    const wholeSeconds = Math.floor(totalHundredths / 100);
-    const hundredth = totalHundredths % 100;
-    return `${formatTime(wholeSeconds)}.${hundredth.toString().padStart(2, "0")}`;
-  }
-  if (majorInterval < 1) {
-    const totalTenths = Math.round(safeTime * 10);
-    const wholeSeconds = Math.floor(totalTenths / 10);
-    const tenth = totalTenths % 10;
-    return `${formatTime(wholeSeconds)}.${tenth}`;
-  }
-  if (duration >= 3600 || safeTime >= 3600) {
-    const totalSeconds = Math.floor(safeTime);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
-  return formatTime(safeTime);
-}
-
 /* ── Width / duration derivation ──────────────────────────────────── */
 /**
  * Fit-mode pixels-per-second: fill the viewport with the composition plus
