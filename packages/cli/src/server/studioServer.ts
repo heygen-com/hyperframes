@@ -26,6 +26,7 @@ import {
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
   getMimeType,
+  thumbnailDeviceScaleFactor,
   type StudioApiAdapter,
   type ResolvedProject,
   type RenderJobState,
@@ -493,10 +494,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         await page.setViewport({
           width,
           height,
-          deviceScaleFactor: Math.max(
-            0.1,
-            Math.min(1, opts.outputWidth / width, opts.outputHeight / height),
-          ),
+          deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
         });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
         await page
