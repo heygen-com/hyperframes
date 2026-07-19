@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import {
   applyTimelineAutoScrollStep,
@@ -25,9 +25,13 @@ import type {
   ResizingClipState,
   BlockedClipState,
 } from "./timelineClipDragTypes";
-import { mountTimelineClipDragGestureLifecycle } from "./timelineClipDragGestureLifecycle";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import {
+  mountTimelineClipDragGestureLifecycle,
+  type TimelineGestureKind,
+  type TimelineGestureLifecycle,
+} from "./timelineClipDragGestureLifecycle";
 
 export type {
   DraggedClipState,
@@ -73,6 +77,7 @@ interface UseTimelineClipDragInput {
    */
   readZIndex?: (element: TimelineElement) => number;
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
+  sessionEpoch?: number;
 }
 
 export function useTimelineClipDrag({
@@ -90,6 +95,7 @@ export function useTimelineClipDrag({
   setRangeSelectionRef,
   readZIndex,
   onStackingPatches,
+  sessionEpoch = 0,
 }: UseTimelineClipDragInput) {
   const updateElement = usePlayerStore((s) => s.updateElement);
   const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
@@ -160,40 +166,82 @@ export function useTimelineClipDrag({
     [],
   );
 
-  const [draggedClip, setDraggedClip] = useState<DraggedClipState | null>(null);
+  const [draggedClip, setDraggedClipState] = useState<DraggedClipState | null>(null);
   const draggedClipRef = useRef<DraggedClipState | null>(null);
-  draggedClipRef.current = draggedClip;
+  const publishDraggedClip = useCallback((next: DraggedClipState | null) => {
+    draggedClipRef.current = next;
+    setDraggedClipState(next);
+  }, []);
 
-  const [resizingClip, setResizingClip] = useState<ResizingClipState | null>(null);
+  const [resizingClip, setResizingClipState] = useState<ResizingClipState | null>(null);
   const resizingClipRef = useRef<ResizingClipState | null>(null);
-  resizingClipRef.current = resizingClip;
+  const publishResizingClip = useCallback((next: ResizingClipState | null) => {
+    resizingClipRef.current = next;
+    setResizingClipState(next);
+  }, []);
+
+  const lifecycleRef = useRef<TimelineGestureLifecycle>({
+    kind: null,
+    phase: "complete",
+    pointerId: null,
+    sessionEpoch,
+  });
+  const sessionEpochRef = useRef(sessionEpoch);
+  sessionEpochRef.current = sessionEpoch;
+  const gestureSelectedKeysRef = useRef<ReadonlySet<string>>(new Set());
+  const cancelGestureRef = useRef<
+    (options?: { updateReact?: boolean; suppressClick?: boolean }) => boolean
+  >(() => false);
+  const beginGesture = useCallback(
+    (kind: TimelineGestureKind, pointerId?: number) => {
+      if (lifecycleRef.current.phase === "active") cancelGestureRef.current();
+      const stablePointerId = Number.isFinite(pointerId) ? (pointerId ?? null) : null;
+      lifecycleRef.current = {
+        kind,
+        phase: "active",
+        pointerId: stablePointerId,
+        sessionEpoch: sessionEpochRef.current,
+      };
+      gestureSelectedKeysRef.current = new Set(usePlayerStore.getState().selectedElementIds);
+      if (stablePointerId !== null) {
+        try {
+          scrollRef.current?.setPointerCapture(stablePointerId);
+        } catch {
+          // Window listeners are the native fallback when viewport capture is unavailable.
+        }
+      }
+    },
+    [scrollRef],
+  );
+  const setDraggedClip = useCallback(
+    (next: DraggedClipState | null) => {
+      if (!next) {
+        cancelGestureRef.current();
+        return;
+      }
+      beginGesture("drag", next.pointerId);
+      publishDraggedClip(next);
+    },
+    [beginGesture, publishDraggedClip],
+  );
+  const setResizingClip = useCallback(
+    (next: ResizingClipState | null) => {
+      if (!next) {
+        cancelGestureRef.current();
+        return;
+      }
+      beginGesture("resize", next.pointerId);
+      publishResizingClip(next);
+    },
+    [beginGesture, publishResizingClip],
+  );
 
   const blockedClipRef = useRef<BlockedClipState | null>(null);
   const suppressClickRef = useRef(false);
 
-  // Active multi-select group-resize session (restored from main 36413da7f): set
-  // lazily on the first resize pointermove when the grabbed clip is part of a
-  // capability-clean multi-selection (null ⇒ single-clip resize). Holds the
-  // pre-gesture snapshot so the non-grabbed members (previewed through the store)
-  // roll back on escape / cancel / failed persist.
+  // Active multi-select group-resize session, created lazily on first movement.
+  // It owns a projection only; canonical store timing changes at commit.
   const groupResizeRef = useRef<TimelineGroupResizeSession | null>(null);
-
-  // Restore the non-grabbed group members to their pre-gesture timing (the
-  // grabbed clip renders from resizingClip state, so it is never written during
-  // preview). `all` also restores the grabbed clip after a committed persist fails.
-  const restoreGroupResizeMembers = useCallback(
-    (session: TimelineGroupResizeSession, all = false) => {
-      for (const m of session.members) {
-        if (!all && m.key === session.grabbedKey) continue;
-        updateElement(m.key, {
-          start: m.start,
-          duration: m.duration,
-          playbackStart: m.playbackStart,
-        });
-      }
-    },
-    [updateElement],
-  );
 
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
@@ -233,7 +281,7 @@ export function useTimelineClipDrag({
         trackOrder: trackOrderRef.current,
         rowHeights: rowGeometryRef?.current.rowHeights,
         elements: elementsRef.current,
-        selectedKeys: usePlayerStore.getState().selectedElementIds,
+        selectedKeys: gestureSelectedKeysRef.current,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
       });
@@ -252,18 +300,19 @@ export function useTimelineClipDrag({
         buildSnapTargets,
       });
       const setResizeState = (v: ResizePreviewResult) =>
-        setResizingClip((prev) => (prev ? { ...prev, started: true, ...v } : prev));
+        publishResizingClip(
+          resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
+        );
 
       // Group resize: a capability-clean multi-selection resizes rigidly by one
       // shared, member-clamped delta (legacy main 36413da7f). The grabbed clip
-      // drives the raw delta and renders from resizingClip state; non-grabbed
-      // members preview through the store (their store value stays pristine).
+      // drives the raw delta; every member renders from the coordinator projection.
       const grabbedKey = resize.element.key ?? resize.element.id;
       let session = groupResizeRef.current;
       if (!session || session.grabbedKey !== grabbedKey || session.edge !== resize.edge) {
         const members = buildTimelineGroupResizeMembers(
           elementsRef.current,
-          usePlayerStore.getState().selectedElementIds,
+          gestureSelectedKeysRef.current,
           grabbedKey,
           resize.edge,
         );
@@ -283,9 +332,9 @@ export function useTimelineClipDrag({
         setResizeState(next);
         return;
       }
-      previewGroupResize(session, next, grabbedKey, updateElement, setResizeState);
+      previewGroupResize(session, next, setResizeState);
     },
-    [scrollRef, ppsRef, buildSnapTargets, updateElement],
+    [scrollRef, ppsRef, buildSnapTargets, publishResizingClip],
   );
   const applyResizePointerRef = useRef(applyResizePointer);
   applyResizePointerRef.current = applyResizePointer;
@@ -296,9 +345,7 @@ export function useTimelineClipDrag({
       cancelAnimationFrame(clipDragScrollRaf.current);
       clipDragScrollRaf.current = 0;
     }
-    // Gesture teardown: drop the frozen-per-gesture perf caches so the next drag
-    // rebuilds them against fresh store state (see snapTargetsCacheRef). Does NOT
-    // touch groupResizeRef — commit reads it after this runs.
+    // Gesture teardown: drop frozen caches so the next gesture reads fresh state.
     snapTargetsCacheRef.current.clear();
     dragAudioTracksRef.current = null;
   }, []);
@@ -313,16 +360,14 @@ export function useTimelineClipDrag({
     if (!applyTimelineAutoScrollStep(scroll, pointer.clientX, pointer.clientY)) return;
 
     if (drag) {
-      setDraggedClip((prev) =>
-        prev ? updateDraggedClipPreview(prev, pointer.clientX, pointer.clientY) : prev,
-      );
+      publishDraggedClip(updateDraggedClipPreview(drag, pointer.clientX, pointer.clientY));
     } else if (resize) {
       // Re-run the trim preview so the edge keeps tracking while the content
       // scrolls under the stationary pointer (scroll-compensated pointer x).
       applyResizePointerRef.current(resize, pointer.clientX);
     }
     clipDragScrollRaf.current = requestAnimationFrame(stepClipDragAutoScroll);
-  }, [scrollRef, updateDraggedClipPreview]);
+  }, [publishDraggedClip, scrollRef, updateDraggedClipPreview]);
 
   const syncClipDragAutoScroll = useCallback(
     (clientX: number, clientY: number) => {
@@ -350,34 +395,43 @@ export function useTimelineClipDrag({
   const stopClipDragAutoScrollRef = useRef(stopClipDragAutoScroll);
   stopClipDragAutoScrollRef.current = stopClipDragAutoScroll;
 
-  useMountEffect(() => {
-    return mountTimelineClipDragGestureLifecycle({
-      draggedClipRef,
-      resizingClipRef,
-      blockedClipRef,
-      groupResizeRef,
-      suppressClickRef,
-      elementsRef,
-      trackOrderRef,
-      setDraggedClip,
-      setResizingClip,
-      setShowPopover,
-      setRangeSelectionRef,
-      applyResizePointerRef,
-      syncClipDragAutoScrollRef,
-      stopClipDragAutoScrollRef,
-      updateDraggedClipPreviewRef,
-      restoreGroupResizeMembers,
-      updateElement,
-      onMoveElementRef,
-      onMoveElementsRef,
-      onResizeElementRef,
-      onResizeElementsRef,
-      onBlockedEditAttemptRef,
-      readZIndexRef,
+  useMountEffect(() =>
+    mountTimelineClipDragGestureLifecycle({
       onStackingPatchesRef,
-    });
-  });
+      readZIndexRef,
+      onBlockedEditAttemptRef,
+      onResizeElementsRef,
+      onResizeElementRef,
+      onMoveElementsRef,
+      onMoveElementRef,
+      updateElement,
+      publishDraggedClip,
+      updateDraggedClipPreviewRef,
+      stopClipDragAutoScrollRef,
+      syncClipDragAutoScrollRef,
+      applyResizePointerRef,
+      setRangeSelectionRef,
+      setShowPopover,
+      setResizingClipState,
+      setDraggedClipState,
+      trackOrderRef,
+      elementsRef,
+      gestureSelectedKeysRef,
+      suppressClickRef,
+      groupResizeRef,
+      blockedClipRef,
+      resizingClipRef,
+      draggedClipRef,
+      scrollRef,
+      cancelGestureRef,
+      sessionEpochRef,
+      lifecycleRef,
+    }),
+  );
+
+  useEffect(() => {
+    cancelGestureRef.current();
+  }, [sessionEpoch]);
 
   return {
     draggedClip,
@@ -386,7 +440,6 @@ export function useTimelineClipDrag({
     setResizingClip,
     blockedClipRef,
     suppressClickRef,
-    syncClipDragAutoScroll,
     stopClipDragAutoScroll,
   };
 }

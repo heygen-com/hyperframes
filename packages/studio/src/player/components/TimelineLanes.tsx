@@ -71,7 +71,6 @@ export function TimelineLanes({
   setResizingClip,
   setDraggedClip,
   setSelectedElementId,
-  syncClipDragAutoScroll,
   shiftClickClipRef,
   getPreviewElement,
   getTrackStyle,
@@ -324,6 +323,7 @@ export function TimelineLanes({
                             setShowPopover(false);
                             setRangeSelection(null);
                             setResizingClip({
+                              pointerId: e.pointerId,
                               element: el,
                               edge,
                               originClientX: e.clientX,
@@ -362,6 +362,7 @@ export function TimelineLanes({
                                 (blockedIntent !== "move" && onResizeElement))
                             ) {
                               blockedClipRef.current = {
+                                pointerId: e.pointerId,
                                 element: el,
                                 intent: blockedIntent,
                                 originClientX: e.clientX,
@@ -375,6 +376,7 @@ export function TimelineLanes({
                             setShowPopover(false);
                             setRangeSelection(null);
                             setDraggedClip({
+                              pointerId: e.pointerId,
                               element: el,
                               originClientX: e.clientX,
                               originClientY: e.clientY,
@@ -392,7 +394,6 @@ export function TimelineLanes({
                               snapType: null,
                               started: false,
                             });
-                            syncClipDragAutoScroll(e.clientX, e.clientY);
                           }
                         }
                         onClick={
