@@ -1002,6 +1002,41 @@ describe("loadExternalCompositions", () => {
       expect(byComp["card-2"]).toEqual({ title: "Default Title" });
     });
 
+    it("merges defaults declared on a template composition root", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card.html");
+      host.setAttribute("data-composition-id", "card-template");
+      host.setAttribute("data-variable-values", '{"title":"Host title"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html>
+          <body>
+            <template id="card-template-template">
+              <div
+                data-composition-id="card-template"
+                data-composition-variables='[
+                  {"id":"title","type":"string","label":"Title","default":"Default title"},
+                  {"id":"theme","type":"string","label":"Theme","default":"dark"}
+                ]'
+              ><p>card</p></div>
+            </template>
+          </body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      const byComp = (window as WindowWithScopedVars).__hfVariablesByComp ?? {};
+      expect(byComp["card-template"]).toEqual({
+        title: "Host title",
+        theme: "dark",
+      });
+    });
+
     it("skips registration when neither declared defaults nor host overrides exist", async () => {
       const host = document.createElement("div");
       host.setAttribute("data-composition-src", "https://example.com/card.html");
