@@ -9,6 +9,10 @@ export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
 
+export function getTimelineLaneTop(laneIndex: number): number {
+  return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
+}
+
 /**
  * Collapsed-row characterization value for the new-track INSERT band. Runtime
  * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
