@@ -1,10 +1,7 @@
-import { useMemo, type RefObject } from "react";
+import { useMemo } from "react";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
-import type { TimelineElement } from "../store/playerStore";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
-import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
-import { useTimelineRevealClip } from "./useTimelineRevealClip";
 
 interface UseTimelineClipRenderWindowInput {
   tracks: Parameters<typeof createTimelineClipIndex>[0];
@@ -15,17 +12,10 @@ interface UseTimelineClipRenderWindowInput {
   selectedElementId?: string;
   draggedElementId?: string;
   resizingElementIds?: readonly string[];
-  revealElementId?: string;
+  focusedElementId?: string;
   focusedEaseElementId?: string;
   clipContextMenuElementId?: string;
   keyframeContextMenuElementId?: string;
-  focusedElementId?: string;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  elements: readonly TimelineElement[];
-  rowGeometry: TimelineRowGeometry;
-  allowHorizontalReveal: boolean;
-  rowVirtualizationActive: boolean;
-  sessionEpoch: number;
 }
 
 export function useTimelineClipRenderWindow({
@@ -37,17 +27,10 @@ export function useTimelineClipRenderWindow({
   selectedElementId,
   draggedElementId,
   resizingElementIds,
-  revealElementId,
+  focusedElementId,
   focusedEaseElementId,
   clipContextMenuElementId,
   keyframeContextMenuElementId,
-  focusedElementId,
-  scrollRef,
-  elements,
-  rowGeometry,
-  allowHorizontalReveal,
-  rowVirtualizationActive,
-  sessionEpoch,
 }: UseTimelineClipRenderWindowInput) {
   const clipIndex = useMemo(() => createTimelineClipIndex(tracks), [tracks]);
   const renderTimeRange = useMemo(
@@ -61,11 +44,10 @@ export function useTimelineClipRenderWindow({
           selectedElementId,
           draggedElementId,
           ...(resizingElementIds ?? []),
-          revealElementId,
+          focusedElementId,
           focusedEaseElementId,
           clipContextMenuElementId,
           keyframeContextMenuElementId,
-          focusedElementId,
         ].filter((identity): identity is string => identity !== undefined),
       ),
     [
@@ -75,21 +57,8 @@ export function useTimelineClipRenderWindow({
       focusedElementId,
       keyframeContextMenuElementId,
       resizingElementIds,
-      revealElementId,
       selectedElementId,
     ],
   );
-  useTimelineRevealClip({
-    scrollRef,
-    elements,
-    rowGeometry,
-    pixelsPerSecond,
-    contentOrigin,
-    allowHorizontal: allowHorizontalReveal,
-    deferFocusUntilViewportUpdate: rowVirtualizationActive,
-    focusedElementId,
-    viewportVersion: viewport,
-    sessionEpoch,
-  });
   return { clipIndex, renderTimeRange, pinnedClipIdentities };
 }

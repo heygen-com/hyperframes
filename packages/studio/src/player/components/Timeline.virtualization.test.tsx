@@ -232,6 +232,43 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     usePlayerStore.getState().reset();
   });
 
+  it("keeps focus pinning active after the scroll viewport remounts", async () => {
+    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
+      import("./Timeline"),
+      import("../store/playerStore"),
+    ]);
+    usePlayerStore.setState({
+      duration: 60,
+      timelineReady: true,
+      elements: clipsByTrack(1_000),
+    });
+
+    const { host, root } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 9 }));
+    await settleUntil(() => host.querySelectorAll("[data-timeline-row]").length > 0);
+    const firstScroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
+
+    await act(async () => usePlayerStore.setState({ timelineReady: false }));
+    expect(host.querySelector("[data-timeline-scroll-viewport]")).toBeNull();
+    await act(async () => usePlayerStore.setState({ timelineReady: true }));
+    await settleUntil(() => host.querySelectorAll("[data-timeline-row]").length > 0);
+
+    const scroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
+    const firstRow = host.querySelector<HTMLElement>('[data-timeline-row-key="0"]');
+    const focusedControl = firstRow?.querySelector<HTMLButtonElement>("button");
+    expect(scroller).not.toBe(firstScroller);
+    expect(focusedControl).not.toBeNull();
+    act(() => focusedControl?.focus());
+    if (scroller) {
+      scroller.scrollTop = 500 * 48;
+      await dispatchScroll(scroller);
+    }
+    expect(host.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
+    expect(document.activeElement).toBe(focusedControl);
+
+    act(() => root.unmount());
+    usePlayerStore.getState().reset();
+  });
+
   it("windows clips and ruler cells while retaining an off-window selected clip", async () => {
     const [{ Timeline }, { usePlayerStore }, { TIMELINE_VIEWPORT_BUDGETS }] = await Promise.all([
       import("./Timeline"),
@@ -241,6 +278,8 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     usePlayerStore.setState({
       duration: 1_000,
       timelineReady: true,
+      timelineProjectId: "project-a",
+      timelineSessionEpoch: 4,
       zoomMode: "manual",
       manualZoomPercent: 2_000,
       selectedElementId: "clip-490",
@@ -285,10 +324,13 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(host.querySelector('[data-el-id="clip-490"]')).not.toBeNull();
     expect(host.querySelectorAll("[data-timeline-grid-cell]").length).toBeLessThan(100);
 
-    await act(async () => usePlayerStore.getState().requestClipReveal("clip-300"));
+    const { timelineClipFocusId } = await import("./timelineNavigationIdentity");
+    await act(async () =>
+      usePlayerStore.getState().requestTimelineFocus(timelineClipFocusId("clip-300")),
+    );
     await advanceFrame();
     await act(async () => {});
-    expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(timelineClipFocusId("clip-300"));
     const focusedClip = host.querySelector('[data-el-id="clip-300"]');
     expect(document.activeElement).toBe(focusedClip);
     await advanceFrame();

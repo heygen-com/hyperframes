@@ -228,6 +228,7 @@ export function TimelinePropertyLanes({
           role="group"
           aria-label={`${group} keyframes`}
           data-property-group={group}
+          data-timeline-element-id={elementId}
           data-timeline-property-lane=""
           data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
           className="absolute"

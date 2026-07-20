@@ -9,6 +9,7 @@ import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./us
 import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
+import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 /**
  * Props shared by the scroll container ({@link import("./TimelineCanvas")}) and
@@ -27,6 +28,7 @@ export interface TimelineLaneBaseProps {
   rowHeights: readonly number[];
   rowGeometry: TimelineRowGeometry;
   virtualRows: readonly TimelineVirtualRow[];
+  logicalRows: readonly TimelineLogicalRow[];
   rowsVirtualized: boolean;
   clipIndex: TimelineClipIndex;
   renderTimeRange: TimelineTimeRange;

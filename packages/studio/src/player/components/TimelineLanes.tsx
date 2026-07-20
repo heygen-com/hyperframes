@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
@@ -27,7 +27,7 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
-import { useTimelineLogicalRows } from "./useTimelineLogicalRows";
+import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -50,6 +50,7 @@ export function TimelineLanes({
   displayTrackOrder,
   rowGeometry,
   virtualRows,
+  logicalRows,
   rowsVirtualized,
   clipIndex,
   renderTimeRange,
@@ -105,15 +106,15 @@ export function TimelineLanes({
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
-  const { logicalRows, logicalRowsByTrack } = useTimelineLogicalRows({
-    tracks,
-    displayTrackOrder,
-    laneCounts,
-    selectedElementId,
-    selectedElementIds,
-    expandedClipIds,
-    gsapAnimations,
-  });
+  const logicalRowsByTrack = useMemo(() => {
+    const byTrack = new Map<number, TimelineLogicalRow[]>();
+    for (const logicalRow of logicalRows) {
+      const trackRows = byTrack.get(logicalRow.physicalTrackKey) ?? [];
+      trackRows.push(logicalRow);
+      byTrack.set(logicalRow.physicalTrackKey, trackRows);
+    }
+    return byTrack;
+  }, [logicalRows]);
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);
     trackStudioKeyframeLaneExpand({ expanded: willExpand });

@@ -90,7 +90,7 @@ describe("timeline performance fixture", () => {
     usePlayerStore.setState({
       isPlaying: true,
       requestedSeekTime: 42,
-      clipRevealRequest: { elementId: "stale", nonce: 7 },
+      timelineFocus: { id: "stale", projectId: null, sessionEpoch: 0, nonce: 7 },
       clipManifest: [],
       lintFindingsByElement: new Map([["stale", { count: 1, messages: ["stale"] }]]),
     });
@@ -108,7 +108,7 @@ describe("timeline performance fixture", () => {
     expect(usePlayerStore.getState()).toMatchObject({
       isPlaying: false,
       requestedSeekTime: null,
-      clipRevealRequest: null,
+      timelineFocus: null,
       clipManifest: null,
       duration: 600,
       timelineReady: true,

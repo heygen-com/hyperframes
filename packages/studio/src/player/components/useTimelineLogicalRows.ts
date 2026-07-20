@@ -1,20 +1,19 @@
 import { useMemo } from "react";
-import type { TimelineLaneBaseProps } from "./timelineLaneProps";
-import { buildTimelineLogicalRows, type TimelineLogicalRow } from "./timelineKeyboardNavigation";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { TimelineElement } from "../store/playerStore";
+import { buildTimelineLogicalRows } from "./timelineKeyboardNavigation";
 
-interface TimelineLogicalRowsInput extends Pick<
-  TimelineLaneBaseProps,
-  | "tracks"
-  | "displayTrackOrder"
-  | "laneCounts"
-  | "selectedElementId"
-  | "selectedElementIds"
-  | "gsapAnimations"
-> {
+interface TimelineLogicalRowsInput {
+  tracks: readonly (readonly [number, readonly TimelineElement[]])[];
+  displayTrackOrder: readonly number[];
+  laneCounts: ReadonlyMap<string, number>;
+  selectedElementId: string | null;
+  selectedElementIds: ReadonlySet<string>;
   expandedClipIds: ReadonlySet<string>;
+  gsapAnimations: ReadonlyMap<string, readonly GsapAnimation[]>;
 }
 
-/** Owns the logical timeline model and its physical-track lookup; stable input refs preserve it. */
+/** Shared by rendering and focus coordination; stable input refs preserve memo identity. */
 export function useTimelineLogicalRows({
   tracks,
   displayTrackOrder,
@@ -24,30 +23,25 @@ export function useTimelineLogicalRows({
   expandedClipIds,
   gsapAnimations,
 }: TimelineLogicalRowsInput) {
-  return useMemo(() => {
-    const logicalRows = buildTimelineLogicalRows({
-      tracks,
+  return useMemo(
+    () =>
+      buildTimelineLogicalRows({
+        tracks,
+        displayTrackOrder,
+        laneCounts,
+        selectedElementId,
+        selectedElementIds,
+        expandedClipIds,
+        gsapAnimations,
+      }),
+    [
       displayTrackOrder,
+      expandedClipIds,
+      gsapAnimations,
       laneCounts,
       selectedElementId,
       selectedElementIds,
-      expandedClipIds,
-      gsapAnimations,
-    });
-    const logicalRowsByTrack = new Map<number, TimelineLogicalRow[]>();
-    for (const row of logicalRows) {
-      const trackRows = logicalRowsByTrack.get(row.physicalTrackKey) ?? [];
-      trackRows.push(row);
-      logicalRowsByTrack.set(row.physicalTrackKey, trackRows);
-    }
-    return { logicalRows, logicalRowsByTrack };
-  }, [
-    displayTrackOrder,
-    expandedClipIds,
-    gsapAnimations,
-    laneCounts,
-    selectedElementId,
-    selectedElementIds,
-    tracks,
-  ]);
+      tracks,
+    ],
+  );
 }
