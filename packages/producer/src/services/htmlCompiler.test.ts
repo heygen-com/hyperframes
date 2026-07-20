@@ -1980,6 +1980,71 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     expect(compiled.html).toContain('"card__hf4":{"label":"CARD_D"}');
   });
 
+  it("assigns unique runtime ids to repeated sub-compositions discovered during inlining", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-nested-multi-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "c.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"C_DEFAULT"}]'>
+  <body>
+    <div data-composition-id="c" data-width="160" data-height="120">
+      <div class="c-label"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions", "b.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"B_DEFAULT"}]'>
+  <body>
+    <div data-composition-id="b" data-width="320" data-height="240">
+      <div class="b-label"></div>
+      <div data-composition-id="c" data-composition-src="compositions/c.html" data-variable-values='{"label":"C_CHILD"}' data-start="0" data-duration="3" data-track-index="1"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "compositions", "a.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div data-composition-id="a" data-width="640" data-height="240">
+      <div data-composition-id="b" data-composition-src="compositions/b.html" data-variable-values='{"label":"B_LEFT"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="b" data-composition-src="compositions/b.html" data-variable-values='{"label":"B_RIGHT"}' data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="3" data-track-index="1"></div>
+    </div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const idsByFile = (file: string) =>
+      Array.from(document.querySelectorAll(`[data-composition-file="${file}"]`)).map((host) =>
+        host.getAttribute("data-composition-id"),
+      );
+
+    expect(idsByFile("compositions/b.html")).toEqual(["b__hf1", "b__hf2"]);
+    expect(idsByFile("compositions/c.html")).toEqual(["c__hf1", "c__hf2"]);
+    expect(compiled.html).toContain('"b__hf1":{"label":"B_LEFT"}');
+    expect(compiled.html).toContain('"b__hf2":{"label":"B_RIGHT"}');
+    expect(compiled.html).toContain('"c__hf1":{"label":"C_CHILD"}');
+    expect(compiled.html).toContain('"c__hf2":{"label":"C_CHILD"}');
+  });
+
   it("leaves a single-mount sub-comp's authored id untouched while renaming a duplicated one", async () => {
     // Pins the "single instances are untouched" claim: a solo mount keeps its
     // authored data-composition-id; only the duplicated sub-comp is renamed.
