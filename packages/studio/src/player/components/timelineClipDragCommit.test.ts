@@ -4,6 +4,7 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 import {
   commitDraggedClipMove,
   commitZMirrorLaneMove,
+  persistMoveEdits,
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
@@ -312,6 +313,118 @@ describe("commitDraggedClipMove", () => {
     expect(map.a).toEqual({ start: 7, track: 0 });
     expect(map.b).toEqual({ start: 15, track: 1 }); // same +5 delta, keeps its lane
     expect(map.c).toBeUndefined(); // unselected clips untouched
+  });
+
+  it("collapses a selected expanded child onto its authored composition host", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { updateElement, onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 15, previewTrack: child.track }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track],
+        selectedKeys: new Set(["host", "scene.html#title"]),
+      },
+    );
+
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledWith(host, { start: 13, track: 0 });
+    expect(updateElement).toHaveBeenCalledWith("host", { start: 13, track: 0 });
+    expect(updateElement).not.toHaveBeenCalledWith("scene.html#title", expect.anything());
+  });
+
+  it("drops a selected expanded child alias when the authored host initiates the drag", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(host, { previewStart: 13, previewTrack: host.track }),
+      {
+        elements: [host, child],
+        trackOrder: [0, child.track],
+        selectedKeys: new Set(["host", "scene.html#title"]),
+      },
+    );
+
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledOnce();
+    expect(onMoveElement).toHaveBeenCalledWith(host, { start: 13, track: 0 });
+  });
+
+  it("keeps an expanded child as the edit target when its host is not selected", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 15, previewTrack: child.track }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track],
+        selectedKeys: new Set(["scene.html#title"]),
+      },
+    );
+
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledWith(child, { start: 15, track: child.track });
+  });
+
+  it("moves a host alias and an ordinary selected clip once each in one batch", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const ordinary = el("ordinary", 1, 20, 3);
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 14, previewTrack: child.track }),
+      {
+        elements: [host, ordinary],
+        trackOrder: [0, child.track, 1],
+        selectedKeys: new Set(["host", "scene.html#title", "ordinary"]),
+      },
+    );
+
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
+    expect(map).toEqual({
+      host: { start: 12, track: 0 },
+      ordinary: { start: 22, track: 1 },
+    });
+  });
+
+  it("applies an expanded-child vertical drag to the selected host lane", () => {
+    const host = { ...el("host", 0, 10, 8), kind: "composition" as const };
+    const child = {
+      ...el("scene.html#title", 0.25, 12, 2),
+      sourceFile: "scene.html",
+      expandedParentStart: 10,
+      expandedHostKey: "host",
+    };
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(child, { previewStart: 12, previewTrack: 1, desiredTrack: 1 }),
+      {
+        elements: [host],
+        trackOrder: [0, child.track, 1],
+        selectedKeys: new Set(["host", "scene.html#title"]),
+      },
+    );
+
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
+    expect(map).toEqual({ host: { start: 10, track: 1 } });
   });
 
   it("multi-selection move clamps shifted clips at 0 and applies the store update optimistically", () => {
@@ -959,20 +1072,40 @@ describe("commitDraggedClipMove", () => {
       expectZLiftedToSix(onStackingPatches);
     });
 
+    it("refreshes the preview only after the complete lane and z transaction", async () => {
+      const order: string[] = [];
+      commitInsertAbove(overlapping(), {
+        onMoveElements: vi.fn(async () => {
+          order.push("lane");
+        }),
+        onStackingPatches: vi.fn(async () => {
+          order.push("z");
+        }),
+        refreshAfterLaneMove: () => order.push("refresh"),
+      });
+
+      await flushMicrotasks();
+
+      expect(order).toEqual(["lane", "z", "refresh"]);
+    });
+
     it("rolls back the move and skips the z-sync when the persist fails", async () => {
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const elements = overlapping();
       const onMoveElements = vi.fn(() => Promise.reject(new Error("write failed")));
       const onStackingPatches = vi.fn();
+      const refreshAfterLaneMove = vi.fn();
       const updateElement = vi.fn();
       commitInsertAbove(elements, {
         updateElement,
         onMoveElements,
         onStackingPatches,
+        refreshAfterLaneMove,
       });
       await flushMicrotasks();
       // Failed move → z patch never issued (no orphaned z change left behind)...
       expect(onStackingPatches).not.toHaveBeenCalled();
+      expect(refreshAfterLaneMove).not.toHaveBeenCalled();
       // ...and the optimistic start/track edit for the dragged clip is rolled back.
       expect(updateElement).toHaveBeenCalledWith("a", { start: 0, track: 1 });
       errSpy.mockRestore();
@@ -1298,5 +1431,48 @@ describe("commitZMirrorLaneMove", () => {
     );
     expect(moved).toBe(false);
     expect(onMoveElements).not.toHaveBeenCalled();
+  });
+});
+
+describe("persistMoveEdits convergence", () => {
+  it("reasserts a saved lane after a stale runtime sync", async () => {
+    const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
+    let releaseSave: (() => void) | undefined;
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    let liveTrack = clip.track;
+    let liveAuthoredTrack = clip.authoredTrack;
+    const updateElement = vi.fn((_key: string, updates: Partial<TimelineElement>) => {
+      if (updates.track != null) liveTrack = updates.track;
+      if (updates.authoredTrack != null) liveAuthoredTrack = updates.authoredTrack;
+    });
+
+    const persisted = persistMoveEdits(
+      [
+        {
+          element: clip,
+          updates: { start: clip.start, track: 0 },
+          persistTrack: 0,
+        },
+      ],
+      {
+        elements: [clip],
+        trackOrder: [0, 1, 2],
+        updateElement,
+        onMoveElements: () => pendingSave,
+      },
+    );
+    expect([liveTrack, liveAuthoredTrack]).toEqual([0, 0]);
+
+    // Reproduce the real failure: the preview emits its cached pre-drag lane
+    // while the file write is still pending.
+    liveTrack = 2;
+    liveAuthoredTrack = 2;
+    releaseSave?.();
+
+    await expect(persisted).resolves.toBe(true);
+    expect([liveTrack, liveAuthoredTrack]).toEqual([0, 0]);
+    expect(updateElement).toHaveBeenCalledTimes(2);
   });
 });

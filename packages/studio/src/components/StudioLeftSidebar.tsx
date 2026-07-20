@@ -19,6 +19,7 @@ export interface StudioLeftSidebarProps {
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onAddAssetToTimeline?: (path: string) => void;
+  onAddCompositionToTimeline?: (path: string) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -32,6 +33,7 @@ export function StudioLeftSidebar({
   lintFindingCount,
   lintFindingsByFile,
   onAddAssetToTimeline,
+  onAddCompositionToTimeline,
 }: StudioLeftSidebarProps) {
   const {
     leftCollapsed,
@@ -150,6 +152,7 @@ export function StudioLeftSidebar({
         onAddBlock={onAddBlock}
         onPreviewBlock={onPreviewBlock}
         onAddAssetToTimeline={onAddAssetToTimeline}
+        onAddCompositionToTimeline={onAddCompositionToTimeline}
       />
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
           the absolutely-positioned inner hit area. The outer element is w-[3px] so

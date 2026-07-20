@@ -33,12 +33,36 @@ function createAdapter(
   return { adapter, rendersDir };
 }
 
-function buildApp(spy: ReturnType<typeof vi.fn>): { app: Hono; cleanup: () => void } {
+function buildApp(spy: ReturnType<typeof vi.fn>): {
+  app: Hono;
+  rendersDir: string;
+  cleanup: () => void;
+} {
   const { adapter, rendersDir } = createAdapter(spy);
   const app = new Hono();
   registerRenderRoutes(app, adapter);
-  return { app, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
+  return { app, rendersDir, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
 }
+
+describe("GET /projects/:id/renders — stale sidecar status", () => {
+  it("does not mark an existing output failed from stale metadata", async () => {
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    try {
+      writeFileSync(join(rendersDir, "retry.mp4"), "valid-output");
+      writeFileSync(
+        join(rendersDir, "retry.meta.json"),
+        JSON.stringify({ status: "failed", error: "first attempt" }),
+      );
+      const res = await app.request("http://localhost/projects/demo/renders");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.renders).toEqual([expect.objectContaining({ id: "retry", status: "complete" })]);
+    } finally {
+      cleanup();
+    }
+  });
+});
 
 describe("POST /projects/:id/render — outputResolution forwarding", () => {
   it("forwards a valid resolution preset to the adapter", async () => {

@@ -356,7 +356,10 @@ describe.each(["classic", "flat"] as const)("shared %s input telemetry", (ui) =>
       (input) => input.value === "#FF0000",
     );
     if (!hex) throw new Error("expected color hex input");
-    act(() => changeInput(hex, "#00FF00"));
+    act(() => {
+      changeInput(hex, "#00FF00");
+      blurInput(hex);
+    });
 
     expect(trackStudioEvent).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenLastCalledWith("design_input", {
@@ -455,6 +458,13 @@ function representativeElement() {
 
 describe("classic PropertyPanel input coverage", () => {
   it("emits only named, known-section events across body inputs and header/footer chrome", async () => {
+    vi.resetModules();
+    vi.doMock("./manualEditingAvailability", async () => {
+      const actual = await vi.importActual<typeof import("./manualEditingAvailability")>(
+        "./manualEditingAvailability",
+      );
+      return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: false };
+    });
     const { PropertyPanel } = await import("./PropertyPanel");
     const host = render(
       <PropertyPanel

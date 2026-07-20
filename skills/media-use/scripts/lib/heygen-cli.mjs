@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { track } from "./telemetry.mjs";
 
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
@@ -5,13 +6,16 @@ import { track } from "./telemetry.mjs";
 // needs — so anything below this can't authenticate for free usage at all.
 export const HEYGEN_MIN_VERSION = "0.3.0";
 // Free-usage path is OAuth (`--oauth` → subscription/free credits); `--api-key`
-// bills API credits, so the onboarding steers to OAuth.
+// bills API credits, so the onboarding steers to OAuth. Keep pipe-to-shell
+// installer text out of the runtime module; the docs are the safer source of
+// truth for platform-specific setup.
 export const HEYGEN_INSTALL_COMMAND =
-  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --oauth";
+  "Install the CLI from https://developers.heygen.com/cli, then run: heygen auth login --oauth";
 export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
+export const HEYGEN_CLIENT_SOURCE_ARGV = ["--headers", "X-HeyGen-Client-Source: media-use"];
 
-export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. Install: ${HEYGEN_INSTALL_COMMAND}`;
+export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. ${HEYGEN_INSTALL_COMMAND}`;
 export const HEYGEN_NOT_AUTHENTICATED_MESSAGE = `media-use: heygen CLI not authenticated (free usage) — run: ${HEYGEN_AUTH_COMMAND}`;
 export const HEYGEN_OUTDATED_MESSAGE = `media-use: heygen CLI is outdated — run: ${HEYGEN_UPDATE_COMMAND}  (need >= v${HEYGEN_MIN_VERSION})`;
 
@@ -130,6 +134,31 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
 export async function flushHeygenFailureTracking() {
   if (pendingFailureTracking.size === 0) return;
   await Promise.all(pendingFailureTracking);
+}
+
+// Shared discovery/generation helper for the CLI-shelling providers (voice,
+// avatar-video): run a heygen JSON subcommand, report+classify on failure,
+// and hand the caller the classified reason via onError (used by callers that
+// need to distinguish e.g. not_authenticated from other failures).
+export function runHeygenJson(bin, argv, label, onError) {
+  let out;
+  try {
+    out = execFileSync(bin, argv, {
+      encoding: "utf8",
+      timeout: 120000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    reportHeygenFailure(err, `${bin} ${label}`);
+    onError?.(classifyHeygenErrorCode(err));
+    return null;
+  }
+  try {
+    return JSON.parse(out);
+  } catch {
+    console.error(`media-use: \`${bin} ${label}\` returned non-JSON output`);
+    return null;
+  }
 }
 
 export function firstSemver(text) {

@@ -32,6 +32,8 @@ import {
   faviconSearch,
 } from "./logo-provider.mjs";
 import { heygenTtsGenerate } from "./voice-provider.mjs";
+import { heygenVideoGenerate } from "./heygen-video-provider.mjs";
+import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
 import { localTtsGenerate } from "./tts-local-provider.mjs";
 import { codexImageGenerate } from "./codex-provider.mjs";
 import { mfluxImageGenerate } from "./mflux-provider.mjs";
@@ -82,6 +84,12 @@ const REGISTRY = {
     // tri-state "quota-first, paid after" would need backend quota state.)
     P("heygen.tts", { generate: heygenTtsGenerate }),
     A("kokoro.local", { generate: localTtsGenerate }),
+  ],
+  video: [
+    // HeyGen avatar video first when credentialed; --local-only skips it and
+    // keeps LTX as the local fallback.
+    P("heygen.video", { generate: heygenVideoGenerate }),
+    A("ltx.local", { generate: ltxVideoGenerate }),
   ],
   brand: [
     // Local design spec, not heygen — reads frame.md / design.md tokens.

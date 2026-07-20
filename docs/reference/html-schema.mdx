@@ -52,9 +52,11 @@ Common sizes:
 | `id` | All | Yes | Unique identifier (e.g., `"el-1"`). Used for relative timing references and CSS targeting. |
 | `class="clip"` | Visible elements | Yes | Enables runtime visibility management. Omit for audio-only clips. |
 | `data-start` | All | Yes | Start time in seconds (e.g., `"0"`, `"5.5"`), or a clip ID reference for [relative timing](#relative-timing) (e.g., `"intro"`). |
-| `data-duration` | video, img, audio | See below | Duration in seconds. **Required** for images. Optional for video/audio (defaults to source duration). Not used on compositions. |
+| `data-duration` | video, img, audio, nested composition hosts | See below | Timeline slot duration in seconds. **Required** for images and nested composition hosts. Optional for video/audio (defaults to source duration). |
 | `data-track-index` | All | Yes | Timeline track number. Controls z-ordering (higher = in front). Clips on the same track cannot overlap. |
 | `data-media-start` | video, audio | No | Playback offset / trim point in source file (seconds). Default: `0`. See [Data Attributes](/concepts/data-attributes). |
+| `data-playback-start` | video, audio, composition | No | Source-time offset in seconds. On a nested composition, this is the child timeline time shown at the host's `data-start`. Default: `0`. |
+| `data-playback-rate` | video, audio, composition | No | Source playback multiplier clamped to `0.1`–`5`. Invalid values default to `1`. |
 | `data-volume` | audio, video | No | Volume level from `0` to `1`. Default: `1`. |
 | `data-composition-id` | div | On compositions | Unique composition ID. Must match the key used in `window.__timelines`. |
 | `data-composition-src` | div | No | Path to external composition HTML file (for [nested compositions](#composition-clips)). |

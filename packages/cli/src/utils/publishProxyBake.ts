@@ -2,7 +2,7 @@
  * Publish-time proxy baking (U6 of
  * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md).
  *
- * Published pages are static (no server), so the on-demand `?hf-proxy=h264`
+ * Published pages are static (no server), so the on-demand `?hf-proxy=`
  * negotiation the preview/play surfaces use (U3/U4) isn't possible there.
  * Instead this scans the archive's HTML entries for local `<video src>`
  * references to browser-hostile codecs (HEVC, ProRes, ...), transcodes each
@@ -17,11 +17,11 @@
  * original untouched. On-disk project files are never modified — only the
  * in-memory archive file map passed in by `publish.ts` (built via
  * `buildPublishFileMap`, baked here, then zipped via `zipPublishFileMap`).
- * `cloud render` never calls this: it uses `createPublishArchive` directly,
- * which has no baking hook (R2 in the plan).
+ * `cloud render` never calls this: it builds and zips the file map without an
+ * intermediate baking transform (R2 in the plan).
  *
- * Alpha-bearing sources remain explicit skips because H.264 would destroy
- * transparency. A failed opaque-hostile transcode aborts publish with a
+ * Alpha-bearing sources bake as VP8/WebM so transparency survives. A failed
+ * hostile transcode aborts publish with a
  * structured manifest rather than silently shipping an unplayable asset.
  */
 
@@ -35,6 +35,7 @@ import {
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
 import {
+  proxyVariantFor,
   scanProjectMediaCodecMap,
   type HtmlSourceLike,
 } from "@hyperframes/studio-server/media-codec-map";
@@ -51,6 +52,7 @@ export const PROXY_ARCHIVE_PREFIX = "_proxy";
 
 export interface ProxyBakeManifest {
   proxied: string[];
+  /** @deprecated Alpha sources are proxied as VP8; retained as an always-empty compatibility field. */
   skippedAlpha: string[];
   failed: Array<{ path: string; error: string }>;
 }
@@ -75,11 +77,11 @@ function isHtmlEntry(path: string): boolean {
 }
 
 /**
- * Mutates `fileContents` in place: adds a `_proxy/<hash>.mp4` entry for every
+ * Mutates `fileContents` in place: adds a variant-specific `_proxy/<hash>` entry for every
  * browser-hostile local video asset referenced from the archive's HTML, and
  * rewrites those HTML entries' matching `<video src>` attributes to point at
  * the proxy. Returns a structured manifest; throws ProxyBakeError when any
- * required opaque proxy cannot be prepared.
+ * required proxy cannot be prepared.
  */
 export async function bakeMediaProxies(
   projectDir: string,
@@ -97,17 +99,7 @@ export async function bakeMediaProxies(
 
   const codecMap = await scanProjectMediaCodecMap(absProjectDir, htmlSources);
   const hostileEntries = Object.entries(codecMap).filter(([, facts]) => facts.browserHostile);
-  const hostilePathnames: string[] = [];
-  for (const [pathname, facts] of hostileEntries) {
-    if (facts.hasAlpha) {
-      // Alpha sources are never proxied: an H.264 proxy would destroy the
-      // transparency (e.g. ProRes 4444 alpha). Keep the original in place.
-      manifest.skippedAlpha.push(pathname);
-      continue;
-    }
-    hostilePathnames.push(pathname);
-  }
-  if (hostilePathnames.length === 0) return manifest;
+  if (hostileEntries.length === 0) return manifest;
 
   // Absolute source path -> archive path of its baked proxy. Built by
   // resolving each map key back to an absolute path the same way
@@ -117,11 +109,11 @@ export async function bakeMediaProxies(
   const proxyByAbsolutePath = new Map<string, string>();
 
   await Promise.all(
-    hostilePathnames.map(async (pathname) => {
+    hostileEntries.map(async ([pathname, facts]) => {
       const absoluteSourcePath = resolve(absProjectDir, pathname.replace(/^\/+/, ""));
       try {
         const proxyPath = await waitForProxy(
-          resolveProxy(absProjectDir, absoluteSourcePath),
+          resolveProxy(absProjectDir, absoluteSourcePath, proxyVariantFor(facts)),
           TRANSCODE_TIMEOUT_MS,
         );
         const archivePath = `${PROXY_ARCHIVE_PREFIX}/${basename(proxyPath)}`;

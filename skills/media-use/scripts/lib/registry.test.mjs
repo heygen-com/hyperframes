@@ -1,12 +1,31 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { getProviders, getProvider, listTypes, runProviders, runCapability } from "./registry.mjs";
+import {
+  getProviders,
+  getProvider,
+  listTypes,
+  providerMatches,
+  providerNamesFor,
+  runProviders,
+  runCapability,
+} from "./registry.mjs";
 
 // --- registry shape -------------------------------------------------------
 
 test("listTypes exposes the v2 media types", () => {
   const types = listTypes();
-  for (const t of ["bgm", "sfx", "image", "icon", "logo", "voice", "brand", "grade", "lut"]) {
+  for (const t of [
+    "bgm",
+    "sfx",
+    "image",
+    "icon",
+    "logo",
+    "voice",
+    "video",
+    "brand",
+    "grade",
+    "lut",
+  ]) {
     assert.ok(types.includes(t), `missing type: ${t}`);
   }
 });
@@ -19,9 +38,9 @@ test("heygen provider is first for every type it serves", () => {
   }
 });
 
-test("sanctioned providers only: heygen, local mflux/kokoro, codex, design spec, logo tiers", () => {
+test("sanctioned providers only: heygen, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
+    /^heygen|^bundled\.sfx$|^mflux\.local$|^kokoro\.local$|^ltx\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
@@ -50,6 +69,17 @@ test("voice cascade: HeyGen TTS first, Kokoro remains the local fallback", () =>
   assert.equal(ps[1].name, "kokoro.local", "local Kokoro is the offline fallback");
   assert.ok(!ps[1].network, "local Kokoro kept under --local-only");
   assert.ok(!ps[1].paid, "local Kokoro is free");
+});
+
+test("video cascade: HeyGen first, LTX local fallback, generate-only", async () => {
+  assert.deepEqual(providerNamesFor("video"), ["heygen.video", "ltx.local"]);
+  assert.equal(providerMatches("video", "ltx.local"), true);
+
+  const ps = getProviders("video");
+  assert.ok(ps[0].network, "HeyGen video is network (skipped under --local-only)");
+  assert.ok(ps[0].paid, "HeyGen video may bill after the OAuth free allowance");
+  assert.ok(!ps[1].network, "local LTX is kept under --local-only");
+  assert.equal(await runCapability("video", "search", "x", {}), null);
 });
 
 test("sfx cascade: HeyGen catalog first, bundled library remains the local fallback", () => {

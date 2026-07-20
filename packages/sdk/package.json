@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/sdk",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "Headless, framework-neutral HyperFrames composition editing engine",
   "repository": {
     "type": "git",
@@ -15,22 +15,27 @@
   "sideEffects": false,
   "exports": {
     ".": {
+      "bun": "./src/index.ts",
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
     "./adapters/memory": {
+      "bun": "./src/adapters/memory.ts",
       "import": "./src/adapters/memory.ts",
       "types": "./src/adapters/memory.ts"
     },
     "./adapters/fs": {
+      "bun": "./src/adapters/fs.ts",
       "import": "./src/adapters/fs.ts",
       "types": "./src/adapters/fs.ts"
     },
     "./adapters/headless": {
+      "bun": "./src/adapters/headless.ts",
       "import": "./src/adapters/headless.ts",
       "types": "./src/adapters/headless.ts"
     },
     "./editing": {
+      "bun": "./src/editing/affordances.ts",
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
     }

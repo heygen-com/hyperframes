@@ -2924,6 +2924,7 @@ describe("base gsap.set (off-timeline global hold)", () => {
     });
     expect(script).toContain('gsap.set("#box"');
     expect(script).not.toContain('tl.set("#box"');
+    expect(script.indexOf('gsap.set("#box"')).toBeLessThan(script.indexOf("gsap.timeline"));
   });
 
   it("updates a global set in place, keeping it gsap.set", () => {

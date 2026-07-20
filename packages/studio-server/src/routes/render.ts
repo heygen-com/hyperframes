@@ -287,7 +287,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-            if (meta.status === "failed") status = "failed";
+            // A stale failed sidecar can remain after a retry succeeds. An
+            // existing output artifact is authoritative for the list view;
+            // don't present a downloadable render as failed solely because
+            // an earlier attempt left behind failed metadata.
+            if (meta.status === "failed" && !existsSync(fp)) status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
           } catch {
             /* ignore */

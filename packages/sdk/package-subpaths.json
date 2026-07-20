@@ -1,0 +1,35 @@
+{
+  "package": "@hyperframes/sdk",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./adapters/memory": {
+      "source": "./src/adapters/memory.ts",
+      "runtime": "./dist/adapters/memory.js",
+      "types": "./dist/adapters/memory.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./adapters/fs": {
+      "source": "./src/adapters/fs.ts",
+      "runtime": "./dist/adapters/fs.js",
+      "types": "./dist/adapters/fs.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./adapters/headless": {
+      "source": "./src/adapters/headless.ts",
+      "runtime": "./dist/adapters/headless.js",
+      "types": "./dist/adapters/headless.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./editing": {
+      "source": "./src/editing/affordances.ts",
+      "runtime": "./dist/editing/affordances.js",
+      "types": "./dist/editing/affordances.d.ts",
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

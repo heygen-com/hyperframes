@@ -1,5 +1,10 @@
 # Claude Design + HyperFrames (Template-First)
 
+> ⚠️ **Doing a "Send to HyperFrames" import (sending your design to HeyGen as a URL, not a downloaded ZIP)?**
+> **Use the Send-to guide instead:** https://raw.githubusercontent.com/heygen-com/hyperframes/main/docs/guides/claude-design-send-to-hyperframes.md
+>
+> This Template-First guide is for the **Download-ZIP** flow. Its authoring rules differ from Send-to, and following it for a Send-to import yields a low-fidelity result.
+
 Your medium is **HyperFrames compositions**: plain HTML + CSS + a paused GSAP timeline. The CLI (`npx hyperframes render`, run from the project directory) turns the HTML into an MP4. You author the HTML -- the user renders locally.
 
 **HyperFrames replaces your default video-artifact workflow.** Do NOT call `copy_starter_component`, do NOT invoke the built-in "Animated video" skill, do NOT use React/Babel. Plain HTML + GSAP only.

@@ -720,6 +720,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--strict-variables` | — | off | Fail render if any `--variables` key is undeclared or has a wrong type vs the composition's `data-composition-variables`. Without this flag, mismatches print as warnings and the render continues. |
     | `--browser-timeout` | seconds (0.001–86400) | 60 | Puppeteer page-navigation timeout for the entry HTML. Increase when heavy compositions (many videos, fonts, or asset requests) cannot reach `domcontentloaded` within the default 60 s. The flag takes **seconds**; the env fallback `PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS` takes **milliseconds**. This controls `page.goto` only — very heavy compositions may also need `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` and/or `PRODUCER_PLAYER_READY_TIMEOUT_MS` bumped (post-navigation `window.__hf` readiness has its own 45 s budget). |
     | `--protocol-timeout` | milliseconds (≥ 1000) | 300000 (5 min) | Puppeteer CDP protocol timeout — the per-call budget for `Runtime.callFunctionOn` seek/paint, `Page.captureScreenshot`, and other CDP round-trips. Raise on RAM-pressured hosts (≤ 8 GB), heavy-asset compositions (many videos + images), or when the render fails with `Runtime.callFunctionOn timed out` / `Target closed`. The default is auto-scaled per composition by output pixel area (a 4K comp bumps the ceiling proportionally, capped at 30 min); an explicit override sets the floor and disables scaling below it. Env fallback `PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS` (also **milliseconds**). |
+    | `--frames-cache-dir` | path or `off` / `none` / `false` / `0` | `<tmpdir>/hyperframes-extract-cache-<uid>` | Directory for the content-addressed extracted-frame cache. Relocate it off the system drive when the OS temp directory lives on a small partition — long renders can accumulate multi-GB of frames, and on Windows `%TEMP%` defaults to `C:` (reporter `ts=1784219488`, CLI 0.7.58, 15 GB laptop: extract cache exhausted C: mid-render). Pass an opt-out alias (`off`, `none`, `false`, `0`) to disable caching entirely; frames then extract into the render's `workDir` and are cleaned up when the render ends. Env fallback `HYPERFRAMES_EXTRACT_CACHE_DIR`. `hyperframes doctor` reports the effective directory + free space at that location. |
 
     CRF and target bitrate default to the `--quality` preset. Use `--crf` or `--video-bitrate` for fine-grained overrides; `RenderConfig.crf` and `RenderConfig.videoBitrate` accept the same overrides programmatically. Use `--video-frame-format png` when source videos are UI recordings, screen captures, or other color-sensitive clips that should avoid JPEG frame extraction.
 
@@ -1062,7 +1063,9 @@ hyperframes cloud list                          # browse recent renders
 
 #### `cloud render [<projectDir>]`
 
-End-to-end render: zips the project (excluding `.git`, `node_modules`, `dist`, `.next`, `coverage`, dotfiles), uploads it via `POST /v3/assets`, submits `POST /v3/hyperframes/renders`, polls `GET /v3/hyperframes/renders/{id}` until the render completes or fails, and streams the resulting video to disk.
+End-to-end render: zips the project (excluding root `renders`/`snapshots`, `.git`, `node_modules`, `dist`, `.next`, `coverage`, dotfiles, and project `.hyperframesignore` rules), uploads it through the direct-to-S3 asset flow, submits `POST /v3/hyperframes/renders`, polls `GET /v3/hyperframes/renders/{id}` until the render completes or fails, and streams the resulting video to disk.
+
+Use `hyperframes cloud render --dry-run` to inspect the compressed size and largest included files without authenticating, uploading, or starting a render. Project-specific `.hyperframesignore` rules use gitignore syntax and also apply to `hyperframes publish`; keep rules narrow because dynamically selected assets may not have obvious static references.
 
 Render parameters mirror the local `hyperframes render` UX where they overlap:
 
@@ -1079,6 +1082,7 @@ Render parameters mirror the local `hyperframes render` UX where they overlap:
 | `--strict-variables` | off | Fail when variables are undeclared or have the wrong type. |
 | `--title` | — | Free-text label echoed back in detail responses. |
 | `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the downloaded video. |
+| `--dry-run` | off | Build and inspect a local project zip without authenticating, uploading, or rendering. |
 
 Lifecycle / control flags:
 

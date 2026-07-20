@@ -28,6 +28,7 @@ import {
   beginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
+  pageContentExceedsCaptureHeight,
   pageScreenshotCapture,
   initTransparentBackground,
   shouldDefaultCaptureBeyondViewport,
@@ -54,6 +55,7 @@ import type {
   CaptureWarning,
   SubTimelineWaitOutcome,
 } from "../types.js";
+export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
 
@@ -2003,6 +2005,23 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await recordSessionInitTelemetry(session, initStart);
 
+    // Ground-truth-check the upstream captureBeyondViewport request (see
+    // pageContentExceedsCaptureHeight) now that the page is fully settled —
+    // downgrade it when the page doesn't actually overflow the requested
+    // capture height, since the beyond-viewport CDP path is otherwise pure
+    // downside (HF#2550: phantom duplicate content on SwiftShader) for
+    // content it was never needed for.
+    if (session.options.captureBeyondViewport) {
+      const needsBeyondViewport = await pageContentExceedsCaptureHeight(
+        page,
+        session.options.height,
+      );
+      if (!needsBeyondViewport) {
+        session.options.captureBeyondViewport = false;
+        logInitPhase("captureBeyondViewport downgraded: page content fits the capture viewport");
+      }
+    }
+
     // drawElement or transparent-background init — runs after page is fully ready.
     await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
@@ -3697,104 +3716,4 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     deBoundaryFrames: session.clipBoundaryFrames?.size ?? 0,
     deNcprFallbacks: session.deNcprFallbacks ?? 0,
   };
-}
-
-// ── Transient browser error classification ─────────────────────────────────
-// Puppeteer/Chrome can fail with transient errors that succeed on retry with a
-// fresh browser session. These are infrastructure-level failures (frame
-// detachment, connection drop, OOM kill, launch failure) — NOT composition bugs.
-
-const TRANSIENT_BROWSER_ERROR_PATTERNS = [
-  /Navigating frame was detached/i,
-  /Target closed/i,
-  /Session closed/i,
-  /browser has disconnected/i,
-  /Page crashed/i,
-  /Execution context was destroyed/i,
-  /Cannot find context with specified id/i,
-  /Failed to launch the browser process/i,
-  /Navigation timeout of \d+ ms exceeded/i,
-  /ECONNREFUSED/i,
-  // Chromium can briefly invalidate even a localhost connection when Windows
-  // reports an adapter/route change. A fresh capture session succeeds once the
-  // network stack settles, so treat this like the other bounded navigation
-  // retries instead of failing the render immediately.
-  /net::ERR_NETWORK_CHANGED/i,
-  // pollHfReady's own timeout — thrown when window.__renderReady never flips
-  // true within playerReadyTimeout. "Runtime ready: false" means init simply
-  // didn't finish in time (commonly a slow/contended host, e.g. several
-  // concurrent renders), which a fresh session usually clears on retry. This
-  // is distinct from the "Runtime ready: true" fast-fail case a few lines up
-  // in pollHfReady (no timeline + no data-duration) — that's a genuine
-  // authoring bug and intentionally NOT matched here, so it still fails fast.
-  /Composition has zero duration[\s\S]*Runtime ready: false/,
-];
-
-export function isTransientBrowserError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return TRANSIENT_BROWSER_ERROR_PATTERNS.some((pattern) => pattern.test(message));
-}
-
-// ── Memory-exhaustion classification ────────────────────────────────────────
-// A render can run the Node process (or a page-side allocation) out of memory
-// on an oversized composition — huge canvas, thousands of frames, or a very
-// large frame cache. These surface as cryptic V8 RangeErrors ("Set maximum
-// size exceeded", "Invalid array length"/"string length", "Array buffer
-// allocation failed") or a hard V8 heap-limit abort. They are NOT transient
-// (a retry re-hits the same ceiling) and NOT composition-logic bugs — they're
-// resource limits. Classify them so the caller can surface actionable guidance
-// (lower resolution / fps / duration, or enable low-memory mode) instead of a
-// raw RangeError.
-
-// Deliberately specific: each pattern is a distinct V8/Node allocation-failure
-// signature. We intentionally do NOT match a bare /out of memory/ — that
-// substring appears in benign browser-console noise (WebGL `CONTEXT_LOST … out
-// of memory`, GPU driver notes) that gets carried into the error path, and
-// misclassifying it would replace the real failure message with generic OOM
-// guidance.
-const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
-  /Set maximum size exceeded/i,
-  /Map maximum size exceeded/i,
-  /Invalid (?:array|string) length/i,
-  /Array buffer allocation failed/i,
-  /Cannot create a string longer than/i,
-  /Reached heap limit/i,
-  /JavaScript heap out of memory/i,
-];
-
-// The producer's deployed runtime is Bun (JavaScriptCore), not Node (V8) —
-// see `packages/gcp-cloud-run/Dockerfile`'s `CMD ["bun", "dist/server.js"]`.
-// JSC's own allocation-failure message for the equivalent single-oversized-
-// allocation RangeErrors above is the bare string "Out of memory" (verified:
-// `new Uint8Array(Number.MAX_SAFE_INTEGER)`, an unbounded `Set`, and
-// `"x".repeat(2**53)` all throw exactly this under Bun) — none of the V8
-// patterns above match it. This is exactly the substring the comment above
-// says NOT to match anywhere in the message (benign browser-console noise
-// like a WebGL `CONTEXT_LOST … out of memory` carries that phrase too), so
-// this checks the ENTIRE (trimmed) message equals it, not merely contains
-// it — a compound message with other text around the phrase still misses.
-const BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE = /^out of memory\.?$/i;
-
-// The parallel-DE capture path — the exact cohort the OOM-aware retry in
-// renderOrchestrator.ts targets — never reaches isMemoryExhaustionError with
-// a bare message: `executeParallelCapture`/`formatWorkerFailure`
-// (parallelCoordinator.ts) always wrap a worker's error as
-// "Worker N: <message>", optionally suffixed "; diagnostics: ..." and joined
-// with other failed workers' segments via "; ", all prefixed
-// "[Parallel] Capture failed: ". The exact-match check above is defeated by
-// that wrapping entirely (verified) — this pattern recovers the Bun OOM
-// signal by requiring "out of memory" appear immediately after "Worker N: "
-// and immediately before end-of-string, ";", or ".", i.e. as the WHOLE
-// worker-segment content, not merely somewhere inside it. This preserves the
-// exact-match property (no bare "out of memory" substring inside otherwise-
-// unrelated worker text, e.g. "Worker 2: WebGL context lost, out of memory
-// reported by driver" does NOT match) while surviving this codebase's own
-// error-flattening.
-const BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE = /\bworker \d+: out of memory\.?(?:;|$)/i;
-
-export function isMemoryExhaustionError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  if (BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim())) return true;
-  if (BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(message)) return true;
-  return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

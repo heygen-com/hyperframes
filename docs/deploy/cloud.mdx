@@ -71,9 +71,9 @@ The credential is **shared with the [`heygen` CLI](https://github.com/heygen-com
 ```
  Your machine                          HeyGen cloud
 ┌─────────────────────────┐          ┌─────────────────────────────────┐
-│ zip project             │ ──POST──▶│ /v3/assets                      │
-│ (excludes .git,         │  upload  │  → asset_id                     │
-│  node_modules, dist…)   │          │                                 │
+│ zip project             │ ──PUT───▶│ direct-to-S3 asset upload       │
+│ (.hyperframesignore +   │  upload  │  → asset_id                     │
+│  generated outputs)     │          │                                 │
 │                         │ ──POST──▶│ /v3/hyperframes/renders         │
 │                         │  submit  │  → render_id (queued)           │
 │                         │          │  Chromium + FFmpeg render       │
@@ -84,11 +84,32 @@ The credential is **shared with the [`heygen` CLI](https://github.com/heygen-com
 
 1. **Resolve the project** — a local directory (default `.`), or skip the upload with `--asset-id` / `--url`.
 2. **Auto-detect the aspect ratio** from the entry HTML's `data-width`/`data-height` so you rarely set it by hand.
-3. **Zip** the project (same ignore set as `hyperframes publish`).
-4. **Upload** the zip to `POST /v3/assets`, yielding an `asset_id`.
+3. **Zip** the project (same ignore set as `hyperframes publish`, including `.hyperframesignore`).
+4. **Upload** the zip through the direct-to-S3 asset flow, yielding an `asset_id`.
 5. **Submit** the render to `POST /v3/hyperframes/renders`.
 6. **Poll** `GET /v3/hyperframes/renders/{id}` until it completes or fails (skip with `--no-wait`).
 7. **Download** the signed video URL to disk.
+
+## Control archive size
+
+Hosted cloud project uploads are limited to 200 MB. HyperFrames automatically excludes root-level `renders/` and `snapshots/` plus development-only paths such as `.git`, `node_modules`, `dist`, `.next`, `coverage`, and dotfiles.
+
+Use a gitignore-style `.hyperframesignore` at the project root for additional generated or intermediate files that are not needed at render time:
+
+```gitignore
+/snapshots2/
+/exports/
+/assets/source-master.mp4
+```
+
+Inspect the exact archive without authenticating, uploading, or starting a render:
+
+```bash
+hyperframes cloud render . --dry-run
+hyperframes cloud render . --dry-run --json
+```
+
+The dry run reports compressed size, file count, and the ten largest included files. Rules also apply to `hyperframes publish`. Avoid broad patterns such as `assets/`: dynamically selected media may not appear as an obvious static HTML reference.
 
 ## Render options
 
@@ -103,6 +124,7 @@ The most-used flags — see the [CLI reference](/packages/cli#hyperframes-cloud)
 | `--aspect-ratio` | auto | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width`/`data-height`; for `--asset-id`/`--url` it defaults to `16:9` unless set. |
 | `--composition` / `-c` | `index.html` | Entry HTML file inside the zip. |
 | `--output` / `-o` | `renders/<render_id>.<ext>` | Local destination for the download. |
+| `--dry-run` | off | Build and inspect a local project zip without authenticating, uploading, or rendering. |
 
 ```bash
 # Pick a composition and an output path.

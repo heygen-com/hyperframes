@@ -1,28 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { reportHeygenFailure } from "./heygen-cli.mjs";
+import { HEYGEN_CLIENT_SOURCE_ARGV, runHeygenJson } from "./heygen-cli.mjs";
 
 // Voice / TTS generation via the HeyGen CLI — the only external CLI media-use
 // shells (CLI-only invariant: media-use holds no keys; the CLI owns auth).
 // Flags verified against `heygen voice speech create --help` (v0.3.0).
-
-function runJson(bin, argv, label) {
-  let out;
-  try {
-    out = execFileSync(bin, argv, {
-      encoding: "utf8",
-      timeout: 120000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch (err) {
-    reportHeygenFailure(err, `${bin} ${label}`);
-    return null;
-  }
-  try {
-    return JSON.parse(out);
-  } catch {
-    return null;
-  }
-}
 
 function result(url, duration, provider, intent) {
   if (!url) return null;
@@ -41,11 +21,13 @@ function result(url, duration, provider, intent) {
 // HeyGen TTS requires a starfish-engine voice. Default to the first one the
 // catalog returns (deterministic order); pass ctx.voiceId to override.
 // ponytail: listed once per process; the resolved asset is frozen + cached after
-// first use, so the network list only happens on a cache miss.
+// first use, so the network list only happens on a cache miss. Cache only a
+// truthy id -- a transient list failure must not poison the cache with `null`
+// and permanently disable TTS for the rest of the process.
 let cachedVoiceId;
 function defaultVoiceId() {
-  if (cachedVoiceId !== undefined) return cachedVoiceId;
-  const j = runJson(
+  if (cachedVoiceId) return cachedVoiceId;
+  const j = runHeygenJson(
     "heygen",
     ["voice", "list", "--engine", "starfish", "--limit", "1"],
     "voice list",
@@ -57,9 +39,18 @@ function defaultVoiceId() {
 export async function heygenTtsGenerate(intent, ctx) {
   const voiceId = ctx?.voiceId || defaultVoiceId();
   if (!voiceId) return null;
-  const p = runJson(
+  const p = runHeygenJson(
     "heygen",
-    ["voice", "speech", "create", "--text", intent, "--voice-id", voiceId],
+    [
+      ...HEYGEN_CLIENT_SOURCE_ARGV,
+      "voice",
+      "speech",
+      "create",
+      "--text",
+      intent,
+      "--voice-id",
+      voiceId,
+    ],
     "tts",
   );
   return result(p?.data?.audio_url, p?.data?.duration, "heygen.tts", intent);

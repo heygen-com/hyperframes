@@ -258,6 +258,13 @@ export {
   type ClipTimingDiagnosticCode,
   type ClipTimingUpdate,
 } from "./compositionContract.js";
+// Also exposed via the ./runtime/start-resolver subpath. This root re-export
+// additionally makes tsc EMIT dist/runtime/startResolver.js: src/runtime is
+// excluded from the tsconfig include set, so runtime files only reach dist
+// when an included module imports them — without this line the subpath's
+// publishConfig entry points at a file the pack doesn't contain
+// (verify:packed-manifests catches exactly that).
+export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 
 // Variable validation (CLI / tooling-side)
 export {

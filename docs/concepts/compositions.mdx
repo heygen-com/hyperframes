@@ -43,6 +43,8 @@ You can embed one composition inside another in two ways: loading from an extern
       data-composition-id="intro-anim"
       data-composition-src="compositions/intro-anim.html"
       data-start="0"
+      data-duration="4"
+      data-playback-start="0"
       data-track-index="3"
     ></div>
     ```
@@ -68,6 +70,8 @@ You can embed one composition inside another in two ways: loading from an extern
       </div>
     </template>
     ```
+
+    `data-playback-start` selects the child timeline time shown when the host begins. It defaults to `0`. A left trim or split advances this source-time offset by the elapsed host time multiplied by `data-playback-rate`, so the nested animation remains continuous instead of restarting.
   </Tab>
   <Tab title="Inline">
     Define a nested composition directly inside the parent. This is simpler for one-off compositions that do not need to be reused.

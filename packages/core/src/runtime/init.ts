@@ -20,6 +20,8 @@ import {
 import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  readElementPlaybackRate,
+  readElementPlaybackStart,
   refreshRuntimeMediaCache,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
@@ -40,7 +42,7 @@ import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorG
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
-import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../studio-api/helpers/draftMarkers";
+import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
 import type {
   RuntimeDeterministicAdapter,
   RuntimeJson,
@@ -1593,6 +1595,12 @@ export function initSandboxRuntimeModular(): void {
 
   let metadataRebindDebounceTimerId: number | null = null;
   let metadataRebindApplied = false;
+  // Flips true on the first renderSeek call — the render/producer capture
+  // protocol's signal that it has started deterministically driving frames.
+  // One-way for this page lifetime; every producer render gets a fresh runtime.
+  // See scheduleMetadataDurationHydration for why this gates the async
+  // metadata rebind off once set.
+  let renderCaptureSeekStarted = false;
   const metadataBoundMedia = new Set<HTMLMediaElement>();
   const volumeKeyframeCache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
 
@@ -1604,6 +1612,23 @@ export function initSandboxRuntimeModular(): void {
     metadataRebindDebounceTimerId = window.setTimeout(() => {
       if (state.tornDown) return;
       metadataRebindDebounceTimerId = null;
+      // The render/producer capture protocol drives frames deterministically
+      // via renderSeek — once it has claimed the timeline, an async
+      // loadedmetadata/durationchange rebind racing that loop is exactly the
+      // "double composite" hazard from HF#2550: this handler runs off its own
+      // debounced browser-side timer, uncoordinated with the capture loop's
+      // own seeks, so a rebind mid-capture can reflow the DOM between one
+      // BeginFrame call and the next. Render-mode duration correction has
+      // already happened deterministically during the probe stage before
+      // capture starts, so once frames are being driven there is nothing left
+      // for this self-correction to usefully do.
+      //
+      // renderSeek is also the entrypoint Studio's own preview iframe falls
+      // back to for overhanging timelines (useTimelinePlayer), so gate on
+      // both signals — renderCaptureSeekStarted alone would silently disable
+      // this self-correction for a live Studio scrub too, where duration
+      // hasn't been pre-resolved by a probe stage and still needs it.
+      if (renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
@@ -2254,6 +2279,7 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     renderSeek: (timeSeconds, options) => {
+      renderCaptureSeekStarted = true;
       const quantized = quantizeTimeToFrame(
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,
@@ -2345,118 +2371,6 @@ export function initSandboxRuntimeModular(): void {
     duration: player.getDuration(),
     compositionId:
       document.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? null,
-  });
-
-  state.controlBridgeHandler = installRuntimeControlBridge({
-    onPlay: () => {
-      player.play();
-      emitAnalyticsEvent("composition_played", { time: player.getTime() });
-    },
-    onPause: () => {
-      player.pause();
-      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
-    },
-    onStopMedia: () => {
-      webAudio.stopAll();
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
-      }
-    },
-    onSeek: (timeSeconds, _seekMode) => {
-      player.seek(timeSeconds);
-      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
-    },
-    onSetMuted: (muted) => {
-      state.bridgeMuted = muted;
-      const effective = muted || state.mediaOutputMuted;
-      webAudio.setMuted(effective);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective || el.defaultMuted;
-      }
-    },
-    onSetVolume: (volume) => {
-      state.bridgeVolume = volume;
-      webAudio.setVolume(volume);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        const parsed = parseFloat(el.dataset.volume ?? "");
-        const clipVolume = Number.isFinite(parsed) ? parsed : 1;
-        el.volume = clipVolume * volume;
-      }
-    },
-    onSetMediaOutputMuted: (muted) => {
-      state.mediaOutputMuted = muted;
-      const effective = muted || state.bridgeMuted;
-      webAudio.setMuted(effective);
-      const mediaEls = document.querySelectorAll("video, audio");
-      for (const el of mediaEls) {
-        if (!(el instanceof HTMLMediaElement)) continue;
-        el.muted = effective || el.defaultMuted;
-      }
-    },
-    onSetNativeMediaSyncDisabled: (disabled) => {
-      if (state.nativeMediaSyncDisabled === disabled) return;
-      state.nativeMediaSyncDisabled = disabled;
-      state.mediaForceSyncNextTick = true;
-      if (disabled) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-      } else {
-        syncMediaForCurrentState();
-      }
-    },
-    onSetWebAudioMediaDisabled: (disabled) => {
-      if (state.webAudioMediaDisabled === disabled) return;
-      state.webAudioMediaDisabled = disabled;
-      state.mediaForceSyncNextTick = true;
-      if (disabled) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-        syncMediaForCurrentState();
-      } else {
-        syncMediaForCurrentState();
-      }
-    },
-    onSetPlaybackRate: (rate) => {
-      applyPlaybackRate(rate);
-      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
-      applyWebAudioRate();
-    },
-    onSetRootDuration: growRootDurationLive,
-    onSetColorGrading: (target, grading) => {
-      colorGrading.setGrading(target, grading);
-    },
-    onSetColorGradingCompare: (target, compare) => {
-      colorGrading.setCompare(target, compare);
-    },
-    onTick: () => {
-      if (state.tornDown || !clock.isPlaying()) return;
-      const t = clock.now();
-      state.currentTime = t;
-      seekTimelineAndAdapters(t);
-      if (clock.reachedEnd()) {
-        webAudio.stopAll();
-        clock.detachAudioSource();
-        clock.pause();
-        state.isPlaying = false;
-        const dur = clock.getDuration();
-        if (Number.isFinite(dur)) {
-          clock.seek(dur);
-          state.currentTime = dur;
-          seekTimelineAndAdapters(dur);
-        }
-        runAdapters("pause");
-        syncMediaForCurrentState();
-        postState(true);
-      }
-    },
-    onEnablePickMode: () => picker.enablePickMode(),
-    onDisablePickMode: () => picker.disablePickMode(),
-    getCanonicalFps: () => state.canonicalFps,
   });
 
   state.deterministicAdapters = [
@@ -2632,17 +2546,15 @@ export function initSandboxRuntimeModular(): void {
       if (!node) continue;
       const start = resolveStartForElement(node, 0);
       if (!Number.isFinite(start)) continue;
-      const authoredDuration = resolveDurationForElement(node, {
-        includeAuthoredTimingAttrs: true,
-      });
       const timelineDuration = getTimelineDurationSeconds(timeline);
-      const duration =
-        authoredDuration != null && authoredDuration > 0 ? authoredDuration : timelineDuration;
+      const sourceTime =
+        readElementPlaybackStart(node) +
+        Math.max(0, timeSeconds - start) * readElementPlaybackRate(node);
       const localTime = Math.max(
         0,
-        duration != null && duration > 0
-          ? Math.min(duration, timeSeconds - start)
-          : timeSeconds - start,
+        timelineDuration != null && timelineDuration > 0
+          ? Math.min(timelineDuration, sourceTime)
+          : sourceTime,
       );
       seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline", options);
     }
@@ -2732,10 +2644,10 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
-  const seekTimelineAndAdapters = (
+  function seekTimelineAndAdapters(
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
-  ) => {
+  ) {
     const tl = state.capturedTimeline;
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
@@ -2785,15 +2697,13 @@ export function initSandboxRuntimeModular(): void {
       } catch (err) {
         swallow("runtime.init.transport.seek", err);
       }
-      // Sibling timelines (registered in __timelines but not nested under
-      // the root) are paused alongside the master. We do NOT seek them to
-      // absolute position `t` here — child timelines nested under the root
-      // are already propagated via tl.totalTime(), and seeking them again
-      // at absolute `t` would clobber their offset-relative position.
-      // Play/pause propagation for siblings happens in the player.play()
-      // and player.pause() overrides via the adapter layer.
-    } else {
-      seekStandaloneRegisteredTimelines(t, opts);
+      // Root propagation cannot represent an authored child source offset or
+      // playback rate. Re-seek registered children below with their host's
+      // explicit source-time contract.
+    }
+    seekStandaloneRegisteredTimelines(t, opts);
+    if (tl && opts?.activateChildren) {
+      activateSiblingTimelines(tl);
     }
     for (const adapter of state.deterministicAdapters) {
       if (adapter.name === "gsap" && tl) continue;
@@ -2803,7 +2713,7 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
-  };
+  }
 
   // True while the Studio is mid-drag on an element (the gesture marker is
   // stamped on the gestured element for the duration of the drag). During a
@@ -3039,7 +2949,7 @@ export function initSandboxRuntimeModular(): void {
   // rescaled in place; but a bounded source's window was baked into start()'s
   // duration at its prior rate and can't be rescaled, so when one is active we
   // stopAll()+reschedule at the new rate to keep trimmed clips ending on time.
-  const applyWebAudioRate = () => {
+  function applyWebAudioRate() {
     const changed = webAudio.setRate(state.playbackRate);
     if (
       changed &&
@@ -3052,7 +2962,7 @@ export function initSandboxRuntimeModular(): void {
       webAudio.stopAll();
       scheduleWebAudioForActiveClips();
     }
-  };
+  }
 
   // Sync clock duration from any captured timeline
   if (state.capturedTimeline) {
@@ -3067,6 +2977,123 @@ export function initSandboxRuntimeModular(): void {
   state.transportRafId = window.requestAnimationFrame(transportTick);
   postTimeline();
   postState(true);
+
+  // Wire the control bridge LAST — after every transport helper its handlers
+  // dispatch to (seekTimelineAndAdapters, applyWebAudioRate, ...) is declared.
+  // The runtime's external control surface only goes live once all of its
+  // dependencies exist, so a load-time seek / set-playback-rate can never reach
+  // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  state.controlBridgeHandler = installRuntimeControlBridge({
+    onPlay: () => {
+      player.play();
+      emitAnalyticsEvent("composition_played", { time: player.getTime() });
+    },
+    onPause: () => {
+      player.pause();
+      emitAnalyticsEvent("composition_paused", { time: player.getTime() });
+    },
+    onStopMedia: () => {
+      webAudio.stopAll();
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (el instanceof HTMLMediaElement && !el.paused) el.pause();
+      }
+    },
+    onSeek: (timeSeconds, _seekMode) => {
+      player.seek(timeSeconds);
+      emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
+    },
+    onSetMuted: (muted) => {
+      state.bridgeMuted = muted;
+      const effective = muted || state.mediaOutputMuted;
+      webAudio.setMuted(effective);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        el.muted = effective || el.defaultMuted;
+      }
+    },
+    onSetVolume: (volume) => {
+      state.bridgeVolume = volume;
+      webAudio.setVolume(volume);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        const parsed = parseFloat(el.dataset.volume ?? "");
+        const clipVolume = Number.isFinite(parsed) ? parsed : 1;
+        el.volume = clipVolume * volume;
+      }
+    },
+    onSetMediaOutputMuted: (muted) => {
+      state.mediaOutputMuted = muted;
+      const effective = muted || state.bridgeMuted;
+      webAudio.setMuted(effective);
+      const mediaEls = document.querySelectorAll("video, audio");
+      for (const el of mediaEls) {
+        if (!(el instanceof HTMLMediaElement)) continue;
+        el.muted = effective || el.defaultMuted;
+      }
+    },
+    onSetNativeMediaSyncDisabled: (disabled) => {
+      if (state.nativeMediaSyncDisabled === disabled) return;
+      state.nativeMediaSyncDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetWebAudioMediaDisabled: (disabled) => {
+      if (state.webAudioMediaDisabled === disabled) return;
+      state.webAudioMediaDisabled = disabled;
+      state.mediaForceSyncNextTick = true;
+      if (disabled) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        syncMediaForCurrentState();
+      } else {
+        syncMediaForCurrentState();
+      }
+    },
+    onSetPlaybackRate: (rate) => {
+      applyPlaybackRate(rate);
+      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
+      applyWebAudioRate();
+    },
+    onSetRootDuration: growRootDurationLive,
+    onSetColorGrading: (target, grading) => {
+      colorGrading.setGrading(target, grading);
+    },
+    onSetColorGradingCompare: (target, compare) => {
+      colorGrading.setCompare(target, compare);
+    },
+    onTick: () => {
+      if (state.tornDown || !clock.isPlaying()) return;
+      const t = clock.now();
+      state.currentTime = t;
+      seekTimelineAndAdapters(t);
+      if (clock.reachedEnd()) {
+        webAudio.stopAll();
+        clock.detachAudioSource();
+        clock.pause();
+        state.isPlaying = false;
+        const dur = clock.getDuration();
+        if (Number.isFinite(dur)) {
+          clock.seek(dur);
+          state.currentTime = dur;
+          seekTimelineAndAdapters(dur);
+        }
+        runAdapters("pause");
+        syncMediaForCurrentState();
+        postState(true);
+      }
+    },
+    onEnablePickMode: () => picker.enablePickMode(),
+    onDisablePickMode: () => picker.disablePickMode(),
+    getCanonicalFps: () => state.canonicalFps,
+  });
 
   const teardown = () => {
     if (state.tornDown) return;

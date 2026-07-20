@@ -308,6 +308,24 @@ describe("resolveZoneDropPlacement (the whole drop decision, no same-track overl
     ).toEqual({ track: 2, insertRow: null });
   });
 
+  it("crosses an occupied aim instead of snapping the dragged clip back to its origin", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("a", 0, 0, 5), el("b", 1, 0, 5), el("x", 2, 0, 5)],
+        desiredTrack: 1,
+      }),
+    ).toEqual({ track: 1, insertRow: 1 });
+
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("x", 0, 0, 5), el("b", 1, 0, 5), el("a", 2, 0, 5)],
+        desiredTrack: 1,
+      }),
+    ).toEqual({ track: 1, insertRow: 2 });
+  });
+
   it("auto-creates a new track when EVERY lane in the zone is occupied at that time", () => {
     expect(
       resolveZoneDropPlacement({

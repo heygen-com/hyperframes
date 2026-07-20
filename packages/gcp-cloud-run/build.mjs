@@ -11,6 +11,7 @@
  *   ./server  (the Cloud Run runtime entry — what the Dockerfile runs)
  *   ./sdk     (client-side helpers — GCS + Workflows clients only, no
  *             chromium/puppeteer)
+ *   ./terraform (stable resolver for the packaged Terraform module)
  *
  * All production deps are kept external so consumers (and the container
  * image) resolve them via their own node_modules.
@@ -46,6 +47,7 @@ await Promise.all([
   build({ ...sharedOpts, entryPoints: ["src/index.ts"], outfile: "dist/index.js" }),
   build({ ...sharedOpts, entryPoints: ["src/server.ts"], outfile: "dist/server.js" }),
   build({ ...sharedOpts, entryPoints: ["src/sdk/index.ts"], outfile: "dist/sdk/index.js" }),
+  build({ ...sharedOpts, entryPoints: ["src/terraform.ts"], outfile: "dist/terraform.js" }),
 ]);
 
 // esbuild doesn't emit .d.ts. tsc does, with a build-only tsconfig that
@@ -55,4 +57,4 @@ await Promise.all([
 // violate rootDir).
 execSync("tsc -p tsconfig.build.json --emitDeclarationOnly", { stdio: "inherit" });
 
-console.log("[Build] Complete: dist/{index,server,sdk/index}.js + .d.ts");
+console.log("[Build] Complete: dist/{index,server,sdk/index,terraform}.js + .d.ts");

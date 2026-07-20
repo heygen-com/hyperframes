@@ -62,6 +62,7 @@ import {
 } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { updateJobStatus } from "../shared.js";
+import type { SdrDiskCapturePlan } from "../capturePlan.js";
 
 export interface CaptureStageInput {
   fileServer: FileServerHandle;
@@ -76,23 +77,11 @@ export interface CaptureStageInput {
    */
   totalFrames: number;
   cfg: EngineConfig;
-  /**
-   * Capture-mode flag threaded from `compileStage`. The stage derives a
-   * local copy of `cfg` with this value applied to `forceScreenshot`
-   * before any engine call, so the caller-owned `cfg` is never mutated.
-   * The sequencer may override `compileResult.forceScreenshot` after a
-   * BeginFrame calibration timeout — passing the override through this
-   * parameter keeps the decision visible at the call site instead of
-   * hiding it inside a shared mutable config.
-   */
-  forceScreenshot: boolean;
+  /** Immutable route selected by the sequencer. */
+  plan: SdrDiskCapturePlan;
   log: ProducerLogger;
-  /** Initial worker count from `resolveRenderWorkerCount`; adaptive retry may reduce it. */
-  workerCount: number;
   /** Reused for the sequential path's first session if non-null. */
   probeSession: CaptureSession | null;
-  /** True for webm / mov / png-sequence (controls capture format + extension). */
-  needsAlpha: boolean;
   /** Mutated in place — each parallel retry attempt is appended. */
   captureAttempts: CaptureAttemptSummary[];
   /**
@@ -154,7 +143,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     job,
     totalFrames,
     cfg,
-    forceScreenshot,
+    plan,
     log,
     captureAttempts,
     buildCaptureOptions,
@@ -162,17 +151,18 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     abortSignal,
     assertNotAborted,
     onProgress,
-    needsAlpha,
     frameRange,
     dedupPerfs,
   } = input;
-  let { workerCount, probeSession } = input;
+  let { probeSession } = input;
+  let { workerCount } = plan;
+  const { forceScreenshot, needsAlpha } = plan;
   let lastBrowserConsole: string[] = [];
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
   // caller-owned `cfg`. The sequencer threads the resolved value via the
-  // explicit parameter; this keeps the engine-facing config a pure
+  // immutable plan; this keeps the engine-facing config a pure
   // pass-through.
   const captureCfg: EngineConfig =
     cfg.forceScreenshot === forceScreenshot ? cfg : { ...cfg, forceScreenshot };

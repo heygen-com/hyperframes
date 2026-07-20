@@ -106,13 +106,13 @@ describe("manual editing availability", () => {
     expect(resolveStudioBooleanEnvFlag({ UNKNOWN: "maybe" }, ["UNKNOWN"], false)).toBe(false);
   });
 
-  it("defaults the flat inspector flag to false and honors an explicit override", async () => {
-    const off = await loadAvailabilityWithEnv({});
-    expect(off.STUDIO_FLAT_INSPECTOR_ENABLED).toBe(false);
-
-    const on = await loadAvailabilityWithEnv({
-      VITE_STUDIO_FLAT_INSPECTOR_ENABLED: "true",
-    });
+  it("defaults the flat inspector flag to true and honors an explicit override", async () => {
+    const on = await loadAvailabilityWithEnv({});
     expect(on.STUDIO_FLAT_INSPECTOR_ENABLED).toBe(true);
+
+    const off = await loadAvailabilityWithEnv({
+      VITE_STUDIO_FLAT_INSPECTOR_ENABLED: "false",
+    });
+    expect(off.STUDIO_FLAT_INSPECTOR_ENABLED).toBe(false);
   });
 });

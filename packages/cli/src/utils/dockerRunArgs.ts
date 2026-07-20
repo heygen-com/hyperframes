@@ -66,6 +66,10 @@ export interface DockerRenderOptions {
    * `--browser-timeout` flag).
    */
   pageNavigationTimeoutMs?: number;
+  /** CDP protocol timeout in milliseconds. */
+  protocolTimeoutMs?: number;
+  /** Player readiness timeout in milliseconds. */
+  playerReadyTimeoutMs?: number;
 }
 
 /**
@@ -153,6 +157,12 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.experimentalFastCapture ? ["--experimental-fast-capture"] : []),
     ...(options.pageNavigationTimeoutMs != null
       ? ["--browser-timeout", String(options.pageNavigationTimeoutMs / 1000)]
+      : []),
+    ...(options.protocolTimeoutMs != null
+      ? ["--protocol-timeout", String(options.protocolTimeoutMs)]
+      : []),
+    ...(options.playerReadyTimeoutMs != null
+      ? ["--player-ready-timeout", String(options.playerReadyTimeoutMs)]
       : []),
   ];
 }

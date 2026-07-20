@@ -96,6 +96,10 @@ export interface TimelinePaneProps {
     blockName: string,
     placement: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
+  onCompositionDrop?: (
+    sourcePath: string,
+    placement: Pick<TimelineElement, "start" | "track">,
+  ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
 }
@@ -109,6 +113,7 @@ export function TimelinePane({
   onDeleteElement,
   onAssetDrop,
   onBlockDrop,
+  onCompositionDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
 }: TimelinePaneProps) {
@@ -273,6 +278,7 @@ export function TimelinePane({
             onDeleteElement={handleDeleteElement}
             onAssetDrop={onAssetDrop}
             onBlockDrop={onBlockDrop}
+            onCompositionDrop={onCompositionDrop}
             onMoveElement={handleMoveElement}
             onMoveElements={handleMoveElements}
             onResizeElement={handleResizeElement}

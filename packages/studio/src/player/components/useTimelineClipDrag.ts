@@ -77,6 +77,7 @@ interface UseTimelineClipDragInput {
    */
   readZIndex?: (element: TimelineElement) => number;
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
+  refreshAfterLaneMove?: () => void;
 }
 
 export function useTimelineClipDrag({
@@ -93,6 +94,7 @@ export function useTimelineClipDrag({
   setRangeSelectionRef,
   readZIndex,
   onStackingPatches,
+  refreshAfterLaneMove,
 }: UseTimelineClipDragInput) {
   const updateElement = usePlayerStore((s) => s.updateElement);
   const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
@@ -213,6 +215,8 @@ export function useTimelineClipDrag({
   readZIndexRef.current = readZIndex;
   const onStackingPatchesRef = useRef(onStackingPatches);
   onStackingPatchesRef.current = onStackingPatches;
+  const refreshAfterLaneMoveRef = useRef(refreshAfterLaneMove);
+  refreshAfterLaneMoveRef.current = refreshAfterLaneMove;
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{
@@ -499,6 +503,7 @@ export function useTimelineClipDrag({
         // deps (Timeline.tsx). Absent → commitDraggedClipMove skips the z-sync.
         readZIndex: readZIndexRef.current,
         onStackingPatches: onStackingPatchesRef.current,
+        refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
       });
     };
 

@@ -25,6 +25,7 @@ export interface TimelineElement {
   id: string;
   label?: string;
   key?: string;
+  kind?: ClipManifestClip["kind"];
   tag: string;
   start: number;
   duration: number;
@@ -82,8 +83,8 @@ export interface TimelineElement {
    * the child's local (sourceFile-relative) time. Works at any nesting depth.
    */
   expandedParentStart?: number;
+  expandedHostKey?: string;
 }
-
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
 

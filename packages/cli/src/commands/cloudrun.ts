@@ -13,10 +13,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { defineCommand } from "citty";
 import { type CanvasResolution } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
@@ -84,6 +83,35 @@ interface StackState {
   bucketName: string;
   serviceUrl: string;
   workflowId: string;
+}
+
+type CloudRunAdapter = typeof import("@hyperframes/gcp-cloud-run/sdk") &
+  typeof import("@hyperframes/gcp-cloud-run/terraform");
+let cloudRunAdapterPromise: Promise<CloudRunAdapter> | undefined;
+
+function loadCloudRunAdapter(): Promise<CloudRunAdapter> {
+  cloudRunAdapterPromise ??= Promise.all([
+    import("@hyperframes/gcp-cloud-run/sdk"),
+    import("@hyperframes/gcp-cloud-run/terraform"),
+  ]).then(([sdk, terraform]) => ({ ...sdk, ...terraform }));
+  return cloudRunAdapterPromise;
+}
+
+export function isMissingCloudRunAdapterError(error: unknown): boolean {
+  return (
+    (error as NodeJS.ErrnoException)?.code === "ERR_MODULE_NOT_FOUND" &&
+    normalizeErrorMessage(error).includes("@hyperframes/gcp-cloud-run")
+  );
+}
+
+export function missingCloudRunAdapterMessage(subcommand: string): string {
+  return (
+    `${c.error("@hyperframes/gcp-cloud-run is not installed.")} The ${c.accent(`hyperframes cloudrun ${subcommand}`)} command needs it at runtime.\n` +
+    `Install it alongside the CLI:\n` +
+    `  ${c.accent("npm install -g @hyperframes/gcp-cloud-run")}\n` +
+    `Or, for an opt-in project setup:\n` +
+    `  ${c.accent("npm install @hyperframes/gcp-cloud-run")}`
+  );
 }
 
 export default defineCommand({
@@ -202,6 +230,25 @@ export default defineCommand({
       console.log(HELP);
       return;
     }
+    const verbsNeedingAdapter = new Set([
+      "deploy",
+      "sites",
+      "render",
+      "render-batch",
+      "progress",
+      "destroy",
+    ]);
+    if (verbsNeedingAdapter.has(subcommand)) {
+      try {
+        await loadCloudRunAdapter();
+      } catch (error) {
+        if (isMissingCloudRunAdapterError(error)) {
+          console.error(missingCloudRunAdapterMessage(subcommand));
+          process.exit(1);
+        }
+        throw error;
+      }
+    }
     switch (subcommand) {
       case "deploy":
         return runDeploy(args);
@@ -264,13 +311,6 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as Partial<T>;
 }
 
-/** Resolve the Terraform module dir shipped with @hyperframes/gcp-cloud-run. */
-function terraformDir(): string {
-  const require = createRequire(import.meta.url);
-  const pkgJson = require.resolve("@hyperframes/gcp-cloud-run/package.json");
-  return join(dirname(pkgJson), "terraform");
-}
-
 function run(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): void {
   const res = spawnSync(cmd, cmdArgs, { stdio: "inherit", cwd: opts.cwd });
   if (res.status !== 0) {
@@ -288,7 +328,7 @@ function capture(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): s
 // ── deploy ──────────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
-function runDeploy(args: Record<string, unknown>): void {
+async function runDeploy(args: Record<string, unknown>): Promise<void> {
   const project = args.project as string | undefined;
   if (!project) {
     console.error("[cloudrun deploy] --project <gcp-project-id> is required.");
@@ -296,7 +336,8 @@ function runDeploy(args: Record<string, unknown>): void {
   }
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
-  const tfDir = terraformDir();
+  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const tfDir = getTerraformModuleDir();
   const repoRoot = findRepoRoot(tfDir);
 
   console.log(`→ Enabling required APIs on ${project}`);
@@ -464,7 +505,7 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     process.exit(1);
   }
   const state = readState(args);
-  const { deploySite } = await import("@hyperframes/gcp-cloud-run/sdk");
+  const { deploySite } = await loadCloudRunAdapter();
   const handle = await deploySite({
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
@@ -507,7 +548,7 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const variables = resolveAndValidateVariables(args, resolve(projectDir));
   const config = buildRenderConfig(args, fps, width, height, variables);
 
-  const { renderToCloudRun, getRenderProgress } = await import("@hyperframes/gcp-cloud-run/sdk");
+  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
     config: config as Parameters<typeof renderToCloudRun>[0]["config"],
@@ -562,7 +603,7 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun progress] usage: hyperframes cloudrun progress <executionName>");
     process.exit(1);
   }
-  const { getRenderProgress } = await import("@hyperframes/gcp-cloud-run/sdk");
+  const { getRenderProgress } = await loadCloudRunAdapter();
   const progress = await getRenderProgress({ executionName });
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
@@ -638,7 +679,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
   const state = readState(args);
   const maxConcurrent =
     parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
-  const { deploySite, renderToCloudRun } = await import("@hyperframes/gcp-cloud-run/sdk");
+  const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
 
   // Upload the project once; every entry reuses the same content-addressed
   // site handle so the tar+upload cost is paid a single time.
@@ -724,8 +765,9 @@ function parseBatchFile(path: string): BatchEntry[] {
 // ── destroy ──────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
-function runDestroy(args: Record<string, unknown>): void {
-  const tfDir = terraformDir();
+async function runDestroy(args: Record<string, unknown>): Promise<void> {
+  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const tfDir = getTerraformModuleDir();
   const state = existsSync(statePath())
     ? (JSON.parse(readFileSync(statePath(), "utf8")) as Partial<StackState>)
     : {};

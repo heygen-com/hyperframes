@@ -2074,6 +2074,105 @@ export function updateArcSegmentInScript(
   return ms.toString();
 }
 
+function hasCubicSegments(segments: ArcPathSegment[]): boolean {
+  return segments.some((segment) => segment.cp1 != null || segment.cp2 != null);
+}
+
+function writeMotionPathValue(
+  script: string,
+  target: ParsedGsapAcornForWrite["located"][number],
+  waypoints: Array<{ x: number; y: number }>,
+  segments: ArcPathSegment[],
+  autoRotate: boolean | number,
+): string {
+  const motionPath = findPropertyNode(target.call.varsArg, "motionPath");
+  if (!motionPath) return script;
+  const code = buildMotionPathObjectCode({ waypoints, segments, autoRotate });
+  const ms = new MagicString(script);
+  ms.overwrite(motionPath.value.start, motionPath.value.end, code);
+  return ms.toString();
+}
+
+export function updateMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  pointIndex: number,
+  point: { x: number; y: number },
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  if (!target?.animation.arcPath?.enabled) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (waypoints.length < 2 || pointIndex < 0 || pointIndex >= waypoints.length) return script;
+  const next = waypoints.map((waypoint, index) => (index === pointIndex ? { ...point } : waypoint));
+  return writeMotionPathValue(
+    script,
+    target,
+    next,
+    target.animation.arcPath.segments,
+    target.animation.arcPath.autoRotate,
+  );
+}
+
+export function addMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+  point: { x: number; y: number },
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  const arc = target?.animation.arcPath;
+  if (!target || !arc?.enabled || hasCubicSegments(arc.segments)) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (index < 1 || index > waypoints.length - 1) return script;
+  const segments = [...arc.segments];
+  waypoints.splice(index, 0, { ...point });
+  segments.splice(index - 1, 0, { curviness: segments[index - 1]?.curviness ?? 1 });
+  return writeMotionPathValue(script, target, waypoints, segments, arc.autoRotate);
+}
+
+export function removeMotionPathPointInScript(
+  script: string,
+  animationId: string,
+  index: number,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  const target = parsed?.located.find((entry) => entry.id === animationId);
+  const arc = target?.animation.arcPath;
+  if (!target || !arc?.enabled || hasCubicSegments(arc.segments)) return script;
+  const waypoints = extractArcWaypoints(target.animation);
+  if (waypoints.length <= 2 || index < 0 || index >= waypoints.length) return script;
+  const segments = [...arc.segments];
+  waypoints.splice(index, 1);
+  segments.splice(Math.min(index, segments.length - 1), 1);
+  return writeMotionPathValue(script, target, waypoints, segments, arc.autoRotate);
+}
+
+export function addMotionPathToScript(
+  script: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  point: { x: number; y: number },
+  ease = "power1.inOut",
+): { script: string; id: string | null } {
+  const motionPath = buildMotionPathObjectCode({
+    waypoints: [{ x: 0, y: 0 }, { ...point }],
+    segments: [{ curviness: 1 }],
+    autoRotate: false,
+  });
+  const result = addAnimationToScript(script, {
+    targetSelector,
+    method: "to",
+    position,
+    duration,
+    ease,
+    properties: { motionPath: `__raw:${motionPath}` },
+  });
+  return { script: result.script, id: result.id || null };
+}
+
 export function removeArcPathFromScript(script: string, animationId: string): string {
   return setArcPathInScript(script, animationId, {
     enabled: false,
@@ -2131,6 +2230,69 @@ function insertInheritedStateSetInScript(
     ms.append("\n" + code);
   }
   return ms.toString();
+}
+
+const STUDIO_HOLD_MARKER = "hf-hold";
+
+function isStudioHoldSet(animation: GsapAnimation): boolean {
+  return animation.method === "set" && animation.properties.data === STUDIO_HOLD_MARKER;
+}
+
+function removeStudioHoldSets(script: string, parsed: ParsedGsapAcornForWrite): string {
+  const staleHolds = parsed.located.filter((entry) => isStudioHoldSet(entry.animation));
+  if (staleHolds.length === 0) return script;
+  const ms = new MagicString(script);
+  for (const hold of staleHolds) removeCallFromMagicString(ms, hold.call, script);
+  return ms.toString();
+}
+
+function animationStart(animation: GsapAnimation): number {
+  if (animation.resolvedStart !== undefined) return animation.resolvedStart;
+  return typeof animation.position === "number" ? animation.position : 0;
+}
+
+function positionProperties(
+  properties: Record<string, number | string>,
+): Record<string, number | string> {
+  const position: Record<string, number | string> = {};
+  for (const [property, value] of Object.entries(properties)) {
+    if (classifyPropertyGroup(property) === "position" && typeof value === "number") {
+      position[property] = value;
+    }
+  }
+  return position;
+}
+
+function positionHoldForAnimation(
+  animation: GsapAnimation,
+): Record<string, number | string> | null {
+  if (!animation.keyframes) return null;
+  if (!(animationStart(animation) > 0.001)) return null;
+  const first = [...animation.keyframes.keyframes].sort(
+    (left, right) => left.percentage - right.percentage,
+  )[0];
+  if (!first) return null;
+  const position = positionProperties(first.properties);
+  return Object.keys(position).length > 0 ? position : null;
+}
+
+/** Acorn-native, byte-preserving hold synchronization used after mutations. */
+export function syncPositionHoldsBeforeKeyframes(script: string): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  let result = removeStudioHoldSets(script, parsed);
+  const current = parseGsapScriptAcornForWrite(result);
+  if (!current) return result;
+  for (const entry of current.located) {
+    const animation = entry.animation;
+    const position = positionHoldForAnimation(animation);
+    if (!position) continue;
+    result = insertInheritedStateSetInScript(result, animation.targetSelector, 0, {
+      ...position,
+      data: STUDIO_HOLD_MARKER,
+    });
+  }
+  return result;
 }
 
 /**

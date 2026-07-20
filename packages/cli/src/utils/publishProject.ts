@@ -2,6 +2,7 @@ import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
+import ignore, { type Ignore } from "ignore";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
@@ -9,6 +10,8 @@ import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
+const HYPERFRAMES_IGNORE_FILE = ".hyperframesignore";
+const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
@@ -174,7 +177,21 @@ function shouldIgnoreSegment(segment: string): boolean {
   return segment.startsWith(".") || IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
 }
 
-function collectProjectFiles(rootDir: string, currentDir: string, paths: string[]): void {
+function createProjectIgnore(rootDir: string): Ignore {
+  const matcher = ignore().add(DEFAULT_PROJECT_IGNORE);
+  const ignorePath = join(rootDir, HYPERFRAMES_IGNORE_FILE);
+  if (existsSync(ignorePath)) {
+    matcher.add(readFileSync(ignorePath, "utf-8"));
+  }
+  return matcher;
+}
+
+function collectProjectFiles(
+  rootDir: string,
+  currentDir: string,
+  paths: string[],
+  matcher: Ignore,
+): void {
   for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
     if (shouldIgnoreSegment(entry.name)) continue;
     const absolutePath = join(currentDir, entry.name);
@@ -182,11 +199,13 @@ function collectProjectFiles(rootDir: string, currentDir: string, paths: string[
     if (!relativePath) continue;
 
     if (entry.isDirectory()) {
-      collectProjectFiles(rootDir, absolutePath, paths);
+      if (matcher.ignores(`${relativePath}/`)) continue;
+      collectProjectFiles(rootDir, absolutePath, paths, matcher);
       continue;
     }
 
     if (!statSync(absolutePath).isFile()) continue;
+    if (matcher.ignores(relativePath)) continue;
     paths.push(relativePath);
   }
 }
@@ -388,9 +407,11 @@ export function localizeExternalAssets(
 export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(absProjectDir, absProjectDir, filePaths);
+  collectProjectFiles(absProjectDir, absProjectDir, filePaths, createProjectIgnore(absProjectDir));
   if (!filePaths.includes("index.html")) {
-    throw new Error("Project must include an index.html file at the root before publish.");
+    throw new Error(
+      "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",
+    );
   }
 
   const fileContents = new Map<string, Buffer>();
@@ -418,10 +439,10 @@ export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArc
 
 /**
  * Thin composition of `buildPublishFileMap` + `zipPublishFileMap` — signature
- * and behavior UNCHANGED from before the U6 split. `cloud render`
- * (`commands/cloud/render.ts`, `maybeUploadProject`) calls this directly and
- * must stay byte-identical (never see baked proxies); only `publish.ts` calls
- * the two halves separately with a baking transform in between.
+ * and behavior UNCHANGED from before the U6 split. `cloud render` composes the
+ * same two functions without an intermediate transform and must stay
+ * byte-identical (never see baked proxies); only `publish.ts` inserts a baking
+ * transform between them.
  */
 export function createPublishArchive(projectDir: string): PublishArchiveResult {
   return zipPublishFileMap(buildPublishFileMap(projectDir));

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
+  proxyVariantFor,
   scanProjectMediaCodecMap,
   type HtmlSourceLike,
   type MediaCodecMap,
@@ -72,8 +73,7 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
  * responses). No second concurrency limiter here — the transcoder's own
  * global bound throttles both pre-warm and element-triggered calls.
  * Pre-warm failures are swallowed; an actual `?hf-proxy=` request surfaces
- * them as a 502. Alpha-bearing entries are never pre-warmed: the runtime
- * never proxies them (transparency would be destroyed).
+ * them as a 502. Alpha-bearing entries pre-warm their VP8/WebM variant.
  *
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
@@ -100,13 +100,15 @@ export async function injectMediaCodecMapIntoHtml(
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!facts.browserHostile || facts.hasAlpha) continue;
-    resolveProxy(projectDir, resolve(projectDir, rootRelativePathname.replace(/^\/+/, ""))).catch(
-      () => {
-        // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-        // for this asset re-attempts the transcode and reports failure (502).
-      },
-    );
+    if (!facts.browserHostile) continue;
+    resolveProxy(
+      projectDir,
+      resolve(projectDir, rootRelativePathname.replace(/^\/+/, "")),
+      proxyVariantFor(facts),
+    ).catch(() => {
+      // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
+      // for this asset re-attempts the transcode and reports failure (502).
+    });
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
   // the injected tag, mirroring injectPreviewVariables in routes/preview.ts.

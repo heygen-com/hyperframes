@@ -28,6 +28,12 @@ import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
 import { getSystemTotalMb } from "./systemMemory.js";
+import {
+  CaptureFailure,
+  classifyCaptureFailure,
+  isFatalCaptureFailure,
+  type CaptureWorkerDiagnostic,
+} from "./captureFailure.js";
 
 export interface WorkerTask {
   workerId: number;
@@ -61,6 +67,7 @@ export interface WorkerResult {
   perf?: CapturePerfSummary;
   error?: string;
   diagnostics?: string[];
+  failure?: CaptureFailure;
 }
 
 export interface ParallelProgress {
@@ -423,6 +430,7 @@ async function executeWorkerTask(
   onFrameBuffer?: (frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>,
   config?: Partial<EngineConfig>,
   parallel?: boolean,
+  onFailure?: (failure: CaptureFailure) => void,
 ): Promise<WorkerResult> {
   const startTime = Date.now();
   let framesCaptured = 0;
@@ -483,8 +491,19 @@ async function executeWorkerTask(
       perf,
     };
   } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
     const diagnostics = session ? selectWorkerDiagnostics(session.browserConsoleBuffer) : [];
+    const workerDiagnostic: CaptureWorkerDiagnostic = {
+      workerId: task.workerId,
+      framesCaptured,
+      startFrame: task.startFrame,
+      endFrame: task.endFrame,
+      lines: diagnostics,
+    };
+    const failure = classifyCaptureFailure(error, {
+      signal,
+      workerDiagnostics: [workerDiagnostic],
+    });
+    onFailure?.(failure);
     return {
       workerId: task.workerId,
       framesCaptured,
@@ -492,8 +511,9 @@ async function executeWorkerTask(
       endFrame: task.endFrame,
       durationMs: Date.now() - startTime,
       perf,
-      error: errMsg,
+      error: failure.message,
       diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
+      failure,
     };
   } finally {
     if (session) await closeCaptureSession(session).catch(() => {});
@@ -566,6 +586,16 @@ export async function executeParallelCapture(
     deVerifySamples === captureOptions.deVerifySamples
       ? captureOptions
       : { ...captureOptions, deVerifySamples };
+  const peerController = new AbortController();
+  const workerSignal = signal
+    ? AbortSignal.any([signal, peerController.signal])
+    : peerController.signal;
+  let firstFatalFailure: CaptureFailure | undefined;
+  const onFailure = (failure: CaptureFailure): void => {
+    if (firstFatalFailure || !isFatalCaptureFailure(failure)) return;
+    firstFatalFailure = failure;
+    peerController.abort(failure);
+  };
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
@@ -573,11 +603,12 @@ export async function executeParallelCapture(
         serverUrl,
         workerCaptureOptions,
         createBeforeCaptureHook,
-        signal,
+        workerSignal,
         onFrameCaptured,
         onFrameBuffer,
         config,
         parallel,
+        onFailure,
       ),
     ),
   );
@@ -593,10 +624,17 @@ export async function executeParallelCapture(
     }
   }
 
-  const errors = results.filter((r) => r.error);
+  const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {
     const errorMessages = errors.map(formatWorkerFailure).join("; ");
-    throw new Error(`[Parallel] Capture failed: ${errorMessages}`);
+    const representative = firstFatalFailure ?? errors.find((result) => result.failure)?.failure;
+    const workerDiagnostics = errors.flatMap((result) => result.failure?.workerDiagnostics ?? []);
+    throw new CaptureFailure({
+      kind: representative?.kind ?? "io",
+      message: `[Parallel] Capture failed: ${errorMessages}`,
+      cause: representative,
+      workerDiagnostics,
+    });
   }
 
   return results;

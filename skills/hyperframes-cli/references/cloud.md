@@ -38,11 +38,45 @@ Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRA
 
 1. **Resolve the project**: a local directory (default `.`), or skip the upload with `--asset-id` / `--url`.
 2. **Auto-detect aspect ratio** from the entry HTML's `data-width`/`data-height`.
-3. **Zip** the project (same ignore set as `hyperframes publish`, so it excludes `.git`, `node_modules`, `dist`, and so on).
-4. **Upload** the zip to `POST /v3/assets`, yielding an `asset_id`.
+3. **Zip** the project (same ignore set as `hyperframes publish`, including `.hyperframesignore`).
+4. **Upload** the zip through the direct-to-S3 asset flow, yielding an `asset_id`.
 5. **Submit** the render to `POST /v3/hyperframes/renders`, yielding a `render_id`.
 6. **Poll** `GET /v3/hyperframes/renders/{id}` until it completes or fails (skip with `--no-wait`).
 7. **Download** the signed video URL to disk.
+
+## Archive size and `.hyperframesignore`
+
+The direct-upload limit is 200 MB. HyperFrames automatically excludes root-level `renders/` and `snapshots/`, along with its existing development exclusions such as `.git`, `node_modules`, `dist`, `.next`, `coverage`, and dotfiles. Add project-specific gitignore-style rules to `<project>/.hyperframesignore` when other generated or intermediate assets are not required at render time. The same rules affect `hyperframes publish`.
+
+Inspect the exact archive without authenticating, uploading, spending credits, or starting a render:
+
+```bash
+npx hyperframes cloud render <project> --dry-run --json
+```
+
+The result reports compressed `size_bytes`, `file_count`, the 200 MB limit, and the ten largest included files.
+
+When a cloud upload reports a size-limit error, agents must use this workflow:
+
+1. Run the dry-run command and inspect the largest included files and directories.
+2. Classify obvious generated outputs first: old renders, extra snapshot/contact-sheet directories, caches, exported previews, and source media used only to produce final assets.
+3. Before excluding anything else, search `src`, `href`, `url()`, `data-composition-src`, JavaScript strings, manifests, and variable-driven paths across every HTML, CSS, and JavaScript entry.
+4. Preserve existing `.hyperframesignore` comments and rules. Add the narrowest verified-unneeded root-relative paths; prefer an exact directory or file over a broad wildcard.
+5. Never ignore `index.html`, the selected composition, mounted sub-compositions, fonts, images, audio, video, scripts, or manifests merely because they are large. Never ignore all of `assets/`.
+6. Rerun dry-run until the archive is below the limit, then run `npx hyperframes check`. Remember that `check` sees the source directory, so it cannot prove a dynamically computed asset path remains in the filtered archive; the reference audit is still required.
+
+Example:
+
+```gitignore
+# Additional generated verification passes
+/snapshots2/
+/snapshots3/
+
+# Master used only to produce the final background clips
+/assets/bg-pattern.mp4
+```
+
+Rules support comments, globs, and negation. A later rule can override a default, for example `!/snapshots/` when that directory intentionally contains render inputs.
 
 ## Render options
 
@@ -55,6 +89,7 @@ Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRA
 | `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto from a local project's `data-width`/`data-height`; defaults to `16:9` for `--asset-id`/`--url`. |
 | `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip.                                                                                                |
 | `--output` / `-o`      | `renders/<render_id>.<ext>` | Local download destination.                                                                                                    |
+| `--dry-run`            | off                         | Build and inspect a local project zip without authenticating, uploading, or rendering.                                         |
 
 ```bash
 npx hyperframes cloud render . \

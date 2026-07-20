@@ -208,6 +208,84 @@ describe("createPublishArchive", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("skips root render outputs but keeps same-named nested source directories", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      mkdirSync(join(dir, "renders"));
+      writeFileSync(join(dir, "renders", "old.mp4"), "render-output", "utf-8");
+      mkdirSync(join(dir, "snapshots"));
+      writeFileSync(join(dir, "snapshots", "frame.png"), "snapshot-output", "utf-8");
+      mkdirSync(join(dir, "assets", "renders"), { recursive: true });
+      writeFileSync(join(dir, "assets", "renders", "source.mp4"), "source", "utf-8");
+
+      const zip = new AdmZip(createPublishArchive(dir).buffer);
+      const entries = zip.getEntries().map((entry) => entry.entryName);
+
+      expect(entries).toContain("assets/renders/source.mp4");
+      expect(entries).not.toContain("renders/old.mp4");
+      expect(entries).not.toContain("snapshots/frame.png");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("applies gitignore-style rules from .hyperframesignore", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      mkdirSync(join(dir, "exports"));
+      writeFileSync(join(dir, "exports", "draft.mp4"), "draft", "utf-8");
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "assets", "discard.psd"), "discard", "utf-8");
+      writeFileSync(join(dir, "assets", "keep.psd"), "keep", "utf-8");
+      writeFileSync(
+        join(dir, ".hyperframesignore"),
+        ["# Generated source files", "/exports/", "*.psd", "!assets/keep.psd", ""].join("\n"),
+        "utf-8",
+      );
+
+      const zip = new AdmZip(createPublishArchive(dir).buffer);
+      const entries = zip.getEntries().map((entry) => entry.entryName);
+
+      expect(entries).toContain("assets/keep.psd");
+      expect(entries).not.toContain("exports/draft.mp4");
+      expect(entries).not.toContain("assets/discard.psd");
+      expect(entries).not.toContain(".hyperframesignore");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows .hyperframesignore to re-include a default output directory", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      mkdirSync(join(dir, "snapshots"));
+      writeFileSync(join(dir, "snapshots", "reference.png"), "reference", "utf-8");
+      writeFileSync(join(dir, ".hyperframesignore"), "!/snapshots/\n", "utf-8");
+
+      const zip = new AdmZip(createPublishArchive(dir).buffer);
+      expect(zip.getEntries().map((entry) => entry.entryName)).toContain("snapshots/reference.png");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails clearly when .hyperframesignore excludes index.html", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      writeFileSync(join(dir, ".hyperframesignore"), "/index.html\n", "utf-8");
+
+      expect(() => createPublishArchive(dir)).toThrow(
+        "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("createPublishArchive (U6 cloud-render regression guard)", () => {

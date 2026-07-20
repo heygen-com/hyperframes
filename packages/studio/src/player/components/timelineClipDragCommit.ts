@@ -5,13 +5,18 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone, normalizeToZones } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
-import { getTimelineEditCapabilities } from "./timelineEditing";
+import {
+  canMoveTimelineElement as canMoveElement,
+  resolveExpandedHostAlias,
+} from "./timelineAuthoredMoveTarget";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import {
   beginTimelineOptimisticGesture,
   isLatestTimelineOptimisticGesture,
 } from "./timelineOptimisticRevision";
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
+import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
+import { authoredTrackForLane, sameSourceFile } from "./timelineAuthoredTrack";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -68,29 +73,14 @@ export interface DragCommitDeps {
    * research/STAGE3-NEEDED-WIRING.md.
    */
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
+  /** Converge the preview manifest after the complete lane + z transaction. */
+  refreshAfterLaneMove?: () => void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
-
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
-
-/** Whether Studio may write timing to this clip (false for locked/implicit rows). */
-function canMoveElement(element: TimelineElement): boolean {
-  return getTimelineEditCapabilities({
-    tag: element.tag,
-    duration: element.duration,
-    domId: element.domId,
-    selector: element.selector,
-    compositionSrc: element.compositionSrc,
-    playbackStart: element.playbackStart,
-    playbackStartAttr: element.playbackStartAttr,
-    sourceDuration: element.sourceDuration,
-    timingSource: element.timingSource,
-    timelineLocked: element.timelineLocked,
-  }).canMove;
-}
 
 /**
  * Optimistically apply + persist a batch of moves with rollback on failure.
@@ -139,14 +129,15 @@ export function persistMoveEdits(
   // that written value into the store's `authoredTrack` so a SECOND drag before
   // any reload resolves authored tracks from what the file now says, not stale
   // pre-edit data. Pure time-moves leave authoredTrack untouched.
-  for (const e of edits) {
+  const applyEdit = (e: TimelineMoveEdit) => {
     const writtenTrack =
       e.persistTrack ?? (e.updates.track !== e.element.track ? e.updates.track : undefined);
     updateElement(
       keyOf(e.element),
       writtenTrack == null ? e.updates : { ...e.updates, authoredTrack: writtenTrack },
     );
-  }
+  };
+  for (const e of edits) applyEdit(e);
   // The store above gets DISPLAY lanes; the file below gets the authored-space
   // track when one was resolved (see TimelineMoveEdit.persistTrack).
   const persistEdits = edits.map((e) =>
@@ -158,7 +149,17 @@ export function persistMoveEdits(
     ? onMoveElements(persistEdits, coalesceKey, operation, coalesceMs)
     : Promise.all(persistEdits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
   return Promise.resolve(persisted).then(
-    () => true,
+    () => {
+      // Runtime timeline messages can arrive while the save is in flight and
+      // restore the preview manifest's pre-gesture lane. Reassert the durable
+      // result after persistence, but only while this remains the latest
+      // optimistic gesture so an older save can never clobber a newer drag.
+      for (const e of edits) {
+        const key = keyOf(e.element);
+        if (isLatestTimelineOptimisticGesture(updateElement, revision, key)) applyEdit(e);
+      }
+      return true;
+    },
     (error) => {
       for (const p of prev) {
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
@@ -177,59 +178,6 @@ export function persistMoveEdits(
  * then compacts it to a distinct integer lane between its neighbours, and the
  * clips at/below the insert shift down by one — the sanctioned index-renumber.
  */
-/** Same-source-file predicate: authored track numbers only compare within ONE
- *  file's coordinate space (an expanded sub-comp child's authoredTrack is in ITS
- *  file, not the host timeline's). `undefined` means the active composition. */
-export const sameSourceFile = (a: TimelineElement, b: TimelineElement): boolean =>
-  (a.sourceFile ?? null) === (b.sourceFile ?? null);
-
-/**
- * Translate a DISPLAY lane into the AUTHORED (source-file) track to persist for
- * `dragged`. Occupants are consulted ONLY from the dragged clip's own source
- * file — an occupant from a different file (e.g. an expanded sub-comp child, or
- * a host clip next to expanded rows) carries authored values in a different
- * coordinate space, and borrowing them would write a foreign file's numbering.
- *
- * Lane semantics after normalizeToZones: each distinct authored track owns one
- * base lane, and time-overlapping same-track clips spill onto adjacent display
- * sub-lanes (packTrackLanes). A spill sub-lane IS a legal drop target (Timeline's
- * trackOrder lists it): its occupants share the base lane's authored track by
- * construction, so the same-file occupant lookup returns that authored track and
- * the drop persists as a same-track join. The clip may then DISPLAY on a
- * different sub-lane than it was dropped on — the spill re-packs
- * deterministically by stable id, first-fit — but the persisted track is
- * correct.
- *
- * Fallbacks when the lane has no same-file occupant (e.g. an expanded child
- * dropped on a lane holding only other files' clips — the display-lane integer
- * must NOT be persisted into a sparse file):
- * 1. Offset from the NEAREST same-file lane: authored(nearest) + lane distance,
- *    preserving "one lane up = one authored track up" in the clip's own file.
- * 2. No same-file peers at all → the lane value itself (single-clip files:
- *    display and authored spaces coincide for want of any other anchor).
- * Edge-created lanes (min-1 / max+1 inserts) route through the insert path,
- * never here.
- */
-export function authoredTrackForLane(
-  lane: number,
-  elements: TimelineElement[],
-  dragged: TimelineElement,
-): number {
-  const dragKey = keyOf(dragged);
-  const peers = elements.filter((e) => keyOf(e) !== dragKey && sameSourceFile(e, dragged));
-  const occupant = peers.find((e) => e.track === lane);
-  if (occupant) return occupant.authoredTrack ?? occupant.track;
-  let nearest: TimelineElement | null = null;
-  for (const p of peers) {
-    if (!nearest || Math.abs(p.track - lane) < Math.abs(nearest.track - lane)) nearest = p;
-  }
-  if (!nearest) return lane;
-  // Rounded: expanded children live on FRACTIONAL synthetic display rows (see
-  // buildChildElements), so a lane distance measured against one can carry a
-  // fraction — an authored data-track-index must stay an integer.
-  return Math.round((nearest.authoredTrack ?? nearest.track) + (lane - nearest.track));
-}
-
 function insertTrackValue(trackOrder: number[], insertRow: number): number {
   if (trackOrder.length === 0) return 0;
   if (insertRow <= 0) return trackOrder[0] - 0.5;
@@ -284,6 +232,12 @@ function resolveMultiSelection(
  */
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
+  const hostAlias = resolveExpandedHostAlias(drag, deps);
+  if (hostAlias) {
+    commitDraggedClipMove(hostAlias.drag, { ...deps, selectedKeys: hostAlias.selectedKeys });
+    return;
+  }
+
   const { elements, updateElement, onMoveElement } = deps;
   const dragKey = keyOf(drag.element);
   const isInsert = drag.insertRow != null;
@@ -362,22 +316,28 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   });
   const multiKeys = multi ? multi.keys : null;
   if (!isVertical || !deps.readZIndex || !deps.onStackingPatches) {
-    void persistMoveEdits(edits, deps, coalesceKey, "lane-reorder");
+    void refreshAfterDurableLaneMove(
+      persistMoveEdits(edits, deps, coalesceKey, "lane-reorder"),
+      deps,
+    );
     return;
   }
-  void runLaneZGesture({
-    commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "lane-reorder"),
-    commitZ: () =>
-      syncStackingForEdit(
-        candidate,
-        dragKey,
-        drag.element.track,
-        drag.previewTrack,
-        multiKeys,
-        deps,
-        coalesceKey,
-      ),
-  }).catch(() => undefined);
+  void refreshAfterDurableLaneMove(
+    runLaneZGesture({
+      commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "lane-reorder"),
+      commitZ: () =>
+        syncStackingForEdit(
+          candidate,
+          dragKey,
+          drag.element.track,
+          drag.previewTrack,
+          multiKeys,
+          deps,
+          coalesceKey,
+        ),
+    }),
+    deps,
+  ).catch(() => undefined);
 }
 
 /** Build the one sanctioned multi-clip write: atomically insert and compact a
@@ -486,23 +446,29 @@ function commitTrackInsert(
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
   if (!deps.readZIndex || !deps.onStackingPatches) {
-    void persistMoveEdits(edits, deps, coalesceKey, "track-insert");
+    void refreshAfterDurableLaneMove(
+      persistMoveEdits(edits, deps, coalesceKey, "track-insert"),
+      deps,
+    );
     return;
   }
-  void runLaneZGesture({
-    commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "track-insert"),
-    commitZ: () =>
-      // Sync from the fractional drop intent, not the normalized persisted lanes.
-      syncStackingForEdit(
-        candidate,
-        dragKey,
-        drag.element.track,
-        drag.insertRow!,
-        multi ? multi.keys : null,
-        deps,
-        coalesceKey,
-      ),
-  }).catch(() => undefined);
+  void refreshAfterDurableLaneMove(
+    runLaneZGesture({
+      commitLane: () => persistMoveEdits(edits, deps, coalesceKey, "track-insert"),
+      commitZ: () =>
+        // Sync from the fractional drop intent, not the normalized persisted lanes.
+        syncStackingForEdit(
+          candidate,
+          dragKey,
+          drag.element.track,
+          drag.insertRow!,
+          multi ? multi.keys : null,
+          deps,
+          coalesceKey,
+        ),
+    }),
+    deps,
+  ).catch(() => undefined);
 }
 
 /**
@@ -544,11 +510,17 @@ export function commitZMirrorLaneMove(
       updates: { start: element.start, track: move.displayTrack },
       persistTrack: move.persistTrack,
     };
-    return persistMoveEdits([edit], deps, coalesceKey, "lane-reorder", coalesceMs);
+    return refreshAfterDurableLaneMove(
+      persistMoveEdits([edit], deps, coalesceKey, "lane-reorder", coalesceMs),
+      deps,
+    );
   }
   const built = buildTrackInsertEdits(element, element.start, move.insertRow, null, deps);
   if (!built || built.edits.length === 0) return Promise.resolve(false);
-  return persistMoveEdits(built.edits, deps, coalesceKey, "track-insert", coalesceMs);
+  return refreshAfterDurableLaneMove(
+    persistMoveEdits(built.edits, deps, coalesceKey, "track-insert", coalesceMs),
+    deps,
+  );
 }
 
 /**

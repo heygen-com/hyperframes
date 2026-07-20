@@ -383,6 +383,7 @@ export function resolveTimelineAssetDrop(
     scrollTop: number;
     pixelsPerSecond: number;
     duration: number;
+    clampStartToDuration?: boolean;
     trackHeight: number;
     trackOrder: number[];
   },
@@ -391,9 +392,10 @@ export function resolveTimelineAssetDrop(
 ): { start: number; track: number } {
   const x = clientX - input.rectLeft + input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
   const contentY = clientY - input.rectTop + input.scrollTop;
+  const pointerStart = Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100;
   const start = Math.max(
     0,
-    Math.min(input.duration, Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100),
+    input.clampStartToDuration === false ? pointerStart : Math.min(input.duration, pointerStart),
   );
   // Row from the shared row→y inverse so the top pad is honoured; a drop in the
   // pad above the first lane floors to row 0, a drop in the bottom pad rounds

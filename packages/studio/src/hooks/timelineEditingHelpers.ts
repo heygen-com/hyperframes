@@ -13,7 +13,10 @@ import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/stud
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
-import { findElementForSelection } from "../components/editor/domEditingElement";
+import {
+  findElementForSelection,
+  findElementForTimelineElement,
+} from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -137,6 +140,12 @@ export function findTimelineElementInIframe(
   try {
     const doc = iframe?.contentDocument;
     if (!doc) return null;
+    if (element.kind === "composition" && element.compositionSrc) {
+      return findElementForTimelineElement(doc, element, {
+        activeCompositionPath,
+        isMasterView: true,
+      });
+    }
     return findElementForSelection(
       doc,
       {
@@ -166,6 +175,14 @@ export function patchIframeDomTiming(
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
 }
+
+export function playbackStartAttributeForElement(
+  element: Pick<TimelineElement, "kind" | "playbackStartAttr">,
+): "data-media-start" | "data-playback-start" {
+  return element.playbackStartAttr === "playback-start" || element.kind === "composition"
+    ? "data-playback-start"
+    : "data-media-start";
+}
 // fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,
@@ -174,8 +191,7 @@ function resolveResizePlaybackStart(
   updates: Pick<TimelineElement, "start" | "playbackStart">,
 ): { attrName: string; value: number } | null {
   if (updates.playbackStart != null) {
-    const attrName =
-      element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
+    const attrName = playbackStartAttributeForElement(element).slice("data-".length);
     return { attrName, value: updates.playbackStart };
   }
   const trimDelta = updates.start - element.start;
@@ -185,8 +201,7 @@ function resolveResizePlaybackStart(
     readAttributeByTarget(original, target, "media-start");
   const current = raw != null ? parseFloat(raw) : undefined;
   if (current == null || !Number.isFinite(current)) return null;
-  const attrName =
-    element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
+  const attrName = playbackStartAttributeForElement(element).slice("data-".length);
   return {
     attrName,
     value: Math.max(0, current + trimDelta * Math.max(element.playbackRate ?? 1, 0.1)),

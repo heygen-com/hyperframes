@@ -32,6 +32,7 @@ export interface PropertyPanelProps {
   onClearSelection: () => void;
   onUngroup?: () => void;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   /** Commits several data-* attributes on the SAME element in ONE atomic
    *  persist call — e.g. a pinned timing range's start+duration together, so
@@ -62,6 +63,7 @@ export interface PropertyPanelProps {
   onSetManualRotation: (element: DomEditSelection, next: { angle: number }) => void;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
   onAskAgent: () => void;

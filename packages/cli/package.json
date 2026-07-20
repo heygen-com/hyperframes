@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "license": "Apache-2.0",
   "repository": {
@@ -39,6 +39,7 @@
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
+    "ignore": "^5.3.2",
     "onnxruntime-node": "1.23.2",
     "open": "^10.0.0",
     "postcss": "^8.5.8",

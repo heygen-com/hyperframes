@@ -208,13 +208,19 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
-      applyUndoRestoreToPreview(
+      const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
         restore.files,
         usePlayerStore.getState().currentTime,
         reloadPreview,
       );
+      if (strategy === "full") {
+        const player = usePlayerStore.getState();
+        player.setElements([]);
+        player.setSelectedElementId(null);
+        player.setTimelineReady(false);
+      }
     },
     [previewIframeRef, activeCompPathRef, reloadPreview],
   );

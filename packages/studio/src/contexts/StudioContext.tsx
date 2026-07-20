@@ -69,6 +69,10 @@ export function useStudioPlaybackContext(): StudioPlaybackValue {
   return ctx;
 }
 
+export function useStudioPlaybackContextOptional(): StudioPlaybackValue | null {
+  return useContext(StudioPlaybackContext);
+}
+
 /** @deprecated Use useStudioShellContext and/or useStudioPlaybackContext instead. */
 // fallow-ignore-next-line unused-export
 export function useStudioContext(): StudioContextValue {

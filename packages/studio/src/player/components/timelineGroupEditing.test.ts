@@ -53,6 +53,16 @@ describe("buildTimelineGroupResizeMembers (legacy 36413da7f semantics)", () => {
     ]);
   });
 
+  it("seeds legacy composition offsets and advances them at playback rate", () => {
+    const a = el("a", { kind: "composition", tag: "div", start: 2, playbackRate: 2 });
+    const b = el("b", { kind: "composition", tag: "div", start: 5, playbackRate: 0.5 });
+    const members = buildTimelineGroupResizeMembers([a, b], keys("a", "b"), "a", "start")!;
+
+    expect(members.map((member) => member.playbackStart)).toEqual([0, 0]);
+    const changes = resolveTimelineGroupResizeChanges(members, "start", 1);
+    expect(changes.map((change) => change.playbackStart)).toEqual([2, 0.5]);
+  });
+
   it("does not seed playbackStart on the END edge", () => {
     const grabbed = el("a", { tag: "audio", start: 0, duration: 2 });
     const b = el("b", { tag: "audio", start: 3, duration: 2 });

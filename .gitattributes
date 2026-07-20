@@ -17,6 +17,12 @@ packages/producer/tests/**/*.webm filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/*.png filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/output/compiled.html filter=lfs diff=lfs merge=lfs -text
 
+# HF#2550 fixture's source index.html carries the real-world project's
+# embedded base64 assets (744 KB) — over the largefiles hook's 500 KB
+# non-LFS limit. Scoped to this one file, not a broad tests/**/*.html
+# pattern, since every other fixture's source HTML is small plain git.
+packages/producer/tests/hf2550-video-subcomposition-ghost/src/index.html filter=lfs diff=lfs merge=lfs -text
+
 # ONNX models must ALWAYS use LFS regardless of location: a 31 MB ppmattingv2
 # model was once committed raw into skills/ then deleted — but a raw commit
 # lives in history forever. No path in the repo legitimately ships a raw .onnx.

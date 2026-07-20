@@ -40,6 +40,14 @@ export {
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 export {
+  extractCompiledHtmlParityContract,
+  type CompiledHtmlParityContract,
+  type HtmlParityComposition,
+  type HtmlParityResource,
+  type HtmlParityTimedElement,
+} from "./htmlParityContract";
+
+export {
   RUNTIME_BOOTSTRAP_ATTR,
   injectScriptsAtHeadStart,
   injectScriptsIntoHtml,

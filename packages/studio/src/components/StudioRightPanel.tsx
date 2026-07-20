@@ -1,17 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
 import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
-import type { SceneInfo } from "./panels/SlideshowPanel";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import type { IframeWindow } from "../player/lib/playbackTypes";
 import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -19,6 +17,7 @@ import {
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
+import { useSlideshowTabState } from "../hooks/useSlideshowTabState";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
@@ -168,6 +167,7 @@ export function StudioRightPanel({
     readProjectFile,
     writeProjectFile,
     fileTree,
+    editingFile,
   } = useFileManagerContext();
 
   // Discrete ops (toggle, reorder, add/delete, hotspot): persist immediately,
@@ -216,22 +216,13 @@ export function StudioRightPanel({
   const renderJobs = renderQueue.jobs as RenderJob[];
   const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
 
-  // Derive scene list from the live clip manifest in the preview iframe.
-  // fallow-ignore-next-line complexity
-  const slideshowScenes = useMemo<SceneInfo[]>(() => {
-    try {
-      const win = previewIframeRef.current?.contentWindow as IframeWindow | null;
-      return (win?.__clipManifest?.scenes ?? []).map((s) => ({
-        id: s.id,
-        label: s.label,
-        start: s.start,
-        duration: s.duration,
-      }));
-    } catch {
-      return [];
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewIframeRef, rightPanelTab, refreshKey]);
+  const { isSlideshowComposition, slideshowScenes } = useSlideshowTabState({
+    editingFileContent: editingFile?.content,
+    previewIframeRef,
+    refreshKey,
+    rightPanelTab,
+    setRightPanelTab,
+  });
   const designPaneOpen = inspectorTabActive && rightInspectorPanes.design && designPanelActive;
   const layersPaneOpen =
     inspectorTabActive && rightInspectorPanes.layers && STUDIO_INSPECTOR_PANELS_ENABLED;
@@ -506,12 +497,14 @@ export function StudioRightPanel({
                 active={rightPanelTab === "renders"}
                 onClick={() => setRightPanelTab("renders")}
               />
-              <PanelTabButton
-                label="Slideshow"
-                tooltip="Slideshow branching editor"
-                active={rightPanelTab === "slideshow"}
-                onClick={() => setRightPanelTab("slideshow")}
-              />
+              {isSlideshowComposition && (
+                <PanelTabButton
+                  label="Slideshow"
+                  tooltip="Slideshow branching editor"
+                  active={rightPanelTab === "slideshow"}
+                  onClick={() => setRightPanelTab("slideshow")}
+                />
+              )}
               <PanelTabButton
                 label="Variables"
                 tooltip="Template variables — declare, preview with values"
@@ -528,7 +521,7 @@ export function StudioRightPanel({
                   compositionPath={activeBlockParams.compositionPath}
                   onClose={onCloseBlockParams ?? (() => {})}
                 />
-              ) : rightPanelTab === "slideshow" ? (
+              ) : rightPanelTab === "slideshow" && isSlideshowComposition ? (
                 <SlideshowPanel
                   scenes={slideshowScenes}
                   onPersist={onPersistSlideshow}

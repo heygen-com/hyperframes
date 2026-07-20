@@ -1,0 +1,102 @@
+{
+  "package": "@hyperframes/parsers",
+  "localNodeRuntime": true,
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-parser": {
+      "source": "./src/gsapParserExports.ts",
+      "runtime": "./dist/gsapParserExports.js",
+      "types": "./dist/gsapParserExports.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-parser-acorn": {
+      "source": "./src/gsapParserAcorn.ts",
+      "runtime": "./dist/gsapParserAcorn.js",
+      "types": "./dist/gsapParserAcorn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-writer-acorn": {
+      "source": "./src/gsapWriterAcorn.ts",
+      "runtime": "./dist/gsapWriterAcorn.js",
+      "types": "./dist/gsapWriterAcorn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-constants": {
+      "source": "./src/gsapConstants.ts",
+      "runtime": "./dist/gsapConstants.js",
+      "types": "./dist/gsapConstants.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./spring-ease": {
+      "source": "./src/springEase.ts",
+      "runtime": "./dist/springEase.js",
+      "types": "./dist/springEase.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./hf-ids": {
+      "source": "./src/hfIds.ts",
+      "runtime": "./dist/hfIds.js",
+      "types": "./dist/hfIds.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-parser-recast": {
+      "source": "./src/gsapParser.ts",
+      "runtime": "./dist/gsapParser.js",
+      "types": "./dist/gsapParser.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./slideshow": {
+      "source": "./src/slideshow/index.ts",
+      "runtime": "./dist/slideshow.js",
+      "types": "./dist/slideshow.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./asset-paths": {
+      "source": "./src/assets.ts",
+      "runtime": "./dist/assets.js",
+      "types": "./dist/assets.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./composition": {
+      "source": "./src/composition.ts",
+      "runtime": "./dist/composition.js",
+      "types": "./dist/composition.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./composition-contract": {
+      "source": "./src/compositionContract.ts",
+      "runtime": "./dist/compositionContract.js",
+      "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./sub-composition-validity": {
+      "source": "./src/subCompositionValidity.ts",
+      "runtime": "./dist/subCompositionValidity.js",
+      "types": "./dist/subCompositionValidity.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./ff-binaries": {
+      "source": "./src/ffBinaries.ts",
+      "runtime": "./dist/ffBinaries.js",
+      "types": "./dist/ffBinaries.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./asset-resolution": {
+      "source": "./src/assetResolution.ts",
+      "runtime": "./dist/assetResolution.js",
+      "types": "./dist/assetResolution.d.ts",
+      "environments": ["bun", "node"]
+    }
+  }
+}

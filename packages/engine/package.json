@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -15,9 +15,22 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./alpha-blit": "./src/utils/alphaBlit.ts",
-    "./shader-transitions": "./src/utils/shaderTransitions.ts"
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./alpha-blit": {
+      "bun": "./src/utils/alphaBlit.ts",
+      "import": "./src/utils/alphaBlit.ts",
+      "types": "./src/utils/alphaBlit.ts"
+    },
+    "./shader-transitions": {
+      "bun": "./src/utils/shaderTransitions.ts",
+      "import": "./src/utils/shaderTransitions.ts",
+      "types": "./src/utils/shaderTransitions.ts"
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",

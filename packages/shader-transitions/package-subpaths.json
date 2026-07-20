@@ -1,0 +1,15 @@
+{
+  "package": "@hyperframes/shader-transitions",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": {
+        "script": "./dist/index.global.js",
+        "import": "./dist/index.js",
+        "require": "./dist/index.cjs"
+      },
+      "types": "./dist/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

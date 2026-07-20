@@ -78,6 +78,7 @@ import { wrapCaptureStageError } from "../captureStageError.js";
 import { pushWorkerDedupPerfs } from "../perfSummary.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
+import type { SdrStreamingCapturePlan } from "../capturePlan.js";
 
 /**
  * No-frame-progress watchdog for DE streaming capture. A worker (parallel
@@ -173,27 +174,10 @@ export interface CaptureStreamingStageInput {
    */
   totalFrames: number;
   cfg: EngineConfig;
-  /**
-   * Capture-mode flag threaded from `compileStage`. The stage derives a
-   * local copy of `cfg` with this value applied to `forceScreenshot`
-   * before any engine call, so the caller-owned `cfg` is never mutated.
-   * The sequencer may override `compileResult.forceScreenshot` after a
-   * BeginFrame calibration timeout — passing the override through this
-   * parameter keeps the decision visible at the call site instead of
-   * hiding it inside a shared mutable config.
-   */
-  forceScreenshot: boolean;
+  /** Immutable route selected by the sequencer. */
+  plan: SdrStreamingCapturePlan;
   log: ProducerLogger;
-  workerCount: number;
   probeSession: CaptureSession | null;
-  /**
-   * Per-render override from the DE parallel router — see
-   * deParallelStreamForced's declaration in renderOrchestrator.ts. Distinct
-   * from the `HF_DE_PARALLEL_STREAM` manual opt-in (still read directly by
-   * this stage) because the router's decision must not leak across
-   * concurrently-running renders sharing this process via a global env var.
-   */
-  forceParallelStream?: boolean;
   /** For the spawn-failure log message context only. */
   outputFormat: string;
   /** Pre-built encoder options; passed straight to `spawnStreamingEncoder`. */
@@ -552,7 +536,7 @@ export async function runCaptureStreamingStage(
     job,
     totalFrames,
     cfg,
-    forceScreenshot,
+    plan,
     log,
     outputFormat,
     streamingEncoderOptions,
@@ -562,16 +546,17 @@ export async function runCaptureStreamingStage(
     assertNotAborted,
     onProgress,
     dedupPerfs,
-    forceParallelStream,
   } = input;
-  let { workerCount, probeSession } = input;
+  let { probeSession } = input;
+  let { workerCount } = plan;
+  const { forceScreenshot, forceParallelStream } = plan;
   let lastBrowserConsole: string[] = [];
   let deDrainStats: DeDrainStats | undefined;
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
   // caller-owned `cfg`. The sequencer threads the resolved value via the
-  // explicit parameter; this keeps the engine-facing config a pure
+  // immutable plan; this keeps the engine-facing config a pure
   // pass-through.
   const captureCfg: EngineConfig =
     cfg.forceScreenshot === forceScreenshot ? cfg : { ...cfg, forceScreenshot };

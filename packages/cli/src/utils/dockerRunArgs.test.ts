@@ -344,6 +344,22 @@ describe("buildDockerRunArgs", () => {
     expect(args).not.toContain("--browser-timeout");
   });
 
+  it("forwards protocol and player-ready timeouts without unit conversion", () => {
+    const args = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: {
+        ...BASE,
+        protocolTimeoutMs: 240_000,
+        playerReadyTimeoutMs: 90_000,
+      },
+    });
+
+    expect(args).toContain("--protocol-timeout");
+    expect(args[args.indexOf("--protocol-timeout") + 1]).toBe("240000");
+    expect(args).toContain("--player-ready-timeout");
+    expect(args[args.indexOf("--player-ready-timeout") + 1]).toBe("90000");
+  });
+
   it("forwards rational --fps verbatim (NTSC 30000/1001)", () => {
     // Regression for the fps fraction-syntax feature: the rational form must
     // survive the host → container hop as a single `30000/1001` argument so

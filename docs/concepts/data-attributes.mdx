@@ -18,6 +18,8 @@ Hyperframes uses HTML data attributes to control timing, media playback, and [co
 | Attribute | Example | Description |
 |-----------|---------|-------------|
 | `data-media-start` | `"2"` | Media playback offset / trim point in seconds. Default: `0` |
+| `data-playback-start` | `"2"` | Source-time offset in seconds for media wrappers and nested composition hosts. Missing values default to `0`; Studio writes this attribute when a composition is trimmed or split. |
+| `data-playback-rate` | `"1.5"` | Source playback multiplier, clamped to `0.1`–`5`. Source time advances by timeline elapsed time multiplied by the canonical rate; invalid values default to `1`. |
 | `data-volume` | `"0.8"` | Audio/video volume, 0 to 1 |
 | `data-has-audio` | `"true"` | Indicates video has an audio track |
 

@@ -157,6 +157,42 @@ describe("resolveProxy", () => {
     expect(cacheDirEntries).toEqual([expectedCachePath.split("/").at(-1)]);
   });
 
+  it("uses Chromium-compatible VP8 alpha args and a distinct WebM cache path", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "alpha.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const h264Path = getProxyCachePath(projectDir, sourcePath, "h264");
+    const vp8Path = getProxyCachePath(projectDir, sourcePath, "vp8");
+    const resultPromise = resolveProxy(projectDir, sourcePath, "vp8");
+    await flush();
+
+    expect(vp8Path).not.toBe(h264Path);
+    expect(vp8Path).toMatch(/\.webm$/);
+    expect(h264Path).toMatch(/\.mp4$/);
+    const args = calls[0]!.args;
+    expect(args).toContain("libvpx");
+    expect(args).not.toContain("libvpx-vp9");
+    expect(args).toContain("yuva420p");
+    expect(args).toContain("libopus");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("0");
+    expect(args[args.indexOf("-crf") + 1]).toBe("23");
+    expect(args[args.indexOf("-deadline") + 1]).toBe("good");
+    expect(args[args.indexOf("-auto-alt-ref") + 1]).toBe("0");
+    expect(args[args.indexOf("-metadata:s:v:0") + 1]).toBe("alpha_mode=1");
+    expect(args[args.indexOf("-ac") + 1]).toBe("2");
+    expect(args).not.toContain("-row-mt");
+    expect(args).toContain("-cpu-used");
+    expect(args).not.toContain("-movflags");
+    expect(args).not.toContain("+faststart");
+    expect(args[args.indexOf("-vf") + 1]).toContain("format=yuva420p");
+
+    succeed(calls[0]!, "fake-vp8-bytes");
+    await expect(resultPromise).resolves.toBe(vp8Path);
+  });
+
   it("returns without spawning on a cache hit", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
@@ -198,6 +234,24 @@ describe("resolveProxy", () => {
     expect(filter).toContain("bt709");
 
     succeed(calls[1]!);
+    await result;
+  });
+
+  it("preserves alpha on HDR-tagged VP8 proxies by bypassing the opaque tonemap chain", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, true);
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "hdr-alpha.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath, "vp8");
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    const filter = calls[0]!.args[calls[0]!.args.indexOf("-vf") + 1];
+    expect(filter).toContain("format=yuva420p");
+    expect(filter).not.toContain("tonemap=");
+    succeed(calls[0]!, "fake-vp8-alpha-bytes");
     await result;
   });
 

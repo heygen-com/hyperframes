@@ -89,6 +89,40 @@ describe("FlatRow", () => {
     expect(onCommit).toHaveBeenCalledWith("24px");
     act(() => root.unmount());
   });
+
+  it("persists a rapid numeric arrow-key burst as one commit", () => {
+    vi.useFakeTimers();
+    const onCommit = vi.fn();
+    const onPreview = vi.fn();
+    const { host, root } = renderInto(
+      <FlatRow
+        label="Size"
+        value="22px"
+        tier="explicitDefault"
+        liveCommit
+        onPreview={onPreview}
+        onCommit={onCommit}
+      />,
+    );
+    const input = host.querySelector<HTMLInputElement>("input");
+    if (!input) throw new Error("expected an input");
+
+    for (let step = 0; step < 8; step += 1) {
+      act(() => {
+        input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" }));
+      });
+    }
+
+    expect(input.value).toBe("30px");
+    expect(onPreview).toHaveBeenLastCalledWith("30px");
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(250));
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith("30px");
+
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
 });
 
 describe("FlatSegmentedRow", () => {

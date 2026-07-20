@@ -35,6 +35,10 @@ export const examples: Example[] = [
   ["Deterministic render via Docker", "hyperframes render --docker --output deterministic.mp4"],
   ["Parallel rendering with 6 workers", "hyperframes render --workers 6 --output fast.mp4"],
   ["Opt out of browser GPU render", "hyperframes render --no-browser-gpu --output cpu.mp4"],
+  [
+    "Relocate frame cache off C: (Windows) or another small partition",
+    "hyperframes render --frames-cache-dir D:/hf-cache --output out.mp4",
+  ],
   ["HDR output (auto-detected)", "hyperframes render --output hdr-output.mp4"],
   [
     "Override composition variables (parametrized render)",
@@ -80,6 +84,7 @@ import { formatRenderOutputTimestamp } from "@hyperframes/core";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
+import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
 import {
   markRenderSucceeded,
@@ -88,6 +93,7 @@ import {
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
+  EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
   isVideoFrameFormat,
@@ -396,6 +402,18 @@ export default defineCommand({
       // guard below leaves PRODUCER_EXPERIMENTAL_FAST_CAPTURE untouched and the
       // env fallback survives (matches the --low-memory-mode idiom).
     },
+    "frames-cache-dir": {
+      type: "string",
+      description:
+        "Directory for the content-addressed extracted-frame cache. " +
+        "Use to relocate the cache off the system drive when the OS temp " +
+        "directory lives on a small partition (e.g. Windows C: exhaustion " +
+        `during long renders). Pass ${EXTRACT_CACHE_DIR_DISABLED_ALIASES.map((a) => `"${a}"`).join(" / ")} to ` +
+        "disable caching entirely (frames extract into the render's workDir " +
+        "and are cleaned up when the render ends). Default: " +
+        "<tmpdir>/hyperframes-extract-cache-<uid>. " +
+        "Env: HYPERFRAMES_EXTRACT_CACHE_DIR.",
+    },
   },
   // `run` is the citty handler for `hyperframes render` — sequential flag
   // validation + render dispatch. Inherited CRITICAL on main (CRAP 1290);
@@ -577,6 +595,19 @@ export default defineCommand({
       process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = args["experimental-fast-capture"]
         ? "true"
         : "false";
+    }
+
+    // ── Override: extracted-frame cache directory ────────────────────────
+    // Sugar for HYPERFRAMES_EXTRACT_CACHE_DIR. Set BEFORE resolveConfig() so
+    // the env resolver picks up the CLI-supplied value. Disabling aliases
+    // (off/none/false/0) pass through verbatim — the engine helper canonicalizes.
+    // Positive paths are resolved to absolute so CWD changes downstream can't
+    // stale them.
+    if (typeof args["frames-cache-dir"] === "string" && args["frames-cache-dir"].trim() !== "") {
+      const raw = args["frames-cache-dir"].trim();
+      const normalized = raw.toLowerCase();
+      const isDisableAlias = EXTRACT_CACHE_DIR_DISABLED_ALIASES.includes(normalized);
+      process.env.HYPERFRAMES_EXTRACT_CACHE_DIR = isDisableAlias ? raw : resolve(raw);
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────
@@ -1463,6 +1494,8 @@ async function renderDocker(
       bestEffort: options.bestEffort,
       experimentalFastCapture: options.experimentalFastCapture,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
+      protocolTimeoutMs: options.protocolTimeout,
+      playerReadyTimeoutMs: options.playerReadyTimeout,
     },
   });
 
@@ -1598,34 +1631,39 @@ export async function renderLocal(
     producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
   );
 
-  const job = producer.createRenderJob({
-    fps: options.fps,
-    quality: options.quality,
-    format: options.format,
-    gifLoop: options.gifLoop,
-    workers: options.workers,
-    useGpu: options.gpu,
-    logger,
-    producerConfig: producer.resolveConfig({
-      browserGpuMode: options.browserGpuMode ?? "software",
-      ...(options.pageNavigationTimeoutMs != null
-        ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
-        : {}),
-      ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
-      ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
-      ...(options.vp9CpuUsed != null ? { vp9CpuUsed: options.vp9CpuUsed } : {}),
-    }),
-    hdrMode: options.hdrMode,
-    crf: options.crf,
-    videoBitrate: options.videoBitrate,
-    videoFrameFormat: options.videoFrameFormat,
-    variables: options.variables,
-    entryFile: options.entryFile,
-    outputResolution: options.outputResolution,
-    outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
-    debug: options.debug,
-    strictness: options.bestEffort === false ? "strict" : "best-effort",
+  const engineConfig = producer.resolveConfig({
+    browserGpuMode: options.browserGpuMode ?? "software",
+    ...(options.pageNavigationTimeoutMs != null
+      ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
+      : {}),
+    ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
+    ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
+    ...(options.vp9CpuUsed != null ? { vp9CpuUsed: options.vp9CpuUsed } : {}),
   });
+  const request = producer.createRenderRequest({
+    projectDir,
+    outputPath,
+    engineConfig,
+    options: {
+      fps: options.fps,
+      quality: options.quality,
+      format: options.format,
+      gifLoop: options.gifLoop,
+      workers: options.workers,
+      useGpu: options.gpu,
+      hdrMode: options.hdrMode,
+      crf: options.crf,
+      videoBitrate: options.videoBitrate,
+      videoFrameFormat: options.videoFrameFormat,
+      variables: options.variables,
+      entryFile: options.entryFile,
+      outputResolution: options.outputResolution,
+      outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
+      debug: options.debug,
+      strictness: options.bestEffort === false ? "strict" : "best-effort",
+    },
+  });
+  const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
 
   const onProgress = options.quiet
     ? undefined
@@ -2104,6 +2142,14 @@ function handleRenderError(
   const remediation = chromeLaunchRemediation(message);
   if (remediation) {
     errorBox("Render failed — Chrome could not launch", message, remediation);
+    process.exit(1);
+  }
+  // macOS <13 dyld Symbol-not-found on the pinned chrome-headless-shell
+  // build. Different remediation shape (older shell + env-var override)
+  // than the Linux shared-lib install, so it lives in its own detector.
+  const macosRemediation = macosOldChromeCrashRemediation(message);
+  if (macosRemediation) {
+    errorBox("Render failed — Chrome could not launch", message, macosRemediation);
     process.exit(1);
   }
   errorBox("Render failed", message, hint);

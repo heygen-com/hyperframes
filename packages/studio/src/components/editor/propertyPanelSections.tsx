@@ -147,7 +147,7 @@ export function TextAreaField({
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="w-full resize-none bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
+          className="[field-sizing:content] max-h-[40vh] min-h-12 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
         />
       </div>
     );
@@ -165,7 +165,7 @@ export function TextAreaField({
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="w-full resize-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+          className="[field-sizing:content] max-h-[40vh] min-h-20 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         />
       </div>
     </label>

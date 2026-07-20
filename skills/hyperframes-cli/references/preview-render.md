@@ -161,9 +161,19 @@ EXPECTED / ACTUAL: <expected behavior> / <observed behavior and isolated trigger
 EXACT ERROR: <verbatim error or warning; include frame/timestamp for visual defects>
 OUTCOME: <output correct | output corrupt | fallback succeeded | hard exit | command hung>
 WORKAROUND: <exact workaround, or none>
+COMPOSITION_STRUCTURE:
+  elements: video=<n> audio=<n> img=<n> svg=<n> canvas=<n> subComps=<n>
+  attributes: <comma-joined subset of clip-path, filter, mix-blend-mode, transform, mask, position:fixed, overflow:hidden, z-index, data-has-audio, data-duration, data-start, data-composition-src, background-image:url, mask-image:url — or "(none present)">
+  timeline: <flat | nested (<n> sub-comps)>; driver=<gsap | data-timeline | gsap+data-timeline | none>
+  delta: <what differs between the working workaround-render and the broken default render>
+  defect: <spatial location + frame index range, e.g. top-left / frames 0-30 — omit for non-visual defects>
 ```
 
+`COMPOSITION_STRUCTURE:` is a privacy-preserving structural anatomy: counts + presence flags only, no file paths, no src URLs, no user text. It lets maintainers pattern-match the report against known bug families (e.g. "sub-comp mount + clip-path", "GSAP timeline + z-index") without receiving the composition ZIP. Required for any rating ≤ 7 that describes a visual defect (black frame, flicker, corrupt output, wrong frame, blank output, other visual anomaly); optional but appreciated on higher ratings. Agents on this skill can auto-fill the block by calling `buildCompositionCensus(html)` and `renderCompositionCensusBlock(census)` from `packages/cli/src/utils/compositionCensus.ts` against the composition HTML they already have access to — the human user does not fill this out by hand.
+
 Preserve paths containing spaces, flags, and relevant `HF_*` / `PRODUCER_*` variables; redact secrets and credentials. If the failure no longer reproduces, include the last failing command and log excerpt. Share a project link only when one is already available and safe to share.
+
+The `hyperframes feedback` command soft-warns when a non-10 `--comment` is missing `REPRO COMMAND:`, and when a rating-≤-7 visual-defect comment is missing `COMPOSITION_STRUCTURE:`. The warnings print above the submission ack and do not block — some legitimate reports (a one-line "cloudrun quota bumped yesterday, fine now") won't fit the mold. Fix the packet and rerun to silence them.
 
 Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--yes` for non-interactive shells) to also publish a minimal repro to a public URL and open a pre-filled GitHub `bug` issue draft for a maintainer to file. This publishes the project publicly, so it is opt-in and consent-gated; the issue is never auto-submitted.
 

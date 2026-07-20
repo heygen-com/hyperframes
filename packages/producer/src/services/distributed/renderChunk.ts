@@ -59,6 +59,7 @@ import { defaultLogger } from "../../logger.js";
 import { runEncodeStage } from "../render/stages/encodeStage.js";
 import { runCaptureStage } from "../render/stages/captureStage.js";
 import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
+import { createCapturePlan } from "../render/capturePlan.js";
 import {
   type ChunkSliceJson,
   type LockedRenderConfig,
@@ -589,6 +590,18 @@ export async function renderChunk(
       // one Chrome session per worker, so captureStageMs includes those
       // boots; sessionBootMs stays 0 there.
       const captureStarted = Date.now();
+      const capturePlan = createCapturePlan({
+        workerCount: chunkWorkerCount,
+        forceScreenshot: encoder.forceScreenshot,
+        useStreamingEncode: false,
+        useLayeredComposite: false,
+        usePageSideCompositing: false,
+        hasHdrContent: false,
+        needsAlpha: plan.dimensions.format !== "mp4",
+      });
+      if (capturePlan.kind !== "sdr_disk") {
+        throw new Error(`Distributed chunk requires sdr_disk plan; got ${capturePlan.kind}`);
+      }
       await runCaptureStage({
         fileServer,
         workDir,
@@ -596,11 +609,9 @@ export async function renderChunk(
         job,
         totalFrames: framesInChunk,
         cfg,
-        forceScreenshot: encoder.forceScreenshot,
+        plan: capturePlan,
         log,
-        workerCount: chunkWorkerCount,
         probeSession: session,
-        needsAlpha: plan.dimensions.format !== "mp4",
         captureAttempts: [],
         // Distributed chunks run on Linux (beginframe) where dedup never arms;
         // a throwaway sink satisfies the type without per-chunk dedup reporting.

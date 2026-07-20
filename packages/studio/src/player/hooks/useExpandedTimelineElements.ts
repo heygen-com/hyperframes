@@ -133,6 +133,7 @@ function buildChildElements(
   siblings: ClipManifestClip[],
   display: DisplayBounds,
   editBasis: { start: number; sourceFile: string | undefined },
+  expandedHostKey: string,
 ): TimelineElement[] {
   const result: TimelineElement[] = [];
   for (const child of siblings) {
@@ -182,6 +183,7 @@ function buildChildElements(
       authoredTrack: base.authoredTrack,
       stackingContextId: base.stackingContextId,
       expandedParentStart: editBasis.start,
+      expandedHostKey,
       domId,
       selector,
       sourceFile: editBasis.sourceFile,
@@ -260,6 +262,7 @@ export function buildExpandedElements(
       track: topLevelElement.track,
     },
     editBasis,
+    parentKey,
   );
   if (expanded.length === 0) return filterToTopLevel(elements, parentMap);
 

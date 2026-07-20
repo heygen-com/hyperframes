@@ -15,9 +15,8 @@ export type MediaCodecMapEntry = {
   codecName: string;
   browserHostile: boolean;
   representativeMime: string | null;
-  /** Source carries an alpha channel — never proxy it (H.264 would destroy
-   * the transparency, e.g. ProRes 4444 alpha). Optional so pre-alpha-aware
-   * maps stay assignable; absent means "no alpha detected". */
+  /** Source carries an alpha channel and therefore needs a VP8/WebM proxy.
+   * Optional so pre-alpha-aware maps stay assignable; absent means "no alpha detected". */
   hasAlpha?: boolean;
 };
 
@@ -28,9 +27,8 @@ declare global {
 }
 
 const PROXY_QUERY_PARAM = "hf-proxy";
-const PROXY_QUERY_VALUE = "h264";
 
-/** Fired whenever an element is swapped to its H.264 proxy (any trigger). */
+/** Fired whenever an element is swapped to its authoring proxy (any trigger). */
 const DIAGNOSTIC_FALLBACK_CODE = "runtime_media_proxy_fallback";
 /** Fired when the runtime detects an undecodable video but cannot (or already
  *  did) proxy it — a remote asset, or the proxy URL itself failing. */
@@ -163,9 +161,9 @@ function lookupCodecMapEntry(
   );
 }
 
-function appendProxyParam(src: string): string {
+function appendProxyParam(src: string, entry: MediaCodecMapEntry | null): string {
   const url = new URL(src, document.baseURI);
-  url.searchParams.set(PROXY_QUERY_PARAM, PROXY_QUERY_VALUE);
+  url.searchParams.set(PROXY_QUERY_PARAM, entry ? (entry.hasAlpha ? "vp8" : "h264") : "auto");
   return url.href;
 }
 
@@ -173,17 +171,14 @@ type UnavailableReason =
   | "cross_origin"
   | "proxy_playback_failed"
   | "browser_safe_codec"
-  | "alpha_source"
   | "invalid_source_url";
 
 const UNAVAILABLE_NOTES: Record<UnavailableReason, string> = {
   cross_origin:
     "video reports zero decodable width but its source is cross-origin; no local proxy can be served for it",
-  proxy_playback_failed: "the H.264 proxy itself failed to decode; render output is unaffected",
+  proxy_playback_failed: "the authoring proxy itself failed to decode; render output is unaffected",
   browser_safe_codec:
-    "the file errored but its codec is browser-decodable; an H.264 proxy cannot help (the file itself is likely corrupt)",
-  alpha_source:
-    "the source carries an alpha channel; an H.264 proxy would destroy the transparency, so it is never proxied",
+    "the file errored but its codec is browser-decodable; a proxy cannot help (the file itself is likely corrupt)",
   invalid_source_url: "the media source URL is malformed and cannot be proxied",
 };
 
@@ -213,7 +208,7 @@ function emitUnavailableDiagnostic(
 }
 
 /**
- * Swap `el` to its H.264 proxy URL, evict stale per-source sync state, and
+ * Swap `el` to its alpha-aware proxy URL, evict stale per-source sync state, and
  * emit the one-time diagnostic + console line. Safe to call from any of the
  * three triggers (proactive/reactive/tertiary); a no-op if already swapped.
  */
@@ -226,7 +221,7 @@ export function swapToProxy(
   const originalSrc = currentSrcValue(el);
   let proxiedSrc: string;
   try {
-    proxiedSrc = appendProxyParam(originalSrc);
+    proxiedSrc = appendProxyParam(originalSrc, entry);
   } catch (err) {
     swallow("runtime.mediaProxy.swap", err);
     emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
@@ -246,7 +241,7 @@ export function swapToProxy(
     asset: originalSrc,
     codecName,
     trigger,
-    note: "render output is unaffected; only this preview element was swapped to an H.264 proxy",
+    note: "render output is unaffected; only this preview element was swapped to an authoring proxy",
   };
   postRuntimeMessage({
     source: "hf-preview",
@@ -258,7 +253,7 @@ export function swapToProxy(
   // matches on (packages/cli/src/utils/checkBrowser.ts); keep it in the text.
   console.info(
     `[hyperframes] ${DIAGNOSTIC_FALLBACK_CODE}: "${originalSrc}" uses a codec (${codecName ?? "unknown"}) this browser can't decode; ` +
-      "auto-swapped to an H.264 proxy for this preview only. Render output is unaffected.",
+      "auto-swapped to an authoring proxy for this preview only. Render output is unaffected.",
   );
 }
 
@@ -279,12 +274,6 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   if (key === null) return;
   const entry = lookupCodecMapEntry(key, map);
   if (!entry || !entry.browserHostile) return;
-  if (entry.hasAlpha) {
-    // Alpha sources are never proxied (transparency would be destroyed);
-    // say so instead of silently leaving a possibly-undecodable element.
-    emitUnavailableDiagnostic(el, "alpha_source", currentSrcValue(el));
-    return;
-  }
   const canPlay = entry.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   if (canPlay === "probably" || canPlay === "maybe") return;
   swapToProxy(el, entry, "proactive");
@@ -302,7 +291,7 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
  * auto-proxying is enabled and served, so its absence means a `?hf-proxy=`
  * request would 404 — never swap there. When the map is present but has no
  * entry for this key, swapping stays allowed (unlisted-asset rescue). A
- * mapped entry with alpha is never proxied.
+ * mapped alpha entries select the VP8/WebM proxy variant.
  */
 export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
@@ -325,10 +314,6 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
     return;
   }
-  if (entry?.hasAlpha) {
-    emitUnavailableDiagnostic(el, "alpha_source", src);
-    return;
-  }
   swapToProxy(el, entry, "reactive");
 }
 
@@ -338,7 +323,7 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
  * it and `loadedmetadata` never fires. Same guards and once-per-element
  * behavior as the reactive path, plus one extra skip: an entry the scan
  * mapped as browser-SAFE that still errors is a corrupt-but-safe file — an
- * H.264 proxy of a broken source can't help, so only diagnose.
+ * proxy of a broken source can't help, so only diagnose.
  */
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
@@ -358,10 +343,6 @@ export function handleErrorForProxy(el: HTMLMediaElement): void {
   const entry = lookupCodecMapEntry(key, map);
   if (entry && !entry.browserHostile) {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
-    return;
-  }
-  if (entry?.hasAlpha) {
-    emitUnavailableDiagnostic(el, "alpha_source", src);
     return;
   }
   swapToProxy(el, entry, "tertiary");

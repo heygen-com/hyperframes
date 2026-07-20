@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -15,19 +15,30 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
-    "./server": {
-      "import": "./dist/public-server.js"
-    },
+    "./server": "./src/server.ts",
     "./distributed": {
-      "import": "./dist/distributed.js",
-      "types": "./dist/distributed.d.ts"
+      "bun": "./src/distributed.ts",
+      "import": "./src/distributed.ts",
+      "types": "./src/distributed.ts"
     }
   },
   "publishConfig": {
     "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./server": "./dist/public-server.js",
+      "./distributed": {
+        "import": "./dist/distributed.js",
+        "types": "./dist/distributed.d.ts"
+      }
+    },
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {

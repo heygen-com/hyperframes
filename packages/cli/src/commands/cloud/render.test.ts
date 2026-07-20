@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import {
   resolveAspectRatioForSubmit,
+  validateDryRunSource,
   validateResolutionFormatCombo,
   type ProjectInputSource,
 } from "./render.js";
+
+const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "cli.ts");
 
 // errorBox writes to console; silence it so test output stays clean.
 beforeEach(() => {
@@ -48,6 +53,76 @@ describe("validateResolutionFormatCombo", () => {
     expect(() => validateResolutionFormatCombo("4k", "mp4")).not.toThrow();
     expect(() => validateResolutionFormatCombo("1080p", "webm")).not.toThrow();
     expect(() => validateResolutionFormatCombo(undefined, undefined)).not.toThrow();
+  });
+});
+
+describe("validateDryRunSource", () => {
+  it("accepts a local directory and rejects already-uploaded sources", () => {
+    const exit = trapExit();
+    expect(() => validateDryRunSource({ kind: "dir", dir: "." }, true)).not.toThrow();
+    expect(() => validateDryRunSource({ kind: "asset_id", assetId: "asst_123" }, true)).toThrow(
+      "process.exit:1",
+    );
+    expect(() =>
+      validateDryRunSource({ kind: "url", url: "https://example.com/project.zip" }, true),
+    ).toThrow("process.exit:1");
+    expect(exit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cloud render --dry-run", () => {
+  it("reports the real archive without contacting the cloud", () => {
+    const dir = writeComposition(1920, 1080);
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<!doctype html><html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"x"}]'><body><div data-composition-id="main" data-width="1920" data-height="1080"></div></body></html>`,
+        "utf-8",
+      );
+      writeFileSync(join(dir, "asset.bin"), "archive-input", "utf-8");
+      const result = spawnSync(
+        "bun",
+        [
+          "run",
+          cliEntry,
+          "cloud",
+          "render",
+          dir,
+          "--dry-run",
+          "--json",
+          "--variables",
+          '{"extra":1}',
+        ],
+        {
+          encoding: "utf-8",
+          timeout: 30_000,
+          env: {
+            ...process.env,
+            CI: "1",
+            HEYGEN_API_URL: "http://127.0.0.1:1",
+            HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        archive: {
+          file_count: number;
+          size_bytes: number;
+          upload_limit_bytes: number;
+          exceeds_upload_limit: boolean;
+          largest_files: Array<{ path: string }>;
+        };
+      };
+      expect(payload.archive.file_count).toBe(2);
+      expect(payload.archive.size_bytes).toBeGreaterThan(0);
+      expect(payload.archive.upload_limit_bytes).toBe(200 * 1024 * 1024);
+      expect(payload.archive.exceeds_upload_limit).toBe(false);
+      expect(payload.archive.largest_files.map((file) => file.path)).toContain("asset.bin");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

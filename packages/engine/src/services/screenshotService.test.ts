@@ -5,6 +5,7 @@ import { parseHTML } from "linkedom";
 import { type Page } from "puppeteer-core";
 import {
   pageScreenshotCapture,
+  pageContentExceedsCaptureHeight,
   cdpSessionCache,
   ensureRenderFrameSiblings,
   applyDomLayerMask,
@@ -140,6 +141,37 @@ describe("shouldDefaultCaptureBeyondViewport", () => {
 
   it("does not change regular Chrome defaults on non-macOS platforms", () => {
     expect(shouldDefaultCaptureBeyondViewport("Chrome/149.0.7827.155", "linux")).toBe(false);
+  });
+});
+
+describe("pageContentExceedsCaptureHeight", () => {
+  function makeFakePageWithScrollHeight(scrollHeight: number): Page {
+    return { evaluate: vi.fn().mockResolvedValue(scrollHeight) } as unknown as Page;
+  }
+
+  it("is false when the page fits exactly within the requested height", async () => {
+    const page = makeFakePageWithScrollHeight(1920);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(false);
+  });
+
+  it("tolerates subpixel rounding just past the requested height", async () => {
+    const page = makeFakePageWithScrollHeight(1920.5);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(false);
+  });
+
+  it("tolerates exactly one CSS pixel past the requested height", async () => {
+    const page = makeFakePageWithScrollHeight(1921);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(false);
+  });
+
+  it("detects content just beyond the rounding tolerance", async () => {
+    const page = makeFakePageWithScrollHeight(1922);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
+  });
+
+  it("is true when the page genuinely overflows the requested height", async () => {
+    const page = makeFakePageWithScrollHeight(2007);
+    await expect(pageContentExceedsCaptureHeight(page, 1920)).resolves.toBe(true);
   });
 });
 

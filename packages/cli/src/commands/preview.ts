@@ -192,7 +192,7 @@ export default defineCommand({
     proxy: {
       type: "boolean",
       description:
-        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached H.264 proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
+        "Auto-transcode browser-hostile video codecs (HEVC, ProRes, AV1) to a cached authoring proxy for preview (default: on; overrides hyperframes.json's media.autoProxy)",
       negativeDescription: "Disable auto-proxying of browser-hostile video codecs",
     },
   },

@@ -1,0 +1,24 @@
+{
+  "package": "@hyperframes/lint",
+  "localNodeRuntime": true,
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./browser": {
+      "source": "./src/browser.ts",
+      "runtime": "./dist/browser.js",
+      "types": "./dist/browser.d.ts",
+      "environments": ["browser", "bun"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

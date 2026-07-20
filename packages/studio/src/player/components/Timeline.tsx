@@ -28,6 +28,7 @@ import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallb
 import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
+import { useStudioPlaybackContextOptional } from "../../contexts/StudioContext";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -52,6 +53,7 @@ export const Timeline = memo(function Timeline({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
+  onCompositionDrop,
   onDeleteElement: _onDeleteElement,
   onMoveElement: onMoveElementOverride,
   onMoveElements: onMoveElementsOverride,
@@ -84,6 +86,11 @@ export const Timeline = memo(function Timeline({
     onSplitElement: onSplitElementOverride,
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
+  const playbackContext = useStudioPlaybackContextOptional();
+  const setRefreshKey = playbackContext?.setRefreshKey;
+  const refreshAfterLaneMove = useCallback(() => {
+    setRefreshKey?.((key) => key + 1);
+  }, [setRefreshKey]);
   useMusicBeatAnalysis();
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
@@ -169,6 +176,7 @@ export const Timeline = memo(function Timeline({
     pinnedOnFileDrop,
     pinnedOnAssetDrop,
     pinnedOnBlockDrop,
+    pinnedOnCompositionDrop,
   } = useTimelineEditPinning({
     ppsRef,
     fitPpsRef,
@@ -179,6 +187,7 @@ export const Timeline = memo(function Timeline({
     onFileDrop,
     onAssetDrop,
     onBlockDrop,
+    onCompositionDrop,
   });
 
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
@@ -223,6 +232,7 @@ export const Timeline = memo(function Timeline({
     setRangeSelectionRef,
     readZIndex: zSyncEnabled ? readClipZIndex : undefined,
     onStackingPatches: zSyncEnabled ? applyStackingPatches : undefined,
+    refreshAfterLaneMove,
   });
 
   const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =
@@ -234,6 +244,7 @@ export const Timeline = memo(function Timeline({
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
+      onCompositionDrop: pinnedOnCompositionDrop,
     });
 
   const displayTrackOrder = useMemo(() => {
@@ -399,7 +410,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
-      className={`relative border-t select-none h-full overflow-hidden ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
+      className={`relative border-t select-none h-full overflow-hidden ${isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={(e) => {
         if (activeTool === "razor" && scrollRef.current) {
           const rect = scrollRef.current.getBoundingClientRect();

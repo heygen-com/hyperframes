@@ -37,13 +37,18 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
 
 function createPaddableMockTimeline(duration: number): RuntimeTimelineLike {
   const timeline = createMockTimeline(duration) as RuntimeTimelineLike & {
-    to: (_target: object, vars: { duration: number }, position: number) => void;
+    to: (_target: object, vars: { duration: number }, position?: number) => void;
   };
   const baseDuration = timeline.duration;
   let paddedDuration = baseDuration();
   timeline.duration = () => paddedDuration;
+  // Mirrors GSAP: an omitted position appends sequentially at the current end.
   timeline.to = (_target, vars, position) => {
-    paddedDuration = Math.max(paddedDuration, position + Math.max(0, Number(vars.duration) || 0));
+    const resolvedPosition = position ?? paddedDuration;
+    paddedDuration = Math.max(
+      paddedDuration,
+      resolvedPosition + Math.max(0, Number(vars.duration) || 0),
+    );
   };
   return timeline;
 }
@@ -1097,6 +1102,33 @@ describe("initSandboxRuntimeModular", () => {
     expect(hookHost.style.visibility).toBe("visible");
   });
 
+  it("seeks child compositions in source time using host offset and playback rate", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "20");
+    document.body.appendChild(root);
+
+    const child = document.createElement("div");
+    child.setAttribute("data-composition-id", "child");
+    child.setAttribute("data-start", "3");
+    child.setAttribute("data-duration", "8");
+    child.setAttribute("data-playback-start", "1.5");
+    child.setAttribute("data-playback-rate", "2");
+    root.appendChild(child);
+
+    const childTimeline = createMockTimeline(6);
+    window.__timelines = { main: createMockTimeline(20), child: childTimeline };
+    initSandboxRuntimeModular();
+
+    window.__player?.renderSeek(5);
+    expect(childTimeline.time()).toBeCloseTo(5.5);
+
+    window.__player?.renderSeek(10);
+    expect(childTimeline.time()).toBe(6);
+  });
+
   it("keeps the root GSAP render nudge for normal frames but not silent probes", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1390,6 +1422,118 @@ describe("initSandboxRuntimeModular", () => {
       expect(player?.getTime()).toBeCloseTo(quantized + 0.5, 5);
     },
   );
+
+  it("ignores the async media-metadata duration rebind once render capture has started seeking frames (regression HF#2550)", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    document.body.appendChild(video);
+
+    // A root timeline with no usable duration yet — mirrors a composition
+    // whose length is derived from a full-length <video> that hasn't reported
+    // its metadata. window.gsap is needed because resolveRootTimelineFromDocument
+    // builds a fresh duration-floor wrapper timeline via gsap.timeline().
+    (
+      window as unknown as {
+        gsap?: { timeline: () => ReturnType<typeof createPaddableMockTimeline> };
+      }
+    ).gsap = {
+      timeline: () => createPaddableMockTimeline(0),
+    };
+    window.__timelines = { main: createMockTimeline(0) };
+    // Only a real producer render/export page sets this (fileServer.ts's
+    // pre-head script) — required alongside renderCaptureSeekStarted so the
+    // gate doesn't also disable Studio's own preview-iframe rebind.
+    window.__HF_EXPORT_RENDER_SEEK_CONFIG = { fps: 30, fpsSource: "default" };
+
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+
+    try {
+      initSandboxRuntimeModular();
+
+      // The render/producer capture protocol has claimed the timeline and is
+      // now driving frames deterministically (mirrors the engine's
+      // window.__hf.seek(t) -> player.renderSeek(t) bridge).
+      window.__player?.renderSeek(0);
+
+      // Let the runtime's own deferred re-bind attempt (init.ts's
+      // `setTimeout(() => maybePublishRenderReady(), 0)`, unrelated to media
+      // metadata) settle first, so only the metadata path below is under test.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Video metadata resolves late — after capture has started, the exact
+      // HF#2550 race (Docker/slow-I/O environments hit this; fast native
+      // environments resolve metadata before capture begins and never do).
+      Object.defineProperty(video, "duration", { value: 12, configurable: true });
+      video.dispatchEvent(new Event("loadedmetadata"));
+
+      // Clears init.ts's internal METADATA_REBIND_DEBOUNCE_MS (100ms, not exported).
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const rebindMessages = postMessageSpy.mock.calls
+        .map(([message]) => message as { code?: string } | undefined)
+        .filter((message) => message?.code === "timeline_rebind_after_media_metadata");
+      expect(rebindMessages).toHaveLength(0);
+    } finally {
+      delete (window as { gsap?: unknown }).gsap;
+    }
+  });
+
+  it("still applies the media-metadata duration rebind after renderSeek in Studio preview (no export render-seek config)", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const video = document.createElement("video");
+    video.setAttribute("data-start", "0");
+    document.body.appendChild(video);
+
+    (
+      window as unknown as {
+        gsap?: { timeline: () => ReturnType<typeof createPaddableMockTimeline> };
+      }
+    ).gsap = {
+      timeline: () => createPaddableMockTimeline(0),
+    };
+    window.__timelines = { main: createMockTimeline(0) };
+    // No window.__HF_EXPORT_RENDER_SEEK_CONFIG here — Studio's preview iframe
+    // never sets it, and useTimelinePlayer's overhang fallback drives
+    // renderSeek there too. The rebind must still fire for this case.
+
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+
+    try {
+      initSandboxRuntimeModular();
+
+      window.__player?.renderSeek(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      Object.defineProperty(video, "duration", { value: 12, configurable: true });
+      video.dispatchEvent(new Event("loadedmetadata"));
+
+      // Clears init.ts's internal METADATA_REBIND_DEBOUNCE_MS (100ms, not exported).
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const rebindMessages = postMessageSpy.mock.calls
+        .map(([message]) => message as { code?: string } | undefined)
+        .filter((message) => message?.code === "timeline_rebind_after_media_metadata");
+      expect(rebindMessages).toHaveLength(1);
+    } finally {
+      delete (window as { gsap?: unknown }).gsap;
+    }
+  });
 
   it("sets __renderReady only after timeline is bound, not at __playerReady time", async () => {
     const root = document.createElement("div");
@@ -1699,6 +1843,59 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(seekTimes.length).toBeGreaterThanOrEqual(2);
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
+  });
+
+  it("accepts replayed transport controls when the bridge announces ready without duplicate listeners", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "5");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const timeline = createMockTimeline(5);
+    timeline.timeScale = vi.fn();
+    window.__timelines = { root: timeline };
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      outbound.push(payload);
+      if (payload.source !== "hf-preview" || payload.type !== "ready") return;
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "seek",
+            timeSeconds: 2,
+          },
+        }),
+      );
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "set-playback-rate",
+            playbackRate: 2,
+          },
+        }),
+      );
+    });
+
+    expect(() => initSandboxRuntimeModular()).not.toThrow();
+    expect(() => initSandboxRuntimeModular()).not.toThrow();
+
+    expect(timeline.time()).toBe(2);
+    expect(timeline.timeScale).toHaveBeenLastCalledWith(2);
+    expect(outbound.filter((message) => message.type === "ready")).toHaveLength(2);
+    expect(
+      outbound.filter(
+        (message) => message.type === "analytics" && message.event === "composition_seeked",
+      ),
+    ).toHaveLength(2);
   });
 
   it("restores timed element visibility after a forced timeline rebind", () => {

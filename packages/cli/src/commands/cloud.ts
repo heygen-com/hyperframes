@@ -18,6 +18,7 @@ import { c } from "../ui/colors.js";
 export const examples: Example[] = [
   ["Render the current directory in the cloud", "hyperframes cloud render"],
   ["Render a specific project", "hyperframes cloud render ./my-video"],
+  ["Inspect the project zip without uploading", "hyperframes cloud render --dry-run"],
   [
     "Render at 60fps + high quality, save to a path",
     "hyperframes cloud render ./my-video --fps 60 --quality high -o ./out.mp4",

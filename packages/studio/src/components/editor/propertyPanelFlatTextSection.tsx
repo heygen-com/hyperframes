@@ -47,6 +47,7 @@ function FlatTextFieldEditor({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
+  onPreviewTextFieldStyle,
   autoFocus = false,
 }: {
   field: DomEditSelection["textFields"][number];
@@ -55,6 +56,7 @@ function FlatTextFieldEditor({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
   autoFocus?: boolean;
 }) {
   const track = useTrackDesignInput();
@@ -100,6 +102,7 @@ function FlatTextFieldEditor({
         value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
         tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
         liveCommit
+        onPreview={(next) => onPreviewTextFieldStyle?.(field.key, "font-size", next)}
         onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
       />
       <div className="flex min-h-[30px] items-center justify-between">
@@ -220,6 +223,7 @@ function FlatTextFieldEditor({
             flat
             label="Color"
             value={value ?? getTextFieldColor(field, styles)}
+            onPreview={(next) => onPreviewTextFieldStyle?.(field.key, "color", next)}
             onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
           />
         )}
@@ -235,6 +239,7 @@ export function FlatTextSection({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
+  onPreviewTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
 }: {
@@ -244,6 +249,7 @@ export function FlatTextSection({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  onPreviewTextFieldStyle?: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
@@ -288,6 +294,7 @@ export function FlatTextSection({
           onImportFonts={onImportFonts}
           onSetText={onSetText}
           onSetTextFieldStyle={onSetTextFieldStyle}
+          onPreviewTextFieldStyle={onPreviewTextFieldStyle}
           autoFocus
         />
       </div>
@@ -303,6 +310,7 @@ export function FlatTextSection({
         onImportFonts={onImportFonts}
         onSetText={onSetText}
         onSetTextFieldStyle={onSetTextFieldStyle}
+        onPreviewTextFieldStyle={onPreviewTextFieldStyle}
       />
       <button
         type="button"

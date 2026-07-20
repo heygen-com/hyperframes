@@ -87,6 +87,25 @@ vi.mock("../utils/producer.js", () => ({
       producerState.resolveConfigCalls.push(overrides);
       return { ...overrides, resolved: true };
     }),
+    createRenderRequest: vi.fn(
+      (input: {
+        projectDir: string;
+        outputPath: string;
+        engineConfig: unknown;
+        options: object;
+      }) => ({
+        version: 1,
+        projectDir: input.projectDir,
+        outputPath: input.outputPath,
+        options: { ...input.options, engineConfig: input.engineConfig },
+      }),
+    ),
+    renderConfigFromRequest: vi.fn(
+      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
+        const { engineConfig, ...options } = request.options;
+        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
+      },
+    ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
       producerState.createdJobs.push(config);
       return { config, progress: 100, outcome: "completed", warnings: [] };

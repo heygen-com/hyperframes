@@ -32,12 +32,13 @@ see the ladder and override.
 | icon      | heygen asset search free-usage path                                                                         |
 | logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                             |
 | grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                            |
-| video     | heygen avatar / image-to-video / photo-avatar / dub free-usage path; optional local LTX (`videogen` ladder) |
+| video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
 private, offline once cached). The `codex` CLI remains the ChatGPT-sub image
 upsell. Cost rule (X4): the agent confirms before an agent-initiated paid call;
-a user-requested one just runs.
+a user-requested one just runs — `heygen.video` is flagged paid (metered free
+allowance) so an agent-initiated `resolve --type video` confirms first.
 
 To force a specific generator (e.g. a user says "make this image with codex"),
 pass `--provider codex`: it pins resolution to that provider and skips the

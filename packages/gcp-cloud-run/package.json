@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/gcp-cloud-run",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "Google Cloud Run + Workflows adapter for HyperFrames distributed rendering — request handler, client-side SDK, and Terraform module.",
   "repository": {
     "type": "git",
@@ -18,20 +18,46 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
     "./server": {
-      "import": "./dist/server.js",
-      "types": "./dist/server.d.ts"
+      "bun": "./src/server.ts",
+      "import": "./src/server.ts",
+      "types": "./src/server.ts"
     },
     "./sdk": {
-      "import": "./dist/sdk/index.js",
-      "types": "./dist/sdk/index.d.ts"
+      "bun": "./src/sdk/index.ts",
+      "import": "./src/sdk/index.ts",
+      "types": "./src/sdk/index.ts"
+    },
+    "./terraform": {
+      "bun": "./src/terraform.ts",
+      "import": "./src/terraform.ts",
+      "types": "./src/terraform.ts"
     }
   },
   "publishConfig": {
     "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./server": {
+        "import": "./dist/server.js",
+        "types": "./dist/server.d.ts"
+      },
+      "./sdk": {
+        "import": "./dist/sdk/index.js",
+        "types": "./dist/sdk/index.d.ts"
+      },
+      "./terraform": {
+        "import": "./dist/terraform.js",
+        "types": "./dist/terraform.d.ts"
+      }
+    },
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {

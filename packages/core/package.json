@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "description": "",
   "repository": {
     "type": "git",
@@ -51,6 +51,12 @@
       "node": "./dist/editing/affordances.js",
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
+    },
+    "./editing/draft-markers": {
+      "bun": "./src/editing/draftMarkers.ts",
+      "node": "./dist/editing/draftMarkers.js",
+      "import": "./src/editing/draftMarkers.ts",
+      "types": "./src/editing/draftMarkers.ts"
     },
     "./variables": {
       "bun": "./src/variables.ts",
@@ -112,6 +118,12 @@
       "node": "./dist/runtime/startExpression.js",
       "import": "./src/runtime/startExpression.ts",
       "types": "./src/runtime/startExpression.ts"
+    },
+    "./runtime/start-resolver": {
+      "bun": "./src/runtime/startResolver.ts",
+      "node": "./dist/runtime/startResolver.js",
+      "import": "./src/runtime/startResolver.ts",
+      "types": "./src/runtime/startResolver.ts"
     },
     "./runtime/protocol": {
       "bun": "./src/runtime/protocol.ts",
@@ -284,17 +296,9 @@
         "import": "./dist/editing/affordances.js",
         "types": "./dist/editing/affordances.d.ts"
       },
-      "./figma": {
-        "import": "./dist/figma/index.js",
-        "types": "./dist/figma/index.d.ts"
-      },
-      "./generators": {
-        "import": "./dist/generators/hyperframes.js",
-        "types": "./dist/generators/hyperframes.d.ts"
-      },
-      "./lint": {
-        "import": "./dist/lint/index.js",
-        "types": "./dist/lint/index.d.ts"
+      "./editing/draft-markers": {
+        "import": "./dist/editing/draftMarkers.js",
+        "types": "./dist/editing/draftMarkers.d.ts"
       },
       "./variables": {
         "import": "./dist/variables.js",
@@ -303,6 +307,14 @@
       "./slideshow": {
         "import": "./dist/slideshow/index.js",
         "types": "./dist/slideshow/index.d.ts"
+      },
+      "./generators": {
+        "import": "./dist/generators/hyperframes.js",
+        "types": "./dist/generators/hyperframes.d.ts"
+      },
+      "./lint": {
+        "import": "./dist/lint/index.js",
+        "types": "./dist/lint/index.d.ts"
       },
       "./compiler": {
         "import": "./dist/compiler/index.js",
@@ -328,6 +340,10 @@
       "./runtime/start-expression": {
         "import": "./dist/runtime/startExpression.js",
         "types": "./dist/runtime/startExpression.d.ts"
+      },
+      "./runtime/start-resolver": {
+        "import": "./dist/runtime/startResolver.js",
+        "types": "./dist/runtime/startResolver.d.ts"
       },
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
@@ -420,6 +436,10 @@
       "./fonts/system-locator": {
         "import": "./dist/fonts/systemFontLocator.js",
         "types": "./dist/fonts/systemFontLocator.d.ts"
+      },
+      "./figma": {
+        "import": "./dist/figma/index.js",
+        "types": "./dist/figma/index.d.ts"
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"

@@ -19,19 +19,22 @@ import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/stud
 import { collectHtmlIds, resolveDroppedAssetDuration } from "../utils/studioHelpers";
 import { formatTimelineAttributeNumber } from "./timelineEditingHelpers";
 import { readFileContent } from "./timelineTimingSync";
+import { commitTimelineCompositionInsertion } from "../utils/timelineCompositionInsert";
+import { usePlayerStore } from "../player";
 
 interface UseTimelineAssetDropOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
   timelineElements: TimelineElement[];
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;
   forceReloadSdkSession?: () => void;
+  observeProjectFileVersion?: (path: string, version: string | null) => void;
 }
 
 export function useTimelineAssetDropOps({
@@ -46,6 +49,7 @@ export function useTimelineAssetDropOps({
   uploadProjectFiles,
   isRecordingRef,
   forceReloadSdkSession,
+  observeProjectFileVersion,
 }: UseTimelineAssetDropOpsOptions) {
   // fallow-ignore-next-line complexity
   const handleTimelineAssetDrop = useCallback(
@@ -171,5 +175,51 @@ export function useTimelineAssetDropOps({
     [handleTimelineAssetDrop, projectIdRef, uploadProjectFiles, isRecordingRef, showToast],
   );
 
-  return { handleTimelineAssetDrop, handleTimelineFileDrop };
+  const handleTimelineCompositionDrop = useCallback(
+    async (sourcePath: string, placement: Pick<TimelineElement, "start" | "track">) => {
+      if (isRecordingRef?.current) {
+        showToast("Cannot edit timeline while recording", "error");
+        return;
+      }
+      const pid = projectIdRef.current;
+      if (!pid) throw new Error("No active project");
+      const targetPath = activeCompPath || "index.html";
+      try {
+        await commitTimelineCompositionInsertion({
+          projectId: pid,
+          targetPath,
+          sourcePath,
+          start: placement.start,
+          track: placement.track,
+          writeFile: writeProjectFile,
+          recordEdit,
+          observeVersion: observeProjectFileVersion,
+          selectHost: (key) => usePlayerStore.getState().setSelectedElementId(key),
+          resync: forceReloadSdkSession,
+          refresh: reloadPreview,
+        });
+        domEditSaveTimestampRef.current = Date.now();
+        showToast("Composition added to the timeline.", "info");
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : "Failed to add composition to timeline",
+          "error",
+        );
+      }
+    },
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      forceReloadSdkSession,
+      isRecordingRef,
+      observeProjectFileVersion,
+      projectIdRef,
+      recordEdit,
+      reloadPreview,
+      showToast,
+      writeProjectFile,
+    ],
+  );
+
+  return { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop };
 }

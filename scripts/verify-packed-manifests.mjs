@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// The verifier normalizes conditional exports and materializes multi-runtime
+// fixtures; its branch matrix is covered by focused tests plus the live pack gate.
+// fallow-ignore-file complexity
 
 import { execFileSync } from "node:child_process";
 import {
@@ -298,12 +301,32 @@ export function packageExportSpecifier(packageName, exportKey) {
 }
 
 export function listPackedExportContracts(packedWorkspaces) {
-  return packedWorkspaces.flatMap(({ packedPackage }) =>
-    Object.entries(packedPackage.exports ?? {}).map(([exportKey, target]) => ({
+  return packedWorkspaces.flatMap(({ workspace, packedPackage, descriptor }) => {
+    const sourceDescriptor =
+      descriptor ??
+      (workspace && existsSync(join(ROOT, workspace, "package-subpaths.json"))
+        ? JSON.parse(readFileSync(join(ROOT, workspace, "package-subpaths.json"), "utf8"))
+        : null);
+    return Object.entries(packedPackage.exports ?? {}).map(([exportKey, target]) => ({
       specifier: packageExportSpecifier(packedPackage.name, exportKey),
       typechecked: Boolean(target?.types),
-    })),
+      environments: sourceDescriptor?.subpaths?.[exportKey]?.environments ?? ["browser", "node"],
+    }));
+  });
+}
+
+/** Render browser imports as live namespace bindings so sideEffects:false cannot erase the gate. */
+export function renderBrowserConsumer(specifiers) {
+  const bindings = specifiers.map((_, index) => `packedBrowserModule${index}`);
+  const imports = specifiers.map(
+    (specifier, index) => `import * as ${bindings[index]} from ${JSON.stringify(specifier)};`,
   );
+  return [
+    ...imports,
+    `const packedBrowserModules = [${bindings.join(", ")}];`,
+    `console.log("Packed browser exports", packedBrowserModules.map((module) => Object.keys(module)));`,
+    "",
+  ].join("\n");
 }
 
 function writeConsumerFixture(packDir, packedWorkspaces) {
@@ -314,8 +337,19 @@ function writeConsumerFixture(packDir, packedWorkspaces) {
     packedWorkspaces.map(({ filename, packedPackage }) => [packedPackage.name, `file:${filename}`]),
   );
   const dependencies = { ...workspaceFileDeps };
+  // Execute optional integration subpaths (for example aws-lambda/cdk) with
+  // their declared peer contract satisfied, exactly as an adopter would.
+  for (const { packedPackage } of packedWorkspaces) {
+    for (const [peer, version] of Object.entries(packedPackage.peerDependencies ?? {})) {
+      dependencies[peer] ??= version;
+    }
+  }
   dependencies.typescript = rootPackage.devDependencies.typescript;
   dependencies["@types/node"] = rootPackage.devDependencies["@types/node"];
+  const studioPackage = JSON.parse(
+    readFileSync(join(ROOT, "packages/studio/package.json"), "utf8"),
+  );
+  dependencies.vite = studioPackage.devDependencies.vite;
   writeFileSync(
     join(fixtureDir, "package.json"),
     JSON.stringify(
@@ -363,21 +397,33 @@ function writeConsumerFixture(packDir, packedWorkspaces) {
   );
 
   const specifiers = contracts.map(({ specifier }) => specifier);
+  const nodeSpecifiers = contracts
+    .filter(({ environments }) => environments.includes("node"))
+    .map(({ specifier }) => specifier);
+  const browserSpecifiers = contracts
+    .filter(({ environments, typechecked }) => environments.includes("browser") && typechecked)
+    .map(({ specifier }) => specifier);
   writeFileSync(
     join(fixtureDir, "consumer-smoke.mjs"),
-    `const specifiers = ${JSON.stringify(specifiers, null, 2)};\n` +
+    `import { existsSync } from "node:fs";\n` +
+      `import { join } from "node:path";\n` +
+      `const specifiers = ${JSON.stringify(specifiers, null, 2)};\n` +
+      `const nodeSpecifiers = ${JSON.stringify(nodeSpecifiers, null, 2)};\n` +
       `for (const specifier of specifiers) import.meta.resolve(specifier);\n` +
-      `const sdk = await import("@hyperframes/sdk");\n` +
-      `if (typeof sdk.openComposition !== "function") throw new Error("SDK root export missing");\n` +
-      `const memory = await import("@hyperframes/sdk/adapters/memory");\n` +
-      `if (typeof memory.createMemoryAdapter !== "function") throw new Error("memory adapter missing");\n` +
-      `const fsAdapter = await import("@hyperframes/sdk/adapters/fs");\n` +
-      `if (typeof fsAdapter.createFsAdapter !== "function") throw new Error("fs adapter missing");\n` +
-      `await import("@hyperframes/core");\n` +
-      `await import("@hyperframes/parsers");\n` +
-      `await import("@hyperframes/lint");\n` +
-      `await import("@hyperframes/studio-server");\n` +
-      `console.log(\`Resolved \${specifiers.length} packed exports and loaded public SDK adapters.\`);\n`,
+      `for (const specifier of nodeSpecifiers) {\n` +
+      `  const options = specifier.endsWith(".json") ? { with: { type: "json" } } : undefined;\n` +
+      `  await import(specifier, options);\n` +
+      `}\n` +
+      `const terraform = await import("@hyperframes/gcp-cloud-run/terraform");\n` +
+      `if (!existsSync(join(terraform.getTerraformModuleDir(), "main.tf"))) throw new Error("packed Terraform module missing");\n` +
+      `console.log(\`Resolved \${specifiers.length} packed exports and executed \${nodeSpecifiers.length} Node exports.\`);\n` +
+      `process.exit(0);\n`,
+  );
+  writeFileSync(join(fixtureDir, "browser-consumer.ts"), renderBrowserConsumer(browserSpecifiers));
+  writeFileSync(
+    join(fixtureDir, "vite.config.mjs"),
+    `import { defineConfig } from "vite";\n` +
+      `export default defineConfig({ build: { lib: { entry: "browser-consumer.ts", formats: ["es"] }, outDir: "browser-dist" } });\n`,
   );
   return fixtureDir;
 }
@@ -398,6 +444,11 @@ function verifyPackedConsumer(packDir, packedWorkspaces) {
     cwd: fixtureDir,
     encoding: "utf8",
   });
+  execFileSync(join(fixtureDir, "node_modules", ".bin", "vite"), ["build"], {
+    cwd: fixtureDir,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
   const cliOutput = execFileSync(
     join(fixtureDir, "node_modules", ".bin", "hyperframes"),
     ["--help"],
@@ -411,7 +462,9 @@ function verifyPackedConsumer(packDir, packedWorkspaces) {
     throw new Error("Packed CLI help did not identify HyperFrames");
   }
   console.log(smokeOutput.trim());
-  console.log("Verified clean packed consumer install, type resolution, and CLI startup.");
+  console.log(
+    "Verified clean packed consumer install, Node execution, TypeScript/Vite resolution, and CLI startup.",
+  );
 }
 
 function packAndVerifyWorkspace(workspace, packDir) {

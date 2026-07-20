@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
+import { sourceAliases } from "../../scripts/package-subpaths.mjs";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as {
   version: string;
@@ -59,6 +60,7 @@ var __dirname = __hf_dirname(__filename);`,
     // from the `dependencies`/workspace entry, not the bundled CLI.
     "@hyperframes/gcp-cloud-run",
     "@hyperframes/gcp-cloud-run/sdk",
+    "@hyperframes/gcp-cloud-run/terraform",
   ],
   noExternal: [
     "@hyperframes/core",
@@ -80,27 +82,10 @@ var __dirname = __hf_dirname(__filename);`,
   },
   esbuildOptions(options) {
     options.alias = {
-      "@hyperframes/producer": resolve(__dirname, "../producer/src/index.ts"),
-      // esbuild's alias map treats `@hyperframes/producer` as a file path
-      // and would otherwise resolve `@hyperframes/producer/distributed`
-      // to `../producer/src/index.ts/distributed` (treating the file as a
-      // directory). Adding an explicit alias for every subpath we import
-      // avoids the prefix-substitution misfire.
-      "@hyperframes/producer/distributed": resolve(__dirname, "../producer/src/distributed.ts"),
-      // Same reason: the lambda CLI imports `@hyperframes/aws-lambda/sdk`,
-      // which would resolve to `../aws-lambda/src/index.ts/sdk` without
-      // an explicit subpath alias. The SDK subpath has its own barrel.
-      "@hyperframes/aws-lambda/sdk": resolve(__dirname, "../aws-lambda/src/sdk/index.ts"),
-      // Same for the GCP adapter's SDK subpath barrel.
-      "@hyperframes/gcp-cloud-run/sdk": resolve(__dirname, "../gcp-cloud-run/src/sdk/index.ts"),
-      // hf#677 follow-up: the shader-blend worker imports from
-      // `@hyperframes/engine/shader-transitions` (subpath export) — a
-      // standalone TS file with zero internal imports that survives the
-      // worker_thread loader boundary.
-      "@hyperframes/engine/shader-transitions": resolve(
-        __dirname,
-        "../engine/src/utils/shaderTransitions.ts",
-      ),
+      // Exact subpaths are generated from the same contracts as package
+      // exports, avoiding esbuild's root-alias prefix substitution trap.
+      ...sourceAliases(resolve(__dirname, "../producer"), [".", "./distributed"]),
+      ...sourceAliases(resolve(__dirname, "../engine"), [".", "./shader-transitions"]),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };
   },

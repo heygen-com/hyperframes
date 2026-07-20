@@ -8,15 +8,19 @@ export interface SplitBody {
   elementDuration: number;
 }
 
+interface BatchFileBody {
+  path: string;
+  targets: SplitBody[];
+}
+
 function decodePathFromUrl(url: string, marker: string): string {
   const encoded = url.slice(url.indexOf(marker) + marker.length);
   return decodeURIComponent(encoded);
 }
 
 /**
- * Fetch mock shared by both harnesses: GSAP mutations 400 (no script in fixtures),
- * split-element writes a `<!--split-->` marker so `changed` is true, and file reads
- * echo the in-memory `disk`. `onSplit` (when set) records each split request's body.
+ * Fetch mock shared by both harnesses: the atomic split batch writes each file
+ * once and returns its canonical snapshots; file reads echo the in-memory disk.
  */
 export function createSplitFetchMock(
   disk: Record<string, string>,
@@ -24,31 +28,39 @@ export function createSplitFetchMock(
 ) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
-    if (u.includes("/gsap-mutations/")) {
-      // No GSAP script in the fixtures — mirror the server's 400 response.
-      return new Response(JSON.stringify({ error: "no GSAP script found in file" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
+    if (u.includes("/file-mutations/split-batch")) {
+      const body = JSON.parse(String(init?.body)) as { files: BatchFileBody[] };
+      const files = body.files.map((file) => {
+        const before = disk[file.path];
+        for (const target of file.targets) onSplit?.(file.path, target);
+        const after = `${before}${"<!--split-->".repeat(file.targets.length)}`;
+        const version = `"test-${file.path}-${after.length}"`;
+        return {
+          path: file.path,
+          before,
+          after,
+          version,
+          writeToken: "test-cut",
+          splitCount: file.targets.length,
+          skippedSelectors: [],
+        };
       });
-    }
-    if (u.includes("/file-mutations/split-element/")) {
-      const path = decodePathFromUrl(u, "/file-mutations/split-element/");
-      onSplit?.(path, JSON.parse(String(init?.body)) as SplitBody);
-      // Return content that differs from the original so `changed` is true.
-      const after = `${disk[path]}<!--split-->`;
-      const version = `"test-${path}-${after.length}"`;
-      disk[path] = after; // server writes the split to disk
-      return new Response(JSON.stringify({ ok: true, changed: true, content: after, version }), {
+      for (const file of files) disk[file.path] = file.after;
+      return new Response(JSON.stringify({ ok: true, outcome: "committed", files }), {
         status: 200,
-        headers: { "Content-Type": "application/json", ETag: version },
+        headers: { "Content-Type": "application/json" },
       });
     }
     if (u.includes("/files/")) {
       const path = decodePathFromUrl(u, "/files/").replace(/\?.*$/, "");
-      return new Response(JSON.stringify({ content: disk[path] ?? "" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      const content = disk[path] ?? "";
+      return new Response(
+        JSON.stringify({ content, version: `"test-${path}-${content.length}"` }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
     void init;
     throw new Error(`unexpected fetch: ${u}`);

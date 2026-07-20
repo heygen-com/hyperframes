@@ -42,6 +42,10 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
     blockName: string,
     placement: TimelineDropPlacement,
   ) => Promise<void> | void;
+  handleTimelineCompositionDrop?: (
+    sourcePath: string,
+    placement: TimelineDropPlacement,
+  ) => Promise<void> | void;
   handlePreviewBlockDrop?: (
     blockName: string,
     position: { left: number; top: number },
@@ -72,6 +76,7 @@ export function EditorShell({
   handleTimelineElementDelete,
   handleTimelineAssetDrop,
   handleTimelineBlockDrop,
+  handleTimelineCompositionDrop,
   handlePreviewBlockDrop,
   handleTimelineFileDrop,
   handleTimelineElementMove,
@@ -140,6 +145,7 @@ export function EditorShell({
             onFileDrop={handleTimelineFileDrop}
             onAssetDrop={handleTimelineAssetDrop}
             onBlockDrop={handleTimelineBlockDrop}
+            onCompositionDrop={handleTimelineCompositionDrop}
             onDeleteElement={handleTimelineElementDelete}
             previewOverlay={
               <PreviewOverlays
@@ -174,6 +180,10 @@ interface EditorShellBodyProps {
   onFileDrop: (files: File[], placement?: TimelineDropPlacement) => Promise<void> | void;
   onAssetDrop: (assetPath: string, placement: TimelineDropPlacement) => Promise<void> | void;
   onBlockDrop?: (blockName: string, placement: TimelineDropPlacement) => Promise<void> | void;
+  onCompositionDrop?: (
+    sourcePath: string,
+    placement: TimelineDropPlacement,
+  ) => Promise<void> | void;
   onDeleteElement: (element: TimelineElement) => Promise<void> | void;
 }
 
@@ -189,6 +199,7 @@ function EditorShellBody({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
+  onCompositionDrop,
   onDeleteElement,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
@@ -233,6 +244,7 @@ function EditorShellBody({
         onFileDrop={onFileDrop}
         onAssetDrop={onAssetDrop}
         onBlockDrop={onBlockDrop}
+        onCompositionDrop={onCompositionDrop}
         onDeleteElement={onDeleteElement}
         onSelectTimelineElement={onSelectTimelineElement}
         timelineFooter={

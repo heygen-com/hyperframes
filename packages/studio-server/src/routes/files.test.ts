@@ -84,7 +84,145 @@ function postElementPatchBatches(
   });
 }
 
+function postCutBatch(
+  app: Hono,
+  files: Array<{
+    path: string;
+    expectedVersion: string;
+    targets: Array<{
+      target: { id?: string; hfId?: string; selector?: string; selectorIndex?: number };
+      originalId?: string;
+      splitTime: number;
+      elementStart: number;
+      elementDuration: number;
+    }>;
+  }>,
+): Promise<Response> {
+  return app.request("http://localhost/projects/demo/file-mutations/split-batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files, transactionToken: "cut-test" }),
+  });
+}
+
 describe("registerFileRoutes", () => {
+  it("CAS-inserts one composition host and leaves stale requests side-effect free", async () => {
+    const projectDir = createProjectDir();
+    const before = `<!doctype html><html><body><div data-composition-id="main" data-width="640" data-height="360" data-duration="2"></div></body></html>`;
+    writeFileSync(join(projectDir, "index.html"), before);
+    writeFileSync(
+      join(projectDir, "child.html"),
+      `<template><div data-composition-id="child" data-width="640" data-height="360" data-duration="3"></div></template>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const insert = (expectedVersion: string) =>
+      app.request("http://localhost/projects/demo/file-mutations/insert-composition/index.html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcePath: "child.html", start: 4, track: 0, expectedVersion }),
+      });
+
+    const response = await insert(fileContentVersion(before));
+    const result = (await response.json()) as { after: string; hostId: string; version: string };
+
+    expect(response.status).toBe(200);
+    expect(result.after).toBe(readFileSync(join(projectDir, "index.html"), "utf-8"));
+    expect(result.after).toContain('data-duration="7"');
+    expect(result.after).toContain(`id="${result.hostId}"`);
+    expect(result.version).toBe(fileContentVersion(result.after));
+
+    const committed = result.after;
+    const stale = await insert(fileContentVersion(before));
+    expect(stale.status).toBe(409);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(committed);
+  });
+
+  it.each([
+    ["index.html", 400],
+    ["missing.html", 404],
+    ["../outside.html", 400],
+  ])("rejects invalid composition source %s without writing", async (sourcePath, status) => {
+    const projectDir = createProjectDir();
+    const before = `<!doctype html><html><body><div data-composition-id="main" data-width="640" data-height="360" data-duration="2"></div></body></html>`;
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/insert-composition/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath,
+          start: 0,
+          track: 0,
+          expectedVersion: fileContentVersion(before),
+        }),
+      },
+    );
+
+    expect(response.status).toBe(status);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(before);
+  });
+
+  it("returns 404 when the composition insertion target does not exist", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "child.html"),
+      `<template><div data-composition-id="child" data-duration="3"></div></template>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/insert-composition/missing.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath: "child.html",
+          start: 0,
+          track: 0,
+          expectedVersion: "missing",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns a clean 400 for an invalid GSAP writer flag", async () => {
+    const previous = process.env.HYPERFRAMES_GSAP_WRITER;
+    process.env.HYPERFRAMES_GSAP_WRITER = "true";
+    try {
+      const projectDir = createProjectDir();
+      writeFileSync(
+        join(projectDir, "index.html"),
+        '<div id="box"></div><script>const tl = gsap.timeline(); tl.to("#box", { x: 10 });</script>',
+      );
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+
+      const response = await app.request(
+        "http://localhost/projects/demo/gsap-mutations/index.html",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "shift-positions", targetSelector: "#box", delta: 1 }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+
+      expect(response.status).toBe(400);
+      expect(payload.error).toContain("expected recast or acorn");
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_WRITER;
+      else process.env.HYPERFRAMES_GSAP_WRITER = previous;
+    }
+  });
+
   it("returns empty content for missing files when caller marks the read optional", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
@@ -552,6 +690,159 @@ describe("registerFileRoutes", () => {
     expect(payload.changed).toBe(true);
     expect(payload.version).toBe(fileContentVersion(payload.content!));
     expect(response.headers.get("etag")).toBe(payload.version);
+  });
+
+  it("folds multiple same-file cuts and writes one canonical file result", async () => {
+    const projectDir = createProjectDir();
+    const before =
+      '<div id="a" data-start="0" data-duration="4">A</div><div id="b" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { id: "a" },
+            originalId: "a",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { id: "b" },
+            originalId: "b",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+        ],
+      },
+    ]);
+    const payload = (await response.json()) as {
+      files: Array<{ after: string; version: string; splitCount: number }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.files).toHaveLength(1);
+    expect(payload.files[0].splitCount).toBe(2);
+    expect(payload.files[0].after).toContain('id="a-split"');
+    expect(payload.files[0].after).toContain('id="b-split"');
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(payload.files[0].after);
+    expect(consumeFileWriteReceipt(join(projectDir, "index.html"))).toEqual({
+      path: "index.html",
+      version: payload.files[0].version,
+      writeToken: "cut-test",
+    });
+  });
+
+  it("cuts multiple id-less selector targets against their original indices", async () => {
+    const projectDir = createProjectDir();
+    const before =
+      '<div class="clip" data-start="0" data-duration="4">A</div><div class="other" data-start="0" data-duration="4">Other</div><div class="clip" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { selector: ".clip", selectorIndex: 0 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { selector: ".other", selectorIndex: 0 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+          {
+            target: { selector: ".clip", selectorIndex: 1 },
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+        ],
+      },
+    ]);
+    const payload = (await response.json()) as {
+      files?: Array<{ after: string; splitCount: number }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.files?.[0]?.splitCount).toBe(3);
+    expect(payload.files?.[0]?.after.match(/class="clip"/g) ?? []).toHaveLength(4);
+    expect(payload.files?.[0]?.after.match(/class="other"/g) ?? []).toHaveLength(2);
+    expect(payload.files?.[0]?.after).toContain(">A</div>");
+    expect(payload.files?.[0]?.after).toContain(">B</div>");
+  });
+
+  it("rejects a stale multi-file cut before writing either file", async () => {
+    const projectDir = createProjectDir();
+    const beforeA = '<div id="a" data-start="0" data-duration="4">A</div>';
+    const beforeB = '<div id="b" data-start="0" data-duration="4">B</div>';
+    writeFileSync(join(projectDir, "index.html"), beforeA);
+    writeFileSync(join(projectDir, "b.html"), beforeB);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const target = (id: string) => ({
+      target: { id },
+      originalId: id,
+      splitTime: 2,
+      elementStart: 0,
+      elementDuration: 4,
+    });
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(beforeA),
+        targets: [target("a")],
+      },
+      { path: "b.html", expectedVersion: '"stale"', targets: [target("b")] },
+    ]);
+
+    expect(response.status).toBe(409);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(beforeA);
+    expect(readFileSync(join(projectDir, "b.html"), "utf-8")).toBe(beforeB);
+  });
+
+  it("serializes rapid cuts so a stale successor cannot fragment the first result", async () => {
+    const projectDir = createProjectDir();
+    const before = '<div id="clip" data-start="0" data-duration="4">Clip</div>';
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const request = () =>
+      postCutBatch(app, [
+        {
+          path: "index.html",
+          expectedVersion: fileContentVersion(before),
+          targets: [
+            {
+              target: { id: "clip" },
+              originalId: "clip",
+              splitTime: 2,
+              elementStart: 0,
+              elementDuration: 4,
+            },
+          ],
+        },
+      ]);
+
+    const [first, second] = await Promise.all([request(), request()]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    const after = readFileSync(join(projectDir, "index.html"), "utf-8");
+    expect(after.match(/id="clip-split"/g) ?? []).toHaveLength(1);
   });
 
   // A realistic sub-composition: markup + GSAP wrapped in a <template>, tweens

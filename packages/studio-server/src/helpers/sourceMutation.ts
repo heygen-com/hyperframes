@@ -258,7 +258,13 @@ export function splitElementInHtml(
   target: SourceMutationTarget,
   splitTime: number,
   newId: string,
-  fallbackTiming?: { start: number; duration: number },
+  fallbackTiming?: {
+    start: number;
+    duration: number;
+    playbackStart?: number;
+    playbackRate?: number;
+    stampPlaybackStart?: boolean;
+  },
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
@@ -292,6 +298,19 @@ export function splitElementInHtml(
   const clone = el.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
+  const compositionId = clone.getAttribute("data-composition-id");
+  if (compositionId) {
+    const usedCompositionIds = new Set(
+      Array.from(document.querySelectorAll("[data-composition-id]"), (node) =>
+        node.getAttribute("data-composition-id"),
+      ),
+    );
+    const base = `${compositionId}-split`;
+    let nextCompositionId = base;
+    let suffix = 2;
+    while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
+    clone.setAttribute("data-composition-id", nextCompositionId);
+  }
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
@@ -306,11 +325,16 @@ export function splitElementInHtml(
     ? "data-playback-start"
     : el.hasAttribute("data-media-start")
       ? "data-media-start"
-      : null;
+      : fallbackTiming?.stampPlaybackStart
+        ? "data-playback-start"
+        : null;
   if (playbackStartAttr) {
-    const currentTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "0") || 0;
+    const currentTrim =
+      parseFloat(el.getAttribute(playbackStartAttr) ?? "") || fallbackTiming?.playbackStart || 0;
     const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate = Number.isFinite(rateRaw) ? rateRaw : 1;
+    const rate =
+      Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : (fallbackTiming?.playbackRate ?? 1);
+    el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),

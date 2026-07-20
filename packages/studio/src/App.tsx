@@ -23,7 +23,6 @@ import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
-import { useAddAssetAtPlayhead } from "./hooks/useAddAssetAtPlayhead";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
 import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
@@ -58,6 +57,7 @@ import { FileManagerProvider } from "./contexts/FileManagerContext";
 import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { useServerConnection } from "./hooks/useServerConnection";
+import { useTimelineAddAtPlayhead } from "./hooks/useTimelineAddAtPlayhead";
 import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
@@ -65,7 +65,6 @@ import {
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
-type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
 export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
@@ -100,9 +99,6 @@ export function StudioApp() {
   const timelineDuration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
-  const activePreviewUrl = activeCompPath
-    ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
-    : null;
   const effectiveTimelineDuration = useMemo(() => {
     const maxEnd =
       timelineElements.length > 0
@@ -196,7 +192,13 @@ export function StudioApp() {
     },
     [timelineEditing.handleTimelineGroupMove],
   );
-  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const {
+    addAssetAtPlayhead: handleAddAssetAtPlayhead,
+    addCompositionAtPlayhead: handleAddCompositionAtPlayhead,
+  } = useTimelineAddAtPlayhead(
+    timelineEditing.handleTimelineAssetDrop,
+    timelineEditing.handleTimelineCompositionDrop,
+  );
   const {
     activeBlockParams,
     setActiveBlockParams,
@@ -338,7 +340,9 @@ export function StudioApp() {
   const renderClipContent = useRenderClipContent({
     projectIdRef: fileManager.projectIdRef,
     compIdToSrc,
-    activePreviewUrl,
+    activePreviewUrl: activeCompPath
+      ? `/api/projects/${projectId}/preview/comp/${activeCompPath}`
+      : null,
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions();
@@ -369,14 +373,13 @@ export function StudioApp() {
   });
   handleToggleRecordingRef.current = handleToggleRecording;
   const recordingToggle = STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined;
-  const canvasRectRef = useRef<CanvasRect | null>(null);
+  const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
       canvasRectRef.current = null;
       return;
     }
-    const r = previewIframe.getBoundingClientRect();
-    canvasRectRef.current = { left: r.left, top: r.top, width: r.width, height: r.height };
+    canvasRectRef.current = previewIframe.getBoundingClientRect();
   }, [gestureState, previewIframe]);
   const handlePreviewIframeRef = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -511,6 +514,7 @@ export function StudioApp() {
                         lintFindingCount={lintModal?.length ?? findingsByFile.size}
                         lintFindingsByFile={findingsByFile}
                         onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                        onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                       />
                     }
                     right={
@@ -540,6 +544,7 @@ export function StudioApp() {
                     handleTimelineElementDelete={timelineEditing.handleTimelineElementDelete}
                     handleTimelineAssetDrop={timelineEditing.handleTimelineAssetDrop}
                     handleTimelineBlockDrop={handleTimelineBlockDrop}
+                    handleTimelineCompositionDrop={timelineEditing.handleTimelineCompositionDrop}
                     handlePreviewBlockDrop={handlePreviewBlockDrop}
                     handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
                     handleTimelineElementMove={timelineEditing.handleTimelineElementMove}

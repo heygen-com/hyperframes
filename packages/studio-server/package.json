@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.7.60",
+  "version": "0.7.64",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -127,8 +127,10 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
+    "test:acorn-writer": "bun scripts/run-acorn-writer-tests.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "report:gsap-writers": "bun src/routes/gsapMutationCapabilities.report.ts",
     "prepublishOnly": "echo skip"
   },
   "dependencies": {

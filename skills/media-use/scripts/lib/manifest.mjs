@@ -190,3 +190,40 @@ export function allocateId(projectDir, type, ext) {
     return { id, localPath };
   });
 }
+
+function reservedFile(projectDir, type, ext) {
+  const allocation = allocateId(projectDir, type, ext);
+  return { ...allocation, fullPath: join(projectDir, allocation.localPath) };
+}
+
+function rollbackReservation(reservation) {
+  rmSync(reservation.fullPath, { force: true });
+}
+
+// A reservation is committed only when populate returns a non-null value.
+// Throwing/rejecting or returning null means no usable asset was produced, so
+// the placeholder must be released. Keeping this transaction beside allocateId
+// prevents individual provider/cache/LUT paths from forgetting the rollback.
+export function withReservedFileSync(projectDir, type, ext, populate) {
+  const reservation = reservedFile(projectDir, type, ext);
+  try {
+    const result = populate(reservation);
+    if (result == null) rollbackReservation(reservation);
+    return result;
+  } catch (error) {
+    rollbackReservation(reservation);
+    throw error;
+  }
+}
+
+export async function withReservedFile(projectDir, type, ext, populate) {
+  const reservation = reservedFile(projectDir, type, ext);
+  try {
+    const result = await populate(reservation);
+    if (result == null) rollbackReservation(reservation);
+    return result;
+  } catch (error) {
+    rollbackReservation(reservation);
+    throw error;
+  }
+}

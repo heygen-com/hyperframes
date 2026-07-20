@@ -10,7 +10,7 @@
  * 2. `wordIndex` — fallback, DOM traversal order across .caption-group > span
  */
 
-export interface CaptionOverride {
+interface CaptionOverride {
   wordId?: string;
   wordIndex?: number;
   x?: number;

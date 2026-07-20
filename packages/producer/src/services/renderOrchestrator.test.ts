@@ -1513,6 +1513,13 @@ describe("adaptive missing-frame retry helpers", () => {
         new Error("[Parallel] Capture failed: Worker 1: HeadlessExperimental.beginFrame timed out"),
       ),
     ).toBe(true);
+    expect(
+      isRecoverableParallelCaptureError(
+        new Error(
+          "[Parallel] Capture failed: Worker 0: drawElement worker encode timed out (frame 42)",
+        ),
+      ),
+    ).toBe(true);
     expect(isRecoverableParallelCaptureError(new Error("Encoding failed: ffmpeg exited"))).toBe(
       false,
     );

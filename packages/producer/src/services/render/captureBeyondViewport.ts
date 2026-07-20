@@ -12,10 +12,13 @@
  * over the software perf optimization: enable beyond-viewport for any render
  * that has a native video surface, regardless of GPU mode.
  *
- * ponytail: blanket-on for video. If the software re-raster tax proves
- * significant on the distributed fleet, narrow it back to comps whose content
- * actually reaches the bottom edge — but that needs a reliable clip predictor
- * first, and a black band is unshippable in the meantime.
+ * This is a candidate, not a final decision: the engine downgrades it back to
+ * `false` once the page is loaded and `pageContentExceedsCaptureHeight`
+ * (screenshotService.ts) measures that the content doesn't actually overflow
+ * the requested capture height — the "reliable clip predictor" this used to
+ * lack. That measurement matters beyond the software re-raster tax: on
+ * SwiftShader, requesting beyond-viewport for content that doesn't need it
+ * can produce phantom duplicate content in the captured frame (HF#2550).
  */
 export function resolveVideoCaptureBeyondViewport(videoCount: number): boolean | undefined {
   if (videoCount <= 0) return undefined;

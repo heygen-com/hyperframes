@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { probeSpecs } from "./specs.mjs";
-import { selectModel } from "./local-models.mjs";
+import { buildArgv, selectModel } from "./local-models.mjs";
 
 // Local image generation via mflux (FLUX-on-MLX), the Mac-native runner.
 // Spec-gated: selectModel("imagegen", specs) returns the best FLUX-class model
@@ -14,15 +14,6 @@ import { selectModel } from "./local-models.mjs";
 // The official FLUX repos are HF-gated, so the model entries point --path at
 // non-gated community 4-bit re-uploads; the repo is resolved to a local snapshot
 // (hf download, idempotent) because a bare repo id breaks mlx unflatten.
-
-// Tokenize the invoke template on whitespace FIRST, then substitute each token,
-// so a {prompt}/{model_path} value with spaces stays a single argv entry.
-function buildArgv(template, vars) {
-  return template
-    .trim()
-    .split(/\s+/)
-    .map((tok) => tok.replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k]) : `{${k}}`)));
-}
 
 // Resolve an HF repo to its local snapshot dir. `hf download` is idempotent and
 // prints the snapshot path as its last line.

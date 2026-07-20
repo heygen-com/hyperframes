@@ -24,6 +24,19 @@ export {
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
 export {
+  RENDER_REQUEST_VERSION,
+  createRenderRequest,
+  distributedConfigFromRequest,
+  parseRenderRequest,
+  renderConfigFromRequest,
+  renderRequestFromDistributedConfig,
+  serializeRenderRequest,
+  type CreateRenderRequestInput,
+  type DistributedRenderOptions,
+  type RenderRequest,
+  type RenderRequestOptions,
+} from "./renderRequest.js";
+export {
   type BrowserDiagnosticSummary,
   type RenderCaptureObservability,
   type RenderObservabilitySummary,

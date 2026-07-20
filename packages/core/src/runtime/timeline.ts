@@ -6,7 +6,7 @@ import type {
 } from "./types";
 import { stableClipId } from "./clipTree";
 import { swallow } from "./diagnostics";
-import { readElementPlaybackRate } from "./media";
+import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
@@ -412,6 +412,8 @@ export function collectRuntimeTimelinePayload(params: {
       parentCompositionId: compositionContext.parentCompositionId,
       nodePath: null,
       compositionSrc: toAbsoluteAssetUrl(node.getAttribute("data-composition-src")),
+      playbackStart: readElementPlaybackStart(node),
+      playbackRate: readElementPlaybackRate(node),
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
       timelineLabel: node.getAttribute("data-timeline-label"),
@@ -521,6 +523,8 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
+            playbackStart: readElementPlaybackStart(el),
+            playbackRate: readElementPlaybackRate(el),
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
             timelineLabel: el.getAttribute("data-timeline-label"),
@@ -576,6 +580,8 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
+        playbackStart: readElementPlaybackStart(el),
+        playbackRate: readElementPlaybackRate(el),
         assetUrl: null,
         timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),

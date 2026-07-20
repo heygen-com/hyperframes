@@ -22,9 +22,8 @@ export interface AssetCodecFacts {
    * when no representative mime exists (ProRes: browsers never decode it, so
    * the runtime always proxies rather than probing `canPlayType`). */
   representativeMime: string | null;
-  /** Source carries an alpha channel (ffprobe pix_fmt). Alpha sources are
-   * never proxied — an H.264 proxy would destroy the transparency (e.g.
-   * ProRes 4444 alpha). */
+  /** Source carries an alpha channel (ffprobe pix_fmt). Alpha sources use a
+   * VP8/WebM proxy so their transparency is preserved across Chromium builds. */
   hasAlpha: boolean;
 }
 
@@ -48,7 +47,38 @@ export const BROWSER_HOSTILE_CODECS: Record<string, string | null> = {
   vp9: 'video/webm; codecs="vp09.00.10.08"',
 };
 
-export type MediaProxyIneligibilityReason = "alpha_source" | "browser_safe_codec" | "unknown_codec";
+export type ProxyVariant = "h264" | "vp8";
+export type ProxyVariantRequest = ProxyVariant | "auto";
+
+export const PROXY_VARIANT_CONFIG: Record<
+  ProxyVariant,
+  { extension: ".mp4" | ".webm"; contentType: "video/mp4" | "video/webm" }
+> = {
+  h264: { extension: ".mp4", contentType: "video/mp4" },
+  vp8: { extension: ".webm", contentType: "video/webm" },
+};
+
+export function isProxyVariant(value: string): value is ProxyVariant {
+  return Object.hasOwn(PROXY_VARIANT_CONFIG, value);
+}
+
+export function isProxyVariantRequest(value: string): value is ProxyVariantRequest {
+  return value === "auto" || isProxyVariant(value);
+}
+
+export function proxyVariantFor(facts: AssetCodecFacts): ProxyVariant {
+  return facts.hasAlpha ? "vp8" : "h264";
+}
+
+export function resolveProxyVariantRequest(
+  request: ProxyVariantRequest,
+  facts: AssetCodecFacts,
+): ProxyVariant | null {
+  const expected = proxyVariantFor(facts);
+  return request === "auto" || request === expected ? expected : null;
+}
+
+export type MediaProxyIneligibilityReason = "browser_safe_codec" | "unknown_codec";
 
 export type MediaProxyEligibility =
   | { eligible: true }
@@ -57,7 +87,6 @@ export type MediaProxyEligibility =
 /** Single policy gate shared by proactive scans and on-demand proxy routes. */
 export function decideMediaProxyEligibility(facts: AssetCodecFacts | null): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
-  if (facts.hasAlpha) return { eligible: false, reason: "alpha_source" };
   if (!facts.browserHostile) return { eligible: false, reason: "browser_safe_codec" };
   return { eligible: true };
 }

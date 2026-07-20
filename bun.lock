@@ -70,6 +70,7 @@
         "fontkit": "^2.0.4",
         "giget": "^3.2.0",
         "hono": "^4.0.0",
+        "ignore": "^5.3.2",
         "onnxruntime-node": "1.23.2",
         "open": "^10.0.0",
         "postcss": "^8.5.8",

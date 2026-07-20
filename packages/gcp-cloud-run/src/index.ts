@@ -62,3 +62,4 @@ export {
   type RenderCost,
 } from "./sdk/costAccounting.js";
 export { InvalidConfigError, validateDistributedRenderConfig } from "./sdk/validateConfig.js";
+export { getTerraformModuleDir } from "./terraform.js";

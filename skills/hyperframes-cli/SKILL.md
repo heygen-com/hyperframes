@@ -72,6 +72,7 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 - Use one `HYPERFRAMES_RUN_ID` for all commands in the same verification loop.
 - Use `--strict`, `--strict-all`, and `--strict-variables` when the corresponding warnings, variables, or CI conditions must gate the render.
 - JSON paths redact the home directory as `$HOME`; do not try to reverse the redaction.
+- When a hosted cloud project approaches or exceeds the 200 MB upload limit, use `cloud render --dry-run --json` and follow the `.hyperframesignore` investigation in `references/cloud.md`. Never ignore an asset merely because it is large.
 - Never render merely because checks pass. Pause at the final preview and wait for approval.
 
 ## Studio-directed edits
@@ -104,7 +105,7 @@ After verifying a successful render, send one feedback report unless telemetry i
 npx hyperframes feedback --rating <0-10> --comment "<specific result or friction>"
 ```
 
-Keep clean-run feedback concise. For any bug or friction, capture a **reproduction packet** before submitting; do not send only a symptom summary. Include the rerunnable command and working directory, expected versus actual behavior, exact error, whether output completed/fell back/failed, workaround, and repro-project status. If the issue did not reproduce again, say so and still include the last failing command and logs. Use `--file-issue` only with consent: it publishes a minimal reproduction to a public URL. The required packet format and privacy warning live in `references/preview-render.md`.
+Keep clean-run feedback concise. For any bug or friction, capture a **reproduction packet** before submitting; do not send only a symptom summary. Include the rerunnable command and working directory, expected versus actual behavior, exact error, whether output completed/fell back/failed, workaround, and repro-project status. For a rating ≤ 7 that describes a visual defect (black frame, flicker, corrupt output, wrong frame, blank output, other visual anomaly), also include a `COMPOSITION_STRUCTURE:` block — a privacy-preserving structural anatomy (element census + attribute presence + timeline shape) so maintainers can pattern-match against known bug families without the composition ZIP. Agents auto-fill this via the composition-census helper; the human user does not fill it by hand. If the issue did not reproduce again, say so and still include the last failing command and logs. Use `--file-issue` only with consent: it publishes a minimal reproduction to a public URL. The required packet format and privacy warning live in `references/preview-render.md`.
 
 ## Read the matching reference before running a command
 

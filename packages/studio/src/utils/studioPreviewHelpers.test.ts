@@ -114,6 +114,33 @@ describe("pauseStudioPreviewPlayback", () => {
 });
 
 describe("getPreviewTargetFromPointer", () => {
+  it("chooses the deepest headline through a transparent overflow mask", () => {
+    const { iframe, doc } = createPreviewIframe();
+    doc.body.innerHTML = `
+      <template id="source-template"></template>
+      <main data-composition-id="scene">
+        <section class="hl-block">
+          <div class="hl-mask" style="overflow: hidden; background: transparent">
+            <h1 class="hl-text">Launch title</h1>
+          </div>
+        </section>
+      </main>
+    `;
+    const scene = doc.querySelector<HTMLElement>("main")!;
+    const block = doc.querySelector<HTMLElement>(".hl-block")!;
+    const mask = doc.querySelector<HTMLElement>(".hl-mask")!;
+    const headline = doc.querySelector<HTMLElement>(".hl-text")!;
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(block, domRect(30, 30, 300, 100));
+    stubRect(mask, domRect(40, 40, 260, 64));
+    stubRect(headline, domRect(44, 44, 220, 48));
+    doc.elementsFromPoint = () => [headline, mask, block, scene];
+
+    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    iframe.remove();
+  });
+
   it("skips candidates hidden from author hit-testing by inherited pointer-events:none", () => {
     const { iframe, doc } = createPreviewIframe();
 

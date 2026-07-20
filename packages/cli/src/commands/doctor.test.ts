@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { buildDoctorReport, redactHome, parseToolVersion, type CheckOutcome } from "./doctor.js";
+import {
+  buildDoctorReport,
+  checkFramesCache,
+  redactHome,
+  parseToolVersion,
+  type CheckOutcome,
+} from "./doctor.js";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -193,5 +199,76 @@ describe("buildDoctorReport", () => {
       ];
       expect(buildDoctorReport(outcomes).checks[0]?.detail).toBe("/Users/alice/Chrome");
     });
+  });
+});
+
+describe("checkFramesCache", () => {
+  it("reports disabled state with the raw env value when the user opts out", () => {
+    const result = checkFramesCache(
+      { HYPERFRAMES_EXTRACT_CACHE_DIR: "off" },
+      () => 100_000,
+      () => true,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("Disabled (off)");
+    expect(result.detail).toContain("per-render workDir");
+  });
+
+  it("reports the effective directory + free space + default source when env is unset", () => {
+    const result = checkFramesCache(
+      {},
+      () => 50_000, // ~48.8 GB
+      () => true,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("48.8 GB free");
+    expect(result.detail).toContain("default");
+  });
+
+  it("reports a positive env override with source: HYPERFRAMES_EXTRACT_CACHE_DIR", () => {
+    const result = checkFramesCache(
+      { HYPERFRAMES_EXTRACT_CACHE_DIR: "/mnt/scratch/hf" },
+      () => 10_000,
+      () => true,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("/mnt/scratch/hf");
+    expect(result.detail).toContain("HYPERFRAMES_EXTRACT_CACHE_DIR");
+  });
+
+  it("fails with a relocation hint when free space at the cache location is <2 GB", () => {
+    const result = checkFramesCache(
+      { HYPERFRAMES_EXTRACT_CACHE_DIR: "/tmp/hf" },
+      () => 512, // 0.5 GB
+      () => true,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.hint).toContain("--frames-cache-dir");
+    expect(result.hint).toContain("HYPERFRAMES_EXTRACT_CACHE_DIR");
+  });
+
+  it("falls back to the first existing ancestor when the cache dir does not exist yet", () => {
+    const seen: string[] = [];
+    const result = checkFramesCache(
+      { HYPERFRAMES_EXTRACT_CACHE_DIR: "/mnt/scratch/newly/created/subdir" },
+      (path) => {
+        seen.push(path);
+        return 20_000;
+      },
+      (path) => path === "/mnt/scratch",
+    );
+    expect(result.ok).toBe(true);
+    // statfs was called against the walked-up ancestor, not the raw dir.
+    expect(seen).toContain("/mnt/scratch");
+  });
+
+  it("handles a null free-space reading without failing the check", () => {
+    const result = checkFramesCache(
+      { HYPERFRAMES_EXTRACT_CACHE_DIR: "/mnt/scratch" },
+      () => null,
+      () => true,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain("free space unknown");
   });
 });

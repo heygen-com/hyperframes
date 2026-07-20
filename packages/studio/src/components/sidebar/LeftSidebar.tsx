@@ -61,6 +61,7 @@ interface LeftSidebarProps {
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   takeoverContent?: ReactNode;
   onAddAssetToTimeline?: (path: string) => void;
+  onAddCompositionToTimeline?: (path: string) => void;
 }
 
 export const LeftSidebar = memo(
@@ -94,6 +95,7 @@ export const LeftSidebar = memo(
       onPreviewBlock,
       takeoverContent,
       onAddAssetToTimeline,
+      onAddCompositionToTimeline,
     },
     ref,
   ) {
@@ -220,6 +222,7 @@ export const LeftSidebar = memo(
                 compositions={compositions}
                 activeComposition={activeComposition}
                 onSelect={onSelectComposition}
+                onAddToTimeline={onAddCompositionToTimeline}
                 onRenderComposition={onRenderComposition}
                 isRendering={isRendering}
                 lintFindingsByFile={lintFindingsByFile}

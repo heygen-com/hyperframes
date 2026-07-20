@@ -22,12 +22,27 @@ function makeVideo(overrides: Partial<VideoElement> & { id: string }): VideoElem
   };
 }
 
-function makeExtracted(videoId: string, delivered: number, fps = 30): ExtractedFrames {
+// `durationSeconds` defaults to Infinity, not `delivered / fps` — the two are
+// unrelated in production (source duration comes from ffprobe; `delivered`
+// is how many frames the extractor happened to deliver) and coupling them
+// here made any test modeling a delivery shortfall silently report full
+// coverage unless it remembered to override durationSeconds afterward. An
+// unbounded default instead falls into computeVideoFrameCoverage's "no
+// usable source duration" branch, which requires the full authored slot —
+// the same behavior every test had before source-duration crediting
+// existed. Tests that care about a specific source duration (the held-tail
+// cases below) pass it explicitly.
+function makeExtracted(
+  videoId: string,
+  delivered: number,
+  options: { fps?: number; durationSeconds?: number } = {},
+): ExtractedFrames {
+  const { fps = 30, durationSeconds = Number.POSITIVE_INFINITY } = options;
   const framePaths = new Map<number, string>();
   for (let i = 0; i < delivered; i += 1) framePaths.set(i, `/tmp/${videoId}/${i}.jpg`);
   const metadata: VideoMetadata = {
-    durationSeconds: delivered / fps,
-    videoStreamDurationSeconds: delivered / fps,
+    durationSeconds,
+    videoStreamDurationSeconds: durationSeconds,
     width: 1280,
     height: 720,
     fps,
@@ -131,6 +146,44 @@ describe("computeVideoFrameCoverage", () => {
     const reports = computeVideoFrameCoverage(videos, [partial], 30);
     expect(reports[0]!.capturedFrames).toBe(5);
     expect(reports[0]!.ratio).toBeCloseTo(5 / 30, 5);
+  });
+
+  it("credits a non-looping held tail against the source portion only", () => {
+    const videos = [makeVideo({ id: "held", start: 0, end: 10 })];
+    const extracted = [makeExtracted("held", 90, { durationSeconds: 3 })];
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 90, ratio: 1 });
+  });
+
+  it("still requires the full authored slot for looping clips", () => {
+    const videos = [makeVideo({ id: "loop", start: 0, end: 10, loop: true })];
+    const extracted = [makeExtracted("loop", 90, { durationSeconds: 3 })];
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 300, capturedFrames: 90 });
+    expect(reports[0]!.ratio).toBeCloseTo(0.3, 5);
+  });
+
+  it("still fails when extraction is truncated before the held-tail source", () => {
+    const videos = [makeVideo({ id: "truncated", start: 0, end: 10 })];
+    const extracted = [makeExtracted("truncated", 60, { durationSeconds: 3 })];
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 60 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(VideoFrameCoverageError);
+  });
+
+  it("fails closed for invalid or exhausted source durations", () => {
+    const videos = [
+      makeVideo({ id: "zero", start: 0, end: 10 }),
+      makeVideo({ id: "trimmed-away", start: 0, end: 10, mediaStart: 4 }),
+    ];
+    const extracted = [
+      makeExtracted("zero", 0, { durationSeconds: 0 }),
+      makeExtracted("trimmed-away", 30, { durationSeconds: 3 }),
+    ];
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 300, capturedFrames: 0 });
+    expect(reports[1]).toMatchObject({ expectedFrames: 300, capturedFrames: 30 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(VideoFrameCoverageError);
   });
 });
 

@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -123,6 +123,36 @@ test("url library entries respect localOnly and freeze through fetch", async () 
     assert.match(frozen.localPath, /^\.media\/luts\/lut_001\.cube$/);
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
     assert.equal(frozen.metadata.provenance.via, "url");
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("failed URL library freeze releases its reservation", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "mu-lut-failure-"));
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: true,
+      headers: { get: () => "12" },
+      body: [Buffer.from("not a cube\n")],
+    });
+    await assert.rejects(
+      freezeLibraryLut(
+        {
+          kind: "library",
+          id: "broken-cdn-look",
+          description: "Broken CDN look",
+          tags: ["broken"],
+          intensity: 1,
+          url: "https://example.com/broken.cube",
+        },
+        { projectDir, type: "lut" },
+      ),
+      /failed to freeze library LUT/,
+    );
+    assert.deepStrictEqual(readdirSync(join(projectDir, ".media/luts")), []);
   } finally {
     globalThis.fetch = originalFetch;
     rmSync(projectDir, { recursive: true, force: true });

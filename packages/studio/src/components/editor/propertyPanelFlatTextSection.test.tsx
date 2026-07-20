@@ -2,6 +2,8 @@
 
 import React, { act, useState } from "react";
 import { createRoot } from "react-dom/client";
+import postcss from "postcss";
+import tailwindcss from "tailwindcss";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatTextLayerList, FlatTextSection } from "./propertyPanelFlatTextSection";
 import type { DomEditSelection, DomEditTextField } from "./domEditingTypes";
@@ -256,8 +258,9 @@ describe("FlatTextFieldEditor controls", () => {
     act(() => root.unmount());
   });
 
-  it("live-commits the Size field on input, without requiring blur/Enter", async () => {
+  it("previews Size input immediately and persists once on blur", () => {
     const onSetTextFieldStyle = vi.fn();
+    const onPreviewTextFieldStyle = vi.fn();
     const { host, root } = renderInto(
       <FlatTextSection
         element={makeSingleFieldElement()}
@@ -265,6 +268,7 @@ describe("FlatTextFieldEditor controls", () => {
         fontAssets={[]}
         onSetText={vi.fn()}
         onSetTextFieldStyle={onSetTextFieldStyle}
+        onPreviewTextFieldStyle={onPreviewTextFieldStyle}
         onAddTextField={vi.fn()}
         onRemoveTextField={vi.fn()}
       />,
@@ -275,6 +279,7 @@ describe("FlatTextFieldEditor controls", () => {
     const input = sizeLabel?.parentElement?.querySelector<HTMLInputElement>("input");
     if (!input) throw new Error("expected the Size row's input");
     act(() => {
+      input.focus();
       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         "value",
@@ -282,9 +287,10 @@ describe("FlatTextFieldEditor controls", () => {
       nativeInputValueSetter?.call(input, "24px");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    // liveCommit debounces on a 120ms timer — no blur/Enter dispatched here.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(onPreviewTextFieldStyle).toHaveBeenCalledWith("a", "font-size", "24px");
+    expect(onSetTextFieldStyle).not.toHaveBeenCalled();
+    act(() => {
+      input.blur();
     });
     expect(onSetTextFieldStyle).toHaveBeenCalledWith("a", "font-size", "24px");
     act(() => root.unmount());
@@ -459,6 +465,43 @@ describe("FlatTextSection — multi-field", () => {
     const contentTextarea = host.querySelector("textarea");
     expect(contentTextarea).not.toBeNull();
     expect(document.activeElement).toBe(contentTextarea);
+
+    act(() => root.unmount());
+  });
+
+  it("keeps Content expandable and grows it with multiline text", async () => {
+    const element = makeMultiFieldElement();
+    element.textFields[0].value = "First line\nSecond line\nThird line";
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatTextSection
+          element={element}
+          styles={{}}
+          fontAssets={[]}
+          onSetText={vi.fn()}
+          onSetTextFieldStyle={vi.fn()}
+          onAddTextField={vi.fn()}
+          onRemoveTextField={vi.fn()}
+        />,
+      );
+    });
+
+    const contentTextarea = host.querySelector<HTMLTextAreaElement>("textarea");
+    expect(contentTextarea?.value).toBe("First line\nSecond line\nThird line");
+    expect(contentTextarea?.classList).toContain("resize-y");
+    expect(contentTextarea?.classList).toContain("overflow-y-auto");
+
+    const compiled = await postcss([
+      tailwindcss({
+        content: [{ raw: host.innerHTML, extension: "html" }],
+        corePlugins: { preflight: false },
+      }),
+    ]).process("@tailwind utilities;", { from: undefined });
+    expect(compiled.css).toContain("field-sizing: content");
 
     act(() => root.unmount());
   });

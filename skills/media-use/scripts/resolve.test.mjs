@@ -12,10 +12,11 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
+import { HEYGEN_NOT_FOUND_MESSAGE } from "./lib/heygen-cli.mjs";
 import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
@@ -75,6 +76,26 @@ function spawnResolve(args, opts = {}) {
     encoding: "utf8",
     env: { ...process.env, DO_NOT_TRACK: "1", ...env },
     ...rest,
+  });
+}
+
+function spawnResolveAsync(args, opts = {}) {
+  const { env, ...rest } = opts;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [RESOLVE_CLI, ...args], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+      ...rest,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.once("error", reject);
+    child.once("close", (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
 }
 
@@ -140,7 +161,8 @@ test("bundled SFX resolve without HeyGen on PATH", () => {
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.provenance.provider, "bundled.sfx");
-  assert.match(parsed.advisory?.message ?? "", /Install: curl -fsSL/);
+  assert.equal(parsed.advisory?.message, HEYGEN_NOT_FOUND_MESSAGE);
+  assert.equal(parsed.advisory.message.includes("| bash"), false);
   assert.ok(existsSync(join(tmp, parsed.path)));
   cleanup();
 });
@@ -224,7 +246,10 @@ test("human bundled fallback prints the install hint once", () => {
     env: { HOME: tmp, PATH: tmp },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stderr.match(/Install: curl -fsSL/g)?.length, 1);
+  assert.equal(
+    result.stderr.match(/Install the CLI from https:\/\/developers\.heygen\.com\/cli/g)?.length,
+    1,
+  );
   assert.match(result.stdout, /resolved sfx_001/);
   cleanup();
 });
@@ -409,6 +434,61 @@ test("freezeLocalFile creates parent dirs and copies", () => {
   cleanup();
 });
 
+test("failed remote freeze removes its reserved placeholder", async () => {
+  setup();
+  const server = createServer((_req, res) => {
+    res.writeHead(503);
+    res.end("unavailable");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const binDir = writeFakeHeygen(
+    `printf '%s\\n' '{"data":[{"id":"asset.jpg","url":"http://127.0.0.1:${port}/asset.jpg"}]}'`,
+  );
+
+  try {
+    const result = await spawnResolveAsync(
+      [
+        "--type",
+        "image",
+        "--intent",
+        "download failure",
+        "--provider",
+        "heygen",
+        "--project",
+        tmp,
+        "--json",
+      ],
+      { env: { HOME: tmp, PATH: binDir } },
+    );
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepStrictEqual(readdirSync(join(tmp, ".media/images")), []);
+    assert.deepStrictEqual(readManifest(tmp), []);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    cleanup();
+  }
+});
+
+test("failed URL ingest removes its reserved placeholder", () => {
+  setup();
+  const result = spawnResolve([
+    "--from",
+    "https://example.invalid/unavailable.jpg",
+    "--type",
+    "image",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.deepStrictEqual(readdirSync(join(tmp, ".media/images")), []);
+  assert.deepStrictEqual(readManifest(tmp), []);
+  cleanup();
+});
+
 // --- adopt existing assets ---
 
 test("--adopt registers existing assets/ files", () => {
@@ -489,6 +569,46 @@ test("--from registers a derived video as documented", () => {
   assert.equal(parsed.type, "video");
   assert.match(parsed.path, /^\.media\/video\/video_001\.mp4$/);
   assert.equal(readManifest(tmp)[0]?.type, "video");
+  cleanup();
+});
+
+test("--from type error lists video exactly once", () => {
+  const result = spawnResolve(["--from", "missing.mp4"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--from requires --type \(one of:/);
+  assert.equal(result.stderr.match(/\bvideo\b/g)?.length, 1);
+});
+
+test("--from uses .mp4 as the default video extension", () => {
+  setup();
+  const source = join(tmp, "extensionless-video");
+  writeFileSync(source, "video bytes");
+
+  const out = runResolve(["--from", source, "--type", "video", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.match(parsed.path, /^\.media\/video\/video_001\.mp4$/);
+  cleanup();
+});
+
+test("--avatar-id/--voice-id parse as real CLI flags (regression guard: docs promise them, parseArgs must not reject them)", () => {
+  setup();
+  const result = spawnResolve(
+    [
+      "--type",
+      "video",
+      "--intent",
+      "regression guard",
+      "--local-only",
+      "--avatar-id",
+      "avatar-override",
+      "--voice-id",
+      "voice-override",
+      "--project",
+      tmp,
+    ],
+    { stdio: "pipe" },
+  );
+  assert.doesNotMatch(result.stderr || "", /ERR_PARSE_ARGS_UNKNOWN_OPTION/);
   cleanup();
 });
 

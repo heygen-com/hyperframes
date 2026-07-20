@@ -1543,7 +1543,13 @@ export function addAnimationToScript(
   const id = `anim-${Date.now()}`;
   const statementCode = buildTweenStatementCode(parsed.timelineVar, animation);
   const newStatement = parseScript(statementCode).program.body[0];
-  insertAfterAnchor(parsed, newStatement);
+  if (animation.method === "set" && animation.global) {
+    const timeline = findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+    if (timeline) timeline.insertBefore(newStatement);
+    else insertAfterAnchor(parsed, newStatement);
+  } else {
+    insertAfterAnchor(parsed, newStatement);
+  }
   return { script: recast.print(parsed.ast).code, id };
 }
 

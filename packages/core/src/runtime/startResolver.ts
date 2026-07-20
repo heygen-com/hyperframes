@@ -25,23 +25,38 @@ function parseAuthoredEndAttr(element: Element): number | null {
 export function createRuntimeStartTimeResolver(params: {
   timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
   includeAuthoredTimingAttrs?: boolean;
+  /**
+   * The document that reference lookups (`data-start="intro + 2"`) resolve
+   * against. Defaults to the global `document` — the runtime bundle's own
+   * realm. Hosts driving a composition in an IFRAME must pass that iframe's
+   * document, or every reference silently resolves against the host page.
+   */
+  documentRef?: Document;
 }): {
   resolveStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
   const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
+  const doc = params.documentRef ?? document;
   const startCache = new WeakMap<Element, number | null>();
   const durationCache = new WeakMap<Element, number | null>();
   const visiting = new Set<Element>();
 
   const findReferenceTarget = (refId: string): Element | null => {
-    const byId = document.getElementById(refId);
+    const byId = doc.getElementById(refId);
     if (byId) return byId;
     return (
-      (document.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ??
-      null
+      (doc.querySelector(`[data-composition-id="${CSS.escape(refId)}"]`) as Element | null) ?? null
     );
+  };
+
+  // Realm-safe: an iframe document's media elements are instances of THAT
+  // frame's HTMLMediaElement, never this module's global one.
+  const isMediaElement = (el: Element): el is HTMLMediaElement => {
+    const RealmMedia = el.ownerDocument.defaultView?.HTMLMediaElement;
+    if (RealmMedia) return el instanceof RealmMedia;
+    return typeof HTMLMediaElement !== "undefined" && el instanceof HTMLMediaElement;
   };
 
   const resolveDurationForElement = (element: Element): number | null => {
@@ -66,7 +81,7 @@ export function createRuntimeStartTimeResolver(params: {
         }
       }
     }
-    if ((resolved == null || resolved <= 0) && element instanceof HTMLMediaElement) {
+    if ((resolved == null || resolved <= 0) && isMediaElement(element)) {
       const playbackStart =
         parseNumeric(element.getAttribute("data-playback-start")) ??
         parseNumeric(element.getAttribute("data-media-start")) ??
@@ -181,3 +196,5 @@ export function createRuntimeStartTimeResolver(params: {
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
   };
 }
+
+export type { RuntimeTimelineLike } from "./types";

@@ -11,7 +11,11 @@ import {
 } from "@hyperframes/studio-server/proxy-transcoder";
 import {
   decideMediaProxyEligibility,
+  isProxyVariantRequest,
   probeAssetCodec,
+  resolveProxyVariantRequest,
+  PROXY_VARIANT_CONFIG,
+  type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
 
 export interface StaticProjectServer {
@@ -32,10 +36,11 @@ function serveFileWithRange(
   filePath: string,
   rangeHeader: string | undefined,
   res: ServerResponse,
+  contentType = getMimeType(filePath),
 ) {
   const size = statSync(filePath).size;
   const headers: Record<string, string> = {
-    "Content-Type": getMimeType(filePath),
+    "Content-Type": contentType,
     "Accept-Ranges": "bytes",
   };
 
@@ -79,17 +84,34 @@ function serveFileWithRange(
 }
 
 /**
- * Serves `?hf-proxy=h264` for a media request: 404s (no transcode attempted)
+ * Serves an alpha-aware `?hf-proxy=` variant for a media request: 404s (no transcode attempted)
  * when auto-proxying is off or the asset isn't a video, resolves+serves the
- * cached H.264 proxy with Range support on success, and answers 502 on a
+ * cached proxy with Range support on success, and answers 502 on a
  * transcode failure (never a silent black frame). Shared by every one of
  * `serveStaticProjectHtml`'s seven callers (check/snapshot/validate/compare/
  * grade-compare/motionShot/layout) — see the KTD in
  * docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md.
  */
+/** Map a transcode failure to a response; never a silent black frame. */
+function writeProxyError(err: unknown, res: ServerResponse): void {
+  if (err instanceof ProxyCapacityError) {
+    res.writeHead(503, { "Content-Type": "text/plain", "Retry-After": "1" });
+    res.end(`Proxy transcode deferred: ${err.message}`);
+    return;
+  }
+  if (err instanceof ProxyTranscodeError) {
+    res.writeHead(502, { "Content-Type": "text/plain" });
+    res.end(`Proxy transcode failed: ${err.message}`);
+    return;
+  }
+  res.writeHead(500);
+  res.end();
+}
+
 async function serveProxyRequest(
   projectDir: string,
   filePath: string,
+  request: ProxyVariantRequest,
   autoProxy: boolean,
   rangeHeader: string | undefined,
   res: ServerResponse,
@@ -101,29 +123,30 @@ async function serveProxyRequest(
     return;
   }
   try {
-    const eligibility = decideMediaProxyEligibility(await probeAssetCodec(filePath));
+    const facts = await probeAssetCodec(filePath);
+    const eligibility = decideMediaProxyEligibility(facts);
     if (!eligibility.eligible) {
       res.writeHead(422, { "Content-Type": "text/plain" });
       res.end(`media proxy unavailable: ${eligibility.reason}`);
       return;
     }
-    const proxyPath = await resolveProxy(projectDir, filePath);
+    if (!facts) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy unavailable: unknown_codec");
+      return;
+    }
+    const variant = resolveProxyVariantRequest(request, facts);
+    if (!variant) {
+      res.writeHead(422, { "Content-Type": "text/plain" });
+      res.end("media proxy variant does not match asset");
+      return;
+    }
+    const proxyPath = await resolveProxy(projectDir, filePath, variant);
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
-    serveFileWithRange(proxyPath, rangeHeader, res);
+    serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
   } catch (err) {
-    if (err instanceof ProxyCapacityError) {
-      res.writeHead(503, { "Content-Type": "text/plain", "Retry-After": "1" });
-      res.end(`Proxy transcode deferred: ${err.message}`);
-      return;
-    }
-    if (err instanceof ProxyTranscodeError) {
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      res.end(`Proxy transcode failed: ${err.message}`);
-      return;
-    }
-    res.writeHead(500);
-    res.end();
+    writeProxyError(err, res);
   }
 }
 
@@ -156,9 +179,10 @@ export async function serveStaticProjectHtml(
 
     const queryIndex = url.indexOf("?");
     const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
-    const wantsProxy =
-      queryIndex !== -1 &&
-      new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy") === "h264";
+    const proxyParam =
+      queryIndex === -1 ? null : new URLSearchParams(url.slice(queryIndex + 1)).get("hf-proxy");
+    const proxyRequest =
+      proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
 
     const requestPath = decodeURIComponent(pathOnly).replace(/^\//, "");
     for (const root of roots) {
@@ -166,8 +190,15 @@ export async function serveStaticProjectHtml(
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
       if (existsSync(filePath)) {
-        if (wantsProxy) {
-          void serveProxyRequest(projectDir, filePath, autoProxy, req.headers.range, res);
+        if (proxyRequest) {
+          void serveProxyRequest(
+            projectDir,
+            filePath,
+            proxyRequest,
+            autoProxy,
+            req.headers.range,
+            res,
+          );
         } else {
           serveFileWithRange(filePath, req.headers.range, res);
         }

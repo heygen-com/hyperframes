@@ -46,14 +46,13 @@ const mocks = vi.hoisted(() => {
       >
     >(async () => ({})),
     probeAssetCodec: vi.fn(async () => ({
-      codecName: "prores",
-      pixelFormat: "yuva444p10le",
-      hasAlpha: true,
+      codecName: "hevc",
+      hasAlpha: false,
       browserHostile: true,
       representativeMime: null,
     })),
     decideMediaProxyEligibility: vi.fn<
-      () => { eligible: true } | { eligible: false; reason: "alpha_source" }
+      () => { eligible: true } | { eligible: false; reason: "browser_safe_codec" }
     >(() => ({ eligible: true })),
     ProxyTranscodeError: FakeProxyTranscodeError,
     ProxyCapacityError: FakeProxyCapacityError,
@@ -70,6 +69,17 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
 vi.mock("@hyperframes/studio-server/media-codec-map", () => ({
   probeAssetCodec: mocks.probeAssetCodec,
   decideMediaProxyEligibility: mocks.decideMediaProxyEligibility,
+  isProxyVariant: (value: string) => value === "h264" || value === "vp8",
+  isProxyVariantRequest: (value: string) => value === "auto" || value === "h264" || value === "vp8",
+  proxyVariantFor: (facts: { hasAlpha?: boolean }) => (facts.hasAlpha ? "vp8" : "h264"),
+  resolveProxyVariantRequest: (request: "auto" | "h264" | "vp8", facts: { hasAlpha?: boolean }) => {
+    const expected = facts.hasAlpha ? "vp8" : "h264";
+    return request === "auto" || request === expected ? expected : null;
+  },
+  PROXY_VARIANT_CONFIG: {
+    h264: { extension: ".mp4", contentType: "video/mp4" },
+    vp8: { extension: ".webm", contentType: "video/webm" },
+  },
 }));
 
 // The shared injection helper ships as a self-contained dist bundle (its copy
@@ -276,7 +286,11 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
-    expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, join(projectDir, "clip.mp4"));
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      join(projectDir, "clip.mp4"),
+      "h264",
+    );
   });
 
   it.each(["mxf", "mts", "m2ts", "ts", "mkv", "m4v"])(
@@ -293,25 +307,34 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
       const res = await fetch(`${server.url}clip.${extension}?hf-proxy=h264`);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("transcoded-h264-bytes");
-      expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, sourcePath);
+      expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, sourcePath, "h264");
     },
   );
 
-  it("rejects an alpha-bearing video before attempting a static-server proxy transcode", async () => {
+  it("serves an alpha-bearing video through a VP8 WebM proxy", async () => {
     const projectDir = mk();
     writeFileSync(join(projectDir, "clip.mov"), "prores-4444-alpha-bytes");
-    mocks.decideMediaProxyEligibility.mockReturnValueOnce({
-      eligible: false,
-      reason: "alpha_source",
+    mocks.probeAssetCodec.mockResolvedValueOnce({
+      codecName: "prores",
+      hasAlpha: true,
+      browserHostile: true,
+      representativeMime: null,
     });
+    const proxyPath = join(projectDir, "proxy.webm");
+    writeFileSync(proxyPath, "vp8-alpha-proxy");
+    mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mov?hf-proxy=h264`);
+    const res = await fetch(`${server.url}clip.mov?hf-proxy=auto`);
 
-    expect(res.status).toBe(422);
-    expect(await res.text()).toContain("alpha_source");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("video/webm");
     expect(mocks.probeAssetCodec).toHaveBeenCalledWith(join(projectDir, "clip.mov"));
-    expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      projectDir,
+      join(projectDir, "clip.mov"),
+      "vp8",
+    );
   });
 
   it("answers 502 when the proxy transcode fails", async () => {

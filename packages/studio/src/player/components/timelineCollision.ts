@@ -115,7 +115,10 @@ export function resolveZoneDropPlacement(input: {
     trackOrder: zoneTracks,
     excludeKey: dragKey,
   });
-  if (placement.needsInsert) {
+  const originTrack = elements.find((element) => (element.key ?? element.id) === dragKey)?.track;
+  const snappedBackToOrigin =
+    originTrack != null && desired !== originTrack && placement.track === originTrack;
+  if (placement.needsInsert || snappedBackToOrigin) {
     const desiredRow = order.indexOf(desired);
     if (desiredRow < 0) {
       return {
@@ -123,14 +126,14 @@ export function resolveZoneDropPlacement(input: {
         insertRow: outOfRangeZoneInsertRow(order, zoneTracks, audioRow, desired),
       };
     }
-    // Prefer the gap NEAREST the pointer: insert above the aimed row when the
-    // pointer sits in its upper half AND that boundary is in the clip's own zone
-    // (else the visual/audio split would be crossed) — otherwise fall to below.
-    // `desired` is clamped into the zone, so both boundaries stay in-zone.
-    const insertRow =
-      preferInsertAbove && isInsertAllowedForZone(desiredRow, audioRow, isAudio)
-        ? desiredRow
-        : desiredRow + 1;
+    // When collision fallback found only the origin lane, insert on the far side
+    // of the aimed lane so normalization cannot turn the gesture into a no-op.
+    // Otherwise prefer the gap nearest the pointer, preserving normal insertion.
+    const originRow = originTrack == null ? -1 : order.indexOf(originTrack);
+    const insertAbove = snappedBackToOrigin
+      ? originRow > desiredRow
+      : preferInsertAbove && isInsertAllowedForZone(desiredRow, audioRow, isAudio);
+    const insertRow = insertAbove ? desiredRow : desiredRow + 1;
     return { track: desired, insertRow };
   }
   return { track: placement.track, insertRow: null };

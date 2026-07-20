@@ -49,8 +49,12 @@ function stubCanPlayType(el: HTMLVideoElement, result: string): void {
   el.canPlayType = vi.fn(() => result) as unknown as HTMLVideoElement["canPlayType"];
 }
 
+function proxyVariant(el: HTMLMediaElement): string | null {
+  return new URL(el.src, document.baseURI).searchParams.get("hf-proxy");
+}
+
 function isProxied(el: HTMLMediaElement): boolean {
-  return new URL(el.src, document.baseURI).searchParams.get("hf-proxy") === "h264";
+  return proxyVariant(el) !== null;
 }
 
 afterEach(() => {
@@ -170,7 +174,7 @@ describe("maybeProxyProactively", () => {
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
 
-  it("never swaps an alpha-bearing hostile entry; emits the unavailable diagnostic instead", () => {
+  it("swaps an alpha-bearing hostile entry to a VP8 proxy", () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
       "/video.mov": {
         codecName: "prores",
@@ -184,14 +188,8 @@ describe("maybeProxyProactively", () => {
 
     maybeProxyProactively(el);
 
-    expect(isProxied(el)).toBe(false);
-    expect(el.load).not.toHaveBeenCalled();
-    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "runtime_media_proxy_unavailable",
-        details: expect.objectContaining({ reason: "alpha_source" }),
-      }),
-    );
+    expect(proxyVariant(el)).toBe("vp8");
+    expect(el.load).toHaveBeenCalledTimes(1);
   });
 
   it("is a no-op when the render-frame sibling image signals render mode", () => {
@@ -224,6 +222,7 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     handleMetadataForProxy(el);
 
     expect(isProxied(el)).toBe(true);
+    expect(proxyVariant(el)).toBe("auto");
     expect(el.load).toHaveBeenCalledTimes(1);
   });
 
@@ -238,7 +237,7 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
     expect(postRuntimeMessageMock).not.toHaveBeenCalled();
   });
 
-  it("skips a MAPPED entry with hasAlpha (alpha sources are never proxied) and diagnoses instead", () => {
+  it("swaps a mapped alpha entry to a VP8 proxy", () => {
     window.__HF_MEDIA_CODEC_MAP__ = {
       "/video.mov": {
         codecName: "prores",
@@ -252,14 +251,8 @@ describe("handleMetadataForProxy (reactive trigger)", () => {
 
     handleMetadataForProxy(el);
 
-    expect(isProxied(el)).toBe(false);
-    expect(el.load).not.toHaveBeenCalled();
-    expect(postRuntimeMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "runtime_media_proxy_unavailable",
-        details: expect.objectContaining({ reason: "alpha_source" }),
-      }),
-    );
+    expect(proxyVariant(el)).toBe("vp8");
+    expect(el.load).toHaveBeenCalledTimes(1);
   });
 
   it("does not proxy a mapped browser-safe codec on the metadata path", () => {

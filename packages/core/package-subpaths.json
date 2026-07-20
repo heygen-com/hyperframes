@@ -1,0 +1,276 @@
+{
+  "package": "@hyperframes/core",
+  "localNodeRuntime": true,
+  "subpaths": {
+    ".": {
+      "source": "./src/index.ts",
+      "runtime": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
+    "./beats": {
+      "source": "./src/beats/index.ts",
+      "runtime": "./dist/beats/index.js",
+      "types": "./dist/beats/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./html-attr-safety": {
+      "source": "./src/utils/htmlAttrSafety.ts",
+      "runtime": "./dist/utils/htmlAttrSafety.js",
+      "types": "./dist/utils/htmlAttrSafety.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./composition-contract": {
+      "source": "./src/compositionContract.ts",
+      "runtime": "./dist/compositionContract.js",
+      "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./editing": {
+      "source": "./src/editing/affordances.ts",
+      "runtime": "./dist/editing/affordances.js",
+      "types": "./dist/editing/affordances.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./editing/draft-markers": {
+      "source": "./src/editing/draftMarkers.ts",
+      "runtime": "./dist/editing/draftMarkers.js",
+      "types": "./dist/editing/draftMarkers.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./variables": {
+      "source": "./src/variables.ts",
+      "runtime": "./dist/variables.js",
+      "types": "./dist/variables.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./slideshow": {
+      "source": "./src/slideshow/index.ts",
+      "runtime": "./dist/slideshow/index.js",
+      "types": "./dist/slideshow/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./generators": {
+      "source": "./src/generators/hyperframes.ts",
+      "runtime": "./dist/generators/hyperframes.js",
+      "types": "./dist/generators/hyperframes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./lint": {
+      "source": "./src/lint/index.ts",
+      "runtime": "./dist/lint/index.js",
+      "types": "./dist/lint/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./compiler": {
+      "source": "./src/compiler/index.ts",
+      "runtime": "./dist/compiler/index.js",
+      "types": "./dist/compiler/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./color-grading": {
+      "source": "./src/colorGrading.ts",
+      "runtime": "./dist/colorGrading.js",
+      "types": "./dist/colorGrading.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./color-luts": {
+      "source": "./src/colorLuts.ts",
+      "runtime": "./dist/colorLuts.js",
+      "types": "./dist/colorLuts.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./storyboard": {
+      "source": "./src/storyboard/index.ts",
+      "runtime": "./dist/storyboard/index.js",
+      "types": "./dist/storyboard/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime": {
+      "source": "./dist/hyperframe.runtime.iife.js",
+      "runtime": "./dist/hyperframe.runtime.iife.js",
+      "types": null,
+      "environments": ["browser"]
+    },
+    "./runtime/clipTree": {
+      "source": "./src/runtime/clipTree.ts",
+      "runtime": "./dist/runtime/clipTree.js",
+      "types": "./dist/runtime/clipTree.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/start-expression": {
+      "source": "./src/runtime/startExpression.ts",
+      "runtime": "./dist/runtime/startExpression.js",
+      "types": "./dist/runtime/startExpression.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/start-resolver": {
+      "source": "./src/runtime/startResolver.ts",
+      "runtime": "./dist/runtime/startResolver.js",
+      "types": "./dist/runtime/startResolver.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/protocol": {
+      "source": "./src/runtime/protocol.ts",
+      "runtime": "./dist/runtime/protocol.js",
+      "types": "./dist/runtime/protocol.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/stacking-context": {
+      "source": "./src/runtime/stackingContext.ts",
+      "runtime": "./dist/runtime/stackingContext.js",
+      "types": "./dist/runtime/stackingContext.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/html-document": {
+      "source": "./src/compiler/htmlDocument.ts",
+      "runtime": "./dist/compiler/htmlDocument.js",
+      "types": "./dist/compiler/htmlDocument.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/position-edits": {
+      "source": "./src/runtime/positionEdits.ts",
+      "runtime": "./dist/runtime/positionEdits.js",
+      "types": "./dist/runtime/positionEdits.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/position-edits-render": {
+      "source": "./src/generated/position-edits-render-inline.ts",
+      "runtime": "./dist/generated/position-edits-render-inline.js",
+      "types": "./dist/generated/position-edits-render-inline.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/lottie-readiness": {
+      "source": "./src/lottieReadiness.ts",
+      "runtime": "./dist/lottieReadiness.js",
+      "types": "./dist/lottieReadiness.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./studio-api": {
+      "source": "./src/studio-api/index.ts",
+      "runtime": "./dist/studio-api/index.js",
+      "types": "./dist/studio-api/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./studio-api/screenshot-clip": {
+      "source": "./src/studio-api/helpers/screenshotClip.ts",
+      "runtime": "./dist/studio-api/helpers/screenshotClip.js",
+      "types": "./dist/studio-api/helpers/screenshotClip.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./studio-api/manual-edits-render-script": {
+      "source": "./src/studio-api/helpers/manualEditsRenderScript.ts",
+      "runtime": "./dist/studio-api/helpers/manualEditsRenderScript.js",
+      "types": "./dist/studio-api/helpers/manualEditsRenderScript.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./studio-api/studio-motion-render-script": {
+      "source": "./src/studio-api/helpers/studioMotionRenderScript.ts",
+      "runtime": "./dist/studio-api/helpers/studioMotionRenderScript.js",
+      "types": "./dist/studio-api/helpers/studioMotionRenderScript.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./studio-api/draft-markers": {
+      "source": "./src/studio-api/helpers/draftMarkers.ts",
+      "runtime": "./dist/studio-api/helpers/draftMarkers.js",
+      "types": "./dist/studio-api/helpers/draftMarkers.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./studio-api/finite-mutation": {
+      "source": "./src/studio-api/helpers/finiteMutation.ts",
+      "runtime": "./dist/studio-api/helpers/finiteMutation.js",
+      "types": "./dist/studio-api/helpers/finiteMutation.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./text": {
+      "source": "./src/text/index.ts",
+      "runtime": "./dist/text/index.js",
+      "types": "./dist/text/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./registry": {
+      "source": "./src/registry/index.ts",
+      "runtime": "./dist/registry/index.js",
+      "types": "./dist/registry/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./media-volume-envelope": {
+      "source": "./src/runtime/mediaVolumeEnvelope.ts",
+      "runtime": "./dist/runtime/mediaVolumeEnvelope.js",
+      "types": "./dist/runtime/mediaVolumeEnvelope.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./hf-ids": {
+      "source": "./src/parsers/hfIds.ts",
+      "runtime": "./dist/parsers/hfIds.js",
+      "types": "./dist/parsers/hfIds.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-parser": {
+      "source": "./src/parsers/gsapParserExports.ts",
+      "runtime": "./dist/parsers/gsapParserExports.js",
+      "types": "./dist/parsers/gsapParserExports.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-parser-acorn": {
+      "source": "./src/parsers/gsapParserAcorn.ts",
+      "runtime": "./dist/parsers/gsapParserAcorn.js",
+      "types": "./dist/parsers/gsapParserAcorn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-writer-acorn": {
+      "source": "./src/parsers/gsapWriterAcorn.ts",
+      "runtime": "./dist/parsers/gsapWriterAcorn.js",
+      "types": "./dist/parsers/gsapWriterAcorn.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./gsap-constants": {
+      "source": "./src/parsers/gsapConstants.ts",
+      "runtime": "./dist/parsers/gsapConstants.js",
+      "types": "./dist/parsers/gsapConstants.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./spring-ease": {
+      "source": "./src/parsers/springEase.ts",
+      "runtime": "./dist/parsers/springEase.js",
+      "types": "./dist/parsers/springEase.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./fonts/aliases": {
+      "source": "./src/fonts/aliases.ts",
+      "runtime": "./dist/fonts/aliases.js",
+      "types": "./dist/fonts/aliases.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./fonts/system-locator": {
+      "source": "./src/fonts/systemFontLocator.ts",
+      "runtime": "./dist/fonts/systemFontLocator.js",
+      "types": "./dist/fonts/systemFontLocator.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./figma": {
+      "source": "./src/figma/index.ts",
+      "runtime": "./dist/figma/index.js",
+      "types": "./dist/figma/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./schemas/registry.json": {
+      "source": "./schemas/registry.json",
+      "runtime": "./schemas/registry.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
+    "./schemas/registry-item.json": {
+      "source": "./schemas/registry-item.json",
+      "runtime": "./schemas/registry-item.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    }
+  }
+}

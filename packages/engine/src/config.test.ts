@@ -8,6 +8,9 @@ import {
   shouldClampToScreenshotForConcreteGpu,
   applyConcreteGpuScreenshotClamp,
   shouldAutoDisableStreamingEncodeOnWin32Compound,
+  resolveExtractCacheDir,
+  defaultExtractCacheDir,
+  EXTRACT_CACHE_DIR_DISABLED_ALIASES,
 } from "./config.js";
 import type { EngineConfig } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
@@ -796,5 +799,47 @@ describe("scaleProtocolTimeoutForComposition", () => {
     expect(scaleProtocolTimeoutForComposition(base, { width: Number.NaN, height: 1080 })).toBe(
       base,
     );
+  });
+});
+
+describe("resolveExtractCacheDir", () => {
+  it("returns the OS-default cache dir when the env var is unset", () => {
+    const res = resolveExtractCacheDir({});
+    expect(res.disabled).toBe(false);
+    expect(res.source).toBe("default");
+    if (!res.disabled) {
+      expect(res.dir).toBe(defaultExtractCacheDir());
+    }
+  });
+
+  it("threads a positive env value through verbatim (source: env)", () => {
+    const res = resolveExtractCacheDir({
+      HYPERFRAMES_EXTRACT_CACHE_DIR: "D:/hf-cache",
+    });
+    expect(res.disabled).toBe(false);
+    expect(res.source).toBe("env");
+    if (!res.disabled) {
+      expect(res.dir).toBe("D:/hf-cache");
+      expect(res.rawValue).toBe("D:/hf-cache");
+    }
+  });
+
+  it.each(EXTRACT_CACHE_DIR_DISABLED_ALIASES.flatMap((v) => [v, v.toUpperCase(), `  ${v}  `]))(
+    "reports disabled for opt-out alias %s",
+    (value) => {
+      const res = resolveExtractCacheDir({ HYPERFRAMES_EXTRACT_CACHE_DIR: value });
+      expect(res.disabled).toBe(true);
+      if (res.disabled) {
+        expect(res.dir).toBeUndefined();
+        expect(res.rawValue).toBe(value);
+      }
+    },
+  );
+
+  it("defaults to process.env when no env argument is passed", () => {
+    // Signal-only smoke test — the previous callers rely on this default and
+    // both engine.resolveConfig() and doctor's checkFramesCache() would break
+    // silently if the signature drifted to require an env argument.
+    expect(() => resolveExtractCacheDir()).not.toThrow();
   });
 });

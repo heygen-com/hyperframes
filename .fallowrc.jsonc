@@ -583,6 +583,16 @@
       "packages/studio/src/components/editor/PropertyPanel.test.tsx",
       "packages/studio/src/components/editor/propertyPanelFlatStyleSections.test.tsx",
       "packages/studio/src/components/editor/propertyPanelFlatMotionSection.test.tsx",
+      // Thumbnail id-escape fix (via/thumbnail-id-escape): getElementScreenshotClip's
+      // matches/rect/pad clip-computation body has a pre-existing 19-line clone with
+      // the inline `page.evaluate` block in vite.browser.ts (the dev-server thumbnail
+      // path). Adding a try/catch guard around the querySelectorAll call shifts the
+      // clone's line numbers, re-flagging the inherited duplication. Extracting the
+      // shared body into a common helper would require the browser-side page.evaluate
+      // to import from a Node-side module, which puppeteer's serialization boundary
+      // makes non-trivial.
+      "packages/studio-server/src/helpers/screenshotClip.ts",
+      "packages/studio/vite.browser.ts",
     ],
   },
   "health": {
@@ -798,6 +808,16 @@
       // `waitForCompletion` is untouched. Line-shift fingerprint re-flags
       // the inherited complexity.
       "packages/cli/src/commands/lambda/render.ts",
+      // Thumbnail id-escape fix (via/thumbnail-id-escape): picker.ts has five
+      // pre-existing inherited-complexity findings (isEffectivelyHidden,
+      // isPickableElement, buildElementLabel, getPickCandidatesFromPoint,
+      // pickManyAtPoint — all in this file at the parent SHA). This PR's only
+      // logic edit inside picker.ts is a single-line change to buildElementSelector
+      // (`#${htmlEl.id}` → `#${CSS.escape(htmlEl.id)}`) plus a three-line comment;
+      // the added lines shift every function below buildElementSelector, and Fallow's
+      // file-level fingerprint invalidation re-flags the inherited findings even at
+      // unchanged line numbers.
+      "packages/core/src/runtime/picker.ts",
     ],
   },
 }

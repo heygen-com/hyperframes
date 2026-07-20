@@ -221,7 +221,8 @@ export function computeResizePreview(
         )
       : Number.POSITIVE_INFINITY;
   const normalizedTag = resize.element.tag.toLowerCase();
-  const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
+  const canSeedPlaybackStart =
+    resize.element.kind === "composition" || normalizedTag === "audio" || normalizedTag === "video";
   const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
   // Trim limit = available source media only — NOT the composition length.
   // Duration is content-driven (the comp grows/shrinks to fit on commit), so

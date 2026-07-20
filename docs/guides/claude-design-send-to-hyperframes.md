@@ -86,6 +86,7 @@ Gotchas learned from real imports:
 - **Prefer inline; never a dead or expiring ref.** Inline images/logos as `data:` URIs when practical — the only fully self-contained form. If an asset is too large to inline, use a **publicly-fetchable absolute URL**; never a relative path, a local-file variable, or a **short-lived/private host** (a signed URL that expires, `s3://`/presigned URLs) — those 404 by render time. (The runtime/GSAP/shader scripts are the only network fetches by design.)
 - **Watch for injected loader cruft.** If assets are fetched through a proxy/CDN that injects its own beacon scripts (e.g. a Cloudflare `cdn-cgi/challenge-platform` snippet), strip them — they 404 in the renderer and add noise.
 - **No placeholder assets** (`placehold.co`, lorem-ipsum). Ship real brand content.
+- **Preserve substance; adapt form.** A composition is a *rebuild* of the design into a timed video, so the FORM changes: a static page becomes multi-scene motion, page nav/footer chrome is dropped or folded in, and a single hero may expand into a short narrative arc. But the brand's SUBSTANCE must survive verbatim: the real headline and copy, the exact palette and fonts, named products and features, real metrics and data points, and signature visual elements (a chart, a waveform, a product shot). Keep distinctive specifics *specific*: do NOT genericize them into vague phrases (e.g. turning a real metric like `2.4M signals/sec` into "streaming now", or a named feature into a generic label), and do NOT invent copy or numbers the brand never provided. When you expand a hero into extra scenes, build them only from the brand's own language and facts.
 
 ---
 
@@ -382,7 +383,7 @@ Note: this is the one place the download-ZIP guidance is **reversed** — for Se
 
 ## Keep the original design as a reference
 
-The single-file import is lossy by nature (a composition is a *rebuild* of your design, not the design itself). Preserve the original design **as a separate reference** (not as the composition that drives the video) so a later agent can pull back any content or styling the composition dropped. This turns a lossy first draft into a fixable one rather than a dead end.
+A composition is a *rebuild* of your design into a timed video, so it adapts the **form** (see *Preserve substance; adapt form* above), but it should never lose the brand's substance. Preserve the original design **as a separate reference** (not as the composition that drives the video) so a later agent can pull back any distinctive content or styling the rebuild dropped despite that rule. This turns a first draft into a fixable one rather than a dead end.
 
 ---
 
@@ -423,4 +424,4 @@ You don't author any of this. Produce a clean, on-brand, correctly-timed silent 
 **Renders correctly:**
 - [ ] No `Date.now()`, unseeded `Math.random()`, `setInterval/Timeout`, `requestAnimationFrame`, `repeat: -1`
 - [ ] Timeline built synchronously; paused; framework owns playback
-- [ ] Colors, fonts, content match the brief exactly; no placeholders; ≥2 animation patterns + mid-scene activity per scene
+- [ ] Colors and fonts exact; brand substance preserved: real headline/copy, distinctive figures/stats/data points, product names, and signature visuals carried over verbatim (form adapted, never genericized or invented); no placeholders; ≥2 animation patterns + mid-scene activity per scene
