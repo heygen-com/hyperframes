@@ -1,15 +1,15 @@
-# media-use usage dashboard (PostHog)
+# media-use usage dashboard
 
 Reproducible definition of the media-use usage dashboard. The dashboard answers
 "how much is media-use used, for what, is reuse working, and what can't it
 satisfy" from the telemetry `scripts/lib/telemetry.mjs` already emits. Build it
-in PostHog project **Hyperframes (356858)**; this doc is the source of truth so
-it can be recreated. Local complement: `resolve --stats` (same questions, from
-`.media/` + `~/.media`, no PostHog access needed).
+in an authorized HyperFrames analytics project; this doc is the source of truth
+so it can be recreated. Local complement: `resolve --stats` (same questions,
+from `.media/` + `~/.media`, no dashboard access needed).
 
 ## Identity (see `scripts/lib/telemetry.mjs`)
 
-Events attribute to the **same PostHog person as the hyperframes CLI and studio**
+Events attribute to the **same person as the hyperframes CLI and studio**
 — the shared install id in `~/.hyperframes/config.json` (`anonymousId`), stitched
 to the HeyGen account (`$identify`, `distinct_id` = email/username) on sign-in.
 Not fully anonymous by design; pseudonymous before sign-in, account-linked after.
@@ -40,11 +40,10 @@ never intent text, file names, or paths.
 7. **Compare cost** — `media_use_compare` by `command`, plus `truncated` / `render_ready_timed_out` rates (observe before lifting the 16-cell cap).
 8. **Adoption (optional)** — if the `first_run` property ships (plan U5), segment `media_use_resolve` first-run vs repeat.
 
-## Recreate via the PostHog MCP
+## Recreate in an analytics dashboard
 
-For each tile: `read-data-schema` to confirm the event/property, then a
-`query-*` tool (`query-trends` for 1–7), then `insight-create`, then
-`dashboard-create` collecting the insights. Keep names prefixed `media-use:` so
-the dashboard is greppable. Cross-surface note: because identity is shared with
-CLI/studio, you can also break these down by the same person across `cli_command*`
-and `studio:*` events.
+For each tile, confirm the event/property schema, build its trend or breakdown,
+then add it to a dashboard. Keep names prefixed `media-use:` so the dashboard is
+greppable. Cross-surface note: because identity is shared with CLI/studio, you
+can also break these down by the same person across `cli_command*` and `studio:*`
+events.

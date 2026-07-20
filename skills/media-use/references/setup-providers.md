@@ -2,8 +2,9 @@
 
 ## Setup — install heygen first (free-usage path)
 
+Install the HeyGen CLI through its verified release instructions, then run:
+
 ```bash
-curl -fsSL https://static.heygen.ai/cli/install.sh | bash
 heygen update             # free usage needs the OAuth-capable CLI (v0.3.0+)
 heygen auth login --oauth # OAuth = free subscription credits; --api-key bills API credits
 ```
@@ -61,7 +62,7 @@ private, on-device path instead of or ahead of HeyGen for that type. Only
 | Tool               | Serves                                                                          | Install                                                                                                                          |
 | ------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm                | system package (`brew install ffmpeg`)                                                                                           |
-| `heygen`           | catalog (bgm/sfx/image/icon) + TTS (voice) + avatar video — the free-usage path | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --oauth` (needs >= v0.3.0)                  |
+| `heygen`           | catalog (bgm/sfx/image/icon) + TTS (voice) + avatar video — the free-usage path | install through verified HeyGen release instructions, then `heygen auth login --oauth` (needs >= v0.3.0)                           |
 | `mflux-generate`   | local image gen (FLUX), best-for-RAM                                            | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                               |
 | `codex`            | image gen upsell (ChatGPT sub)                                                  | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                             |
 | `parakeet-mlx`     | local transcription (default ASR, best)                                         | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                                         |

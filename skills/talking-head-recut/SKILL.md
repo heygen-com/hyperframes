@@ -279,8 +279,7 @@ densityMultiplier)))`) so the "auto" option's label can show the
 Not every runtime exposes the same structured-question tool. Apply this
 order:
 
-1. **`AskUserQuestion`** (Claude Code, Anthropic Console) — use the
-   structured 4-question call below.
+1. **Native clarification tool** — use the structured 4-question call below.
 2. **Other native clarification tool** (e.g. `ask_question`,
    `request_user_input`, IDE-specific prompt) — use that tool with the
    same 4 question texts and option lists. Preserve the recommendation

@@ -21,7 +21,7 @@ Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extrac
 
 ## Step 0: Setup
 
-Goal: Enter with a confirmed brief — including the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) — create the HyperFrames project, and make the brief durable. The style is always **claude** (fixed at Step 2, never asked).
+Goal: Enter with a confirmed brief — including the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) — create the HyperFrames project, and make the brief durable. The style is always **code-editorial** (fixed at Step 2, never asked).
 
 **The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run its intent layer (`references/intent-interview.md`): it checks recipes and remembered defaults, and conducts this route's questions — including the PR-size → length doctrine, which lives whole in `../hyperframes/references/routes/pr-to-video.md` — then hands back the locked brief. Edit requests skip all of this — go do the edit.
 
@@ -71,7 +71,7 @@ PR="<url | owner/repo#N | N>"
 # capture/diff.patch — no scratch dir. gh auth / not-found / private errors exit 1 here.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/fetch-pr.mjs --pr "$PR" --out-dir ./capture)
 
-# Offline transform → capture/extracted/{tokens.json (colors:[] → claude palette),
+# Offline transform → capture/extracted/{tokens.json (colors:[] → code-editorial palette),
 # visible-text.txt (the brief), people.json (contributors, bot-filtered, name+login,
 # avatarFile=assets/<login>.png)}.
 (cd "$PROJECT_DIR" && node <SKILL_DIR>/scripts/ingest.mjs \
@@ -93,17 +93,17 @@ If `fetch-pr.mjs` exits 1 (gh auth / not found / private), report its stderr and
 
 ## Step 2: Design System
 
-Goal: Adopt the claude frame preset; a script turns it into this video's `frame.md` + caption skin.
+Goal: Adopt the code-editorial frame preset; a script turns it into this video's `frame.md` + caption skin.
 
-The style is fixed — **claude** (warm editorial; a navy code surface built for diffs). Run:
+The style is fixed — **code-editorial** (warm editorial; a navy code surface built for diffs). Run:
 
 ```bash
-node <SKILL_DIR>/scripts/build-frame.mjs --preset claude --hyperframes .
+node <SKILL_DIR>/scripts/build-frame.mjs --preset code-editorial --hyperframes .
 ```
 
-The script copies the claude preset's `FRAME.md` → `frame.md`, remixes it onto any brand tokens in `capture/extracted/tokens.json` (a PR has none → `colors:[]`/`fonts:[]` keeps claude's own palette, a complete design), copies the preset's caption skin to `.hyperframes/caption-skin.html`, and self-validates (exits 1 on a broken mapping). Proceed as soon as it exits 0 — no hand-editing.
+The script copies the code-editorial preset's `FRAME.md` → `frame.md`, remixes it onto any brand tokens in `capture/extracted/tokens.json` (a PR has none → `colors:[]`/`fonts:[]` keeps code-editorial's own palette, a complete design), copies the preset's caption skin to `.hyperframes/caption-skin.html`, and self-validates (exits 1 on a broken mapping). Proceed as soon as it exits 0 — no hand-editing.
 
-**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from the claude preset, and `.hyperframes/caption-skin.html` exists as the caption skin source.
+**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from the code-editorial preset, and `.hyperframes/caption-skin.html` exists as the caption skin source.
 
 ---
 
@@ -151,7 +151,7 @@ Edit `STORYBOARD.md` in place. Do not create another storyboard. Use `frame.md` 
 
 Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.md`, `references/motion-language.md`, `references/code-vocabulary.md`, and `../hyperframes-animation/rules-index.md`. Use `visual-design.md` for the method (the time-coded shot sequence, the inline Layout vocabulary, and the code-beat treatment), plus the required `## Video direction` block. Use `../hyperframes-animation/blueprints-index.md` to pick each frame's shot shape. Use `code-vocabulary.md` to pick the right `code-*` block per code beat (diff = `code-diff`, refactor = `code-morph`, new code = `code-typing`, …). Use `motion-language.md` (the motion vocabulary + the motion doctrine) and `../hyperframes-animation/rules-index.md` (valid rule names) for motion — do not invent motion or block/blueprint names.
 
-For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. **For a code beat, the `code-*` block is the frame's `focal`** and the Scenes choreograph the surrounding claude Code Surface (the entry of the file/header, the camera onto the hunk, the landing line) — **not** the code animation itself, which the block owns. Immediately after each code frame's fields, add a `### Source excerpt` fenced `diff` block containing only the exact real hunk the worker must render (12 lines maximum). Select it here from `capture/diff.patch`; workers are forbidden from reopening that full diff. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
+For every frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS frame's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. **For a code beat, the `code-*` block is the frame's `focal`** and the Scenes choreograph the surrounding code-editorial Code Surface (the entry of the file/header, the camera onto the hunk, the landing line) — **not** the code animation itself, which the block owns. Immediately after each code frame's fields, add a `### Source excerpt` fenced `diff` block containing only the exact real hunk the worker must render (12 lines maximum). Select it here from `capture/diff.patch`; workers are forbidden from reopening that full diff. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
 Do not change story, script, `transition_in`, `asset_candidates`, or the PR source. Do not write HTML in this step. There is **no asset-staging step** — the only real assets are the credits avatars, already in `assets/`.
 
@@ -195,7 +195,7 @@ After audio timings exist, build captions in the background and assemble the ind
 
 `node <SKILL_DIR>/scripts/assemble-index.mjs --storyboard ./STORYBOARD.md --hyperframes .`
 
-`captions.mjs` uses the project's `.hyperframes/caption-skin.html` (claude's, copied in Step 2), injecting brand tokens from `frame.md`; `captions: skipped (<reason>)` is valid. `assemble-index.mjs` stages the credits avatars from `assets/` as an idempotent backstop.
+`captions.mjs` uses the project's `.hyperframes/caption-skin.html` (code-editorial's, copied in Step 2), injecting brand tokens from `frame.md`; `captions: skipped (<reason>)` is valid. `assemble-index.mjs` stages the credits avatars from `assets/` as an idempotent backstop.
 
 **Gate:** every frame is marked `animated` (collaborative: the sketch board was confirmed at Step 4), `index.html` exists, and captions are built or explicitly skipped.
 
@@ -243,7 +243,7 @@ After the user is done reviewing (or after render when no more live edits are ex
 
 **Formats:** landscape `1920x1080`; portrait `1080x1920`; square `1080x1080` — derived from the destination (brief contract § 2). Set the format once in the storyboard frontmatter.
 
-**PR deltas vs a captured-asset workflow:** no Step 1 capture (the `gh` CLI ingests the PR into a synthetic `capture/extracted/` package — `tokens.json` + `visible-text.txt` + `people.json`); the only real assets are the contributors' `assets/<login>.png` avatars (the credits close); no `asset-descriptions.md`, no asset-staging step. Code beats are rendered by the `code-*` registry blocks on claude's navy Code Surface; the style is always **claude**.
+**PR deltas vs a captured-asset workflow:** no Step 1 capture (the `gh` CLI ingests the PR into a synthetic `capture/extracted/` package — `tokens.json` + `visible-text.txt` + `people.json`); the only real assets are the contributors' `assets/<login>.png` avatars (the credits close); no `asset-descriptions.md`, no asset-staging step. Code beats are rendered by the `code-*` registry blocks on code-editorial's navy Code Surface; the style is always **code-editorial**.
 
 **Background scripts:** the workflow ships these under `scripts/`: `fetch-pr` (PR → `capture/pr.json` + `diff.patch` via `gh`; large-PR-safe, no scratch), `ingest` (→ synthetic capture package; offline), and `fetch-people-avatars` (contributor avatars → `assets/`); plus the shared engine — `build-frame` (adopt + brand-remix a preset into `frame.md` + caption skin), `audio` (TTS, BGM, SFX, duration sync), `captions`, `transitions` (inject + verify), and `assemble-index`. Everything else is the `hyperframes` CLI. Code blocks install via `npx hyperframes add <name>`.
 
@@ -266,4 +266,4 @@ The reusable, domain-agnostic shot shapes live in `../hyperframes-animation/blue
 | `[../hyperframes-core/references/frame-worker-core.md](../hyperframes-core/references/frame-worker-core.md)`                                                | Step 5: the shared worker contract (packet builder prepends it to the delta).  |
 | `[sub-agents/frame-worker.md](sub-agents/frame-worker.md)`                                                                                                  | Step 5: the workflow's frame-worker delta.                                     |
 | `[../hyperframes-core/references/subagent-dispatch.md](../hyperframes-core/references/subagent-dispatch.md)`                                                | Step 5: dispatch sub-agents safely.                                            |
-| `[../hyperframes-creative/frame-presets/claude/FRAME.md](../hyperframes-creative/frame-presets/claude/FRAME.md)`                                            | Step 2: the claude preset (fixed style).                                       |
+| `[../hyperframes-creative/frame-presets/code-editorial/FRAME.md](../hyperframes-creative/frame-presets/code-editorial/FRAME.md)`                                            | Step 2: the code-editorial preset (fixed style).                                       |

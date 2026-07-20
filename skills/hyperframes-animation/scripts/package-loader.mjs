@@ -145,7 +145,7 @@ export function hyperframesPackageSpec(packageName) {
   const version = readBundledHyperframesVersion();
   if (version) return `${packageName}@${version}`;
 
-  // Global skill installs (e.g. ~/.claude/skills) have no hyperframes package.json
+  // Global skill installs have no hyperframes package.json
   // in their ancestor chain, so the bundled version is unknowable. Fall back to
   // @latest instead of throwing: already-installed packages still import, and a
   // bootstrap install can still proceed (@latest satisfies the pinned-spec guard).

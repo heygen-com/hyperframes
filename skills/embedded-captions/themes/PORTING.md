@@ -9,7 +9,6 @@ One theme at a time. The demo is the spec; the engine is the law.
   final_fx.mp4 + strip.png (ground truth of how it should look).
 - Engine: `scripts/make-theme.cjs` — read the header + the existing paradigms
   (rail/panel/poem/takeover) and setpieces (detonation/decode/drawon/assembly/
-  colorflip/cpslam/coverword/settle) before writing anything.
 
 ## Process
 

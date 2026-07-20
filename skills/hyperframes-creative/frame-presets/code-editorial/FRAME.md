@@ -1,8 +1,8 @@
 ---
 version: alpha
-name: Claude — Frame (video / frame layer)
+name: Code editorial — Frame (video / frame layer)
 description: >
-  Video-first companion to Claude's design.md. The unit is the frame (1920×1080). Atoms are
+  Video-first companion to Code editorial's design.md. The unit is the frame (1920×1080). Atoms are
   identical and sacred — warm cream paper (never pure white, never cool), a single terracotta coral
   as scarce "voltage", hairline ink elevation (no heavy shadow), EB Garamond for all
   display + Inter body + JetBrains Mono for the index/code voice on a warm-navy code surface,
@@ -90,11 +90,11 @@ components:
     description: "The brand mark. Fades + scales 0.92→1 on a single emphasis beat; never spins."
 ---
 
-# Claude — Frame (video / frame layer)
+# Code editorial — Frame (video / frame layer)
 
 ## Overview
 
-Claude at frame scale is a **warm-editorial brand book come to life** — the register of a literary
+Code editorial at frame scale is a **warm-editorial brand book come to life** — the register of a literary
 imprint or a research note. The thesis is three colors: **cream is the ground, ink is the voice,
 coral is the voltage** — and a fourth (warm navy) only where code shows itself. Every surface is
 **warm cream** (never pure white, never cool gray); content gathers on a **tile** surface half a
@@ -270,7 +270,7 @@ to the diff; commit/issue numbers are chrome.
 
 ## Known Gaps
 
-- **Motion intentionally out of scope.** frame.md specifies composition only. Claude's motion register — short cross-dissolves, no overshoot/bounce/elastic, coral the only "draw-on", numbers count up, code types on line by line — lives in the workflow's `motion-language.md` + `hyperframes-animation`, not here.
+- **Motion intentionally out of scope.** frame.md specifies composition only. Code editorial's motion register — short cross-dissolves, no overshoot/bounce/elastic, coral the only "draw-on", numbers count up, code types on line by line — lives in the workflow's `motion-language.md` + `hyperframes-animation`, not here.
 - **EB Garamond + Inter + JetBrains Mono ship as licensed local WOFF2 assets with this preset.** `build-frame.mjs` stages weights 400 + 700 into `assets/fonts/` and appends the exact `@font-face` block to the generated `frame.md`, so Studio, snapshots, and renders resolve them offline without a first-run Google Fonts fetch. Author display at **weight 400** (700 reads as a heavy bold, off-register), and treat italic as the browser-synthesized slant (acceptable for the pull-quote register; add a real italic face only if a project leans hard on it). EB Garamond is a warm old-style serif (low contrast, humanist); if it ever fails, fall to Georgia or another old-style serif — never to a sans. CJK: Noto Serif SC (display) / Noto Sans SC (body) / Noto Sans Mono CJK (code); the sentence-case warmth carries when the serif drops.
 - **Syntax colors (teal `#5DB8A6` / amber `#E8A55A` / status) are fixed decoration**, declared in §Colors — they are NOT in the remixable `colors:` block, so a brand remix never repaints them.
 - **The code itself is the `code-*` registry blocks**, not this preset — this preset owns only the surrounding warm-navy surface + mono chrome.

@@ -166,13 +166,13 @@ test("validated bare frames survive assembly and transition injection", () => {
   );
 });
 
-test("Claude preset stages renderer-parity fonts for an empty PR token set", () => {
-  const project = mkdtempSync(join(tmpdir(), "p2v-claude-fonts-"));
+test("Code editorial preset stages renderer-parity fonts for an empty PR token set", () => {
+  const project = mkdtempSync(join(tmpdir(), "p2v-code-editorial-fonts-"));
   write(join(project, "capture", "extracted", "tokens.json"), '{"colors":[],"fonts":[]}');
 
   execFileSync(
     process.execPath,
-    [buildFrameScript, "--preset", "claude", "--hyperframes", project],
+    [buildFrameScript, "--preset", "code-editorial", "--hyperframes", project],
     { encoding: "utf8" },
   );
 
@@ -198,8 +198,8 @@ test("Claude preset stages renderer-parity fonts for an empty PR token set", () 
   assert.doesNotMatch(frameMd, /fonts\.googleapis\.com/);
 });
 
-test("bundled Claude font licenses are shipped beside the assets", () => {
-  const fontDir = resolve(scriptDir, "../../hyperframes-creative/frame-presets/claude/fonts");
+test("bundled Code editorial font licenses are shipped beside the assets", () => {
+  const fontDir = resolve(scriptDir, "../../hyperframes-creative/frame-presets/code-editorial/fonts");
   for (const family of ["eb-garamond", "inter", "jetbrains-mono"]) {
     assert.equal(existsSync(join(fontDir, `OFL-${family}.txt`)), true);
   }

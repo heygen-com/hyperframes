@@ -115,7 +115,7 @@ The agent's two reflexive ways to fake "aliveness" both read cheap:
 - **No lazy breathing.** Scaling cards/text up and down in a circular loop to look "alive" is the cheap tell. Don't reach for it.
 - **No bad slow pan / push in the back half.** A slow pan or push on elements in the later ~50% of a scene **disrupts the viewer's sightline and causes eye discomfort** — it actively makes the frame worse, not better.
 
-The fix for both is the same: **stagger element reveals in time with the script** (rule 2). And the governing principle: **"I'd rather have NO motion than BAD motion."** A held, still frame is better than a frame kept "alive" by breathing or a drifting camera. The **only sanctioned aliveness** during a hold is **subtle jitter** — a small low-amplitude jitter that keeps a frame from feeling dead without looking weak (it's in Claude videos now). Everything else holds.
+The fix for both is the same: **stagger element reveals in time with the script** (rule 2). And the governing principle: **"I'd rather have NO motion than BAD motion."** A held, still frame is better than a frame kept "alive" by breathing or a drifting camera. The **only sanctioned aliveness** during a hold is **subtle jitter** — a small low-amplitude jitter that keeps a frame from feeling dead without looking weak (it's in Code editorial videos now). Everything else holds.
 
 ## 4. Internal seams are velocity-matched cuts
 

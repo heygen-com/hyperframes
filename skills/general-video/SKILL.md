@@ -21,7 +21,7 @@ A successful no-op means the skill is current. Surface an update failure instead
 ## 1. Apply cross-cutting source adapters
 
 - **Media:** For any audio, image, icon, logo, voice, grade, LUT, caption, or media-operation need, load `/media-use` and follow its adoption, resolution, provider, provenance, and reuse contracts. Before the first authenticated provider action, run `npx hyperframes auth status` and relay its output verbatim. If signed out, apply the gate in `../hyperframes-core/references/brief-contract.md`: collaborative waits for sign-in or an explicit offline choice; autonomous states the status and continues through an available offline provider. Surface a blocker when no offline provider can satisfy a required capability. Local adoption alone does not require an auth gate.
-- **Figma:** If any input is a `figma.com` URL, run `/figma` first. Build from its exported assets, tokens, components, or storyboard frames. Do not use raw Figma MCP calls because they skip SVG sanitization, media provenance, and brand-token binding.
+- **Figma:** If any input is a `figma.com` URL, run `/figma` first. Build from its exported assets, tokens, components, or storyboard frames. Do not use raw Figma connector calls because they skip SVG sanitization, media provenance, and brand-token binding.
 
 These adapters do not change the workflow selected by `/hyperframes`.
 
