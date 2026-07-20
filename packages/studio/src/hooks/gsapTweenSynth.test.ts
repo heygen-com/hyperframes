@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
+import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 
 function anim(overrides: Partial<GsapAnimation>): GsapAnimation {
   return {
@@ -51,5 +51,34 @@ describe("synthesizeFlatTweenKeyframes", () => {
       anim({ method: "to", duration: 0, properties: { opacity: 1 } }),
     );
     expect(out).not.toBeNull();
+  });
+});
+
+describe("deduplicateKeyframes ease ambiguity", () => {
+  it("flags a same-% collision from different animations (different eases)", () => {
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { opacity: 1 }, ease: "power2.out", animationId: "#a-visual" },
+    ]);
+    const kf = merged.find((k) => k.percentage === 45);
+    expect(kf?.easeAmbiguous).toBe(true);
+  });
+
+  it("flags a cross-animation collision even when the raw eases match", () => {
+    // The button can still only target one arbitrary animation, and each may
+    // inherit a different easeEach/animation ease that raw comparison misses.
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { opacity: 1 }, ease: "power2.in", animationId: "#a-visual" },
+    ]);
+    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBe(true);
+  });
+
+  it("does not flag a same-% collision within a single animation", () => {
+    const merged = deduplicateKeyframes([
+      { percentage: 45, properties: { x: 10 }, ease: "power2.in", animationId: "#a-position" },
+      { percentage: 45, properties: { y: 20 }, ease: "power2.out", animationId: "#a-position" },
+    ]);
+    expect(merged.find((k) => k.percentage === 45)?.easeAmbiguous).toBeFalsy();
   });
 });

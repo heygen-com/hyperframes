@@ -12,7 +12,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
-import { computeElementPercentage } from "./gsapShared";
+import { computeElementPercentage, idSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
@@ -117,7 +117,7 @@ export async function materializeIfDynamic(
     const allScanned = scanAllRuntimeKeyframes(iframe);
     if (allScanned.size === 0) return;
     const allElements = Array.from(allScanned.entries()).map(([id, data]) => ({
-      selector: `#${id}`,
+      selector: idSelector(id),
       keyframes: data.keyframes,
       easeEach: data.easeEach,
     }));
