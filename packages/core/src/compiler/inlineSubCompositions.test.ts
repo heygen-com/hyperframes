@@ -428,3 +428,128 @@ describe("inlineSubCompositions – variable defaults on a template sub-comp roo
     expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
   });
 });
+
+describe("inlineSubCompositions – recursive host discovery", () => {
+  const MAX_NESTING_DEPTH = 20;
+
+  function compositionHtml(label: string, nestedSrcs: string[] = []) {
+    const nestedHosts = nestedSrcs
+      .map(
+        (src, index) =>
+          `<div data-composition-id="${label}-child-${index}" data-composition-src="${src}"></div>`,
+      )
+      .join("");
+    return `<template><div data-composition-id="${label}"><span data-level="${label}">${label}</span>${nestedHosts}</div></template>`;
+  }
+
+  function inlineFixture(rootHosts: string[], compositions: Record<string, string>) {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <main data-level="root">root</main>
+      ${rootHosts
+        .map(
+          (src, index) =>
+            `<div data-composition-id="root-host-${index}" data-composition-src="${src}"></div>`,
+        )
+        .join("")}
+    </body></html>`);
+    const missing: Array<{ src: string; reason?: string }> = [];
+
+    inlineSubCompositions(
+      document,
+      Array.from(document.querySelectorAll("[data-composition-src]")),
+      {
+        resolveHtml: (src) => compositions[src] ?? null,
+        parseHtml: (html) => parseHTML(html).document,
+        onMissingComposition: (src, reason) => missing.push({ src, reason }),
+      },
+    );
+
+    return { document, missing };
+  }
+
+  it("inlines a three-level root -> A -> B chain", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B"),
+    });
+
+    expect(document.querySelector('[data-level="root"]')?.textContent).toBe("root");
+    expect(document.querySelector('[data-level="A"]')?.textContent).toBe("A");
+    expect(document.querySelector('[data-level="B"]')?.textContent).toBe("B");
+    expect(missing).toEqual([]);
+  });
+
+  it("inlines a four-level root -> A -> B -> C chain", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B", ["c.html"]),
+      "c.html": compositionHtml("C"),
+    });
+
+    expect(
+      Array.from(document.querySelectorAll("[data-level]")).map((element) => element.textContent),
+    ).toEqual(["root", "A", "B", "C"]);
+    expect(missing).toEqual([]);
+  });
+
+  it("reports and leaves a direct circular reference uninlined", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["a.html"]),
+    });
+
+    expect(document.querySelectorAll('[data-level="A"]')).toHaveLength(1);
+    expect(document.querySelector('[data-composition-src="a.html"]')).not.toBeNull();
+    expect(missing).toEqual([{ src: "a.html", reason: "circular composition reference" }]);
+  });
+
+  it("reports and leaves an indirect circular reference uninlined", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["b.html"]),
+      "b.html": compositionHtml("B", ["a.html"]),
+    });
+
+    expect(document.querySelectorAll('[data-level="A"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-level="B"]')).toHaveLength(1);
+    expect(document.querySelector('[data-composition-src="a.html"]')).not.toBeNull();
+    expect(missing).toEqual([{ src: "a.html", reason: "circular composition reference" }]);
+  });
+
+  it("inlines the same sub-composition in sibling branches", () => {
+    const { document, missing } = inlineFixture(["a.html"], {
+      "a.html": compositionHtml("A", ["shared.html", "shared.html"]),
+      "shared.html": compositionHtml("shared"),
+    });
+
+    expect(document.querySelectorAll('[data-level="shared"]')).toHaveLength(2);
+    expect(missing).toEqual([]);
+  });
+
+  it("allows the depth ceiling and stops only the branch one level beyond it", () => {
+    const compositions: Record<string, string> = {
+      "sibling.html": compositionHtml("sibling"),
+    };
+    for (const prefix of ["exact", "overflow"]) {
+      const length = prefix === "exact" ? MAX_NESTING_DEPTH : MAX_NESTING_DEPTH + 1;
+      for (let level = 1; level <= length; level += 1) {
+        const nextSrc = level < length ? [`${prefix}-${level + 1}.html`] : [];
+        compositions[`${prefix}-${level}.html`] = compositionHtml(`${prefix}-${level}`, nextSrc);
+      }
+    }
+
+    const { document, missing } = inlineFixture(
+      ["exact-1.html", "overflow-1.html", "sibling.html"],
+      compositions,
+    );
+
+    expect(document.querySelector(`[data-level="exact-${MAX_NESTING_DEPTH}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-level="overflow-${MAX_NESTING_DEPTH}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-level="overflow-${MAX_NESTING_DEPTH + 1}"]`)).toBeNull();
+    expect(document.querySelector('[data-level="sibling"]')).not.toBeNull();
+    expect(missing).toEqual([
+      {
+        src: `overflow-${MAX_NESTING_DEPTH + 1}.html`,
+        reason: "nesting depth exceeded",
+      },
+    ]);
+  });
+});

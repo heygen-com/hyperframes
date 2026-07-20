@@ -130,6 +130,8 @@ function defaultBuildScopeSelector(compId: string): string {
   return `[data-composition-id="${escaped}"]`;
 }
 
+const MAX_SUB_COMPOSITION_DEPTH = 20;
+
 // ---------------------------------------------------------------------------
 // Core implementation
 // ---------------------------------------------------------------------------
@@ -177,7 +179,9 @@ export function inlineSubCompositions(
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
-  for (const hostEl of hosts) {
+  const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const { element: hostEl, ancestry } = queue[queueIndex]!;
     const src = hostEl.getAttribute("data-composition-src");
     if (!src) continue;
 
@@ -415,6 +419,21 @@ export function inlineSubCompositions(
 
     hostEl.setAttribute("data-composition-file", src);
     hostEl.removeAttribute("data-composition-src");
+
+    const nestedAncestry = [...ancestry, src];
+    for (const nestedHost of [...hostEl.querySelectorAll("[data-composition-src]")]) {
+      const nestedSrc = nestedHost.getAttribute("data-composition-src");
+      if (!nestedSrc) continue;
+      if (nestedAncestry.includes(nestedSrc)) {
+        onMissingComposition?.(nestedSrc, "circular composition reference");
+        continue;
+      }
+      if (nestedAncestry.length >= MAX_SUB_COMPOSITION_DEPTH) {
+        onMissingComposition?.(nestedSrc, "nesting depth exceeded");
+        continue;
+      }
+      queue.push({ element: nestedHost, ancestry: nestedAncestry });
+    }
   }
 
   return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };
