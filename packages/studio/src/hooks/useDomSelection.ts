@@ -370,8 +370,8 @@ export function useDomSelection({
 
   const handleTimelineElementSelect = useCallback(
     async (element: TimelineElement | null) => {
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       const seq = ++timelineSelectSeqRef.current;
+      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
         return;

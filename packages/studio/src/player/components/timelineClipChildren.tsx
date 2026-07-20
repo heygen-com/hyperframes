@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TrackVisualStyle } from "./timelineIcons";
+import type { TimelineClipRenderContext } from "./TimelineTypes";
 
 function ClipLintDot({ element }: { element: TimelineElement }) {
   const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
@@ -18,9 +19,14 @@ export function renderClipChildren(
   element: TimelineElement,
   clipStyle: TrackVisualStyle,
   renderClipContent:
-    | ((element: TimelineElement, style: { clip: string; label: string }) => ReactNode)
+    | ((
+        element: TimelineElement,
+        style: { clip: string; label: string },
+        context: TimelineClipRenderContext,
+      ) => ReactNode)
     | undefined,
   renderClipOverlay: ((element: TimelineElement) => ReactNode) | undefined,
+  context: TimelineClipRenderContext = { priority: "visible", rich: false },
 ): ReactNode {
   return (
     <>
@@ -31,7 +37,7 @@ export function renderClipChildren(
         // diamonds hang outside its bounds), so the thumbnail layer must clip
         // itself to the clip's rounded corners or sharp corners poke out.
         <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "inherit" }}>
-          {renderClipContent(element, clipStyle)}
+          {renderClipContent(element, clipStyle, context)}
         </div>
       )}
     </>

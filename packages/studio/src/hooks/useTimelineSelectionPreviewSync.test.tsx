@@ -24,6 +24,7 @@ interface HarnessProps {
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  onSelectionNotFound: () => void;
 }
 
 afterEach(() => {
@@ -67,8 +68,8 @@ function makeSyncFixture() {
   const firstSelection = makeSelection("First", firstElement);
   const secondSelection = makeSelection("Second", secondElement);
   const timelineElements: TimelineElement[] = [
-    { id: "clip-1", tag: "div", start: 0, duration: 1, track: 0 },
-    { id: "clip-2", tag: "div", start: 1, duration: 1, track: 1 },
+    { id: "clip-1", domId: "clip-1", tag: "div", start: 0, duration: 1, track: 0 },
+    { id: "clip-2", domId: "clip-2", tag: "div", start: 1, duration: 1, track: 1 },
   ];
   const selectionById = new Map([
     ["clip-1", firstSelection],
@@ -96,6 +97,7 @@ describe("useTimelineSelectionPreviewSync", () => {
       buildDomSelectionForTimelineElement,
       applyDomSelection,
       applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
     });
 
     expect(applyMarqueeSelection).toHaveBeenCalledWith([secondSelection, firstSelection], false);
@@ -108,6 +110,21 @@ describe("useTimelineSelectionPreviewSync", () => {
     const applyDomSelection = vi.fn();
     const applyMarqueeSelection = vi.fn();
     const harness = renderHarness();
+    const buildDomSelectionForTimelineElement = vi.fn(async (element: TimelineElement) => {
+      return selectionById.get(element.id) ?? null;
+    });
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+      timelineElements,
+      domEditSelection: firstSelection,
+      domEditGroupSelections: [firstSelection],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    });
 
     await harness.rerender({
       selectedElementId: null,
@@ -115,15 +132,58 @@ describe("useTimelineSelectionPreviewSync", () => {
       timelineElements,
       domEditSelection: firstSelection,
       domEditGroupSelections: [firstSelection],
-      buildDomSelectionForTimelineElement: vi.fn(async (element: TimelineElement) => {
-        return selectionById.get(element.id) ?? null;
-      }),
+      buildDomSelectionForTimelineElement,
       applyDomSelection,
       applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
     });
 
     expect(applyDomSelection).toHaveBeenCalledWith(null, { revealPanel: false });
     expect(applyMarqueeSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
+  it("retries a timeline selection after the preview timeline refreshes", async () => {
+    const { secondSelection, timelineElements } = makeSyncFixture();
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const onSelectionNotFound = vi.fn();
+    let previewReady = false;
+    const buildDomSelectionForTimelineElement = vi.fn(async () =>
+      previewReady ? secondSelection : null,
+    );
+    const selectedElementIds = new Set(["clip-2"]);
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-2",
+      selectedElementIds,
+      timelineElements,
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(onSelectionNotFound).toHaveBeenCalledOnce();
+    expect(applyDomSelection).not.toHaveBeenCalled();
+
+    previewReady = true;
+    await harness.rerender({
+      selectedElementId: "clip-2",
+      selectedElementIds,
+      timelineElements: [...timelineElements],
+      domEditSelection: null,
+      domEditGroupSelections: [],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound,
+    });
+
+    expect(applyDomSelection).toHaveBeenCalledWith(secondSelection);
     harness.cleanup();
   });
 });
