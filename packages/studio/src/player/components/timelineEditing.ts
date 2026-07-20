@@ -86,21 +86,24 @@ export function resolveTimelineAutoScroll(
   bounds: TimelineAutoScrollBounds,
   clientX: number,
   clientY: number,
+  leftInset = 0,
 ): { x: number; y: number } {
   const getAxisDelta = (start: number, end: number, pointer: number) => {
     if (pointer < start + AUTO_SCROLL_EDGE_ZONE) {
-      const proximity = Math.max(0, 1 - (pointer - start) / AUTO_SCROLL_EDGE_ZONE);
+      const proximity = Math.min(1, Math.max(0, 1 - (pointer - start) / AUTO_SCROLL_EDGE_ZONE));
       return -Math.round(AUTO_SCROLL_MAX_SPEED * proximity);
     }
     if (pointer > end - AUTO_SCROLL_EDGE_ZONE) {
-      const proximity = Math.max(0, 1 - (end - pointer) / AUTO_SCROLL_EDGE_ZONE);
+      const proximity = Math.min(1, Math.max(0, 1 - (end - pointer) / AUTO_SCROLL_EDGE_ZONE));
       return Math.round(AUTO_SCROLL_MAX_SPEED * proximity);
     }
     return 0;
   };
 
+  const horizontalStart = Math.min(bounds.right, bounds.left + Math.max(0, leftInset));
+
   return {
-    x: getAxisDelta(bounds.left, bounds.right, clientX),
+    x: getAxisDelta(horizontalStart, bounds.right, clientX),
     y: getAxisDelta(bounds.top, bounds.bottom, clientY),
   };
 }
@@ -486,7 +489,41 @@ export function applyTimelineAutoScrollStep(
   clientX: number,
   clientY: number,
 ): boolean {
-  const delta = resolveTimelineAutoScroll(scroll.getBoundingClientRect(), clientX, clientY);
+  return applyTimelineAutoScrollDelta(
+    scroll,
+    resolveTimelineAutoScroll(
+      scroll.getBoundingClientRect(),
+      clientX,
+      clientY,
+      getTimelineAutoScrollLeftInset(scroll),
+    ),
+  );
+}
+
+/** Apply one horizontal edge-scroll step while scrubbing the ruler/playhead. */
+export function applyTimelineHorizontalAutoScrollStep(
+  scroll: HTMLElement,
+  clientX: number,
+): boolean {
+  const bounds = scroll.getBoundingClientRect();
+  const delta = resolveTimelineAutoScroll(
+    bounds,
+    clientX,
+    bounds.top + (bounds.bottom - bounds.top) / 2,
+    getTimelineAutoScrollLeftInset(scroll),
+  );
+  return applyTimelineAutoScrollDelta(scroll, { x: delta.x, y: 0 });
+}
+
+function getTimelineAutoScrollLeftInset(scroll: HTMLElement): number {
+  const inset = Number(scroll.dataset.timelineAutoScrollLeftInset);
+  return Number.isFinite(inset) ? Math.max(0, inset) : 0;
+}
+
+function applyTimelineAutoScrollDelta(
+  scroll: HTMLElement,
+  delta: { x: number; y: number },
+): boolean {
   if (delta.x === 0 && delta.y === 0) return false;
   const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
   const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
@@ -511,7 +548,12 @@ export function resolveTimelineAutoScrollLoopAction(
   rafActive: boolean,
 ): "start" | "stop" | "none" {
   if (!scroll) return "none";
-  const delta = resolveTimelineAutoScroll(scroll.getBoundingClientRect(), clientX, clientY);
+  const delta = resolveTimelineAutoScroll(
+    scroll.getBoundingClientRect(),
+    clientX,
+    clientY,
+    getTimelineAutoScrollLeftInset(scroll),
+  );
   if (delta.x === 0 && delta.y === 0) return rafActive ? "stop" : "none";
   return rafActive ? "none" : "start";
 }

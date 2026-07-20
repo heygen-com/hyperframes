@@ -28,6 +28,7 @@ export function LayerDisclosureRow({
     >
       <button
         type="button"
+        aria-expanded={isExpanded}
         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${name} keyframes`}
         title={`${isExpanded ? "Collapse" : "Expand"} keyframe lanes`}
         className="flex h-5 w-4 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-white/55 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"

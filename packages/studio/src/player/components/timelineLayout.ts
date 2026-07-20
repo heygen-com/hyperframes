@@ -395,6 +395,47 @@ export function getTimelinePlayheadLeft(
   return contentOrigin + Math.max(0, time) * Math.max(0, pixelsPerSecond) - PLAYHEAD_HEAD_W / 2;
 }
 
+const PLAYBACK_FOLLOW_POSITION = 0.75;
+
+/**
+ * Keep a playing timeline calm until the playhead crosses the right-side
+ * comfort line, then advance the viewport just enough to hold it there. A
+ * loop/reverse jump that leaves the playhead behind the sticky labels restores
+ * the matching earlier viewport instead.
+ */
+export function getTimelinePlaybackFollowScrollLeft(input: {
+  playheadX: number;
+  currentScrollLeft: number;
+  viewportWidth: number;
+  contentOrigin: number;
+  maxScrollLeft: number;
+}): number {
+  const current = Number.isFinite(input.currentScrollLeft)
+    ? Math.max(0, input.currentScrollLeft)
+    : 0;
+  const max = Number.isFinite(input.maxScrollLeft) ? Math.max(0, input.maxScrollLeft) : 0;
+  const visibleTimelineWidth = input.viewportWidth - input.contentOrigin;
+  if (
+    !Number.isFinite(input.playheadX) ||
+    !Number.isFinite(input.contentOrigin) ||
+    !Number.isFinite(visibleTimelineWidth) ||
+    visibleTimelineWidth <= 0 ||
+    max <= 0
+  ) {
+    return Math.min(max, current);
+  }
+
+  const visibleStart = current + input.contentOrigin;
+  const followLine = visibleStart + visibleTimelineWidth * PLAYBACK_FOLLOW_POSITION;
+  let next = current;
+  if (input.playheadX > followLine) {
+    next = input.playheadX - input.contentOrigin - visibleTimelineWidth * PLAYBACK_FOLLOW_POSITION;
+  } else if (input.playheadX < visibleStart) {
+    next = input.playheadX - input.contentOrigin;
+  }
+  return Math.max(0, Math.min(max, next));
+}
+
 export function getTimelineCanvasHeight(trackCountOrHeights: number | readonly number[]): number {
   // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
   // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space

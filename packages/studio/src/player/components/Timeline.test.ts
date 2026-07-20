@@ -12,6 +12,7 @@ import {
   getTimelineCanvasHeight,
   resolveTimelineAssetDrop,
   getTimelinePlayheadLeft,
+  getTimelinePlaybackFollowScrollLeft,
   getTimelineScrollLeftForZoomAnchor,
   getTimelineScrollLeftForZoomTransition,
   shouldShowTimelineShortcutHint,
@@ -274,6 +275,33 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
+  it("renders the complete track list while row virtualization is gated off", () => {
+    const host = createSizedTimelineHost(640);
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: Array.from({ length: 12 }, (_, track) => ({
+        id: `clip-${track}`,
+        tag: "div",
+        start: 0,
+        duration: 2,
+        track,
+      })),
+    });
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Timeline)));
+
+    const list = host.querySelector<HTMLElement>('[role="list"]');
+    const rows = list?.querySelectorAll('[role="listitem"]') ?? [];
+    expect(rows).toHaveLength(12);
+    expect(rows[0]?.getAttribute("aria-posinset")).toBe("1");
+    expect(rows[0]?.getAttribute("aria-setsize")).toBe("12");
+    expect(rows[11]?.getAttribute("aria-posinset")).toBe("12");
+
+    act(() => root.unmount());
+  });
+
+  // fallow-ignore-next-line code-duplication
   it("renders the gutter without legacy icons or hue dots", () => {
     const { host, root } = renderBasicTimeline();
 
@@ -971,6 +999,56 @@ describe("getTimelinePlayheadLeft", () => {
     expect(getTimelinePlayheadLeft(4, Number.NaN, LABEL_COL_W)).toBe(
       LABEL_COL_W - PLAYHEAD_HEAD_W / 2,
     );
+  });
+});
+
+describe("getTimelinePlaybackFollowScrollLeft", () => {
+  it("holds the viewport still while the playhead remains inside the comfort area", () => {
+    expect(
+      getTimelinePlaybackFollowScrollLeft({
+        playheadX: 700,
+        currentScrollLeft: 100,
+        viewportWidth: 1000,
+        contentOrigin: 264,
+        maxScrollLeft: 2000,
+      }),
+    ).toBe(100);
+  });
+
+  it("follows forward playback at the right-side comfort line", () => {
+    expect(
+      getTimelinePlaybackFollowScrollLeft({
+        playheadX: 1200,
+        currentScrollLeft: 100,
+        viewportWidth: 1000,
+        contentOrigin: 264,
+        maxScrollLeft: 2000,
+      }),
+    ).toBe(384);
+  });
+
+  it("returns to the matching earlier viewport after a playback loop", () => {
+    expect(
+      getTimelinePlaybackFollowScrollLeft({
+        playheadX: 264,
+        currentScrollLeft: 900,
+        viewportWidth: 1000,
+        contentOrigin: 264,
+        maxScrollLeft: 2000,
+      }),
+    ).toBe(0);
+  });
+
+  it("clamps at the end of the scrollable timeline", () => {
+    expect(
+      getTimelinePlaybackFollowScrollLeft({
+        playheadX: 5000,
+        currentScrollLeft: 100,
+        viewportWidth: 1000,
+        contentOrigin: 264,
+        maxScrollLeft: 1500,
+      }),
+    ).toBe(1500);
   });
 });
 

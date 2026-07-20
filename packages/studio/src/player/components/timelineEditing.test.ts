@@ -677,6 +677,38 @@ describe("resolveTimelineAutoScroll", () => {
       ),
     ).toEqual({ x: 9, y: 6 });
   });
+
+  it("uses the time-grid edge instead of the viewport edge when labels are sticky", () => {
+    expect(
+      resolveTimelineAutoScroll(
+        {
+          left: 100,
+          top: 100,
+          right: 700,
+          bottom: 400,
+        },
+        340,
+        250,
+        232,
+      ),
+    ).toEqual({ x: -10, y: 0 });
+  });
+
+  it("caps auto-scroll speed when the pointer moves inside the sticky labels", () => {
+    expect(
+      resolveTimelineAutoScroll(
+        {
+          left: 100,
+          top: 100,
+          right: 700,
+          bottom: 400,
+        },
+        120,
+        250,
+        232,
+      ),
+    ).toEqual({ x: -12, y: 0 });
+  });
 });
 
 describe("buildTimelineAgentPrompt", () => {

@@ -1,14 +1,16 @@
 import { useRef, useCallback, useEffect, useLayoutEffect } from "react";
-import { liveTime, type ZoomMode } from "../store/playerStore";
+import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   getTimelineContentXFromClient,
+  getTimelinePlaybackFollowScrollLeft,
   getTimelinePlayheadLeft,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
   shouldAutoScrollTimeline,
 } from "./timelineLayout";
+import { applyTimelineHorizontalAutoScrollStep } from "./timelineEditing";
 
 interface UseTimelinePlayheadInput {
   playheadRef: React.RefObject<HTMLDivElement | null>;
@@ -121,9 +123,31 @@ export function useTimelinePlayhead({
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      // Playback deliberately does NOT scroll the viewport to chase the playhead —
-      // the user's scroll position is theirs; the playhead may run off-screen.
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(t, ppsRef.current, contentOriginRef.current)}px`;
+      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
+      playheadRef.current.style.left = `${getTimelinePlayheadLeft(
+        t,
+        ppsRef.current,
+        contentOriginRef.current,
+      )}px`;
+      const scroll = scrollRef.current;
+      if (
+        !scroll ||
+        !usePlayerStore.getState().isPlaying ||
+        isDragging.current ||
+        zoomModeRef.current === "fit"
+      ) {
+        return;
+      }
+      const nextScrollLeft = getTimelinePlaybackFollowScrollLeft({
+        playheadX,
+        currentScrollLeft: scroll.scrollLeft,
+        viewportWidth: scroll.clientWidth,
+        contentOrigin: contentOriginRef.current,
+        maxScrollLeft: scroll.scrollWidth - scroll.clientWidth,
+      });
+      if (Math.abs(nextScrollLeft - scroll.scrollLeft) >= 0.5) {
+        scroll.scrollLeft = nextScrollLeft;
+      }
     });
     return unsub;
   });
@@ -157,16 +181,7 @@ export function useTimelinePlayhead({
         !shouldAutoScrollTimeline(zoomModeRef.current, el.scrollWidth, el.clientWidth)
       )
         return;
-      const rect = el.getBoundingClientRect();
-      const edgeZone = 40;
-      const maxSpeed = 12;
-      let scrollDelta = 0;
-      if (clientX < rect.left + edgeZone)
-        scrollDelta = -maxSpeed * Math.max(0, 1 - (clientX - rect.left) / edgeZone);
-      else if (clientX > rect.right - edgeZone)
-        scrollDelta = maxSpeed * Math.max(0, 1 - (rect.right - clientX) / edgeZone);
-      if (scrollDelta !== 0) {
-        el.scrollLeft += scrollDelta;
+      if (applyTimelineHorizontalAutoScrollStep(el, clientX)) {
         seekFromX(clientX);
         dragScrollRaf.current = requestAnimationFrame(() => autoScrollDuringDrag(clientX));
       }
