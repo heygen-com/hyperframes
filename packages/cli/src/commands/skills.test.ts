@@ -133,6 +133,8 @@ const GLOBAL_ARGS_TAIL = [
   "--yes",
 ] as const;
 
+const SKILLS_NPX_ARGS = ["--yes", "--package=skills", "skills"] as const;
+
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", {
     value: platform,
@@ -230,7 +232,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        ...SKILLS_NPX_ARGS,
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -243,7 +245,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        ...SKILLS_NPX_ARGS,
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -260,7 +262,7 @@ describe("hyperframes skills", () => {
         "/s",
         "/c",
         "npx.cmd",
-        "skills",
+        ...SKILLS_NPX_ARGS,
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -372,9 +374,13 @@ describe("hyperframes skills", () => {
     expect(state.spawnCalls[0]?.args).toContain("add");
     const removeCall = state.spawnCalls.find((s) => s.args.includes("remove"));
     expect(removeCall, "expected a `skills remove` spawn").toBeDefined();
-    expect(removeCall!.args).toContain("graphic-overlays");
-    expect(removeCall!.args).toContain("--yes");
-    expect(removeCall!.args).toContain("-g"); // attributed from the global lock → remove globally
+    expect(removeCall!.args).toEqual([
+      ...SKILLS_NPX_ARGS,
+      "remove",
+      "graphic-overlays",
+      "-g", // attributed from the global lock → remove globally
+      "--yes",
+    ]);
     expect(process.exitCode).toBe(0);
   });
 

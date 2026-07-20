@@ -116,6 +116,10 @@ const GLOBAL_INSTALL_ARGS_TAIL = [
   "--yes",
 ];
 
+// npm 11 does not reliably infer/install a package from `npx <bin> ...`.
+// Select the package explicitly so both add and remove resolve the skills CLI.
+const SKILLS_NPX_ARGS = ["--yes", "--package=skills", "skills"];
+
 /** All skills, or an explicit list of skill names to install. */
 type SkillSelection = "*" | readonly string[];
 
@@ -132,7 +136,13 @@ function runSkillsAdd(
   opts: { cwd?: string } = {},
 ): Promise<void> {
   return spawnNpx(
-    ["skills", "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
+    [
+      ...SKILLS_NPX_ARGS,
+      "add",
+      source,
+      ...skillSelectionArgs(selection),
+      ...GLOBAL_INSTALL_ARGS_TAIL,
+    ],
     opts,
   );
 }
@@ -155,7 +165,7 @@ function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<vo
   // lock entry non-interactively. `-g` targets the global install; without it,
   // the project (cwd) install — we pass whichever scope detection attributed
   // these names from, so we never reach into a scope we didn't inspect.
-  return spawnNpx(["skills", "remove", ...safe, ...(opts.global ? ["-g"] : []), "--yes"]);
+  return spawnNpx([...SKILLS_NPX_ARGS, "remove", ...safe, ...(opts.global ? ["-g"] : []), "--yes"]);
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
