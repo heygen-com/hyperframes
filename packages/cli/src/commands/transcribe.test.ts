@@ -125,6 +125,80 @@ Render video. Built for agents.
     exitSpy.mockRestore();
   });
 
+  it("preserves per-input transcripts across consecutive imports", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const first = join(dir, "first.srt");
+    const second = join(dir, "second.srt");
+    writeFileSync(first, "1\n00:00:00,000 --> 00:00:01,000\nFIRST\n");
+    writeFileSync(second, "1\n00:00:00,000 --> 00:00:01,000\nSECOND\n");
+
+    await transcribeCmd.run!({ args: { input: first, dir, json: true } } as never);
+    await transcribeCmd.run!({ args: { input: second, dir, json: true } } as never);
+
+    expect(readFileSync(join(dir, "first.srt.transcript.json"), "utf-8")).toContain("FIRST");
+    expect(readFileSync(join(dir, "second.srt.transcript.json"), "utf-8")).toContain("SECOND");
+    expect(readFileSync(join(dir, "transcript.json"), "utf-8")).toContain("SECOND");
+  });
+
+  it("passes distinct per-input paths to the ASR engine", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const first = join(dir, "first.wav");
+    const second = join(dir, "second.wav");
+    writeFileSync(first, "not-real-audio");
+    writeFileSync(second, "not-real-audio");
+    transcribeMock.mockImplementation(
+      async (input: string, _dir: string, opts: { transcriptPath: string }) => {
+        const text = input === first ? "FIRST" : "SECOND";
+        writeFileSync(opts.transcriptPath, JSON.stringify([{ text, start: 0, end: 1 }], null, 2));
+        return {
+          transcriptPath: opts.transcriptPath,
+          wordCount: 1,
+          durationSeconds: 1,
+          speechOnsetSeconds: null,
+        };
+      },
+    );
+
+    await transcribeCmd.run!({
+      args: { input: first, dir, engine: "whisper", json: true },
+    } as never);
+    await transcribeCmd.run!({
+      args: { input: second, dir, engine: "whisper", json: true },
+    } as never);
+
+    expect(readFileSync(join(dir, "first.wav.transcript.json"), "utf-8")).toContain("FIRST");
+    expect(readFileSync(join(dir, "second.wav.transcript.json"), "utf-8")).toContain("SECOND");
+  });
+
+  it("preserves transcripts for same-stem inputs with different extensions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(dir);
+    const wav = join(dir, "sample.wav");
+    const mp3 = join(dir, "sample.mp3");
+    writeFileSync(wav, "not-real-audio");
+    writeFileSync(mp3, "not-real-audio");
+    transcribeMock.mockImplementation(
+      async (input: string, _dir: string, opts: { transcriptPath: string }) => {
+        const text = input === wav ? "WAV" : "MP3";
+        writeFileSync(opts.transcriptPath, JSON.stringify([{ text, start: 0, end: 1 }], null, 2));
+        return {
+          transcriptPath: opts.transcriptPath,
+          wordCount: 1,
+          durationSeconds: 1,
+          speechOnsetSeconds: null,
+        };
+      },
+    );
+
+    await transcribeCmd.run!({ args: { input: wav, dir, engine: "whisper", json: true } } as never);
+    await transcribeCmd.run!({ args: { input: mp3, dir, engine: "whisper", json: true } } as never);
+
+    expect(readFileSync(join(dir, "sample.wav.transcript.json"), "utf-8")).toContain("WAV");
+    expect(readFileSync(join(dir, "sample.mp3.transcript.json"), "utf-8")).toContain("MP3");
+  });
+
   it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
     dirs.push(dir);

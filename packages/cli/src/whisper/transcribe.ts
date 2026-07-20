@@ -1,7 +1,7 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
-import { join, extname } from "node:path";
+import { dirname, join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
@@ -260,6 +260,7 @@ const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi"]);
 export interface TranscribeOptions {
   model?: string;
   language?: string;
+  transcriptPath?: string;
   onProgress?: (message: string) => void;
   /**
    * Explicit whisper spawn timeout in ms. Overrides the duration+model auto-
@@ -460,8 +461,11 @@ export async function transcribe(
 
   // 5. Run whisper
   options?.onProgress?.("Transcribing...");
-  const outputBase = join(outputDir, "transcript");
-  mkdirSync(outputDir, { recursive: true });
+  const transcriptPath = options?.transcriptPath ?? join(outputDir, "transcript.json");
+  const outputBase = transcriptPath.endsWith(".json")
+    ? transcriptPath.slice(0, -".json".length)
+    : transcriptPath;
+  mkdirSync(dirname(transcriptPath), { recursive: true });
 
   const whisperArgs = [
     "--model",
@@ -500,12 +504,12 @@ export async function transcribe(
   }
 
   // 6. Read and validate output
-  const transcriptPath = `${outputBase}.json`;
-  if (!existsSync(transcriptPath)) {
+  const producedTranscriptPath = `${outputBase}.json`;
+  if (!existsSync(producedTranscriptPath)) {
     throw new Error("Whisper did not produce output. Check the input file.");
   }
 
-  const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+  const transcript = JSON.parse(readFileSync(producedTranscriptPath, "utf-8"));
   const segments = transcript.transcription ?? [];
 
   let wordCount = 0;
@@ -532,7 +536,7 @@ export async function transcribe(
   }
 
   return {
-    transcriptPath,
+    transcriptPath: producedTranscriptPath,
     wordCount,
     durationSeconds: maxEnd / 1000,
     speechOnsetSeconds,

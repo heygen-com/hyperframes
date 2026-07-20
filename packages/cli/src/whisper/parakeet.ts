@@ -106,6 +106,7 @@ export function mergeTokensToWords(parakeet: ParakeetJson): Word[] {
 interface ParakeetOptions {
   language?: string;
   model?: string;
+  transcriptPath?: string;
   onProgress?: (message: string) => void;
 }
 
@@ -141,7 +142,7 @@ export function transcribeWithParakeet(
     if (!existsSync(produced)) throw new Error("Parakeet did not produce output.");
     const words = mergeTokensToWords(JSON.parse(readFileSync(produced, "utf-8")) as ParakeetJson);
 
-    const transcriptPath = join(dir, "transcript.json");
+    const transcriptPath = options?.transcriptPath ?? join(dir, "transcript.json");
     writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
     const durationSeconds = words.length > 0 ? words[words.length - 1]!.end : 0;
     return { transcriptPath, wordCount: words.length, durationSeconds, speechOnsetSeconds: null };
