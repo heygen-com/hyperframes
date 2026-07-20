@@ -948,6 +948,13 @@ describe("serializeGsapAnimations", () => {
     expect(result).toContain("const myTimeline = gsap.timeline({ paused: true });");
     expect(result).toContain('myTimeline.set("#el1"');
   });
+
+  it("preserves a zero media end time", () => {
+    const result = serializeGsapAnimations([], "tl", { includeMediaSync: true });
+
+    expect(result).toContain("Number.isFinite(parsedEnd) ? parsedEnd : Infinity");
+    expect(result).not.toContain("parseFloat(media.dataset.end) || Infinity");
+  });
 });
 
 describe("validateCompositionGsap", () => {
