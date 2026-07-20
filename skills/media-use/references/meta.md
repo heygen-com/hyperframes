@@ -45,6 +45,12 @@ resolve never waits on or fails from telemetry).
 Opt out with `DO_NOT_TRACK=1` or `HYPERFRAMES_NO_TELEMETRY=1` (also off in CI and
 dev). Same public PostHog project key and opt-outs as the `hyperframes` CLI.
 
+HeyGen request tagging: every generating `heygen` call (TTS, avatar video, catalog
+search) carries the allowlisted `X-HeyGen-Client-Source: media-use` header, sourced
+from one shared constant (`HEYGEN_CLIENT_SOURCE_ARGV` in `scripts/lib/heygen-cli.mjs`)
+so a future call site can't silently ship untagged. Read-only discovery calls
+(`voice list`, `avatar list`) are intentionally left untagged.
+
 ## Privacy
 
 media-use uses the same shared install id as the `hyperframes` CLI/studio
