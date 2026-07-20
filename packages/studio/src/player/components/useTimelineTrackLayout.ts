@@ -7,8 +7,8 @@ import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
   TRACK_H,
-  getTimelineCanvasHeight,
-  getTimelineRowHeight,
+  createTimelineRowGeometry,
+  type TimelineRowGeometry,
   trackHeights,
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
@@ -72,7 +72,7 @@ function useTimelineRowHeights(
   selectedElementIds: ReadonlySet<string>,
 ) {
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
-  const { laneCounts, rowHeights } = useMemo(() => {
+  const { laneCounts, rowGeometry } = useMemo(() => {
     const laneCounts = computeLaneCounts(tracks, gsapAnimations);
     // Row height follows only the active keyframe clip, so a track with several
     // keyframed elements never reserves empty lanes for the ones not shown.
@@ -87,17 +87,26 @@ function useTimelineRowHeights(
       const clipId = active.key ?? active.id;
       return [{ clipId, laneCount: laneCounts.get(clipId) ?? 0 }];
     });
+    const rowHeights = trackHeights(
+      heightTracks,
+      STUDIO_KEYFRAMES_ENABLED ? expandedClipIds : undefined,
+    );
     return {
       laneCounts,
-      rowHeights: trackHeights(
-        heightTracks,
-        STUDIO_KEYFRAMES_ENABLED ? expandedClipIds : undefined,
+      rowGeometry: createTimelineRowGeometry(
+        tracks.map(([track]) => track),
+        rowHeights,
       ),
     };
   }, [expandedClipIds, gsapAnimations, tracks, selectedElementId, selectedElementIds]);
-  const rowHeightsRef = useRef<readonly number[]>(rowHeights);
-  rowHeightsRef.current = rowHeights;
-  return { laneCounts, rowHeights, rowHeightsRef };
+  const rowGeometryRef = useRef<TimelineRowGeometry>(rowGeometry);
+  rowGeometryRef.current = rowGeometry;
+  return {
+    laneCounts,
+    rowGeometry,
+    rowGeometryRef,
+    rowHeights: rowGeometry.rowHeights,
+  };
 }
 
 export function useTimelineTrackLayout(
@@ -109,7 +118,7 @@ export function useTimelineTrackLayout(
   const { tracks, trackStyles, trackOrder } = useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
-  const { laneCounts, rowHeights, rowHeightsRef } = useTimelineRowHeights(
+  const { laneCounts, rowGeometry, rowGeometryRef, rowHeights } = useTimelineRowHeights(
     tracks,
     gsapAnimations,
     selectedElementId,
@@ -122,23 +131,23 @@ export function useTimelineTrackLayout(
     trackOrder,
     trackOrderRef,
     laneCounts,
+    rowGeometry,
+    rowGeometryRef,
     rowHeights,
-    rowHeightsRef,
   };
 }
 
 function useDisplayRowHeights(
   displayTrackOrder: readonly number[],
-  trackOrder: readonly number[],
-  rowHeights: readonly number[],
+  rowGeometry: TimelineRowGeometry,
 ) {
   return useMemo(
     () =>
       displayTrackOrder.map((track) => {
-        const row = trackOrder.indexOf(track);
-        return row < 0 ? TRACK_H : getTimelineRowHeight(row, rowHeights);
+        const row = rowGeometry.getRowIndex(track);
+        return row < 0 ? TRACK_H : rowGeometry.getRowHeight(row);
       }),
-    [displayTrackOrder, trackOrder, rowHeights],
+    [displayTrackOrder, rowGeometry],
   );
 }
 
@@ -152,10 +161,18 @@ function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: 
 export function useTimelineDisplayLayout(
   draggedClip: DraggedClipState | null,
   trackOrder: number[],
-  rowHeights: readonly number[],
+  rowGeometry: TimelineRowGeometry,
 ) {
   const displayTrackOrder = useDisplayTrackOrder(draggedClip, trackOrder);
-  const displayRowHeights = useDisplayRowHeights(displayTrackOrder, trackOrder, rowHeights);
-  const totalH = getTimelineCanvasHeight(displayRowHeights);
-  return { displayTrackOrder, displayRowHeights, totalH };
+  const displayRowHeights = useDisplayRowHeights(displayTrackOrder, rowGeometry);
+  const displayRowGeometry = useMemo(
+    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights),
+    [displayTrackOrder, displayRowHeights],
+  );
+  return {
+    displayTrackOrder,
+    displayRowHeights: displayRowGeometry.rowHeights,
+    rowGeometry: displayRowGeometry,
+    totalH: displayRowGeometry.canvasHeight,
+  };
 }

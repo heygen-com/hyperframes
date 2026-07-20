@@ -48,6 +48,8 @@ describe("useTimelineTrackLayout", () => {
 
     expect(layout?.laneCounts.get("clip-1")).toBe(1);
     expect(layout?.rowHeights).toEqual([TRACK_H + LANE_H]);
+    expect(layout?.rowGeometry.rowKeys).toEqual([0]);
+    expect(layout?.rowGeometry.canvasHeight).toBeGreaterThan(TRACK_H + LANE_H);
     act(() => root.unmount());
   });
 });

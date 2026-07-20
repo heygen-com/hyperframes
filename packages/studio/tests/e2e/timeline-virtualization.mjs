@@ -91,9 +91,7 @@ async function collectRun(page) {
     function findTimelineScroller() {
       const root = document.querySelector('[aria-label="Timeline"]');
       if (!(root instanceof HTMLElement)) throw new Error("Timeline root not mounted");
-      const scroller = Array.from(root.querySelectorAll("div")).find(
-        (node) => node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight,
-      );
+      const scroller = root.querySelector("[data-timeline-scroll-viewport]");
       if (!(scroller instanceof HTMLElement)) throw new Error("Timeline scroller not mounted");
       return scroller;
     }
@@ -192,24 +190,18 @@ try {
   if (TIER === "low-resource") {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   }
-  await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto(STUDIO_URL, { waitUntil: "networkidle0", timeout: 60_000 });
   await page.waitForFunction(
     () => typeof window.__studioTest?.loadTimelinePerformanceFixture === "function",
     { timeout: 30_000 },
   );
+  await waitForStudioTestHookSettle(page);
 
-  await page.evaluate((profile) => {
-    window.__studioTest.loadTimelinePerformanceFixture({ elementCount: 1_000, profile });
-  }, PROFILE);
+  await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
   const baselineHeapBytes = await collectHeapBytes(client);
 
-  const summary = await page.evaluate(
-    ({ elementCount, profile }) =>
-      window.__studioTest.loadTimelinePerformanceFixture({ elementCount, profile }),
-    { elementCount: ELEMENT_COUNT, profile: PROFILE },
-  );
-  await page.waitForFunction(() => document.querySelector('[aria-label="Timeline"]'));
+  const summary = await loadFixtureAndWait(page, ELEMENT_COUNT, PROFILE);
   const budgets = await page.evaluate(() => window.__studioTest.timelineViewportBudgets);
   const measuredMaxReliableScrollWidth = await measureMaximumReliableScrollWidth(page);
 
@@ -232,9 +224,7 @@ try {
       run.diagnostics.mountedTimelineDescendants < budgets.maxMountedTimelineDescendants;
   }
 
-  await page.evaluate((profile) => {
-    window.__studioTest.loadTimelinePerformanceFixture({ elementCount: 1_000, profile });
-  }, PROFILE);
+  await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
   const returnedHeapBytes = await collectHeapBytes(client);
   const memoryReturned =
@@ -296,3 +286,48 @@ try {
   await browser.close();
 }
 process.exit(exitCode);
+
+async function waitForFixtureRender(page, elementCount) {
+  const deadline = Date.now() + 60_000;
+  let observed = null;
+  while (Date.now() < deadline) {
+    observed = await page.evaluate(() => ({
+      modelCount: window.__playerStore?.getState().elements.length ?? null,
+      renderedCount:
+        document
+          .querySelector('[aria-label="Timeline"]')
+          ?.getAttribute("data-timeline-element-count") ?? null,
+    }));
+    if (observed.renderedCount === String(elementCount)) {
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timeline fixture ${elementCount} did not render: ${JSON.stringify(observed)}`);
+}
+
+async function loadFixtureAndWait(page, elementCount, profile) {
+  const summary = await page.evaluate(
+    ({ count, fixtureProfile }) =>
+      window.__studioTest.loadTimelinePerformanceFixture({
+        elementCount: count,
+        profile: fixtureProfile,
+      }),
+    { count: elementCount, fixtureProfile: profile },
+  );
+  await waitForFixtureRender(page, elementCount);
+  return summary;
+}
+
+async function waitForStudioTestHookSettle(page) {
+  await page.evaluate(async () => {
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    for (;;) {
+      const candidate = window.__studioTest;
+      await nextFrame();
+      await nextFrame();
+      if (candidate === window.__studioTest) return;
+    }
+  });
+}
