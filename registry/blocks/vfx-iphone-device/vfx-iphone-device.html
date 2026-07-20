@@ -614,14 +614,8 @@
       });
 
       function onReady() {
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            paintReady = true;
-            captureScreens();
-            window.__timelines = window.__timelines || {};
-            window.__timelines["devices-canvas"] = tl;
-          });
-        });
+        paintReady = true;
+        captureScreens();
       }
 
       // ── Cubic Bezier Implementation ────────────────────────────────────
@@ -757,8 +751,9 @@
       }
 
       // ── GSAP Timeline — Product Review Edit ────────────────────────────
-      // __timelines created in onReady() after GLTF models load
       var tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["devices-canvas"] = tl;
 
       tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none", onUpdate: render }, 0);
 
@@ -812,8 +807,6 @@
       // Scroll on MacBook reveal
       tl.to(S, { scroll: 0.8, duration: 3, ease: breatheEase }, 9.5);
       tl.to(S, { scroll: 0.3, duration: 2, ease: driftEase }, 13);
-
-      // __timelines registered in onReady() after GLTF models load
     </script>
   </body>
 </html>
