@@ -147,10 +147,7 @@ import {
 } from "./render/videoFrameCoverage.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
-import {
-  runExtractVideosStage,
-  shouldCopyExtractedFrames,
-} from "./render/stages/extractVideosStage.js";
+import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
 import { runCaptureStage } from "./render/stages/captureStage.js";
 import {
@@ -2007,9 +2004,14 @@ async function executeRenderPipeline(input: {
           composition,
           abortSignal: executionSignal,
           assertNotAborted,
-          // Copy (don't symlink) extracted frames on Windows — symlinkSync throws
-          // EPERM there without Developer Mode/admin, which failed local renders.
-          materializeSymlinks: shouldCopyExtractedFrames(process.platform),
+          // Local in-process render: never force an eager copy. Frame staging
+          // routes through materializeExtractedFramesForCompiledDir's
+          // symlink → junction → copy ladder (see linkOrCopyFrameDir), which
+          // handles Windows-without-Developer-Mode by staging a privilege-free
+          // junction at link speed and copies only as the last resort (SMB/NFS/
+          // exFAT). Eager copy (materializeSymlinks: true) is reserved for the
+          // distributed plan(), whose planDir must be self-contained.
+          materializeSymlinks: false,
         }),
     );
     const {

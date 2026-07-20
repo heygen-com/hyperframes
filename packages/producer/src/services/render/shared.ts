@@ -293,7 +293,10 @@ type MaterializePathModule = {
 type MaterializeFileSystem = {
   existsSync: (path: string) => boolean;
   mkdirSync: (path: string, options: { recursive: true }) => unknown;
-  symlinkSync: (target: string, path: string) => unknown;
+  // `type` is only ever passed as "junction": the Windows-privilege-free
+  // fallback below requests one explicitly. On POSIX Node ignores the argument
+  // (always a normal symlink), so the default fs-backed impl needs no change.
+  symlinkSync: (target: string, path: string, type?: "junction") => unknown;
   cpSync: (src: string, dest: string, options: { recursive: true }) => unknown;
   // Optional: only the stale-entry (EEXIST) recovery path calls it, and the
   // default fileSystem always supplies it. Test doubles that never trigger
@@ -399,31 +402,71 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
  * external callers should use `executeRenderJob` instead.
  */
 // Stage one video's extracted-frame dir into the compiled dir. Default is a
-// single symlink (cheap; the in-process renderer); `materializeSymlinks` copies
+// single link (cheap; the in-process renderer); `materializeSymlinks` copies
 // instead (distributed plan() needs a self-contained dir). On Windows without
-// Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
-// which failed high/standard renders — degrade to a copy there rather than
-// throwing. Non-permission errors still propagate so real failures aren't hidden.
-// One-time guard for the symlink→copy fallback notice below.
+// Developer Mode/Administrator a plain symlink is rejected (EPERM/EACCES/UNKNOWN),
+// which failed high/standard renders — fall back to a junction (privilege-free)
+// and only to a full copy when even that is unavailable (SMB/NFS/exFAT). See
+// linkOrCopyFrameDir. Non-capability errors still propagate so real failures
+// aren't hidden.
+// One-time guard for the link→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
-// Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN — some Windows builds surface a symlink
-// privilege denial as an UNKNOWN-coded error rather than EPERM). Non-permission
-// errors propagate.
+// Filesystem-capability errors: the link operation is unsupported here, not a
+// real failure. Codes vary by platform and mount — EPERM/EACCES (Windows
+// symlink privilege), UNKNOWN (some Windows builds surface a privilege denial
+// this way), and EINVAL/ENOSYS/EOPNOTSUPP/ENOTSUP (SMB/NFS/exFAT rejecting a
+// link outright). Any of these means "fall through to a copy", never abort.
+function isSymlinkCapabilityError(code: string | undefined): boolean {
+  return (
+    code === "EPERM" ||
+    code === "EACCES" ||
+    code === "UNKNOWN" ||
+    code === "EINVAL" ||
+    code === "ENOSYS" ||
+    code === "EOPNOTSUPP" ||
+    code === "ENOTSUP"
+  );
+}
+
+// Stage the frame dir with a link, degrading to a copy only when the filesystem
+// can't link at all. Three tiers:
+//   1. Plain symlink — the cheap default (POSIX, Windows with Developer Mode).
+//   2. Junction — Windows' privilege-free directory link. When a plain symlink
+//      is rejected for lack of privilege (EPERM/EACCES/UNKNOWN), a junction
+//      needs neither Developer Mode nor Administrator and still stages the dir
+//      at link speed, avoiding a full recursive copy of every frame. On POSIX
+//      Node ignores the "junction" type, but we only reach here on a privilege
+//      error, which POSIX doesn't raise — so this tier is Windows-only in
+//      practice. Junctions need a local absolute target and don't exist on
+//      SMB/NFS/exFAT, so a capability error here drops to tier 3.
+//   3. Recursive copy — the last resort for mounts with no link support.
+// Non-capability errors (e.g. EEXIST stale entry, ENOSPC) propagate unchanged.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
     fileSystem.symlinkSync(src, dest);
+    return;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
-    // Copying is measurably slower than symlinking, so surface the degrade once
-    // — it explains a render that suddenly got heavier and saves a support
+    // Tier 2: try a junction before paying for a copy.
+    try {
+      fileSystem.symlinkSync(src, dest, "junction");
+      return;
+    } catch (junctionErr) {
+      const junctionCode = (junctionErr as NodeJS.ErrnoException | undefined)?.code;
+      // Only a capability error means "junctions aren't available here" — keep
+      // going to the copy. Anything else (a stale EEXIST entry the outer handler
+      // must clear, a real ENOSPC) has to surface.
+      if (!isSymlinkCapabilityError(junctionCode)) throw junctionErr;
+    }
+    // Tier 3: copying is measurably slower than linking, so surface the degrade
+    // once — it explains a render that suddenly got heavier and saves a support
     // round-trip diagnosing slow frame staging on Windows.
     if (!warnedSymlinkFallback) {
       warnedSymlinkFallback = true;
       defaultLogger.info(
-        `[Render] Symlinking extracted frames was rejected (${code}); copying them into the compiled dir instead. Expected on Windows without Developer Mode/Administrator.`,
+        `[Render] Linking extracted frames was rejected (${code}) and a junction was unavailable; copying them into the compiled dir instead. Expected on SMB/NFS/exFAT mounts with no link support.`,
       );
     }
     fileSystem.cpSync(src, dest, { recursive: true });
