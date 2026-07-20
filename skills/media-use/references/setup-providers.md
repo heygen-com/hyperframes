@@ -24,14 +24,14 @@ transcription, and LTX for local video generation. `resolve` spec-checks
 AVAILABLE RAM for those local ladders (`describeModelLadder`); the agent can
 see the ladder and override.
 
-| Type      | Provider / path                                                                                             |
-| --------- | ----------------------------------------------------------------------------------------------------------- |
-| bgm/sfx   | heygen catalog free-usage path                                                                              |
-| image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                               |
-| voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                     |
-| icon      | heygen asset search free-usage path                                                                         |
-| logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                             |
-| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                            |
+| Type      | Provider / path                                                                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bgm/sfx   | heygen catalog free-usage path                                                                                                                                                |
+| image     | heygen search free-usage path; optional local mflux; codex `image_gen` upsell                                                                                                 |
+| voice     | heygen tts free-usage path; optional local **Kokoro** (free, on-device)                                                                                                       |
+| icon      | heygen asset search free-usage path                                                                                                                                           |
+| logo      | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)                                                                                               |
+| grade/lut | local core-preset map, params/CDN look index, deterministic `buildCube` fallback                                                                                              |
 | video     | heygen avatar video free-usage path (sign-in nudge on auth failure); optional local LTX (`videogen` ladder). Image-to-video / photo-avatar / dub stay manual `heygen` recipes |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
