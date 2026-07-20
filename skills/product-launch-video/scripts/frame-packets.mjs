@@ -12,14 +12,24 @@
 // concatenated verbatim — the complete worker role, assembled from the two
 // source documents so nothing is hand-maintained twice.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(SCRIPT_DIR, "..");
 const ANIMATION_DIR = resolve(SKILL_DIR, "../hyperframes-animation");
-const CORE_CONTRACT_PATH = resolve(SKILL_DIR, "../hyperframes-core/references/frame-worker-core.md");
+const CORE_CONTRACT_PATH = resolve(
+  SKILL_DIR,
+  "../hyperframes-core/references/frame-worker-core.md",
+);
 const ROLE_DELTA_PATH = resolve(SKILL_DIR, "sub-agents/frame-worker.md");
 
 function field(block, name) {
@@ -132,9 +142,7 @@ function flag(argv, name, fallback) {
 function main() {
   const argv = process.argv.slice(2);
   const projectDir = resolve(flag(argv, "project", "."));
-  const outDir = resolve(
-    flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets")),
-  );
+  const outDir = resolve(flag(argv, "out-dir", join(projectDir, ".hyperframes", "frame-packets")));
   try {
     const packets = buildFramePackets({
       projectDir,

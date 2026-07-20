@@ -330,7 +330,9 @@ if (rawTarget != null && String(rawTarget).trim() !== "") {
   const targetMatch = String(rawTarget).match(/(\d+(?:\.\d+)?)/);
   const target = targetMatch ? parseFloat(targetMatch[1]) : NaN;
   if (!Number.isFinite(target) || target <= 0) {
-    anomalies.push(`frontmatter duration "${rawTarget}" is not parseable (e.g. "22s") — skipped the expectation check`);
+    anomalies.push(
+      `frontmatter duration "${rawTarget}" is not parseable (e.g. "22s") — skipped the expectation check`,
+    );
   } else {
     const diff = r3(TOTAL - target);
     durationNote = ` (expected ~${target}s, ${diff >= 0 ? "+" : ""}${diff}s)`;
