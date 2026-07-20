@@ -283,28 +283,27 @@ export const Timeline = memo(function Timeline({
       lastScrollLeftRef,
       contentOrigin,
     });
-  const { logicalRows, pinnedElementId, rowVirtualizationActive, virtualRows, timelineFocusProps } =
-    useTimelineLogicalFocus({
-      scrollRef,
-      tracks,
-      layout: displayLayout,
-      laneCounts,
-      selectedElementId,
-      selectedElementIds,
-      gsapAnimations,
-      elements: expandedElements,
-      pixelsPerSecond: pps,
-      contentOrigin,
-      allowHorizontal: zoomMode === "manual",
-      viewport,
-      sessionEpoch,
-      draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
-      resizingElementIds,
-      clipContextMenuRowKey: clipContextMenu?.element.track,
-      keyframeContextMenuRowKey: kfContextMenu?.element.track,
-      lastScrollLeftRef,
-      syncScrollViewport,
-    });
+  const timelineFocus = useTimelineLogicalFocus({
+    scrollRef,
+    tracks,
+    layout: displayLayout,
+    laneCounts,
+    selectedElementId,
+    selectedElementIds,
+    gsapAnimations,
+    elements: expandedElements,
+    pixelsPerSecond: pps,
+    contentOrigin,
+    allowHorizontal: zoomMode === "manual",
+    viewport,
+    sessionEpoch,
+    draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
+    resizingElementIds,
+    clipContextMenuRowKey: clipContextMenu?.element.track,
+    keyframeContextMenuRowKey: kfContextMenu?.element.track,
+    lastScrollLeftRef,
+    syncScrollViewport,
+  });
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
@@ -327,7 +326,7 @@ export const Timeline = memo(function Timeline({
     selectedElementId: selectedElementId ?? undefined,
     draggedElementId: draggedClip ? getTimelineElementIdentity(draggedClip.element) : undefined,
     resizingElementIds,
-    focusedElementId: pinnedElementId,
+    focusedElementId: timelineFocus.pinnedElementId,
     focusedEaseElementId: focusedEaseSegment?.elementId,
     clipContextMenuElementId: clipContextMenu
       ? getTimelineElementIdentity(clipContextMenu.element)
@@ -421,7 +420,7 @@ export const Timeline = memo(function Timeline({
     displayDuration,
     pps,
     timeDisplayMode,
-    rowVirtualizationActive ? renderTimeRange : undefined,
+    timelineFocus.rowVirtualizationActive ? renderTimeRange : undefined,
   );
 
   const getPreviewElement = useCallback(
@@ -467,7 +466,7 @@ export const Timeline = memo(function Timeline({
           recordTimelineScroll(e.currentTarget);
           syncScrollViewport(e.currentTarget, true);
         }}
-        {...timelineFocusProps}
+        {...timelineFocus.timelineFocusProps}
         onDragOver={assetDrop.handleAssetDragOver}
         onDragLeave={assetDrop.handleAssetDragLeave}
         onDrop={assetDrop.handleAssetDrop}
@@ -499,9 +498,10 @@ export const Timeline = memo(function Timeline({
           displayTrackOrder={displayLayout.displayTrackOrder}
           rowHeights={displayLayout.displayRowHeights}
           rowGeometry={displayLayout.rowGeometry}
-          virtualRows={virtualRows}
-          logicalRows={logicalRows}
-          rowsVirtualized={rowVirtualizationActive}
+          virtualRows={timelineFocus.virtualRows}
+          logicalRows={timelineFocus.logicalRows}
+          focusedTargetId={timelineFocus.focusedTargetId}
+          rowsVirtualized={timelineFocus.rowVirtualizationActive}
           clipIndex={clipIndex}
           renderTimeRange={renderTimeRange}
           pinnedClipIdentities={pinnedClipIdentities}
@@ -520,7 +520,9 @@ export const Timeline = memo(function Timeline({
           scrollRef={scrollRef}
           // Windowing drops content to mount a row cheaply; unvirtualized it is pure cost.
           renderClipContent={
-            rowVirtualizationActive && viewport.isScrolling ? undefined : renderClipContent
+            timelineFocus.rowVirtualizationActive && viewport.isScrolling
+              ? undefined
+              : renderClipContent
           }
           renderClipOverlay={renderClipOverlay}
           playheadRef={playheadRef}

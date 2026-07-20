@@ -24,6 +24,21 @@ export type TimelineNavigationKey =
   | "PageUp"
   | "PageDown";
 
+const NAVIGATION_KEYS: ReadonlySet<string> = new Set<TimelineNavigationKey>([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
+
+export function isTimelineNavigationKey(key: string): key is TimelineNavigationKey {
+  return NAVIGATION_KEYS.has(key);
+}
+
 export interface TimelineLogicalItem {
   id: string;
   kind: "clip" | "keyframe" | "ease";
@@ -189,7 +204,7 @@ export function buildTimelineLogicalRows({
       logicalIndex: rows.length,
       level: 1,
       parentId: null,
-      elementId: null,
+      elementId: activeId,
       expandable: lanes.length > 0,
       expanded,
       items: clipItems(trackId, elements),
@@ -256,10 +271,14 @@ export function resolveTimelineNavigationTarget(
   if (key === "Home" || key === "End") {
     const boundaryRow = options.timelineBoundary ? (key === "Home" ? rows[0] : rows.at(-1)) : row;
     if (!boundaryRow) return target;
+    if (options.timelineBoundary) return boundaryRow;
     return key === "Home" ? boundaryRow : (boundaryRow.items.at(-1) ?? boundaryRow);
   }
   if (key === "ArrowLeft") {
-    if (itemIndex < 0) return row;
+    if (itemIndex < 0) {
+      if (!row.parentId) return row;
+      return locateTimelineLogicalTarget(rows, row.parentId)?.target ?? row;
+    }
     return itemIndex === 0 ? row : row.items[itemIndex - 1]!;
   }
   if (key === "ArrowRight") {

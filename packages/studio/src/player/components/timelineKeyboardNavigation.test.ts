@@ -168,6 +168,12 @@ describe("resolveTimelineNavigationTarget", () => {
     expect(
       resolveTimelineNavigationTarget(rows, timelineClipFocusId("late"), "ArrowRight")?.id,
     ).toBe(timelineClipFocusId("late"));
+    expect(resolveTimelineNavigationTarget(rows, timelineTrackRowId(1), "ArrowRight")?.id).toBe(
+      timelineClipFocusId("early"),
+    );
+    expect(
+      resolveTimelineNavigationTarget(rows, timelineClipFocusId("early"), "ArrowLeft")?.id,
+    ).toBe(timelineTrackRowId(1));
     expect(resolveTimelineNavigationTarget(rows, activeId, "Home")?.id).toBe(timelineTrackRowId(1));
     expect(resolveTimelineNavigationTarget(rows, timelineTrackRowId(1), "End")?.id).toBe(
       timelineClipFocusId("late"),
@@ -215,7 +221,16 @@ describe("resolveTimelineNavigationTarget", () => {
     ).toBe(timelineTrackRowId(1));
     expect(
       resolveTimelineNavigationTarget(rows, current, "End", { timelineBoundary: true })?.id,
-    ).toBe(timelineClipFocusId("right"));
+    ).toBe(timelineTrackRowId(3));
+  });
+
+  it("returns from a property row to its parent with ArrowLeft", () => {
+    const rows = model();
+    const property = rows.find((row) => row.propertyGroup === "position")!;
+
+    expect(resolveTimelineNavigationTarget(rows, property.id, "ArrowLeft")?.id).toBe(
+      timelineTrackRowId(1),
+    );
   });
 
   it("breaks equal-distance vertical ties by time then stable identity", () => {

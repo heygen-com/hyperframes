@@ -1,7 +1,7 @@
 import { Fragment, useId, useMemo } from "react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
-import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
+import { TimelineCompactDiamonds } from "./TimelineCompactDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
@@ -28,6 +28,8 @@ import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
+import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -51,6 +53,7 @@ export function TimelineLanes({
   rowGeometry,
   virtualRows,
   logicalRows,
+  focusedTargetId,
   rowsVirtualized,
   clipIndex,
   renderTimeRange,
@@ -136,12 +139,23 @@ export function TimelineLanes({
           },
         ]
       : [];
+  const keyboard = useTimelineKeyboardActor({
+    logicalRows,
+    focusedTargetId,
+    rowGeometry,
+    scrollRef,
+    onToggleRow: (row) => {
+      if (row.elementId) toggleClipExpandedTracked(row.elementId);
+    },
+  });
   return (
     <div
       role="treegrid"
       aria-label="Timeline tracks"
       aria-rowcount={logicalRows.length}
       aria-colcount={2}
+      onFocus={keyboard.onFocus}
+      onKeyDown={keyboard.onKeyDown}
       className={rowsVirtualized ? "absolute inset-0" : undefined}
     >
       {
@@ -202,6 +216,7 @@ export function TimelineLanes({
               virtualized={rowsVirtualized}
               background={rowBackground}
               borderColor={theme.rowBorder}
+              rovingTargetId={keyboard.rovingTargetId}
             >
               <TimelineTrackHeader
                 trackNumber={trackNum}
@@ -232,6 +247,7 @@ export function TimelineLanes({
                 onToggleTrackHidden={onToggleTrackHidden}
                 onTogglePropertyGroupKeyframe={onTogglePropertyGroupKeyframe}
                 onSeek={onSeek}
+                rovingTargetId={keyboard.rovingTargetId}
               />
               <div
                 role="gridcell"
@@ -307,9 +323,8 @@ export function TimelineLanes({
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
                     const isComposition = !!el.compositionSrc;
-                    // elementKey (el.key ?? el.id) is already unique per clip; do NOT
-                    // fold in the map index, or a splice/reorder remounts every clip
-                    // at/after the change (DOM flash, drag interruption).
+                    // The element identity is already unique per clip. Never fold in the map
+                    // index, or a splice/reorder remounts every clip at/after the change.
                     const clipKey = elementKey;
                     const isDraggingClip =
                       draggedClip?.started === true &&
@@ -317,11 +332,8 @@ export function TimelineLanes({
                       getTimelineElementIdentity(draggedElement) === elementKey;
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
-                    // Passenger of a live multi-drag: slide by the SAME formation
-                    // delta (the grabbed clip's group-clamped delta) via a
-                    // compositor transform on a same-geometry wrapper (absolute
-                    // inset-0 → identical offset parent, so the clip's own
-                    // left/top are preserved), plus the ghost's elevated z/opacity.
+                    // Passenger of a live multi-drag: preserve the formation without changing
+                    // the passenger's timeline data until the owning drag commits.
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
                     const passengerOffsetPx = isPassenger
@@ -346,6 +358,9 @@ export function TimelineLanes({
                         capabilities={capabilities}
                         theme={theme}
                         isComposition={isComposition}
+                        tabIndex={
+                          keyboard.rovingTargetId === timelineClipFocusId(elementKey) ? 0 : -1
+                        }
                         onHoverStart={() => setHoveredClip(clipKey)}
                         onHoverEnd={() => setHoveredClip(null)}
                         onResizeStart={
@@ -483,34 +498,30 @@ export function TimelineLanes({
                           renderClipContent,
                           renderClipOverlay,
                         )}
-                        {!showsLanes && keyframeCache?.get(elementKey) && (
-                          <TimelineClipDiamonds
-                            keyframesData={keyframeCache.get(elementKey)!}
-                            clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                            clipHeightPx={rowHeight - 2 * CLIP_Y}
-                            clipDuration={previewElement.duration}
-                            beatsActive={beatStripOnTrack}
-                            accentColor={clipStyle.accent}
-                            isSelected={isSelected}
-                            currentPercentage={
-                              previewElement.duration > 0
-                                ? ((currentTime - previewElement.start) / previewElement.duration) *
-                                  100
-                                : 0
-                            }
-                            elementId={elementKey}
-                            selectedKeyframes={selectedKeyframes}
-                            onClickKeyframe={(_elId, target) =>
-                              onClickKeyframe?.(previewElement, target)
-                            }
-                            onShiftClickKeyframe={onShiftClickKeyframe}
-                            onContextMenuKeyframe={onContextMenuKeyframe}
-                            onMoveKeyframe={onMoveKeyframe}
-                            onSelectSegment={onSelectSegment}
-                            suppressClickRef={suppressClickRef}
-                          />
-                        )}
                       </TimelineClip>
+                    );
+                    const compactKeyframes = keyframeCache?.get(elementKey);
+                    const compactDiamonds = !showsLanes && compactKeyframes && (
+                      <TimelineCompactDiamonds
+                        key={`${clipKey}-diamonds`}
+                        element={previewElement}
+                        elementId={elementKey}
+                        keyframesData={compactKeyframes}
+                        pixelsPerSecond={pps}
+                        rowHeight={rowHeight}
+                        beatsActive={beatStripOnTrack}
+                        accentColor={clipStyle.accent}
+                        isSelected={isSelected}
+                        currentTime={currentTime}
+                        selectedKeyframes={selectedKeyframes}
+                        rovingTargetId={keyboard.rovingTargetId}
+                        onClickKeyframe={onClickKeyframe}
+                        onShiftClickKeyframe={onShiftClickKeyframe}
+                        onContextMenuKeyframe={onContextMenuKeyframe}
+                        onMoveKeyframe={onMoveKeyframe}
+                        onSelectSegment={onSelectSegment}
+                        suppressClickRef={suppressClickRef}
+                      />
                     );
                     // Keep this shell mounted while collapsed so aria-controls stays valid
                     // and multi-drag cannot remount the subtree mid-gesture.
@@ -535,6 +546,7 @@ export function TimelineLanes({
                         }
                         elementId={elementKey}
                         selectedKeyframes={selectedKeyframes}
+                        rovingTargetId={keyboard.rovingTargetId}
                         onSelectSegment={(target) => onSelectSegment?.(elementKey, target)}
                         onClickKeyframe={(target) => onClickKeyframe?.(previewElement, target)}
                         onShiftClickKeyframe={(target) =>
@@ -555,6 +567,7 @@ export function TimelineLanes({
                       return (
                         <Fragment key={clipKey}>
                           {clip}
+                          {compactDiamonds}
                           {propertyLanes}
                         </Fragment>
                       );
@@ -571,6 +584,7 @@ export function TimelineLanes({
                         }}
                       >
                         {clip}
+                        {compactDiamonds}
                         {propertyLanes}
                       </div>
                     );

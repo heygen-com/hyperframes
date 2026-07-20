@@ -44,6 +44,8 @@ export function LayerDisclosureRow({
     >
       <button
         type="button"
+        // ponytail: No focus id here; keyboard routing belongs to the enclosing logical row.
+        tabIndex={-1}
         aria-expanded={isExpanded}
         aria-controls={lanesId}
         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${name} keyframes`}

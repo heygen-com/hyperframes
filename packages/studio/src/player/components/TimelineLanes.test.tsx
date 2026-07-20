@@ -106,6 +106,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           rowGeometry={getTimelineRowGeometry(rowHeights)}
           virtualRows={displayTrackOrder.map((_, index) => ({ index, rowKey: index }))}
           rowsVirtualized={false}
+          focusedTargetId={null}
           logicalRows={buildTimelineLogicalRows({
             tracks,
             displayTrackOrder,

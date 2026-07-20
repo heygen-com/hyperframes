@@ -209,6 +209,8 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(rows.length).toBeLessThanOrEqual(16);
     expect(rows[0]?.getAttribute("aria-rowindex")).toBe("1");
     expect(treegrid?.getAttribute("aria-rowcount")).toBe("1000");
+    expect(treegrid?.hasAttribute("aria-multiselectable")).toBe(false);
+    expect(treegrid?.querySelectorAll('[data-timeline-focus-id][tabindex="0"]')).toHaveLength(1);
     expect(treegrid?.parentElement?.style.height).toBe(
       `${getTimelineCanvasHeight(Array.from({ length: 1_000 }, () => TRACK_H))}px`,
     );
