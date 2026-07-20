@@ -56,6 +56,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   ) => Promise<void> | void;
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
+  shouldShowMotionPath: boolean;
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
@@ -90,6 +91,7 @@ export function EditorShell({
   handleRazorSplitAll,
   setCompIdToSrc,
   setCompositionLoading,
+  shouldShowMotionPath,
   shouldShowSelectedDomBounds,
   isGestureRecording,
   recordingState,
@@ -149,6 +151,7 @@ export function EditorShell({
             onDeleteElement={handleTimelineElementDelete}
             previewOverlay={
               <PreviewOverlays
+                shouldShowMotionPath={shouldShowMotionPath}
                 shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                 blockPreview={blockPreview}
                 isGestureRecording={isGestureRecording}

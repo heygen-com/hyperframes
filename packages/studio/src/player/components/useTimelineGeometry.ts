@@ -21,6 +21,7 @@ interface UseTimelineGeometryInput {
   isDragging: RefObject<boolean>;
   scrollRef: RefObject<HTMLDivElement | null>;
   lastScrollLeftRef: RefObject<number>;
+  contentOrigin: number;
 }
 
 // Derive the timeline's horizontal geometry from the viewport, zoom, and any live
@@ -40,10 +41,11 @@ export function useTimelineGeometry({
   isDragging,
   scrollRef,
   lastScrollLeftRef,
+  contentOrigin,
 }: UseTimelineGeometryInput) {
   // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
   // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
-  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration);
+  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, contentOrigin);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
@@ -70,6 +72,7 @@ export function useTimelineGeometry({
   const displayContentWidth = getTimelineDisplayContentWidth({
     trackContentWidth,
     viewportWidth,
+    contentOrigin,
     pps,
     dragGhostEndPx,
     resizeGhostEndPx,
