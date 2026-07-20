@@ -1,5 +1,5 @@
 import { usePlayerStore } from "../player/store/playerStore";
-import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelection";
+import { timelineKeyframeTargetFromSelectionKey } from "../player/components/timelineKeyframeIdentity";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 let deleteKeyframesCommitCounter = 0;
@@ -18,18 +18,31 @@ export function deleteSelectedKeyframes(session: {
   ) => void;
 }): void {
   const { selectedKeyframes, selectedElementId } = usePlayerStore.getState();
-  const animation = session.selectedGsapAnimations.find((anim) => anim.keyframes);
-  if (!animation) return;
-  // Only the active element's keyframes; a stale cross-element selection must not delete here.
-  const percentages = selectedKeyframePercentagesForElement(selectedKeyframes, selectedElementId);
+  if (!selectedElementId) return;
+  const keyframedAnimations = session.selectedGsapAnimations.filter((anim) => anim.keyframes);
+  const fallbackAnimation = keyframedAnimations[0];
+  const animationsById = new Map(keyframedAnimations.map((animation) => [animation.id, animation]));
+  const removals = new Map<string, { animationId: string; percentage: number }>();
+  for (const key of selectedKeyframes) {
+    const target = timelineKeyframeTargetFromSelectionKey(selectedElementId, key);
+    if (!target) continue;
+    const animation = target.animationId
+      ? animationsById.get(target.animationId)
+      : fallbackAnimation;
+    if (!animation) continue;
+    const percentage = target.tweenPercentage ?? target.percentage;
+    removals.set(`${animation.id}\0${percentage}`, { animationId: animation.id, percentage });
+  }
+  const targets = [...removals.values()];
+  if (targets.length === 0) return;
   const coalesceOptions = {
     coalesceKey: `delete-keyframes:${++deleteKeyframesCommitCounter}`,
     coalesceMs: Number.POSITIVE_INFINITY,
   };
-  for (const [index, pct] of percentages.entries()) {
-    session.handleGsapRemoveKeyframe(animation.id, pct, {
+  for (const [index, target] of targets.entries()) {
+    session.handleGsapRemoveKeyframe(target.animationId, target.percentage, {
       ...coalesceOptions,
-      ...(index === percentages.length - 1 ? { softReload: true } : { skipReload: true }),
+      ...(index === targets.length - 1 ? { softReload: true } : { skipReload: true }),
     });
   }
 }

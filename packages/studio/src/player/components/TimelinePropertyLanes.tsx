@@ -25,7 +25,7 @@ export interface TimelinePropertyLanesProps {
   onClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onContextMenuKeyframe?: (e: ReactMouseEvent, target: TimelineKeyframeTarget) => void;
-  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => void;
+  onMoveKeyframe?: (target: TimelineKeyframeTarget, toClipPercentage: number) => Promise<boolean>;
   suppressClickRef?: RefObject<boolean>;
 }
 
@@ -44,7 +44,7 @@ function animationKeyframes(animation: GsapAnimation) {
 
 /** A tween contributes a property lane when it has a group and at least one
  *  editable keyframe (real or synthesized). */
-function animationContributesLane(animation: GsapAnimation): boolean {
+export function animationContributesLane(animation: GsapAnimation): boolean {
   return !!animation.propertyGroup && animationKeyframes(animation).length > 0;
 }
 

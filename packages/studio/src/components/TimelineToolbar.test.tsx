@@ -2,8 +2,10 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
+import { makeSelection } from "../hooks/domSelectionTestHarness";
 import { TimelineToolbar } from "./TimelineToolbar";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,12 +15,14 @@ afterEach(() => {
   usePlayerStore.setState({ autoKeyframeEnabled: true });
 });
 
-function renderToolbar() {
+function renderToolbar(
+  domEditSession?: React.ComponentProps<typeof TimelineToolbar>["domEditSession"],
+) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<TimelineToolbar />);
+    root.render(<TimelineToolbar domEditSession={domEditSession} />);
   });
   return { host, root };
 }
@@ -51,6 +55,47 @@ describe("TimelineToolbar — auto-keyframe toggle (#1808)", () => {
 
     expect(usePlayerStore.getState().autoKeyframeEnabled).toBe(false);
     expect(btn.getAttribute("aria-pressed")).toBe("false");
+    act(() => root.unmount());
+  });
+});
+describe("TimelineToolbar — motion path endpoints", () => {
+  it("does not advertise a destructive keyframe toggle for a required endpoint", () => {
+    usePlayerStore.setState({ currentTime: 10 });
+    const animation: GsapAnimation = {
+      id: "#el-to-0-position",
+      targetSelector: "#el",
+      method: "to",
+      position: 0,
+      duration: 10,
+      properties: {},
+      keyframes: {
+        format: "object-array",
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 100, properties: { x: 100, y: 0 } },
+        ],
+      },
+      arcPath: {
+        enabled: true,
+        autoRotate: false,
+        segments: [{ curviness: 1 }],
+      },
+    };
+    const element = document.createElement("div");
+    element.id = "el";
+    const session = {
+      domEditSelection: makeSelection("Element", element),
+      selectedGsapAnimations: [animation],
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapConvertToKeyframes: vi.fn(),
+      handleGsapRemoveKeyframe: vi.fn(),
+    } satisfies NonNullable<React.ComponentProps<typeof TimelineToolbar>["domEditSession"]>;
+
+    const { host, root } = renderToolbar(session);
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Motion path endpoint"]',
+    );
+    expect(button?.disabled).toBe(true);
     act(() => root.unmount());
   });
 });

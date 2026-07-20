@@ -1,6 +1,26 @@
 import { describe, it, expect } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { idSelector, isInstantHold, parsePercentageKeyframes } from "./gsapShared";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import {
+  idSelector,
+  isInstantHold,
+  parsePercentageKeyframes,
+  resolveEditableTweenDuration,
+} from "./gsapShared";
+
+describe("resolveEditableTweenDuration", () => {
+  const selection = { dataAttributes: { duration: "16.26" } } as DomEditSelection;
+
+  it("uses the owning clip duration when the tween omits an outer duration", () => {
+    expect(resolveEditableTweenDuration({ duration: undefined } as GsapAnimation, selection)).toBe(
+      16.26,
+    );
+  });
+
+  it("keeps an explicitly-authored tween duration", () => {
+    expect(resolveEditableTweenDuration({ duration: 4 } as GsapAnimation, selection)).toBe(4);
+  });
+});
 
 describe("isInstantHold", () => {
   const animation = (method: GsapAnimation["method"], duration?: number) =>

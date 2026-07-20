@@ -20,7 +20,12 @@ afterEach(() => {
 const selection: DomEditSelection = { id: "box", selector: "#box" } as DomEditSelection;
 
 function successfulCommitMutation() {
-  return vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ ok: true }));
+  return vi.fn<(...args: unknown[]) => Promise<unknown>>(async (...args) => {
+    const options = args[2] as {
+      onResult?: (result: { ok: boolean; changed: boolean }) => void;
+    };
+    options.onResult?.({ ok: true, changed: true });
+  });
 }
 
 function renderKeyframeOps(over: {
@@ -54,6 +59,18 @@ function renderKeyframeOps(over: {
   return captured.api;
 }
 
+async function moveKeyframeWith(
+  commitMutation: (...args: unknown[]) => Promise<unknown>,
+): Promise<{ committed: boolean; trackGsapSaveFailure: ReturnType<typeof vi.fn> }> {
+  const trackGsapSaveFailure = vi.fn();
+  const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure });
+  let committed = true;
+  await act(async () => {
+    committed = await api.moveKeyframe(selection, "box-to-0-position", 50, 75);
+  });
+  return { committed, trackGsapSaveFailure };
+}
+
 describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
   it("issues a resize-keyframed-tween mutation with the remap + window", async () => {
     const commitMutation = successfulCommitMutation();
@@ -64,8 +81,9 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
       { from: 0, to: 0 },
       { from: 100, to: 100 },
     ];
+    let committed = false;
     await act(async () => {
-      api.resizeKeyframedTween(selection, "box-to-0-opacity", 0.2, 2, pctRemap);
+      committed = await api.resizeKeyframedTween(selection, "box-to-0-opacity", 0.2, 2, pctRemap);
     });
 
     expect(commitMutation).toHaveBeenCalledTimes(1);
@@ -79,6 +97,7 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
       pctRemap,
     });
     expect(trackGsapSaveFailure).not.toHaveBeenCalled();
+    expect(committed).toBe(true);
   });
 
   it("routes a rejected commit to trackGsapSaveFailure (no unhandled rejection)", async () => {
@@ -89,10 +108,11 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
     const trackGsapSaveFailure = vi.fn<(...args: unknown[]) => void>();
     const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure });
 
+    let committed = true;
     await act(async () => {
-      api.resizeKeyframedTween(selection, "box-to-0-opacity", 0.2, 2, [{ from: 100, to: 100 }]);
-      // let the rejected commit promise settle inside act
-      await Promise.resolve();
+      committed = await api.resizeKeyframedTween(selection, "box-to-0-opacity", 0.2, 2, [
+        { from: 100, to: 100 },
+      ]);
     });
 
     expect(trackGsapSaveFailure).toHaveBeenCalledTimes(1);
@@ -101,6 +121,46 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
     expect(selArg).toBe(selection);
     expect((mutationArg as { type: string }).type).toBe("resize-keyframed-tween");
     expect(labelArg).toBe("Retime keyframe (resize tween)");
+    expect(committed).toBe(false);
+  });
+});
+
+describe("useGsapKeyframeOps — moveKeyframe settlement", () => {
+  it("returns false when the commit settles without a durable writer result", async () => {
+    const { committed, trackGsapSaveFailure } = await moveKeyframeWith(vi.fn(async () => {}));
+
+    expect(committed).toBe(false);
+    expect(trackGsapSaveFailure).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the writer accepts but does not change the keyframe", async () => {
+    const commitMutation = vi.fn(async (...args: unknown[]) => {
+      const options = args[2] as { onResult?: (result: { ok: boolean; changed: boolean }) => void };
+      options.onResult?.({ ok: true, changed: false });
+    });
+    const { committed, trackGsapSaveFailure } = await moveKeyframeWith(commitMutation);
+
+    expect(committed).toBe(false);
+    expect(trackGsapSaveFailure).not.toHaveBeenCalled();
+  });
+
+  it("returns false and tracks a rejected move", async () => {
+    const error = new Error("write failed");
+    const commitMutation = vi.fn().mockRejectedValue(error);
+    const { committed, trackGsapSaveFailure } = await moveKeyframeWith(commitMutation);
+
+    expect(committed).toBe(false);
+    expect(trackGsapSaveFailure).toHaveBeenCalledExactlyOnceWith(
+      error,
+      selection,
+      {
+        type: "move-keyframe",
+        animationId: "box-to-0-position",
+        fromPercentage: 50,
+        toPercentage: 75,
+      },
+      "Move keyframe to 75%",
+    );
   });
 });
 

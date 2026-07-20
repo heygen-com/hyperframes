@@ -16,6 +16,8 @@ export interface MutationResult {
 
 export interface CommitMutationOptions {
   label: string;
+  /** Observe the durable writer result without duplicating the request path. */
+  onResult?: (result: MutationResult) => void;
   coalesceKey?: string;
   coalesceMs?: number;
   softReload?: boolean;

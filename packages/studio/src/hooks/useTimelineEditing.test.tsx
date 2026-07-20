@@ -245,9 +245,11 @@ async function flushAsyncWork(): Promise<void> {
  * with `gsapBody`. Returns the mock for call inspection.
  */
 function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unknown) {
-  // Keep this test server's capability, file-read, and mutation routes together;
-  // splitting the fixture would obscure the request sequence asserted by callers.
-  // fallow-ignore-next-line complexity
+  const contentAt = (url: string, route: string): string | undefined => {
+    if (typeof files === "string") return files;
+    const path = decodeURIComponent(url.split(route)[1] ?? "index.html");
+    return files[path];
+  };
   const fetchMock = vi.fn(
     async (
       input: Parameters<typeof fetch>[0],
@@ -258,13 +260,10 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
         return jsonResponse({ atomicOwnershipPairs: true });
       }
       if (url.includes("/api/projects/p1/files/")) {
-        if (typeof files === "string") return jsonResponse({ content: files });
-        const path = decodeURIComponent(url.split("/files/")[1] ?? "index.html");
-        return jsonResponse({ content: files[path] });
+        return jsonResponse({ content: contentAt(url, "/files/") });
       }
       if (url.includes("/api/projects/p1/gsap-mutations/")) {
-        const path = decodeURIComponent(url.split("/gsap-mutations/")[1] ?? "index.html");
-        const content = typeof files === "string" ? files : (files[path] ?? "");
+        const content = contentAt(url, "/gsap-mutations/") ?? "";
         return jsonResponse(
           gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
         );

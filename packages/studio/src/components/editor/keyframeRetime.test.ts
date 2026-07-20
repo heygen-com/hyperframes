@@ -11,6 +11,22 @@ const KEYFRAMES: RetimeKeyframe[] = [
 const WINDOW = { tweenStart: 2, tweenDuration: 4 };
 const LEFT_BOUNDARY_DROP = { ...WINDOW, dropAbsTime: 0.5 };
 
+function expectLeftResize(
+  keyframes: RetimeKeyframe[],
+  draggedTweenPct: number,
+  pctRemap: Array<{ from: number; to: number }>,
+): void {
+  const result = resolveKeyframeRetime({
+    ...LEFT_BOUNDARY_DROP,
+    keyframes,
+    draggedTweenPct,
+  });
+  expect(result.kind).toBe("resize");
+  expect(result.position).toBeCloseTo(0.5, 5);
+  expect(result.duration).toBeCloseTo(5.5, 5);
+  expect(result.pctRemap).toEqual(pctRemap);
+}
+
 describe("resolveKeyframeRetime — move (within the tween window)", () => {
   it("re-keys an interior keyframe to the tween-% of the drop", () => {
     const r = resolveKeyframeRetime({
@@ -105,16 +121,8 @@ describe("resolveKeyframeRetime — resize (past the tween boundary)", () => {
   });
 
   it("extends the FIRST keyframe before the start, shifting position earlier", () => {
-    const r = resolveKeyframeRetime({
-      ...LEFT_BOUNDARY_DROP,
-      keyframes: KEYFRAMES,
-      draggedTweenPct: 0,
-    });
-    expect(r.kind).toBe("resize");
-    expect(r.position).toBeCloseTo(0.5, 5);
-    expect(r.duration).toBeCloseTo(5.5, 5); // 6 - 0.5
     // abs 0.5/4/6 over [0.5,6] → 0 / 63.636 / 100.
-    expect(r.pctRemap).toEqual([
+    expectLeftResize(KEYFRAMES, 0, [
       { from: 0, to: 0 },
       { from: 50, to: 63.636 },
       { from: 100, to: 100 },
@@ -139,15 +147,7 @@ describe("resolveKeyframeRetime — single keyframe (both first and last)", () =
   });
 
   it("resizes left before the start", () => {
-    const r = resolveKeyframeRetime({
-      ...LEFT_BOUNDARY_DROP,
-      keyframes: lone,
-      draggedTweenPct: 100,
-    });
-    expect(r.kind).toBe("resize");
-    expect(r.position).toBeCloseTo(0.5, 5);
-    expect(r.duration).toBeCloseTo(5.5, 5);
-    expect(r.pctRemap).toEqual([{ from: 100, to: 0 }]);
+    expectLeftResize(lone, 100, [{ from: 100, to: 0 }]);
   });
 });
 

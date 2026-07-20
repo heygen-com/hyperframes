@@ -112,13 +112,7 @@ function laneEaseSegments(host: HTMLElement, group: string): HTMLElement[] {
   );
 }
 
-// The mid-segment ease button is revealed on hover (Figma parity), so tests must
-// hover the segment strip before its button exists. React derives onMouseEnter
-// from a bubbling mouseover, so dispatching that is what arms the hover.
 function revealEaseButton(segment: HTMLElement): HTMLButtonElement | null {
-  act(() => {
-    segment.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  });
   return segment.querySelector<HTMLButtonElement>("button[data-keyframe-ease-button]");
 }
 
@@ -281,7 +275,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => root.unmount());
   });
 
-  it("reveals one midpoint ease button per segment on hover, regardless of selection", () => {
+  it("keeps one accessible midpoint ease button per segment, regardless of selection", () => {
     const animations = [
       animation("position-tween", "position", [
         { percentage: 0, properties: { x: 0 } },
@@ -295,12 +289,15 @@ describe("TimelinePropertyLanes", () => {
     expect(segments).toHaveLength(2);
     expect(segments.map((segment) => segment.style.left)).toEqual(["0px", "100px"]);
     expect(laneDiamonds(host, "position")).toHaveLength(3);
-    // Resting state: no button until a segment is hovered.
-    expect(laneEaseButtons(host, "position")).toHaveLength(0);
-
-    // Hovering reveals exactly one button — the hovered segment's.
-    expect(revealEaseButton(segments[0]!)).not.toBeNull();
-    expect(laneEaseButtons(host, "position")).toHaveLength(1);
+    const buttons = laneEaseButtons(host, "position");
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => button.classList.contains("opacity-0"))).toBe(true);
+    expect(buttons.every((button) => button.classList.contains("group-hover:opacity-100"))).toBe(
+      true,
+    );
+    expect(buttons.every((button) => button.classList.contains("focus-visible:opacity-100"))).toBe(
+      true,
+    );
 
     // The ease button is available on hover even when the element is NOT selected
     // (a lane shows for the track's active/primary clip, not only the selected one).

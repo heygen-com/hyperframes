@@ -14,8 +14,8 @@ const mocks = vi.hoisted(() => ({
   actions: {
     handleGsapRemoveKeyframe: vi.fn(),
     handleGsapMoveKeyframeToPlayhead: vi.fn(),
-    handleGsapMoveKeyframe: vi.fn(),
-    handleGsapResizeKeyframedTween: vi.fn(),
+    handleGsapMoveKeyframe: vi.fn().mockResolvedValue(true),
+    handleGsapResizeKeyframedTween: vi.fn().mockResolvedValue(true),
     handleGsapUpdateMeta: vi.fn(),
     handleGsapAddKeyframe: vi.fn(),
     handleGsapAddKeyframeBatch: vi.fn().mockResolvedValue(undefined),
@@ -116,6 +116,27 @@ function renderCallbacks(): { callbacks: TimelineEditCallbacks; unmount: () => v
   return { callbacks, unmount: () => act(() => root.unmount()) };
 }
 
+function arrangeClickedCircle(): {
+  circle: TimelineElement;
+  selection: { id: string; selector: string; sourceFile: string };
+} {
+  const elementKey = "scenes/main.html#circle";
+  const circle: TimelineElement = {
+    ...element,
+    id: "circle",
+    key: elementKey,
+    domId: "circle",
+    sourceFile: "scenes/main.html",
+  };
+  const selection = { id: "circle", selector: "#circle", sourceFile: "scenes/main.html" };
+  usePlayerStore.setState({
+    elements: [element, circle],
+    gsapAnimations: new Map([[elementKey, [otherKeyframedAnimation]]]),
+  });
+  mocks.actions.buildDomSelectionForTimelineElement.mockResolvedValue(selection);
+  return { circle, selection };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.animations = [flatAnimation];
@@ -163,12 +184,12 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
-  it("safely no-ops a boundary drag while the tween is still flat", () => {
+  it("settles false for a boundary drag while the tween is still flat", async () => {
     const view = renderCallbacks();
 
-    act(() => {
-      view.callbacks.onMoveKeyframe?.("box", 0, 25, "position", 0, flatAnimation.id);
-    });
+    await expect(
+      view.callbacks.onMoveKeyframe?.("box", 0, 25, "position", 0, flatAnimation.id),
+    ).resolves.toBe(false);
 
     expect(mocks.actions.handleGsapMoveKeyframe).not.toHaveBeenCalled();
     expect(mocks.actions.handleGsapResizeKeyframedTween).not.toHaveBeenCalled();
@@ -244,6 +265,46 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
+  it("deletes all keyframes through the clicked non-selected element's identity", async () => {
+    const { circle, selection } = arrangeClickedCircle();
+    const view = renderCallbacks();
+
+    await act(async () => {
+      view.callbacks.onDeleteAllKeyframes?.(circle);
+      await Promise.resolve();
+    });
+
+    expect(mocks.actions.handleGsapRemoveAllKeyframes).toHaveBeenCalledWith(
+      otherKeyframedAnimation.id,
+      selection,
+    );
+    view.unmount();
+  });
+
+  it("moves a keyframe to the playhead through the clicked non-selected element's identity", async () => {
+    const { circle, selection } = arrangeClickedCircle();
+    const view = renderCallbacks();
+
+    await act(async () => {
+      view.callbacks.onMoveKeyframeToPlayhead?.(
+        circle,
+        100,
+        "position",
+        100,
+        otherKeyframedAnimation.id,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mocks.actions.handleGsapMoveKeyframeToPlayhead).toHaveBeenCalledWith(
+      otherKeyframedAnimation.id,
+      100,
+      selection,
+      otherKeyframedAnimation,
+    );
+    view.unmount();
+  });
+
   it("keeps selected-element flat boundary deletion on the animation delete path", () => {
     const view = renderCallbacks();
 
@@ -291,15 +352,43 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
     view.unmount();
   });
 
-  it("keeps an authored interior drag on the per-keyframe move path", () => {
+  it("keeps an authored interior drag on the per-keyframe move path", async () => {
     mocks.animations = [authoredInteriorAnimation()];
     const view = renderCallbacks();
 
-    act(() => {
-      view.callbacks.onMoveKeyframe?.("box", 50, 75, "position", 50, flatAnimation.id);
-    });
+    await expect(
+      view.callbacks.onMoveKeyframe?.("box", 50, 75, "position", 50, flatAnimation.id),
+    ).resolves.toBe(true);
 
     expect(mocks.actions.handleGsapMoveKeyframe).toHaveBeenCalledWith(flatAnimation.id, 50, 75);
+    expect(mocks.actions.handleGsapResizeKeyframedTween).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("uses the clip timing basis when retiming a duration-less tween", async () => {
+    const durationless = {
+      ...authoredInteriorAnimation(),
+      position: 3.2,
+      resolvedStart: 3.2,
+      duration: undefined,
+    };
+    const wideElement = { ...element, start: 10.94, duration: 16.26 };
+    mocks.animations = [durationless];
+    usePlayerStore.setState({
+      elements: [wideElement],
+      gsapAnimations: new Map([["box", [durationless]]]),
+    });
+    const view = renderCallbacks();
+
+    await expect(
+      view.callbacks.onMoveKeyframe?.("box", 19.1, 40, "position", 50, durationless.id),
+    ).resolves.toBe(true);
+
+    expect(mocks.actions.handleGsapMoveKeyframe).toHaveBeenCalledWith(
+      durationless.id,
+      50,
+      expect.any(Number),
+    );
     expect(mocks.actions.handleGsapResizeKeyframedTween).not.toHaveBeenCalled();
     view.unmount();
   });

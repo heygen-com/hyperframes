@@ -89,6 +89,22 @@ export function selectorFromSelection(selection: DomEditSelection): string | nul
 // ── Percentage computation ────────────────────────────────────────────────────
 
 /**
+ * Resolve the timing basis used by editor keyframes. The timeline renders a
+ * duration-less tween across its owning clip, so mutations must use that same
+ * duration instead of silently falling back to GSAP's 0.5s default.
+ */
+export function resolveEditableTweenDuration(
+  animation: GsapAnimation,
+  selection: DomEditSelection,
+): number {
+  const clipDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "");
+  return resolveTweenDuration(
+    animation,
+    Number.isFinite(clipDuration) && clipDuration > 0 ? clipDuration : 0.5,
+  );
+}
+
+/**
  * Compute the current playback percentage within an element's animation range.
  * Uses the animation's resolved timing if available, otherwise falls back to
  * the element's data-start / data-duration attributes.
@@ -100,7 +116,7 @@ export function computeElementPercentage(
 ): number {
   if (animation) {
     const start = resolveTweenStart(animation);
-    const duration = resolveTweenDuration(animation);
+    const duration = resolveEditableTweenDuration(animation, selection);
     if (duration <= 0) return 0;
     if (start !== null) {
       return absoluteToPercentage(currentTime, start, duration);
@@ -108,9 +124,7 @@ export function computeElementPercentage(
   }
   const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  return elDuration > 0
-    ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
-    : 0;
+  return absoluteToPercentage(currentTime, elStart, elDuration);
 }
 
 // ── Iframe accessors ──────────────────────────────────────────────────────────

@@ -150,10 +150,6 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   // (that optimistic hold was the #1763 flake). The atomic move-keyframe commit
   // on drop re-keys the diamond from source.
   const [preview, setPreview] = useState<{ kfKey: string; clipPct: number } | null>(null);
-  // Index of the segment whose mid-point ease button is revealed on hover, like
-  // Figma. Null = no segment hovered → no button shown (resting state is just
-  // the connector line + diamonds).
-  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
   // The button element can re-render (reposition/unmount) synchronously from
   // the state updates onClickKeyframe/onMoveKeyframe trigger, before the
   // browser gets to auto-synthesize the "click" event that normally follows
@@ -180,7 +176,6 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   const diamondSize = beatsActive
     ? Math.round(clipHeightPx * 0.45)
     : Math.round(LANE_H * DIAMOND_RATIO);
-  const half = diamondSize / 2;
   const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
   const sorted = keyframesData.keyframes
     .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
@@ -188,6 +183,20 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   // Clip-%s of the sorted keyframes — the neighbour clamp (preview + drop) needs
   // the whole row to bound the dragged diamond between its immediate siblings.
   const sortedClipPcts = sorted.map((k) => k.percentage);
+  const sortedCenterXs = sorted.map((keyframe) =>
+    Math.max(0, Math.min(clipWidthPx, (keyframe.percentage / 100) * clipWidthPx)),
+  );
+  const markerMetrics = sortedCenterXs.map((centerX, index) => {
+    const previousGap = index > 0 ? centerX - sortedCenterXs[index - 1]! : Infinity;
+    const nextGap =
+      index < sortedCenterXs.length - 1 ? sortedCenterXs[index + 1]! - centerX : Infinity;
+    const nearestGap = Math.max(1, Math.min(previousGap, nextGap));
+    const hitWidth = Math.min(diamondSize, nearestGap);
+    return {
+      hitWidth,
+      visualSize: hitWidth === diamondSize ? diamondSize : Math.max(2, hitWidth - 2),
+    };
+  });
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
   const canDrag = isSelected && !!onMoveKeyframe;
@@ -209,9 +218,12 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
       {sorted.map((kf, i) => {
         if (i === 0) return null;
         const prev = sorted[i - 1]!;
-        const x1 = Math.max(0, Math.min(clipWidthPx, (prev.percentage / 100) * clipWidthPx));
-        const x2 = Math.max(0, Math.min(clipWidthPx, (kf.percentage / 100) * clipWidthPx));
+        const x1 = sortedCenterXs[i - 1]!;
+        const x2 = sortedCenterXs[i]!;
         if (x2 - x1 < 1) return null;
+        const connectorLeft = x1 + markerMetrics[i - 1]!.visualSize / 2;
+        const connectorWidth =
+          x2 - x1 - markerMetrics[i - 1]!.visualSize / 2 - markerMetrics[i]!.visualSize / 2;
         // Group-aware target for the ease button: the segment ease is
         // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
         // On a merged inline row the button is hidden where the segment is
@@ -226,9 +238,9 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               className="absolute"
               data-keyframe-connector={groupAware ? "" : undefined}
               style={{
-                left: x1,
+                left: connectorLeft,
                 top: centerY,
-                width: x2 - x1,
+                width: Math.max(0, connectorWidth),
                 height: 2,
                 transform: "translateY(-1px)",
                 background: baseColor,
@@ -238,7 +250,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             />
             {onSelectSegment && !kf.easeAmbiguous && kf.animationId !== undefined && (
               <div
-                className="absolute"
+                className="group absolute"
                 data-keyframe-ease-segment=""
                 style={{
                   left: x1,
@@ -246,40 +258,43 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                   width: x2 - x1,
                   height: 18,
                   transform: "translateY(-50%)",
-                  pointerEvents: "auto",
+                  // Own a stacking context above the diamond buttons. At fit
+                  // zoom the 16px ease control can overlap its neighbouring
+                  // diamond; without a z-index here the later diamond wins the
+                  // hit test even though the child button has z-index 3.
+                  zIndex: 3,
+                  // Only the centered control is interactive. The transparent
+                  // segment wrapper must not swallow connector/clip gestures.
+                  pointerEvents: "none",
                 }}
-                onMouseEnter={() => setHoveredSegment(i)}
-                onMouseLeave={() => setHoveredSegment((h) => (h === i ? null : h))}
               >
-                {hoveredSegment === i && (
-                  <button
-                    type="button"
-                    data-keyframe-ease-button=""
-                    aria-label={`Edit ${ease} easing`}
-                    title={`Edit ${ease} easing`}
-                    className="absolute flex items-center justify-center rounded"
-                    style={{
-                      left: "50%",
-                      top: "50%",
-                      width: 16,
-                      height: 16,
-                      transform: "translate(-50%, -50%)",
-                      zIndex: 3,
-                      pointerEvents: "auto",
-                      padding: 0,
-                      border: "1px solid rgba(255, 255, 255, 0.14)",
-                      background: "#171717",
-                      cursor: "pointer",
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectSegment(target);
-                    }}
-                  >
-                    <MiniCurveSvg ease={ease} active size={12} />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  data-keyframe-ease-button=""
+                  aria-label={`Edit ${ease} easing`}
+                  title={`Edit ${ease} easing`}
+                  className="absolute flex items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  style={{
+                    left: "50%",
+                    top: "50%",
+                    width: 16,
+                    height: 16,
+                    transform: "translate(-50%, -50%)",
+                    zIndex: 3,
+                    pointerEvents: "auto",
+                    padding: 0,
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    background: "#171717",
+                    cursor: "pointer",
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectSegment(target);
+                  }}
+                >
+                  <MiniCurveSvg ease={ease} active size={12} />
+                </button>
               </div>
             )}
           </Fragment>
@@ -291,12 +306,13 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const kfKey = timelineKeyframeSelectionKey(elementId, target);
         // While dragging this diamond, render it at the live preview clip-%.
         const renderPct = preview?.kfKey === kfKey ? preview.clipPct : kf.percentage;
-        // Center the diamond ON its keyframe %: left = (% · width) − half, so the
-        // diamond's midpoint sits exactly on the playhead/ruler x for that time.
+        // Center the marker's non-overlapping hit region ON its keyframe %, so
+        // the diamond's midpoint sits exactly on the playhead/ruler x for that time.
         // The 0% diamond's left half lands in the reserved left gutter (the
         // content origin is inset past the label column, Figma-style) so it stays
         // fully visible instead of being clipped by the sticky label column.
-        const leftPx = (renderPct / 100) * clipWidthPx - half;
+        const marker = markerMetrics[i]!;
+        const leftPx = (renderPct / 100) * clipWidthPx - marker.hitWidth / 2;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
         const isHighlighted = isKfSelected || atPlayhead;
@@ -428,7 +444,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               left: leftPx,
               top: centerY,
               transform: "translateY(-50%)",
-              width: diamondSize,
+              width: marker.hitWidth,
               height: diamondSize,
               zIndex: isHighlighted ? 2 : 1,
               pointerEvents: "auto",
@@ -437,6 +453,10 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               cursor: canDrag ? "ew-resize" : "pointer",
               padding: 0,
               touchAction: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "visible",
             }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -457,7 +477,12 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             }}
             title={`${kf.percentage}%`}
           >
-            <svg width={diamondSize} height={diamondSize} viewBox="0 0 10 10">
+            <svg
+              width={marker.visualSize}
+              height={marker.visualSize}
+              viewBox="0 0 10 10"
+              style={{ flexShrink: 0, pointerEvents: "none" }}
+            >
               {isKfSelected && (
                 <path
                   d="M5 0L10 5L5 10L0 5Z"

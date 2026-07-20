@@ -12,6 +12,7 @@ import {
 import type { TimelineElement } from "../player/store/playerStore";
 import { usePlayerStore } from "../player/store/playerStore";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import { timelineKeyframeSelectionKey } from "../player/components/timelineKeyframeIdentity";
 
 afterEach(() => {
   usePlayerStore.getState().reset();
@@ -341,5 +342,52 @@ describe("deleteSelectedKeyframes", () => {
     expect(options[0]).not.toHaveProperty("softReload");
     expect(options[1]).not.toHaveProperty("softReload");
     expect(options[2]).not.toHaveProperty("skipReload");
+  });
+
+  it("deletes two expanded lanes through their own animation and tween percentages", () => {
+    usePlayerStore.setState({
+      selectedElementId: "card",
+      selectedKeyframes: new Set([
+        timelineKeyframeSelectionKey("card", {
+          percentage: 30,
+          tweenPercentage: 20,
+          propertyGroup: "position",
+          animationId: "card-position",
+        }),
+        timelineKeyframeSelectionKey("card", {
+          percentage: 70,
+          tweenPercentage: 80,
+          propertyGroup: "visual",
+          animationId: "card-visual",
+        }),
+      ]),
+    });
+    const handleGsapRemoveKeyframe =
+      vi.fn<(animId: string, pct: number, options?: Partial<CommitMutationOptions>) => void>();
+
+    deleteSelectedKeyframes({
+      selectedGsapAnimations: [
+        { id: "card-position", keyframes: {} },
+        { id: "card-visual", keyframes: {} },
+      ],
+      handleGsapRemoveKeyframe,
+    });
+
+    expect(handleGsapRemoveKeyframe).toHaveBeenCalledTimes(2);
+    expect(
+      handleGsapRemoveKeyframe.mock.calls.map(([animationId, percentage]) => [
+        animationId,
+        percentage,
+      ]),
+    ).toEqual([
+      ["card-position", 20],
+      ["card-visual", 80],
+    ]);
+    expect(handleGsapRemoveKeyframe.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ skipReload: true }),
+    );
+    expect(handleGsapRemoveKeyframe.mock.calls[1]?.[2]).toEqual(
+      expect.objectContaining({ softReload: true }),
+    );
   });
 });
