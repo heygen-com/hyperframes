@@ -278,10 +278,13 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
   updateJobStatus(job, "encoding", "Encoding video", 75, onProgress);
 
   // ffmpegEncodeTimeout is a total wall-clock cap, not an inactivity timeout.
-  // A fixed ten-minute cap reliably kills long high-quality disk-frame encodes
-  // that are still making progress. Preserve larger operator overrides while
-  // guaranteeing four seconds of encode budget per second of source video.
-  const scaledEncodeTimeout = Math.ceil((job.duration ?? 0) * 4_000);
+  // A fixed ten-minute cap reliably kills long disk-frame encodes that are
+  // still making progress. High-quality libx264 can be substantially slower
+  // than standard presets on CPU-only Windows hosts, so give that preset the
+  // same conservative budget operators previously had to set by hand while
+  // retaining the established 4x budget for draft/standard renders.
+  const encodeBudgetPerSourceSecond = job.config.quality === "high" ? 24_000 : 4_000;
+  const scaledEncodeTimeout = Math.ceil((job.duration ?? 0) * encodeBudgetPerSourceSecond);
   const videoEngineCfg =
     scaledEncodeTimeout > engineCfg.ffmpegEncodeTimeout
       ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }

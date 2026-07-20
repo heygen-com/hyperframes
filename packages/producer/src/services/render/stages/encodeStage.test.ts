@@ -154,6 +154,26 @@ describe("gif encode args", () => {
 });
 
 describe("runEncodeStage config plumbing", () => {
+  it("gives high-quality encodes enough budget for slow Windows libx264", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const input = makeInput();
+
+    await runEncodeStage(
+      makeInput({
+        job: {
+          ...input.job,
+          config: { ...input.job.config, quality: "high" },
+          duration: 172.56,
+        },
+        engineConfig: { ffmpegEncodeTimeout: 600_000 },
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[5]).toEqual({
+      ffmpegEncodeTimeout: 4_141_440,
+    });
+  });
+
   it("scales the encode timeout for long compositions", async () => {
     const { runEncodeStage } = await import("./encodeStage.js");
 
