@@ -11,8 +11,8 @@ import { usePlayerStore } from "../../player";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  usePlayerStore.getState().reset();
 });
-usePlayerStore.getState().reset();
 
 function baseElement(overrides: Partial<DomEditSelection> = {}): DomEditSelection {
   return {
@@ -271,13 +271,14 @@ describe("FlatMotionSection", () => {
     expect(buttons().some((b) => b.textContent === "+ Add effect")).toBe(true);
     act(() => root.unmount());
   });
-});
 
-it("forwards focused bulk segment easing through the flat animation card", () => {
-  const onUpdateKeyframeEase = vi.fn();
-  const onUpdateSegmentEase = vi.fn();
-  usePlayerStore.setState({
-    focusedEaseSegment: {
+  it("forwards focused bulk segment easing through the flat animation card", () => {
+    const onUpdateKeyframeEase = vi.fn();
+    const onUpdateSegmentEase = vi.fn();
+    const store = usePlayerStore.getState();
+    store.beginTimelineSession("project-a");
+    store.setSelectedElementId("index.html#hero");
+    store.setFocusedEaseSegment({
       elementId: "index.html#hero",
       animationId: "a1",
       tweenPercentage: 50,
@@ -285,55 +286,55 @@ it("forwards focused bulk segment easing through the flat animation card", () =>
         { animationId: "a1", tweenPercentage: 50 },
         { animationId: "a2", tweenPercentage: 75 },
       ],
-    },
+    });
+    const { host, root } = renderInto(
+      <FlatMotionSection
+        element={baseElement()}
+        animations={[
+          {
+            id: "a1",
+            method: "to",
+            position: 0,
+            duration: 1,
+            properties: { x: 100 },
+            keyframes: {
+              format: "percentage",
+              keyframes: [
+                { percentage: 0, properties: { x: 0 } },
+                { percentage: 50, properties: { x: 100 } },
+              ],
+            },
+          } as never,
+        ]}
+        showTiming={false}
+        showEffects
+        onSetAttribute={vi.fn()}
+        onAddAnimation={vi.fn()}
+        onUpdateProperty={vi.fn()}
+        onUpdateMeta={vi.fn()}
+        onDeleteAnimation={vi.fn()}
+        onAddProperty={vi.fn()}
+        onRemoveProperty={vi.fn()}
+        onUpdateKeyframeEase={onUpdateKeyframeEase}
+        onUpdateSegmentEase={onUpdateSegmentEase}
+      />,
+    );
+
+    const dropdown = host.querySelector<HTMLButtonElement>("[data-ease-type-dropdown]");
+    expect(dropdown).not.toBeNull();
+    act(() => dropdown?.click());
+    const preset = host.querySelector<HTMLButtonElement>('[data-ease-preset-id="quad-out"]');
+    expect(preset).not.toBeNull();
+    act(() => preset?.click());
+
+    expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(
+      [
+        { animationId: "a1", tweenPercentage: 50 },
+        { animationId: "a2", tweenPercentage: 75 },
+      ],
+      "power2.out",
+    );
+    expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
+    act(() => root.unmount());
   });
-  const { host, root } = renderInto(
-    <FlatMotionSection
-      element={baseElement()}
-      animations={[
-        {
-          id: "a1",
-          method: "to",
-          position: 0,
-          duration: 1,
-          properties: { x: 100 },
-          keyframes: {
-            format: "percentage",
-            keyframes: [
-              { percentage: 0, properties: { x: 0 } },
-              { percentage: 50, properties: { x: 100 } },
-            ],
-          },
-        } as never,
-      ]}
-      showTiming={false}
-      showEffects
-      onSetAttribute={vi.fn()}
-      onAddAnimation={vi.fn()}
-      onUpdateProperty={vi.fn()}
-      onUpdateMeta={vi.fn()}
-      onDeleteAnimation={vi.fn()}
-      onAddProperty={vi.fn()}
-      onRemoveProperty={vi.fn()}
-      onUpdateKeyframeEase={onUpdateKeyframeEase}
-      onUpdateSegmentEase={onUpdateSegmentEase}
-    />,
-  );
-
-  const dropdown = host.querySelector<HTMLButtonElement>("[data-ease-type-dropdown]");
-  expect(dropdown).not.toBeNull();
-  act(() => dropdown?.click());
-  const preset = host.querySelector<HTMLButtonElement>('[data-ease-preset-id="quad-out"]');
-  expect(preset).not.toBeNull();
-  act(() => preset?.click());
-
-  expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(
-    [
-      { animationId: "a1", tweenPercentage: 50 },
-      { animationId: "a2", tweenPercentage: 75 },
-    ],
-    "power2.out",
-  );
-  expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
-  act(() => root.unmount());
 });

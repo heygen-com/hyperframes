@@ -27,8 +27,8 @@ describe("withTrackedGsapAnimationCallbacks", () => {
     const onUpdateSegmentEase = vi.fn();
     callbacks.onLivePreview = onLivePreview;
     callbacks.onLivePreviewEnd = onLivePreviewEnd;
-
     callbacks.onUpdateSegmentEase = onUpdateSegmentEase;
+
     const tracked = withTrackedGsapAnimationCallbacks(callbacks, vi.fn());
 
     expect(tracked.onUpdateFromProperty).toBeUndefined();

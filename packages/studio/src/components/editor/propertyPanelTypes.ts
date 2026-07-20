@@ -110,8 +110,8 @@ export interface PropertyPanelProps {
   ) => void;
   onRemoveKeyframe?: (animationId: string, percentage: number) => void;
   onUpdateKeyframeEase?: (animationId: string, percentage: number, ease: string) => void;
-  onSetAllKeyframeEases?: (animationId: string, ease: string) => void;
   onUpdateSegmentEase?: NonNullable<GsapAnimationEditCallbacks["onUpdateSegmentEase"]>;
+  onSetAllKeyframeEases?: (animationId: string, ease: string) => void;
   onConvertToKeyframes?: (animationId: string, duration?: number) => void;
   onCommitAnimatedProperty?: (
     selection: DomEditSelection,

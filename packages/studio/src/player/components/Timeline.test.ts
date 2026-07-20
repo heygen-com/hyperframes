@@ -301,7 +301,6 @@ describe("Timeline provider boundary", () => {
     act(() => root.unmount());
   });
 
-  // fallow-ignore-next-line code-duplication
   it("renders the gutter without legacy icons or hue dots", () => {
     const { host, root } = renderBasicTimeline();
 
@@ -398,8 +397,8 @@ describe("Timeline provider boundary", () => {
       );
     });
 
-    const viewport = host.querySelector('[aria-label="Timeline"]')?.firstElementChild;
-    expect(viewport).toBeInstanceOf(HTMLElement);
+    const viewport = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
+    expect(viewport).not.toBeNull();
     act(() => {
       viewport?.dispatchEvent(
         new MouseEvent("pointerdown", {
