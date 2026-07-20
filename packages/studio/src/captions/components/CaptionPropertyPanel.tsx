@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { useCaptionStore } from "../store";
 import type { CaptionStyle } from "../types";
 import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
+import { readGsapNumber } from "./CaptionOverlayUtils";
 import { Section, Row, inputCls } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -129,10 +130,10 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
                 wrapper.appendChild(el);
               }
               // Read current wrapper state and merge with updates
-              const curX = iframeGsap.getProperty(wrapper, "x") || 0;
-              const curY = iframeGsap.getProperty(wrapper, "y") || 0;
-              const curScale = iframeGsap.getProperty(wrapper, "scale") || 1;
-              const curRotation = iframeGsap.getProperty(wrapper, "rotation") || 0;
+              const curX = readGsapNumber(iframeGsap.getProperty, wrapper, "x", 0);
+              const curY = readGsapNumber(iframeGsap.getProperty, wrapper, "y", 0);
+              const curScale = readGsapNumber(iframeGsap.getProperty, wrapper, "scale", 1);
+              const curRotation = readGsapNumber(iframeGsap.getProperty, wrapper, "rotation", 0);
               iframeGsap.set(wrapper, {
                 x: updates.x ?? curX,
                 y: updates.y ?? curY,
