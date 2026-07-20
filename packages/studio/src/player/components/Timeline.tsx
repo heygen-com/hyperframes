@@ -1,10 +1,9 @@
-import { useRef, useMemo, useCallback, useState, useEffect, memo } from "react";
+import { useRef, useMemo, useCallback, useState, memo } from "react";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
-import { useMountEffect } from "../../hooks/useMountEffect";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
@@ -16,14 +15,12 @@ import { TimelineCanvas } from "./TimelineCanvas";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { TimelineOverlays } from "./TimelineOverlays";
-import { animationContributesLane } from "./TimelinePropertyLanes";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
-import { GUTTER, LABEL_COL_W, generateTicks } from "./timelineLayout";
+import { GUTTER, LABEL_COL_W } from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
-import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
 import {
@@ -37,6 +34,14 @@ import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { useStudioPlaybackContextOptional } from "../../contexts/StudioContext";
 import { TimelineRazorGuide, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
+import {
+  getEffectiveTimelineDuration,
+  getTimelinePreviewElement,
+  hasKeyframedTimelineClips,
+} from "./timelineViewModel";
+import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
+import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
+import { useTimelineTicks } from "./useTimelineTicks";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -118,13 +123,7 @@ export const Timeline = memo(function Timeline({
   // Label mode = comp has keyframed clips (not just when expanded): keeps the layer
   // disclosure + property column visible and reserves a GUTTER before 0s (Figma).
   const hasKeyframedClips = useMemo(
-    () =>
-      Array.from(gsapAnimations.values()).some((list) =>
-        // Same lane-contribution predicate the layout uses: real keyframes OR a
-        // synthesizable flat tween. Checking animation.keyframes alone left a
-        // flat-tween-only comp without its reserved label column.
-        list.some((animation) => animationContributesLane(animation)),
-      ),
+    () => hasKeyframedTimelineClips(gsapAnimations),
     [gsapAnimations],
   );
   const labelMode = STUDIO_KEYFRAMES_ENABLED && hasKeyframedClips;
@@ -140,20 +139,7 @@ export const Timeline = memo(function Timeline({
   const activeTool = usePlayerStore((s) => s.activeTool);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
-  const [shiftHeld, setShiftHeld] = useState(false);
-
-  useMountEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(e.type === "keydown");
-    const blur = () => setShiftHeld(false);
-    window.addEventListener("keydown", key);
-    window.addEventListener("keyup", key);
-    window.addEventListener("blur", blur);
-    return () => {
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("keyup", key);
-      window.removeEventListener("blur", blur);
-    };
-  });
+  const shiftHeld = useTimelineShiftModifier();
 
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
@@ -170,12 +156,10 @@ export const Timeline = memo(function Timeline({
   // Last horizontal scroll offset, restored across the post-edit iframe reload (pinned zoom).
   const lastScrollLeftRef = useRef(0);
 
-  const effectiveDuration = useMemo(() => {
-    const safeDur = Number.isFinite(duration) ? duration : 0;
-    if (rawElements.length === 0) return safeDur;
-    const result = Math.max(safeDur, ...rawElements.map((el) => el.start + el.duration));
-    return Number.isFinite(result) ? result : safeDur;
-  }, [rawElements, duration]);
+  const effectiveDuration = useMemo(
+    () => getEffectiveTimelineDuration(duration, rawElements),
+    [duration, rawElements],
+  );
 
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   useAutoExpandKeyframedClips(gsapAnimations);
@@ -293,14 +277,6 @@ export const Timeline = memo(function Timeline({
       toggleSelectedKeyframe,
     });
 
-  const selectedElement = useMemo(
-    () =>
-      expandedElements.find((element) => (element.key ?? element.id) === selectedElementId) ?? null,
-    [expandedElements, selectedElementId],
-  );
-  const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
-  selectedElementRef.current = selectedElement;
-
   const {
     pps,
     fitPps,
@@ -399,41 +375,15 @@ export const Timeline = memo(function Timeline({
   });
   setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
 
-  const prevSelectedRef = useRef(selectedElementRef.current);
-  // eslint-disable-next-line no-restricted-syntax, react-hooks/exhaustive-deps
-  useEffect(() => {
-    const prev = prevSelectedRef.current;
-    const curr = selectedElementRef.current;
-    prevSelectedRef.current = curr;
-    if (prev && !curr) {
-      setShowPopover(false);
-      setRangeSelection(null);
-    }
-  });
-
-  // Frame display mode labels ruler ticks as frame numbers — pass the fps so ticks snap to frames.
-  const tickFps = timeDisplayMode === "frame" ? STUDIO_PREVIEW_FPS : undefined;
-  const { major, minor } = useMemo(
-    () => generateTicks(displayDuration, pps, tickFps),
-    [displayDuration, pps, tickFps],
+  useTimelineSelectionLifecycle(expandedElements, selectedElementId, setShowPopover, () =>
+    setRangeSelection(null),
   );
+
+  const { major, minor } = useTimelineTicks(displayDuration, pps, timeDisplayMode);
   const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
 
   const getPreviewElement = useCallback(
-    (element: TimelineElement): TimelineElement => {
-      if (
-        resizingClip &&
-        (resizingClip.element.key ?? resizingClip.element.id) === (element.key ?? element.id)
-      ) {
-        return {
-          ...element,
-          start: resizingClip.previewStart,
-          duration: resizingClip.previewDuration,
-          playbackStart: resizingClip.previewPlaybackStart,
-        };
-      }
-      return element;
-    },
+    (element: TimelineElement): TimelineElement => getTimelinePreviewElement(element, resizingClip),
     [resizingClip],
   );
 

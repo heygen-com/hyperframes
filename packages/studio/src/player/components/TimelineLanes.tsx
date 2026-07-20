@@ -1,111 +1,24 @@
-import { type ReactNode } from "react";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
 import { TimelineTrackHeader } from "./TimelineTrackHeader";
 import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
-import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
-import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
-import type { TimelineTheme } from "./timelineTheme";
 import { CLIP_Y, CLIP_HANDLE_W, TRACK_H, getTimelineRowHeight } from "./timelineLayout";
-import {
-  usePlayerStore,
-  type TimelineElement,
-  type KeyframeCacheEntry,
-} from "../store/playerStore";
-import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import {
   isMultiDragPassenger,
   multiDragPassengerOffsetPx,
   type MultiDragPreviewInput,
 } from "./timelineMultiDragPreview";
-import type { TrackVisualStyle } from "./timelineIcons";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
 import { renderClipChildren } from "./timelineClipChildren";
-
-/**
- * Props shared by the scroll container ({@link TimelineCanvas}) and the lane
- * renderer below. TimelineCanvas passes these straight through via spread, so
- * they are declared once here and both prop types compose from this base — no
- * duplicated prop list.
- */
-export interface TimelineLaneBaseProps {
-  pps: number;
-  contentOrigin: number;
-  contentGutter: number;
-  trackContentWidth: number;
-  theme: TimelineTheme;
-  displayTrackOrder: number[];
-  rowHeights: readonly number[];
-  trackOrder: number[];
-  tracks: [number, TimelineElement[]][];
-  trackStyles: Map<number, TrackVisualStyle>;
-  laneCounts: ReadonlyMap<string, number>;
-  selectedElementId: string | null;
-  selectedElementIds: Set<string>;
-  hoveredClip: string | null;
-  draggedClip: DraggedClipState | null;
-  blockedClipRef: React.RefObject<BlockedClipState | null>;
-  suppressClickRef: React.RefObject<boolean>;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-  renderClipContent?: (
-    element: TimelineElement,
-    style: { clip: string; label: string },
-  ) => ReactNode;
-  renderClipOverlay?: (element: TimelineElement) => ReactNode;
-  onDrillDown?: (element: TimelineElement) => void;
-  onSelectElement?: (element: TimelineElement | null) => void;
-  setHoveredClip: (key: string | null) => void;
-  setShowPopover: (v: boolean) => void;
-  setRangeSelection: (v: null) => void;
-  setResizingClip: (v: ResizingClipState | null) => void;
-  setDraggedClip: (v: DraggedClipState | null) => void;
-  setSelectedElementId: (id: string | null) => void;
-  syncClipDragAutoScroll: (x: number, y: number) => void;
-  shiftClickClipRef: React.RefObject<{
-    element: TimelineElement;
-    anchorX: number;
-    anchorY: number;
-  } | null>;
-  getPreviewElement: (element: TimelineElement) => TimelineElement;
-  getTrackStyle: (tag: string) => TrackVisualStyle;
-  keyframeCache?: Map<string, KeyframeCacheEntry>;
-  gsapAnimations: Map<string, GsapAnimation[]>;
-  selectedKeyframes: Set<string>;
-  currentTime: number;
-  onSeek?: (time: number) => void;
-  onSelectSegment?: (elementId: string, target: TimelineKeyframeTarget) => void;
-  onClickKeyframe?: (element: TimelineElement, target: TimelineKeyframeTarget) => void;
-  onShiftClickKeyframe?: (elementId: string, target: TimelineKeyframeTarget) => void;
-  onContextMenuKeyframe?: (
-    e: React.MouseEvent,
-    elementId: string,
-    target: TimelineKeyframeTarget,
-  ) => void;
-  onMoveKeyframe?: (
-    elementId: string,
-    fromClipPercentage: number,
-    toClipPercentage: number,
-    propertyGroup?: string,
-    tweenPercentage?: number,
-    animationId?: string,
-  ) => Promise<boolean>;
-  onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
-  /**
-   * Right-click on EMPTY lane space (not on a clip — those preventDefault
-   * before this fires — not the gutter/ruler, not below the lanes). `time` is
-   * the timeline time (seconds) under the pointer on that lane.
-   */
-  onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
-  beatAnalysis?: MusicBeatAnalysis | null;
-}
+import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
