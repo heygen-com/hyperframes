@@ -27,6 +27,7 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import { useTimelineLogicalRows } from "./useTimelineLogicalRows";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -99,14 +100,20 @@ export function TimelineLanes({
   onRazorSplit,
   onRazorSplitAll,
 }: TimelineLanesProps) {
-  // Per-INSTANCE, so two timelines on one page (a mini-timeline in a modal
-  // beside the main one) cannot both mint `...-track-0` and have every caret's
-  // aria-controls resolve to whichever mounted first. React's useId embeds
-  // colons, which are legal in an id and in aria-controls but need escaping in
-  // a CSS `#id` selector, so they come out here and the prefix stays plain.
+  // ponytail: One per-instance namespace prevents aria-controls and aria-owns
+  // from resolving into a second timeline that renders the same logical rows.
   const lanesIdPrefix = `timeline-lanes${useId().replaceAll(":", "")}`;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const toggleClipExpanded = usePlayerStore((s) => s.toggleClipExpanded);
+  const { logicalRows, logicalRowsByTrack } = useTimelineLogicalRows({
+    tracks,
+    displayTrackOrder,
+    laneCounts,
+    selectedElementId,
+    selectedElementIds,
+    expandedClipIds,
+    gsapAnimations,
+  });
   const toggleClipExpandedTracked = (key: string) => {
     const willExpand = !expandedClipIds.has(key);
     trackStudioKeyframeLaneExpand({ expanded: willExpand });
@@ -130,8 +137,10 @@ export function TimelineLanes({
       : [];
   return (
     <div
-      role="list"
+      role="treegrid"
       aria-label="Timeline tracks"
+      aria-rowcount={logicalRows.length}
+      aria-colcount={2}
       className={rowsVirtualized ? "absolute inset-0" : undefined}
     >
       {
@@ -140,6 +149,9 @@ export function TimelineLanes({
           const trackNum = displayTrackOrder[row];
           if (trackNum === undefined) return null;
           const displayNumber = trackDisplayNumber(displayTrackOrder, trackNum);
+          const trackLogicalRows = logicalRowsByTrack.get(trackNum) ?? [];
+          const logicalRow = trackLogicalRows[0];
+          if (!logicalRow) return null;
           const rowHeight = rowGeometry.getRowHeight(row);
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
           const renderElements = rowsVirtualized
@@ -156,9 +168,7 @@ export function TimelineLanes({
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
           // All lanes use the same uniform color — no alternating stripes.
           const rowBackground = theme.rowBackground;
-          // The beat-dot strip occupies the top of this track's lane (active track,
-          // or the music track when nothing is selected). When shown, keyframe
-          // diamonds shrink + drop to the bottom half so they don't collide with it.
+          // Keep diamonds below the beat strip on the active/music track.
           const beatStripOnTrack =
             (beatAnalysis?.beatTimes?.length ?? 0) >= 2 &&
             (selectedElementId
@@ -166,9 +176,7 @@ export function TimelineLanes({
               : els.some(isMusicTrack));
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
-          // The one keyframed element this track shows lanes for (selected, else
-          // most lanes). A track can hold several elements; scoping to one keeps
-          // their keyframes from cramming into a single row.
+          // Only the selected/most-keyframed clip owns expanded lanes on a shared track.
           const keyframeClip = resolveTrackKeyframeClip(
             els,
             laneCounts,
@@ -178,17 +186,16 @@ export function TimelineLanes({
           const keyframeClipKey = keyframeClip?.key ?? keyframeClip?.id;
           const keyframeClipExpanded =
             keyframeClipKey != null && expandedClipIds.has(keyframeClipKey);
-          // Minted here because this is the only place that sees BOTH ends of
-          // the disclosure: the caret in the sticky header and the diamond lanes
-          // on the canvas. Keyed by display row, not by `trackNum`, which is a
-          // fractional sort key and would mint ids like `...-0.16666666666666666`.
+          // Link the sticky caret to the canvas lanes with a stable display-row id.
           const lanesId = `${lanesIdPrefix}-track-${row}`;
           return (
             <TimelineTrackRow
               key={rowKey}
               index={row}
               rowKey={rowKey}
-              rowCount={displayTrackOrder.length}
+              logicalRow={logicalRow}
+              propertyRows={trackLogicalRows.slice(1)}
+              lanesId={lanesId}
               top={rowGeometry.getRowTop(row)}
               height={rowHeight}
               virtualized={rowsVirtualized}
@@ -226,6 +233,8 @@ export function TimelineLanes({
                 onSeek={onSeek}
               />
               <div
+                role="gridcell"
+                aria-colindex={2}
                 style={{
                   width: trackContentWidth,
                   marginLeft: contentGutter, // room for a 0% diamond left of t=0
@@ -502,12 +511,8 @@ export function TimelineLanes({
                         )}
                       </TimelineClip>
                     );
-                    // Mounted for the track's keyframe clip in BOTH disclosure
-                    // states, so the header caret's aria-controls resolves while
-                    // collapsed too; collapsed just feeds it no animations, so
-                    // the wrapper renders empty. The key is stable across a
-                    // multi-drag: without it the passenger branch below remounts
-                    // this subtree and interrupts the gesture.
+                    // Keep this shell mounted while collapsed so aria-controls stays valid
+                    // and multi-drag cannot remount the subtree mid-gesture.
                     const propertyLanes = isTrackKeyframeClip && (
                       <TimelinePropertyLanes
                         key={`${clipKey}-property-lanes`}
@@ -544,10 +549,7 @@ export function TimelineLanes({
                         suppressClickRef={suppressClickRef}
                       />
                     );
-                    // Keep one keyed top-level child per element. Returning an
-                    // array here makes React reconcile the outer array by
-                    // position, so a window shift remounts otherwise stable
-                    // clip keys and can tear down focus mid-reveal.
+                    // One keyed child prevents window shifts from remounting focused clips.
                     if (!isPassenger) {
                       return (
                         <Fragment key={clipKey}>

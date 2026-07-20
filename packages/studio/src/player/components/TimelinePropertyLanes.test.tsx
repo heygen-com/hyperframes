@@ -70,6 +70,7 @@ function renderPropertyLanes(overrides: Partial<TimelinePropertyLanesProps> = {}
   act(() => {
     root.render(
       <TimelinePropertyLanes
+        id="timeline-property-lanes-test"
         animations={[]}
         clipStart={0}
         clipDuration={1}
@@ -367,6 +368,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => {
       root.render(
         <TimelinePropertyLanes
+          id="timeline-property-lanes-selected-test"
           animations={animations}
           clipStart={0}
           clipDuration={1}
@@ -417,6 +419,7 @@ describe("TimelinePropertyLanes", () => {
     act(() => {
       root.render(
         <TimelinePropertyLanes
+          id="timeline-property-lanes-unselected-test"
           animations={animations}
           clipStart={0}
           clipDuration={1}

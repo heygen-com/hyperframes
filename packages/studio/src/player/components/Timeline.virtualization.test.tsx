@@ -132,7 +132,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
 
     const { host, root } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 2 }));
 
-    const rows = host.querySelectorAll('[role="listitem"]');
+    const rows = host.querySelectorAll("[data-timeline-row]");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(16);
 
@@ -201,16 +201,15 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
 
     await settleUntil(
       () =>
-        (host.querySelector('[role="list"]')?.querySelectorAll('[role="listitem"]').length ?? 0) >
-        0,
+        (host.querySelector('[role="treegrid"]')?.querySelectorAll('[role="row"]').length ?? 0) > 0,
     );
-    const list = host.querySelector<HTMLElement>('[role="list"]');
-    const rows = list?.querySelectorAll('[role="listitem"]') ?? [];
+    const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+    const rows = treegrid?.querySelectorAll('[role="row"]') ?? [];
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(16);
-    expect(rows[0]?.getAttribute("aria-posinset")).toBe("1");
-    expect(rows[0]?.getAttribute("aria-setsize")).toBe("1000");
-    expect(list?.parentElement?.style.height).toBe(
+    expect(rows[0]?.getAttribute("aria-rowindex")).toBe("1");
+    expect(treegrid?.getAttribute("aria-rowcount")).toBe("1000");
+    expect(treegrid?.parentElement?.style.height).toBe(
       `${getTimelineCanvasHeight(Array.from({ length: 1_000 }, () => TRACK_H))}px`,
     );
 
@@ -226,7 +225,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
         scroller.dispatchEvent(new Event("scroll"));
       });
     }
-    expect(list?.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
+    expect(treegrid?.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
     expect(document.activeElement).toBe(focusedControl);
 
     act(() => root.unmount());
