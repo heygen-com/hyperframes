@@ -1,6 +1,7 @@
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 // The full GSAP easing vocabulary offered by the "Set all…" bulk control —
 // every standard family in in/out/inOut, so authors aren't limited to a curated
@@ -44,6 +45,7 @@ export function KeyframeEaseList({
   keyframes,
   globalEase,
   expandedPct,
+  collidingAnimationTargets,
   onToggle,
   onEaseCommit,
   onApplyAll,
@@ -51,6 +53,7 @@ export function KeyframeEaseList({
   keyframes: GsapPercentageKeyframe[];
   globalEase: string;
   expandedPct: number | null;
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
   onToggle: (pct: number | null) => void;
   onEaseCommit: (pct: number, ease: string) => void;
   /** Apply one ease to every segment at once (clears per-segment overrides). */
@@ -93,7 +96,11 @@ export function KeyframeEaseList({
           ? "Custom"
           : (EASE_LABELS[segEase] ?? segEase);
         return (
-          <div key={`${i}-${kf.percentage}`} className="rounded-md bg-neutral-900/50">
+          <div
+            key={`${i}-${kf.percentage}`}
+            data-ease-segment-pct={kf.percentage}
+            className="rounded-md bg-neutral-900/50"
+          >
             <button
               type="button"
               onClick={() => onToggle(isExpanded ? null : kf.percentage)}
@@ -115,6 +122,7 @@ export function KeyframeEaseList({
               <div className="px-2 pb-2">
                 <EaseCurveSection
                   ease={segEase}
+                  collidingAnimationTargets={collidingAnimationTargets}
                   onCustomEaseCommit={(ease) => onEaseCommit(kf.percentage, ease)}
                 />
               </div>

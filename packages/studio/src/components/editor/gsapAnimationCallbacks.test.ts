@@ -24,9 +24,11 @@ describe("withTrackedGsapAnimationCallbacks", () => {
     const callbacks = requiredCallbacks();
     const onLivePreview = vi.fn();
     const onLivePreviewEnd = vi.fn();
+    const onUpdateSegmentEase = vi.fn();
     callbacks.onLivePreview = onLivePreview;
     callbacks.onLivePreviewEnd = onLivePreviewEnd;
 
+    callbacks.onUpdateSegmentEase = onUpdateSegmentEase;
     const tracked = withTrackedGsapAnimationCallbacks(callbacks, vi.fn());
 
     expect(tracked.onUpdateFromProperty).toBeUndefined();
@@ -39,6 +41,7 @@ describe("withTrackedGsapAnimationCallbacks", () => {
     expect(tracked.onUnroll).toBeUndefined();
     expect(tracked.onLivePreview).toBe(onLivePreview);
     expect(tracked.onLivePreviewEnd).toBe(onLivePreviewEnd);
+    expect(tracked.onUpdateSegmentEase).toBe(onUpdateSegmentEase);
   });
 
   it("tracks each edit once before invoking its mutation callback", () => {
