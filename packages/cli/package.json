@@ -31,7 +31,7 @@
   "dependencies": {
     "@hono/node-server": "^1.8.0",
     "@puppeteer/browsers": "^3.0.6",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "debug": "^4.4.0",
