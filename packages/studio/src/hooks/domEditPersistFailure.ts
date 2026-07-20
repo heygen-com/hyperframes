@@ -1,5 +1,6 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
+import { DomEditSaveQueueOpenError } from "../utils/domEditSaveQueue";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
 export class DomEditPersistUnresolvableError extends Error {
@@ -67,8 +68,9 @@ export function reportDomEditPersistFailure(
   });
 
   const wasAlreadyToasted =
-    (error instanceof DomEditPersistUnsafeValueError || error instanceof StudioSaveHttpError) &&
-    error.alreadyToasted;
+    error instanceof DomEditSaveQueueOpenError ||
+    ((error instanceof DomEditPersistUnsafeValueError || error instanceof StudioSaveHttpError) &&
+      error.alreadyToasted);
   if (wasAlreadyToasted) {
     return;
   }

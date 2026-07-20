@@ -2,6 +2,8 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
+import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import type { PatchOperation } from "../utils/sourcePatcher";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { useDomEditTextCommits, type UseDomEditTextCommitsParams } from "./useDomEditTextCommits";
 
@@ -115,6 +117,7 @@ describe("useDomEditTextCommits", () => {
       refreshDomEditSelectionFromPreview: vi.fn(),
       buildDomSelectionFromTarget: vi.fn(async () => null),
       persistDomEditOperations,
+      queueDomEditSave: async (save) => save(),
       resolveImportedFontAsset: () => null,
     });
 
@@ -131,5 +134,67 @@ describe("useDomEditTextCommits", () => {
     });
 
     expect(element.innerHTML).toBe("Newest");
+  });
+
+  it("persists overlapping plain text commits in issue order and keeps the newest content", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("expected iframe document");
+    doc.body.innerHTML = '<div id="card">Original</div>';
+    const element = doc.getElementById("card");
+    const HTMLElementCtor = doc.defaultView?.HTMLElement;
+    if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) {
+      throw new Error("expected preview element");
+    }
+    const selection = selectionFor(element);
+    const firstPersist = createDeferred<void>();
+    const firstPersistStarted = createDeferred<void>();
+    const persistedValues: string[] = [];
+    const saveQueue = createDomEditSaveQueue();
+    let persistCount = 0;
+    const persistDomEditOperations: UseDomEditTextCommitsParams["persistDomEditOperations"] = vi.fn(
+      async (_selection: DomEditSelection, operations: PatchOperation[]) => {
+        persistCount += 1;
+        const value = operations.find((operation) => operation.property === "text")?.value;
+        if (typeof value !== "string") throw new Error("expected text operation");
+        persistedValues.push(value);
+        if (persistCount === 1) {
+          firstPersistStarted.resolve(undefined);
+          await firstPersist.promise;
+        }
+      },
+    );
+    const hook = renderTextCommitHook({
+      activeCompPath: "index.html",
+      previewIframeRef: { current: iframe },
+      showToast: vi.fn(),
+      domEditSelection: selection,
+      applyDomSelection: vi.fn(),
+      refreshDomEditSelectionFromPreview: vi.fn(),
+      buildDomSelectionFromTarget: vi.fn(async () => null),
+      persistDomEditOperations,
+      queueDomEditSave: saveQueue.enqueue,
+      resolveImportedFontAsset: () => null,
+    });
+
+    let firstCommit: Promise<void> = Promise.resolve();
+    let secondCommit: Promise<void> = Promise.resolve();
+    act(() => {
+      firstCommit = hook.handleDomTextCommit("First", "self");
+    });
+    await firstPersistStarted.promise;
+    act(() => {
+      secondCommit = hook.handleDomTextCommit("Second", "self");
+    });
+    expect(persistDomEditOperations).toHaveBeenCalledTimes(1);
+    firstPersist.resolve(undefined);
+    await act(async () => {
+      await Promise.all([firstCommit, secondCommit]);
+    });
+
+    expect(persistedValues).toEqual(["First", "Second"]);
+    expect(element.textContent).toBe("Second");
+    saveQueue.destroy();
   });
 });

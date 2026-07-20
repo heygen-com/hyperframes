@@ -175,6 +175,45 @@ describe("useDomSelection — timeline-select race guard", () => {
   });
 });
 
+describe("useDomSelection - post-persist resync guard", () => {
+  beforeEach(() => deferreds.clear());
+  afterEach(() => deferreds.clear());
+
+  it("does not snap back to selection A when the user selects B during resync", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument!;
+    const elA = doc.createElement("div");
+    elA.id = "a";
+    const elB = doc.createElement("div");
+    elB.id = "b";
+    doc.body.append(elA, elB);
+    const selectionA = makeSelection("A", elA);
+    const selectionB = makeSelection("B", elB);
+    const harness = renderHarness({
+      rightPanelTab: "design",
+      setRightPanelTab: vi.fn(),
+      iframe,
+      timelineElements: [],
+    });
+
+    act(() => harness.current().applyDomSelection(selectionA));
+    let resync: Promise<void> = Promise.resolve();
+    act(() => {
+      resync = harness.current().refreshDomEditSelectionFromPreview(selectionA);
+    });
+    act(() => harness.current().applyDomSelection(selectionB));
+    await act(async () => {
+      deferreds.get("a")?.resolve();
+      await resync;
+    });
+
+    expect(harness.current().domEditSelection?.id).toBe("b");
+    harness.cleanup();
+    iframe.remove();
+  });
+});
+
 describe("useDomSelection — marquee multi-select survives the late async primary", () => {
   beforeEach(() => {
     deferreds.clear();

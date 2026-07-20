@@ -265,10 +265,8 @@ export function useDomEditSession({
           // absent from source (script-created nodes the SDK can't model), and
           // the paths so cross-file edits (session models only the active comp)
           // skip instead of emitting structural element_not_found noise.
-          runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
-            targetPath,
-            compositionPath: activeCompPath,
-          });
+          const shadowCtx = { targetPath, compositionPath: activeCompPath };
+          runResolverShadow(sdkSession, selection.hfId, operations, originalContent, shadowCtx);
           return sdkCutoverPersist(
             selection,
             operations,
@@ -440,6 +438,7 @@ export function useDomEditSession({
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
     resolveAllDomSelectionsFromPreviewPoint,
+    buildDomSelectionFromTarget,
     updateDomEditHoverSelection,
     setActiveGroupElement,
     onClickToSource,

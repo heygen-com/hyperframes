@@ -389,6 +389,7 @@ export function useDomEditCommits({
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
     persistDomEditOperations,
+    queueDomEditSave,
     resolveImportedFontAsset,
     showToast,
   });

@@ -239,7 +239,7 @@ export function StyleSections({
                 if (!normalized) return;
                 for (const [property, value] of buildStrokeWidthStyleUpdates(
                   normalized,
-                  borderStyleValue,
+                  styles["border-style"] || styles["border-top-style"] || "none",
                 )) {
                   await onSetStyle(property, value);
                 }
@@ -252,7 +252,11 @@ export function StyleSections({
               onChange={async (next) => {
                 for (const [property, value] of buildStrokeStyleUpdates(
                   next,
-                  formatPxMetricValue(borderWidthValue),
+                  formatPxMetricValue(
+                    parsePxMetricValue(styles["border-width"] ?? "") ??
+                      parsePxMetricValue(styles["border-top-width"] ?? "") ??
+                      0,
+                  ),
                 )) {
                   await onSetStyle(property, value);
                 }

@@ -52,6 +52,7 @@ export interface UseDomEditTextCommitsParams {
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
   persistDomEditOperations: PersistDomEditOperations;
+  queueDomEditSave: (save: () => Promise<void>) => Promise<void>;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
 }
 
@@ -140,10 +141,16 @@ export function useDomEditTextCommits({
   refreshDomEditSelectionFromPreview,
   buildDomSelectionFromTarget,
   persistDomEditOperations,
+  queueDomEditSave,
   resolveImportedFontAsset,
 }: UseDomEditTextCommitsParams) {
   const domTextCommitVersionRef = useRef(0);
   const domStyleCommitVersionRef = useRef(new Map<string, number>());
+  const queuedPersistDomEditOperations: PersistDomEditOperations = useCallback(
+    (selection, operations, options) =>
+      queueDomEditSave(() => persistDomEditOperations(selection, operations, options)),
+    [persistDomEditOperations, queueDomEditSave],
+  );
 
   const {
     handleDomAttributeCommit,
@@ -156,7 +163,7 @@ export function useDomEditTextCommits({
     showToast,
     domEditSelection,
     refreshDomEditSelectionFromPreview,
-    persistDomEditOperations,
+    persistDomEditOperations: queuedPersistDomEditOperations,
   });
 
   const handleDomStyleCommit = useCallback(
@@ -177,6 +184,7 @@ export function useDomEditTextCommits({
         property === "background-image" && isImageBackgroundValue(value);
       let editedElement: HTMLElement | null = null;
       let previousInlineValue: string | null = null;
+      let previousComputedValue: string | undefined;
       const operations = buildDomStyleCommitOperations(property, value, isImageBackgroundCommit);
       // Inline-style commits never full-reload the preview (that blanks the iframe
       // until it re-renders): the live element was already mutated optimistically in
@@ -191,10 +199,14 @@ export function useDomEditTextCommits({
           if (!el) return;
           editedElement = el;
           previousInlineValue = el.style.getPropertyValue(property);
+          previousComputedValue = domEditSelection.computedStyles[property];
         },
         apply: () => {
           if (!editedElement) return;
           editedElement.style.setProperty(property, normalizedValue);
+          // The panel reads this exact snapshot synchronously, so keep coupled
+          // style builders fresh while persistence is still pending.
+          domEditSelection.computedStyles[property] = normalizedValue;
           if (property === "font-family" && doc) {
             injectPreviewGoogleFont(doc, value);
             if (importedFont) injectPreviewImportedFont(doc, importedFont);
@@ -206,7 +218,7 @@ export function useDomEditTextCommits({
           }
         },
         persist: () =>
-          persistDomEditOperations(domEditSelection, operations, {
+          queuedPersistDomEditOperations(domEditSelection, operations, {
             label: "Edit layer style",
             skipRefresh,
             prepareContent: importedFont
@@ -222,6 +234,11 @@ export function useDomEditTextCommits({
           } else {
             editedElement.style.setProperty(property, previousInlineValue);
           }
+          if (previousComputedValue === undefined) {
+            delete domEditSelection.computedStyles[property];
+          } else {
+            domEditSelection.computedStyles[property] = previousComputedValue;
+          }
         },
         onError: (error) =>
           reportDomEditPersistFailure(domEditSelection, operations, error, showToast),
@@ -232,7 +249,7 @@ export function useDomEditTextCommits({
     [
       activeCompPath,
       domEditSelection,
-      persistDomEditOperations,
+      queuedPersistDomEditOperations,
       refreshDomEditSelectionFromPreview,
       resolveImportedFontAsset,
       showToast,
@@ -272,7 +289,7 @@ export function useDomEditTextCommits({
           if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
             throw new DomEditPersistUnsupportedTextStructureError();
           }
-          await persistDomEditOperations(domEditSelection, textCommit.operations, {
+          await queuedPersistDomEditOperations(domEditSelection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,
             shouldSave: isLatestTextCommit,
@@ -301,8 +318,8 @@ export function useDomEditTextCommits({
       applyDomSelection,
       buildDomSelectionFromTarget,
       domEditSelection,
-      persistDomEditOperations,
       previewIframeRef,
+      queuedPersistDomEditOperations,
       showToast,
     ],
   );
@@ -345,7 +362,7 @@ export function useDomEditTextCommits({
           if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
             throw new DomEditPersistUnsupportedTextStructureError();
           }
-          await persistDomEditOperations(selection, textCommit.operations, {
+          await queuedPersistDomEditOperations(selection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,
             prepareContent: importedFont
@@ -375,8 +392,8 @@ export function useDomEditTextCommits({
       activeCompPath,
       applyDomSelection,
       buildDomSelectionFromTarget,
-      persistDomEditOperations,
       previewIframeRef,
+      queuedPersistDomEditOperations,
       showToast,
     ],
   );

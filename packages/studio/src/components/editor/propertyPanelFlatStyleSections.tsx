@@ -205,7 +205,11 @@ function FlatStrokeRow({
         onChange={async (next) => {
           for (const [property, value] of buildStrokeStyleUpdates(
             next,
-            formatPxMetricValue(borderWidthValue),
+            formatPxMetricValue(
+              parsePxMetricValue(styles["border-width"] ?? "") ??
+                parsePxMetricValue(styles["border-top-width"] ?? "") ??
+                0,
+            ),
           )) {
             await onSetStyle(property, value);
           }
