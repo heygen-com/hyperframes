@@ -119,6 +119,17 @@ export function clearKeyframeCacheForElement(sourceFile: string, elementId: stri
  */
 export function clearKeyframeCacheForFile(sourceFile: string): void {
   const { keyframeCache, gsapAnimations } = usePlayerStore.getState();
+  const ids = cachedElementIdsForFile(sourceFile, keyframeCache, gsapAnimations);
+  for (const id of ids) {
+    clearKeyframeCacheForElement(sourceFile, id);
+  }
+}
+
+function cachedElementIdsForFile(
+  sourceFile: string,
+  keyframeCache: ReadonlyMap<string, KeyframeCacheEntry>,
+  gsapAnimations: ReadonlyMap<string, GsapAnimation[]>,
+): Set<string> {
   const sfPrefix = `${sourceFile}#`;
   const fallbackPrefix = "index.html#";
   const ids = new Set<string>();
@@ -129,15 +140,42 @@ export function clearKeyframeCacheForFile(sourceFile: string): void {
     const hashIdx = key.indexOf("#");
     if (hashIdx !== -1) ids.add(key.slice(hashIdx + 1));
   }
-  for (const id of ids) {
-    clearKeyframeCacheForElement(sourceFile, id);
-  }
+  return ids;
 }
 
 function elementCacheKeys(sourceFile: string, elementId: string): string[] {
   return sourceFile === "index.html"
     ? [`index.html#${elementId}`, elementId]
     : [`${sourceFile}#${elementId}`, `index.html#${elementId}`, elementId];
+}
+
+/** Replace one file's complete cache snapshot with one atomic store publish. */
+export function replaceKeyframeCacheForFile(
+  sourceFile: string,
+  entries: ReadonlyMap<string, KeyframeCacheEntry>,
+  animationsByElement: ReadonlyMap<string, GsapAnimation[]>,
+): void {
+  const { keyframeCache, gsapAnimations } = usePlayerStore.getState();
+  const nextKeyframeCache = new Map(keyframeCache);
+  const nextGsapAnimations = new Map(gsapAnimations);
+  for (const id of cachedElementIdsForFile(sourceFile, keyframeCache, gsapAnimations)) {
+    for (const key of elementCacheKeys(sourceFile, id)) {
+      nextKeyframeCache.delete(key);
+      nextGsapAnimations.delete(key);
+    }
+  }
+  for (const [id, entry] of entries) {
+    const animations = animationsByElement.get(id);
+    for (const key of elementCacheKeys(sourceFile, id)) {
+      nextKeyframeCache.set(key, entry);
+      if (animations) nextGsapAnimations.set(key, animations);
+      else nextGsapAnimations.delete(key);
+    }
+  }
+  usePlayerStore.setState({
+    keyframeCache: nextKeyframeCache,
+    gsapAnimations: nextGsapAnimations,
+  });
 }
 
 export function writeGsapAnimationsForElement(
