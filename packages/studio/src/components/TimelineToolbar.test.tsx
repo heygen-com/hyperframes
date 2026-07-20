@@ -12,7 +12,7 @@ import { TimelineToolbar } from "./TimelineToolbar";
 
 afterEach(() => {
   document.body.innerHTML = "";
-  usePlayerStore.setState({ autoKeyframeEnabled: true });
+  usePlayerStore.setState({ autoKeyframeEnabled: true, thumbnailMode: "adaptive" });
 });
 
 function renderToolbar(
@@ -58,6 +58,25 @@ describe("TimelineToolbar — auto-keyframe toggle (#1808)", () => {
     act(() => root.unmount());
   });
 });
+
+describe("TimelineToolbar — adaptive thumbnails", () => {
+  it("keeps a user-controlled hidden mode as the rollback path", () => {
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide thumbnails — labels only"]',
+    );
+    if (!button) throw new Error("thumbnail toggle not rendered");
+
+    act(() => button.click());
+
+    expect(usePlayerStore.getState().thumbnailMode).toBe("hidden");
+    expect(button.getAttribute("aria-label")).toBe(
+      "Show thumbnails — posters stay visible; richer previews appear on interaction",
+    );
+    act(() => root.unmount());
+  });
+});
+
 describe("TimelineToolbar — motion path endpoints", () => {
   it("does not advertise a destructive keyframe toggle for a required endpoint", () => {
     usePlayerStore.setState({ currentTime: 10 });
