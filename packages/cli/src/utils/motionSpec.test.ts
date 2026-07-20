@@ -2,7 +2,13 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { findMotionSpec, parseMotionSpec, readMotionSpec, type MotionSpec } from "./motionSpec.js";
+import {
+  buildMotionSampleTimes,
+  findMotionSpec,
+  parseMotionSpec,
+  readMotionSpec,
+  type MotionSpec,
+} from "./motionSpec.js";
 
 const RFC_SPEC = {
   duration: 6,
@@ -20,6 +26,14 @@ function expectOk(result: ReturnType<typeof parseMotionSpec>): MotionSpec {
 }
 
 describe("parseMotionSpec", () => {
+  it("samples an appearsBy deadline exactly when the uniform grid skips it", () => {
+    const assertions: MotionSpec["assertions"] = [
+      { kind: "appearsBy", selector: "#headline", bySec: 0.5 },
+    ];
+
+    expect(buildMotionSampleTimes(15, assertions)).toContain(0.5);
+  });
+
   it("parses the RFC four-assertion spec", () => {
     const spec = expectOk(parseMotionSpec(RFC_SPEC));
     expect(spec.duration).toBe(6);

@@ -26,7 +26,12 @@ import {
   evaluateMotion,
   type MotionFrame,
 } from "../utils/motionAudit.js";
-import { findMotionSpec, readMotionSpec, type MotionSpec } from "../utils/motionSpec.js";
+import {
+  buildMotionSampleTimes,
+  findMotionSpec,
+  readMotionSpec,
+  type MotionSpec,
+} from "../utils/motionSpec.js";
 import {
   AUDIT_SEEK_OPTIONS,
   installPageFunctionGuard,
@@ -40,9 +45,6 @@ const __dirname = dirname(__filename);
 const LAYOUT_SEEK_OPTIONS: SeekCompositionTimelineOptions = AUDIT_SEEK_OPTIONS;
 // All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
-// Motion verification (#1437): dense sampling grid for the seeked-timeline checks.
-const MOTION_FPS = 20;
-const MOTION_MAX_SAMPLES = 300;
 
 export const examples: Example[] = [
   ["Inspect visual layout across the current composition", "hyperframes layout"],
@@ -66,13 +68,6 @@ interface LayoutAuditResult {
   transitionSamplesDropped: number;
   rawIssues: LayoutIssue[];
   motionSamples: number;
-}
-
-function buildMotionSampleTimes(duration: number): number[] {
-  if (!Number.isFinite(duration) || duration <= 0) return [];
-  const count = Math.min(MOTION_MAX_SAMPLES, Math.max(2, Math.ceil(duration * MOTION_FPS) + 1));
-  const step = duration / (count - 1);
-  return Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000);
 }
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
@@ -367,7 +362,7 @@ async function runMotionPass(
   spec: MotionSpec,
   duration: number,
 ): Promise<{ issues: LayoutIssue[]; sampleCount: number }> {
-  const times = buildMotionSampleTimes(spec.duration ?? duration);
+  const times = buildMotionSampleTimes(spec.duration ?? duration, spec.assertions);
   if (times.length === 0) return { issues: [], sampleCount: 0 };
 
   const { selectors, livenessScopes } = collectSamplingTargets(spec.assertions);
