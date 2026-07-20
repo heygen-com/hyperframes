@@ -50,7 +50,7 @@ export async function maybePromptRenderFeedback(opts: {
     console.log(
       c.dim("  [hyperframes] ") +
         c.dim("Agent feedback: ") +
-        c.accent('hyperframes feedback --rating <1-5> --comment "..."'),
+        c.accent('hyperframes feedback --rating <1-10> --comment "..."'),
     );
     return;
   }
@@ -66,11 +66,11 @@ export async function maybePromptRenderFeedback(opts: {
   writeConfig(config);
 
   const answer = await askQuestion(
-    `  ${c.dim("How was this render?")} ${c.accent("[1=poor 5=great, enter to skip]")} `,
+    `  ${c.dim("How was this render?")} ${c.accent("[1=poor 10=great, enter to skip]")} `,
   );
 
   const rating = parseInt(answer.trim(), 10);
-  if (rating >= 1 && rating <= 5) {
+  if (rating >= 1 && rating <= 10) {
     // Ask for optional text feedback
     const details = await askQuestion(`  ${c.dim("Any details?")} ${c.accent("(enter to skip)")} `);
     const trimmedDetails = details.trim();

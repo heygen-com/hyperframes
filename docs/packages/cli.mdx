@@ -863,8 +863,8 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
     Submit anonymous satisfaction feedback about your experience:
 
     ```bash
-    # Quick rating (1 = poor, 5 = great)
-    npx hyperframes feedback --rating 5
+    # Quick rating (1 = poor, 10 = great)
+    npx hyperframes feedback --rating 10
 
     # Rating with optional details
     npx hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate"
@@ -872,7 +872,7 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
     | Flag | Description |
     |------|-------------|
-    | `--rating` | Satisfaction score, 1–5 (required) |
+    | `--rating` | Satisfaction score, 1–10 (required) |
     | `--comment` | Optional free-text details |
 
     This command is also available to AI agents after a render — see [Feedback Collection](/guides/feedback#agent-runtimes) for how agent detection and the automatic post-render hint work.

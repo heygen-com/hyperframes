@@ -18,7 +18,7 @@ No account, email, or identity is tied to responses. Each installation generates
 After a successful `hyperframes render`, a short prompt may appear:
 
 ```
-  How was this render? [1=poor 5=great, enter to skip]
+  How was this render? [1=poor 10=great, enter to skip]
   Any details? (enter to skip)
 ```
 
@@ -64,7 +64,7 @@ You can submit feedback manually at any time:
 
 ```bash
 # Quick rating
-hyperframes feedback --rating 5
+hyperframes feedback --rating 10
 
 # Rating with details
 hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline didn't animate text overlay"
@@ -72,7 +72,7 @@ hyperframes feedback --rating 3 --comment "render succeeded but GSAP timeline di
 
 | Flag | Description |
 |------|-------------|
-| `--rating` | Satisfaction score, 1–5 (required) |
+| `--rating` | Satisfaction score, 1–10 (required) |
 | `--comment` | Optional free-text details |
 
 This command collects a doctor summary automatically, flushes telemetry, and exits. It appears under the **Settings** group in `hyperframes --help`.
@@ -82,7 +82,7 @@ This command collects a doctor summary automatically, flushes telemetry, and exi
 When an AI agent is detected, HyperFrames **skips the interactive readline prompt** and prints a structured hint instead:
 
 ```
-  [hyperframes] Agent feedback: hyperframes feedback --rating <1-5> --comment "..."
+  [hyperframes] Agent feedback: hyperframes feedback --rating <1-10> --comment "..."
 ```
 
 Agents can then submit feedback using the `hyperframes feedback` command above.
@@ -111,7 +111,7 @@ Only the existence (or in some cases the value) of these variables is checked �
 | Field | Value |
 |-------|-------|
 | `$survey_id` | `render_satisfaction` |
-| `$survey_response` | Rating (1–5) |
+| `$survey_response` | Rating (1–10) |
 | `$survey_response_2` | Free-text comment (only when provided) |
 | `render_duration_ms` | Time the render took in milliseconds |
 | `doctor_summary` | System context (see below) |
@@ -129,7 +129,7 @@ It may also include `wsl` or sandbox runtime flags when those environments are d
 | Field | Value |
 |-------|-------|
 | `$survey_id` | `studio_experience` |
-| `$survey_response` | Rating (1–5) |
+| `$survey_response` | Rating (1–10) |
 | `$survey_response_2` | Free-text comment (only when provided) |
 | `source` | `studio` |
 | `doctor_summary` | Browser context (platform, screen, CPU cores, device memory, network type) |
