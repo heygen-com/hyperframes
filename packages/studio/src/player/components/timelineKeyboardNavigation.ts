@@ -5,6 +5,13 @@ import {
   timelineKeyframeSelectionKey,
   type TimelineKeyframeTarget,
 } from "./timelineKeyframeIdentity";
+import {
+  timelineClipFocusId,
+  timelineEaseFocusId,
+  timelineKeyframeFocusId,
+  timelinePropertyRowId,
+  timelineTrackRowId,
+} from "./timelineNavigationIdentity";
 import { resolveTrackKeyframeClip } from "./useTimelineTrackLayout";
 
 export type TimelineNavigationKey =
@@ -49,6 +56,7 @@ export interface TimelineLogicalRow {
   logicalIndex: number;
   level: 1 | 2;
   parentId: string | null;
+  expandable: boolean;
   expanded: boolean;
   propertyGroup?: PropertyGroupName;
   items: readonly TimelineLogicalItem[];
@@ -71,30 +79,6 @@ export interface TimelineNavigationOptions {
   pageSize?: number;
   /** Ctrl/Meta + Home/End moves to the first/last logical row. */
   timelineBoundary?: boolean;
-}
-
-function stableId(kind: string, ...parts: Array<string | number>): string {
-  return JSON.stringify(["timeline", kind, ...parts]);
-}
-
-export function timelineTrackRowId(track: number): string {
-  return stableId("track", track);
-}
-
-export function timelinePropertyRowId(elementId: string, group: PropertyGroupName): string {
-  return stableId("property", elementId, group);
-}
-
-export function timelineClipFocusId(elementId: string): string {
-  return stableId("clip", elementId);
-}
-
-export function timelineKeyframeFocusId(elementId: string, target: TimelineKeyframeTarget): string {
-  return stableId("keyframe", timelineKeyframeSelectionKey(elementId, target));
-}
-
-export function timelineEaseFocusId(elementId: string, target: TimelineKeyframeTarget): string {
-  return stableId("ease", timelineKeyframeSelectionKey(elementId, target));
 }
 
 function elementId(element: TimelineElement): string {
@@ -217,6 +201,7 @@ export function buildTimelineLogicalRows({
       logicalIndex: rows.length,
       level: 1,
       parentId: null,
+      expandable: lanes.length > 0,
       expanded,
       items: clipItems(trackId, elements),
     });
@@ -230,6 +215,7 @@ export function buildTimelineLogicalRows({
         logicalIndex: rows.length,
         level: 2,
         parentId: trackId,
+        expandable: false,
         expanded: false,
         propertyGroup: lane.group,
         items: propertyItems(rowId, activeClip, lane.keyframes),
