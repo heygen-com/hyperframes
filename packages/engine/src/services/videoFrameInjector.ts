@@ -643,8 +643,10 @@ export async function queryElementStacking(
       }
       if (hasScale) {
         const parts = scale.split(/\s+/);
-        const sx = parseFloat(parts[0] ?? "1") || 1;
-        const sy = parseFloat(parts[1] ?? String(sx)) || sx;
+        const parsedSx = parseFloat(parts[0] ?? "1");
+        const sx = Number.isFinite(parsedSx) ? parsedSx : 1;
+        const parsedSy = parseFloat(parts[1] ?? String(sx));
+        const sy = Number.isFinite(parsedSy) ? parsedSy : sx;
         if (sx !== 1 || sy !== 1) m = m.scale(sx, sy);
       }
       return m;
