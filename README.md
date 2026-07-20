@@ -59,6 +59,16 @@ Default to the **core set** — the router installs each creation workflow on de
 
 Installs stay lean after that: `npx hyperframes init` keeps the **core set** fresh (the router, the `hyperframes-*` domain skills, and `media-use` — plus whatever is already installed; `/figma` stays on demand) and never expands a partial install; the creation workflows install **on demand** — the router runs `npx hyperframes skills update <workflow>` before entering one. Nothing re-pulls the full set behind your back.
 
+### Upload to Codex
+
+Build the upload-ready Codex plugin archive from the committed `HEAD` version of the manifest, brand assets, and skills:
+
+```bash
+bun run package:codex-plugin
+```
+
+This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and fails if the archive exceeds Codex's 100 MB upload limit.
+
 ### Router
 
 | Skill          | Use when                                                                                                                                                                                                                                                                 |
