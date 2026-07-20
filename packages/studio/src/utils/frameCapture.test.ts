@@ -14,7 +14,7 @@ describe("frame capture utilities", () => {
         origin: "http://localhost:5194",
       }),
     ).toBe(
-      "http://localhost:5194/api/projects/demo%20project/thumbnail/index.html?t=1.235&format=png&v=1777464000000",
+      "http://localhost:5194/api/projects/demo%20project/thumbnail/index.html?t=1.235&format=png&output=source&v=1777464000000",
     );
 
     vi.useRealTimers();

@@ -1,9 +1,4 @@
-interface ThumbnailPreviewPage {
-  evaluate<TArg, TResult>(
-    fn: (arg: TArg) => TResult | Promise<TResult>,
-    arg: TArg,
-  ): Promise<TResult>;
-}
+type ThumbnailPreviewPage = Pick<import("puppeteer-core").Page, "evaluate">;
 
 type SeekResult = "player" | "timelines" | "none";
 
