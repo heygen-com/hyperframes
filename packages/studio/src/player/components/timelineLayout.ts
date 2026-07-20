@@ -4,25 +4,20 @@ import type { ZoomMode } from "../store/playerStore";
 /* ── Layout constants ──────────────────────────────────────────────── */
 export const GUTTER = 32;
 export const TRACK_H = 48;
+export const LANE_H = 28;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
+
 /**
- * Half-width (as a fraction of TRACK_H) of the new-track INSERT band that
- * straddles each lane boundary. Deliberately equals the clip's vertical inset
- * (`CLIP_Y / TRACK_H`): a clip body fills [CLIP_Y, TRACK_H − CLIP_Y] of its row,
- * so the ONLY region this band covers is the visible empty gutter between two
- * clip bodies (plus the top/bottom breathing pads, handled separately by the
- * rowFloat ≤ 0 / ≥ trackCount extremes). Aiming at a clip body is therefore a
- * move-to-that-lane; only the inter-clip gap arms an insert — see resolveInsertRow.
- * Threaded into resolveInsertRow by the drag preview so the hit band can never
- * drift from the rendered clip geometry.
+ * Collapsed-row characterization value for the new-track INSERT band. Runtime
+ * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
  */
 export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
 /**
  * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
  * track-row y computation via {@link getTimelineRowTop} — never inline a magic
- * offset; a track row's top is always `RULER_H + TRACKS_TOP_PAD + row*TRACK_H`.
+ * offset; a track row's top is always ruler + top pad + cumulative row heights.
  *
  * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
  *   (~half a track height) so the first clip isn't jammed under the ruler.
@@ -50,17 +45,108 @@ export const TRACKS_LEFT_PAD = 48;
  * placeholder/insertion top and every pointer-y→row inversion goes through this
  * (or its inverse in {@link getTimelineRowFromY}) so the pad can never drift.
  */
-export function getTimelineRowTop(row: number): number {
-  return RULER_H + TRACKS_TOP_PAD + row * TRACK_H;
+interface TimelineTrackHeightClip {
+  clipId: string;
+  laneCount: number;
+}
+
+type TimelineTrackHeightInput = readonly (readonly TimelineTrackHeightClip[])[];
+
+/**
+ * Resolve each track's full height. Without expansion state every row is the
+ * legacy TRACK_H; if multiple clips in one track expand, the tallest one owns
+ * the shared row height.
+ */
+export function trackHeights(
+  tracks: number | TimelineTrackHeightInput,
+  expandedClipIds?: ReadonlySet<string>,
+): number[] {
+  if (typeof tracks === "number") {
+    return Array.from({ length: Math.max(0, Math.trunc(tracks)) }, () => TRACK_H);
+  }
+  return tracks.map((clips) => {
+    let laneCount = 0;
+    if (expandedClipIds) {
+      for (const clip of clips) {
+        if (expandedClipIds.has(clip.clipId)) laneCount = Math.max(laneCount, clip.laneCount);
+      }
+    }
+    return TRACK_H + Math.max(0, Math.trunc(laneCount)) * LANE_H;
+  });
+}
+
+function validRowHeight(height: number | undefined): number {
+  if (height === undefined || !Number.isFinite(height) || height <= 0) return TRACK_H;
+  return height;
+}
+
+/** Cumulative top offsets, including the final bottom boundary. */
+export function getTimelineRowOffsets(rowHeights: readonly number[]): number[] {
+  const offsets = [0];
+  for (const height of rowHeights) {
+    offsets.push((offsets[offsets.length - 1] ?? 0) + validRowHeight(height));
+  }
+  return offsets;
+}
+
+export function getTimelineRowHeight(row: number, rowHeights: readonly number[] = []): number {
+  return validRowHeight(rowHeights[row]);
+}
+
+function getTimelineRowOffset(row: number, rowHeights: readonly number[]): number {
+  if (rowHeights.length === 0) return row * TRACK_H;
+  const offsets = getTimelineRowOffsets(rowHeights);
+  if (row <= 0) return row * getTimelineRowHeight(0, rowHeights);
+  if (row >= rowHeights.length) {
+    return (offsets[rowHeights.length] ?? 0) + (row - rowHeights.length) * TRACK_H;
+  }
+  const wholeRow = Math.floor(row);
+  const fraction = row - wholeRow;
+  return (offsets[wholeRow] ?? 0) + fraction * getTimelineRowHeight(wholeRow, rowHeights);
+}
+
+export function getTimelineRowTop(row: number, rowHeights: readonly number[] = []): number {
+  return RULER_H + TRACKS_TOP_PAD + getTimelineRowOffset(row, rowHeights);
 }
 
 /**
  * Inverse of {@link getTimelineRowTop}: the fractional row index for a content-
- * space y (used for insert-row / drop-lane decisions). Subtracts the ruler and
- * top pad before dividing by the track height.
+ * space y (used for insert-row / drop-lane decisions). Locates the concrete row
+ * from cumulative offsets, then returns its local fractional position.
  */
-export function getTimelineRowFromY(contentY: number): number {
-  return (contentY - RULER_H - TRACKS_TOP_PAD) / TRACK_H;
+export function getTimelineRowFromY(contentY: number, rowHeights: readonly number[] = []): number {
+  const y = contentY - RULER_H - TRACKS_TOP_PAD;
+  if (rowHeights.length === 0) return y / TRACK_H;
+  if (y < 0) return y / getTimelineRowHeight(0, rowHeights);
+
+  const offsets = getTimelineRowOffsets(rowHeights);
+  for (let row = 0; row < rowHeights.length; row += 1) {
+    const bottom = offsets[row + 1] ?? 0;
+    if (y < bottom) {
+      const top = offsets[row] ?? 0;
+      return row + (y - top) / getTimelineRowHeight(row, rowHeights);
+    }
+  }
+  return rowHeights.length + (y - (offsets[rowHeights.length] ?? 0)) / TRACK_H;
+}
+
+export function getTimelineRowPositionFromY(
+  contentY: number,
+  rowHeights: readonly number[] = [],
+): { rowFloat: number; row: number; fraction: number; rowHeight: number } {
+  const rowFloat = getTimelineRowFromY(contentY, rowHeights);
+  const row = Math.floor(rowFloat);
+  return {
+    rowFloat,
+    row,
+    fraction: rowFloat - row,
+    rowHeight: getTimelineRowHeight(row, rowHeights),
+  };
+}
+
+/** Fractional insert band for the concrete row under a pointer. */
+export function getTimelineInsertBoundaryBand(rowHeight: number): number {
+  return CLIP_Y / validRowHeight(rowHeight);
 }
 /**
  * While a clip drag is live, the rendered timeline extends this far past the
@@ -321,11 +407,16 @@ export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): 
   );
 }
 
-export function getTimelineCanvasHeight(trackCount: number): number {
+export function getTimelineCanvasHeight(trackCountOrHeights: number | readonly number[]): number {
   // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
   // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space
   // below the last lane is real scrollable surface, not a hidden buffer.
-  return RULER_H + TRACKS_TOP_PAD + Math.max(0, trackCount) * TRACK_H + TRACKS_BOTTOM_PAD;
+  const heights =
+    typeof trackCountOrHeights === "number"
+      ? trackHeights(trackCountOrHeights)
+      : trackCountOrHeights;
+  const rowsHeight = getTimelineRowOffsets(heights).at(-1) ?? 0;
+  return RULER_H + TRACKS_TOP_PAD + rowsHeight + TRACKS_BOTTOM_PAD;
 }
 
 /* ── UI helpers ───────────────────────────────────────────────────── */

@@ -4,7 +4,7 @@ import type {
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 
-interface MoveEdit {
+export interface TimelineMoveEdit {
   element: TimelineElement;
   updates: Pick<TimelineElement, "start" | "track">;
 }
@@ -18,8 +18,15 @@ interface AtomicMoveDeps {
 
 export type TimelineMoveOperation = "timing" | "lane-reorder" | "track-insert";
 
+export type TimelineMoveEditsHandler = (
+  edits: TimelineMoveEdit[],
+  coalesceKey?: string,
+  operation?: TimelineMoveOperation,
+  coalesceMs?: number,
+) => Promise<void>;
+
 export function persistTimelineMoveEditsAtomically(
-  edits: MoveEdit[],
+  edits: TimelineMoveEdit[],
   coalesceKey: string | undefined,
   operation: TimelineMoveOperation,
   deps: AtomicMoveDeps,
