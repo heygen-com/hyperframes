@@ -1,8 +1,11 @@
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
+
 export interface TimelineKeyframeTarget {
   percentage: number;
   tweenPercentage?: number;
   propertyGroup?: string;
   animationId?: string;
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
 }
 
 export function timelineKeyframeSelectionKey(
