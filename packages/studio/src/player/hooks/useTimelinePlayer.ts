@@ -70,6 +70,8 @@ export function useTimelinePlayer() {
   // The fixture lease belongs at this shared synchronization boundary so every
   // iframe discovery path has the same owner for deciding whether it may write.
   const syncTimelineElements = useCallback(
+    // The lease guard adds one deliberate branch at the shared synchronization boundary.
+    // fallow-ignore-next-line complexity
     (elements: TimelineElement[], nextDuration?: number) => {
       if (hasTimelinePerformanceFixtureLease()) return;
       const state = usePlayerStore.getState();
@@ -473,6 +475,7 @@ export function useTimelinePlayer() {
     // Pre-existing message-router complexity — surfaced by line shifts, not new logic.
     // fallow-ignore-next-line complexity
     const handleMessage = (e: MessageEvent) => {
+      if (hasTimelinePerformanceFixtureLease()) return;
       const data = e.data;
       const ourIframe = iframeRef.current;
       if (e.source && ourIframe && e.source !== ourIframe.contentWindow) {

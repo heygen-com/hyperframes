@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "./useTimelinePlayer";
 import { liveTime, usePlayerStore } from "../store/playerStore";
+import { setTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,6 +41,7 @@ function renderTimelinePlayerHarness() {
 }
 
 afterEach(() => {
+  setTimelinePerformanceFixtureLease(false);
   document.body.innerHTML = "";
   resetPlayerStore();
 });
@@ -73,6 +75,8 @@ function attachIframeAdapter(
     value: {
       __player: adapter,
       __timelines: options.timelines,
+      // Shared iframe contract is repeated here to keep this helper's adapter state local.
+      // fallow-ignore-next-line code-duplication
       postMessage: options.postMessage ?? (() => {}),
       scrollTo: () => {},
       addEventListener: () => {},
@@ -129,6 +133,61 @@ function expectStorePlaybackState(
 }
 
 describe("useTimelinePlayer seek hydration", () => {
+  it("ignores runtime timeline work while the performance fixture lease is active", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    attachIframeAdapter(api);
+    const iframeWindow = api.iframeRef.current?.contentWindow;
+    const iframeDocument = api.iframeRef.current?.contentDocument;
+    if (!iframeWindow || !iframeDocument) throw new Error("iframe did not attach");
+    const querySelector = vi.spyOn(iframeDocument, "querySelector");
+    const clips = [
+      {
+        id: "runtime-clip",
+        label: "Runtime clip",
+        start: 0,
+        duration: 1,
+        track: 0,
+        kind: "element",
+        tagName: "div",
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+    ];
+    const dispatchTimeline = () =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow,
+          data: {
+            source: "hf-preview",
+            type: "timeline",
+            clips,
+            durationInFrames: 30,
+            fps: 30,
+          },
+        }),
+      );
+    try {
+      act(() => {
+        usePlayerStore.setState({ clipManifest: null });
+        setTimelinePerformanceFixtureLease(true);
+        dispatchTimeline();
+      });
+      expect(usePlayerStore.getState().clipManifest).toBeNull();
+      expect(querySelector).not.toHaveBeenCalled();
+
+      act(() => {
+        setTimelinePerformanceFixtureLease(false);
+        dispatchTimeline();
+      });
+      expect(usePlayerStore.getState().clipManifest).toEqual(clips);
+      expect(querySelector).toHaveBeenCalled();
+    } finally {
+      unmountWithAct(root);
+    }
+  });
+
   it("keeps an external seek request until the iframe adapter is ready", () => {
     const observedTimes: number[] = [];
     const unsubscribe = liveTime.subscribe((time) => {
@@ -364,6 +423,8 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
     Object.defineProperty(iframe, "contentWindow", {
       value: {
         __player: adapter,
+        // This playback-specific adapter intentionally repeats the shared iframe contract.
+        // fallow-ignore-next-line code-duplication
         postMessage: () => {},
         scrollTo: () => {},
         addEventListener: () => {},

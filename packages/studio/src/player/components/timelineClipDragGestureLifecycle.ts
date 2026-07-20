@@ -53,6 +53,8 @@ interface TimelineClipDragGestureLifecycleInput {
 }
 
 export function mountTimelineClipDragGestureLifecycle({
+  // The explicit destructuring mirrors the single call site's dependency object by design.
+  // fallow-ignore-next-line code-duplication
   draggedClipRef,
   resizingClipRef,
   blockedClipRef,

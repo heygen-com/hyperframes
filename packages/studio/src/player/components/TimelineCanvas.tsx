@@ -23,8 +23,8 @@ import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes } from "./TimelineLanes";
 import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 import { renderClipChildren } from "./timelineClipChildren";
-import { useTimelineRevealClip } from "./useTimelineRevealClip";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
+import { isTimelineClipActive } from "./useTimelineActiveClips";
 
 interface TimelineCanvasProps extends TimelineLaneBaseProps {
   major: number[];
@@ -57,8 +57,6 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
     onRazorSplitAll,
   } = useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
-  // Scroll a clip into view when the sidebar (asset card) requests a reveal.
-  useTimelineRevealClip(scrollRef);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -121,6 +119,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         theme={props.theme}
         beatAnalysis={props.beatAnalysis}
         contentOrigin={props.contentOrigin}
+        renderTimeRange={props.rowsVirtualized ? props.renderTimeRange : undefined}
       />
 
       {/* Breathing room between the sticky ruler and the first track lane — the
@@ -152,7 +151,13 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         const rowIndex = displayTrackOrder.indexOf(strip.track);
         if (rowIndex < 0) return null;
         const loud = strip.kind === "hover";
-        return strip.intervals.map((gap) => (
+        const visibleIntervals = props.rowsVirtualized
+          ? strip.intervals.filter(
+              (gap) =>
+                gap.start < props.renderTimeRange.end && gap.end > props.renderTimeRange.start,
+            )
+          : strip.intervals;
+        return visibleIntervals.map((gap) => (
           <div
             key={`gap-${strip.kind}-${strip.track}-${gap.start}`}
             className="pointer-events-none absolute"
@@ -244,6 +249,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             }
             isHovered={false}
             isDragging={true}
+            isActive={isTimelineClipActive(activeDraggedElement, props.currentTime)}
             hasCustomContent={!!props.renderClipContent}
             capabilities={getTimelineEditCapabilities(activeDraggedElement)}
             theme={props.theme}

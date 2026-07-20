@@ -6,6 +6,7 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { BlockedClipState, DraggedClipState, ResizingClipState } from "./useTimelineClipDrag";
 import type { TrackVisualStyle } from "./timelineIcons";
 import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
+import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
 
@@ -21,6 +22,9 @@ export interface TimelineLaneBaseProps {
   rowGeometry: TimelineRowGeometry;
   virtualRows: readonly TimelineVirtualRow[];
   rowsVirtualized: boolean;
+  clipIndex: TimelineClipIndex;
+  renderTimeRange: TimelineTimeRange;
+  pinnedClipIdentities: ReadonlySet<string>;
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
