@@ -16,6 +16,8 @@ concurrency:
 
 on:
   pull_request:
+    # Re-run when Graphite changes only the PR base for the same head SHA.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
