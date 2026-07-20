@@ -27,6 +27,7 @@ import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
 
 export interface PreviewOverlaysProps {
+  shouldShowMotionPath: boolean;
   shouldShowSelectedDomBounds: boolean;
   blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
@@ -132,6 +133,7 @@ export function resolveZIndexEntries(
 
 // fallow-ignore-next-line complexity
 export function PreviewOverlays({
+  shouldShowMotionPath,
   shouldShowSelectedDomBounds,
   blockPreview,
   isGestureRecording,
@@ -274,7 +276,7 @@ export function PreviewOverlays({
       {STUDIO_KEYFRAMES_ENABLED && (
         <MotionPathOverlay
           iframeRef={previewIframeRef}
-          selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+          selection={shouldShowMotionPath ? domEditSelection : null}
           compositionSize={compositionDimensions}
           isPlaying={isPlaying}
         />

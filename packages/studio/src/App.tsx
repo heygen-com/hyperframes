@@ -395,6 +395,7 @@ export function StudioApp() {
     designPanelActive,
     inspectorPanelActive,
     inspectorButtonActive,
+    shouldShowMotionPath,
     shouldShowSelectedDomBounds,
   } = useInspectorState(
     panelLayout.rightPanelTab,
@@ -552,6 +553,7 @@ export function StudioApp() {
                     handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
                     setCompIdToSrc={setCompIdToSrc}
                     setCompositionLoading={setCompositionLoading}
+                    shouldShowMotionPath={shouldShowMotionPath}
                     shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                     isGestureRecording={gestureState === "recording"}
                     recordingState={gestureState}

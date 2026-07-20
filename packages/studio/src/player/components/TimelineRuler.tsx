@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER, RULER_H, TRACKS_LEFT_PAD, formatTimelineTickLabel } from "./timelineLayout";
+import { RULER_H, formatTimelineTickLabel } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import { secondsToFrame } from "../lib/time";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
@@ -15,6 +15,7 @@ interface TimelineRulerProps {
   majorTickInterval: number;
   theme: TimelineTheme;
   beatAnalysis?: MusicBeatAnalysis | null;
+  contentOrigin: number;
 }
 
 export const TimelineRuler = memo(function TimelineRuler({
@@ -27,6 +28,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   majorTickInterval,
   theme,
   beatAnalysis,
+  contentOrigin,
 }: TimelineRulerProps) {
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
@@ -45,7 +47,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
         className="absolute pointer-events-none"
-        style={{ left: GUTTER + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
+        style={{ left: contentOrigin, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
         {showBeats &&
@@ -69,35 +71,23 @@ export const TimelineRuler = memo(function TimelineRuler({
       </svg>
 
       {/* Ruler — sticky so the timestamps stay visible while the tracks scroll
-          vertically. Opaque background (plus the gutter corner block) so clips
+          vertically. Opaque background (plus the label-column corner block) so clips
           scrolling underneath don't bleed through; z-index sits above the track
           rows and drag overlays but below the playhead (z 100). */}
       <div
         className="sticky top-0 flex"
-        style={{
-          height: RULER_H,
-          width: GUTTER + TRACKS_LEFT_PAD + trackContentWidth,
-          zIndex: 70,
-        }}
+        style={{ height: RULER_H, width: contentOrigin + trackContentWidth, zIndex: 70 }}
       >
         <div
           className="sticky left-0 z-[12] flex-shrink-0"
           style={{
-            width: GUTTER,
-            // Ruler corner uses the panel surface — same as the ruler strip
-            // itself, and NO right border: the ruler band stays completely
-            // clean until 00:00 (the header-boundary line belongs to the track
-            // rows below, not the ruler).
+            width: contentOrigin,
+            // Ruler corner uses the panel surface — same as the ruler strip itself.
             background: theme.shellBackground,
           }}
         />
-        {/* Left breathing pad — scrolls with the content, so 00:00 starts a
-            beat right of the gutter (see TRACKS_LEFT_PAD). */}
-        <div
-          aria-hidden="true"
-          className="flex-shrink-0"
-          style={{ width: TRACKS_LEFT_PAD, background: theme.shellBackground }}
-        />
+        {/* Breathing pad before 00:00 is folded into contentOrigin (see
+            Timeline.tsx: GUTTER + TRACKS_LEFT_PAD), so no separate pad div. */}
         <div
           className="relative overflow-hidden"
           style={{
@@ -110,7 +100,7 @@ export const TimelineRuler = memo(function TimelineRuler({
         >
           {/* Each 1px tick line is shifted -0.5px so its CENTER sits exactly on
               t * pps — matching the playhead line, which is also centered on
-              GUTTER + t * pps (see getTimelinePlayheadLeft). Without the shift
+              contentOrigin + t * pps (see getTimelinePlayheadLeft). Without the shift
               a tick spans [x, x+1) and its center is half a pixel right. */}
           {minor.map((t) => (
             <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps - 0.5 }}>

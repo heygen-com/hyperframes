@@ -1,11 +1,4 @@
-import {
-  GUTTER,
-  RULER_H,
-  CLIP_Y,
-  TRACKS_LEFT_PAD,
-  getTimelineRowHeight,
-  getTimelineRowTop,
-} from "./timelineLayout";
+import { RULER_H, CLIP_Y, getTimelineRowHeight, getTimelineRowTop } from "./timelineLayout";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 
 /** Pointer must travel at least this far (either axis) before a pointerdown on
@@ -76,7 +69,7 @@ export function getTimelineClipRect(
   clip: Pick<MarqueeClipInput, "start" | "duration" | "track">,
   trackOrder: number[],
   pps: number,
-  contentOrigin: number = GUTTER + TRACKS_LEFT_PAD,
+  contentOrigin: number,
   rowHeights: readonly number[] = [],
 ): Rect | null {
   const row = trackOrder.indexOf(clip.track);
@@ -105,7 +98,7 @@ export function computeMarqueeSelection(input: {
   clips: MarqueeClipInput[];
   trackOrder: number[];
   pps: number;
-  contentOrigin?: number;
+  contentOrigin: number;
   marquee: Rect;
   baseSelection?: Iterable<string>;
   rowHeights?: readonly number[];
