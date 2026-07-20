@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../../player";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
@@ -11,6 +12,7 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../../utils/globalTimeCompiler";
 import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
+import type { DomEditSelection } from "../editor/domEditingTypes";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 
 export interface TimelineEditCallbackDeps {
@@ -46,15 +48,14 @@ interface TimelineCachedKeyframe {
   percentage: number;
   tweenPercentage?: number;
   propertyGroup?: string;
+  animationId?: string;
 }
 
 /**
  * Resolve a rendered timeline diamond back to the animation that authored it.
- * Flat tweens use synthesized diamonds, so a mixed flat tween may have neither
- * a property group nor real keyframes. The cache currently carries a property
- * group, not an animation id, so resolution is safe only when that group has a
- * single candidate. Ambiguous candidates remain unresolved rather than
- * retiming an arbitrary tween.
+ * Prefer the animation identity carried by the rendered keyframe. Legacy cache
+ * entries without one are safe only when their property group has one candidate;
+ * ambiguous candidates remain unresolved rather than retiming an arbitrary tween.
  */
 export function resolveTimelineKeyframeTarget(
   pct: number,
@@ -63,6 +64,14 @@ export function resolveTimelineKeyframeTarget(
 ): { animId: string; tweenPct: number } | null {
   const kf = keyframes.find((item) => Math.abs(item.percentage - pct) < 0.2);
   if (!kf) return null;
+  const identifiedAnimation = kf.animationId
+    ? animations.find((animation) => animation.id === kf.animationId)
+    : undefined;
+  if (kf.animationId) {
+    return identifiedAnimation
+      ? { animId: identifiedAnimation.id, tweenPct: kf.tweenPercentage ?? pct }
+      : null;
+  }
   const group = kf?.propertyGroup;
   const candidates = group
     ? animations.filter((animation) => animation.propertyGroup === group)
@@ -98,10 +107,29 @@ export function useTimelineEditCallbacks({
     handleGsapResizeKeyframedTween,
     handleGsapUpdateMeta,
     handleGsapAddKeyframe,
+    handleGsapAddKeyframeBatch,
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
+    handleGsapDeleteAnimation,
     buildDomSelectionForTimelineElement,
   } = useDomEditActionsContext();
+
+  const resolveElementAnimations = useCallback(
+    (elementKey: string): GsapAnimation[] => {
+      const { gsapAnimations } = usePlayerStore.getState();
+      const hashIndex = elementKey.lastIndexOf("#");
+      const elementId = hashIndex === -1 ? elementKey : elementKey.slice(hashIndex + 1);
+      const sourceFile =
+        hashIndex === -1 ? (activeCompPath ?? "index.html") : elementKey.slice(0, hashIndex);
+      return (
+        gsapAnimations.get(`${sourceFile}#${elementId}`) ??
+        gsapAnimations.get(`index.html#${elementId}`) ??
+        gsapAnimations.get(elementId) ??
+        []
+      );
+    },
+    [activeCompPath],
+  );
 
   // Resolve a timeline-diamond callback's clip-% to the keyframe's anim id + its
   // tween-relative percentage (shared by the delete/move keyframe callbacks): the
@@ -109,11 +137,44 @@ export function useTimelineEditCallbacks({
   // anim in the keyframe's property group, falling back to the first keyframed one.
   const resolveKeyframeTarget = useCallback(
     // fallow-ignore-next-line complexity
-    (pct: number): { animId: string; tweenPct: number } | null => {
+    (
+      pct: number,
+      propertyGroup?: string,
+      tweenPercentage?: number,
+      animationId?: string,
+      animations: GsapAnimation[] = selectedGsapAnimations,
+    ): { animId: string; tweenPct: number } | null => {
+      const explicitTarget =
+        propertyGroup !== undefined || tweenPercentage !== undefined || animationId !== undefined
+          ? [{ percentage: pct, propertyGroup, tweenPercentage, animationId }]
+          : undefined;
       const cached = usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
-      return resolveTimelineKeyframeTarget(pct, cached?.keyframes ?? [], selectedGsapAnimations);
+      return resolveTimelineKeyframeTarget(
+        pct,
+        explicitTarget ?? cached?.keyframes ?? [],
+        animations,
+      );
     },
     [domEditSelection?.id, selectedGsapAnimations],
+  );
+
+  const removeKeyframeTarget = useCallback(
+    (
+      animationId: string,
+      percentage: number,
+      animations: GsapAnimation[],
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const animation = animations.find((candidate) => candidate.id === animationId);
+      if (animation && !animation.keyframes) {
+        if (selectionOverride === undefined) handleGsapDeleteAnimation(animationId);
+        else handleGsapDeleteAnimation(animationId, selectionOverride);
+        return;
+      }
+      if (selectionOverride === undefined) handleGsapRemoveKeyframe(animationId, percentage);
+      else handleGsapRemoveKeyframe(animationId, percentage, undefined, selectionOverride);
+    },
+    [handleGsapDeleteAnimation, handleGsapRemoveKeyframe],
   );
 
   return useMemo(
@@ -135,13 +196,25 @@ export function useTimelineEditCallbacks({
         if (!anim) return;
         handleGsapRemoveAllKeyframes(anim.id);
       },
-      onDeleteKeyframe: (_elId: string, pct: number) => {
-        const target = resolveKeyframeTarget(pct);
-        if (target) handleGsapRemoveKeyframe(target.animId, target.tweenPct);
+      onDeleteKeyframe: (elId, pct, group, tweenPct, animationId) => {
+        const animations = resolveElementAnimations(elId);
+        const target = resolveKeyframeTarget(pct, group, tweenPct, animationId, animations);
+        if (!target) return;
+        const element = usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === elId);
+        if (!element) {
+          removeKeyframeTarget(target.animId, target.tweenPct, animations);
+          return;
+        }
+        // Persist through the CLICKED element's own selection so a deletion on a
+        // non-selected element (especially one in a different source file) commits
+        // against the right element instead of the current domEditSelection.
+        void buildDomSelectionForTimelineElement(element).then((selection) => {
+          removeKeyframeTarget(target.animId, target.tweenPct, animations, selection);
+        });
       },
       // Retime the keyframe to the playhead, preserving its value + ease.
-      onMoveKeyframeToPlayhead: (_elId: string, pct: number) => {
-        const target = resolveKeyframeTarget(pct);
+      onMoveKeyframeToPlayhead: (_elId, pct, group, tweenPct, animationId) => {
+        const target = resolveKeyframeTarget(pct, group, tweenPct, animationId);
         if (target) handleGsapMoveKeyframeToPlayhead(target.animId, target.tweenPct);
       },
       // Drag-to-retime. The diamond reports clip-%s; resolveKeyframeTarget gives
@@ -152,13 +225,17 @@ export function useTimelineEditCallbacks({
       // resizes the tween — position/duration grow so the dragged keyframe lands at
       // the drop while every other keyframe keeps its absolute time (value+ease too).
       // fallow-ignore-next-line complexity
-      onMoveKeyframe: (_elId: string, fromClipPct: number, toClipPct: number) => {
-        const target = resolveKeyframeTarget(fromClipPct);
+      onMoveKeyframe: (_elId, fromClipPct, toClipPct, group, tweenPct, animationId) => {
+        const target = resolveKeyframeTarget(fromClipPct, group, tweenPct, animationId);
         const sel = domEditSelection;
         if (!target || !sel) return;
         const anim = selectedGsapAnimations.find((a) => a.id === target.animId);
         const tweenStart = anim ? resolveTweenStart(anim) : null;
         if (!anim || tweenStart === null) return;
+        // Synthesized flat endpoints are clip boundaries, not authored keyframes.
+        // Boundary-to-clip resize wiring is intentionally deferred; ignore the
+        // drag rather than dispatching a free keyframe move that cannot be written.
+        if (!anim.keyframes) return;
         const tweenDuration = anim.duration ?? resolveTweenDuration(anim);
         const sourceFile = sel.sourceFile || activeCompPath || "index.html";
         const { elements, domClipChildren } = usePlayerStore.getState();
@@ -227,6 +304,26 @@ export function useTimelineEditCallbacks({
           if (flatAnim) handleGsapConvertToKeyframes(flatAnim.id);
         }
       },
+      onTogglePropertyGroupKeyframe: async (element, target) => {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        if (!selection) return;
+        if (target.remove) {
+          removeKeyframeTarget(
+            target.animationId,
+            target.tweenPercentage,
+            selectedGsapAnimations,
+            selection,
+          );
+          return;
+        }
+        await handleGsapAddKeyframeBatch(
+          target.animationId,
+          target.tweenPercentage,
+          target.properties,
+          undefined,
+          selection,
+        );
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -240,14 +337,16 @@ export function useTimelineEditCallbacks({
       handleRazorSplit,
       handleRazorSplitAll,
       handleGsapRemoveAllKeyframes,
+      resolveElementAnimations,
       resolveKeyframeTarget,
+      removeKeyframeTarget,
       selectedGsapAnimations,
-      handleGsapRemoveKeyframe,
       handleGsapMoveKeyframeToPlayhead,
       handleGsapMoveKeyframe,
       handleGsapResizeKeyframedTween,
       handleGsapUpdateMeta,
       handleGsapAddKeyframe,
+      handleGsapAddKeyframeBatch,
       handleGsapConvertToKeyframes,
       buildDomSelectionForTimelineElement,
       projectId,
