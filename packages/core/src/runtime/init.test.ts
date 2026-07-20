@@ -1845,6 +1845,59 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
 
+  it("accepts replayed transport controls when the bridge announces ready without duplicate listeners", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-duration", "5");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const timeline = createMockTimeline(5);
+    timeline.timeScale = vi.fn();
+    window.__timelines = { root: timeline };
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const payload = message as Record<string, unknown>;
+      outbound.push(payload);
+      if (payload.source !== "hf-preview" || payload.type !== "ready") return;
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "seek",
+            timeSeconds: 2,
+          },
+        }),
+      );
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "set-playback-rate",
+            playbackRate: 2,
+          },
+        }),
+      );
+    });
+
+    expect(() => initSandboxRuntimeModular()).not.toThrow();
+    expect(() => initSandboxRuntimeModular()).not.toThrow();
+
+    expect(timeline.time()).toBe(2);
+    expect(timeline.timeScale).toHaveBeenLastCalledWith(2);
+    expect(outbound.filter((message) => message.type === "ready")).toHaveLength(2);
+    expect(
+      outbound.filter(
+        (message) => message.type === "analytics" && message.event === "composition_seeked",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("restores timed element visibility after a forced timeline rebind", () => {
     document.body.innerHTML = `
       <div data-composition-id="root" data-root="true" data-duration="30" data-width="1920" data-height="1080">
