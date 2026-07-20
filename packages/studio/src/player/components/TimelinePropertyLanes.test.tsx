@@ -320,7 +320,7 @@ describe("TimelinePropertyLanes", () => {
     });
     const unselectedSegments = laneEaseSegments(host, "position");
     expect(unselectedSegments).toHaveLength(2);
-    expect(revealEaseButton(unselectedSegments[0]!)).not.toBeNull();
+    expect(laneEaseButtons(host, "position")).toHaveLength(2);
     act(() => root.unmount());
   });
 

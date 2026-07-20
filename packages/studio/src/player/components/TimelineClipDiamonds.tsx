@@ -11,6 +11,7 @@ import {
   beginTimelineKeyframeRetime,
   type TimelineKeyframeRetimeHandle,
 } from "./useTimelineKeyframeHandlers";
+import { timelineEaseFocusId, timelineKeyframeFocusId } from "./timelineNavigationIdentity";
 
 export interface TimelineDiamondKeyframe {
   percentage: number;
@@ -42,7 +43,10 @@ interface TimelineClipDiamondsProps {
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
+  clipStart?: number;
+  clipDuration?: number;
   selectedKeyframes: ReadonlySet<string>;
+  rovingTargetId?: string | null;
   onClickKeyframe?: (percentage: number) => void;
   onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
@@ -82,12 +86,10 @@ interface TimelineDiamondLaneProps extends Omit<
 }
 
 const DIAMOND_RATIO = 0.8;
-// Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
-// slightly outside [0, 100] (from rounding or stale cache during the async
-// persist → reload cycle) are still rendered (the clip is overflow-visible) at
-// their true position rather than hidden.
-const KF_MIN_PCT = -5;
-const KF_MAX_PCT = 105;
+
+function keyframeTimeLabel(clipStart: number, clipDuration: number, percentage: number): string {
+  return `${Number((clipStart + (clipDuration * percentage) / 100).toFixed(2))}s`;
+}
 
 function keyframeTarget(
   keyframe: TimelineDiamondKeyframe,
@@ -113,7 +115,10 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   isSelected,
   currentPercentage,
   elementId,
+  clipStart = 0,
+  clipDuration = 0,
   selectedKeyframes,
+  rovingTargetId = null,
   onClickKeyframe,
   onShiftClickKeyframe,
   onContextMenuKeyframe,
@@ -163,16 +168,33 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
     ? Math.round(clipHeightPx * 0.45)
     : Math.round(LANE_H * DIAMOND_RATIO);
   const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
-  const sorted = keyframesData.keyframes
-    .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
-    .sort((a, b) => a.percentage - b.percentage);
+  // Keep authored keyframes outside the element's visible clip window. Hiding
+  // them made the lane's count disagree with its diamonds and left users unable
+  // to inspect/remove the state that still affects the clip when it appears.
+  const sorted = [...keyframesData.keyframes].sort((a, b) => a.percentage - b.percentage);
+  const beforeClip = sorted.filter((keyframe) => keyframe.percentage < 0);
+  const afterClip = sorted.filter((keyframe) => keyframe.percentage > 100);
+  const boundaryStep = Math.max(6, Math.round(diamondSize * 0.55));
+  const keyframeCenterX = (keyframe: TimelineDiamondKeyframe, percentage = keyframe.percentage) => {
+    if (percentage < 0) {
+      const rank = beforeClip.indexOf(keyframe);
+      return -(beforeClip.length - Math.max(0, rank)) * boundaryStep;
+    }
+    if (percentage > 100) {
+      const rank = afterClip.indexOf(keyframe);
+      return clipWidthPx + (Math.max(0, rank) + 1) * boundaryStep;
+    }
+    return (percentage / 100) * clipWidthPx;
+  };
   // Clip-%s of the sorted keyframes — the neighbour clamp (preview + drop) needs
   // the whole row to bound the dragged diamond between its immediate siblings.
   const sortedClipPcts = sorted.map((k) => k.percentage);
-  const sortedCenterXs = sorted.map((keyframe) =>
-    Math.max(0, Math.min(clipWidthPx, (keyframe.percentage / 100) * clipWidthPx)),
-  );
+  const sortedCenterXs = sorted.map((keyframe) => keyframeCenterX(keyframe));
   const markerMetrics = sortedCenterXs.map((centerX, index) => {
+    const keyframe = sorted[index]!;
+    if (keyframe.percentage < 0 || keyframe.percentage > 100) {
+      return { hitWidth: diamondSize, visualSize: diamondSize };
+    }
     const previousGap = index > 0 ? centerX - sortedCenterXs[index - 1]! : Infinity;
     const nextGap =
       index < sortedCenterXs.length - 1 ? sortedCenterXs[index + 1]! - centerX : Infinity;
@@ -217,22 +239,25 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         // so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
+        const focusId = timelineEaseFocusId(elementId, target);
         return (
           <Fragment key={`line-${i}-${prev.percentage}-${kf.percentage}`}>
-            <div
-              className="absolute"
-              data-keyframe-connector={groupAware ? "" : undefined}
-              style={{
-                left: connectorLeft,
-                top: centerY,
-                width: Math.max(0, connectorWidth),
-                height: 2,
-                transform: "translateY(-1px)",
-                background: baseColor,
-                opacity: baseOpacity,
-                borderRadius: 1,
-              }}
-            />
+            {connectorWidth > 0 && (
+              <div
+                className="absolute"
+                data-keyframe-connector={groupAware ? "" : undefined}
+                style={{
+                  left: connectorLeft,
+                  top: centerY,
+                  width: connectorWidth,
+                  height: 2,
+                  transform: "translateY(-1px)",
+                  background: baseColor,
+                  opacity: baseOpacity,
+                  borderRadius: 1,
+                }}
+              />
+            )}
             {onSelectSegment && kf.animationId !== undefined && (
               <div
                 className="group absolute"
@@ -256,7 +281,9 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 <button
                   type="button"
                   data-keyframe-ease-button=""
-                  aria-label={`Edit ${ease} easing`}
+                  data-timeline-focus-id={focusId}
+                  tabIndex={focusId === rovingTargetId ? 0 : -1}
+                  aria-label={`Edit ${ease} easing after ${keyframeTimeLabel(clipStart, clipDuration, prev.percentage)}`}
                   title={`Edit ${ease} easing`}
                   className="absolute flex items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   style={{
@@ -288,6 +315,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
 
       {sorted.map((kf, i) => {
         const target = keyframeTarget(kf, groupAware);
+        const focusId = timelineKeyframeFocusId(elementId, target);
         const kfKey = timelineKeyframeSelectionKey(elementId, target);
         // While dragging this diamond, render it at the live preview clip-%.
         const renderPct = preview?.kfKey === kfKey ? preview.clipPct : kf.percentage;
@@ -297,7 +325,8 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         // content origin is inset past the label column, Figma-style) so it stays
         // fully visible instead of being clipped by the sticky label column.
         const marker = markerMetrics[i]!;
-        const leftPx = (renderPct / 100) * clipWidthPx - marker.hitWidth / 2;
+        const boundary = kf.percentage < 0 ? "before" : kf.percentage > 100 ? "after" : null;
+        const leftPx = keyframeCenterX(kf, renderPct) - marker.hitWidth / 2;
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
         const isHighlighted = isKfSelected || atPlayhead;
@@ -350,10 +379,15 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             key={`${i}-${kf.percentage}`}
             type="button"
             className="absolute"
+            data-timeline-focus-id={focusId}
             data-keyframe-group={groupAware ? kf.propertyGroup : undefined}
             data-keyframe-percentage={
               groupAware ? (kf.tweenPercentage ?? kf.percentage) : undefined
             }
+            data-keyframe-outside-clip={boundary ?? undefined}
+            tabIndex={focusId === rovingTargetId ? 0 : -1}
+            aria-label={`${kf.propertyGroup ?? "Motion"} keyframe at ${keyframeTimeLabel(clipStart, clipDuration, kf.percentage)}${boundary ? ` (${boundary} clip)` : ""}`}
+            aria-pressed={isKfSelected}
             style={{
               left: leftPx,
               top: centerY,
@@ -375,6 +409,13 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             onPointerDown={onPointerDown}
             onPointerMove={canDrag ? (e) => retimeHandleRef.current?.update(e) : undefined}
             onPointerUp={onPointerUp}
+            onClick={(e) => {
+              if (e.detail !== 0) return;
+              e.stopPropagation();
+              suppressNextClick();
+              if (e.shiftKey) onShiftClickKeyframe?.(target);
+              else onClickKeyframe?.(target);
+            }}
             onPointerCancel={
               canDrag
                 ? (e) => {
@@ -388,7 +429,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               e.stopPropagation();
               onContextMenuKeyframe?.(e, target);
             }}
-            title={`${kf.percentage}%`}
+            title={`${kf.percentage}%${boundary ? ` · ${boundary} clip` : ""}`}
           >
             <svg
               width={marker.visualSize}
