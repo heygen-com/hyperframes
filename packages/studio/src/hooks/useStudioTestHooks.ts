@@ -1,5 +1,16 @@
 import { useEffect } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { usePlayerStore } from "../player/store/playerStore";
+import {
+  readTimelinePerformanceDiagnostics,
+  type TimelinePerformanceDiagnostics,
+} from "../player/lib/timelinePerformanceDiagnostics";
+import {
+  createTimelinePerformanceFixture,
+  type TimelinePerformanceFixtureSpec,
+  type TimelinePerformanceFixtureSummary,
+} from "../player/lib/timelinePerformanceFixture";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../player/lib/timelineViewportBudgets";
 
 interface StudioTestHookDeps {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
@@ -12,6 +23,11 @@ interface StudioTestHookDeps {
 
 interface StudioTestApi {
   selectByDomId: (id: string) => Promise<boolean>;
+  loadTimelinePerformanceFixture: (
+    spec: TimelinePerformanceFixtureSpec,
+  ) => TimelinePerformanceFixtureSummary;
+  readTimelinePerformanceDiagnostics: () => Readonly<TimelinePerformanceDiagnostics>;
+  timelineViewportBudgets: typeof TIMELINE_VIEWPORT_BUDGETS;
 }
 
 declare global {
@@ -52,6 +68,26 @@ export function useStudioTestHooks({
         applyDomSelection(selection, { revealPanel: true });
         return true;
       },
+      loadTimelinePerformanceFixture: (spec) => {
+        const fixture = createTimelinePerformanceFixture(spec);
+        usePlayerStore.setState({
+          currentTime: 0,
+          duration: fixture.summary.duration,
+          timelineReady: true,
+          zoomMode: "manual",
+          manualZoomPercent: 2_000,
+          elements: fixture.elements,
+          selectedElementId: null,
+          selectedElementIds: new Set(),
+          selectedKeyframes: new Set(),
+          keyframeCache: fixture.keyframeCache,
+          gsapAnimations: fixture.gsapAnimations,
+          expandedClipIds: fixture.expandedClipIds,
+        });
+        return fixture.summary;
+      },
+      readTimelinePerformanceDiagnostics: () => readTimelinePerformanceDiagnostics(),
+      timelineViewportBudgets: TIMELINE_VIEWPORT_BUDGETS,
     };
     window.__studioTest = api;
     return () => {
