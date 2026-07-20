@@ -1171,6 +1171,9 @@ export const gsapRules: LintRule<LintContext>[] = [
 
       // gsap_fullscreen_overlay_starts_visible
       for (const tag of tags) {
+        // Timed clips are hidden by the runtime outside their data-start/data-duration
+        // window, so they cannot cover frames before a later GSAP reveal.
+        if (getClipTagClasses(tag)) continue;
         const selectors = tagSimpleSelectors(tag);
         if (selectors.length === 0) continue;
         const overlayKey = readAttr(tag.raw, "id") || String(tag.index);
