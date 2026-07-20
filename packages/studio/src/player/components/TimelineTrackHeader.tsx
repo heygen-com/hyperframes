@@ -397,6 +397,7 @@ function PropertyGroupHeaderRow({
   onTogglePropertyGroupKeyframe?: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
   onSeek?: (time: number) => void;
 }) {
+  const elementId = expandedElement.key ?? expandedElement.id;
   const { navigation, values, label, toggleTarget } = resolveLaneHeaderState(
     lane,
     currentTime,
@@ -408,10 +409,10 @@ function PropertyGroupHeaderRow({
 
   return (
     <div
-      id={timelineLogicalRowCellId(
-        timelinePropertyRowId(expandedElement.key ?? expandedElement.id, lane.group),
-        "header",
-      )}
+      id={timelineLogicalRowCellId(timelinePropertyRowId(elementId, lane.group), "header")}
+      data-timeline-focus-id={timelinePropertyRowId(elementId, lane.group)}
+      data-timeline-element-id={elementId}
+      tabIndex={-1}
       data-property-group={lane.group}
       data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
       className="absolute left-0 flex items-center gap-1 px-1.5 text-[10px] text-white/65"

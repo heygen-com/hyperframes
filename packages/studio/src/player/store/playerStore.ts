@@ -5,6 +5,7 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
+import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
@@ -219,15 +220,10 @@ interface PlayerState extends KeyframeSlice {
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
 
-  /**
-   * Request the timeline to scroll a clip into view (e.g. clicking an
-   * already-added asset card in the sidebar). Consumed and cleared by
-   * useTimelineRevealClip. The nonce makes repeat requests for the same
-   * clip observable so a second click re-reveals after the user scrolls away.
-   */
-  clipRevealRequest: { elementId: string; nonce: number } | null;
-  requestClipReveal: (elementId: string) => void;
-  clearClipRevealRequest: () => void;
+  timelineFocus: TimelineFocusRequest | null;
+  timelineFocusNonce: number;
+  requestTimelineFocus: (id: string) => void;
+  clearTimelineFocus: (nonce: number) => void;
 
   lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
   setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
@@ -294,7 +290,7 @@ function createTimelineResetState() {
     expandedClipIds: new Set<string>(),
     selectedElementIds: new Set<string>(),
     focusedEaseSegment: null,
-    clipRevealRequest: null,
+    timelineFocus: null,
     keyframeCache: new Map(),
     gsapAnimations: new Map(),
     beatAnalysis: null,
@@ -364,12 +360,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
 
-  clipRevealRequest: null,
-  requestClipReveal: (elementId) =>
-    set((s) => ({
-      clipRevealRequest: { elementId, nonce: (s.clipRevealRequest?.nonce ?? 0) + 1 },
-    })),
-  clearClipRevealRequest: () => set({ clipRevealRequest: null }),
+  timelineFocus: null,
+  timelineFocusNonce: 0,
+  requestTimelineFocus: (id) =>
+    set((s) => {
+      const nonce = s.timelineFocusNonce + 1;
+      return {
+        timelineFocusNonce: nonce,
+        timelineFocus: createTimelineFocusRequest(
+          id,
+          s.timelineProjectId,
+          s.timelineSessionEpoch,
+          nonce,
+        ),
+      };
+    }),
+  clearTimelineFocus: (nonce) =>
+    set((s) => (s.timelineFocus?.nonce === nonce ? { timelineFocus: null } : s)),
 
   lintFindingsByElement: new Map(),
   setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
