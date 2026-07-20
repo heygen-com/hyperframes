@@ -388,7 +388,6 @@ export function mountTimelineClipDragGestureLifecycle({
     });
     if (!decision.cancel) return;
     event.preventDefault();
-    event.stopPropagation();
     blockedClipRef.current = null;
     cancelGesture({ suppressClick: decision.suppressClick });
   };
@@ -397,7 +396,7 @@ export function mountTimelineClipDragGestureLifecycle({
   window.addEventListener("pointerup", handleWindowPointerUp);
   window.addEventListener("pointercancel", handleWindowPointerCancel);
   window.addEventListener("lostpointercapture", handleLostPointerCapture);
-  window.addEventListener("keydown", handleWindowKeyDown, true);
+  window.addEventListener("keydown", handleWindowKeyDown);
   return () => {
     cancelGesture({ updateReact: false });
     cancelGestureRef.current = () => false;
@@ -405,6 +404,6 @@ export function mountTimelineClipDragGestureLifecycle({
     window.removeEventListener("pointerup", handleWindowPointerUp);
     window.removeEventListener("pointercancel", handleWindowPointerCancel);
     window.removeEventListener("lostpointercapture", handleLostPointerCapture);
-    window.removeEventListener("keydown", handleWindowKeyDown, true);
+    window.removeEventListener("keydown", handleWindowKeyDown);
   };
 }

@@ -1,5 +1,6 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
@@ -18,6 +19,7 @@ import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
+import { isFocusedEaseRequestCurrent } from "../../player/store/keyframeSlice";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -31,24 +33,10 @@ import {
   deriveMediaOverlayPlacement,
   FlatOverlaysSection,
 } from "./propertyPanelFlatOverlaysSection";
-
-type FlatGroupDescriptor = {
-  id: string;
-  title: string;
-  summary?: string;
-  accessory?: ReactNode;
-  content: ReactNode;
-};
-
-// Required callback shape for the gated-off Motion effect list.
-const EMPTY_GSAP_EFFECT_HANDLERS = {
-  onAddAnimation: () => {},
-  onUpdateProperty: () => {},
-  onUpdateMeta: () => {},
-  onDeleteAnimation: () => {},
-  onAddProperty: () => {},
-  onRemoveProperty: () => {},
-};
+import {
+  EMPTY_GSAP_EFFECT_HANDLERS,
+  type FlatGroupDescriptor,
+} from "./propertyPanelFlatDescriptors";
 
 /** The flat inspector shell with one shared open-group state. */
 // fallow-ignore-next-line complexity
@@ -161,11 +149,18 @@ export function PropertyPanelFlat({
   // When the inline timeline ease button focuses a segment on this element,
   // force the Motion group open so its AnimationCard (which only mounts while
   // the group is expanded) can consume the focus and reveal the ease editor.
-  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-  // The element THIS panel renders, not the store's selectedElementId: that
-  // flips synchronously while the panel still renders its predecessor, so a
-  // stale panel would consume a request meant for its successor whenever the
-  // two share a class-selector animation id.
+  const { focusedEaseSegment, timelineProjectId, timelineSessionEpoch } = usePlayerStore(
+    useShallow((state) => ({
+      focusedEaseSegment: state.focusedEaseSegment,
+      timelineProjectId: state.timelineProjectId,
+      timelineSessionEpoch: state.timelineSessionEpoch,
+    })),
+  );
+  // Identity of the element THIS panel actually renders (not the store's
+  // selectedElementId, which flips synchronously on selection while the panel
+  // still renders the previous element during async DOM-selection resolution):
+  // a stale panel would otherwise consume a focus request meant for its
+  // successor when both share a class-selector animation id.
   const renderedElementId = scopedElementKey(element);
   // Adjusted during render (not an effect) so the card mounts on the same
   // commit the request lands on. Keyed on request identity: a group the user
@@ -174,8 +169,16 @@ export function PropertyPanelFlat({
   if (focusedEaseSegment !== consumedFocus) {
     setConsumedFocus(focusedEaseSegment);
     const focusesThisPanel =
-      focusedEaseSegment?.elementId === renderedElementId &&
-      gsapAnimations.some((a) => a.id === focusedEaseSegment.animationId);
+      focusedEaseSegment !== null &&
+      // A request from a previous project/session/selection is stale: it must
+      // not reopen Motion on whichever panel happens to be mounted now.
+      isFocusedEaseRequestCurrent(focusedEaseSegment, {
+        timelineProjectId,
+        timelineSessionEpoch,
+        selectedElementId,
+      }) &&
+      focusedEaseSegment.elementId === renderedElementId &&
+      gsapAnimations.some((animation) => animation.id === focusedEaseSegment.animationId);
     if (focusesThisPanel) setOpenGroupId("motion");
   }
 

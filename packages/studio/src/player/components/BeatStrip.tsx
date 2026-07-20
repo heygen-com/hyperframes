@@ -18,7 +18,6 @@ const BEAT_HIT_W = 12; // grab width per beat (px)
 
 interface BeatDragActor {
   readonly pointerId: number;
-  readonly index: number;
   readonly startX: number;
   readonly clientX: number;
   readonly clientY: number;
@@ -68,7 +67,7 @@ function releaseBeatDragResources(actor: BeatDragActor): void {
   window.removeEventListener("pointerup", handleBeatDragPointerUp);
   window.removeEventListener("pointercancel", handleBeatDragPointerCancel);
   window.removeEventListener("lostpointercapture", handleBeatDragPointerCancel);
-  window.removeEventListener("keydown", handleBeatDragKeyDown, true);
+  window.removeEventListener("keydown", handleBeatDragKeyDown);
   window.removeEventListener("blur", cancelBeatDrag);
   try {
     if (actor.scroll.hasPointerCapture?.(actor.pointerId)) {
@@ -186,7 +185,6 @@ function handleBeatDragPointerCancel(event: PointerEvent): void {
 function handleBeatDragKeyDown(event: KeyboardEvent): void {
   if (event.key !== "Escape" || !beatDragActor) return;
   event.preventDefault();
-  event.stopPropagation();
   cancelBeatDrag();
 }
 
@@ -200,7 +198,6 @@ function resolveBeatDragViewport(
 
 function createBeatDragActor(
   event: React.PointerEvent<HTMLDivElement>,
-  index: number,
   originalTime: number,
   pixelsPerSecond: number,
   scroll: HTMLElement,
@@ -210,7 +207,6 @@ function createBeatDragActor(
   if (!musicElement?.src) return null;
   const actor: BeatDragActor = {
     pointerId: event.pointerId,
-    index,
     startX: event.clientX,
     clientX: event.clientX,
     clientY: event.clientY,
@@ -235,15 +231,31 @@ function activateBeatDrag(actor: BeatDragActor): void {
   window.addEventListener("pointerup", handleBeatDragPointerUp);
   window.addEventListener("pointercancel", handleBeatDragPointerCancel);
   window.addEventListener("lostpointercapture", handleBeatDragPointerCancel);
-  window.addEventListener("keydown", handleBeatDragKeyDown, true);
+  window.addEventListener("keydown", handleBeatDragKeyDown);
   window.addEventListener("blur", cancelBeatDrag);
-  unsubscribeBeatDragSession = usePlayerStore.subscribe((state) => {
+  unsubscribeBeatDragSession = usePlayerStore.subscribe((state, previous) => {
+    // Unlike gestures that can validate only at pointerup, beat drag must stop
+    // immediately when its music source disappears or changes mid-stream. This
+    // subscription owns that interruption; the identity guard keeps requestSeek's
+    // per-frame store writes allocation-free unless a source input changed.
+    if (
+      state.timelineSessionEpoch === previous.timelineSessionEpoch &&
+      state.timelineProjectId === previous.timelineProjectId &&
+      state.elements === previous.elements &&
+      state.beatAnalysis === previous.beatAnalysis &&
+      state.beatEdits === previous.beatEdits
+    ) {
+      return;
+    }
     if (!isBeatDragSourceCurrent(actor, state)) cancelBeatDrag();
   });
-  beatDragViewportObserver = new MutationObserver(() => {
-    if (!actor.scroll.isConnected) cancelBeatDrag();
-  });
-  beatDragViewportObserver.observe(document, { childList: true, subtree: true });
+  const viewportParent = actor.scroll.parentNode;
+  if (viewportParent) {
+    beatDragViewportObserver = new MutationObserver(() => {
+      if (!actor.scroll.isConnected) cancelBeatDrag();
+    });
+    beatDragViewportObserver.observe(viewportParent, { childList: true });
+  }
   try {
     actor.scroll.setPointerCapture?.(actor.pointerId);
   } catch {
@@ -256,14 +268,15 @@ function activateBeatDrag(actor: BeatDragActor): void {
 
 function beginBeatDrag(
   event: React.PointerEvent<HTMLDivElement>,
-  index: number,
   originalTime: number,
   pixelsPerSecond: number,
 ): void {
+  // One pointer owns the actor until a terminal event claims it. A second touch
+  // must not silently discard the first gesture and make its release a no-op.
+  if (beatDragActor) return;
   const scroll = resolveBeatDragViewport(event, pixelsPerSecond);
   if (!scroll) return;
-  cancelBeatDrag();
-  const actor = createBeatDragActor(event, index, originalTime, pixelsPerSecond, scroll);
+  const actor = createBeatDragActor(event, originalTime, pixelsPerSecond, scroll);
   if (actor) activateBeatDrag(actor);
 }
 
@@ -365,11 +378,14 @@ export const BeatStrip = memo(function BeatStrip({
   const projectId = usePlayerStore((state) => state.timelineProjectId);
 
   if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
+  const activeBeatIndex = activeActor
+    ? beatTimes.findIndex((time) => Math.abs(time - activeActor.originalTime) < 1e-3)
+    : -1;
   const drag =
     activeActor &&
     activeActor.sessionEpoch === sessionEpoch &&
     activeActor.projectId === projectId &&
-    Math.abs((beatTimes[activeActor.index] ?? Number.NaN) - activeActor.originalTime) < 1e-3
+    activeBeatIndex >= 0
       ? activeActor
       : null;
   const cy = BEAT_BAND_H / 2;
@@ -377,7 +393,7 @@ export const BeatStrip = memo(function BeatStrip({
     beatTimes,
     beatStrengths,
     renderTimeRange,
-    drag ? new Set([drag.index]) : undefined,
+    drag ? new Set([activeBeatIndex]) : undefined,
   );
 
   return (
@@ -390,7 +406,7 @@ export const BeatStrip = memo(function BeatStrip({
         const strength = Math.pow(Math.min(1, beatStrength ?? 0.5), 2.2);
         const r = 1.5 + strength * 2.5;
         const opacity = 0.25 + strength * 0.75;
-        const dxPx = drag?.index === i ? drag.dx : 0;
+        const dxPx = drag && activeBeatIndex === i ? drag.dx : 0;
         const x = t * pps + dxPx;
         return (
           <div
@@ -412,7 +428,7 @@ export const BeatStrip = memo(function BeatStrip({
               // selection (which otherwise "selects" the whole panel mid-drag).
               e.preventDefault();
               e.stopPropagation();
-              beginBeatDrag(e, i, t, pps);
+              beginBeatDrag(e, t, pps);
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();

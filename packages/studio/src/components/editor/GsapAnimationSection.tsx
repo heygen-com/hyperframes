@@ -1,16 +1,9 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Film } from "../../icons/SystemIcons";
 import { Section } from "./propertyPanelPrimitives";
-import { AnimationCard } from "./AnimationCard";
-import {
-  type GsapAnimationEditCallbacks,
-  withTrackedGsapAnimationCallbacks,
-  clearFocusedEaseSegment,
-} from "./gsapAnimationCallbacks";
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import { usePlayerStore } from "../../player";
-import { GsapAddAnimationControl } from "./GsapAddAnimationControl";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
+import { GsapAnimationList } from "./GsapAnimationList";
 
 interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
   elementId: string;
@@ -21,18 +14,13 @@ interface GsapAnimationSectionProps extends GsapAnimationEditCallbacks {
 }
 
 export const GsapAnimationSection = memo(function GsapAnimationSection({
-  animations,
   elementId,
+  animations,
   multipleTimelines,
   unsupportedTimelinePattern,
   onAddAnimation,
   ...callbacks
 }: GsapAnimationSectionProps) {
-  const track = useTrackDesignInput();
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const trackedCallbacks = withTrackedGsapAnimationCallbacks(callbacks, track);
-  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-
   return (
     <Section title="Animation" icon={<Film size={15} />}>
       {multipleTimelines && (
@@ -49,31 +37,13 @@ export const GsapAnimationSection = memo(function GsapAnimationSection({
         </p>
       )}
       {multipleTimelines || unsupportedTimelinePattern ? null : (
-        <div className="space-y-2">
-          {animations.map((anim, index) => (
-            <AnimationCard
-              {...trackedCallbacks}
-              key={anim.id}
-              animation={anim}
-              defaultExpanded={index === 0}
-              focusedSegment={
-                focusedEaseSegment?.elementId === elementId &&
-                focusedEaseSegment.animationId === anim.id
-                  ? focusedEaseSegment
-                  : null
-              }
-              onFocusSegmentConsumed={clearFocusedEaseSegment}
-            />
-          ))}
-
-          <GsapAddAnimationControl
-            open={addMenuOpen}
-            setOpen={setAddMenuOpen}
-            onAddAnimation={onAddAnimation}
-            track={track}
-            variant="classic"
-          />
-        </div>
+        <GsapAnimationList
+          {...callbacks}
+          elementId={elementId}
+          animations={animations}
+          onAddAnimation={onAddAnimation}
+          variant="classic"
+        />
       )}
     </Section>
   );

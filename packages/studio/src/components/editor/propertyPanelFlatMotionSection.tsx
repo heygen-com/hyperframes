@@ -1,20 +1,13 @@
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
-import { AnimationCard } from "./AnimationCard";
-import {
-  type GsapAnimationEditCallbacks,
-  withTrackedGsapAnimationCallbacks,
-  clearFocusedEaseSegment,
-} from "./gsapAnimationCallbacks";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
-import { usePlayerStore } from "../../player";
-import { GsapAddAnimationControl } from "./GsapAddAnimationControl";
+import { GsapAnimationList } from "./GsapAnimationList";
 
 export function FlatTimingRow({
   element,
@@ -136,19 +129,11 @@ export function FlatMotionSection({
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
   onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
 } & GsapAnimationEditCallbacks) {
-  const track = useTrackDesignInput();
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const trackedCallbacks = withTrackedGsapAnimationCallbacks(callbacks, track);
-  const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   // Only consume a focus request aimed at the element THIS panel renders (not
   // the store's selectedElementId, which flips synchronously during async
   // selection resolution), so a shared class-selector animation id can't open
   // the wrong element's editor.
   const renderedElementId = scopedElementKey(element);
-  const focusedHere =
-    focusedEaseSegment && focusedEaseSegment.elementId === renderedElementId
-      ? focusedEaseSegment
-      : null;
 
   return (
     <div className="space-y-3">
@@ -174,26 +159,13 @@ export function FlatMotionSection({
             </p>
           )}
           {!multipleTimelines && !unsupportedTimelinePattern && (
-            <div className="space-y-2">
-              {animations.map((anim, index) => (
-                <AnimationCard
-                  {...trackedCallbacks}
-                  key={anim.id}
-                  animation={anim}
-                  defaultExpanded={index === 0}
-                  flat
-                  focusedSegment={focusedHere?.animationId === anim.id ? focusedHere : null}
-                  onFocusSegmentConsumed={clearFocusedEaseSegment}
-                />
-              ))}
-              <GsapAddAnimationControl
-                open={addMenuOpen}
-                setOpen={setAddMenuOpen}
-                onAddAnimation={onAddAnimation}
-                track={track}
-                variant="flat"
-              />
-            </div>
+            <GsapAnimationList
+              {...callbacks}
+              elementId={renderedElementId}
+              animations={animations}
+              onAddAnimation={onAddAnimation}
+              variant="flat"
+            />
           )}
         </>
       )}

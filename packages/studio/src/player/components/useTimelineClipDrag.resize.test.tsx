@@ -169,7 +169,7 @@ function renderResizeHarness(
     },
     pressEscape() {
       act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        scroll.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       });
     },
     unmount() {
@@ -430,8 +430,11 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
   it("Escape discards the projection and persists nothing", () => {
     const { h } = startGroupResize();
     expect(h.getResizeProjection()).toHaveLength(2);
+    const sawEscape = vi.fn();
+    document.addEventListener("keydown", sawEscape, { once: true });
 
     h.pressEscape();
+    expect(sawEscape).toHaveBeenCalledOnce();
     expect(h.getResizeProjection()).toHaveLength(0);
     expect(h.storeById("b").duration).toBe(3);
     expect(h.onResizeElement).not.toHaveBeenCalled();

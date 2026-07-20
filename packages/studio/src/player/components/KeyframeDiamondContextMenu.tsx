@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import type { TimelineElement } from "../store/playerStore";
@@ -30,7 +29,7 @@ interface KeyframeDiamondContextMenuProps {
   onMoveToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;
 }
 
-export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMenu({
+export function KeyframeDiamondContextMenu({
   state,
   onClose,
   onDelete,
@@ -104,4 +103,4 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
     </div>,
     document.body,
   );
-});
+}

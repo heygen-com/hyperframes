@@ -51,8 +51,7 @@ function mountBeatStrip(renderTimeRange?: { start: number; end: number }) {
     scrollWidth: { configurable: true, value: 2_000 },
     scrollHeight: { configurable: true, value: 2_000 },
   });
-  viewport.getBoundingClientRect = () =>
-    ({ left: 0, right: 1_000, top: 0, bottom: 500, width: 1_000, height: 500 }) as DOMRect;
+  viewport.getBoundingClientRect = () => new DOMRect(0, 0, 1_000, 500);
   Object.assign(viewport, {
     setPointerCapture: vi.fn(),
     hasPointerCapture: vi.fn(() => true),
@@ -273,6 +272,74 @@ describe("BeatStrip gesture ownership", () => {
       );
     });
     expect(commitBeatEditsSpy).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the dragged beat pinned by time when another beat is inserted before it", () => {
+    const { root } = mountBeatStrip();
+    startBeatDrag();
+    act(() => {
+      window.dispatchEvent(
+        pointerEvent("pointermove", {
+          bubbles: true,
+          clientX: 140,
+          clientY: 100,
+          pointerId: 1,
+        }),
+      );
+      usePlayerStore.setState({
+        beatAnalysis: {
+          ...BEAT_ANALYSIS,
+          beatTimes: [0.5, 1, 3],
+          beatStrengths: [0.3, 0.5, 0.8],
+        },
+      });
+      root.render(<BeatStrip beatTimes={[0.5, 1, 3]} beatStrengths={[0.3, 0.5, 0.8]} pps={100} />);
+    });
+
+    const lefts = Array.from(
+      document.querySelectorAll<HTMLDivElement>('[title="Drag to move · double-click to delete"]'),
+      (beat) => beat.style.left,
+    );
+    expect(lefts).toContain("134px");
+
+    releaseBeatDrag(140);
+    expectCommittedBeatAt(1.4);
+  });
+
+  it("keeps the first pointer in control when a second touch starts", () => {
+    mountBeatStrip();
+    startBeatDrag();
+    const beats = document.querySelectorAll<HTMLDivElement>(
+      '[title="Drag to move · double-click to delete"]',
+    );
+    act(() => {
+      beats[1]?.dispatchEvent(
+        pointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 300,
+          clientY: 100,
+          pointerId: 2,
+        }),
+      );
+    });
+
+    releaseBeatDrag(140, 1);
+    expectCommittedBeatAt(1.4);
+  });
+
+  it("lets Escape bubble before cancelling the active drag", () => {
+    mountBeatStrip();
+    startBeatDrag();
+    const sawEscape = vi.fn();
+    document.addEventListener("keydown", sawEscape, { once: true });
+
+    act(() => {
+      firstBeat().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(sawEscape).toHaveBeenCalledOnce();
+    expectCancelledBeatDrag();
   });
 
   it("does not autoscroll or mutate below the drag threshold", () => {
