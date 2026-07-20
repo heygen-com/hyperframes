@@ -148,8 +148,9 @@ export async function injectDrawElementCanvas(
       // current opacity into the snapshot — BeginFrame (sync=false) captures
       // and builds without canvas.requestPaint(); see __hfDeInvalidate below.
       try {
+        const parsedBaseOpacity = parseFloat(getComputedStyle(root).opacity);
         (window as unknown as { __HF_ROOT_BASE_OPACITY__?: number }).__HF_ROOT_BASE_OPACITY__ =
-          parseFloat(getComputedStyle(root).opacity) || 1;
+          Number.isFinite(parsedBaseOpacity) ? parsedBaseOpacity : 1;
       } catch {
         /* leave undefined → ratio defaults to 1 */
       }
