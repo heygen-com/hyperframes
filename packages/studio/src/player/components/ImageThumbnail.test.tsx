@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { ImageThumbnail } from "./ImageThumbnail";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
@@ -68,6 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
+  thumbnailScheduler.clear();
   globalThis.IntersectionObserver = originalIO;
   globalThis.ResizeObserver = originalRO;
   globalThis.Image = originalImage;
@@ -82,6 +84,10 @@ function render(props: { imageSrc: string; label?: string; labelColor?: string }
         imageSrc={props.imageSrc}
         label={props.label ?? ""}
         labelColor={props.labelColor ?? "#fff"}
+        projectId="p"
+        sessionEpoch={1}
+        priority="visible"
+        rich={false}
       />,
     );
   });
@@ -91,6 +97,13 @@ function lastProbe(): MockImage {
   const probe = MockImage.instances.at(-1);
   expect(probe).toBeDefined();
   return probe!;
+}
+
+async function resolveProbe(update: (probe: MockImage) => void): Promise<void> {
+  await act(async () => {
+    update(lastProbe());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 /** Assert at least one tile rendered and the first tile serves `expectedSrc`. */
@@ -107,15 +120,15 @@ describe("ImageThumbnail", () => {
     expect(host.querySelectorAll("img").length).toBe(0);
   });
 
-  it("probes the resolved src and renders repeated object-cover tiles on load", () => {
+  it("probes the resolved src and renders repeated object-cover tiles on load", async () => {
     render({ imageSrc: "/api/projects/p/preview/assets/pic.png" });
     const probe = lastProbe();
     expect(probe.src).toBe("/api/projects/p/preview/assets/pic.png");
 
-    act(() => {
-      probe.naturalWidth = 1920;
-      probe.naturalHeight = 1080;
-      probe.onload?.();
+    await resolveProbe((current) => {
+      current.naturalWidth = 1920;
+      current.naturalHeight = 1080;
+      current.onload?.();
     });
 
     const imgs = [...host.querySelectorAll("img")];
@@ -127,18 +140,18 @@ describe("ImageThumbnail", () => {
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("drops the shimmer and renders no tiles when a raster image fails to load", () => {
+  it("drops the shimmer and renders no tiles when a raster image fails to load", async () => {
     render({ imageSrc: "/api/projects/p/preview/assets/missing.png" });
-    act(() => lastProbe().onerror?.());
+    await resolveProbe((probe) => probe.onerror?.());
     expect(host.querySelectorAll("img").length).toBe(0);
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("renders tiles at 16:9 when an SVG has no intrinsic dimensions (naturalWidth=0)", () => {
+  it("renders tiles at 16:9 when an SVG has no intrinsic dimensions (naturalWidth=0)", async () => {
     render({ imageSrc: "/api/projects/p/preview/assets/logo.svg" });
     const probe = lastProbe();
 
-    act(() => {
+    await resolveProbe(() => {
       // naturalWidth stays 0 — SVG with no width/height attribute
       probe.onload?.();
     });
@@ -147,21 +160,20 @@ describe("ImageThumbnail", () => {
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("renders SVG tiles at 16:9 fallback even when the probe fires onerror", () => {
+  it("renders SVG tiles at 16:9 fallback even when the probe fires onerror", async () => {
     // Some browser/sandbox environments fire onerror for SVGs even though the
     // <img> element itself can render the file — we must not blank the strip.
     render({ imageSrc: "/api/projects/p/preview/assets/icon.svg" });
 
-    act(() => lastProbe().onerror?.());
+    await resolveProbe((probe) => probe.onerror?.());
 
     expectFirstTileSrc("/api/projects/p/preview/assets/icon.svg");
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("renders the label above the strip when provided", () => {
+  it("renders the label above the strip when provided", async () => {
     render({ imageSrc: "/x.png", label: "hero", labelColor: "#abc" });
-    act(() => {
-      const probe = lastProbe();
+    await resolveProbe((probe) => {
       probe.naturalWidth = 100;
       probe.naturalHeight = 100;
       probe.onload?.();
