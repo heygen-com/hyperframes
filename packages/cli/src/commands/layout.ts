@@ -44,6 +44,11 @@ const INSPECT_SCHEMA_VERSION = 1;
 const MOTION_FPS = 20;
 const MOTION_MAX_SAMPLES = 300;
 
+export function parseLayoutTolerance(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Math.max(0, Number.isFinite(parsed) ? parsed : 2);
+}
+
 export const examples: Example[] = [
   ["Inspect visual layout across the current composition", "hyperframes layout"],
   ["Inspect a specific project", "hyperframes layout ./my-video"],
@@ -486,7 +491,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       printDeprecationNotice(commandName);
       const project = resolveProject(args.dir);
       const samples = Math.max(1, parseInt(args.samples as string, 10) || 9);
-      const tolerance = Math.max(0, parseFloat(args.tolerance as string) || 2);
+      const tolerance = parseLayoutTolerance(args.tolerance as string);
       const timeout = Math.max(500, parseInt(args.timeout as string, 10) || 5000);
       const maxIssues = Math.max(1, parseInt(args["max-issues"] as string, 10) || 80);
       const at = parseAt(args.at);
