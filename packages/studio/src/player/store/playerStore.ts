@@ -7,6 +7,7 @@ import { computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
+export { liveTime } from "./liveTime";
 
 export interface TimelineElement {
   id: string;
@@ -276,19 +277,6 @@ interface BeatHistoryEntry {
   at: number;
   label: string;
 }
-
-// Lightweight pub-sub for current time during playback.
-// Bypasses React state so the RAF loop can update the playhead/time display
-// without triggering re-renders on every frame.
-type TimeListener = (time: number) => void;
-const _timeListeners = new Set<TimeListener>();
-export const liveTime = {
-  notify: (t: number) => _timeListeners.forEach((cb) => cb(t)),
-  subscribe: (cb: TimeListener) => {
-    _timeListeners.add(cb);
-    return () => _timeListeners.delete(cb);
-  },
-};
 
 function createTimelineResetState() {
   return {
