@@ -1,3 +1,8 @@
+---
+title: "Send to HyperFrames"
+description: "Author a Claude Design as a single-file HyperFrames composition for the \"Send to HyperFrames\" URL import."
+---
+
 # Claude Design → "Send to HyperFrames" (Single-File Import)
 
 > This guide is **fully self-contained**: everything needed to author a valid "Send to HyperFrames" composition is inline here. Do not rely on fetching any other document — produce the composition from this guide alone.
