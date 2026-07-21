@@ -9,6 +9,25 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.66"
+  description="Released - 2026-07-21"
+  tags={["Release", "Studio", "Skills", "Engine"]}
+>
+Studio preview audio now plays at playback speeds above 1x instead of being silently muted, and the mute control stays usable at every speed. This release also fixes an engine worker frame-stride false-positive and lands a c2v skills mining pass with new blueprints and rules.
+
+## Features
+
+- **Skills:** C2v mining pass — 7 new blueprints, 10 new rules, compacted recipe corpus ([853256403](https://github.com/heygen-com/hyperframes/commit/853256403b3ffd3dc0b616785ab876b4c0f04a89), [#2680](https://github.com/heygen-com/hyperframes/pull/2680))
+
+## Fixes
+
+- **Studio:** Play preview audio at speeds above 1x ([07965e9fe](https://github.com/heygen-com/hyperframes/commit/07965e9fe93fc7b53dfe7c933f8abd0c4b10c86d), [#2691](https://github.com/heygen-com/hyperframes/pull/2691))
+- **Engine:** Carry frameStride onto WorkerResult (fixes interleaved worker false-positive) ([4f53dd4f2](https://github.com/heygen-com/hyperframes/commit/4f53dd4f2cd607de17b2d2329746fa5da0cadeaa))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.65...v0.7.66).
+</Update>
+
+<Update
   label="HyperFrames v0.7.65"
   description="Released - 2026-07-21"
   tags={["Release", "Studio", "Skills", "Guides"]}
