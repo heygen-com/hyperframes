@@ -22,6 +22,7 @@ export interface TimelinePropertyLanesProps {
   currentPercentage: number;
   elementId: string;
   selectedKeyframes: ReadonlySet<string>;
+  rovingTargetId?: string | null;
   onSelectSegment?: (target: TimelineKeyframeTarget) => void;
   onClickKeyframe?: (target: TimelineKeyframeTarget) => void;
   onShiftClickKeyframe?: (target: TimelineKeyframeTarget) => void;
@@ -110,6 +111,7 @@ export function TimelinePropertyLanes({
   currentPercentage,
   elementId,
   selectedKeyframes,
+  rovingTargetId = null,
   onSelectSegment,
   onClickKeyframe,
   onShiftClickKeyframe,
@@ -150,7 +152,10 @@ export function TimelinePropertyLanes({
             isSelected={isSelected}
             currentPercentage={currentPercentage}
             elementId={elementId}
+            clipStart={clipStart}
+            clipDuration={clipDuration}
             selectedKeyframes={selectedKeyframes}
+            rovingTargetId={rovingTargetId}
             onSelectSegment={onSelectSegment}
             onClickKeyframe={onClickKeyframe}
             onShiftClickKeyframe={onShiftClickKeyframe}

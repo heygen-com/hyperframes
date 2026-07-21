@@ -202,7 +202,7 @@ export function buildTimelineLogicalRows({
       logicalIndex: rows.length,
       level: 1,
       parentId: null,
-      elementId: null,
+      elementId: activeId,
       expandable: lanes.length > 0,
       expanded,
       items: clipItems(trackId, elements),
