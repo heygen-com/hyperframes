@@ -1,4 +1,4 @@
-import { useCallback, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import {
   parseTimelineCompositionPayload,
@@ -7,6 +7,10 @@ import {
 import { usePlayerStore } from "../store/playerStore";
 import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import {
+  applyTimelineAutoScrollStep,
+  resolveTimelineAutoScrollLoopAction,
+} from "./timelineEditing";
 
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -15,6 +19,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   trackOrderRef: RefObject<number[]>;
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
+  sessionEpoch: number;
 }
 
 type TimelinePlacement = { start: number; track: number };
@@ -29,12 +34,22 @@ function applyJsonDropPayload(
   pick: (parsed: Record<string, string | undefined>) => string | undefined,
   apply: (value: string, placement: TimelinePlacement) => void,
   placement: TimelinePlacement,
-): void {
+): boolean {
   try {
     const value = pick(JSON.parse(raw) as Record<string, string | undefined>);
-    if (value) apply(value, placement);
+    if (!value) return false;
+    apply(value, placement);
+    return true;
   } catch {
-    /* ignore malformed drag payloads */
+    return false;
+  }
+}
+
+function invokeDropCallback(callback: () => Promise<void> | void): void {
+  try {
+    void Promise.resolve(callback()).catch(() => undefined);
+  } catch {
+    // A rejected external producer never keeps a timeline drop actor alive.
   }
 }
 
@@ -62,22 +77,84 @@ export function useTimelineAssetDrop({
   onAssetDrop,
   onBlockDrop,
   onCompositionDrop,
+  sessionEpoch,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
+    null,
+  );
+  const autoScrollRafRef = useRef(0);
+  const activeDropEpochRef = useRef<number | null>(null);
 
-  const handleAssetDragOver = useCallback((e: React.DragEvent) => {
-    const types = Array.from(e.dataTransfer.types);
-    const hasFiles = types.includes("Files");
-    const hasAsset = types.includes(TIMELINE_ASSET_MIME);
-    const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
-    const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
-    if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setIsDragOver(true);
+  const stopAutoScroll = useCallback(() => {
+    dragPointerRef.current = null;
+    if (autoScrollRafRef.current) cancelAnimationFrame(autoScrollRafRef.current);
+    autoScrollRafRef.current = 0;
   }, []);
 
-  const clearDropPreview = useCallback(() => setIsDragOver(false), []);
+  const stepAutoScroll = useCallback(
+    function stepAutoScroll() {
+      autoScrollRafRef.current = 0;
+      const pointer = dragPointerRef.current;
+      const scroll = scrollRef.current;
+      if (!pointer || pointer.sessionEpoch !== sessionEpoch || !scroll) return;
+      if (!applyTimelineAutoScrollStep(scroll, pointer.clientX, pointer.clientY)) return;
+      autoScrollRafRef.current = requestAnimationFrame(stepAutoScroll);
+    },
+    [scrollRef, sessionEpoch],
+  );
+
+  const syncAutoScroll = useCallback(
+    (clientX: number, clientY: number) => {
+      dragPointerRef.current = { clientX, clientY, sessionEpoch };
+      const scroll = scrollRef.current;
+      const action = resolveTimelineAutoScrollLoopAction(
+        scroll,
+        clientX,
+        clientY,
+        autoScrollRafRef.current !== 0,
+      );
+      if (action === "stop") {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = 0;
+      } else if (action === "start") {
+        autoScrollRafRef.current = requestAnimationFrame(stepAutoScroll);
+      }
+    },
+    [scrollRef, sessionEpoch, stepAutoScroll],
+  );
+
+  const handleAssetDragOver = useCallback(
+    (e: React.DragEvent) => {
+      const types = Array.from(e.dataTransfer.types);
+      const hasFiles = types.includes("Files");
+      const hasAsset = types.includes(TIMELINE_ASSET_MIME);
+      const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
+      const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
+      if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      activeDropEpochRef.current = sessionEpoch;
+      setIsDragOver(true);
+      syncAutoScroll(e.clientX, e.clientY);
+    },
+    [sessionEpoch, syncAutoScroll],
+  );
+
+  const clearDropPreview = useCallback(() => {
+    activeDropEpochRef.current = null;
+    stopAutoScroll();
+    setIsDragOver(false);
+  }, [stopAutoScroll]);
+
+  const handleAssetDragLeave = useCallback(
+    (e: React.DragEvent) => {
+      const related = e.relatedTarget;
+      if (related instanceof Node && e.currentTarget.contains(related)) return;
+      clearDropPreview();
+    },
+    [clearDropPreview],
+  );
 
   const resolveDropPlacement = useCallback(
     (clientX: number, clientY: number, usePointerStart = false): TimelinePlacement => {
@@ -110,33 +187,70 @@ export function useTimelineAssetDrop({
   const handleAssetDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      setIsDragOver(false);
+      const canCommit = activeDropEpochRef.current === sessionEpoch;
+      clearDropPreview();
+      if (!canCommit) return;
       const compositionPayload = parseTimelineCompositionPayload(
         e.dataTransfer.getData(TIMELINE_COMPOSITION_MIME),
       );
       if (compositionPayload && onCompositionDrop) {
         const placement = resolveDropPlacement(e.clientX, e.clientY, true);
-        void onCompositionDrop(compositionPayload.sourcePath, placement);
+        invokeDropCallback(() => onCompositionDrop(compositionPayload.sourcePath, placement));
         return;
       }
       const placement = resolveDropPlacement(e.clientX, e.clientY);
 
       if (onFileDrop && e.dataTransfer.files.length > 0) {
-        void onFileDrop(Array.from(e.dataTransfer.files), placement);
+        invokeDropCallback(() => onFileDrop(Array.from(e.dataTransfer.files), placement));
         return;
       }
+      const types = Array.from(e.dataTransfer.types);
       const assetPayload = e.dataTransfer.getData(TIMELINE_ASSET_MIME);
-      if (assetPayload && onAssetDrop) {
-        applyJsonDropPayload(assetPayload, (p) => p.path, onAssetDrop, placement);
+      if (types.includes(TIMELINE_ASSET_MIME)) {
+        if (assetPayload && onAssetDrop) {
+          applyJsonDropPayload(
+            assetPayload,
+            (p) => p.path,
+            (path, nextPlacement) => invokeDropCallback(() => onAssetDrop(path, nextPlacement)),
+            placement,
+          );
+        }
         return;
       }
       const blockPayload = e.dataTransfer.getData(TIMELINE_BLOCK_MIME);
-      if (blockPayload && onBlockDrop) {
-        applyJsonDropPayload(blockPayload, (p) => p.name, onBlockDrop, placement);
+      if (types.includes(TIMELINE_BLOCK_MIME)) {
+        if (blockPayload && onBlockDrop) {
+          applyJsonDropPayload(
+            blockPayload,
+            (p) => p.name,
+            (name, nextPlacement) => invokeDropCallback(() => onBlockDrop(name, nextPlacement)),
+            placement,
+          );
+        }
       }
     },
-    [resolveDropPlacement, onFileDrop, onAssetDrop, onBlockDrop, onCompositionDrop],
+    [
+      clearDropPreview,
+      onAssetDrop,
+      onBlockDrop,
+      onCompositionDrop,
+      onFileDrop,
+      resolveDropPlacement,
+      sessionEpoch,
+    ],
   );
 
-  return { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview };
+  useEffect(() => clearDropPreview, [clearDropPreview]);
+  useEffect(() => {
+    stopAutoScroll();
+    setIsDragOver(false);
+  }, [sessionEpoch, stopAutoScroll]);
+
+  return {
+    isDragOver,
+    handleAssetDragOver,
+    handleAssetDragLeave,
+    handleAssetDrop,
+    clearDropPreview,
+  };
 }
