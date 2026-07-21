@@ -40,6 +40,36 @@ describe("resolveTimelineKeyframeTarget", () => {
     ).toBeNull();
   });
 
+  it("uses the rendered animation identity to resolve a same-group collision", () => {
+    expect(
+      resolveTimelineKeyframeTarget(
+        50,
+        [
+          {
+            percentage: 50,
+            tweenPercentage: 25,
+            propertyGroup: "position",
+            animationId: "position-b",
+          },
+        ],
+        [
+          { id: "position-a", propertyGroup: "position" },
+          { id: "position-b", propertyGroup: "position" },
+        ],
+      ),
+    ).toEqual({ animId: "position-b", tweenPct: 25 });
+  });
+
+  it("rejects a rendered animation identity absent from the element", () => {
+    expect(
+      resolveTimelineKeyframeTarget(
+        50,
+        [{ percentage: 50, animationId: "stale-position" }],
+        [{ id: "position", propertyGroup: "position" }],
+      ),
+    ).toBeNull();
+  });
+
   it("keeps a keyframed and flat tween in the same property group unresolved", () => {
     expect(
       resolveTimelineKeyframeTarget(
