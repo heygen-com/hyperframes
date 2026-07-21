@@ -94,12 +94,12 @@ describe("resolveKeyframeRetime — resize (past the tween boundary)", () => {
     expect(r.kind).toBe("resize");
     expect(r.position).toBeCloseTo(2, 5); // start unchanged
     expect(r.duration).toBeCloseTo(6, 5); // 8 - 2
-    // abs 2/4/8 over the new [2,8] window → 0 / 33.3 / 100. pctRemap carries each
+    // abs 2/4/8 over the new [2,8] window → 0 / 33.333 / 100. pctRemap carries each
     // existing keyframe's old→new tween-%; the commit re-keys in place (value +
     // ease + _auto preserved by round-tripping the source node, not re-emitted here).
     expect(r.pctRemap).toEqual([
       { from: 0, to: 0 },
-      { from: 50, to: 33.3 },
+      { from: 50, to: 33.333 },
       { from: 100, to: 100 },
     ]);
   });
@@ -113,10 +113,10 @@ describe("resolveKeyframeRetime — resize (past the tween boundary)", () => {
     expect(r.kind).toBe("resize");
     expect(r.position).toBeCloseTo(0.5, 5);
     expect(r.duration).toBeCloseTo(5.5, 5); // 6 - 0.5
-    // abs 0.5/4/6 over [0.5,6] → 0 / 63.6 / 100.
+    // abs 0.5/4/6 over [0.5,6] → 0 / 63.636 / 100.
     expect(r.pctRemap).toEqual([
       { from: 0, to: 0 },
-      { from: 50, to: 63.6 },
+      { from: 50, to: 63.636 },
       { from: 100, to: 100 },
     ]);
   });

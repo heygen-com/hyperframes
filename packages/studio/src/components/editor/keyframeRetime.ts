@@ -55,7 +55,6 @@ const EPSILON_TIME = 1e-4;
 const MIN_TWEEN_DURATION = 0.01;
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-const round1 = (n: number) => Math.round(n * 10) / 10; // 0.1% precision
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /** Resolve timing for a flat tween's synthesized start/end diamond. */
@@ -153,7 +152,7 @@ export function resolveKeyframeRetime(opts: {
   const pctRemap: KeyframePctRemap[] = keyframes.map((kf, i) => {
     const absTime =
       i === draggedIdx ? dropAbsTime : tweenStart + (kf.percentage / 100) * tweenDuration;
-    return { from: kf.percentage, to: round1(((absTime - newStart) / newDuration) * 100) };
+    return { from: kf.percentage, to: round3(((absTime - newStart) / newDuration) * 100) };
   });
 
   return {

@@ -8,18 +8,32 @@ export interface KeyframeDiamondContextMenuState {
   elementId: string;
   percentage: number;
   tweenPercentage?: number;
+  propertyGroup?: string;
+  animationId?: string;
   currentEase?: string;
 }
 
 interface KeyframeDiamondContextMenuProps {
   state: KeyframeDiamondContextMenuState;
   onClose: () => void;
-  onDelete: (elementId: string, percentage: number) => void;
+  onDelete: (
+    elementId: string,
+    percentage: number,
+    propertyGroup?: string,
+    tweenPercentage?: number,
+    animationId?: string,
+  ) => void;
   onDeleteAll: (elementId: string) => void;
   onChangeEase?: (elementId: string, percentage: number, ease: string) => void;
   onCopyProperties?: (elementId: string, percentage: number) => void;
   /** Retime the keyframe to the current playhead, preserving its value + ease. */
-  onMoveToPlayhead?: (elementId: string, fromPercentage: number) => void;
+  onMoveToPlayhead?: (
+    elementId: string,
+    fromPercentage: number,
+    propertyGroup?: string,
+    tweenPercentage?: number,
+    animationId?: string,
+  ) => void;
 }
 
 export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMenu({
@@ -51,7 +65,13 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
             // Pass clip-% — resolveKeyframeTarget keys the cache lookup on clip-%
             // and returns the tween-% for the mutation. Passing tween-% here would
             // miss the lookup on any tween whose window is shorter than the clip.
-            onMoveToPlayhead(state.elementId, state.percentage);
+            onMoveToPlayhead(
+              state.elementId,
+              state.percentage,
+              state.propertyGroup,
+              state.tweenPercentage,
+              state.animationId,
+            );
             onClose();
           }}
         >
@@ -64,7 +84,13 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
         type="button"
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
         onClick={() => {
-          onDelete(state.elementId, state.percentage);
+          onDelete(
+            state.elementId,
+            state.percentage,
+            state.propertyGroup,
+            state.tweenPercentage,
+            state.animationId,
+          );
           onClose();
         }}
       >
