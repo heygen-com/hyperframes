@@ -62,7 +62,7 @@ Telemetry is anonymous usage counters only. Disable globally with `HYPERFRAMES_N
 Events include two fingerprint properties used to distinguish managed-sandbox runs from real laptops — no PII, no env-var **values**, only existence checks:
 
 - **`sandbox_runtime`**: `gvisor` / `firecracker` / `docker` / `kvm` / `wsl` / `null`. gVisor via kernel string + `/proc/version`. Firecracker via `/dev/vsock` + DMI sys_vendor. Docker via `/.dockerenv` + cgroup.
-- **`agent_runtime`**: an agent-runtime classification or `null`. Detected by the existence of well-known runtime env vars; the values themselves are never read.
+- **`agent_runtime`**: `claude_code` / `codex` / `cursor` / `copilot_agent` / `jules` / `replit` / `devin` / `aider` / `gemini_cli` / `hermes` / `openclaw` / `null`. Detected by the existence of well-known vendor env vars; the values themselves are never read.
 
 ## Asset Preprocessing
 

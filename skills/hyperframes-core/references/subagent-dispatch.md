@@ -26,6 +26,8 @@ Use the current harness's native delegation and waiting tools when they are avai
 
 When native delegation is unavailable, use the existing fallback ladder: launch headless CLI workers that share the project filesystem, then fall back to inline serial execution.
 
+On Codex, native delegation requires the user's explicit permission. Fold a one-line request into the workflow's first existing user pause before dispatch; a standing grant in `AGENTS.md` or the kickoff prompt also counts. Without it, use the fallback ladder rather than silently skipping work.
+
 ## Vocabulary mapping
 
 - A request to work "in the background" means dispatch concurrently when the harness supports it.

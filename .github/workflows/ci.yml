@@ -34,6 +34,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
+      codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -66,6 +67,13 @@ jobs:
               - "skills-manifest.json"
               - "scripts/lint-skills.ts"
               - "scripts/check-skill-mirror.mjs"
+              - "package.json"
+              - ".github/workflows/ci.yml"
+            codex_plugin:
+              - ".codex-plugin/**"
+              - "assets/**"
+              - "skills/**"
+              - "scripts/package-codex-plugin.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
 
@@ -338,6 +346,20 @@ jobs:
         run: bun scripts/lint-skills.ts
       - name: Verify .claude/skills/ and .agents/skills/ are byte-identical
         run: node scripts/check-skill-mirror.mjs
+
+  codex-plugin-package:
+    name: "Codex plugin package"
+    needs: changes
+    if: needs.changes.outputs.codex_plugin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Build upload-ready Codex plugin
+        run: node scripts/package-codex-plugin.mjs
 
   cli-npx-shim:
     name: "CLI: npx shim (${{ matrix.os }})"

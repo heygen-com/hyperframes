@@ -2,7 +2,7 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "03a2aa9e88fb50bd",
+      "hash": "6b010d2fb45c99f5",
       "files": 140
     },
     "faceless-explainer": {
@@ -26,11 +26,11 @@
       "files": 104
     },
     "hyperframes-cli": {
-      "hash": "7bba303bc9002695",
+      "hash": "b1a0725560016894",
       "files": 11
     },
     "hyperframes-core": {
-      "hash": "3addccfebe2862df",
+      "hash": "85004c9571ed19ce",
       "files": 19
     },
     "hyperframes-creative": {
@@ -46,7 +46,7 @@
       "files": 10
     },
     "media-use": {
-      "hash": "ecac5719b5ce6422",
+      "hash": "f7f0ad56a0477a09",
       "files": 145
     },
     "motion-graphics": {
@@ -58,7 +58,7 @@
       "files": 132
     },
     "pr-to-video": {
-      "hash": "686ff9099be2a57c",
+      "hash": "17ed27aa2cc32501",
       "files": 29
     },
     "product-launch-video": {

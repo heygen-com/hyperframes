@@ -117,7 +117,7 @@ const labels = Array.isArray(pr.labels)
 // just gets an avatar downloaded and can still be excluded by story-design.
 const BOT_DENYLIST = new Set(
   [
-    "code-editorial",
+    "claude",
     "graphite-app",
     "dependabot",
     "github-actions",
