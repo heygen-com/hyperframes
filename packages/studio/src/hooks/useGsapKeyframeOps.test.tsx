@@ -19,11 +19,16 @@ afterEach(() => {
 
 const selection: DomEditSelection = { id: "box", selector: "#box" } as DomEditSelection;
 
+function successfulCommitMutation() {
+  return vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ ok: true }));
+}
+
 function renderKeyframeOps(over: {
   commitMutation: (...args: unknown[]) => Promise<unknown>;
   trackGsapSaveFailure: (...args: unknown[]) => void;
 }) {
   const captured: { api: HookApi | null } = { api: null };
+  // This hook harness intentionally mirrors the separate script-commit harness.
   function Probe() {
     // fallow-ignore-next-line code-duplication
     captured.api = useGsapKeyframeOps({
@@ -51,9 +56,7 @@ function renderKeyframeOps(over: {
 
 describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
   it("issues a resize-keyframed-tween mutation with the remap + window", async () => {
-    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
-      ok: true,
-    }));
+    const commitMutation = successfulCommitMutation();
     const trackGsapSaveFailure = vi.fn<(...args: unknown[]) => void>();
     const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure });
 
@@ -102,10 +105,28 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
 });
 
 describe("useGsapKeyframeOps — keyframe transaction options", () => {
+  it("routes a flat-lane add through the add-keyframe writer mutation", async () => {
+    const commitMutation = successfulCommitMutation();
+    const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
+
+    await act(async () => {
+      await api.addKeyframeBatch(selection, "box-to-0-position", 50, { x: 210 });
+    });
+
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      {
+        type: "add-keyframe",
+        animationId: "box-to-0-position",
+        percentage: 50,
+        properties: { x: 210 },
+      },
+      { label: "Add keyframe at 50%", softReload: true },
+    );
+  });
+
   it("soft-reloads a standalone convert when the SDK path is unavailable", async () => {
-    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
-      ok: true,
-    }));
+    const commitMutation = successfulCommitMutation();
     const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
 
     await act(async () => {
@@ -123,9 +144,7 @@ describe("useGsapKeyframeOps — keyframe transaction options", () => {
   });
 
   it("threads one coalesce key through skipped convert reload and terminal batch edit", async () => {
-    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
-      ok: true,
-    }));
+    const commitMutation = successfulCommitMutation();
     const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
     const coalesceKey = "enable-keyframes:box-to-0-opacity:1";
 

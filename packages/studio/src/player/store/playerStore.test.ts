@@ -25,6 +25,31 @@ describe("usePlayerStore", () => {
       expect(state.loopEnabled).toBe(false);
       expect(state.zoomMode).toBe("fit");
       expect(state.manualZoomPercent).toBe(100);
+      expect(state.expandedClipIds).toEqual(new Set());
+    });
+  });
+
+  describe("expandedClipIds", () => {
+    it("toggles clip membership", () => {
+      const store = usePlayerStore.getState();
+
+      store.toggleClipExpanded("clip-1");
+      expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set(["clip-1"]));
+
+      store.toggleClipExpanded("clip-1");
+      expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set());
+    });
+
+    it("sets clip membership idempotently", () => {
+      const store = usePlayerStore.getState();
+
+      store.setClipExpanded("clip-1", true);
+      store.setClipExpanded("clip-1", true);
+      expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set(["clip-1"]));
+
+      store.setClipExpanded("clip-1", false);
+      store.setClipExpanded("clip-1", false);
+      expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set());
     });
   });
 
