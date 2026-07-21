@@ -8,6 +8,7 @@ interface TimelineClipProps {
   el: TimelineElement;
   pps: number;
   clipY: number;
+  clipHeight?: number;
   isSelected: boolean;
   isHovered: boolean;
   isDragging?: boolean;
@@ -30,6 +31,7 @@ export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
   clipY,
+  clipHeight,
   isSelected,
   isHovered,
   isDragging = false,
@@ -71,7 +73,7 @@ export const TimelineClip = memo(function TimelineClip({
     left: leftPx,
     width: widthPx,
     top: clipY,
-    bottom: clipY,
+    ...(clipHeight === undefined ? { bottom: clipY } : { height: clipHeight }),
     borderRadius: theme.clipRadius,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
     // Regular cursor over clips (CapCut-style, user preference) — no grab hand.

@@ -5,7 +5,7 @@ import {
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
 import { usePlayerStore } from "../store/playerStore";
-import { TRACK_H, resolveTimelineAssetDrop } from "./timelineLayout";
+import { resolveTimelineAssetDrop } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
@@ -13,6 +13,8 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   ppsRef: RefObject<number>;
   durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
+  rowHeightsRef: RefObject<readonly number[]>;
+  contentOrigin: number;
 }
 
 type TimelinePlacement = { start: number; track: number };
@@ -54,6 +56,8 @@ export function useTimelineAssetDrop({
   ppsRef,
   durationRef,
   trackOrderRef,
+  rowHeightsRef,
+  contentOrigin,
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
@@ -85,10 +89,11 @@ export function useTimelineAssetDrop({
           rectTop: rect?.top ?? 0,
           scrollLeft: scroll?.scrollLeft ?? 0,
           scrollTop: scroll?.scrollTop ?? 0,
+          contentOrigin,
           pixelsPerSecond: ppsRef.current,
           duration: durationRef.current,
           clampStartToDuration: !usePointerStart,
-          trackHeight: TRACK_H,
+          rowHeights: rowHeightsRef.current,
           trackOrder: trackOrderRef.current,
         },
         clientX,
@@ -99,7 +104,7 @@ export function useTimelineAssetDrop({
         track: pointer.track,
       };
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, rowHeightsRef, contentOrigin],
   );
 
   const handleAssetDrop = useCallback(
