@@ -329,7 +329,8 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 **constellation-hub** — the hub at the center of your stack
 
 - kyvos — "On any BI tool — Tableau, Looker, Power BI — Kyvos sits at the center of your stack."
-- _Pattern:_ the product mark is the hub and partner logos orbit it — "sits at the center of everything you use."
+- "Connects to thousands of apps — including every one you already use."
+- _Pattern:_ the product mark is the hub and partner logos orbit it — "sits at the center of everything you use." In the scatter-drift end-card variant there is no hub and no ring: a serif claim holds center while app icons pop in scattered and drift slowly outward — breadth said with count and spread, not geometry.
 
 **grid-card-assemble** — a logo wall pulling back to a vast ecosystem
 
