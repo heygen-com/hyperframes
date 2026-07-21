@@ -98,6 +98,44 @@ describe("clearKeyframeCacheForFile", () => {
 });
 
 describe("updateKeyframeCacheFromParsed", () => {
+  it("records colliding animation targets with their own tween percentages", () => {
+    const animation = (
+      id: string,
+      propertyGroup: string,
+      properties: Record<string, number>,
+      percentage: number,
+      resolvedStart: number,
+    ): GsapAnimation => ({
+      ...animWithKeyframes(id),
+      targetSelector: "#hero",
+      propertyGroup,
+      resolvedStart,
+      keyframes: { format: "percentage", keyframes: [{ percentage, properties }] },
+    });
+
+    usePlayerStore.setState({
+      elements: [{ id: "hero", domId: "hero", tag: "div", start: 0, duration: 4, track: 0 }],
+    });
+
+    updateKeyframeCacheFromParsed(
+      [
+        animation("hero-position", "position", { x: 100 }, 50, 0.5),
+        animation("hero-visual", "visual", { opacity: 1 }, 80, 0.2),
+        animation("hero-position", "position", { y: 50 }, 25, 0.75),
+        animation("hero-scale", "scale", { scale: 2 }, 60, 0.4),
+      ],
+      "scene.html",
+      "hero",
+      {},
+    );
+
+    expect(cache().get("scene.html#hero")?.keyframes[0]?.collidingAnimationTargets).toEqual([
+      { animationId: "hero-position", tweenPercentage: 50 },
+      { animationId: "hero-visual", tweenPercentage: 80 },
+      { animationId: "hero-scale", tweenPercentage: 60 },
+    ]);
+  });
+
   it("serializes a multi-keyframe tween with a stable shape and animation identity", () => {
     const animation: GsapAnimation = {
       ...animWithKeyframes("hero"),

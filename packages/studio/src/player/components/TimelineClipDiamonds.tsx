@@ -12,6 +12,7 @@ import {
   timelineKeyframeSelectionKey,
   type TimelineKeyframeTarget,
 } from "./timelineKeyframeIdentity";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 export interface TimelineDiamondKeyframe {
   percentage: number;
   /** Tween-relative percentage (the retime mutation keys on this, not clip %). */
@@ -20,9 +21,8 @@ export interface TimelineDiamondKeyframe {
   animationId?: string;
   properties: Record<string, number | string>;
   ease?: string;
-  /** Set when 2+ source animations collide at this percentage (a single inline
-   *  ease button can't target one): the collapsed row hides the button here. */
-  easeAmbiguous?: boolean;
+  /** Source animation/keyframe targets that collide at this clip percentage. */
+  collidingAnimationTargets?: AnimationKeyframeTarget[];
 }
 
 interface KeyframeCacheEntry {
@@ -107,6 +107,7 @@ function keyframeTarget(
         tweenPercentage: keyframe.tweenPercentage,
         propertyGroup: keyframe.propertyGroup,
         animationId: keyframe.animationId,
+        collidingAnimationTargets: keyframe.collidingAnimationTargets,
       }
     : { percentage: keyframe.percentage };
 }
@@ -224,12 +225,11 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         const connectorLeft = x1 + markerMetrics[i - 1]!.visualSize / 2;
         const connectorWidth =
           x2 - x1 - markerMetrics[i - 1]!.visualSize / 2 - markerMetrics[i]!.visualSize / 2;
-        // Group-aware target for the ease button: the segment ease is
-        // per-keyframe (each keyframe carries its own animationId/tweenPercentage).
-        // On a merged inline row the button is hidden where the segment is
-        // ambiguous (two source animations collide at this % with different
-        // eases; see easeAmbiguous) or the keyframe has no source animation id
-        // (runtime-scanned) so there is no tween to target.
+        // Group-aware target for the ease button. On a merged inline row the
+        // button edits the ease of every animation colliding at this percentage
+        // at once (the collapsed row is the element's unified motion). It is only
+        // hidden when the keyframe has no source animation id (runtime-scanned),
+        // so there is no tween to target.
         const target = keyframeTarget(kf, true);
         const ease = kf.ease ?? globalEase;
         return (
@@ -248,7 +248,7 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 borderRadius: 1,
               }}
             />
-            {onSelectSegment && !kf.easeAmbiguous && kf.animationId !== undefined && (
+            {onSelectSegment && kf.animationId !== undefined && (
               <div
                 className="group absolute"
                 data-keyframe-ease-segment=""

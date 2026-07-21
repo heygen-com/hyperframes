@@ -36,6 +36,14 @@ const FLAT_TWEEN_TARGET: TimelineKeyframeTarget = {
   animationId: "position-tween",
 };
 
+const COLLIDING_TARGET: TimelineKeyframeTarget = {
+  ...FLAT_TWEEN_TARGET,
+  collidingAnimationTargets: [
+    { animationId: "position-tween", tweenPercentage: 100 },
+    { animationId: "scale-tween", tweenPercentage: 75 },
+  ],
+};
+
 afterEach(() => {
   document.body.innerHTML = "";
   trackStudioSegmentEaseEdit.mockClear();
@@ -62,6 +70,35 @@ describe("useTimelineKeyframeHandlers", () => {
 
     expect(trackStudioSegmentEaseEdit).toHaveBeenCalledOnce();
     expect(trackStudioSegmentEaseEdit).toHaveBeenCalledWith({ action: "open" });
+    act(() => root.unmount());
+  });
+
+  it("focuses a merged segment with its colliding animation targets", () => {
+    let onSelectSegment: ((elementId: string, target: TimelineKeyframeTarget) => void) | undefined;
+
+    function Harness() {
+      ({ onSelectSegment } = useTimelineKeyframeHandlers({
+        expandedElements: [ELEMENT],
+        keyframeCache: new Map(),
+        setSelectedElementId: vi.fn(),
+        setKfContextMenu: vi.fn(),
+        toggleSelectedKeyframe: vi.fn(),
+      }));
+      return null;
+    }
+
+    const root = mountReactHarness(<Harness />);
+    act(() => onSelectSegment?.(ELEMENT.id, COLLIDING_TARGET));
+
+    expect(usePlayerStore.getState().focusedEaseSegment).toEqual({
+      animationId: "position-tween",
+      collidingAnimationTargets: [
+        { animationId: "position-tween", tweenPercentage: 100 },
+        { animationId: "scale-tween", tweenPercentage: 75 },
+      ],
+      tweenPercentage: 100,
+      elementId: ELEMENT.id,
+    });
     act(() => root.unmount());
   });
 
@@ -97,6 +134,7 @@ describe("useTimelineKeyframeHandlers", () => {
       tweenPercentage: 100,
       elementId: ELEMENT.id,
     });
+    expect(usePlayerStore.getState().focusedEaseSegment?.collidingAnimationTargets).toBeUndefined();
     expect(setSelectedElementId).toHaveBeenCalledWith(ELEMENT.id);
     expect(onSelectElement).toHaveBeenCalledWith(ELEMENT);
 

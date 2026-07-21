@@ -65,6 +65,7 @@ export function useTimelineKeyframeHandlers({
       if (target.animationId !== undefined && target.tweenPercentage !== undefined) {
         usePlayerStore.getState().setFocusedEaseSegment({
           animationId: target.animationId,
+          collidingAnimationTargets: target.collidingAnimationTargets,
           tweenPercentage: target.tweenPercentage,
           elementId: elId,
         });

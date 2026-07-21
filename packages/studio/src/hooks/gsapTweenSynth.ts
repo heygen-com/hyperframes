@@ -5,26 +5,52 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
+export interface AnimationKeyframeTarget {
+  animationId: string;
+  tweenPercentage: number;
+}
+
+export function accumulateCollidingAnimationTargets(
+  keyframe: {
+    animationId?: string;
+    tweenPercentage?: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+  },
+  incoming: { animationId?: string; tweenPercentage?: number },
+): void {
+  const primaryId = keyframe.animationId;
+  if (
+    primaryId === undefined ||
+    keyframe.tweenPercentage === undefined ||
+    incoming.animationId === undefined ||
+    incoming.tweenPercentage === undefined ||
+    primaryId === incoming.animationId
+  ) {
+    return;
+  }
+  const collisionTargets = keyframe.collidingAnimationTargets;
+  if (collisionTargets?.some((target) => target.animationId === incoming.animationId)) return;
+  keyframe.collidingAnimationTargets = [
+    ...(collisionTargets === undefined || collisionTargets.length === 0
+      ? [{ animationId: primaryId, tweenPercentage: keyframe.tweenPercentage }]
+      : collisionTargets),
+    { animationId: incoming.animationId, tweenPercentage: incoming.tweenPercentage },
+  ];
+}
+
 export function deduplicateKeyframes<
-  T extends GsapPercentageKeyframe & { animationId?: string; easeAmbiguous?: boolean },
+  T extends GsapPercentageKeyframe & {
+    animationId?: string;
+    tweenPercentage?: number;
+    collidingAnimationTargets?: AnimationKeyframeTarget[];
+  },
 >(keyframes: T[]): T[] {
   const byPct = new Map<number, T>();
   for (const kf of keyframes) {
     const existing = byPct.get(kf.percentage);
     if (existing) {
       existing.properties = { ...existing.properties, ...kf.properties };
-      // Two DIFFERENT source animations with a keyframe at the same clip %: a
-      // single inline ease button can only target one of them, and which one is
-      // arbitrary (each may also inherit a different easeEach/animation ease, so
-      // comparing raw keyframe eases isn't enough). Flag it so the collapsed row
-      // hides the button there and the user edits per-lane instead.
-      if (
-        existing.animationId !== undefined &&
-        kf.animationId !== undefined &&
-        existing.animationId !== kf.animationId
-      ) {
-        existing.easeAmbiguous = true;
-      }
+      accumulateCollidingAnimationTargets(existing, kf);
       if (kf.ease) existing.ease = kf.ease;
     } else {
       byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
