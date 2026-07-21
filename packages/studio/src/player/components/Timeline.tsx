@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useState, useLayoutEffect, memo } from "react";
+import { useRef, useMemo, useCallback, useState, memo } from "react";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
@@ -42,7 +42,7 @@ import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
-import { getTimelineScrollTopForGeometryChange } from "./timelineViewportGeometry";
+import { useTimelineRowVirtualization } from "./useTimelineRowVirtualization";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -51,6 +51,7 @@ export {
   shouldAutoScrollTimeline,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
+  getTimelinePlaybackFollowScrollLeft,
   getTimelinePlayheadLeft,
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
@@ -126,6 +127,7 @@ export const Timeline = memo(function Timeline({
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
+  const clipRevealRequest = usePlayerStore((s) => s.clipRevealRequest);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
   // Label mode = comp has keyframed clips (not just when expanded): keeps the layer
   // disclosure + property column visible and reserves a GUTTER before 0s (Figma).
@@ -284,32 +286,21 @@ export const Timeline = memo(function Timeline({
       expandedElements.length,
       displayLayout.totalH,
     ]);
-  const previousLayoutRef = useRef(displayLayout.rowGeometry);
-  const previousSessionEpochRef = useRef(sessionEpoch);
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    const previousGeometry = previousLayoutRef.current;
-    if (previousSessionEpochRef.current !== sessionEpoch) {
-      previousSessionEpochRef.current = sessionEpoch;
-      lastScrollLeftRef.current = 0;
-      if (scroll) {
-        scroll.scrollLeft = 0;
-        scroll.scrollTop = 0;
-        syncScrollViewport(scroll);
-      }
-    } else if (scroll && previousGeometry !== displayLayout.rowGeometry) {
-      const nextScrollTop = getTimelineScrollTopForGeometryChange(
-        previousGeometry,
-        displayLayout.rowGeometry,
-        scroll.scrollTop,
-      );
-      if (nextScrollTop !== scroll.scrollTop) {
-        scroll.scrollTop = nextScrollTop;
-        syncScrollViewport(scroll);
-      }
-    }
-    previousLayoutRef.current = displayLayout.rowGeometry;
-  }, [displayLayout.rowGeometry, sessionEpoch, syncScrollViewport]);
+  const { enabled: rowVirtualizationActive, virtualRows } = useTimelineRowVirtualization({
+    scrollRef,
+    viewport,
+    rowGeometry: displayLayout.rowGeometry,
+    sessionEpoch,
+    elements: expandedElements,
+    selectedElementId,
+    revealElementId: clipRevealRequest?.elementId ?? null,
+    draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
+    resizingRowKey: resizingClip?.element.track,
+    clipContextMenuRowKey: clipContextMenu?.element.track,
+    keyframeContextMenuRowKey: kfContextMenu?.element.track,
+    lastScrollLeftRef,
+    syncScrollViewport,
+  });
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
@@ -462,6 +453,7 @@ export const Timeline = memo(function Timeline({
       <div
         ref={setScrollRef}
         data-timeline-scroll-viewport
+        data-timeline-auto-scroll-left-inset={labelMode ? LABEL_COL_W : 0}
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
@@ -498,6 +490,9 @@ export const Timeline = memo(function Timeline({
           theme={theme}
           displayTrackOrder={displayLayout.displayTrackOrder}
           rowHeights={displayLayout.displayRowHeights}
+          rowGeometry={displayLayout.rowGeometry}
+          virtualRows={virtualRows}
+          rowsVirtualized={rowVirtualizationActive}
           trackOrder={trackOrder}
           tracks={tracks}
           trackStyles={trackStyles}
