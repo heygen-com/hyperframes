@@ -64,7 +64,6 @@ export {
   getTimelineScrollTopForGeometryChange,
   getTimelineVisibleTimeRange,
 } from "./timelineViewportGeometry";
-
 export const Timeline = memo(function Timeline({
   onSeek,
   onDrillDown,
@@ -183,7 +182,6 @@ export const Timeline = memo(function Timeline({
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
-  // Declared before the fitPps derivation so the edit-pin wrappers can close over it.
   const fitPpsRef = useRef(100);
 
   const {
@@ -321,27 +319,28 @@ export const Timeline = memo(function Timeline({
       lastScrollLeftRef,
       contentOrigin,
     });
-  const { clipIndex, renderTimeRange, pinnedClipIdentities } = useTimelineClipRenderWindow({
-    tracks,
-    viewport,
-    pixelsPerSecond: pps,
-    contentOrigin,
-    duration: displayDuration,
-    selectedElementId: selectedElementId ?? undefined,
-    draggedElementId: draggedClip?.element.key ?? draggedClip?.element.id,
-    resizingElementIds:
-      resizingClip?.groupPreview?.map((change) => change.key) ??
-      (resizingClip ? [resizingClip.element.key ?? resizingClip.element.id] : undefined),
-    revealElementId: clipRevealRequest?.elementId,
-    focusedEaseElementId: focusedEaseSegment?.elementId,
-    clipContextMenuElementId: clipContextMenu?.element.key ?? clipContextMenu?.element.id,
-    keyframeContextMenuElementId: kfContextMenu?.element.key ?? kfContextMenu?.element.id,
-    scrollRef,
-    elements: expandedElements,
-    rowGeometry: displayLayout.rowGeometry,
-    allowHorizontalReveal: zoomMode === "manual",
-    sessionEpoch,
-  });
+  const { clipIndex, renderTimeRange, visibleTimeRange, pinnedClipIdentities } =
+    useTimelineClipRenderWindow({
+      tracks,
+      viewport,
+      pixelsPerSecond: pps,
+      contentOrigin,
+      duration: displayDuration,
+      selectedElementId: selectedElementId ?? undefined,
+      draggedElementId: draggedClip?.element.key ?? draggedClip?.element.id,
+      resizingElementIds:
+        resizingClip?.groupPreview?.map((change) => change.key) ??
+        (resizingClip ? [resizingClip.element.key ?? resizingClip.element.id] : undefined),
+      revealElementId: clipRevealRequest?.elementId,
+      focusedEaseElementId: focusedEaseSegment?.elementId,
+      clipContextMenuElementId: clipContextMenu?.element.key ?? clipContextMenu?.element.id,
+      keyframeContextMenuElementId: kfContextMenu?.element.key ?? kfContextMenu?.element.id,
+      scrollRef,
+      elements: expandedElements,
+      rowGeometry: displayLayout.rowGeometry,
+      allowHorizontalReveal: zoomMode === "manual",
+      sessionEpoch,
+    });
   useTimelineActiveClips({
     scrollRef,
     currentTime,
@@ -508,6 +507,7 @@ export const Timeline = memo(function Timeline({
           rowsVirtualized={rowVirtualizationActive}
           clipIndex={clipIndex}
           renderTimeRange={renderTimeRange}
+          visibleTimeRange={visibleTimeRange}
           pinnedClipIdentities={pinnedClipIdentities}
           trackOrder={trackOrder}
           tracks={tracks}

@@ -22,6 +22,7 @@ import type { TimelineLaneBaseProps } from "./TimelineLaneTypes";
 import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
+import type { TimelineClipRenderContext } from "./TimelineTypes";
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
   /** Live-derived by TimelineCanvas from {@link TimelineLaneBaseProps.draggedClip}. */
@@ -47,6 +48,7 @@ export function TimelineLanes({
   rowsVirtualized,
   clipIndex,
   renderTimeRange,
+  visibleTimeRange,
   pinnedClipIdentities,
   trackOrder,
   tracks,
@@ -140,11 +142,7 @@ export function TimelineLanes({
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
-          // All lanes use the same uniform color — no alternating stripes.
           const rowBackground = theme.rowBackground;
-          // The beat-dot strip occupies the top of this track's lane (active track,
-          // or the music track when nothing is selected). When shown, keyframe
-          // diamonds shrink + drop to the bottom half so they don't collide with it.
           const beatStripOnTrack =
             (beatAnalysis?.beatTimes?.length ?? 0) >= 2 &&
             (selectedElementId
@@ -152,9 +150,6 @@ export function TimelineLanes({
               : els.some(isMusicTrack));
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
-          // The one keyframed element this track shows lanes for (selected, else
-          // most lanes). A track can hold several elements; scoping to one keeps
-          // their keyframes from cramming into a single row.
           const keyframeClip = STUDIO_KEYFRAMES_ENABLED
             ? resolveTrackKeyframeClip(els, laneCounts, selectedElementId, selectedElementIds)
             : null;
@@ -207,9 +202,6 @@ export function TimelineLanes({
                 }}
                 className="relative"
                 onContextMenu={(e: React.MouseEvent) => {
-                  // Clip / keyframe-diamond context menus preventDefault at the
-                  // target before this bubble handler runs — respect them so a
-                  // right-click on a clip never also opens the gap menu.
                   if (e.defaultPrevented || !onContextMenuLane) return;
                   const rect = e.currentTarget.getBoundingClientRect();
                   const time = (e.clientX - rect.left) / pps;
@@ -261,9 +253,6 @@ export function TimelineLanes({
                   renderElements.map((el) => {
                     const clipStyle = getTrackStyle(el.tag);
                     const elementKey = el.key ?? el.id;
-                    // Only the track's active keyframe clip shows expanded lanes;
-                    // other clips (incl. siblings on a shared track) show compact
-                    // diamonds on their own bar instead.
                     const showsLanes =
                       STUDIO_KEYFRAMES_ENABLED &&
                       elementKey === keyframeClipKey &&
@@ -286,6 +275,19 @@ export function TimelineLanes({
                     // compositor transform on a same-geometry wrapper (absolute
                     // inset-0 → identical offset parent, so the clip's own
                     // left/top are preserved), plus the ghost's elevated z/opacity.
+                    const isInteractive =
+                      isSelected || hoveredClip === clipKey || pinnedClipIdentities.has(clipKey);
+                    const intersectsVisible =
+                      previewElement.start < visibleTimeRange.end &&
+                      previewElement.start + previewElement.duration > visibleTimeRange.start;
+                    const renderContext: TimelineClipRenderContext = {
+                      priority: isInteractive
+                        ? "interaction"
+                        : intersectsVisible
+                          ? "visible"
+                          : "overscan",
+                      rich: isInteractive,
+                    };
                     const isPassenger =
                       multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
                     const passengerOffsetPx = isPassenger
@@ -424,15 +426,11 @@ export function TimelineLanes({
                               }
                               return;
                             }
-                            // Plain click single-selects: drop any marquee multi-selection.
-                            // Only a click on the PRIMARY selection toggles it off — a click
-                            // on a marquee-selected clip narrows the selection to that clip.
-                            const hadMultiSelection = selectedElementIds.size > 0;
-                            usePlayerStore.getState().clearSelectedElementIds();
-                            const nextElement =
-                              selectedElementId === elementKey && !hadMultiSelection ? null : el;
-                            setSelectedElementId(nextElement ? elementKey : null);
-                            onSelectElement?.(nextElement);
+                            // A clip click is an idempotent selection. Empty timeline space
+                            // owns deselection; toggling here made a second click look like a
+                            // failed selection and could clear preview focus during iframe sync.
+                            setSelectedElementId(elementKey);
+                            onSelectElement?.(el);
                           }
                         }
                         onDoubleClick={(e) => {
@@ -446,6 +444,7 @@ export function TimelineLanes({
                           clipStyle,
                           renderClipContent,
                           renderClipOverlay,
+                          renderContext,
                         )}
                         {STUDIO_KEYFRAMES_ENABLED &&
                           !showsLanes &&

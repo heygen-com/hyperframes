@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
+import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
@@ -68,6 +69,7 @@ describe("useRenderClipContent", () => {
   function renderClipContent(
     el: TimelineElement,
     activePreviewUrl: string | null = "/api/projects/my-project/preview",
+    context?: TimelineClipRenderContext,
   ): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);
@@ -81,7 +83,7 @@ describe("useRenderClipContent", () => {
         activePreviewUrl,
         effectiveTimelineDuration: 12,
       });
-      content = render(el, { clip: "#222", label: "#fff" });
+      content = render(el, { clip: "#222", label: "#fff" }, context);
       return null;
     }
 
@@ -167,6 +169,40 @@ describe("useRenderClipContent", () => {
         expect(item.content.type).toBe(item.type);
         expect(item.content.props.label).toBe("");
       }
+    }
+  });
+
+  it("forwards the viewport priority and interaction detail to media work", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive", timelineSessionEpoch: 7 });
+
+    const content = renderClipContent(
+      {
+        id: "clip-video",
+        tag: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        src: "assets/clip.mp4",
+      },
+      null,
+      { priority: "interaction", rich: true },
+    );
+
+    expect(
+      isValidElement<{
+        projectId: string;
+        sessionEpoch: number;
+        priority: string;
+        rich: boolean;
+      }>(content),
+    ).toBe(true);
+    if (isValidElement(content)) {
+      expect(content.props).toMatchObject({
+        projectId: "my-project",
+        sessionEpoch: 7,
+        priority: "interaction",
+        rich: true,
+      });
     }
   });
 });

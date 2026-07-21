@@ -1,7 +1,10 @@
 import { useMemo, type RefObject } from "react";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import type { TimelineElement } from "../store/playerStore";
-import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
+import {
+  getTimelineRenderTimeRange,
+  getTimelineVisibleTimeRange,
+} from "./timelineViewportGeometry";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
 import { useTimelineRevealClip } from "./useTimelineRevealClip";
@@ -50,6 +53,10 @@ export function useTimelineClipRenderWindow({
     () => getTimelineRenderTimeRange(viewport, pixelsPerSecond, contentOrigin, duration),
     [contentOrigin, duration, pixelsPerSecond, viewport],
   );
+  const visibleTimeRange = useMemo(
+    () => getTimelineVisibleTimeRange(viewport, pixelsPerSecond, contentOrigin, duration),
+    [contentOrigin, duration, pixelsPerSecond, viewport],
+  );
   const pinnedClipIdentities = useMemo(
     () =>
       new Set(
@@ -83,5 +90,5 @@ export function useTimelineClipRenderWindow({
     viewportVersion: viewport,
     sessionEpoch,
   });
-  return { clipIndex, renderTimeRange, pinnedClipIdentities };
+  return { clipIndex, renderTimeRange, visibleTimeRange, pinnedClipIdentities };
 }
