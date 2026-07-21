@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player/store/playerStore";
 import {
   createTimelinePerformanceFixture,
+  hasTimelinePerformanceFixtureLease,
+  setTimelinePerformanceFixtureLease,
   type TimelinePerformanceFixtureProfile,
 } from "../player/lib/timelinePerformanceFixture";
 import { useStudioTestHooks } from "./useStudioTestHooks";
@@ -30,6 +32,7 @@ function Probe(): null {
 
 describe("timeline performance fixture", () => {
   afterEach(() => {
+    setTimelinePerformanceFixtureLease(false);
     window.__studioTest = undefined;
     usePlayerStore.getState().reset();
   });
@@ -101,9 +104,11 @@ describe("timeline performance fixture", () => {
     });
     expect(usePlayerStore.getState().elements).toHaveLength(1_000);
     expect(usePlayerStore.getState().expandedClipIds.size).toBe(1_000);
+    expect(hasTimelinePerformanceFixtureLease()).toBe(true);
     unsubscribe();
     act(() => root.unmount());
     expect(window.__studioTest).toBeUndefined();
+    expect(hasTimelinePerformanceFixtureLease()).toBe(false);
   });
 
   it("does not mutate state when the fixture request is invalid", () => {

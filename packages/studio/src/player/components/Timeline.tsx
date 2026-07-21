@@ -1,6 +1,5 @@
-import { useRef, useMemo, useCallback, useState, memo } from "react";
+import { useRef, useMemo, useCallback, useState, useLayoutEffect, memo } from "react";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
-import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
@@ -42,6 +41,8 @@ import {
 import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
+import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import { getTimelineScrollTopForGeometryChange } from "./timelineViewportGeometry";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -57,6 +58,11 @@ export {
   shouldHandleTimelineDeleteKey,
   getDefaultDroppedTrack,
 } from "./timelineLayout";
+
+export {
+  getTimelineScrollTopForGeometryChange,
+  getTimelineVisibleTimeRange,
+} from "./timelineViewportGeometry";
 
 export const Timeline = memo(function Timeline({
   onSeek,
@@ -76,6 +82,7 @@ export const Timeline = memo(function Timeline({
   onSplitElement: onSplitElementOverride,
   onSelectElement,
   theme: themeOverrides,
+  sessionEpoch = 0,
 }: TimelineProps = {}) {
   const {
     onMoveElement,
@@ -108,7 +115,7 @@ export const Timeline = memo(function Timeline({
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
-  const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
+  const musicElement = usePlayerStore((s) => getTimelineElementIndexes(s.elements).musicElement);
   const beatEdits = usePlayerStore((s) => s.beatEdits);
   const adjustedBeatAnalysis = useMemo(
     () => remapBeatAnalysisToComposition(beatAnalysis, musicElement, beatEdits),
@@ -163,8 +170,20 @@ export const Timeline = memo(function Timeline({
 
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   useAutoExpandKeyframedClips(gsapAnimations);
-  const { tracks, trackStyles, trackOrder, trackOrderRef, laneCounts, rowHeights, rowHeightsRef } =
-    useTimelineTrackLayout(expandedElements, gsapAnimations, selectedElementId, selectedElementIds);
+  const {
+    tracks,
+    trackStyles,
+    trackOrder,
+    trackOrderRef,
+    laneCounts,
+    rowGeometry,
+    rowGeometryRef,
+  } = useTimelineTrackLayout(
+    expandedElements,
+    gsapAnimations,
+    selectedElementId,
+    selectedElementIds,
+  );
   const expandedElementsRef = useRef(expandedElements);
   expandedElementsRef.current = expandedElements;
 
@@ -231,7 +250,7 @@ export const Timeline = memo(function Timeline({
     ppsRef,
     durationRef,
     trackOrderRef,
-    rowHeightsRef,
+    rowGeometryRef,
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
     onResizeElement: pinnedOnResizeElement,
@@ -250,7 +269,7 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
-      rowHeightsRef,
+      rowGeometryRef,
       contentOrigin,
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
@@ -258,12 +277,39 @@ export const Timeline = memo(function Timeline({
       onCompositionDrop: pinnedOnCompositionDrop,
     });
 
-  const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowHeights);
-  const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
-    timelineReady,
-    expandedElements.length,
-    displayLayout.totalH,
-  ]);
+  const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
+  const { viewport, showShortcutHint, setScrollRef, syncScrollViewport } =
+    useTimelineScrollViewport(scrollRef, [
+      timelineReady,
+      expandedElements.length,
+      displayLayout.totalH,
+    ]);
+  const previousLayoutRef = useRef(displayLayout.rowGeometry);
+  const previousSessionEpochRef = useRef(sessionEpoch);
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const previousGeometry = previousLayoutRef.current;
+    if (previousSessionEpochRef.current !== sessionEpoch) {
+      previousSessionEpochRef.current = sessionEpoch;
+      lastScrollLeftRef.current = 0;
+      if (scroll) {
+        scroll.scrollLeft = 0;
+        scroll.scrollTop = 0;
+        syncScrollViewport(scroll);
+      }
+    } else if (scroll && previousGeometry !== displayLayout.rowGeometry) {
+      const nextScrollTop = getTimelineScrollTopForGeometryChange(
+        previousGeometry,
+        displayLayout.rowGeometry,
+        scroll.scrollTop,
+      );
+      if (nextScrollTop !== scroll.scrollTop) {
+        scroll.scrollTop = nextScrollTop;
+        syncScrollViewport(scroll);
+      }
+    }
+    previousLayoutRef.current = displayLayout.rowGeometry;
+  }, [displayLayout.rowGeometry, sessionEpoch, syncScrollViewport]);
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
   const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
@@ -286,7 +332,7 @@ export const Timeline = memo(function Timeline({
     zoomModeRef,
     manualZoomPercentRef,
   } = useTimelineGeometry({
-    viewportWidth,
+    viewportWidth: viewport.clientWidth,
     effectiveDuration,
     zoomMode,
     manualZoomPercent,
@@ -369,7 +415,7 @@ export const Timeline = memo(function Timeline({
     setShowPopover,
     elementsRef: expandedElementsRef,
     trackOrderRef,
-    rowHeightsRef,
+    rowGeometryRef,
     onSelectElement,
     contentOrigin,
   });
@@ -403,6 +449,7 @@ export const Timeline = memo(function Timeline({
     <div
       ref={setContainerRef}
       aria-label="Timeline"
+      data-timeline-element-count={expandedElements.length}
       className={`relative border-t select-none h-full overflow-hidden ${isDragOver ? "ring-1 ring-inset ring-studio-accent/60" : ""} ${activeTool === "razor" ? "cursor-crosshair" : shiftHeld ? "cursor-crosshair" : "cursor-default"}`}
       onMouseMove={updateRazorGuide}
       onMouseLeave={clearRazorGuide}
@@ -414,10 +461,12 @@ export const Timeline = memo(function Timeline({
     >
       <div
         ref={setScrollRef}
+        data-timeline-scroll-viewport
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
+          syncScrollViewport(e.currentTarget, true);
         }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}

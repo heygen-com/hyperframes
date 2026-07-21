@@ -101,6 +101,10 @@ interface PlayerState extends KeyframeSlice {
   currentTime: number;
   duration: number;
   timelineReady: boolean;
+  /** Increments exactly once when the Studio switches to a different project. */
+  timelineSessionEpoch: number;
+  /** Project owning the current timeline session; null outside a project-scoped reset. */
+  timelineProjectId: string | null;
   /** True while a beat dot is being dragged — hides the playhead guideline. */
   beatDragging: boolean;
   elements: TimelineElement[];
@@ -201,6 +205,9 @@ interface PlayerState extends KeyframeSlice {
   bumpZEditVersion: () => void;
   setInPoint: (time: number | null) => void;
   setOutPoint: (time: number | null) => void;
+  /** Owns the hard project boundary; repeated calls for one project are no-ops. */
+  beginTimelineSession: (projectId: string) => void;
+  /** Clears project data without creating a new hard-project session. */
   reset: () => void;
 
   /**
@@ -283,11 +290,42 @@ export const liveTime = {
   },
 };
 
+function createTimelineResetState() {
+  return {
+    isPlaying: false,
+    currentTime: 0,
+    duration: 0,
+    timelineReady: false,
+    beatDragging: false,
+    elements: [],
+    selectedElementId: null,
+    inPoint: null,
+    outPoint: null,
+    activeTool: "select" as const,
+    selectedKeyframes: new Set<string>(),
+    expandedClipIds: new Set<string>(),
+    selectedElementIds: new Set<string>(),
+    clipRevealRequest: null,
+    keyframeCache: new Map(),
+    gsapAnimations: new Map(),
+    beatAnalysis: null,
+    beatEdits: null,
+    beatUndo: [],
+    beatRedo: [],
+    beatPersist: null,
+    clipManifest: null,
+    clipParentMap: new Map<string, string>(),
+    domClipChildren: [],
+  };
+}
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   duration: 0,
   timelineReady: false,
+  timelineSessionEpoch: 0,
+  timelineProjectId: null,
   beatDragging: false,
   elements: [],
   selectedElementId: null,
@@ -514,36 +552,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         (el.key ?? el.id) === elementId ? { ...el, ...updates } : el,
       ),
     })),
-  // Resets project-specific state when switching compositions.
-  // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are intentionally preserved
-  // because they are user preferences that should survive project switches.
-  reset: () =>
-    set({
-      isPlaying: false,
-      currentTime: 0,
-      duration: 0,
-      timelineReady: false,
-      beatDragging: false,
-      elements: [],
-      selectedElementId: null,
-      inPoint: null,
-      outPoint: null,
-      activeTool: "select",
-      selectedKeyframes: new Set(),
-      expandedClipIds: new Set(),
-      selectedElementIds: new Set(),
-      clipRevealRequest: null,
-      keyframeCache: new Map(),
-      gsapAnimations: new Map(),
-      beatAnalysis: null,
-      beatEdits: null,
-      beatUndo: [],
-      beatRedo: [],
-      beatPersist: null,
-      clipManifest: null,
-      clipParentMap: new Map(),
-      domClipChildren: [],
+  // playbackRate, audioMuted, loopEnabled, zoomMode, and manualZoomPercent are
+  // intentionally absent from createTimelineResetState because they are user
+  // preferences that survive both source refreshes and project switches.
+  beginTimelineSession: (projectId) =>
+    set((state) => {
+      if (state.timelineProjectId === projectId) return state;
+      return {
+        ...createTimelineResetState(),
+        timelineSessionEpoch: state.timelineSessionEpoch + 1,
+        timelineProjectId: projectId,
+      };
     }),
+  reset: () => set(createTimelineResetState()),
 }));
 
 // Bug-bash aid: expose the store so a reproduction can dump live state from the

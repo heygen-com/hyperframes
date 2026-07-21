@@ -5,6 +5,8 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
 
 export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
+  /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
+  sessionEpoch?: number;
   onSeek?: (time: number) => void;
   onDrillDown?: (element: TimelineElement) => void;
   renderClipContent?: (
