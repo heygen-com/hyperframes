@@ -4,6 +4,7 @@ import React, { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EaseCurveSection, MiniCurveSvg } from "./EaseCurveSection";
+import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -11,12 +12,22 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function renderSection(ease = "none", onCustomEaseCommit = vi.fn()) {
+function renderSection(
+  ease = "none",
+  onCustomEaseCommit = vi.fn(),
+  collidingAnimationTargets?: AnimationKeyframeTarget[],
+) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<EaseCurveSection ease={ease} onCustomEaseCommit={onCustomEaseCommit} />);
+    root.render(
+      <EaseCurveSection
+        ease={ease}
+        onCustomEaseCommit={onCustomEaseCommit}
+        collidingAnimationTargets={collidingAnimationTargets}
+      />,
+    );
   });
   return { host, root, onCustomEaseCommit };
 }
@@ -82,6 +93,29 @@ function editorLabel(host: HTMLElement): string | null {
 }
 
 describe("EaseCurveSection preset grid", () => {
+  it("shows the number of properties for a multi-id segment", () => {
+    const { host, root } = renderSection("power2.out", vi.fn(), [
+      { animationId: "move-x", tweenPercentage: 20 },
+      { animationId: "move-y", tweenPercentage: 50 },
+      { animationId: "fade", tweenPercentage: 80 },
+    ]);
+
+    expect(host.textContent).toContain("Applies to 3 properties");
+
+    act(() => root.unmount());
+  });
+
+  it.each([undefined, [{ animationId: "move-x", tweenPercentage: 20 }]])(
+    "does not show a property count for a non-colliding segment",
+    (collidingAnimationTargets) => {
+      const { host, root } = renderSection("power2.out", vi.fn(), collidingAnimationTargets);
+
+      expect(host.textContent).not.toContain("Applies to");
+
+      act(() => root.unmount());
+    },
+  );
+
   it.each([
     ["curve", "none", "linear", ["flow-7", "spring-bouncy"]],
     ["spring", "spring(0.42)", "spring-bouncy", ["linear", "flow-7"]],

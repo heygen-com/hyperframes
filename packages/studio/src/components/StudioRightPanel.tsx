@@ -19,7 +19,6 @@ import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import { useSlideshowTabState } from "../hooks/useSlideshowTabState";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
-
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
@@ -151,6 +150,7 @@ export function StudioRightPanel({
     handleUpdateArcSegment,
     handleUnroll,
     handleUpdateKeyframeEase,
+    handleUpdateSegmentEase,
     handleSetAllKeyframeEases,
     handleGsapAddKeyframe,
     handleGsapRemoveKeyframe,
@@ -400,6 +400,7 @@ export function StudioRightPanel({
         onUnroll={handleUnroll}
         onUpdateKeyframeEase={handleUpdateKeyframeEase}
         onSetAllKeyframeEases={handleSetAllKeyframeEases}
+        onUpdateSegmentEase={handleUpdateSegmentEase}
         recordingState={recordingState}
         recordingDuration={recordingDuration}
         onToggleRecording={onToggleRecording}

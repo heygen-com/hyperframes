@@ -19,8 +19,7 @@ import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
-
-// ── Types ──
+import type { AnimationKeyframeTarget } from "./gsapTweenSynth";
 
 interface RecordEditInput {
   label: string;
@@ -71,8 +70,6 @@ export interface UseDomEditSessionParams {
   forceReloadSdkSession?: () => void;
 }
 
-// ── Hook ──
-
 export function useDomEditSession({
   projectId,
   activeCompPath,
@@ -113,8 +110,6 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  // ── Selection ──
-
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -148,8 +143,6 @@ export function useDomEditSession({
     refreshKey,
     rightPanelTab,
   });
-
-  // ── Agent modal ──
 
   const {
     agentModalOpen,
@@ -423,9 +416,6 @@ export function useDomEditSession({
     removeAllKeyframes,
     handleDomManualEditsReset,
   });
-
-  // ── Preview interaction ──
-
   const {
     handlePreviewCanvasMouseDown,
     handlePreviewCanvasPointerMove,
@@ -444,9 +434,6 @@ export function useDomEditSession({
     setActiveGroupElement,
     onClickToSource,
   });
-
-  // ── GSAP-aware geometry intercepts + animated property commit ──
-
   const {
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareGroupPathOffsetCommit,
@@ -473,28 +460,39 @@ export function useDomEditSession({
     setArcPath,
     updateArcSegment,
   });
-
-  const handleUpdateKeyframeEase = useCallback(
-    (animationId: string, percentage: number, ease: string) => {
-      const sel = domEditSelectionRef.current;
-      if (!sel) return;
-      gsapCommitMutation(
-        sel,
-        {
+  const handleUpdateSegmentEase = useCallback(
+    (targets: AnimationKeyframeTarget[], ease: string) => {
+      const selection = domEditSelectionRef.current;
+      if (!selection || targets.length === 0) return;
+      const options = {
+        label: targets.length === 1 ? "Update keyframe ease" : "Update segment ease",
+        softReload: true,
+      };
+      const calls = targets.map(({ animationId, tweenPercentage }) => ({
+        selection,
+        mutation: {
           type: "update-keyframe",
           animationId,
-          percentage,
+          percentage: tweenPercentage,
           properties: {},
           ease,
         },
-        { label: "Update keyframe ease", softReload: true },
-      );
+        options,
+      }));
+      if (calls.length === 1) {
+        const call = calls[0];
+        if (call) void gsapCommitMutation(call.selection, call.mutation, call.options);
+        return;
+      }
+      void gsapCommitMutation.batch?.(calls, options);
     },
     [gsapCommitMutation, domEditSelectionRef],
   );
-
-  // Apply one ease to every segment at once (AE select-all + F9): set easeEach
-  // and strip per-keyframe overrides in a single mutation.
+  const handleUpdateKeyframeEase = useCallback(
+    (animationId: string, percentage: number, ease: string) =>
+      handleUpdateSegmentEase([{ animationId, tweenPercentage: percentage }], ease),
+    [handleUpdateSegmentEase],
+  );
   const handleSetAllKeyframeEases = useCallback(
     (animationId: string, ease: string) => {
       const sel = domEditSelectionRef.current;
@@ -511,7 +509,6 @@ export function useDomEditSession({
     },
     [gsapCommitMutation, domEditSelectionRef],
   );
-
   return {
     // State
     domEditSelection,
@@ -591,6 +588,7 @@ export function useDomEditSession({
     commitAnimatedProperty,
     commitAnimatedProperties,
     handleSetArcPath,
+    handleUpdateSegmentEase,
     handleUpdateArcSegment,
     handleUnroll,
     invalidateGsapCache: bumpGsapCache,

@@ -5,12 +5,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import type { DomEditSelection } from "./domEditing";
+import { usePlayerStore } from "../../player";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
+usePlayerStore.getState().reset();
 
 function baseElement(overrides: Partial<DomEditSelection> = {}): DomEditSelection {
   return {
@@ -269,4 +271,69 @@ describe("FlatMotionSection", () => {
     expect(buttons().some((b) => b.textContent === "+ Add effect")).toBe(true);
     act(() => root.unmount());
   });
+});
+
+it("forwards focused bulk segment easing through the flat animation card", () => {
+  const onUpdateKeyframeEase = vi.fn();
+  const onUpdateSegmentEase = vi.fn();
+  usePlayerStore.setState({
+    focusedEaseSegment: {
+      elementId: "index.html#hero",
+      animationId: "a1",
+      tweenPercentage: 50,
+      collidingAnimationTargets: [
+        { animationId: "a1", tweenPercentage: 50 },
+        { animationId: "a2", tweenPercentage: 75 },
+      ],
+    },
+  });
+  const { host, root } = renderInto(
+    <FlatMotionSection
+      element={baseElement()}
+      animations={[
+        {
+          id: "a1",
+          method: "to",
+          position: 0,
+          duration: 1,
+          properties: { x: 100 },
+          keyframes: {
+            format: "percentage",
+            keyframes: [
+              { percentage: 0, properties: { x: 0 } },
+              { percentage: 50, properties: { x: 100 } },
+            ],
+          },
+        } as never,
+      ]}
+      showTiming={false}
+      showEffects
+      onSetAttribute={vi.fn()}
+      onAddAnimation={vi.fn()}
+      onUpdateProperty={vi.fn()}
+      onUpdateMeta={vi.fn()}
+      onDeleteAnimation={vi.fn()}
+      onAddProperty={vi.fn()}
+      onRemoveProperty={vi.fn()}
+      onUpdateKeyframeEase={onUpdateKeyframeEase}
+      onUpdateSegmentEase={onUpdateSegmentEase}
+    />,
+  );
+
+  const dropdown = host.querySelector<HTMLButtonElement>("[data-ease-type-dropdown]");
+  expect(dropdown).not.toBeNull();
+  act(() => dropdown?.click());
+  const preset = host.querySelector<HTMLButtonElement>('[data-ease-preset-id="quad-out"]');
+  expect(preset).not.toBeNull();
+  act(() => preset?.click());
+
+  expect(onUpdateSegmentEase).toHaveBeenCalledExactlyOnceWith(
+    [
+      { animationId: "a1", tweenPercentage: 50 },
+      { animationId: "a2", tweenPercentage: 75 },
+    ],
+    "power2.out",
+  );
+  expect(onUpdateKeyframeEase).not.toHaveBeenCalled();
+  act(() => root.unmount());
 });
