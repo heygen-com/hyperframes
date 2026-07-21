@@ -1,4 +1,4 @@
-import { controlPointsForGsapEase } from "./studioMotion";
+import { controlPointsForGsapEase, parseStudioCustomEaseData } from "./studioMotion";
 
 export const METHOD_LABELS: Record<string, string> = {
   set: "Set",
@@ -116,9 +116,14 @@ export const EASE_CURVES: Record<string, [number, number, number, number]> = {
   "back.out": [0.34, 1.56, 0.64, 1],
   "back.in": [0.36, 0, 0.66, -0.56],
   "back.inOut": [0.68, -0.55, 0.27, 1.55],
+  "circ.inOut": [0.785, 0.135, 0.15, 0.86],
   "expo.out": [0.16, 1, 0.3, 1],
   "expo.in": [0.7, 0, 0.84, 0],
   "expo.inOut": [0.87, 0, 0.13, 1],
+  "bounce.out": [0.34, 1.56, 0.64, 0.74],
+  "bounce.in": [0.36, 0.26, 0.66, -0.56],
+  "elastic.out(1,0.3)": [0.16, 1.45, 0.28, 0.82],
+  "elastic.inOut(1,0.3)": [0.68, -0.55, 0.32, 1.55],
   // After Effects polarity: "in" eases into the keyframe (slow END, CP2 y=1),
   // "out" eases out of it (slow START, CP1 y=0). Matches the "(AE)" labels.
   "ae-ease": [0.333, 0, 0.667, 1],
@@ -126,18 +131,15 @@ export const EASE_CURVES: Record<string, [number, number, number, number]> = {
   "ae-ease-out": [0.333, 0, 0.667, 0.667],
 };
 
-export function parseCustomEaseFromString(ease: string): {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-} {
-  const match = ease.match(/^custom\((.+)\)$/);
-  if (!match) return controlPointsForGsapEase("power2.out");
-  const data = match[1];
-  const nums = data.match(/[\d.]+/g)?.map(Number);
-  if (!nums || nums.length < 6) return controlPointsForGsapEase("power2.out");
-  return { x1: nums[2], y1: nums[3], x2: nums[4], y2: nums[5] };
+export function resolveEaseCurveTuple(ease: string): [number, number, number, number] {
+  if (ease.startsWith("custom(")) {
+    const points = parseStudioCustomEaseData(ease.match(/^custom\((.+)\)$/)?.[1]);
+    if (points) return [points.x1, points.y1, points.x2, points.y2];
+  }
+  const curve = EASE_CURVES[ease];
+  if (curve) return curve;
+  const points = controlPointsForGsapEase(ease);
+  return [points.x1, points.y1, points.x2, points.y2];
 }
 
 export const PERCENT_PROPS = new Set(["opacity", "autoAlpha"]);

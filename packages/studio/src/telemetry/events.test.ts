@@ -12,6 +12,7 @@ const {
   trackStudioRenderStart,
   trackStudioRazorSplit,
   trackStudioExpandedClipEdit,
+  trackStudioSegmentEaseEdit,
   trackStudioFeedback,
 } = await import("./events");
 
@@ -69,6 +70,14 @@ describe("studio telemetry events", () => {
   it("trackStudioExpandedClipEdit emits 'studio_expanded_clip_edit' with action", () => {
     trackStudioExpandedClipEdit({ action: "resize" });
     expect(trackEvent).toHaveBeenCalledWith("studio_expanded_clip_edit", { action: "resize" });
+  });
+
+  it("trackStudioSegmentEaseEdit emits 'studio_segment_ease_edit' with action and ease", () => {
+    trackStudioSegmentEaseEdit({ action: "commit", ease: "power2.out" });
+    expect(trackEvent).toHaveBeenCalledWith("studio_segment_ease_edit", {
+      action: "commit",
+      ease: "power2.out",
+    });
   });
 
   it.each([0, 10])("trackStudioFeedback preserves NPS boundary %i and its scale", (rating) => {
