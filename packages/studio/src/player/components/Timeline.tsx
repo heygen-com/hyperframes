@@ -435,6 +435,9 @@ export const Timeline = memo(function Timeline({
         onDragLeave={() => clearDropPreview()}
         onDrop={handleAssetDrop}
         onPointerDown={(e) => {
+          // Let interactive controls (keyframe nav/toggle, caret, inputs) handle
+          // their own clicks — scrubbing here would preventDefault and eat them.
+          if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
             const x =
@@ -512,15 +515,15 @@ export const Timeline = memo(function Timeline({
           onMoveKeyframe={onMoveKeyframe}
           onContextMenuKeyframe={(e, elId, pct) => {
             const el = expandedElements.find((x) => (x.key ?? x.id) === elId);
-            if (el) {
-              setSelectedElementId(elId);
-              onSelectElement?.(el);
-            }
+            if (!el) return;
+            setSelectedElementId(elId);
+            onSelectElement?.(el);
             const kfData = keyframeCache.get(elId);
             const kf = kfData?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
             setKfContextMenu({
               x: e.clientX + 4,
               y: e.clientY + 2,
+              element: el,
               elementId: elId,
               percentage: pct,
               tweenPercentage: kf?.tweenPercentage,

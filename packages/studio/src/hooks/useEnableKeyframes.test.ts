@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
+  applyArcKeyframeAtPlayhead,
   animatedProps,
   buildExtendedKeyframes,
   isPlayheadWithinTween,
@@ -216,6 +217,114 @@ describe("promoteSetToKeyframes — auto endpoint", () => {
     expect(committed?.type).toBe("replace-with-keyframes");
     expect(kfs).toHaveLength(1);
     expect(kfs[0].percentage).toBe(0);
+  });
+});
+
+describe("applyArcKeyframeAtPlayhead", () => {
+  const arcAnim = anim({
+    id: "#el-to-0-position",
+    position: 0,
+    duration: 10,
+    keyframes: {
+      format: "object-array",
+      keyframes: [
+        { percentage: 0, properties: { x: 0, y: 0 } },
+        { percentage: 50, properties: { x: 50, y: 50 } },
+        { percentage: 100, properties: { x: 100, y: 0 } },
+      ],
+    },
+    arcPath: {
+      enabled: true,
+      autoRotate: false,
+      segments: [{ curviness: 1 }, { curviness: 1 }],
+    },
+  });
+
+  function arcFixture(x: number, y: number) {
+    const commitMutation = vi.fn(async () => undefined);
+    const session = { commitMutation } as unknown as EnableKeyframesSession;
+    const sel = {
+      id: "el",
+      selector: "#el",
+      element: { isConnected: true } as HTMLElement,
+      dataAttributes: { duration: "10" },
+    } as DomEditSelection;
+    const iframe = {
+      contentWindow: {
+        gsap: { getProperty: (_element: Element, property: string) => (property === "x" ? x : y) },
+      },
+    } as unknown as HTMLIFrameElement;
+    return { commitMutation, iframe, sel, session };
+  }
+
+  it("removes an existing interior stop without redistributing the remaining times", async () => {
+    const fixture = arcFixture(50, 50);
+    await applyArcKeyframeAtPlayhead(fixture.session, fixture.sel, arcAnim, 5, fixture.iframe);
+    expect(fixture.commitMutation).toHaveBeenCalledWith(
+      {
+        type: "replace-with-keyframes",
+        animationId: arcAnim.id,
+        targetSelector: "#el",
+        position: 0,
+        duration: 10,
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 100, properties: { x: 100, y: 0 } },
+        ],
+        ease: "none",
+      },
+      { label: "Remove keyframe", softReload: true },
+    );
+  });
+
+  it("preserves the path endpoints", async () => {
+    const fixture = arcFixture(0, 0);
+    await applyArcKeyframeAtPlayhead(fixture.session, fixture.sel, arcAnim, 0, fixture.iframe);
+    expect(fixture.commitMutation).not.toHaveBeenCalled();
+  });
+
+  it("adds a temporal keyframe at the exact playhead while preserving authored times", async () => {
+    const fixture = arcFixture(25, 25);
+    await applyArcKeyframeAtPlayhead(fixture.session, fixture.sel, arcAnim, 2.5, fixture.iframe);
+    expect(fixture.commitMutation).toHaveBeenCalledWith(
+      {
+        type: "replace-with-keyframes",
+        animationId: arcAnim.id,
+        targetSelector: "#el",
+        position: 0,
+        duration: 10,
+        keyframes: [
+          { percentage: 0, properties: { x: 0, y: 0 } },
+          { percentage: 25, properties: { x: 25, y: 25 } },
+          { percentage: 50, properties: { x: 50, y: 50 } },
+          { percentage: 100, properties: { x: 100, y: 0 } },
+        ],
+        ease: "none",
+      },
+      { label: "Add keyframe", softReload: true },
+    );
+  });
+
+  it("uses the owning clip duration when an arc omits its outer duration", async () => {
+    const fixture = arcFixture(25, 25);
+    const durationlessArc = { ...arcAnim, duration: undefined };
+
+    await applyArcKeyframeAtPlayhead(
+      fixture.session,
+      fixture.sel,
+      durationlessArc,
+      2.5,
+      fixture.iframe,
+    );
+
+    expect(fixture.commitMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "replace-with-keyframes",
+        duration: 10,
+        keyframes: expect.arrayContaining([{ percentage: 25, properties: { x: 25, y: 25 } }]),
+      }),
+      { label: "Add keyframe", softReload: true },
+    );
   });
 });
 

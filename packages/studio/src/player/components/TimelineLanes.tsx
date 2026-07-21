@@ -78,7 +78,7 @@ export interface TimelineLaneBaseProps {
     elementId: string,
     fromClipPercentage: number,
     toClipPercentage: number,
-  ) => void;
+  ) => Promise<boolean>;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   /**
    * Right-click on EMPTY lane space (not on a clip — those preventDefault

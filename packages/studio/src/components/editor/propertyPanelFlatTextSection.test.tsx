@@ -299,22 +299,17 @@ describe("FlatTextFieldEditor controls", () => {
 
 describe("FlatTextSection — multi-field", () => {
   it("shows the layer list, switches the active field's rows on selection, and has no doubled heading (this component never renders its own heading — the parent FlatGroup does)", () => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => {
-      root.render(
-        <FlatTextSection
-          element={makeMultiFieldElement()}
-          styles={{}}
-          fontAssets={[]}
-          onSetText={vi.fn()}
-          onSetTextFieldStyle={vi.fn()}
-          onAddTextField={vi.fn()}
-          onRemoveTextField={vi.fn()}
-        />,
-      );
-    });
+    const { host, root } = renderInto(
+      <FlatTextSection
+        element={makeMultiFieldElement()}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={vi.fn()}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
     expect(host.textContent).toContain("Headline");
     expect(host.textContent).toContain("Subhead");
     // Active field's editor rows are visible (Font/Weight/etc. from FlatTextFieldEditor).
@@ -405,6 +400,27 @@ describe("FlatTextSection — multi-field", () => {
     expect(rows).toHaveLength(2);
     expect((rows[0] as HTMLElement).getAttribute("data-active")).toBe("true");
 
+    act(() => root.unmount());
+  });
+
+  it("does not steal canvas focus when a multi-field element is selected", () => {
+    const focusOwner = document.createElement("button");
+    document.body.append(focusOwner);
+    focusOwner.focus();
+
+    const { root } = renderInto(
+      <FlatTextSection
+        element={makeMultiFieldElement()}
+        styles={{}}
+        fontAssets={[]}
+        onSetText={vi.fn()}
+        onSetTextFieldStyle={vi.fn()}
+        onAddTextField={vi.fn()}
+        onRemoveTextField={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toBe(focusOwner);
     act(() => root.unmount());
   });
 

@@ -257,6 +257,7 @@ export function FlatTextSection({
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
   );
+  const [autoFocusFieldKey, setAutoFocusFieldKey] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFields = element.textFields;
@@ -265,6 +266,16 @@ export function FlatTextSection({
       return nextFields[0]?.key ?? null;
     });
   }, [element.id, element.selector, element.textFields]);
+
+  useEffect(() => {
+    setAutoFocusFieldKey(null);
+  }, [element.id, element.selector]);
+
+  useEffect(() => {
+    if (autoFocusFieldKey && autoFocusFieldKey === activeFieldKey) {
+      setAutoFocusFieldKey(null);
+    }
+  }, [activeFieldKey, autoFocusFieldKey]);
 
   if (!isTextEditableSelection(element)) return null;
   const textFields = element.textFields;
@@ -278,10 +289,15 @@ export function FlatTextSection({
           fields={textFields}
           activeFieldKey={activeField.key}
           styles={styles}
-          onSelect={setActiveFieldKey}
+          onSelect={(fieldKey) => {
+            setAutoFocusFieldKey(null);
+            setActiveFieldKey(fieldKey);
+          }}
           onAdd={() =>
             void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-              if (nextKey) setActiveFieldKey(nextKey);
+              if (!nextKey) return;
+              setAutoFocusFieldKey(nextKey);
+              setActiveFieldKey(nextKey);
             })
           }
           onRemove={onRemoveTextField}
@@ -295,7 +311,7 @@ export function FlatTextSection({
           onSetText={onSetText}
           onSetTextFieldStyle={onSetTextFieldStyle}
           onPreviewTextFieldStyle={onPreviewTextFieldStyle}
-          autoFocus
+          autoFocus={autoFocusFieldKey === activeField.key}
         />
       </div>
     );
@@ -316,7 +332,11 @@ export function FlatTextSection({
         type="button"
         onClick={() => {
           track("button", "Add text field");
-          void onAddTextField(activeField.key);
+          void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
+            if (!nextKey) return;
+            setAutoFocusFieldKey(nextKey);
+            setActiveFieldKey(nextKey);
+          });
         }}
         className="mt-0.5 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
       >

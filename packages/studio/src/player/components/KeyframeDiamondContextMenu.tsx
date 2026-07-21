@@ -1,10 +1,12 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import type { TimelineElement } from "../store/playerStore";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
   y: number;
+  element: TimelineElement;
   elementId: string;
   percentage: number;
   tweenPercentage?: number;
@@ -23,12 +25,12 @@ interface KeyframeDiamondContextMenuProps {
     tweenPercentage?: number,
     animationId?: string,
   ) => void;
-  onDeleteAll: (elementId: string) => void;
+  onDeleteAll: (element: TimelineElement) => void;
   onChangeEase?: (elementId: string, percentage: number, ease: string) => void;
   onCopyProperties?: (elementId: string, percentage: number) => void;
   /** Retime the keyframe to the current playhead, preserving its value + ease. */
   onMoveToPlayhead?: (
-    elementId: string,
+    element: TimelineElement,
     fromPercentage: number,
     propertyGroup?: string,
     tweenPercentage?: number,
@@ -66,7 +68,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
             // and returns the tween-% for the mutation. Passing tween-% here would
             // miss the lookup on any tween whose window is shorter than the clip.
             onMoveToPlayhead(
-              state.elementId,
+              state.element,
               state.percentage,
               state.propertyGroup,
               state.tweenPercentage,
@@ -101,7 +103,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
         type="button"
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
         onClick={() => {
-          onDeleteAll(state.elementId);
+          onDeleteAll(state.element);
           onClose();
         }}
       >

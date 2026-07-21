@@ -36,6 +36,60 @@ interface TimelineToolbarProps {
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
 }
 
+interface KeyframeToggleState {
+  state: "active" | "inactive" | "none";
+  isMotionPath: boolean;
+  pathEndpoint: boolean;
+  willExtend: boolean;
+}
+
+const NO_KEYFRAME_TOGGLE: KeyframeToggleState = {
+  state: "none",
+  isMotionPath: false,
+  pathEndpoint: false,
+  willExtend: false,
+};
+
+function isMotionPathEndpoint(animation: GsapAnimation | undefined, percentage: number): boolean {
+  if (!animation?.keyframes) return false;
+  const keyframes = animation.keyframes.keyframes;
+  return (
+    Math.abs((keyframes[0]?.percentage ?? -Infinity) - percentage) <= 1 ||
+    Math.abs((keyframes.at(-1)?.percentage ?? Infinity) - percentage) <= 1
+  );
+}
+
+function resolveKeyframeToggleState(
+  session: DomEditSessionSlice | undefined,
+  currentTime: number,
+): KeyframeToggleState {
+  if (!session?.domEditSelection) return NO_KEYFRAME_TOGGLE;
+  const arcAnimation = session.selectedGsapAnimations.find(
+    (animation) => animation.arcPath && animation.keyframes,
+  );
+  const animation =
+    arcAnimation ??
+    session.selectedGsapAnimations.find((candidate) => candidate.keyframes && !candidate.arcPath);
+  if (!animation?.keyframes) return NO_KEYFRAME_TOGGLE;
+
+  const isMotionPath = Boolean(arcAnimation);
+  if (!isPlayheadWithinTween(animation, currentTime)) {
+    return { state: "inactive", isMotionPath, pathEndpoint: false, willExtend: true };
+  }
+
+  const percentage = computeElementPercentage(currentTime, session.domEditSelection, animation);
+  const pathEndpoint = isMotionPathEndpoint(arcAnimation, percentage);
+  const active = animation.keyframes.keyframes.some(
+    (keyframe) => Math.abs(keyframe.percentage - percentage) <= 1,
+  );
+  return {
+    state: pathEndpoint ? "none" : active ? "active" : "inactive",
+    isMotionPath,
+    pathEndpoint,
+    willExtend: false,
+  };
+}
+
 function useKeyframeToggle(session?: DomEditSessionSlice) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const sessionRef = useRef(session);
@@ -45,31 +99,12 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
     sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
   );
 
-  if (!session) return { state: "none" as const, onToggle: undefined };
+  const toggleState = resolveKeyframeToggleState(session, currentTime);
 
-  const sel = session.domEditSelection;
-  const anims = session.selectedGsapAnimations;
-  const kfAnim = anims.find((a) => a.keyframes);
-
-  let state: "active" | "inactive" | "none" = "none";
-  // Outside the tween, clicking extends the animation to the playhead rather than
-  // toggling a (clamped) edge keyframe — so the button stays an "add" affordance.
-  let willExtend = false;
-  if (kfAnim?.keyframes && sel) {
-    if (!isPlayheadWithinTween(kfAnim, currentTime)) {
-      state = "inactive";
-      willExtend = true;
-    } else {
-      // Tween-relative percentage (not the clip range) so the button state matches
-      // where the keyframe would actually land.
-      const pct = computeElementPercentage(currentTime, sel, kfAnim);
-      state = kfAnim.keyframes.keyframes.some((k) => Math.abs(k.percentage - pct) <= 1)
-        ? "active"
-        : "inactive";
-    }
-  }
-
-  return { state, willExtend, onToggle: sel ? onToggle : undefined };
+  return {
+    ...toggleState,
+    onToggle: session?.domEditSelection && !toggleState.pathEndpoint ? onToggle : undefined,
+  };
 }
 
 // fallow-ignore-next-line complexity
@@ -91,6 +126,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const {
     state: keyframeState,
+    isMotionPath: keyframeIsMotionPath,
+    pathEndpoint: keyframePathEndpoint,
     willExtend: keyframeWillExtend,
     onToggle: onToggleKeyframe,
   } = useKeyframeToggle(domEditSession);
@@ -180,15 +217,23 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             // toolbar layout never shifts.
             <Tooltip
               label={
-                !onToggleKeyframe
-                  ? "Select an animated element to add keyframes"
-                  : keyframeState === "active"
-                    ? "Remove keyframe at playhead (K)"
-                    : keyframeState === "inactive"
+                keyframePathEndpoint
+                  ? "Motion path endpoints cannot be removed"
+                  : !onToggleKeyframe
+                    ? "Select an animated element to add keyframes"
+                    : keyframeIsMotionPath
                       ? keyframeWillExtend
-                        ? "Add keyframe at playhead, extends animation (K)"
-                        : "Add keyframe at playhead (K)"
-                      : "Add keyframe (K)"
+                        ? "Extend motion path to playhead (K)"
+                        : keyframeState === "active"
+                          ? "Remove waypoint from motion path (K)"
+                          : "Add waypoint to motion path (K)"
+                      : keyframeState === "active"
+                        ? "Remove keyframe at playhead (K)"
+                        : keyframeState === "inactive"
+                          ? keyframeWillExtend
+                            ? "Add keyframe at playhead, extends animation (K)"
+                            : "Add keyframe at playhead (K)"
+                          : "Add keyframe (K)"
               }
             >
               <button
@@ -196,9 +241,17 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 disabled={!onToggleKeyframe}
                 onClick={onToggleKeyframe}
                 aria-label={
-                  keyframeState === "active"
-                    ? "Remove keyframe at playhead"
-                    : "Add keyframe at playhead"
+                  keyframePathEndpoint
+                    ? "Motion path endpoint"
+                    : keyframeIsMotionPath
+                      ? keyframeState === "active"
+                        ? "Remove motion path waypoint"
+                        : keyframeWillExtend
+                          ? "Extend motion path to playhead"
+                          : "Add motion path waypoint"
+                      : keyframeState === "active"
+                        ? "Remove keyframe at playhead"
+                        : "Add keyframe at playhead"
                 }
                 className={
                   !onToggleKeyframe

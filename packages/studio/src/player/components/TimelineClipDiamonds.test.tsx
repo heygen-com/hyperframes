@@ -45,6 +45,42 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
 }
 
 describe("TimelineClipDiamonds", () => {
+  it("keeps dense keyframe hit regions and visuals from overlapping", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [30, 60, 90].map((percentage) => ({
+              percentage,
+              propertyGroup: "position",
+              properties: { x: percentage },
+            })),
+          }}
+          clipWidthPx={36}
+          clipHeightPx={48}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={0}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          groupAware
+        />,
+      );
+    });
+
+    const diamonds = Array.from(host.querySelectorAll<HTMLButtonElement>("button[title]"));
+    expect(diamonds).toHaveLength(3);
+    for (const diamond of diamonds) {
+      expect(Number.parseFloat(diamond.style.width)).toBeCloseTo(10.8);
+      expect(Number(diamond.querySelector("svg")?.getAttribute("width"))).toBeCloseTo(8.8);
+    }
+    act(() => root.unmount());
+  });
+
   it("treats primary pointerup without drag as a keyframe click", () => {
     const { host, root, onClickKeyframe } = renderDiamonds();
     const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
@@ -466,6 +502,18 @@ describe("TimelineClipDiamonds", () => {
   it("keeps the inline ease button on unambiguous merged segments", () => {
     const { host, root } = renderSegmentLane(false);
     expect(host.querySelectorAll("[data-keyframe-ease-segment]").length).toBe(2);
+    act(() => root.unmount());
+  });
+
+  it("keeps the ease button above nearby diamonds without blocking the segment", () => {
+    const { host, root } = renderSegmentLane(false);
+    const segment = host.querySelector<HTMLElement>("[data-keyframe-ease-segment]");
+    const ease = segment?.querySelector<HTMLButtonElement>("[data-keyframe-ease-button]");
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+
+    expect(segment?.style.pointerEvents).toBe("none");
+    expect(ease?.style.pointerEvents).toBe("auto");
+    expect(Number(segment?.style.zIndex)).toBeGreaterThan(Number(diamond?.style.zIndex));
     act(() => root.unmount());
   });
 

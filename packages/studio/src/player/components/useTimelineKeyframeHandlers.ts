@@ -77,10 +77,9 @@ export function useTimelineKeyframeHandlers({
   const onContextMenuKeyframe = useCallback(
     (e: ReactMouseEvent, elId: string, target: TimelineKeyframeTarget) => {
       const el = expandedElements.find((item) => (item.key ?? item.id) === elId);
-      if (el) {
-        setSelectedElementId(elId);
-        onSelectElement?.(el);
-      }
+      if (!el) return;
+      setSelectedElementId(elId);
+      onSelectElement?.(el);
       const kfData = keyframeCache.get(elId);
       const kf = kfData?.keyframes.find(
         (item) => Math.abs(item.percentage - target.percentage) < 0.2,
@@ -93,6 +92,7 @@ export function useTimelineKeyframeHandlers({
         tweenPercentage: target.tweenPercentage ?? kf?.tweenPercentage,
         propertyGroup: target.propertyGroup,
         animationId: target.animationId,
+        element: el,
         currentEase: kf?.ease ?? kfData?.ease,
       });
     },
