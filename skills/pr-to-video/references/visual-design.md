@@ -145,7 +145,7 @@ The bottom ~17% of the canvas is reserved for the caption pill. Plan every frame
 | motion — shot model, vocabulary, holds, idle budget, stillness, seek-safe       | `motion-language.md` (local)                                                   |
 | layout — framing, density, depth, hierarchy, inventing the visual, caption band | the **Layout** + **Inventing the visual** sections in this file                |
 | concrete eases / ms / stagger + rule recipe bodies (Step 5)                     | local `../hyperframes-animation/rules/` (the frame worker reads it; you don't) |
-| palette + type tokens                                                           | the project's `frame.md` (code-editorial); basics → `hyperframes-creative`             |
+| palette + type tokens                                                           | the project's `frame.md` (code-editorial); basics → `hyperframes-creative`     |
 | within-frame cuts / seams (zoom-through · cut-the-curve · waterfall)            | `cut-catalog.md` (the worker builds them inside the composition)               |
 | transitions                                                                     | story-design owns `transition_in`; you don't touch it                          |
 

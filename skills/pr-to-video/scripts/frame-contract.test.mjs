@@ -199,7 +199,10 @@ test("Code editorial preset stages renderer-parity fonts for an empty PR token s
 });
 
 test("bundled Code editorial font licenses are shipped beside the assets", () => {
-  const fontDir = resolve(scriptDir, "../../hyperframes-creative/frame-presets/code-editorial/fonts");
+  const fontDir = resolve(
+    scriptDir,
+    "../../hyperframes-creative/frame-presets/code-editorial/fonts",
+  );
   for (const family of ["eb-garamond", "inter", "jetbrains-mono"]) {
     assert.equal(existsSync(join(fontDir, `OFL-${family}.txt`)), true);
   }

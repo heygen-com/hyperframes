@@ -165,8 +165,8 @@ Both modes draw from **[dna/](dna/README.md)** — ten art-directed visual langu
 | **keynote**     | tech-premium   | product / launch                                | opaque white Inter 800, dead-center stillness                                                      |
 | **documentary** | formal         | interview / serious                             | burn-in reveals, no hero — gravitas IS the style                                                   |
 | **loud**        | loud           | hype / sport / social                           | Anton + scene-sampled accent, single-unit slam + ripple; body ANNOUNCES in front (`bodyLayer: fg`) |
-| **neon**        | loud-neon     | neon-noir / nightlife / tech-noir (dark scenes) | electric-cyan signage, ignition flicker, the hero powers ON like a sign                            |
-| **glitch**      | loud-neon     | digital / hacker / AI                           | RGB-split echoes snap together on landing; machine-percussive timing                               |
+| **neon**        | loud-neon      | neon-noir / nightlife / tech-noir (dark scenes) | electric-cyan signage, ignition flicker, the hero powers ON like a sign                            |
+| **glitch**      | loud-neon      | digital / hacker / AI                           | RGB-split echoes snap together on landing; machine-percussive timing                               |
 | **chrome**      | loud-luxe      | Y2K / fashion-tech / music                      | liquid-metal gradient hero + one sheen sweep during the hold                                       |
 | **velocity**    | loud-sport     | sport / auto / fitness                          | every word arrives along its motion vector (streak+skew), hero passes with speed trails            |
 

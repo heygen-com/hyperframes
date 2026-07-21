@@ -9,13 +9,13 @@ description: Import Figma content into a HyperFrames composition — rendered as
 
 Bring the user's Figma work into a composition. **Split by capability** (design spec §2):
 
-| Phase | What                | Transport                    | Surface                       |
-| ----- | ------------------- | ---------------------------- | ----------------------------- |
-| 1     | Static assets       | REST                         | `hyperframes figma asset`     |
-| 2     | Brand tokens/styles | REST                         | `hyperframes figma tokens`    |
-| 3     | Components → HTML   | REST                         | `hyperframes figma component` |
-| 4     | Motion → GSAP       | connector when available      | use its motion context        |
-| 5     | Shaders             | connector / manual export     | use it or a native export     |
+| Phase | What                | Transport                 | Surface                       |
+| ----- | ------------------- | ------------------------- | ----------------------------- |
+| 1     | Static assets       | REST                      | `hyperframes figma asset`     |
+| 2     | Brand tokens/styles | REST                      | `hyperframes figma tokens`    |
+| 3     | Components → HTML   | REST                      | `hyperframes figma component` |
+| 4     | Motion → GSAP       | connector when available  | use its motion context        |
+| 5     | Shaders             | connector / manual export | use it or a native export     |
 
 REST is used wherever it can be (usable at volume, headless). A compatible Figma connector is optional for motion and shader data; without one, ask for a native export. Every path freezes assets locally so renders stay deterministic. Storyboard reconstructions compose Phase-1 asset exports (REST) with agent-driven timeline assembly — no connector needed. Existing frozen assets, manifest records, and bindings are unaffected by routing changes — the split only changes which credential the next import uses.
 
