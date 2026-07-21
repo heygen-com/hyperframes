@@ -211,7 +211,7 @@ describe("useTimelinePlayer seek hydration", () => {
 });
 
 describe("useTimelinePlayer audio controls (#835)", () => {
-  it("applies playback-rate changes immediately and auto-mutes audio above 1x", () => {
+  it("applies playback-rate changes immediately and keeps audio unmuted above 1x", () => {
     const { api, root } = renderTimelinePlayerHarness();
     const postMessage = vi.fn();
     const timeScale = vi.fn();
@@ -244,7 +244,7 @@ describe("useTimelinePlayer audio controls (#835)", () => {
         source: "hf-parent",
         type: "control",
         action: "set-muted",
-        muted: true,
+        muted: false,
       }),
       "*",
     );
