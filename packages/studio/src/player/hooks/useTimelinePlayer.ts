@@ -37,11 +37,7 @@ import {
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
 import { normalizeToZones } from "../components/timelineZones";
-import {
-  setPreviewMediaMuted,
-  setPreviewPlaybackRate,
-  shouldMutePreviewAudio,
-} from "../lib/timelineIframeHelpers";
+import { setPreviewMediaMuted, setPreviewPlaybackRate } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
@@ -241,13 +237,9 @@ export function useTimelinePlayer() {
       }
     } catch {}
   }, []);
-  const applyPreviewAudioState = useCallback((playbackRateOverride?: number) => {
-    const { audioMuted, playbackRate } = usePlayerStore.getState();
-    const effectivePlaybackRate = playbackRateOverride ?? playbackRate;
-    setPreviewMediaMuted(
-      iframeRef.current,
-      shouldMutePreviewAudio(audioMuted, effectivePlaybackRate),
-    );
+  const applyPreviewAudioState = useCallback(() => {
+    const { audioMuted } = usePlayerStore.getState();
+    setPreviewMediaMuted(iframeRef.current, audioMuted);
   }, []);
   const play = useCallback(() => {
     stopRAFLoop();
@@ -285,7 +277,7 @@ export function useTimelinePlayer() {
       if (initialTime !== adapter.getTime()) adapter.seek(initialTime);
       const speed = Math.max(0.1, Math.min(4, rate));
       applyPlaybackRate(speed);
-      applyPreviewAudioState(speed);
+      applyPreviewAudioState();
       let startTime = initialTime;
       let startedAt = performance.now();
 

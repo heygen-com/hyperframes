@@ -2,7 +2,6 @@ import { useRef, useCallback, useEffect, memo } from "react";
 import gsap from "gsap";
 import { MorphSVGPlugin } from "gsap/MorphSVGPlugin";
 import { formatFrameTime, formatTime, stepFrameTime } from "../lib/time";
-import { shouldMutePreviewAudio } from "../lib/timelineIframeHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
@@ -60,40 +59,30 @@ function PlayPauseMorphIcon({ playing }: { playing: boolean }) {
 
 const MuteButton = memo(function MuteButton({
   audioMuted,
-  audioAutoMuted,
-  effectiveAudioMuted,
   controlsDisabled,
   setAudioMuted,
 }: {
   audioMuted: boolean;
-  audioAutoMuted: boolean;
-  effectiveAudioMuted: boolean;
   controlsDisabled: boolean;
   setAudioMuted: (v: boolean) => void;
 }) {
-  const label = audioAutoMuted
-    ? "Audio muted above 1x speed"
-    : audioMuted
-      ? "Unmute audio"
-      : "Mute audio";
+  const label = audioMuted ? "Unmute audio" : "Mute audio";
   return (
     <Tooltip label={label}>
       <button
         type="button"
         onClick={() => {
-          if (!audioAutoMuted) {
-            trackStudioEvent("playback", { action: "mute_toggle", muted: !audioMuted });
-            setAudioMuted(!audioMuted);
-          }
+          trackStudioEvent("playback", { action: "mute_toggle", muted: !audioMuted });
+          setAudioMuted(!audioMuted);
         }}
-        disabled={controlsDisabled || audioAutoMuted}
+        disabled={controlsDisabled}
         aria-label={label}
-        aria-pressed={effectiveAudioMuted}
+        aria-pressed={audioMuted}
         className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors disabled:pointer-events-none ${
-          effectiveAudioMuted
+          audioMuted
             ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
             : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
-        } ${audioAutoMuted ? "opacity-70" : ""}`}
+        }`}
       >
         <svg
           width="13"
@@ -107,7 +96,7 @@ const MuteButton = memo(function MuteButton({
           aria-hidden="true"
         >
           <path d="M11 5 6 9H3v6h3l5 4V5Z" />
-          {effectiveAudioMuted ? (
+          {audioMuted ? (
             <>
               <path d="m19 9-6 6" />
               <path d="m13 9 6 6" />
@@ -383,8 +372,6 @@ export const PlayerControls = memo(function PlayerControls({
   const durationRef = useRef(duration);
   durationRef.current = duration;
   const controlsDisabled = disabled || !timelineReady;
-  const audioAutoMuted = playbackRate > 1;
-  const effectiveAudioMuted = shouldMutePreviewAudio(audioMuted, playbackRate);
 
   useEffect(() => {
     if (!timeDisplayRef.current) return;
@@ -486,8 +473,6 @@ export const PlayerControls = memo(function PlayerControls({
 
       <MuteButton
         audioMuted={audioMuted}
-        audioAutoMuted={audioAutoMuted}
-        effectiveAudioMuted={effectiveAudioMuted}
         controlsDisabled={controlsDisabled}
         setAudioMuted={setAudioMuted}
       />

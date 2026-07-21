@@ -111,10 +111,6 @@ function postPreviewControl(
   postRuntimeControlMessage(iframe.contentWindow, action, payload);
 }
 
-export function shouldMutePreviewAudio(audioMuted: boolean, playbackRate: number): boolean {
-  return audioMuted || playbackRate > 1;
-}
-
 export function setPreviewMediaMuted(iframe: HTMLIFrameElement | null, muted: boolean): void {
   if (!iframe) return;
   try {
