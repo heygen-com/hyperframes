@@ -656,6 +656,27 @@ describe("stagger/yoyo/repeat round-trip", () => {
   });
 });
 
+describe("object keyframe per-step duration is not an animatable property", () => {
+  it("excludes `duration` from %-keyed keyframe properties (segment timing must not become a lane)", () => {
+    // A %-keyed object keyframe carrying a stray per-step `duration` — the shape
+    // a buggy array->object conversion produces. `duration` is GSAP segment
+    // timing, not a property; it must never surface as a keyframe lane or get
+    // round-tripped as an animatable value (which corrupts the tween on edit).
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { keyframes: { "0%": { x: 0, duration: 0 }, "50%": { x: 100, duration: 6, ease: "power2.out" }, "100%": { x: 200, duration: 6 } } }, 0);
+    `;
+    const parsed = parseGsapScript(script);
+    const kfs = parsed.animations[0].keyframes?.keyframes ?? [];
+    expect(kfs.length).toBe(3);
+    for (const kf of kfs) {
+      expect(kf.properties).not.toHaveProperty("duration"); // the fix
+      expect(kf.properties).toHaveProperty("x"); // real animatable prop preserved
+    }
+    expect(kfs[1]?.ease).toBe("power2.out"); // per-keyframe ease still parsed
+  });
+});
+
 describe("unresolvable value round-trip", () => {
   it("preserves unresolvable property values through serialize", () => {
     const script = `
@@ -1917,6 +1938,15 @@ describe("keyframe mutations", () => {
     expect([kf[1]!.properties.x, kf[1]!.properties.y]).toEqual([503, 642]);
     expect([kf[0]!.properties.x, kf[0]!.properties.y]).toEqual([0, 0]);
     expect([kf[2]!.properties.x, kf[2]!.properties.y]).toEqual([1040, 0]);
+  });
+
+  it("updateKeyframeInScript — array-form ease-only update preserves existing properties", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, {}, "power2.inOut");
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect(kf[1]!.properties.x).toBe(520);
+    expect(kf[1]!.properties.y).toBe(120);
+    expect(kf[1]!.ease).toBe("power2.inOut");
   });
 
   it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {

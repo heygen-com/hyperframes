@@ -41,6 +41,7 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    __hfCustomEaseRegistered?: boolean;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;
@@ -75,6 +76,11 @@ declare global {
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
+      parseEase?: (
+        ease: string | ((progress: number) => number),
+        ...args: unknown[]
+      ) => ((progress: number) => number) | null;
+      registerPlugin?: (plugin: unknown) => void;
       ticker?: {
         tick: () => void;
       };

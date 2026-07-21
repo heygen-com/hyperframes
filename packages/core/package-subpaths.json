@@ -242,6 +242,12 @@
       "types": "./dist/parsers/springEase.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./wiggle-ease": {
+      "source": "./src/runtime/wiggleEase.ts",
+      "runtime": "./dist/runtime/wiggleEase.js",
+      "types": "./dist/runtime/wiggleEase.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./fonts/aliases": {
       "source": "./src/fonts/aliases.ts",
       "runtime": "./dist/fonts/aliases.js",

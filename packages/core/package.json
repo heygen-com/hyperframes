@@ -251,6 +251,12 @@
       "import": "./src/parsers/springEase.ts",
       "types": "./src/parsers/springEase.ts"
     },
+    "./wiggle-ease": {
+      "bun": "./src/runtime/wiggleEase.ts",
+      "node": "./dist/runtime/wiggleEase.js",
+      "import": "./src/runtime/wiggleEase.ts",
+      "types": "./src/runtime/wiggleEase.ts"
+    },
     "./fonts/aliases": {
       "bun": "./src/fonts/aliases.ts",
       "node": "./dist/fonts/aliases.js",
@@ -428,6 +434,10 @@
       "./spring-ease": {
         "import": "./dist/parsers/springEase.js",
         "types": "./dist/parsers/springEase.d.ts"
+      },
+      "./wiggle-ease": {
+        "import": "./dist/runtime/wiggleEase.js",
+        "types": "./dist/runtime/wiggleEase.d.ts"
       },
       "./fonts/aliases": {
         "import": "./dist/fonts/aliases.js",

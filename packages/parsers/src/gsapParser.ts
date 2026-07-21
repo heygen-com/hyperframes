@@ -686,6 +686,12 @@ function parsePercentageKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyf
       for (const [k, v] of Object.entries(record)) {
         if (k === "ease" && typeof v === "string") {
           kfEase = v;
+        } else if (k === "duration") {
+          // `duration` is array-keyframe segment timing, not an animatable
+          // property. In a %-keyed object keyframe the % key owns timing, so a
+          // per-step `duration` is neither timing nor a property — skip it, or
+          // it surfaces as a bogus keyframe lane and corrupts the round-trip.
+          continue;
         } else if (typeof v === "number" || typeof v === "string") {
           properties[k] = v;
         }
@@ -2020,6 +2026,18 @@ function buildKeyframeValueNode(
   return parseExpr(`{ ${entries.join(", ")} }`);
 }
 
+function setObjectExpressionEase(node: AstNode, ease: string): boolean {
+  if (node?.type !== "ObjectExpression") return false;
+  const props = (node.properties ?? []) as AstNode[];
+  const easeIdx = props.findIndex(
+    (property: AstNode) => isObjectProperty(property) && propKeyName(property) === "ease",
+  );
+  const easeNode = parseExpr(`({ ease: ${JSON.stringify(ease)} })`).properties[0];
+  if (easeIdx >= 0) props[easeIdx] = easeNode;
+  else props.push(easeNode);
+  return true;
+}
+
 /** Parse + locate a target animation, returning null on failure. */
 function locateAnimation(
   script: string,
@@ -2473,7 +2491,12 @@ export function updateKeyframeInScript(
       }
     }
     if (matchIdx === -1) return script;
-    const realIdx = arrVal.elements.indexOf(elements[matchIdx]);
+    const matchEl = elements[matchIdx];
+    if (!matchEl) return script;
+    const realIdx = arrVal.elements.indexOf(matchEl);
+    if (Object.keys(properties).length === 0 && ease && setObjectExpressionEase(matchEl, ease)) {
+      return recast.print(arrLoc.parsed.ast).code;
+    }
     arrVal.elements[realIdx] = buildKeyframeValueNode(properties, ease);
     return recast.print(arrLoc.parsed.ast).code;
   }
@@ -2487,18 +2510,7 @@ export function updateKeyframeInScript(
 
   if (Object.keys(properties).length === 0 && ease) {
     // Ease-only update: preserve existing properties, just add/replace ease
-    const existing = match.prop.value;
-    if (existing?.type === "ObjectExpression") {
-      const props = (existing.properties ?? []) as AstNode[];
-      const easeIdx = props.findIndex(
-        (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "ease",
-      );
-      const easeNode = parseExpr(`({ ease: ${JSON.stringify(ease)} })`).properties[0];
-      if (easeIdx >= 0) {
-        props[easeIdx] = easeNode;
-      } else {
-        props.push(easeNode);
-      }
+    if (setObjectExpressionEase(match.prop.value, ease)) {
       return recast.print(loc.parsed.ast).code;
     }
     // Non-object keyframe value (primitive shorthand, e.g. "50%": "0.5"): there
