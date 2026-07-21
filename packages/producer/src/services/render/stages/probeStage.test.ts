@@ -103,6 +103,8 @@ mock.module("../../htmlCompiler.js", () => ({
 mock.module("../shared.js", () => ({
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: () => 0,
+  resolveBrowserMediaEnd: (_start: number, end: number, duration: number) =>
+    Number.isFinite(duration) && duration > 0 ? _start + duration : end,
   writeCompiledArtifacts: () => {},
 }));
 

@@ -81,6 +81,25 @@ describe("distributed warning policy", () => {
   });
 });
 
+describe("distributed synthetic render job", () => {
+  it("threads render variables into the plan browser probe job", () => {
+    const variables = {
+      voiceoverSrc: "assets/voiceover.wav",
+      narrationDurationSeconds: 56.738,
+    };
+    const job = buildSyntheticRenderJob({
+      fps: { num: 30, den: 1 },
+      format: "mp4",
+      quality: "high",
+      hdrMode: "force-sdr",
+      entryFile: "index.html",
+      variables,
+    });
+
+    expect(job.config.variables).toEqual(variables);
+  });
+});
+
 describe("resolveChunkPlan", () => {
   it("returns 1 chunk when totalFrames fits in configChunkSize", () => {
     const result = resolveChunkPlan(60, 240, 16);

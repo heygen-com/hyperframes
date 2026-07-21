@@ -55,6 +55,7 @@ import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
   projectBrowserEndToCompositionTimeline,
+  resolveBrowserMediaEnd,
   writeCompiledArtifacts,
   type CompositionMetadata,
 } from "../shared.js";
@@ -454,7 +455,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               const projectedEnd = projectBrowserEndToCompositionTimeline(
                 existing.start,
                 el.start,
-                el.end,
+                resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
               if (
                 projectedEnd > 0 &&
@@ -482,7 +483,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               id: el.id,
               src,
               start: el.start,
-              end: el.end,
+              end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
               mediaStart: el.mediaStart,
               loop: el.loop,
               hasAudio: el.hasAudio && !el.muted,
@@ -500,7 +501,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               const projectedEnd = projectBrowserEndToCompositionTimeline(
                 existing.start,
                 el.start,
-                el.end,
+                resolveBrowserMediaEnd(el.start, el.end, el.duration),
               );
               if (
                 projectedEnd > 0 &&
@@ -527,7 +528,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               id: el.id,
               src,
               start: el.start,
-              end: el.end,
+              end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
               mediaStart: el.mediaStart,
               layer: 0,
               volume: el.volume,
