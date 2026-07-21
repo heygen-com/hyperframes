@@ -2134,10 +2134,10 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         const endAttr = Number.parseFloat(el.dataset.end ?? "");
         const durationAttr = Number.parseFloat(el.dataset.duration ?? "");
         const end =
-          Number.isFinite(endAttr) && endAttr > start
-            ? endAttr
-            : Number.isFinite(durationAttr) && durationAttr > 0
-              ? start + durationAttr
+          Number.isFinite(durationAttr) && durationAttr > 0
+            ? start + durationAttr
+            : Number.isFinite(endAttr) && endAttr > start
+              ? endAttr
               : duration;
         const sampleStart = Math.max(0, start);
         const sampleEnd = Math.min(duration, end);

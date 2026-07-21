@@ -1763,11 +1763,11 @@ h1 { font-size: 2rem; }`;
 });
 
 describe("discoverAudioVolumeAutomationFromTimeline", () => {
-  it("samples video-derived audio volume without firing GSAP callbacks", async () => {
+  it("prefers runtime duration over stale data-end while sampling video-derived audio", async () => {
     class TestAudioElement {}
     class TestVideoElement {
       id = "bg-video";
-      dataset = { start: "0", duration: "1", volume: "0" };
+      dataset = { start: "0", end: "0.25", duration: "1", volume: "0" };
       volume = 0;
     }
 
