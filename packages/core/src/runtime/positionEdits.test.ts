@@ -59,6 +59,20 @@ describe("applyPositionEdits", () => {
     el.remove();
   });
 
+  it("applies the delta to an SVG element (e.g. an authored <text> label), not just HTML", () => {
+    // SVG graphics are positioned via the same CSS `translate` longhand; the old HTML-only guard
+    // silently dropped SVG moves. Regression guard: an SVG <text> must be counted AND translated.
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    el.setAttribute("data-x", "145");
+    el.setAttribute("data-y", "1");
+    el.setAttribute(EDIT_BASE_X_ATTR, "0");
+    el.setAttribute(EDIT_BASE_Y_ATTR, "0");
+    document.body.appendChild(el);
+    expect(applyPositionEdits(document)).toBe(1);
+    expect(el.style.getPropertyValue("translate")).toBe("145px 1px");
+    el.remove();
+  });
+
   it("treats missing data-x/y or baseline attributes as 0", () => {
     const el = makeElement({ "data-x": "40", [EDIT_BASE_X_ATTR]: "0" });
     applyPositionEdits(document);

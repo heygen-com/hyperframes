@@ -30,6 +30,14 @@ export const EDIT_BASE_X_ATTR = "data-hf-edit-base-x";
 export const EDIT_BASE_Y_ATTR = "data-hf-edit-base-y";
 export const EDIT_ORIGINAL_TRANSLATE_ATTR = "data-hf-edit-original-translate";
 
+/**
+ * Elements a position edit can apply to: HTML elements AND SVG graphics (authored `<text>` labels,
+ * shapes, groups). Both expose `.style` and honor the CSS `translate` longhand in modern Chrome, so
+ * the same delta→translate compose logic works for either. (SVG was previously excluded by an
+ * `instanceof HTMLElement`-only guard, which silently dropped every move on an SVG element.)
+ */
+type StylableElement = HTMLElement | SVGElement;
+
 const num = (value: string | null): number => {
   const n = parseFloat(value ?? "");
   return Number.isFinite(n) ? n : 0;
@@ -80,7 +88,7 @@ export const composeTranslate = (original: string, x: string, y: string): string
  * reuse it and never read the translate again. gsap.getProperty parses
  * without mutating the element. Best-effort — absent or failing GSAP is fine.
  */
-const primeGsapTransformCache = (el: HTMLElement): void => {
+const primeGsapTransformCache = (el: StylableElement): void => {
   try {
     const view = el.ownerDocument.defaultView as
       | (Window & { gsap?: { getProperty?: (t: Element, p: string) => unknown } })
@@ -92,7 +100,7 @@ const primeGsapTransformCache = (el: HTMLElement): void => {
 };
 
 /** The element's effective translate: inline if set, computed otherwise ("" = none). */
-export const readCurrentTranslate = (el: HTMLElement): string => {
+export const readCurrentTranslate = (el: StylableElement): string => {
   const inline = el.style.getPropertyValue("translate").trim();
   if (inline) return inline === "none" ? "" : inline;
   try {
@@ -112,7 +120,7 @@ export const readCurrentTranslate = (el: HTMLElement): string => {
  * it then would DOUBLE the offset on every axis the tween doesn't animate, so
  * the non-forced path skips instead (degrading to the documented fold-loss).
  */
-const lastAppliedTranslate = new WeakMap<HTMLElement, string>();
+const lastAppliedTranslate = new WeakMap<StylableElement, string>();
 
 /**
  * Apply one element's position edit. Idempotent — the pre-edit translate is
@@ -124,7 +132,7 @@ const lastAppliedTranslate = new WeakMap<HTMLElement, string>();
  * externally — used by editor commits, where the current inline translate is
  * the draft-composed one and must be overwritten.
  */
-export function applyPositionEditToElement(el: HTMLElement, opts?: { force?: boolean }): void {
+export function applyPositionEditToElement(el: StylableElement, opts?: { force?: boolean }): void {
   const previous = lastAppliedTranslate.get(el);
   if (
     !opts?.force &&
@@ -175,9 +183,15 @@ export function applyPositionEdits(doc: Document, opts?: { force?: boolean }): n
   // cross-realm. Use the document's own realm's constructor; duck-type on
   // `.style` when defaultView is unavailable (a detached/synthetic document).
   const RealmHTMLElement = doc.defaultView?.HTMLElement;
-  const isStylable = (el: Element): el is HTMLElement =>
-    RealmHTMLElement
-      ? el instanceof RealmHTMLElement
+  const RealmSVGElement = doc.defaultView?.SVGElement;
+  // Stylable = HTML OR SVG element (SVG `<text>`/shapes are positioned via the same CSS `translate`
+  // longhand). The old HTML-only check silently dropped every SVG move. Cross-realm safe (uses the
+  // document's own realm constructors — see the note above); duck-type on `.style` when defaultView
+  // is unavailable.
+  const isStylable = (el: Element): el is StylableElement =>
+    RealmHTMLElement || RealmSVGElement
+      ? (RealmHTMLElement !== undefined && el instanceof RealmHTMLElement) ||
+        (RealmSVGElement !== undefined && el instanceof RealmSVGElement)
       : typeof (el as HTMLElement).style?.setProperty === "function";
 
   const orphaned = doc.querySelectorAll(
