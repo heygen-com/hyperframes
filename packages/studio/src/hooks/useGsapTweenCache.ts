@@ -5,7 +5,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
   clearKeyframeCacheForElement,
-  clearKeyframeCacheForFile,
+  replaceKeyframeCacheForFile,
   writeGsapAnimationsForElement,
 } from "./gsapKeyframeCacheHelpers";
 import { toAbsoluteTime } from "./gsapShared";
@@ -466,8 +466,6 @@ export function usePopulateKeyframeCacheForFile(
     // fallow-ignore-next-line complexity
     fetchParsedAnimations(projectId, sf).then((parsed) => {
       if (!parsed) return;
-      const { setKeyframeCache } = usePlayerStore.getState();
-      clearKeyframeCacheForFile(sf);
       const { elements, domClipChildren } = usePlayerStore.getState();
       const doc = iframeRef?.current?.contentDocument;
       const mergedByElement = new Map<string, GsapKeyframesData>();
@@ -522,12 +520,7 @@ export function usePopulateKeyframeCacheForFile(
           }
         }
       }
-      for (const [id, kfData] of mergedByElement) {
-        setKeyframeCache(`${sf}#${id}`, kfData);
-        setKeyframeCache(id, kfData);
-        if (sf !== "index.html") setKeyframeCache(`index.html#${id}`, kfData);
-        writeGsapAnimationsForElement(sf, id, sourceByElement.get(id));
-      }
+      replaceKeyframeCacheForFile(sf, mergedByElement, sourceByElement);
       astFetchDoneRef.current = fetchKey;
     });
     // elementCount is in the deps because new timeline elements (e.g. after a
