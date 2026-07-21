@@ -1,7 +1,8 @@
 import { formatTime } from "../lib/time";
+import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 
 // fallow-ignore-next-line complexity
-function getTimelineMajorTickInterval(
+export function getTimelineMajorTickInterval(
   duration: number,
   pixelsPerSecond?: number,
   frameRate?: number,
@@ -49,28 +50,54 @@ function roundTickValue(time: number): number {
   return Math.round(time * 1e6) / 1e6;
 }
 
+function isSupportedTickDuration(duration: number): boolean {
+  return duration > 0 && Number.isFinite(duration) && duration <= 14400;
+}
+
+function getTickRange(duration: number, range?: TimelineTimeRange): TimelineTimeRange {
+  return {
+    start: Math.max(0, range?.start ?? 0),
+    end: Math.min(duration, range?.end ?? duration),
+  };
+}
+
+function appendMinorTicks(
+  minor: number[],
+  majorTime: number,
+  minorInterval: number,
+  subdivisions: number,
+  range: TimelineTimeRange,
+  maxTicks: number,
+  majorCount: number,
+): void {
+  for (let part = 1; part < subdivisions && majorCount + minor.length < maxTicks; part++) {
+    const time = majorTime + part * minorInterval;
+    if (time >= range.start - 0.001 && time <= range.end + 0.001) {
+      minor.push(roundTickValue(time));
+    }
+  }
+}
+
 export function generateTicks(
   duration: number,
   pixelsPerSecond?: number,
   frameRate?: number,
+  range?: TimelineTimeRange,
 ): { major: number[]; minor: number[] } {
-  if (duration <= 0 || !Number.isFinite(duration) || duration > 14400) {
-    return { major: [], minor: [] };
-  }
+  if (!isSupportedTickDuration(duration)) return { major: [], minor: [] };
   const majorInterval = getTimelineMajorTickInterval(duration, pixelsPerSecond, frameRate);
   const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond, frameRate);
   const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000;
-  for (let index = 0; major.length < maxTicks; index++) {
+  const tickRange = getTickRange(duration, range);
+  const firstMajorIndex = Math.max(0, Math.floor(tickRange.start / majorInterval));
+  for (let index = firstMajorIndex; major.length < maxTicks; index++) {
     const time = index * majorInterval;
-    if (time > duration + 0.001) break;
-    major.push(roundTickValue(time));
-    for (let part = 1; part < subdivisions && major.length + minor.length < maxTicks; part++) {
-      const minorTime = time + part * minorInterval;
-      if (minorTime <= duration + 0.001) minor.push(roundTickValue(minorTime));
-    }
+    if (time > tickRange.end + 0.001) break;
+    if (time >= tickRange.start - 0.001) major.push(roundTickValue(time));
+    appendMinorTicks(minor, time, minorInterval, subdivisions, tickRange, maxTicks, major.length);
   }
   return { major, minor };
 }
