@@ -778,6 +778,7 @@ export async function plan(
     entryFile: config.entryFile ?? "index.html",
     logger: config.logger,
     producerConfig: cfg,
+    variables: config.variables,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);

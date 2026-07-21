@@ -105,6 +105,8 @@ export interface SyntheticRenderJobInput {
   entryFile: string;
   logger?: ProducerLogger;
   producerConfig?: RenderConfig["producerConfig"];
+  /** Render-time overrides consumed by the plan browser probe. */
+  variables?: RenderConfig["variables"];
 }
 
 /**
@@ -131,6 +133,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     hdrMode: input.hdrMode,
     strictness: input.strictness,
     producerConfig: input.producerConfig,
+    variables: input.variables,
   };
   return createRenderJob(renderConfig);
 }

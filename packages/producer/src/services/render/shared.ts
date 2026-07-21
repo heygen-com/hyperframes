@@ -53,6 +53,19 @@ export interface CompositionMetadata {
  */
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
+/**
+ * Resolve the browser/runtime end for a media element.
+ *
+ * `data-end` is compiler-generated metadata, while `data-duration` is the
+ * authored/runtime value. A render variable can replace a placeholder source
+ * and update `data-duration` after compilation, leaving the compiler-clamped
+ * `data-end` stale. Prefer the live duration when present so the audio/video
+ * extraction window follows the runtime media slot.
+ */
+export function resolveBrowserMediaEnd(start: number, end: number, duration: number): number {
+  return Number.isFinite(duration) && duration > 0 ? start + duration : end;
+}
+
 export function writeFileExclusiveSync(path: string, data: NodeJS.ArrayBufferView | string): void {
   try {
     writeFileSync(path, data, { flag: "wx", mode: 0o600 });
