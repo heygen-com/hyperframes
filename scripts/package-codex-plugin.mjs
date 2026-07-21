@@ -9,29 +9,18 @@ const OUTPUT = join(REPO_ROOT, "dist", "hyperframes-plugin.zip");
 // Codex reports its upload limit in decimal MB.
 const MAX_UPLOAD_BYTES = 100 * 1_000_000;
 const pluginManifest = JSON.parse(readFileSync(join(REPO_ROOT, ".codex-plugin", "plugin.json")));
-const assetPaths = new Set();
-
-function collectAssetPaths(value) {
-  if (Array.isArray(value)) {
-    for (const entry of value) collectAssetPaths(entry);
-    return;
-  }
-  if (value && typeof value === "object") {
-    for (const entry of Object.values(value)) collectAssetPaths(entry);
-    return;
-  }
-  if (typeof value !== "string") return;
-
-  const assetPath = value.replace(/^\.\//, "");
-  if (!assetPath.startsWith("assets/")) return;
-  if (assetPath.split("/").includes("..")) {
-    throw new Error(`Plugin manifest contains an unsafe asset path: ${value}`);
-  }
-  assetPaths.add(assetPath);
+const assetPaths = [
+  ...new Set(
+    Object.values(pluginManifest.interface)
+      .filter((value) => typeof value === "string")
+      .map((value) => value.replace(/^\.\//, ""))
+      .filter((value) => value.startsWith("assets/")),
+  ),
+].sort();
+if (assetPaths.some((assetPath) => assetPath.split("/").includes(".."))) {
+  throw new Error("Plugin manifest contains an unsafe asset path.");
 }
-
-collectAssetPaths(pluginManifest);
-const PLUGIN_PATHS = [".codex-plugin", ...[...assetPaths].sort(), "skills"];
+const PLUGIN_PATHS = [".codex-plugin", ...assetPaths, "skills"];
 
 for (const pluginPath of PLUGIN_PATHS) {
   execFileSync("git", ["cat-file", "-e", `HEAD:${pluginPath}`], {
