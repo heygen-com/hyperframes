@@ -41,9 +41,9 @@ import { useTimelineSelectionLifecycle } from "./useTimelineSelectionLifecycle";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
-import { useTimelineRowVirtualization } from "./useTimelineRowVirtualization";
 import { useTimelineClipRenderWindow } from "./useTimelineClipRenderWindow";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
+import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 
 export {
   generateTicks,
@@ -127,7 +127,6 @@ export const Timeline = memo(function Timeline({
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
-  const clipRevealRequest = usePlayerStore((s) => s.clipRevealRequest);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
   const hasKeyframedClips = useMemo(
@@ -183,7 +182,6 @@ export const Timeline = memo(function Timeline({
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
-  // Declared before the fitPps derivation so the edit-pin wrappers can close over it.
   const fitPpsRef = useRef(100);
 
   const {
@@ -277,34 +275,6 @@ export const Timeline = memo(function Timeline({
       expandedElements.length,
       displayLayout.totalH,
     ]);
-  const { enabled: rowVirtualizationActive, virtualRows } = useTimelineRowVirtualization({
-    scrollRef,
-    viewport,
-    rowGeometry: displayLayout.rowGeometry,
-    sessionEpoch,
-    elements: expandedElements,
-    selectedElementId,
-    revealElementId: clipRevealRequest?.elementId ?? null,
-    draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
-    resizingRowKey: resizingClip?.element.track,
-    clipContextMenuRowKey: clipContextMenu?.element.track,
-    keyframeContextMenuRowKey: kfContextMenu?.element.track,
-    lastScrollLeftRef,
-    syncScrollViewport,
-  });
-  const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
-  const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
-  const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
-    useTimelineKeyframeHandlers({
-      expandedElements,
-      keyframeCache,
-      onSelectElement,
-      onSeek,
-      setSelectedElementId,
-      setKfContextMenu,
-      toggleSelectedKeyframe,
-    });
-
   const { pps, fitPps, displayContentWidth, displayDuration, zoomModeRef, manualZoomPercentRef } =
     useTimelineGeometry({
       viewportWidth: viewport.clientWidth,
@@ -321,6 +291,41 @@ export const Timeline = memo(function Timeline({
       lastScrollLeftRef,
       contentOrigin,
     });
+  const { logicalRows, pinnedElementId, rowVirtualizationActive, virtualRows } =
+    useTimelineLogicalFocus({
+      scrollRef,
+      tracks,
+      layout: displayLayout,
+      laneCounts,
+      selectedElementId,
+      selectedElementIds,
+      gsapAnimations,
+      elements: expandedElements,
+      pixelsPerSecond: pps,
+      contentOrigin,
+      allowHorizontal: zoomMode === "manual",
+      viewport,
+      sessionEpoch,
+      draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
+      resizingRowKey: resizingClip?.element.track,
+      clipContextMenuRowKey: clipContextMenu?.element.track,
+      keyframeContextMenuRowKey: kfContextMenu?.element.track,
+      lastScrollLeftRef,
+      syncScrollViewport,
+    });
+  const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
+  const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
+  const { onClickKeyframe, onSelectSegment, onShiftClickKeyframe, onContextMenuKeyframe } =
+    useTimelineKeyframeHandlers({
+      expandedElements,
+      keyframeCache,
+      onSelectElement,
+      onSeek,
+      setSelectedElementId,
+      setKfContextMenu,
+      toggleSelectedKeyframe,
+    });
+
   const { clipIndex, renderTimeRange, pinnedClipIdentities } = useTimelineClipRenderWindow({
     tracks,
     viewport,
@@ -332,15 +337,10 @@ export const Timeline = memo(function Timeline({
     resizingElementIds:
       resizingClip?.groupPreview?.map((change) => change.key) ??
       (resizingClip ? [resizingClip.element.key ?? resizingClip.element.id] : undefined),
-    revealElementId: clipRevealRequest?.elementId,
+    focusedElementId: pinnedElementId,
     focusedEaseElementId: focusedEaseSegment?.elementId,
     clipContextMenuElementId: clipContextMenu?.element.key ?? clipContextMenu?.element.id,
     keyframeContextMenuElementId: kfContextMenu?.element.key ?? kfContextMenu?.element.id,
-    scrollRef,
-    elements: expandedElements,
-    rowGeometry: displayLayout.rowGeometry,
-    allowHorizontalReveal: zoomMode === "manual",
-    sessionEpoch,
   });
   useTimelineActiveClips({
     scrollRef,
@@ -476,8 +476,7 @@ export const Timeline = memo(function Timeline({
         onDragLeave={assetDrop.handleAssetDragLeave}
         onDrop={assetDrop.handleAssetDrop}
         onPointerDown={(e) => {
-          // Let interactive controls (keyframe nav/toggle, caret, inputs) handle
-          // their own clicks — scrubbing here would preventDefault and eat them.
+          // Interactive controls own their clicks; scrubbing would preventDefault and eat them.
           if (e.target instanceof Element && e.target.closest("button, input, select, a")) return;
           if (splitAllAtPointer(e)) return;
           handlePointerDown(e);
@@ -505,6 +504,7 @@ export const Timeline = memo(function Timeline({
           rowHeights={displayLayout.displayRowHeights}
           rowGeometry={displayLayout.rowGeometry}
           virtualRows={virtualRows}
+          logicalRows={logicalRows}
           rowsVirtualized={rowVirtualizationActive}
           clipIndex={clipIndex}
           renderTimeRange={renderTimeRange}

@@ -9,6 +9,7 @@ import type { KeyframeCacheEntry, TimelineElement } from "../store/playerStore";
 import type { TimelineClipIndex, TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineVirtualRow } from "./useTimelineVirtualRows";
+import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 
 /** Props shared by TimelineCanvas and its lane renderer. */
 export interface TimelineLaneBaseProps {
@@ -21,6 +22,7 @@ export interface TimelineLaneBaseProps {
   rowHeights: readonly number[];
   rowGeometry: TimelineRowGeometry;
   virtualRows: readonly TimelineVirtualRow[];
+  logicalRows: readonly TimelineLogicalRow[];
   rowsVirtualized: boolean;
   clipIndex: TimelineClipIndex;
   renderTimeRange: TimelineTimeRange;

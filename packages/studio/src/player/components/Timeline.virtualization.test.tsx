@@ -166,6 +166,8 @@ describe("Timeline row virtualization", () => {
     usePlayerStore.setState({
       duration: 1_000,
       timelineReady: true,
+      timelineProjectId: "project-a",
+      timelineSessionEpoch: 4,
       zoomMode: "manual",
       manualZoomPercent: 2_000,
       selectedElementId: "clip-490",
@@ -215,12 +217,15 @@ describe("Timeline row virtualization", () => {
     expect(host.querySelector('[data-el-id="clip-490"]')).not.toBeNull();
     expect(host.querySelectorAll("[data-timeline-grid-cell]").length).toBeLessThan(100);
 
-    await act(async () => usePlayerStore.getState().requestClipReveal("clip-300"));
+    const { timelineClipFocusId } = await import("./timelineNavigationIdentity");
+    await act(async () =>
+      usePlayerStore.getState().requestTimelineFocus(timelineClipFocusId("clip-300")),
+    );
     await act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
     await act(async () => {});
-    expect(usePlayerStore.getState().clipRevealRequest).toBeNull();
+    expect(usePlayerStore.getState().timelineFocus?.id).toBe(timelineClipFocusId("clip-300"));
     expect(document.activeElement?.getAttribute("data-el-id")).toBe("clip-300");
     expect(host.querySelector('[data-el-id="clip-490"]')).not.toBeNull();
 

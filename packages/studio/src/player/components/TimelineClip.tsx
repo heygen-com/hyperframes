@@ -3,6 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -89,6 +90,7 @@ export const TimelineClip = memo(function TimelineClip({
     <div
       data-clip={isGestureActor ? undefined : "true"}
       data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
+      data-timeline-focus-id={isGestureActor ? undefined : timelineClipFocusId(el.key ?? el.id)}
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
