@@ -51,6 +51,10 @@ export {
 } from "./gsapConstants";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
+import {
+  findObjectArrayKeyframeIndex,
+  getObjectArrayKeyframeTiming,
+} from "./gsapObjectArrayTiming";
 export { generateSpringEaseData, SPRING_PRESETS } from "./springEase";
 export type { SpringPreset } from "./springEase";
 
@@ -762,33 +766,14 @@ function parseObjectArrayKeyframes(node: AstNode, scope: ScopeBindings): GsapKey
     raw.push({ properties, duration, ease });
   }
 
-  // Convert durations to percentage positions. If durations are present, use
-  // cumulative ratios; otherwise distribute evenly.
-  const totalDuration = raw.reduce((sum, r) => sum + (r.duration ?? 0), 0);
-  const keyframes: GsapPercentageKeyframe[] = [];
-
-  if (totalDuration > 0) {
-    let cumulative = 0;
-    for (const entry of raw) {
-      cumulative += entry.duration ?? 0;
-      const percentage = Math.round((cumulative / totalDuration) * 100);
-      keyframes.push({
-        percentage,
-        properties: entry.properties,
-        ...(entry.ease ? { ease: entry.ease } : {}),
-      });
-    }
-  } else {
-    for (let i = 0; i < raw.length; i++) {
-      const entry = raw[i]!;
-      const percentage = raw.length > 1 ? Math.round((i / (raw.length - 1)) * 100) : 0;
-      keyframes.push({
-        percentage,
-        properties: entry.properties,
-        ...(entry.ease ? { ease: entry.ease } : {}),
-      });
-    }
-  }
+  const { percentages } = getObjectArrayKeyframeTiming(raw.map((entry) => entry.duration));
+  const keyframes = raw.map(
+    (entry, index): GsapPercentageKeyframe => ({
+      percentage: percentages[index]!,
+      properties: entry.properties,
+      ...(entry.ease ? { ease: entry.ease } : {}),
+    }),
+  );
 
   return { format: "object-array", keyframes };
 }
@@ -2106,14 +2091,11 @@ function findKeyframesObjectNode(varsArg: AstNode): AstNode | null {
 }
 
 /**
- * Convert array-form keyframes (`keyframes: [{x,y}, …]`) to even-percentage object
- * form (`{ "0%": {…}, "33.3%": {…}, … }`) IN PLACE, returning the new object node
- * (or null if not array-form). GSAP distributes an array evenly, so this is
- * runtime-identical — but it gives the percentage-keyed write ops something to
- * target. Needed before INSERTING a keyframe at an arbitrary percentage, which an
- * even array can't host.
+ * Convert array-form keyframes to percentage-object form in place. Per-step
+ * durations become cumulative positions and are removed from keyframe values;
+ * their sum becomes the outer duration when one was not authored.
  */
-function convertArrayKeyframesToObjectNode(varsArg: AstNode): AstNode | null {
+function convertArrayKeyframesToObjectNode(varsArg: AstNode, scope: ScopeBindings): AstNode | null {
   if (varsArg?.type !== "ObjectExpression") return null;
   const prop = (varsArg.properties ?? []).find(
     (p: AstNode) => isObjectProperty(p) && propKeyName(p) === "keyframes",
@@ -2122,11 +2104,19 @@ function convertArrayKeyframesToObjectNode(varsArg: AstNode): AstNode | null {
   const els: AstNode[] = (prop.value.elements ?? []).filter(
     (e: AstNode | null): e is AstNode => !!e && e.type === "ObjectExpression",
   );
-  const n = els.length;
-  if (n === 0) return null;
+  if (els.length === 0) return null;
+  const records = els.map((element) => objectExpressionToRecord(element, scope));
+  const timing = getObjectArrayKeyframeTiming(
+    records.map((record) => (typeof record.duration === "number" ? record.duration : undefined)),
+  );
+  if (timing.totalDuration !== undefined && findPropertyNode(varsArg, "duration") === undefined) {
+    setVarsKey(varsArg, "duration", timing.totalDuration);
+  }
   const entries = els.map((el: AstNode, i: number) => {
-    const pct = n > 1 ? Math.round((i / (n - 1)) * 1000) / 10 : 0;
-    return `${JSON.stringify(`${pct}%`)}: ${recast.print(el).code}`;
+    el.properties = (el.properties ?? []).filter(
+      (property: AstNode) => !isObjectProperty(property) || propKeyName(property) !== "duration",
+    );
+    return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recast.print(el).code}`;
   });
   prop.value = parseExpr(`{ ${entries.join(", ")} }`);
   return prop.value;
@@ -2187,7 +2177,9 @@ export function addKeyframeToScript(
   // Array-form keyframes can't host an arbitrary new percentage — normalize to
   // object form in place first. (convertToKeyframesInScript below only converts
   // FLAT tweens; it early-returns when keyframes already exist.)
-  if (!kfNode) kfNode = convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
+  if (!kfNode) {
+    kfNode = convertArrayKeyframesToObjectNode(loc.target.call.varsArg, loc.parsed.scope);
+  }
 
   if (!kfNode) {
     script = convertToKeyframesInScript(script, animationId);
@@ -2300,11 +2292,8 @@ export function removeKeyframeFromScript(
   animationId: string,
   percentage: number,
 ): string {
-  // Array-form keyframes (`keyframes: [{x,y}, …]`) have no explicit percentages —
-  // GSAP distributes them evenly. The object-form path below can't see them
-  // (findKeyframesObjectNode only matches ObjectExpression), so removing from an
-  // array-form tween silently no-op'd. Resolve the element by its implicit
-  // percentage and splice it; collapse to a flat tween when fewer than two remain.
+  // Array-form keyframes have no explicit percentages. Resolve their authored
+  // cumulative/even position before splicing the matching element.
   const arrLoc = locateAnimationWithFallback(script, animationId);
   // findPropertyNode here returns the property's VALUE node directly.
   const arrVal = arrLoc && findPropertyNode(arrLoc.target.call.varsArg, "keyframes");
@@ -2312,19 +2301,13 @@ export function removeKeyframeFromScript(
     const elements: AstNode[] = (arrVal.elements ?? []).filter(
       (e: AstNode | null): e is AstNode => !!e && e.type === "ObjectExpression",
     );
-    const n = elements.length;
-    if (n === 0) return script;
-    let matchIdx = -1;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < n; i++) {
-      const pct = n > 1 ? (i / (n - 1)) * 100 : 0;
-      const dist = Math.abs(pct - percentage);
-      if (dist <= PCT_TOLERANCE && dist < bestDist) {
-        matchIdx = i;
-        bestDist = dist;
-      }
-    }
-    if (matchIdx === -1) return script;
+    if (elements.length === 0) return script;
+    const durations = elements.map((element) => {
+      const record = objectExpressionToRecord(element, arrLoc.parsed.scope);
+      return typeof record.duration === "number" ? record.duration : undefined;
+    });
+    const matchIdx = findObjectArrayKeyframeIndex(durations, percentage, PCT_TOLERANCE);
+    if (matchIdx === null) return script;
     const remaining = elements.filter((_, i) => i !== matchIdx);
     if (remaining.length < 2) {
       const sole = remaining[0];
@@ -2378,7 +2361,7 @@ export function moveKeyframeInScript(
   // normalize to object form in place first (mirrors addKeyframeToScript).
   const kfNode =
     findKeyframesObjectNode(loc.target.call.varsArg) ??
-    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg, loc.parsed.scope);
   if (!kfNode) return script;
 
   const match = findKeyframePropByPct(kfNode, fromPercentage);
@@ -2439,7 +2422,7 @@ export function resizeKeyframedTweenInScript(
   // normalize to object form in place first (mirrors addKeyframeToScript).
   const kfNode =
     findKeyframesObjectNode(loc.target.call.varsArg) ??
-    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg, loc.parsed.scope);
   if (!kfNode) return script;
 
   const seen = new Set<AstNode>();
@@ -2471,37 +2454,36 @@ export function updateKeyframeInScript(
   ease?: string,
 ): string {
   // Array-form keyframes (`keyframes: [{x,y}, …]`) have no explicit percentages —
-  // GSAP distributes them evenly. The percentage-keyed object path below can't
-  // match them (findKeyframesObjectNode only matches ObjectExpression), so dragging
-  // a motion-path node on an array-authored tween silently no-op'd. Resolve the
-  // element by its implicit percentage and replace it in place. Mirrors the array
-  // branch in removeKeyframeFromScript.
+  // Match array entries through the same cumulative/even timing rule used by
+  // parsing, then merge the edit without dropping per-step duration metadata.
   const arrLoc = locateAnimationWithFallback(script, animationId);
   const arrVal = arrLoc && findPropertyNode(arrLoc.target.call.varsArg, "keyframes");
   if (arrLoc && arrVal?.type === "ArrayExpression") {
     const elements: AstNode[] = (arrVal.elements ?? []).filter(
       (e: AstNode | null): e is AstNode => !!e && e.type === "ObjectExpression",
     );
-    const n = elements.length;
-    if (n === 0) return script;
-    let matchIdx = -1;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < n; i++) {
-      const pct = n > 1 ? (i / (n - 1)) * 100 : 0;
-      const dist = Math.abs(pct - percentage);
-      if (dist <= PCT_TOLERANCE && dist < bestDist) {
-        matchIdx = i;
-        bestDist = dist;
-      }
-    }
-    if (matchIdx === -1) return script;
+    if (elements.length === 0) return script;
+    const records = elements.map((element) =>
+      objectExpressionToRecord(element, arrLoc.parsed.scope),
+    );
+    const matchIdx = findObjectArrayKeyframeIndex(
+      records.map((record) => (typeof record.duration === "number" ? record.duration : undefined)),
+      percentage,
+      PCT_TOLERANCE,
+    );
+    if (matchIdx === null) return script;
     const matchEl = elements[matchIdx];
     if (!matchEl) return script;
     const realIdx = arrVal.elements.indexOf(matchEl);
     if (Object.keys(properties).length === 0 && ease && setObjectExpressionEase(matchEl, ease)) {
       return recast.print(arrLoc.parsed.ast).code;
     }
-    arrVal.elements[realIdx] = buildKeyframeValueNode(properties, ease);
+    const merged: Record<string, number | string> = {};
+    for (const [key, value] of Object.entries(records[matchIdx] ?? {})) {
+      if (typeof value === "number" || typeof value === "string") merged[key] = value;
+    }
+    Object.assign(merged, properties);
+    arrVal.elements[realIdx] = buildKeyframeValueNode(merged, ease);
     return recast.print(arrLoc.parsed.ast).code;
   }
 
@@ -2658,7 +2640,7 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   // on every array-form tween.
   const kfNode =
     findKeyframesObjectNode(loc.target.call.varsArg) ??
-    convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
+    convertArrayKeyframesToObjectNode(loc.target.call.varsArg, loc.parsed.scope);
   const method = loc.target.call.method;
   let record: Record<string, unknown>;
   if (kfNode) {
