@@ -240,6 +240,25 @@ describe("Timeline provider boundary", () => {
     expect(propertyLane.style.background).toBe("");
     expect(propertyLane.style.border).toBe("");
     expect(propertyLane.style.borderRadius).toBe("");
+    const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+    const semanticRows = treegrid?.querySelectorAll<HTMLElement>('[role="row"]') ?? [];
+    expect(treegrid?.getAttribute("aria-rowcount")).toBe("3");
+    expect([...semanticRows].map((row) => row.getAttribute("aria-rowindex"))).toEqual([
+      "1",
+      "2",
+      "3",
+    ]);
+    expect(semanticRows[0]?.getAttribute("aria-level")).toBe("1");
+    expect(semanticRows[0]?.getAttribute("aria-expanded")).toBe("true");
+    expect(semanticRows[1]?.getAttribute("aria-level")).toBe("2");
+    expect(semanticRows[1]?.textContent).toContain("position");
+    expect(semanticRows[1]?.querySelector('[role="rowheader"]')?.getAttribute("aria-owns")).toBe(
+      headerLane.id,
+    );
+    expect(semanticRows[1]?.querySelector('[role="gridcell"]')?.getAttribute("aria-owns")).toBe(
+      propertyLane.id,
+    );
+    expect(semanticRows[2]?.hasAttribute("aria-expanded")).toBe(false);
     expect(trackHeader.style.width).toBe(`${LABEL_COL_W}px`);
     expect(rulerOrigin.style.width).toBe(`${LABEL_COL_W + GUTTER}px`);
     expect(playhead.style.left).toBe(`${LABEL_COL_W + GUTTER + 1000 - PLAYHEAD_HEAD_W / 2}px`);
@@ -291,12 +310,12 @@ describe("Timeline provider boundary", () => {
     const root = createRoot(host);
     act(() => root.render(React.createElement(Timeline)));
 
-    const list = host.querySelector<HTMLElement>('[role="list"]');
-    const rows = list?.querySelectorAll('[role="listitem"]') ?? [];
+    const treegrid = host.querySelector<HTMLElement>('[role="treegrid"]');
+    const rows = treegrid?.querySelectorAll('[role="row"]') ?? [];
     expect(rows).toHaveLength(12);
-    expect(rows[0]?.getAttribute("aria-posinset")).toBe("1");
-    expect(rows[0]?.getAttribute("aria-setsize")).toBe("12");
-    expect(rows[11]?.getAttribute("aria-posinset")).toBe("12");
+    expect(treegrid?.getAttribute("aria-rowcount")).toBe("12");
+    expect(rows[0]?.getAttribute("aria-rowindex")).toBe("1");
+    expect(rows[11]?.getAttribute("aria-rowindex")).toBe("12");
 
     act(() => root.unmount());
   });
