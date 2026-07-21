@@ -16,9 +16,11 @@ The graphics that give a stat **visual weight** beside its number: a small bar c
 
 Don't mix blueprints between stats in one piece — that reads as inconsistent.
 
-## 1 — Growth Bars (CSS `scaleY` stagger)
+## Recipe
 
-Bars grow from the baseline with a stagger; the last bar is the accent.
+### 1 — Growth Bars (CSS `scaleY` stagger)
+
+Bars grow from the baseline with a stagger; the last bar is the accent. Heights are authored in CSS (inline height per bar); GSAP only reveals `scaleY: 0 → 1` — never animate `height`.
 
 ```css
 .bars {
@@ -34,18 +36,15 @@ Bars grow from the baseline with a stagger; the last bar is the accent.
   transform-origin: bottom center; /* grow UP from the baseline, not from center */
 }
 .bar:last-child {
-  background: #ffc300;
-} /* accent the final/current bar */
+  background: #ffc300; /* accent the final/current bar */
+}
 ```
 
 ```js
-// Heights are authored in CSS (e.g. inline height per bar); GSAP only reveals scaleY 0→1.
 tl.to(".bar", { scaleY: 1, duration: 0.7, ease: "power3.out", stagger: 0.08 }, 0.3);
 ```
 
-> Use `scaleY` (a transform), never animate `height` — height tweens are forbidden by the runtime. Set each bar's final height in CSS, scale from 0.
-
-## 2 — Progress Fill
+### 2 — Progress Fill
 
 **Bar form** — `scaleX` from a left origin:
 
@@ -73,7 +72,7 @@ const PCT = 0.92; // 92%
 tl.to(".fill", { scaleX: PCT, duration: 1.0, ease: "power2.out" }, 0.3);
 ```
 
-**Ring form** — measured stroke draw (delegates to [svg-path-draw.md](svg-path-draw.md)):
+**Ring form** — measured stroke draw (mechanics in [svg-path-draw.md](svg-path-draw.md)):
 
 ```js
 const ring = document.querySelector("#ring");
@@ -84,7 +83,7 @@ ring.style.strokeDashoffset = LEN; // empty
 tl.to(ring, { strokeDashoffset: LEN * (1 - 0.92), duration: 1.1, ease: "power2.out" }, 0.3);
 ```
 
-## 3 — Star-Rating Fill (fractional)
+### 3 — Star-Rating Fill (fractional)
 
 A gold star row revealed left-to-right to a fractional value (e.g. 4.6 / 5) via a clip wipe over a gold layer sitting on a gray layer.
 
@@ -123,34 +122,24 @@ tl.to(
 );
 ```
 
-## How to Choose Values
+## Values
 
-- **Bar count** — 4–6 reads as "a trend" without clutter; the last bar is the current/accent value.
-- **Fill duration** — 0.8–1.2s, matched to the paired count-up so number and graphic land together (share the ease).
-- **Accent hue** — exactly one; bars/fill/stars all use the same accent, the rest is muted.
-- **Stagger** — 0.06–0.1s on bars; larger feels sluggish, 0 loses the build.
-
-## Key Principles
-
-- **Transforms only** — `scaleY` / `scaleX` / `clipPath`, never `width`/`height` tweens (runtime-forbidden).
-- **Match the number's timing** — the fill and the count-up should peak together (same start + ease), so the stat resolves as one beat, not two.
-- **Measure, don't hard-code** — ring length via `getTotalLength()`; a hard-coded circumference breaks if the radius changes.
-- **One accent hue, consistent blueprint** — see `hyperframes-creative/references/data-in-motion.md`.
+| token         | range       | notes                                                                               |
+| ------------- | ----------- | ----------------------------------------------------------------------------------- |
+| bar count     | 4–6         | reads as "a trend" without clutter; the last bar is the current/accent value        |
+| fill duration | 0.8–1.2s    | matched to the paired count-up so number and graphic land together (share the ease) |
+| stagger       | 0.06–0.1s   | larger feels sluggish, 0 loses the build                                            |
+| accent hue    | exactly one | bars/fill/stars all use the same accent, the rest is muted                          |
 
 ## Critical Constraints
 
-- **Timeline paused**; build synchronously; registry key = `data-composition-id`.
-- **`onUpdate` (if pairing a counter) must be O(1)** — the runtime seeks frame-by-frame (see [counting-dynamic-scale.md](counting-dynamic-scale.md)).
-- **No `height`/`width` tweens, no `repeat: -1`** — transforms + finite repeats only.
-- **`transform-origin`** must be `bottom` (bars grow up) / `left` (bars/fills grow right) — default center origin scales from the middle and looks wrong.
+- **`scaleY` / `scaleX` / `clipPath`, never `height`/`width` tweens** — author each bar's final height in CSS and scale from 0.
+- **`transform-origin`** must be `bottom` (bars grow up) / `left` (fills grow right) — the default center origin scales from the middle and looks wrong.
+- **`.fill` needs `width: 100%`** — a zero-width fill scaled by any factor is still invisible, and automated gates may miss it.
+- **Measure, don't hard-code** — ring length via `getTotalLength()`; a hard-coded circumference breaks if the radius changes.
+- **Match the number's timing** — the fill and the count-up peak together (same start + ease) so the stat resolves as one beat, not two; a paired counter's `onUpdate` must be O(1) (see [counting-dynamic-scale.md](counting-dynamic-scale.md)).
+- **One accent hue, consistent blueprint** — see `hyperframes-creative/references/data-in-motion.md`.
 
-## Combinations
+## See also
 
-- [counting-dynamic-scale.md](counting-dynamic-scale.md) — the number beside the graphic (pair them; same ease/duration)
-- [svg-path-draw.md](svg-path-draw.md) — the progress-ring draw mechanics
-
-## Pairs with HF skills
-
-- `/hyperframes-animation` — timeline + transform tweens
-- `/hyperframes-creative` — `references/data-in-motion.md` (stat layout + visual weight)
-- `/hyperframes-core` — composition wiring; the no-`width`/`height`-tween rule
+`counting-dynamic-scale` (the number beside the graphic — same ease/duration) · `svg-path-draw` (progress-ring draw mechanics) · `hyperframes-creative/references/data-in-motion.md` (stat layout + visual weight).

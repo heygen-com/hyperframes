@@ -1,3 +1,8 @@
+---
+title: "Send to HyperFrames"
+description: "Author a Claude Design as a single-file HyperFrames composition for the \"Send to HyperFrames\" URL import."
+---
+
 # Claude Design → "Send to HyperFrames" (Single-File Import)
 
 > This guide is **fully self-contained**: everything needed to author a valid "Send to HyperFrames" composition is inline here. Do not rely on fetching any other document — produce the composition from this guide alone.
@@ -366,7 +371,7 @@ The cloud renderer seeks the timeline frame-by-frame. Non-deterministic or self-
 | `Date.now()`, `performance.now()` | hard-coded timing or `tl.time()` in `onUpdate` |
 | `setInterval`, `setTimeout` | timeline tweens + `onUpdate` |
 | `requestAnimationFrame` | GSAP tweens |
-| `repeat: -1` | `repeat: Math.ceil(duration / cycle) - 1` |
+| `repeat: -1` | `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
 | `stagger: { from: "random" }` | `from: "start"`, `"center"`, or `"end"` |
 | async timeline construction | build synchronously at page load |
 | `video.play()` / `audio.play()` | the framework owns playback |

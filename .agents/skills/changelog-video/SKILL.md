@@ -25,6 +25,26 @@ non-visual items (reliability fix lists).
 
 ## Pipeline
 
+### 0 · Bootstrap the project from THIS skill's assets — non-negotiable
+
+**Do this before writing any composition HTML. Skipping it always produces a video that looks like a similar project you built before, NOT this skill's brand — that's the single most common way this skill goes off-brand.** The skill's assets, fonts, and scaffold are the skill; the SKILL.md prompt is a router.
+
+```bash
+mkdir -p project/assets/fonts
+cp <SKILL_DIR>/assets/fonts/*.woff2 project/assets/fonts/
+cp <SKILL_DIR>/assets/bgm.mp3 project/bgm.mp3
+ffmpeg -y -stream_loop 15 -i <SKILL_DIR>/assets/bg-pattern.mp4 -t <TOTAL> \
+  -vf "scale=1080:1080,fps=30,eq=saturation=0.72,drawbox=c=black@0.5:t=fill" \
+  -an -c:v libx264 -crf 20 -pix_fmt yuv420p project/assets/bg-pattern-<TOTAL>s.mp4
+cp <SKILL_DIR>/examples/master-skeleton.html project/index.html
+```
+
+Then **read `references/build-spec.md` end-to-end** (not skimmed) — it defines the brand tokens (TT Norms Pro + ABC Solar Display + TT Norms Mono, cream `#f5f6f4`, rationed green `#5ef17c`, glass cards with green-tinted borders, kicker/sec-chip pill shape, caption rail at `top: 1002`) that every scene inherits from the scaffold.
+
+Only THEN begin steps 1-6 below. Steps 1-4 (parse, route, script, VO) plan what goes into the scaffold; step 5 fills placeholders (`<RANGE>`, `<TOTAL>`, `<CUT_N>`, `<DUR_N>`, scene bodies) inside the already-copied `project/index.html` — you do NOT rewrite the scaffold's chrome, fonts, palette, or layout shell.
+
+If you catch yourself reaching for `cp` on a prior video's `index.html`, or writing your own `@font-face` declarations, or designing a WebGL shader background instead of using the encoded bg-pattern MP4 above: STOP. Delete the current `index.html` and restart at the `cp` of the master-skeleton scaffold. Rebuilding scene content on the right scaffold is cheaper than retrofitting brand into the wrong scaffold.
+
 ### 1 · Parse + editorial cut
 
 - Extract: week range, headline stats (releases, commits), themes, items.
@@ -116,12 +136,15 @@ projects/active/weekly-changelog-<range>/
 
 ## Anti-patterns
 
-| Don't                                    | Instead                                        |
-| ---------------------------------------- | ---------------------------------------------- |
-| Bullet-point slides for UI changes       | Mock the surface acting out the change         |
-| Fake UI for un-representable items       | Honest checklist scene                         |
-| Plain "JSON"/"CLI" in the TTS text       | Lexicon spoken forms; display stays standard   |
-| Phonetic spellings in captions           | Captions always render the display layer       |
-| Guessing an unknown term's pronunciation | Ask, then grow the lexicon                     |
-| Speaking every changelog item            | ≤3 per theme; the digest link carries the rest |
-| Green accents everywhere                 | One green moment per scene (#5ef17c)           |
+| Don't                                                 | Instead                                                                                                                                               |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bullet-point slides for UI changes                    | Mock the surface acting out the change                                                                                                                |
+| Fake UI for un-representable items                    | Honest checklist scene                                                                                                                                |
+| Plain "JSON"/"CLI" in the TTS text                    | Lexicon spoken forms; display stays standard                                                                                                          |
+| Phonetic spellings in captions                        | Captions always render the display layer                                                                                                              |
+| Guessing an unknown term's pronunciation              | Ask, then grow the lexicon                                                                                                                            |
+| Speaking every changelog item                         | ≤3 per theme; the digest link carries the rest                                                                                                        |
+| Green accents everywhere                              | One green moment per scene (#5ef17c)                                                                                                                  |
+| Starting from a prior video's index.html              | Step 0 — copy `examples/master-skeleton.html` from this skill into `project/index.html`, always                                                       |
+| Hand-crafted `@font-face` / WebGL shader / custom BGM | Step 0 — copy this skill's `assets/` verbatim; the skill's assets ARE the brand                                                                       |
+| Delivered without CloudFront invalidation             | Run `aws cloudfront create-invalidation` on distribution `E2BSLVSZ7FG3U0` for the exact path after any S3 replace — CDN caches the old file otherwise |

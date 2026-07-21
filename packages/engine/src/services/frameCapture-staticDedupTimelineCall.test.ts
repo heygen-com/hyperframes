@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { computeStaticFrameSet } from "./frameCapture.js";
+import {
+  computeStaticFrameSet,
+  isStaticDedupFrameAnalysisSafe,
+  MAX_STATIC_DEDUP_ANALYSIS_FRAMES,
+} from "./frameCapture.js";
 
 /**
  * Regression lock: a GSAP `tl.call()` disqualifies a composition from
@@ -64,5 +68,41 @@ describe("computeStaticFrameSet disqualifies a comp containing a tl.call()", () 
 
     expect(result.eligible).toBe(true);
     expect(result.staticFrameSet.size).toBeGreaterThan(0);
+  });
+
+  it("fails closed before allocating frame Sets for a sentinel-sized duration", async () => {
+    const page = {
+      evaluate: vi.fn().mockResolvedValueOnce({
+        intervals: [{ start: 0, end: 10_000_000_000 }],
+        tweenCount: 1,
+        duration: 10_000_000_000,
+        hasVideo: false,
+        hasCanvas: false,
+        hasNonGsapAnim: false,
+        hasUnresolvableClipStart: false,
+        hasTimelineCall: false,
+      }),
+    } as unknown as Parameters<typeof computeStaticFrameSet>[0];
+
+    const result = await computeStaticFrameSet(page, 30);
+
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("frame analysis limit");
+    expect(result.staticFrameSet.size).toBe(0);
+    // No clip-boundary scan: oversized metadata exits before frame-index work starts.
+    expect(page.evaluate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("static-dedup frame analysis cardinality", () => {
+  it("accepts the configured boundary and rejects the next frame", () => {
+    expect(isStaticDedupFrameAnalysisSafe(MAX_STATIC_DEDUP_ANALYSIS_FRAMES)).toBe(true);
+    expect(isStaticDedupFrameAnalysisSafe(MAX_STATIC_DEDUP_ANALYSIS_FRAMES + 1)).toBe(false);
+  });
+
+  it("rejects non-finite, unsafe, and non-positive frame counts", () => {
+    expect(isStaticDedupFrameAnalysisSafe(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(isStaticDedupFrameAnalysisSafe(Number.MAX_SAFE_INTEGER + 1)).toBe(false);
+    expect(isStaticDedupFrameAnalysisSafe(0)).toBe(false);
   });
 });

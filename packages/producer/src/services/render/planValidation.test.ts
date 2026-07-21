@@ -11,10 +11,13 @@ import {
   BROWSER_GPU_NOT_SOFTWARE,
   DISTRIBUTED_DURATION_OUT_OF_RANGE,
   MAX_DISTRIBUTED_DURATION_SECONDS,
+  MAX_RENDER_DURATION_SECONDS,
   PlanValidationError,
+  RENDER_DURATION_OUT_OF_RANGE,
   SYSTEM_FONT_USED,
   parseFontFamilyValue,
   validateDistributedDuration,
+  validateRenderDuration,
   validateNoGpuEncode,
   validateNoSystemFonts,
 } from "./planValidation.js";
@@ -95,6 +98,18 @@ describe("validateNoGpuEncode", () => {
 });
 
 describe("validateDistributedDuration", () => {
+  it("keeps the generic validator and legacy distributed API behavior aligned", () => {
+    expect(MAX_RENDER_DURATION_SECONDS).toBe(MAX_DISTRIBUTED_DURATION_SECONDS);
+    expect(RENDER_DURATION_OUT_OF_RANGE).toBe(DISTRIBUTED_DURATION_OUT_OF_RANGE);
+    expect(() =>
+      validateRenderDuration({
+        duration: MAX_RENDER_DURATION_SECONDS,
+        totalFrames: MAX_RENDER_DURATION_SECONDS * 30,
+        fps: 30,
+      }),
+    ).not.toThrow();
+  });
+
   it("accepts a finite duration within the distributed ceiling", () => {
     expect(() =>
       validateDistributedDuration({

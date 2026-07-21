@@ -9,6 +9,7 @@ const KEYFRAMES: RetimeKeyframe[] = [
   { percentage: 100, properties: { x: 100 }, ease: "power2.in" },
 ];
 const WINDOW = { tweenStart: 2, tweenDuration: 4 };
+const LEFT_BOUNDARY_DROP = { ...WINDOW, dropAbsTime: 0.5 };
 
 describe("resolveKeyframeRetime — move (within the tween window)", () => {
   it("re-keys an interior keyframe to the tween-% of the drop", () => {
@@ -32,15 +33,53 @@ describe("resolveKeyframeRetime — move (within the tween window)", () => {
     expect(r.kind).toBe("noop");
   });
 
-  it("moves a flat (keyframe-less) tween without needing the keyframes array", () => {
+  it("shortens a flat tween when its synthesized end diamond moves left", () => {
     const r = resolveKeyframeRetime({
       ...WINDOW,
       keyframes: [],
       draggedTweenPct: 100,
-      dropAbsTime: 5, // (5-2)/4 = 75%
+      dropAbsTime: 5,
     });
-    expect(r.kind).toBe("move");
-    expect(r.toTweenPct).toBeCloseTo(75, 5);
+    expect(r.kind).toBe("resize");
+    expect(r.position).toBe(2);
+    expect(r.duration).toBe(3);
+    expect(r.pctRemap).toEqual([]);
+  });
+
+  it("moves a flat tween's start while preserving its absolute end", () => {
+    const r = resolveKeyframeRetime({
+      ...WINDOW,
+      keyframes: [],
+      draggedTweenPct: 0,
+      dropAbsTime: 3,
+    });
+    expect(r.kind).toBe("resize");
+    expect(r.position).toBe(3);
+    expect(r.duration).toBe(3);
+    expect(r.pctRemap).toEqual([]);
+  });
+
+  it("no-ops an unexpected interior percentage on a flat tween", () => {
+    expect(
+      resolveKeyframeRetime({
+        ...WINDOW,
+        keyframes: [],
+        draggedTweenPct: 50,
+        dropAbsTime: 5,
+      }).kind,
+    ).toBe("noop");
+  });
+
+  it("no-ops instead of rounding a sub-10ms flat tween to zero", () => {
+    expect(
+      resolveKeyframeRetime({
+        tweenStart: 2,
+        tweenDuration: 4,
+        keyframes: [],
+        draggedTweenPct: 100,
+        dropAbsTime: 2.0004,
+      }).kind,
+    ).toBe("noop");
   });
 });
 
@@ -67,10 +106,9 @@ describe("resolveKeyframeRetime — resize (past the tween boundary)", () => {
 
   it("extends the FIRST keyframe before the start, shifting position earlier", () => {
     const r = resolveKeyframeRetime({
-      ...WINDOW,
+      ...LEFT_BOUNDARY_DROP,
       keyframes: KEYFRAMES,
       draggedTweenPct: 0,
-      dropAbsTime: 0.5, // before start (2) → move position back + grow duration
     });
     expect(r.kind).toBe("resize");
     expect(r.position).toBeCloseTo(0.5, 5);
@@ -102,10 +140,9 @@ describe("resolveKeyframeRetime — single keyframe (both first and last)", () =
 
   it("resizes left before the start", () => {
     const r = resolveKeyframeRetime({
-      ...WINDOW,
+      ...LEFT_BOUNDARY_DROP,
       keyframes: lone,
       draggedTweenPct: 100,
-      dropAbsTime: 0.5,
     });
     expect(r.kind).toBe("resize");
     expect(r.position).toBeCloseTo(0.5, 5);
@@ -127,14 +164,16 @@ describe("resolveKeyframeRetime — guards", () => {
     ).toBe("noop");
   });
 
-  it("no-ops a boundary drop on a flat tween (nothing to remap)", () => {
-    expect(
-      resolveKeyframeRetime({
-        ...WINDOW,
-        keyframes: [],
-        draggedTweenPct: 100,
-        dropAbsTime: 8,
-      }).kind,
-    ).toBe("noop");
+  it("extends a flat tween when its synthesized end diamond moves right", () => {
+    const r = resolveKeyframeRetime({
+      ...WINDOW,
+      keyframes: [],
+      draggedTweenPct: 100,
+      dropAbsTime: 8,
+    });
+    expect(r.kind).toBe("resize");
+    expect(r.position).toBe(2);
+    expect(r.duration).toBe(6);
+    expect(r.pctRemap).toEqual([]);
   });
 });

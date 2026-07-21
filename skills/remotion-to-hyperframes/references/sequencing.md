@@ -153,11 +153,14 @@ For Remotion `<TransitionSeries>` translations see [transitions.md](transitions.
 </Loop>
 ```
 
-HF doesn't have a `<Loop>` primitive. Translate to a GSAP timeline with
-`repeat: -1`:
+HF doesn't have a `<Loop>` primitive. Translate it to a bounded GSAP timeline using
+the time available at its insertion point:
 
 ```js
-const spinTl = gsap.timeline({ paused: true, repeat: -1, repeatRefresh: false });
+const cycleDuration = 1;
+const availableDuration = compositionDuration - 3;
+const repeat = Math.max(0, Math.floor(availableDuration / cycleDuration) - 1);
+const spinTl = gsap.timeline({ paused: true, repeat, repeatRefresh: false });
 spinTl.to(spinner, { rotate: 360, duration: 1.0, ease: "none" });
 // Embed in the main composition timeline at the right offset:
 mainTl.add(spinTl, 3);
@@ -166,7 +169,7 @@ mainTl.add(spinTl, 3);
 This is fragile — Remotion's `<Loop>` resets internal state every iteration,
 which GSAP repeat does too, but if the looped child has its own animation,
 you need to be careful that GSAP's `repeatRefresh` is on or off as needed.
-For most simple "spin forever" cases this is fine.
+The finite count is required because HyperFrames seeks a bounded composition frame-by-frame.
 
 ## `<Freeze>`
 

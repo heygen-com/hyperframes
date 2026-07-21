@@ -189,7 +189,7 @@ describe("usePlaybackKeyboard — mute & loop shortcuts (#905)", () => {
     expect(usePlayerStore.getState().audioMuted).toBe(false);
   });
 
-  it("M does NOT toggle audioMuted above 1x playback (matches button gating)", () => {
+  it("M toggles audioMuted above 1x playback too", () => {
     const { dispatch } = setupHook();
     usePlayerStore.setState({ playbackRate: 2, audioMuted: false });
 
@@ -197,7 +197,7 @@ describe("usePlaybackKeyboard — mute & loop shortcuts (#905)", () => {
       dispatch(keydown({ code: "KeyM", key: "m" }));
     });
 
-    expect(usePlayerStore.getState().audioMuted).toBe(false);
+    expect(usePlayerStore.getState().audioMuted).toBe(true);
   });
 
   it("Shift+L toggles loopEnabled without starting forward shuttle", () => {

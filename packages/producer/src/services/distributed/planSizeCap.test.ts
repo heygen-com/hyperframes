@@ -25,6 +25,7 @@ import {
   PlanTooLargeError,
   plan,
 } from "./plan.js";
+import { DISTRIBUTED_DURATION_OUT_OF_RANGE } from "../render/planValidation.js";
 
 const FIXTURE_HTML = `<!doctype html>
 <html><body>
@@ -192,8 +193,9 @@ describe("plan() duration guard", () => {
       }
 
       expect(caught).toBeInstanceOf(Error);
+      expect((caught as { code?: string }).code).toBe(DISTRIBUTED_DURATION_OUT_OF_RANGE);
       expect(String((caught as Error).message)).toMatch(/duration/i);
-      expect(String((caught as Error).message)).toMatch(/distributed/i);
+      expect(String((caught as Error).message)).toMatch(/render/i);
       expect(String((caught as Error).message)).toContain("300000000000");
     },
     TIMEOUT_MS,

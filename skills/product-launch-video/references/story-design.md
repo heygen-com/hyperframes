@@ -84,7 +84,7 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 
 ## The script bank — what each beat's VO sounds like
 
-> Proven product-launch clips, each reversed into the one spoken line it implies. Grouped by **role → blueprint**. Real product names kept (swap in your own). Draft your beat's VO in the SHAPE of the matching pattern.
+> Proven product-launch clips, each reversed into the one spoken line it implies. Grouped by **role → blueprint**. Real product names kept (swap in your own). Draft your beat's VO in the SHAPE of the matching pattern. Kept 1:1 with the role declarations in `../hyperframes-animation/blueprints-index.md` — when a blueprint gains a role there, add its script shape here.
 
 ### HOOK
 
@@ -116,6 +116,37 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 
 - Notion — "A doc? A database? A wiki? — no, it's all of them, in one place."
 - _Pattern:_ a "could be X, or Y, or Z?" cycle on one swapping word, then a hero claim crashes in and replaces it — "actually, this is what it is."
+
+**prompt-type-submit-generate** — watch me ask
+
+- "Build me a landing page for my coffee brand — dark, minimal, launch-ready."
+- "What if you could just… ask?"
+- _Pattern:_ the VO speaks (or frames) the ask itself while the prompt types live — the question is the whole hook; the answer stays off-screen, or a second ask starts before the cut.
+
+**zoom-out-workspace-reveal** — the mystery re-scopes
+
+- "This isn't a finished animation — it's your canvas."
+- _Pattern:_ near-silence or one slow tease over the close-up mystery, with the landing line timed to the zoom-out — the words answer "what am I looking at?" exactly when the workspace does.
+
+**fixed-anchor-cycle** — a roll-call around a pinned line
+
+- "For founders, for designers, for marketers, for teams — for anyone who ships."
+- _Pattern:_ one static claim holds while its audience/option list cycles fast beneath it — the list is the sentence's swapping object, and the brand line lands after the cycle clears.
+
+**cursor-ui-demo** — a canvas already alive
+
+- "Your whole team is already in here — designing, commenting, shipping."
+- _Pattern:_ a "we're all here working" line over an ambient multi-cursor canvas — presence, not features; the live activity is the proof.
+
+**dataviz-countup** — cold-open on one exploding stat
+
+- "One million users. Ninety days."
+- _Pattern:_ ONE statistic counts up as the VO speaks it — scale alone carries the tension; no product, no context yet.
+
+**cta-morph-press** — a lone widget does its trick
+
+- "It starts as a search bar. It becomes your whole workflow."
+- _Pattern:_ one small widget on a bare field morphs in place and performs its payload while the VO names the transformation — small thing, big claim, hand off to the title.
 
 ### PROBLEM
 
@@ -170,6 +201,26 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 - "Watch it run — then look at what it saved: 14 hours, every week."
 - _Pattern:_ the product video plays, then slides aside to hand the frame to one impact stat — "see it work, now see what it's worth."
 
+**prompt-type-submit-generate** — something you talk to
+
+- "Meet Ada — describe what you need, attach what you have, and let it run."
+- _Pattern:_ the first look IS the composer — the VO introduces the product as a conversation partner while a long prompt types with attachments and option picks, ending on (or just after) the submit.
+
+**spatial-pan-stations** — decode the idea, then land on it live
+
+- "Capture, structure, publish — that's the idea. Here it is running."
+- _Pattern:_ a labeled concept strip read station by station, the final pan bridging into the live demo — "here's the idea → here it is working."
+
+**device-surface-showcase** — introduced by completing its core loop
+
+- "Open a space, drop in your notes, hit share — that's it, that's the product."
+- _Pattern:_ the product introduced by DOING its core loop once inside its real interface, stepwise and cursorless — the VO narrates the steps plainly and lands on "that's it."
+
+**titlecard-reveal** — a near-still title prelude
+
+- "Relay. Docs that write themselves. Let's look inside."
+- _Pattern:_ 2–3 near-still cards seamed by blur-snap handoffs — name, one-line claim, then into the product; each card carries one short spoken phrase.
+
 ### KEY_FEATURE
 
 **grid-card-assemble** — enumerate breadth at once
@@ -204,6 +255,36 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 - "Here's the editor in action — and the result: a publish-ready cut in minutes."
 - _Pattern:_ a feature clip runs, then yields the frame to a metric / impact line — the clip proves it, the number lands it.
 
+**prompt-type-submit-generate** — one ask, one answer
+
+- "Ask for revenue by region — and the chart draws itself."
+- _Pattern:_ ONE prompt→response round trip — the VO names the ask, lets the status theater breathe a beat, then calls the result as it streams in.
+
+**agent-progress-theater** — the machine visibly works
+
+- "Kick off the scan — it checks every file, flags what's broken, and fixes what it can. Watch."
+- _Pattern:_ trigger → working theater → receipt: the VO hands the work over, then reads the findings as rows land and check off — present tense, the machine is the subject.
+
+**panel-edit-live-sync** — one gesture, two surfaces
+
+- "Drag the value — the button follows. Pick a unit — the code converts. Live."
+- _Pattern:_ 2–4 short cause→effect couplets, each pairing a gesture with its live mirror ("do X — Y answers"), ending held on the last edit.
+
+**transcript-scroll-artifact-reveal** — the work, then the deliverable
+
+- "It planned, researched, built, and tested — and left you the spreadsheet to prove it."
+- _Pattern:_ a "look how much happened" line read down the transcript at traversal pace, then one pivot line cashes it in on the artifact — evidence first, payoff last.
+
+**camera-journey** — a cinematic flight over the result
+
+- "A month of content — planned, scheduled, and ready before you sat down."
+- _Pattern:_ a flying camera explores the generated artifact while the VO makes one calm, sweeping claim; the content acts by itself — no hands, no clicks.
+
+**dataviz-countup** — the numbers prove the feature
+
+- "Response time, down 40%. Coverage, 3×. Every claim, a number."
+- _Pattern:_ the feature proven by its metrics — a stat montage scrubbed / counted up while the VO reads each number as it lands.
+
 ### BENEFITS
 
 **kinetic-type-beats** — rapid-fire value montage
@@ -223,12 +304,33 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 - CSS Scan Pro — "A smart color picker — with instant tints and shades."
 - _Pattern:_ one clean two-line value title, one slide-up crossfade, then held still. Low motion is the point.
 
+**camera-journey** — travel the value chain
+
+- "Leave one comment here — and the forecast updates over there."
+- _Pattern:_ a cause→effect round trip: the VO's first half lands on the action, its second half on the payoff the camera travels to — "do this small thing here, get this big thing there."
+
+**zoom-out-workspace-reveal** — this is just one corner
+
+- "That one file it fixed? A corner of everything it already did."
+- _Pattern:_ the VO tells the micro-story during the close-up dwell, then the scale line lands with the zoom-out — the benefit is breadth, revealed in one move.
+
+**fixed-anchor-cycle** — everything changes, this stays
+
+- "Same prompt. Every tool you own."
+- _Pattern:_ one pinned claim while the entire surface re-skins around it — a short "works everywhere" line, then let the cycling themes speak.
+
+**cursor-ui-demo** — demo, value line, demo
+
+- "Watch it draft the reply — that's an hour back — now watch it file the ticket."
+- _Pattern:_ a demo|text|demo sandwich — the VO alternates showing and telling, naming the value in the text beat between two live interactions.
+
 ### SOCIAL_PROOF
 
 **constellation-hub** — the hub at the center of your stack
 
 - kyvos — "On any BI tool — Tableau, Looker, Power BI — Kyvos sits at the center of your stack."
-- _Pattern:_ the product mark is the hub and partner logos orbit it — "sits at the center of everything you use."
+- "Connects to thousands of apps — including every one you already use."
+- _Pattern:_ the product mark is the hub and partner logos orbit it — "sits at the center of everything you use." In the scatter-drift end-card variant there is no hub and no ring: a serif claim holds center while app icons pop in scattered and drift slowly outward — breadth said with count and spread, not geometry.
 
 **grid-card-assemble** — a logo wall pulling back to a vast ecosystem
 
@@ -241,6 +343,11 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 
 - Trumpet — "We supply the trumpet, you bring the band — loved by 1,000+ sales, success, and marketing teams."
 - _Pattern:_ wipe a busy open away to a clean lockup plus a "loved by N+ teams" line that settles and holds.
+
+**dataviz-countup** — the numbers vouch
+
+- "Twelve thousand teams. 4.9 stars. 99.98% uptime."
+- _Pattern:_ proof by count-up — adoption, rating, and scale metrics tick up as the VO reads them; the biggest number lands last.
 
 ### CTA
 
@@ -262,6 +369,21 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 
 - Linear — "This is Linear. Start building — it's free."
 - _Pattern:_ the brand mark condenses straight into the single thing you click — "here's us → click here," no spatial set.
+
+**prompt-type-submit-generate** — the command is the ask
+
+- "One command — npm install relay — and you're live."
+- _Pattern:_ the closing invitation IS a typed install command — the headline demotes, the terminal pill types it out, and the VO speaks the command (or one short line over it); the card holds with only the caret blinking.
+
+**constellation-hub** — the orbit collapses into action
+
+- "Everything you use, one hub — click, and it's yours."
+- _Pattern:_ the ecosystem ring collapses onto the core on one click that springs the product open — the VO turns "it connects everything" into the action line.
+
+**titlecard-reveal** — a calm end-card stack
+
+- "Try it free. No credit card. relay.app."
+- _Pattern:_ 2–3 near-still cards hard-cut in sequence, one short closing phrase each, terminating on the held logo/URL — the calm is the confidence.
 
 ### BRAND_OUTRO
 
@@ -285,6 +407,12 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 
 - "For notes, for tasks, for plans, for teams — [brand] holds it all."
 - _Pattern:_ closing use-cases/verbs cycle through one slot, then the brand mark crashes in and owns the final frame.
+
+**fixed-anchor-cycle** — the anchor holds, the words cycle
+
+- bolt.new — "Prompt, run, edit, deploy — enjoy."
+- Anthropic — "Opus 4.6 — by Anthropic."
+- _Pattern:_ the brand name sits immovable while tagline words or praise quotes cycle beside it — per-word highlight stepping, or an accelerating flurry — landing on the completed lockup.
 
 ---
 

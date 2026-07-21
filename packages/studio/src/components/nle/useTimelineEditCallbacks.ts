@@ -36,6 +36,41 @@ export interface TimelineEditCallbackDeps {
   handleRazorSplitAll: (splitTime: number) => Promise<void> | void;
 }
 
+interface TimelineKeyframeTargetAnimation {
+  id: string;
+  propertyGroup?: string | null;
+  keyframes?: unknown;
+}
+
+interface TimelineCachedKeyframe {
+  percentage: number;
+  tweenPercentage?: number;
+  propertyGroup?: string;
+}
+
+/**
+ * Resolve a rendered timeline diamond back to the animation that authored it.
+ * Flat tweens use synthesized diamonds, so a mixed flat tween may have neither
+ * a property group nor real keyframes. The cache currently carries a property
+ * group, not an animation id, so resolution is safe only when that group has a
+ * single candidate. Ambiguous candidates remain unresolved rather than
+ * retiming an arbitrary tween.
+ */
+export function resolveTimelineKeyframeTarget(
+  pct: number,
+  keyframes: ReadonlyArray<TimelineCachedKeyframe>,
+  animations: ReadonlyArray<TimelineKeyframeTargetAnimation>,
+): { animId: string; tweenPct: number } | null {
+  const kf = keyframes.find((item) => Math.abs(item.percentage - pct) < 0.2);
+  if (!kf) return null;
+  const group = kf?.propertyGroup;
+  const candidates = group
+    ? animations.filter((animation) => animation.propertyGroup === group)
+    : animations.filter((animation) => !animation.propertyGroup);
+  const animation = candidates.length === 1 ? candidates[0] : undefined;
+  return animation ? { animId: animation.id, tweenPct: kf.tweenPercentage ?? pct } : null;
+}
+
 /**
  * Builds the timeline edit callback bag (move/resize/split/razor plus the
  * keyframe-diamond callbacks) provided to `<Timeline>` via TimelineEditProvider.
@@ -76,12 +111,7 @@ export function useTimelineEditCallbacks({
     // fallow-ignore-next-line complexity
     (pct: number): { animId: string; tweenPct: number } | null => {
       const cached = usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
-      const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
-      const group = kf?.propertyGroup;
-      const anim =
-        (group ? selectedGsapAnimations.find((a) => a.propertyGroup === group) : undefined) ??
-        selectedGsapAnimations.find((a) => a.keyframes);
-      return anim ? { animId: anim.id, tweenPct: kf?.tweenPercentage ?? pct } : null;
+      return resolveTimelineKeyframeTarget(pct, cached?.keyframes ?? [], selectedGsapAnimations);
     },
     [domEditSelection?.id, selectedGsapAnimations],
   );
@@ -154,12 +184,22 @@ export function useTimelineEditCallbacks({
           decision.position != null &&
           decision.duration != null
         ) {
-          handleGsapResizeKeyframedTween(
-            target.animId,
-            decision.position,
-            decision.duration,
-            decision.pctRemap,
-          );
+          if (anim.keyframes) {
+            handleGsapResizeKeyframedTween(
+              target.animId,
+              decision.position,
+              decision.duration,
+              decision.pctRemap,
+            );
+          } else {
+            // resize-keyframed-tween requires an authored `keyframes` AST node
+            // and intentionally no-ops for a flat tween. Update its real tween
+            // window through the metadata writer (and SDK cutover path) instead.
+            handleGsapUpdateMeta(target.animId, {
+              position: decision.position,
+              duration: decision.duration,
+            });
+          }
         }
       },
       onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {

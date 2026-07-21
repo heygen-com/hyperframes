@@ -1481,10 +1481,10 @@ export const gsapRules: LintRule<LintContext>[] = [
         message:
           "GSAP tween uses `repeat: -1` (infinite). Infinite repeats break the deterministic " +
           "capture engine which seeks to exact frame times. Use a finite repeat count calculated " +
-          "from the composition duration: `repeat: Math.floor(duration / cycleDuration) - 1`.",
+          "from the composition duration: `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)`.",
         fixHint:
-          "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.floor(totalDuration / singleCycleDuration) - 1`. " +
-          "Use Math.floor (not Math.ceil) to ensure the animation fits within the total duration.",
+          "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.max(0, Math.floor(totalDuration / singleCycleDuration) - 1)`. " +
+          "Use Math.floor (not Math.ceil) so the animation fits, and clamp at zero so a short composition cannot evaluate to -1.",
         snippet: truncateSnippet(snippet),
       });
     }
@@ -1510,8 +1510,35 @@ export const gsapRules: LintRule<LintContext>[] = [
           "For example, Math.ceil(10.5 / 2) - 1 = 5 repeats → 6 cycles × 2s = 12s, exceeding 10.5s.",
         fixHint:
           "Use `Math.floor` instead of `Math.ceil` to ensure the animation fits within the duration: " +
-          "`repeat: Math.floor(totalDuration / cycleDuration) - 1`. " +
+          "`repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`. " +
           "Math.floor(10.5 / 2) - 1 = 4 repeats → 5 cycles × 2s = 10s ✓",
+        snippet: truncateSnippet(snippet),
+      });
+    }
+    return findings;
+  },
+
+  // gsap_repeat_floor_unclamped
+  ({ scripts }) => {
+    const findings: HyperframeLintFinding[] = [];
+    // A direct floor-minus-one expression becomes GSAP's infinite -1 sentinel when
+    // the visible duration is shorter than one full cycle. Math.max-wrapped forms
+    // intentionally do not match because `repeat:` is followed by Math.max, not Math.floor.
+    const pattern = /repeat\s*:\s*Math\.floor\s*\([^)]+\)\s*-\s*1/g;
+    for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
+      stripComments: false,
+      contextBefore: 40,
+      contextAfter: 40,
+    })) {
+      findings.push({
+        code: "gsap_repeat_floor_unclamped",
+        severity: "warning",
+        message:
+          "GSAP repeat calculation can evaluate to -1 when the composition is shorter than one cycle, " +
+          "which GSAP interprets as an infinite repeat.",
+        fixHint:
+          "Clamp the finite repeat count at zero: " +
+          "`repeat: Math.max(0, Math.floor(totalDuration / cycleDuration) - 1)`.",
         snippet: truncateSnippet(snippet),
       });
     }

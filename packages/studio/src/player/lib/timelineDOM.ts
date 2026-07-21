@@ -55,7 +55,6 @@ export {
   autoHealMissingCompositionIds,
   setPreviewMediaMuted,
   setPreviewPlaybackRate,
-  shouldMutePreviewAudio,
   resolveIframe,
   buildMissingCompositionElements,
 } from "./timelineIframeHelpers";

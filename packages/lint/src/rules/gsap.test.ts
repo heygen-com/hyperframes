@@ -862,6 +862,7 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.message).toContain("repeat: -1");
+    expect(finding?.fixHint).toContain("Math.max(0, Math.floor");
   });
 
   it("does not error on finite repeat values", async () => {
@@ -878,6 +879,44 @@ describe("GSAP rules", () => {
 </body></html>`;
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
+    expect(finding).toBeUndefined();
+  });
+
+  it("warns when a computed finite repeat can fall through to GSAP's -1 sentinel", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const duration = 0.5;
+    const cycleDuration = 1;
+    const tl = gsap.timeline({ paused: true, repeat: Math.floor(duration / cycleDuration) - 1 });
+    window.__timelines = { main: tl };
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeat_floor_unclamped");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.fixHint).toContain("Math.max(0, Math.floor");
+  });
+
+  it("accepts a clamped computed finite repeat", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    const duration = 0.5;
+    const cycleDuration = 1;
+    const tl = gsap.timeline({
+      paused: true,
+      repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1),
+    });
+    window.__timelines = { main: tl };
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeat_floor_unclamped");
     expect(finding).toBeUndefined();
   });
 

@@ -2376,6 +2376,20 @@ async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<n
   return frames;
 }
 
+// Static dedup is an optional optimization. Building frame-index Sets scales with the
+// composition's declared duration, so malformed/sentinel durations must fail closed before
+// allocating them. Normal capture and the producer's typed duration validation still proceed.
+export const MAX_STATIC_DEDUP_ANALYSIS_FRAMES = 1_000_000;
+
+export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
+  return (
+    Number.isFinite(totalFrames) &&
+    Number.isSafeInteger(totalFrames) &&
+    totalFrames > 0 &&
+    totalFrames <= MAX_STATIC_DEDUP_ANALYSIS_FRAMES
+  );
+}
+
 /**
  * Predict the dedupable (static) frame set from window.__timelines. A frame f (f>0) is
  * static iff NEITHER f NOR f-1 falls inside any GSAP tween interval — content didn't
@@ -2518,6 +2532,18 @@ export async function computeStaticFrameSet(
     hasTimelineCall: boolean;
   };
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
+  if (!isStaticDedupFrameAnalysisSafe(totalFrames)) {
+    return {
+      totalFrames,
+      staticFrameSet: new Set<number>(),
+      hasVideo,
+      hasCanvas,
+      hasNonGsapAnim,
+      tweenCount,
+      eligible: false,
+      reason: `static-dedup frame analysis limit (${MAX_STATIC_DEDUP_ANALYSIS_FRAMES})`,
+    };
+  }
   const animated = new Set<number>();
   for (const { start, end } of intervals) {
     const lo = Math.max(0, Math.floor(start * fps));

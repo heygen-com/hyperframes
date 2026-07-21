@@ -147,6 +147,7 @@ import {
 } from "./render/videoFrameCoverage.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
+import { validateRenderDuration } from "./render/planValidation.js";
 import {
   runExtractVideosStage,
   shouldCopyExtractedFrames,
@@ -1971,6 +1972,11 @@ async function executeRenderPipeline(input: {
     job.totalFrames = probeResult.totalFrames;
     const totalFrames = probeResult.totalFrames;
     captureTotalFrames = totalFrames;
+    validateRenderDuration({
+      duration: probeResult.duration,
+      totalFrames,
+      fps: fpsToNumber(job.config.fps),
+    });
 
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;

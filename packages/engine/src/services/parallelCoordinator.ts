@@ -63,6 +63,14 @@ export interface WorkerResult {
   framesCaptured: number;
   startFrame: number;
   endFrame: number;
+  /**
+   * Mirrors the originating `WorkerTask.frameStride` (default 1). Required by
+   * `expectedFramesForTask` — without it, every interleaved (stride > 1)
+   * worker's expected count is computed as the full contiguous range instead
+   * of range/stride, so a fully-successful worker looks like it under-captured
+   * and gets misclassified as a silent death (see `synthesizeSilentWorkerExitError`).
+   */
+  frameStride?: number;
   durationMs: number;
   perf?: CapturePerfSummary;
   error?: string;
@@ -189,6 +197,24 @@ export function synthesizeSilentWorkerExitError(
     `Field signal ts=1784042064 — this class of failure has been reported; ` +
     `consider re-run with --workers=1 to isolate.`
   );
+}
+
+/**
+ * A worker may return without an error string yet with `framesCaptured`
+ * below its task's expected count — the silent-exit shape field signal
+ * ts=1784042064 called out. Synthesize a terminal error string in-place so
+ * the caller's failure filter treats it as a failure (and so the caller's
+ * failure message actually names what went wrong). Requires each result to
+ * carry `frameStride` (see `WorkerResult`) — without it, an interleaved
+ * worker's true `framesCaptured` (range/stride) is compared against the full
+ * contiguous range and every successful interleaved worker false-positives.
+ */
+export function flagSilentWorkerExits(results: WorkerResult[]): void {
+  for (const r of results) {
+    if (!r.error && r.framesCaptured < expectedFramesForTask(r)) {
+      r.error = synthesizeSilentWorkerExitError(r, expectedFramesForTask(r));
+    }
+  }
 }
 
 export function formatWorkerFailure(result: WorkerResult): string {
@@ -487,6 +513,7 @@ async function executeWorkerTask(
       framesCaptured,
       startFrame: task.startFrame,
       endFrame: task.endFrame,
+      frameStride: task.frameStride,
       durationMs: Date.now() - startTime,
       perf,
     };
@@ -509,6 +536,7 @@ async function executeWorkerTask(
       framesCaptured,
       startFrame: task.startFrame,
       endFrame: task.endFrame,
+      frameStride: task.frameStride,
       durationMs: Date.now() - startTime,
       perf,
       error: failure.message,
@@ -613,16 +641,7 @@ export async function executeParallelCapture(
     ),
   );
 
-  // A worker may return without an error string yet with framesCaptured
-  // below the task's expected count — that's the silent-exit shape field
-  // signal ts=1784042064 called out. Synthesize a terminal error string
-  // in-place so the filter below treats it as a failure (and so the
-  // caller's failure message actually names what went wrong).
-  for (const r of results) {
-    if (!r.error && r.framesCaptured < expectedFramesForTask(r)) {
-      r.error = synthesizeSilentWorkerExitError(r, expectedFramesForTask(r));
-    }
-  }
+  flagSilentWorkerExits(results);
 
   const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {

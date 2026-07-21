@@ -374,7 +374,7 @@ The skeleton handles most structural rules. These are the runtime rules the skel
 | `Math.random()`                   | Seeded PRNG (only if you need randomness)      |
 | `Date.now()`, `performance.now()` | Hard-coded timing or `tl.time()` in `onUpdate` |
 | `setInterval`, `setTimeout`       | Timeline tweens + `onUpdate`                   |
-| `repeat: -1`                      | `repeat: Math.ceil(duration / cycle) - 1`      |
+| `repeat: -1`                      | `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
 | `stagger: { from: "random" }`     | `from: "start"`, `"center"`, `"end"`           |
 | Async timeline construction       | Synchronous at page load                       |
 

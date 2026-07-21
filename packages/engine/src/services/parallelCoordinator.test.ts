@@ -3,12 +3,14 @@ import {
   calculateOptimalWorkers,
   distributeFrames,
   expectedFramesForTask,
+  flagSilentWorkerExits,
   formatWorkerFailure,
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
   shouldVerifyWorkerGpu,
   synthesizeSilentWorkerExitError,
   resolveParallelDeVerifySamples,
+  type WorkerResult,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
 
@@ -247,6 +249,58 @@ describe("synthesizeSilentWorkerExitError", () => {
     expect(message).toContain("range=[60, 120)");
     expect(message).toContain("Field signal ts=1784042064");
     expect(message).toContain("--workers=1");
+  });
+});
+
+describe("flagSilentWorkerExits", () => {
+  it("does not flag a fully-successful interleaved worker (regression: PRINFRA-300)", () => {
+    // 3-way interleave over 150 frames: worker 0 captures 0, 3, ..., 147 → 50
+    // frames, which is its FULL expected count at stride=3. Without
+    // `frameStride` on the result, expectedFramesForTask would fall back to
+    // stride=1 (150) and false-positive this as a silent death.
+    const results: WorkerResult[] = [
+      {
+        workerId: 0,
+        framesCaptured: 50,
+        startFrame: 0,
+        endFrame: 150,
+        frameStride: 3,
+        durationMs: 1000,
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toBeUndefined();
+  });
+
+  it("still flags a genuinely under-captured interleaved worker", () => {
+    const results: WorkerResult[] = [
+      {
+        workerId: 1,
+        framesCaptured: 20, // expected 50 at stride=3
+        startFrame: 1,
+        endFrame: 150,
+        frameStride: 3,
+        durationMs: 1000,
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toContain("worker 1 exited without terminal error string");
+    expect(results[0]?.error).toContain("expected=50");
+  });
+
+  it("does not overwrite an existing error", () => {
+    const results: WorkerResult[] = [
+      {
+        workerId: 2,
+        framesCaptured: 0,
+        startFrame: 0,
+        endFrame: 10,
+        durationMs: 1000,
+        error: "Protocol error (Page.captureScreenshot): Target closed",
+      },
+    ];
+    flagSilentWorkerExits(results);
+    expect(results[0]?.error).toBe("Protocol error (Page.captureScreenshot): Target closed");
   });
 });
 
