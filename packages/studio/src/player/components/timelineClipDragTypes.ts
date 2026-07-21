@@ -4,6 +4,8 @@ import type { BlockedTimelineEditIntent } from "./timelineEditing";
 
 /* ── Shared clip-drag state types ───────────────────────────────── */
 export interface DraggedClipState {
+  /** Pointer captured by the stable viewport coordinator for this gesture. */
+  pointerId?: number;
   element: TimelineElement;
   originClientX: number;
   originClientY: number;
@@ -39,6 +41,8 @@ export interface DraggedClipState {
 }
 
 export interface ResizingClipState {
+  /** Pointer captured by the stable viewport coordinator for this gesture. */
+  pointerId?: number;
   element: TimelineElement;
   edge: "start" | "end";
   originClientX: number;
@@ -53,10 +57,18 @@ export interface ResizingClipState {
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
+  /** Coordinator-owned group projection; canonical elements change only on commit. */
+  groupPreview?: readonly {
+    key: string;
+    start: number;
+    duration: number;
+    playbackStart?: number;
+  }[];
   started: boolean;
 }
 
 export interface BlockedClipState {
+  pointerId?: number;
   element: TimelineElement;
   intent: BlockedTimelineEditIntent;
   originClientX: number;
