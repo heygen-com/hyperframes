@@ -266,18 +266,98 @@ describe("useTimelineEditCallbacks — flat tween keyframe lanes", () => {
   });
 
   it("deletes all keyframes through the clicked non-selected element's identity", async () => {
-    const { circle, selection } = arrangeClickedCircle();
+    const circle: TimelineElement = {
+      ...element,
+      id: "circle",
+      key: "scenes/main.html#circle",
+      domId: "circle",
+      sourceFile: "scenes/main.html",
+    };
+    const circleSelection = { id: "circle", selector: "#circle", sourceFile: "scenes/main.html" };
+    const scaleAnimation: GsapAnimation = {
+      ...otherKeyframedAnimation,
+      id: "circle-to-0-scale",
+      properties: {},
+      propertyGroup: "scale",
+      keyframes: {
+        format: "percentage",
+        keyframes: [
+          { percentage: 0, properties: { scale: 1 } },
+          { percentage: 100, properties: { scale: 2 } },
+        ],
+      },
+    };
+    usePlayerStore.setState({
+      elements: [element, circle],
+      gsapAnimations: new Map([
+        ["scenes/main.html#circle", [otherKeyframedAnimation, scaleAnimation]],
+      ]),
+    });
+    mocks.actions.buildDomSelectionForTimelineElement.mockResolvedValue(circleSelection);
     const view = renderCallbacks();
 
     await act(async () => {
-      view.callbacks.onDeleteAllKeyframes?.(circle);
+      view.callbacks.onDeleteAllKeyframes?.(circle, scaleAnimation.id);
       await Promise.resolve();
     });
 
     expect(mocks.actions.handleGsapRemoveAllKeyframes).toHaveBeenCalledWith(
-      otherKeyframedAnimation.id,
-      selection,
+      scaleAnimation.id,
+      circleSelection,
     );
+    view.unmount();
+  });
+
+  it("does not delete a different lane when an explicit animation identity is stale", async () => {
+    const circle: TimelineElement = {
+      ...element,
+      id: "circle",
+      key: "scenes/main.html#circle",
+      domId: "circle",
+      sourceFile: "scenes/main.html",
+    };
+    usePlayerStore.setState({
+      elements: [element, circle],
+      gsapAnimations: new Map([["scenes/main.html#circle", [otherKeyframedAnimation]]]),
+    });
+    const view = renderCallbacks();
+
+    await act(async () => {
+      view.callbacks.onDeleteAllKeyframes?.(circle, "missing-animation-id");
+      await Promise.resolve();
+    });
+
+    expect(mocks.actions.handleGsapRemoveAllKeyframes).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("does not delete a different keyframe when its explicit animation identity is stale", () => {
+    const view = renderCallbacks();
+
+    act(() => {
+      view.callbacks.onDeleteKeyframe?.("box", 100, "position", 100, "missing-animation-id");
+    });
+
+    expect(mocks.actions.handleGsapDeleteAnimation).not.toHaveBeenCalled();
+    expect(mocks.actions.handleGsapRemoveKeyframe).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("does not move a different keyframe when its explicit animation identity is stale", async () => {
+    const view = renderCallbacks();
+
+    await act(async () => {
+      view.callbacks.onMoveKeyframeToPlayhead?.(
+        element,
+        100,
+        "position",
+        100,
+        "missing-animation-id",
+      );
+      await Promise.resolve();
+    });
+
+    expect(mocks.actions.handleGsapMoveKeyframeToPlayhead).not.toHaveBeenCalled();
     view.unmount();
   });
 

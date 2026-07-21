@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { KeyframeCacheEntry } from "../player/store/playerStore";
+import { usePlayerStore } from "../player/store/playerStore";
 import { useGsapKeyframeOps } from "./useGsapKeyframeOps";
 
 type HookApi = ReturnType<typeof useGsapKeyframeOps>;
@@ -30,6 +32,7 @@ function successfulCommitMutation() {
 
 function renderKeyframeOps(over: {
   commitMutation: (...args: unknown[]) => Promise<unknown>;
+  commitMutationSafely?: (...args: unknown[]) => Promise<void>;
   trackGsapSaveFailure: (...args: unknown[]) => void;
 }) {
   const captured: { api: HookApi | null } = { api: null };
@@ -41,7 +44,7 @@ function renderKeyframeOps(over: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
       commitMutation: over.commitMutation as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
-      commitMutationSafely: (() => {}) as any,
+      commitMutationSafely: (over.commitMutationSafely ?? (async () => {})) as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test doubles
       trackGsapSaveFailure: over.trackGsapSaveFailure as any,
       sdkSession: null,
@@ -201,6 +204,41 @@ describe("useGsapKeyframeOps — keyframe transaction options", () => {
       }),
       { label: "Convert to keyframes", softReload: true },
     );
+  });
+
+  it("lets the successful commit refresh own delete-all cache invalidation", async () => {
+    let finishCommit: (() => void) | undefined;
+    const commitMutationSafely = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCommit = resolve;
+        }),
+    );
+    const api = renderKeyframeOps({
+      commitMutation: successfulCommitMutation(),
+      commitMutationSafely,
+      trackGsapSaveFailure: vi.fn(),
+    });
+    const cached: KeyframeCacheEntry = {
+      format: "percentage",
+      keyframes: [
+        { percentage: 0, properties: { x: 0 } },
+        { percentage: 100, properties: { x: 200 } },
+      ],
+    };
+    usePlayerStore.setState({ keyframeCache: new Map([["index.html#box", cached]]) });
+
+    const pending = api.removeAllKeyframes(selection, "box-to-0-position");
+    expect(commitMutationSafely).toHaveBeenCalledWith(
+      selection,
+      { type: "remove-all-keyframes", animationId: "box-to-0-position" },
+      { label: "Remove all keyframes", softReload: true },
+    );
+    expect(usePlayerStore.getState().keyframeCache.get("index.html#box")).toBe(cached);
+
+    finishCommit?.();
+    await pending;
+    expect(usePlayerStore.getState().keyframeCache.get("index.html#box")).toBe(cached);
   });
 
   it("threads one coalesce key through skipped convert reload and terminal batch edit", async () => {

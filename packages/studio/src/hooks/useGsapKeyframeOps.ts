@@ -15,11 +15,7 @@ import {
 } from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
-import {
-  clearKeyframeCacheForElement,
-  readKeyframeSnapshot,
-  writeKeyframeCache,
-} from "./gsapKeyframeCacheHelpers";
+import { readKeyframeSnapshot, writeKeyframeCache } from "./gsapKeyframeCacheHelpers";
 import type {
   CommitMutation,
   CommitMutationOptions,
@@ -335,11 +331,6 @@ export function useGsapKeyframeOps({
   const removeAllKeyframes = useCallback(
     async (selection: DomEditSelection, animationId: string) => {
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      // remove-all-keyframes collapses the tween to a static hold and the commit
-      // path doesn't return parsed animations, so the keyframe cache is never
-      // refreshed — clear it here so the timeline diamonds disappear immediately.
-      const elementId = selection.id ?? selection.selector?.match(/^#([\w-]+)/)?.[1] ?? null;
-      if (elementId) clearKeyframeCacheForElement(targetPath, elementId);
       if (sdkSession && sdkDeps) {
         const handled = await sdkGsapRemoveAllKeyframesPersist(
           targetPath,
@@ -350,7 +341,7 @@ export function useGsapKeyframeOps({
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
-      commitMutationSafely(
+      await commitMutationSafely(
         selection,
         { type: "remove-all-keyframes", animationId },
         { label: "Remove all keyframes", softReload: true },

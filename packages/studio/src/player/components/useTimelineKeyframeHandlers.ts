@@ -444,12 +444,13 @@ export function useTimelineKeyframeHandlers({
       setKfContextMenu({
         x: e.clientX + 4,
         y: e.clientY + 2,
+        sessionEpoch: usePlayerStore.getState().timelineSessionEpoch,
+        element: el,
         elementId: elId,
         percentage: target.percentage,
         tweenPercentage: target.tweenPercentage ?? kf?.tweenPercentage,
         propertyGroup: target.propertyGroup,
         animationId: target.animationId,
-        element: el,
         currentEase: kf?.ease ?? kfData?.ease,
       });
     },
