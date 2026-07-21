@@ -71,6 +71,7 @@ import {
   prepareCaptureSessionForReuse,
   spawnStreamingEncoder,
 } from "@hyperframes/engine";
+import { outputFrameToTimelineSeconds } from "@hyperframes/core";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
@@ -405,7 +406,8 @@ async function runWorkerEncodePipelineLoop(
   abortSignal: AbortSignal | undefined,
 ): Promise<void> {
   let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
-  const frameTime = (i: number) => (i * job.config.fps.den) / job.config.fps.num;
+  const frameTime = (i: number) =>
+    outputFrameToTimelineSeconds(i, job.config.fps, job.config.renderStretch ?? 1);
   const guard = createDrainFrameGuard({ log, stats, frameTime });
   const guardFrame = (idx: number, buf: Buffer): Promise<Buffer> => guard(session, idx, buf);
 
@@ -640,7 +642,8 @@ export async function runCaptureStreamingStage(
       const parallelGuard = createDrainFrameGuard({
         log,
         stats: parallelStats,
-        frameTime: (i: number) => (i * job.config.fps.den) / job.config.fps.num,
+        frameTime: (i: number) =>
+          outputFrameToTimelineSeconds(i, job.config.fps, job.config.renderStretch ?? 1),
       });
       let parallelGuardRan = false;
       // First guard/write failure aborts the reorder buffer so peer workers
@@ -835,7 +838,11 @@ export async function runCaptureStreamingStage(
           let lastProgressAt = Date.now();
           for (let i = 0; i < totalFrames; i++) {
             assertNotAborted();
-            const time = (i * job.config.fps.den) / job.config.fps.num;
+            const time = outputFrameToTimelineSeconds(
+              i,
+              job.config.fps,
+              job.config.renderStretch ?? 1,
+            );
             const { buffer } = await raceAgainstStall(
               captureFrameToBuffer(session, i, time),
               stallTimeoutMs - (Date.now() - lastProgressAt),

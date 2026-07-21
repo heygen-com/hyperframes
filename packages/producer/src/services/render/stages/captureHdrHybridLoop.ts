@@ -33,6 +33,7 @@ import {
   initTransparentBackground,
   initializeSession,
 } from "@hyperframes/engine";
+import { outputFrameToTimelineSeconds } from "@hyperframes/core";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
@@ -216,7 +217,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       let nextRingIdx = 0;
       for (let i = range.start; i < range.end; i++) {
         assertNotAborted();
-        const time = (i * job.config.fps.den) / job.config.fps.num;
+        const time = outputFrameToTimelineSeconds(i, job.config.fps, job.config.renderStretch ?? 1);
         const activeTransition = transitionFramesSet.has(i)
           ? transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame)
           : undefined;

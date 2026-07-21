@@ -2660,8 +2660,9 @@ export async function verifyStaticFramesSafe(
     if (last && f === last.b + 1) last.b = f;
     else runs.push({ a: f, b: f });
   }
+  const renderStretch = session.options.renderStretch ?? 1;
   const seekToFrame = async (frameIdx: number): Promise<void> => {
-    const t = quantizeTimeToFrame(frameIdx / fps, fps);
+    const t = quantizeTimeToFrame((frameIdx / fps) * renderStretch, fps);
     await page.evaluate((tt: number) => {
       const hf = (
         window as unknown as {
@@ -3599,11 +3600,14 @@ async function captureDeVerificationFrames(
   // their data-duration, and infinite-repeat GSAP reports a huge sentinel —
   // and indices derived from it would never be drained, silently disarming
   // verification for exactly the comps that need it.
+  // compositionDurationSeconds is already the output (drained) duration; the raw
+  // page fallback is intrinsic — divide it by renderStretch to match (1 = no-op).
+  const renderStretch = session.options.renderStretch ?? 1;
   const duration =
     session.options.compositionDurationSeconds ??
     (await page.evaluate(
       () => (window as unknown as { __hf?: { duration?: number } }).__hf?.duration ?? 0,
-    ));
+    )) / renderStretch;
   const totalFrames = Math.floor(duration * fps);
   if (totalFrames < 10) return;
   if (duration > 3600) {
@@ -3653,7 +3657,8 @@ async function captureDeVerificationFrames(
     while (boundary.has(idx) && guard++ < 6) idx = Math.min(totalFrames - 1, idx + 2);
     if (boundary.has(idx)) continue;
     if (frames.has(idx)) continue;
-    const t = quantizeTimeToFrame(idx / fps, fps);
+    // Seek truth with the same ×renderStretch mapping the real capture uses for output frame idx.
+    const t = quantizeTimeToFrame((idx / fps) * renderStretch, fps);
     await seekTo(t);
     // Video frame injection (same hook the real capture paths run) — without
     // it, <video> elements screenshot black and every video comp would

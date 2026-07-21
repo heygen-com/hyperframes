@@ -187,6 +187,18 @@ export function validateDistributedRenderConfig(
     }
   }
 
+  if (
+    config.renderStretch !== undefined &&
+    (typeof config.renderStretch !== "number" ||
+      !Number.isFinite(config.renderStretch) ||
+      config.renderStretch <= 0)
+  ) {
+    throw new InvalidConfigError(
+      "config.renderStretch",
+      `must be a positive number; got ${String(config.renderStretch)}`,
+    );
+  }
+
   if (config.runtimeCap !== undefined && !ALLOWED_RUNTIME_CAPS.includes(config.runtimeCap)) {
     throw new InvalidConfigError(
       "config.runtimeCap",

@@ -135,6 +135,9 @@ export interface DistributedRenderConfig {
    */
   outputResolutionAspectAgnostic?: boolean;
 
+  /** intrinsic/target timeline re-time; 1 (or omitted) = no-op. Folded into planHash. */
+  renderStretch?: number;
+
   /**
    * Frames per chunk. When explicitly set, that value is used and
    * `chunkCount = min(maxParallelChunks, ceil(totalFrames / chunkSize))`
@@ -771,6 +774,7 @@ export async function plan(
     videoFrameFormat: config.videoFrameFormat,
     outputResolution: config.outputResolution,
     outputResolutionAspectAgnostic: config.outputResolutionAspectAgnostic,
+    renderStretch: config.renderStretch,
     // HDR is banned in distributed mode. force-sdr keeps the
     // extract / encoder paths off the HDR branches entirely.
     hdrMode: config.hdrMode ?? "force-sdr",
@@ -1036,6 +1040,7 @@ export async function plan(
     width,
     height,
     format: config.format,
+    renderStretch: config.renderStretch,
   };
   // Clean up the temp work tree BEFORE freezePlan. `.plan-work/` holds
   // intermediate compileStage + audio-mix artifacts (downloaded source

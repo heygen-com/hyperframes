@@ -23,6 +23,7 @@ import {
   type CapturePerfSummary,
   type BeforeCaptureHook,
 } from "./frameCapture.js";
+import { outputFrameToTimelineSeconds } from "@hyperframes/core";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
@@ -342,6 +343,10 @@ async function captureFrameRange(
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
   const stride = task.frameStride ?? 1;
+  // Per-frame seek ×renderStretch maps frames across [0, intrinsic] (1 = no-op).
+  const renderStretch = captureOptions.renderStretch ?? 1;
+  const seekTime = (i: number): number =>
+    outputFrameToTimelineSeconds(i, captureOptions.fps, renderStretch);
   // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
   // k's in-page worker encode overlaps frame k+stride's produce phase — the
   // same shape as the sequential worker-encode loop. Only engaged when the
@@ -361,7 +366,7 @@ async function captureFrameRange(
     let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
     for (let i = task.startFrame; i < task.endFrame; i += stride) {
       if (signal?.aborted) throw new Error("Parallel worker cancelled");
-      const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
+      const time = seekTime(i);
       if (dbg && i < task.startFrame + dbgWin) {
         console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
       }
@@ -405,7 +410,7 @@ async function captureFrameRange(
   }
   for (let i = task.startFrame; i < task.endFrame; i += stride) {
     if (signal?.aborted) throw new Error("Parallel worker cancelled");
-    const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
+    const time = seekTime(i);
     const fileFrameIdx = i - outputOffset;
 
     if (onFrameBuffer) {

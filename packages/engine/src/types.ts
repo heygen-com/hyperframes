@@ -114,6 +114,7 @@ export interface CaptureOptions {
    * timelines can outrun their declared duration). Consumers that derive
    * frame indices meant to be drained by the producer (drawElement
    * self-verification) MUST prefer this over `__hf.duration`.
+   * When renderStretch != 1 this is the OUTPUT (stretched) duration, not intrinsic.
    */
   compositionDurationSeconds?: number;
   /**
@@ -123,6 +124,7 @@ export interface CaptureOptions {
    * rational form verbatim — see `fpsToFfmpegArg`.
    */
   fps: Fps;
+  renderStretch?: number;
   format?: "jpeg" | "png";
   quality?: number;
   deviceScaleFactor?: number;

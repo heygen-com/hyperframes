@@ -591,7 +591,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const browserProbeMs = Date.now() - probeStart;
 
   const duration = composition.duration;
-  const totalFrames = durationToFrameCount(duration, fpsToNumber(job.config.fps));
+  // Output length = intrinsic / renderStretch (1 = no-op); composition.duration stays intrinsic.
+  const renderStretch = job.config.renderStretch ?? 1;
+  const outputDuration = duration / renderStretch;
+  const totalFrames = durationToFrameCount(outputDuration, fpsToNumber(job.config.fps));
 
   if (duration <= 0) {
     // Gather diagnostics to help users understand why the render would produce a black video.
@@ -660,7 +663,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     fileServer,
     probeSession,
     lastBrowserConsole,
-    duration,
+    duration: outputDuration,
     totalFrames,
     browserProbeMs,
     beginFrameStalled,

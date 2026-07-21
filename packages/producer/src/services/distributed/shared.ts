@@ -100,6 +100,7 @@ export interface SyntheticRenderJobInput {
   videoFrameFormat?: VideoFrameFormat;
   outputResolution?: RenderConfig["outputResolution"];
   outputResolutionAspectAgnostic?: RenderConfig["outputResolutionAspectAgnostic"];
+  renderStretch?: number;
   hdrMode: RenderConfig["hdrMode"];
   strictness?: RenderConfig["strictness"];
   entryFile: string;
@@ -122,6 +123,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     videoFrameFormat: input.videoFrameFormat,
     outputResolution: input.outputResolution,
     outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
+    renderStretch: input.renderStretch,
     // Distributed mode hard-pins to software GPU. The plan-time validator
     // refuses to fan out otherwise.
     useGpu: false,

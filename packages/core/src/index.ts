@@ -63,6 +63,7 @@ export {
   parseFpsWithDefault,
   toFps,
   fpsToNumber,
+  outputFrameToTimelineSeconds,
   fpsToFfmpegArg,
   TIMELINE_COLORS,
   DEFAULT_DURATIONS,

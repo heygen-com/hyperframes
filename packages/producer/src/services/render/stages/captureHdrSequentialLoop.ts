@@ -19,6 +19,7 @@ import {
   TRANSITIONS,
   crossfade,
 } from "@hyperframes/engine";
+import { outputFrameToTimelineSeconds } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   type HdrCompositeContext,
@@ -106,7 +107,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
 
   for (let i = 0; i < totalFrames; i++) {
     assertNotAborted();
-    const time = (i * job.config.fps.den) / job.config.fps.num;
+    const time = outputFrameToTimelineSeconds(i, job.config.fps, job.config.renderStretch ?? 1);
     if (hdrPerf) hdrPerf.frames += 1;
 
     const stackingInfo = await seekInjectAndQueryStacking(

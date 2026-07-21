@@ -239,6 +239,7 @@ interface PlanJson {
     width: number;
     height: number;
     format: DistributedFormat;
+    renderStretch?: number;
   };
   chunkCount: number;
   totalFrames: number;
@@ -515,6 +516,8 @@ export async function renderChunk(
       width: plan.dimensions.width,
       height: plan.dimensions.height,
       fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
+      // Per-frame seek ×renderStretch maps output frames across [0, intrinsic] (1 = no-op).
+      renderStretch: plan.dimensions.renderStretch ?? 1,
       format: plan.dimensions.format === "mp4" ? "jpeg" : "png",
       quality: plan.dimensions.format === "mp4" ? 80 : undefined,
       deviceScaleFactor: encoder.deviceScaleFactor,
