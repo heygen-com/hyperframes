@@ -17,6 +17,7 @@ import {
   resolveConversionProps,
   extractArcWaypoints,
   buildMotionPathObjectCode,
+  mergePercentageKeyframes,
 } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
@@ -865,6 +866,46 @@ function findKfPropByPct(kfNode: Node, percentage: number): { prop: Node; idx: n
   return best;
 }
 
+function updateMotionPathEase(
+  script: string,
+  varsNode: Node,
+  properties: Record<string, number | string>,
+  ease?: string,
+): string | undefined {
+  if (
+    ease === undefined ||
+    Object.keys(properties).length !== 0 ||
+    !findPropertyNode(varsNode, "motionPath")
+  ) {
+    return undefined;
+  }
+  const ms = new MagicString(script);
+  upsertProp(ms, varsNode, "ease", ease);
+  return ms.toString();
+}
+
+function updateObjectKeyframe(
+  script: string,
+  prop: Node,
+  properties: Record<string, number | string>,
+  ease?: string,
+): string {
+  const ms = new MagicString(script);
+  // Merge into the authored object so an edit cannot discard unrelated
+  // keyframed properties at the same percentage.
+  if (prop.value?.type === "ObjectExpression") {
+    for (const [key, value] of Object.entries(properties)) {
+      upsertProp(ms, prop.value, key, value);
+    }
+    if (ease !== undefined) upsertProp(ms, prop.value, "ease", ease);
+  } else {
+    const record: Record<string, number | string> = { ...properties };
+    if (ease) record.ease = ease;
+    ms.overwrite(prop.value.start, prop.value.end, recordToCode(record));
+  }
+  return ms.toString();
+}
+
 export function updateKeyframeInScript(
   script: string,
   animationId: string,
@@ -878,7 +919,12 @@ export function updateKeyframeInScript(
   if (!target) return script;
 
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
-  if (!kfPropNode) return script;
+  if (!kfPropNode) {
+    // motionPath waypoints are exposed to Studio as synthetic keyframes, but
+    // GSAP authors one ease for the whole motionPath tween. An ease-only edit
+    // therefore belongs on the tween instead of a nonexistent keyframes block.
+    return updateMotionPathEase(script, target.call.varsArg, properties, ease) ?? script;
+  }
 
   // Array-form keyframes (`keyframes: [{x,y}, ...]`) carry no explicit percentages
   // — GSAP distributes them evenly, and the runtime read assigns even percentages
@@ -894,23 +940,7 @@ export function updateKeyframeInScript(
   const match = findKfPropByPct(kfPropNode.value, percentage);
   if (!match) return script;
 
-  const ms = new MagicString(script);
-  // MERGE the edited props into the existing keyframe, preserving properties already
-  // keyframed at this percentage (z, transformPerspective, rotation, …). A whole-value
-  // overwrite DROPS every prop not in this edit — e.g. editing rotationY at the 0%
-  // keyframe would strip z / transformPerspective, so the lens then animates from 0 and
-  // the element pops. Mirrors addKeyframeToScript's merge-into-existing branch.
-  if (match.prop.value?.type === "ObjectExpression") {
-    for (const [k, v] of Object.entries(properties)) {
-      upsertProp(ms, match.prop.value, k, v);
-    }
-    if (ease !== undefined) upsertProp(ms, match.prop.value, "ease", ease);
-  } else {
-    const record: Record<string, number | string> = { ...properties };
-    if (ease) record.ease = ease;
-    ms.overwrite(match.prop.value.start, match.prop.value.end, recordToCode(record));
-  }
-  return ms.toString();
+  return updateObjectKeyframe(script, match.prop, properties, ease);
 }
 
 // ponytail: even-spacing index map; if array keyframes ever carry per-element
@@ -1271,10 +1301,9 @@ export function removeKeyframeFromScript(
 /**
  * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
  * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
- * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
- * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
- * the animation/keyframe isn't found, the tween has no object-form keyframes, or
- * the move resolves onto the same keyframe.
+ * gesture). Re-sorts keyframes by percentage. No-op when the animation/keyframe
+ * isn't found, the tween has no object-form keyframes, the move resolves onto the
+ * same keyframe, or the destination is occupied.
  */
 export function moveKeyframeInScript(
   script: string,
@@ -1296,18 +1325,18 @@ export function moveKeyframeInScript(
   // retime, because findKfPropByPct resolves the destination back onto the
   // from-keyframe — so a deliberate 1% drag committed nothing.
   if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return src;
-  // A destination keyframe is only a real collision (overwrite) when it's a
-  // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
+  // Never overwrite another authored keyframe. Resolving the destination back
+  // onto the source keyframe is not a collision (the tolerance is intentionally
+  // wider than MOVE_NOOP_EPSILON_PCT).
   const dest = findKfPropByPct(kfNode, toPercentage);
-  const collision = dest && dest.prop !== match.prop ? dest : null;
+  if (dest && dest.prop !== match.prop) return script;
 
-  // Rebuild the keyframes object: drop the moved keyframe (and any keyframe at
-  // the destination it overwrites), re-key the moved record to toPercentage,
-  // then re-sort. recordToCode round-trips properties + per-keyframe ease + _auto.
+  // Rebuild the keyframes object: drop the moved keyframe, re-key the moved
+  // record to toPercentage, then re-sort. recordToCode round-trips properties +
+  // per-keyframe ease + _auto.
   const entries: Array<{ pct: number; record: Record<string, number | string> }> = [];
   for (const prop of percentagePropsOf(kfNode)) {
     if (prop === match.prop) continue;
-    if (collision && prop === collision.prop) continue;
     const pct = percentageFromKey(propKeyName(prop) ?? "");
     if (Number.isNaN(pct)) continue;
     entries.push({ pct, record: valueNodeToRecord(prop.value, src) });
@@ -1365,7 +1394,9 @@ export function resizeKeyframedTweenInScript(
     ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(`${to}%`));
   }
   overwritePosition(ms, target.call, newPosition);
-  upsertProp(ms, target.call.varsArg, "duration", newDuration);
+  if (findPropertyNode(target.call.varsArg, "duration")) {
+    upsertProp(ms, target.call.varsArg, "duration", newDuration);
+  }
   return ms.toString();
 }
 
@@ -1555,7 +1586,7 @@ function buildKeyframeObjectCode(
   }>,
   easeEach?: string,
 ): string {
-  const entries = keyframes.map((kf) => {
+  const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
     if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);

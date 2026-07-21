@@ -21,6 +21,7 @@ import {
   serializeValue as valueToCode,
   safeJsKey as safeKey,
   resolveConversionProps,
+  mergePercentageKeyframes,
 } from "./gsapSerialize";
 
 export type {
@@ -1967,7 +1968,7 @@ function buildKeyframeObjectCode(
   }>,
   options?: { easeEach?: string },
 ): string {
-  const entries = keyframes.map((kf) => {
+  const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = keyframePropsToCode(kf);
     if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
@@ -2361,10 +2362,9 @@ export function removeKeyframeFromScript(
 /**
  * Retime a keyframe: move the keyframe at `fromPercentage` to `toPercentage`,
  * PRESERVING its properties and per-keyframe ease (the Studio "Move to Playhead"
- * gesture). Re-sorts keyframes by percentage. If a keyframe already exists at
- * `toPercentage`, it is overwritten by the moved one (no duplicate). No-op when
- * the animation/keyframe isn't found, the tween has no object-form keyframes, or
- * the move resolves onto the same keyframe. Acorn twin: moveKeyframeInScript.
+ * gesture). Re-sorts keyframes by percentage. No-op when the animation/keyframe
+ * isn't found, the tween has no object-form keyframes, the move resolves onto the
+ * same keyframe, or the destination is occupied. Acorn twin: moveKeyframeInScript.
  */
 export function moveKeyframeInScript(
   script: string,
@@ -2388,19 +2388,19 @@ export function moveKeyframeInScript(
   // retime, because findKeyframePropByPct resolves the destination back onto the
   // from-keyframe — so a deliberate 1% drag committed nothing. Acorn twin too.
   if (Math.abs(fromPercentage - toPercentage) < MOVE_NOOP_EPSILON_PCT) return script;
-  // A destination keyframe is only a real collision (overwrite) when it's a
-  // DIFFERENT keyframe; resolving back onto the from-keyframe is not.
+  // Never overwrite another authored keyframe. Resolving the destination back
+  // onto the source keyframe is not a collision (the tolerance is intentionally
+  // wider than MOVE_NOOP_EPSILON_PCT).
   const dest = findKeyframePropByPct(kfNode, toPercentage);
-  const collision = dest && dest.prop !== match.prop ? dest : null;
+  if (dest && dest.prop !== match.prop) return script;
 
   // Reuse each keyframe's value node verbatim (preserves properties +
-  // per-keyframe ease + _auto). Drop the moved keyframe (and any destination
-  // keyframe it overwrites), re-key the moved value to toPercentage, then re-sort.
+  // per-keyframe ease + _auto). Drop the moved keyframe, re-key its value to
+  // toPercentage, then re-sort.
   const movedValue = match.prop.value;
   const entries: Array<{ pct: number; value: AstNode }> = [];
   for (const prop of filterPercentageProps(kfNode)) {
     if (prop === match.prop) continue;
-    if (collision && prop === collision.prop) continue;
     const pct = percentageFromKey(propKeyName(prop) ?? "");
     if (Number.isNaN(pct)) continue;
     entries.push({ pct, value: prop.value });
@@ -2452,7 +2452,11 @@ export function resizeKeyframedTweenInScript(
     match.prop.key = parseExpr(`{ ${JSON.stringify(`${to}%`)}: 0 }`).properties[0].key;
   }
 
-  applyUpdatesToCall(loc.target.call, { position: newPosition, duration: newDuration });
+  const durationAuthored = findPropertyNode(loc.target.call.varsArg, "duration") !== undefined;
+  applyUpdatesToCall(loc.target.call, {
+    position: newPosition,
+    ...(durationAuthored ? { duration: newDuration } : {}),
+  });
   return recast.print(loc.parsed.ast).code;
 }
 
@@ -2498,6 +2502,21 @@ export function updateKeyframeInScript(
       return recast.print(arrLoc.parsed.ast).code;
     }
     arrVal.elements[realIdx] = buildKeyframeValueNode(properties, ease);
+    return recast.print(arrLoc.parsed.ast).code;
+  }
+
+  // motionPath waypoints are exposed to Studio as synthetic keyframes, while
+  // their source representation owns one tween-level ease. Route an ease-only
+  // segment edit to that authored owner instead of silently no-oping because a
+  // literal keyframes block does not exist.
+  if (
+    arrLoc &&
+    !arrVal &&
+    ease !== undefined &&
+    Object.keys(properties).length === 0 &&
+    findPropertyNode(arrLoc.target.call.varsArg, "motionPath")
+  ) {
+    applyUpdatesToCall(arrLoc.target.call, { ease });
     return recast.print(arrLoc.parsed.ast).code;
   }
 
@@ -2640,19 +2659,29 @@ export function removeAllKeyframesFromScript(script: string, animationId: string
   const kfNode =
     findKeyframesObjectNode(loc.target.call.varsArg) ??
     convertArrayKeyframesToObjectNode(loc.target.call.varsArg);
-  if (!kfNode) return script;
-
-  const kfEntries = filterPercentageProps(kfNode)
-    .map((p: AstNode) => ({ pct: percentageFromKey(propKeyName(p)!), prop: p }))
-    .filter((e) => !Number.isNaN(e.pct))
-    .sort((a, b) => a.pct - b.pct);
-  if (kfEntries.length === 0) return script;
-
-  // For to()/set(): collapse to last keyframe (the destination = visible state).
-  // For from(): collapse to first keyframe (the starting state).
   const method = loc.target.call.method;
-  const collapseEntry = method === "from" ? kfEntries[0]! : kfEntries[kfEntries.length - 1]!;
-  const record = objectExpressionToRecord(collapseEntry.prop.value, loc.parsed.scope);
+  let record: Record<string, unknown>;
+  if (kfNode) {
+    const kfEntries = filterPercentageProps(kfNode)
+      .map((p: AstNode) => ({ pct: percentageFromKey(propKeyName(p)!), prop: p }))
+      .filter((e) => !Number.isNaN(e.pct))
+      .sort((a, b) => a.pct - b.pct);
+    if (kfEntries.length === 0) return script;
+    const collapseEntry = method === "from" ? kfEntries[0]! : kfEntries[kfEntries.length - 1]!;
+    record = objectExpressionToRecord(collapseEntry.prop.value, loc.parsed.scope);
+  } else {
+    // motionPath waypoints are exposed to Studio as synthetic keyframes. They
+    // have no literal `keyframes` node, so collapse the parsed endpoint and
+    // remove the authored path instead of silently returning the original file.
+    const synthetic = loc.target.animation.arcPath?.enabled
+      ? loc.target.animation.keyframes?.keyframes
+      : undefined;
+    if (!synthetic?.length) return script;
+    const sorted = [...synthetic].sort((a, b) => a.percentage - b.percentage);
+    record = (method === "from" ? sorted[0] : sorted[sorted.length - 1])!.properties;
+    removeVarsKey(loc.target.call.varsArg, "motionPath");
+  }
+
   collapseKeyframesToFlat(loc.target.call.varsArg, record);
   // Removing ALL keyframes HOLDS the element statically — collapse to a
   // zero-duration immediateRender tween (a `gsap.set` equivalent), dropping the
