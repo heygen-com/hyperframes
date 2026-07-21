@@ -46,6 +46,8 @@ export interface UseTimelineEditingOptions {
   publishSdkSession?: PublishSdkSession;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
+  /** Reparse authored animations after a timing rewrite changes their positions. */
+  invalidateGsapCache?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
 }
 

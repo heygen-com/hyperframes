@@ -48,6 +48,7 @@ interface UseTimelineClipDragInput {
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
   trackOrderRef: React.RefObject<number[]>;
+  rowHeightsRef?: React.RefObject<readonly number[]>;
   onMoveElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
@@ -85,6 +86,7 @@ export function useTimelineClipDrag({
   ppsRef,
   durationRef,
   trackOrderRef,
+  rowHeightsRef,
   onMoveElement,
   onMoveElements,
   onResizeElement,
@@ -241,13 +243,14 @@ export function useTimelineClipDrag({
         pps: ppsRef.current,
         duration: durationRef.current,
         trackOrder: trackOrderRef.current,
+        rowHeights: rowHeightsRef?.current,
         elements: elementsRef.current,
         selectedKeys: usePlayerStore.getState().selectedElementIds,
         buildSnapTargets,
         audioTracks: dragAudioTracksRef.current,
       });
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, buildSnapTargets],
+    [scrollRef, ppsRef, durationRef, trackOrderRef, rowHeightsRef, buildSnapTargets],
   );
 
   // Recompute the trim preview for a pointer x. Shared by the pointermove resize

@@ -54,6 +54,7 @@ interface UseTimelineGroupEditingOptions {
   domEditSaveTimestampRef: MutableRefObject<number>;
   editQueueRef: MutableRefObject<Promise<unknown>>;
   forceReloadSdkSession?: () => void;
+  invalidateGsapCache?: () => void;
   isRecordingRef?: RefObject<boolean>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
@@ -110,6 +111,7 @@ export function useTimelineGroupEditing({
   domEditSaveTimestampRef,
   editQueueRef,
   forceReloadSdkSession,
+  invalidateGsapCache,
   isRecordingRef,
   pendingTimelineEditPathRef,
   previewIframeRef,
@@ -212,7 +214,12 @@ export function useTimelineGroupEditing({
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
           publishSession: publishSdkSession,
         },
-        { label: input.label, coalesceKey: input.coalesceKey, coalesceMs: input.coalesceMs },
+        {
+          label: input.label,
+          coalesceKey: input.coalesceKey,
+          coalesceMs: input.coalesceMs,
+          skipRefresh: true,
+        },
       );
       return cutoverCommittedOrThrow(result);
     },
@@ -282,25 +289,25 @@ export function useTimelineGroupEditing({
           coalesceKey,
           coalesceMs,
         });
-        if (handledBySdk) return;
-
-        await persistServerBatch(
-          projectId,
-          "Move timeline clips",
-          changes.map((change) => ({
-            element: change.element,
-            buildPatches: (original, target) =>
-              buildTimelineMoveTimingPatch(
-                original,
-                target,
-                change.start,
-                change.element.duration,
-                change.track,
-              ),
-          })),
-          coalesceKey,
-          coalesceMs,
-        );
+        if (!handledBySdk) {
+          await persistServerBatch(
+            projectId,
+            "Move timeline clips",
+            changes.map((change) => ({
+              element: change.element,
+              buildPatches: (original, target) =>
+                buildTimelineMoveTimingPatch(
+                  original,
+                  target,
+                  change.start,
+                  change.element.duration,
+                  change.track,
+                ),
+            })),
+            coalesceKey,
+            coalesceMs,
+          );
+        }
         // Track-only: no timing delta → no GSAP positions to shift and no
         // reload (see the trackOnly doc above). Mixed batches (any start
         // change) keep the full fallback below.
@@ -323,6 +330,7 @@ export function useTimelineGroupEditing({
             return shiftGsapPositions(projectId, changePath, domId, delta);
           },
         });
+        invalidateGsapCache?.();
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
@@ -340,6 +348,7 @@ export function useTimelineGroupEditing({
       reloadPreview,
       trySdkBatchPersist,
       showToast,
+      invalidateGsapCache,
     ],
   );
 
@@ -384,23 +393,23 @@ export function useTimelineGroupEditing({
           coalesceKey,
           coalesceMs,
         });
-        if (handledBySdk) return;
-
-        await persistServerBatch(
-          projectId,
-          "Resize timeline clips",
-          changes.map((change) => ({
-            element: change.element,
-            buildPatches: (original, target) =>
-              buildTimelineResizeTimingPatch(original, target, change.element, {
-                start: change.start,
-                duration: change.duration,
-                playbackStart: change.playbackStart,
-              }),
-          })),
-          coalesceKey,
-          coalesceMs,
-        );
+        if (!handledBySdk) {
+          await persistServerBatch(
+            projectId,
+            "Resize timeline clips",
+            changes.map((change) => ({
+              element: change.element,
+              buildPatches: (original, target) =>
+                buildTimelineResizeTimingPatch(original, target, change.element, {
+                  start: change.start,
+                  duration: change.duration,
+                  playbackStart: change.playbackStart,
+                }),
+            })),
+            coalesceKey,
+            coalesceMs,
+          );
+        }
         await finishGroupTimingGsapFallback({
           projectId,
           iframe: previewIframeRef.current,
@@ -428,6 +437,7 @@ export function useTimelineGroupEditing({
             );
           },
         });
+        invalidateGsapCache?.();
       }).catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
@@ -445,6 +455,7 @@ export function useTimelineGroupEditing({
       reloadPreview,
       trySdkBatchPersist,
       showToast,
+      invalidateGsapCache,
     ],
   );
 

@@ -58,6 +58,7 @@ export function useTimelineEditing({
   sdkSession,
   publishSdkSession,
   forceReloadSdkSession,
+  invalidateGsapCache,
   handleDomZIndexReorderCommitRef,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
@@ -118,6 +119,7 @@ export function useTimelineEditing({
     domEditSaveTimestampRef,
     editQueueRef,
     forceReloadSdkSession,
+    invalidateGsapCache,
     isRecordingRef,
     pendingTimelineEditPathRef,
     previewIframeRef,
@@ -184,21 +186,24 @@ export function useTimelineEditing({
           );
         };
         const coalesceKey = `timeline-move:${element.hfId ?? element.id}`;
+        const finishMoveGsapSync = () =>
+          // Every timing writer converges the same GSAP positions after its
+          // durable clip-start commit. The SDK owns the attribute write; this
+          // sync owns only the dependent animation rewrite and preview refresh.
+          finishClipTimingFallback({
+            iframe: previewIframeRef.current,
+            reloadPreview,
+            projectId: projectIdRef.current,
+            targetPath,
+            domId: element.domId,
+            label: "Move timeline clip",
+            coalesceKey,
+            recordEdit,
+            edit: { kind: "shift", delta: updates.start - element.start },
+          }).finally(() => invalidateGsapCache?.());
         const moveFallback = () =>
-          enqueueEdit(element, "Move timeline clip", buildMovePatches, coalesceKey).then(() =>
-            // Soft-reload with the server's rewritten GSAP script — the timing-only move already patched
-            // DOM + store, so swapping the script avoids the all-clips flash; falls back to reloadPreview().
-            finishClipTimingFallback({
-              iframe: previewIframeRef.current,
-              reloadPreview,
-              projectId: projectIdRef.current,
-              targetPath,
-              domId: element.domId,
-              label: "Move timeline clip",
-              coalesceKey,
-              recordEdit,
-              edit: { kind: "shift", delta: updates.start - element.start },
-            }),
+          enqueueEdit(element, "Move timeline clip", buildMovePatches, coalesceKey).then(
+            finishMoveGsapSync,
           );
         return reorderDone
           .then(() => {
@@ -221,9 +226,10 @@ export function useTimelineEditing({
                   readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                   publishSession: publishSdkSession,
                 },
-                { label: "Move timeline clip", coalesceKey },
+                { label: "Move timeline clip", coalesceKey, skipRefresh: true },
               ).then((result) => {
                 if (!cutoverCommittedOrThrow(result)) return moveFallback();
+                return finishMoveGsapSync();
               });
             }
             return moveFallback();
@@ -250,6 +256,7 @@ export function useTimelineEditing({
       timelineElements,
       handleDomZIndexReorderCommitRef,
       showToast,
+      invalidateGsapCache,
     ],
   );
 
@@ -287,23 +294,25 @@ export function useTimelineEditing({
       // script (timing-only resize) — same no-flash path as move; full reload is
       // the fallback.
       const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
+      const finishResizeGsapSync = () =>
+        finishClipTimingFallback({
+          iframe: previewIframeRef.current,
+          reloadPreview,
+          projectId: projectIdRef.current,
+          targetPath,
+          domId: element.domId,
+          label: "Resize timeline clip",
+          coalesceKey,
+          recordEdit,
+          edit: {
+            kind: "scale",
+            from: { start: element.start, duration: element.duration },
+            to: { start: updates.start, duration: updates.duration },
+          },
+        }).finally(() => invalidateGsapCache?.());
       const resizeFallback = () =>
-        enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() =>
-          finishClipTimingFallback({
-            iframe: previewIframeRef.current,
-            reloadPreview,
-            projectId: projectIdRef.current,
-            targetPath,
-            domId: element.domId,
-            label: "Resize timeline clip",
-            coalesceKey,
-            recordEdit,
-            edit: {
-              kind: "scale",
-              from: { start: element.start, duration: element.duration },
-              to: { start: updates.start, duration: updates.duration },
-            },
-          }),
+        enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(
+          finishResizeGsapSync,
         );
       const persistDone =
         sdkSession && element.hfId && !hasPbsAdjustment && !needsExtension
@@ -323,9 +332,10 @@ export function useTimelineEditing({
                 readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
                 publishSession: publishSdkSession,
               },
-              { label: "Resize timeline clip", coalesceKey },
+              { label: "Resize timeline clip", coalesceKey, skipRefresh: true },
             ).then((result) => {
               if (!cutoverCommittedOrThrow(result)) return resizeFallback();
+              return finishResizeGsapSync();
             })
           : resizeFallback();
       return persistDone.catch((error) => {
@@ -346,6 +356,7 @@ export function useTimelineEditing({
       reloadPreview,
       domEditSaveTimestampRef,
       showToast,
+      invalidateGsapCache,
     ],
   );
 

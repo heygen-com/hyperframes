@@ -1,6 +1,11 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H, getTimelineRowFromY, INSERT_BOUNDARY_BAND } from "./timelineLayout";
+import {
+  getTimelineInsertBoundaryBand,
+  getTimelineRowFromY,
+  getTimelineRowHeight,
+  getTimelineRowPositionFromY,
+} from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
@@ -27,6 +32,7 @@ export interface DragPreviewContext {
   pps: number;
   duration: number;
   trackOrder: number[];
+  rowHeights?: readonly number[];
   elements: TimelineElement[];
   selectedKeys: ReadonlySet<string>;
   buildSnapTargets: BuildSnapTargets;
@@ -81,20 +87,26 @@ function resolveDropPlacement(
   desiredTrack: number,
   ctx: DragPreviewContext,
 ): { track: number; insertRow: number | null } {
-  const { scroll, trackOrder, elements } = ctx;
+  const { scroll, trackOrder, rowHeights, elements } = ctx;
   // rowFloat = the pointer's position in track-heights from the top lane; a
   // near-boundary hover requests a deliberate new-track insert. Uses the
   // shared row→y inverse so the top breathing pad is subtracted consistently.
-  const rowFloat = scroll
-    ? getTimelineRowFromY(clientY - scroll.getBoundingClientRect().top + scroll.scrollTop)
-    : 0;
-  // Geometry-exact band (the clip inset) so an insert only arms in the visible
-  // gutter BETWEEN clip bodies — dragging over a clip body is a lane move, never a
-  // phantom insert (the plain-horizontal-drag misfire). See INSERT_BOUNDARY_BAND.
-  const rawInsertRow = resolveInsertRow(rowFloat, trackOrder.length, INSERT_BOUNDARY_BAND);
+  const rowPosition = scroll
+    ? getTimelineRowPositionFromY(
+        clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
+        rowHeights,
+      )
+    : { rowFloat: 0, row: 0, fraction: 0, rowHeight: getTimelineRowHeight(0, rowHeights) };
+  // Geometry-exact band (the clip inset divided by this row's actual height) so
+  // an insert only arms in the visible gutter between clip bodies.
+  const rawInsertRow = resolveInsertRow(
+    rowPosition.rowFloat,
+    trackOrder.length,
+    getTimelineInsertBoundaryBand(rowPosition.rowHeight),
+  );
   // Pointer sub-row half: when a drop must auto-create a track (aimed span
   // occupied, no free lane), open it on the side the pointer is nearer.
-  const preferInsertAbove = rowFloat - Math.floor(rowFloat) < 0.5;
+  const preferInsertAbove = rowPosition.fraction < 0.5;
   const audioTracks =
     ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
   return resolveZoneDropPlacement({
@@ -120,24 +132,34 @@ export function computeDragPreview(
 ): DraggedClipState {
   const { scroll, pps, duration, trackOrder, elements, selectedKeys, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
+  const scrollTop = scroll?.scrollTop ?? drag.originScrollTop;
+  const scrollRectTop = scroll?.getBoundingClientRect().top ?? 0;
+  const originRow = getTimelineRowFromY(
+    drag.originClientY - scrollRectTop + drag.originScrollTop,
+    ctx.rowHeights,
+  );
+  const currentRow = getTimelineRowFromY(clientY - scrollRectTop + scrollTop, ctx.rowHeights);
+  // resolveTimelineMove's vertical axis is expressed in track-height units.
+  // Feeding cumulative row coordinates with a unit height preserves its existing
+  // threshold/create-track behavior while supporting variable pixel heights.
   const nextMove = resolveTimelineMove(
     {
       start: drag.element.start,
       track: drag.element.track,
       duration: drag.element.duration,
       originClientX: drag.originClientX,
-      originClientY: drag.originClientY,
+      originClientY: originRow,
       originScrollLeft: drag.originScrollLeft,
-      originScrollTop: drag.originScrollTop,
+      originScrollTop: 0,
       currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
-      currentScrollTop: scroll?.scrollTop ?? drag.originScrollTop,
+      currentScrollTop: 0,
       pixelsPerSecond: pps,
-      trackHeight: TRACK_H,
+      trackHeight: 1,
       maxStart: dragMaxStart,
       trackOrder,
     },
     clientX,
-    clientY,
+    currentRow,
   );
   // The music track defines the beats, so it must not snap to them —
   // but it still snaps to the playhead and other clip edges.
