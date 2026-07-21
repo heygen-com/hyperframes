@@ -200,8 +200,8 @@ export function DomEditProvider({
     commitMutation,
     applyMarqueeSelection,
     handleUpdateKeyframeEase,
-    handleSetAllKeyframeEases,
     handleUpdateSegmentEase,
+    handleSetAllKeyframeEases,
   },
   children,
 }: {

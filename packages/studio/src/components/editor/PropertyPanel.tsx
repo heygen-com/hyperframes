@@ -568,8 +568,8 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               onUpdateArcSegment={onUpdateArcSegment}
               onUnroll={onUnroll}
               onUpdateKeyframeEase={onUpdateKeyframeEase}
-              onSetAllKeyframeEases={onSetAllKeyframeEases}
               onUpdateSegmentEase={onUpdateSegmentEase}
+              onSetAllKeyframeEases={onSetAllKeyframeEases}
             />
           )}
 
