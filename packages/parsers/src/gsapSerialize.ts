@@ -90,6 +90,35 @@ export interface GsapPercentageKeyframe {
   ease?: string;
 }
 
+export interface WritableGsapPercentageKeyframe extends GsapPercentageKeyframe {
+  auto?: boolean;
+}
+
+/**
+ * Collapse duplicate percentage entries before serializing an object literal.
+ * Matches addKeyframeToScript's merge contract: later properties/ease win while
+ * unrelated authored properties, an earlier ease, and endpoint auto markers survive.
+ */
+export function mergePercentageKeyframes(
+  keyframes: readonly WritableGsapPercentageKeyframe[],
+): WritableGsapPercentageKeyframe[] {
+  const byPercentage = new Map<number, WritableGsapPercentageKeyframe>();
+  for (const keyframe of keyframes) {
+    const existing = byPercentage.get(keyframe.percentage);
+    if (!existing) {
+      byPercentage.set(keyframe.percentage, {
+        ...keyframe,
+        properties: { ...keyframe.properties },
+      });
+      continue;
+    }
+    existing.properties = { ...existing.properties, ...keyframe.properties };
+    if (keyframe.ease !== undefined) existing.ease = keyframe.ease;
+    if (keyframe.auto) existing.auto = true;
+  }
+  return [...byPercentage.values()];
+}
+
 export type GsapKeyframeFormat = "percentage" | "object-array" | "simple-array";
 
 export interface GsapKeyframesData {

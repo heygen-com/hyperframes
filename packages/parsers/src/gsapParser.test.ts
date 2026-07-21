@@ -3056,6 +3056,29 @@ describe("single position write per element (consolidation)", () => {
     expect(out).not.toMatch(/gsap\.set\("#box",\s*\{\s*x:/);
     expect(parseGsapScript(out).animations.some((a) => "opacity" in a.properties)).toBe(true);
   });
+
+  it("remove-all-keyframes collapses synthetic motionPath keyframes to a held position", () => {
+    const script = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", {
+        motionPath: { path: [{ x: 0, y: 10 }, { x: 200, y: 40 }] },
+        duration: 2,
+        ease: "power1.inOut",
+      }, 1);
+    `;
+    const motionPathTween = parseGsapScript(script).animations.find(
+      (animation) => animation.arcPath?.enabled,
+    )!;
+
+    const out = removeAllKeyframesFromScript(script, motionPathTween.id);
+    const kept = posWritesFor(out, "#box");
+
+    expect(out).not.toBe(script);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].arcPath).toBeUndefined();
+    expect(kept[0].duration).toBe(0);
+    expect(kept[0].properties).toMatchObject({ x: 200, y: 40 });
+  });
 });
 
 describe("recast writer never doubles vars keys", () => {
