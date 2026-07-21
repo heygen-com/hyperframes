@@ -5,6 +5,7 @@ import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
+import { defaultThumbnailMode, type ThumbnailMode } from "../lib/thumbnailPolicy";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 
@@ -107,6 +108,7 @@ interface PlayerState extends KeyframeSlice {
   timelineProjectId: string | null;
   /** True while a beat dot is being dragged — hides the playhead guideline. */
   beatDragging: boolean;
+  thumbnailMode: ThumbnailMode;
   elements: TimelineElement[];
   selectedElementId: string | null;
   playbackRate: number;
@@ -185,6 +187,7 @@ interface PlayerState extends KeyframeSlice {
   setPlaybackRate: (rate: number) => void;
   setAudioMuted: (muted: boolean) => void;
   setLoopEnabled: (enabled: boolean) => void;
+  setThumbnailMode: (mode: ThumbnailMode) => void;
   setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
@@ -328,6 +331,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   timelineSessionEpoch: 0,
   timelineProjectId: null,
   beatDragging: false,
+  thumbnailMode: defaultThumbnailMode(readStudioUiPreferences().thumbnailMode),
   elements: [],
   selectedElementId: null,
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
@@ -450,6 +454,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ audioMuted: muted });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
+  setThumbnailMode: (mode) => {
+    writeStudioUiPreferences({ thumbnailMode: mode });
+    set({ thumbnailMode: mode });
+  },
   setZoomMode: (mode) => set({ zoomMode: mode }),
   clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
   setSelectedElementIds: (ids: Set<string>) => set({ selectedElementIds: new Set(ids) }),

@@ -10,6 +10,7 @@ export interface StudioUiPreferences {
   timelineHeight?: number;
   playbackRate?: number;
   audioMuted?: boolean;
+  thumbnailMode?: "adaptive" | "hidden";
   previewZoom?: StoredPreviewZoomState;
   recentBlocks?: string[];
   snapEnabled?: boolean;
@@ -69,6 +70,11 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.audioMuted === "boolean") {
       preferences.audioMuted = parsed.audioMuted;
+    }
+    if (parsed.thumbnailMode === "adaptive" || parsed.thumbnailMode === "hidden") {
+      preferences.thumbnailMode = parsed.thumbnailMode;
+    } else if (typeof parsed.thumbnailsEnabled === "boolean") {
+      preferences.thumbnailMode = parsed.thumbnailsEnabled ? "adaptive" : "hidden";
     }
     if (isRecord(parsed.previewZoom)) {
       const { zoomPercent, panX, panY } = parsed.previewZoom;

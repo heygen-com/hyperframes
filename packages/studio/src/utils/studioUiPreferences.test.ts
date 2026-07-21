@@ -65,6 +65,20 @@ describe("timelineSnapEnabled preference", () => {
   });
 });
 
+describe("thumbnailMode preference", () => {
+  it("round-trips the adaptive mode", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ thumbnailMode: "adaptive" }, storage);
+    expect(readStudioUiPreferences(storage).thumbnailMode).toBe("adaptive");
+  });
+
+  it("migrates the legacy boolean without retaining two owners", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ thumbnailsEnabled: false }));
+    expect(readStudioUiPreferences(storage).thumbnailMode).toBe("hidden");
+  });
+});
+
 describe("timeline zoom pin persistence", () => {
   it("round-trips a pinned manual zoom (survives the post-edit reload)", () => {
     const storage = createStorage();
