@@ -257,6 +257,23 @@ describe("removeKeyframeFromScript: array-form keyframes (recast + acorn parity)
     expect(removeKeyframeAcorn(arrayScript, id, 12)).toBe(arrayScript);
     expect(removeKeyframeRecast(arrayScript, id, 12)).toBe(arrayScript);
   });
+
+  it("removes duration-authored entries at their cumulative percentage", () => {
+    const durationScript = `
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#p", { keyframes: [
+        { x: 0, duration: 1 },
+        { x: 50, duration: 2 },
+        { x: 100, duration: 1 }
+      ] }, 0.2);
+    `;
+    const id = acornId(durationScript);
+    const acorn = removeKeyframeAcorn(durationScript, id, 75);
+    const recast = removeKeyframeRecast(durationScript, id, 75);
+
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+    expect(JSON.stringify(shapeOf(acorn).keyframes)).not.toContain('"x":50');
+  });
 });
 
 const CONVERT_FIXTURES: Array<{
@@ -1049,6 +1066,10 @@ const UPD_ARRAY_SCRIPT = `
   const tl = gsap.timeline({ paused: true });
   tl.to("#dot", { keyframes: [{ x: 0, y: 0 }, { x: 50, y: 80 }, { x: 100, y: 0 }], duration: 1 }, 0.2);
 `;
+const DURATION_ARRAY_SCRIPT = `
+  const tl = gsap.timeline({ paused: true });
+  tl.to("#dot", { keyframes: [{ x: 0, duration: 1 }, { x: 50, duration: 2 }, { x: 100, duration: 1 }] }, 0.2);
+`;
 const UPD_MOTION_PATH_SCRIPT = `
   const tl = gsap.timeline({ paused: true });
   tl.to("#title", { motionPath: { path: [{ x: 0, y: 0 }, { x: 100, y: 40 }] }, duration: 1, ease: "power1.inOut" }, 0.2);
@@ -1089,6 +1110,20 @@ describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
     expectParity(UPD_ARRAY_SCRIPT, 49, { x: 55, y: 85 });
   });
 
+  it("targets duration-authored array entries at their cumulative percentage", () => {
+    const id = acornId(DURATION_ARRAY_SCRIPT);
+    const acorn = updateKeyframeAcorn(DURATION_ARRAY_SCRIPT, id, 75, {}, "spring(0.42)");
+    const recast = updateKeyframeRecast(DURATION_ARRAY_SCRIPT, id, 75, {}, "spring(0.42)");
+
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+    for (const output of [acorn, recast]) {
+      const keyframes = parseGsapScript(output).animations[0]!.keyframes!.keyframes;
+      expect(keyframes.map((keyframe) => keyframe.percentage)).toEqual([25, 75, 100]);
+      expect(keyframes[1]!.ease).toBe("spring(0.42)");
+      expect(keyframes[0]!.ease).toBeUndefined();
+    }
+  });
+
   it("no-op when the object-form percentage is absent (both writers)", () => {
     const id = acornId(UPD_OBJ_SCRIPT);
     expect(updateKeyframeAcorn(UPD_OBJ_SCRIPT, id, 33, { opacity: 0.4 })).toBe(UPD_OBJ_SCRIPT);
@@ -1115,20 +1150,7 @@ describe("parity: updateKeyframeInScript (recast vs acorn)", () => {
     expect(parseGsapScript(recast).animations[0]?.ease).toBe(ease);
   });
 
-  // KNOWN DIVERGENCE (acorn-array bug, follow-up — NOT a test artifact):
-  // For PARTIAL props on ARRAY-form keyframes the two writers disagree. recast's
-  // array branch (gsapParser.updateKeyframeInScript) does a whole-value REPLACE
-  // — `arrVal.elements[i] = buildKeyframeValueNode(properties, ease)` — matching
-  // its own object-form branch and the documented replace contract. acorn's
-  // array branch (updateArrayKeyframeByPct in gsapWriterAcorn) MERGES instead —
-  // `{ ...valueNodeToRecord(el), ...properties }` — so updating `50%` with only
-  // `{ x: 60 }` leaves recast at { x: 60 } but acorn at { x: 60, y: 80 }. acorn's
-  // array path is inconsistent with both recast AND acorn's own object path.
-  // Real callers (Studio drag, SDK mutate.ts) always pass the COMPLETE keyframe
-  // value, so the bug is latent in production — but it's a genuine writer gap to
-  // fix in gsapWriterAcorn, out of scope for this test-only change. Skipped (not
-  // deleted) so the contract is documented and the fix has a ready assertion.
-  it.skip("array-form PARTIAL props: recast replaces, acorn merges (acorn bug)", () => {
+  it("array-form partial props preserve the remaining authored keyframe fields", () => {
     const id = acornId(UPD_ARRAY_SCRIPT);
     const acorn = updateKeyframeAcorn(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
     const recast = updateKeyframeRecast(UPD_ARRAY_SCRIPT, id, 50, { x: 60 });
@@ -1258,6 +1280,17 @@ describe("moveKeyframeInScript: array-form keyframes (recast + acorn parity)", (
     expect(moveKeyframeAcorn(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
     expect(moveKeyframeRecast(KF_ADD_ARRAY_SCRIPT, id, 50, 100)).toBe(KF_ADD_ARRAY_SCRIPT);
   });
+
+  it("normalizes duration-authored percentages before moving", () => {
+    const id = acornId(DURATION_ARRAY_SCRIPT);
+    const acorn = moveKeyframeAcorn(DURATION_ARRAY_SCRIPT, id, 75, 60);
+    const recast = moveKeyframeRecast(DURATION_ARRAY_SCRIPT, id, 75, 60);
+
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+    expect(shapeOf(acorn).keyframes?.keyframes.map((keyframe) => keyframe.percentage)).toEqual([
+      25, 60, 100,
+    ]);
+  });
 });
 
 // ── resizeKeyframedTweenInScript (boundary drag: re-key + grow window) ────────
@@ -1372,6 +1405,22 @@ describe("resizeKeyframedTweenInScript: array-form keyframes (recast + acorn par
     ).toEqual(
       modelOf(resizeKeyframedTweenRecast(KF_ADD_ARRAY_SCRIPT, id, 0.2, 2, RESIZE_ARRAY_REMAP)),
     );
+  });
+
+  it("normalizes duration-authored percentages before resizing", () => {
+    const id = acornId(DURATION_ARRAY_SCRIPT);
+    const remap = [
+      { from: 25, to: 20 },
+      { from: 75, to: 60 },
+      { from: 100, to: 100 },
+    ];
+    const acorn = resizeKeyframedTweenAcorn(DURATION_ARRAY_SCRIPT, id, 0.2, 5, remap);
+    const recast = resizeKeyframedTweenRecast(DURATION_ARRAY_SCRIPT, id, 0.2, 5, remap);
+
+    expect(modelOf(acorn)).toEqual(modelOf(recast));
+    expect(shapeOf(acorn).keyframes?.keyframes.map((keyframe) => keyframe.percentage)).toEqual([
+      20, 60, 100,
+    ]);
   });
 });
 

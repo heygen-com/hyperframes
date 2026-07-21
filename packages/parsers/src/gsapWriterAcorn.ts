@@ -26,6 +26,10 @@ import {
 } from "./gsapParserAcorn.js";
 import { classifyPropertyGroup } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
+import {
+  findObjectArrayKeyframeIndex,
+  getObjectArrayKeyframeTiming,
+} from "./gsapObjectArrayTiming.js";
 import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapSerialize.js";
 import * as acornWalk from "acorn-walk";
 
@@ -943,8 +947,6 @@ export function updateKeyframeInScript(
   return updateObjectKeyframe(script, match.prop, properties, ease);
 }
 
-// ponytail: even-spacing index map; if array keyframes ever carry per-element
-// `duration`, switch to matching the closest cumulative position.
 function updateArrayKeyframeByPct(
   script: string,
   arrayNode: Node,
@@ -955,13 +957,18 @@ function updateArrayKeyframeByPct(
   const elements = ((arrayNode.elements ?? []) as Array<Node | null>).filter(
     (el): el is Node => !!el && el.type === "ObjectExpression",
   );
-  const n = elements.length;
-  if (n === 0) return script;
-  const idx = n > 1 ? Math.round((percentage / 100) * (n - 1)) : 0;
-  const el = elements[Math.max(0, Math.min(n - 1, idx))];
+  if (elements.length === 0) return script;
+  const records = elements.map((element) => valueNodeToRecord(element, script));
+  const idx = findObjectArrayKeyframeIndex(
+    records.map((record) => (typeof record.duration === "number" ? record.duration : undefined)),
+    percentage,
+    PCT_TOLERANCE,
+  );
+  if (idx === null) return script;
+  const el = elements[idx];
   if (!el) return script;
   const merged: Record<string, number | string> = {
-    ...valueNodeToRecord(el, script),
+    ...records[idx],
     ...properties,
   };
   if (ease) merged.ease = ease;
@@ -1040,23 +1047,31 @@ function locateWithKeyframes(
 }
 
 /** Locate a tween's keyframes object, converting a flat tween first if absent. */
-// Array-form keyframes (`keyframes: [{x,y}, …]`) → even-percentage object form
-// (`{ "0%": {…}, "33.3%": {…}, … }`). Inserting a keyframe needs percentage keys,
-// which an even array can't host. Runtime-identical; mirrors the recast path.
+// Array-form keyframes → percentage-object form. Duration-authored entries use
+// cumulative positions; duration metadata moves to the outer tween.
 function convertArrayKeyframesToObject(script: string, target: Node): string {
   const kfPropNode = findPropertyNode(target.call.varsArg, "keyframes");
   if (!kfPropNode || kfPropNode.value?.type !== "ArrayExpression") return script;
   const els = ((kfPropNode.value.elements ?? []) as Array<Node | null>).filter(
     (el): el is Node => !!el && el.type === "ObjectExpression",
   );
-  const n = els.length;
-  if (n === 0) return script;
+  if (els.length === 0) return script;
+  const records = els.map((element) => valueNodeToRecord(element, script));
+  const timing = getObjectArrayKeyframeTiming(
+    records.map((record) => (typeof record.duration === "number" ? record.duration : undefined)),
+  );
   const entries = els.map((el, i) => {
-    const pct = n > 1 ? Math.round((i / (n - 1)) * 1000) / 10 : 0;
-    return `${JSON.stringify(`${pct}%`)}: ${script.slice(el.start, el.end)}`;
+    const { duration: _duration, ...record } = records[i]!;
+    return `${JSON.stringify(`${timing.percentages[i]}%`)}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
   ms.overwrite(kfPropNode.value.start, kfPropNode.value.end, `{ ${entries.join(", ")} }`);
+  if (
+    timing.totalDuration !== undefined &&
+    findPropertyNode(target.call.varsArg, "duration") === undefined
+  ) {
+    upsertProp(ms, target.call.varsArg, "duration", timing.totalDuration);
+  }
   return ms.toString();
 }
 
@@ -1206,18 +1221,8 @@ function collapseKeyframesToFlat(
   ms.overwrite(varsNode.start, varsNode.end, `{ ${entries.join(", ")} }`);
 }
 
-/** Implicit tween-relative percentage of array-form keyframe index `i` of `n`
- *  (GSAP distributes array keyframes evenly: 0%, 1/(n-1), …, 100%). */
-function arrayKeyframePct(i: number, n: number): number {
-  return n > 1 ? (i / (n - 1)) * 100 : 0;
-}
-
-// Array-form keyframes (`keyframes: [{x,y}, …]`) carry no explicit percentages —
-// GSAP distributes them evenly. removeKeyframeFromScript only handled the
-// object-form (`keyframes: { "50%": {…} }`), so removing from an array-form tween
-// was a silent no-op (and the downstream hold-sync then stranded an `hf-hold`).
-// Resolve the element by its implicit percentage and splice it out; collapse to a
-// flat tween when fewer than two remain (parity with the object-form path).
+// Resolve an array entry through the parser's cumulative/even timing rule, then
+// splice it out; collapse when fewer than two remain.
 function removeArrayKeyframe(
   ms: MagicString,
   varsArg: Node,
@@ -1228,19 +1233,14 @@ function removeArrayKeyframe(
   const elements: Node[] = (arrNode.elements ?? []).filter(
     (e: Node | null): e is Node => !!e && e.type === "ObjectExpression",
   );
-  const n = elements.length;
-  if (n === 0) return false;
-
-  let matchIdx = -1;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < n; i++) {
-    const dist = Math.abs(arrayKeyframePct(i, n) - percentage);
-    if (dist <= PCT_TOLERANCE && dist < bestDist) {
-      matchIdx = i;
-      bestDist = dist;
-    }
-  }
-  if (matchIdx === -1) return false;
+  if (elements.length === 0) return false;
+  const records = elements.map((element) => valueNodeToRecord(element, script));
+  const matchIdx = findObjectArrayKeyframeIndex(
+    records.map((record) => (typeof record.duration === "number" ? record.duration : undefined)),
+    percentage,
+    PCT_TOLERANCE,
+  );
+  if (matchIdx === null) return false;
 
   const remaining = elements.filter((_, i) => i !== matchIdx);
   if (remaining.length < 2) {
