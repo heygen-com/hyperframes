@@ -1,11 +1,249 @@
-import { memo, useRef, useState } from "react";
-import { moveBeatCompositionTime, deleteBeatAtCompositionTime } from "../../utils/beatEditActions";
+import { memo, useSyncExternalStore } from "react";
+import {
+  deleteBeatAtCompositionTime,
+  moveBeatCompositionTime,
+  remapBeatAnalysisToComposition,
+} from "../../utils/beatEditActions";
 import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y, getTimelineBeatEntries } from "./timelineLayout";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
+import {
+  applyTimelineAutoScrollStep,
+  resolveTimelineAutoScrollLoopAction,
+} from "./timelineEditing";
+import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 
 export const BEAT_BAND_H = 14; // dark band height at top of track
 const BEAT_HIT_W = 12; // grab width per beat (px)
+
+interface BeatDragActor {
+  readonly pointerId: number;
+  readonly index: number;
+  readonly startX: number;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly originalTime: number;
+  readonly pixelsPerSecond: number;
+  readonly startScrollLeft: number;
+  readonly dx: number;
+  readonly started: boolean;
+  readonly sessionEpoch: number;
+  readonly projectId: string | null;
+  readonly musicElement: NonNullable<ReturnType<typeof getTimelineElementIndexes>["musicElement"]>;
+  readonly musicKey: string;
+  readonly musicSrc: string;
+  readonly scroll: HTMLElement;
+}
+
+let beatDragActor: BeatDragActor | null = null;
+let beatDragRaf = 0;
+let unsubscribeBeatDragSession: (() => void) | null = null;
+let beatDragViewportObserver: MutationObserver | null = null;
+const beatDragSubscribers = new Set<() => void>();
+
+function publishBeatDrag(next: BeatDragActor | null): void {
+  beatDragActor = next;
+  for (const subscriber of beatDragSubscribers) subscriber();
+}
+
+function subscribeBeatDrag(subscriber: () => void): () => void {
+  beatDragSubscribers.add(subscriber);
+  return () => beatDragSubscribers.delete(subscriber);
+}
+
+function getBeatDragSnapshot(): BeatDragActor | null {
+  return beatDragActor;
+}
+
+function releaseBeatDragResources(actor: BeatDragActor): void {
+  if (beatDragRaf !== 0) {
+    cancelAnimationFrame(beatDragRaf);
+    beatDragRaf = 0;
+  }
+  unsubscribeBeatDragSession?.();
+  unsubscribeBeatDragSession = null;
+  beatDragViewportObserver?.disconnect();
+  beatDragViewportObserver = null;
+  window.removeEventListener("pointermove", handleBeatDragPointerMove);
+  window.removeEventListener("pointerup", handleBeatDragPointerUp);
+  window.removeEventListener("pointercancel", handleBeatDragPointerCancel);
+  window.removeEventListener("lostpointercapture", handleBeatDragPointerCancel);
+  window.removeEventListener("keydown", handleBeatDragKeyDown, true);
+  window.removeEventListener("blur", cancelBeatDrag);
+  try {
+    if (actor.scroll.hasPointerCapture?.(actor.pointerId)) {
+      actor.scroll.releasePointerCapture(actor.pointerId);
+    }
+  } catch {
+    // Window listeners retain terminal ownership when pointer capture is unavailable.
+  }
+  usePlayerStore.getState().setBeatDragging(false);
+}
+
+/** Claiming clears the shared actor before cleanup, so later terminal events are no-ops. */
+function claimBeatDrag(pointerId?: number): BeatDragActor | null {
+  const actor = beatDragActor;
+  if (!actor || (pointerId !== undefined && actor.pointerId !== pointerId)) return null;
+  publishBeatDrag(null);
+  releaseBeatDragResources(actor);
+  return actor;
+}
+
+function cancelBeatDrag(): void {
+  claimBeatDrag();
+}
+
+function beatDragTime(actor: BeatDragActor): number {
+  return Math.max(0, actor.originalTime + actor.dx / actor.pixelsPerSecond);
+}
+
+function isBeatDragSourceCurrent(
+  actor: BeatDragActor,
+  state: ReturnType<typeof usePlayerStore.getState>,
+): boolean {
+  const currentMusic = getTimelineElementIndexes(state.elements).musicElement;
+  if (
+    !actor.scroll.isConnected ||
+    state.timelineSessionEpoch !== actor.sessionEpoch ||
+    state.timelineProjectId !== actor.projectId ||
+    currentMusic !== actor.musicElement ||
+    (currentMusic.key ?? currentMusic.id) !== actor.musicKey ||
+    currentMusic.src !== actor.musicSrc
+  ) {
+    return false;
+  }
+  const analysis = remapBeatAnalysisToComposition(
+    state.beatAnalysis,
+    currentMusic,
+    state.beatEdits,
+  );
+  return analysis?.beatTimes.some((time) => Math.abs(time - actor.originalTime) < 1e-3) === true;
+}
+
+function updateBeatDrag(clientX: number, clientY: number): BeatDragActor | null {
+  const actor = beatDragActor;
+  if (!actor) return null;
+  const pointerDx = clientX - actor.startX;
+  const next = {
+    ...actor,
+    clientX,
+    clientY,
+    dx: pointerDx + actor.scroll.scrollLeft - actor.startScrollLeft,
+    started: actor.started || Math.abs(pointerDx) > 2,
+  };
+  publishBeatDrag(next);
+  usePlayerStore.getState().requestSeek(beatDragTime(next));
+  return next;
+}
+
+function stepBeatDragAutoScroll(): void {
+  beatDragRaf = 0;
+  const actor = beatDragActor;
+  if (!actor?.started) return;
+  if (!applyTimelineAutoScrollStep(actor.scroll, actor.clientX, actor.clientY)) return;
+  updateBeatDrag(actor.clientX, actor.clientY);
+  beatDragRaf = requestAnimationFrame(stepBeatDragAutoScroll);
+}
+
+function syncBeatDragAutoScroll(actor: BeatDragActor): void {
+  const action = resolveTimelineAutoScrollLoopAction(
+    actor.scroll,
+    actor.clientX,
+    actor.clientY,
+    beatDragRaf !== 0,
+  );
+  if (action === "start" && actor.started) {
+    beatDragRaf = requestAnimationFrame(stepBeatDragAutoScroll);
+  } else if (action === "stop" && beatDragRaf !== 0) {
+    cancelAnimationFrame(beatDragRaf);
+    beatDragRaf = 0;
+  }
+}
+
+function handleBeatDragPointerMove(event: PointerEvent): void {
+  if (event.pointerId !== beatDragActor?.pointerId) return;
+  event.preventDefault();
+  const actor = updateBeatDrag(event.clientX, event.clientY);
+  if (actor) syncBeatDragAutoScroll(actor);
+}
+
+function handleBeatDragPointerUp(event: PointerEvent): void {
+  if (event.pointerId !== beatDragActor?.pointerId) return;
+  const latest = updateBeatDrag(event.clientX, event.clientY);
+  const actor = claimBeatDrag(event.pointerId);
+  if (!actor || !latest?.started) return;
+  const store = usePlayerStore.getState();
+  if (!isBeatDragSourceCurrent(actor, store)) return;
+  const newTime = beatDragTime(latest);
+  moveBeatCompositionTime(actor.originalTime, newTime);
+  store.requestSeek(newTime);
+}
+
+function handleBeatDragPointerCancel(event: PointerEvent): void {
+  claimBeatDrag(event.pointerId);
+}
+
+function handleBeatDragKeyDown(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !beatDragActor) return;
+  event.preventDefault();
+  event.stopPropagation();
+  cancelBeatDrag();
+}
+
+function beginBeatDrag(
+  event: React.PointerEvent<HTMLDivElement>,
+  index: number,
+  originalTime: number,
+  pixelsPerSecond: number,
+): void {
+  if (event.button !== 0 || !(pixelsPerSecond > 0)) return;
+  const scroll = event.currentTarget.closest<HTMLElement>("[data-timeline-scroll-viewport]");
+  if (!scroll) return;
+  cancelBeatDrag();
+  const store = usePlayerStore.getState();
+  const musicElement = getTimelineElementIndexes(store.elements).musicElement;
+  if (!musicElement?.src) return;
+  const actor: BeatDragActor = {
+    pointerId: event.pointerId,
+    index,
+    startX: event.clientX,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    originalTime,
+    pixelsPerSecond,
+    startScrollLeft: scroll.scrollLeft,
+    dx: 0,
+    started: false,
+    sessionEpoch: store.timelineSessionEpoch,
+    projectId: store.timelineProjectId,
+    musicElement,
+    musicKey: musicElement.key ?? musicElement.id,
+    musicSrc: musicElement.src,
+    scroll,
+  };
+  if (!isBeatDragSourceCurrent(actor, store)) return;
+  publishBeatDrag(actor);
+  window.addEventListener("pointermove", handleBeatDragPointerMove);
+  window.addEventListener("pointerup", handleBeatDragPointerUp);
+  window.addEventListener("pointercancel", handleBeatDragPointerCancel);
+  window.addEventListener("lostpointercapture", handleBeatDragPointerCancel);
+  window.addEventListener("keydown", handleBeatDragKeyDown, true);
+  window.addEventListener("blur", cancelBeatDrag);
+  unsubscribeBeatDragSession = usePlayerStore.subscribe((state) => {
+    if (!isBeatDragSourceCurrent(actor, state)) cancelBeatDrag();
+  });
+  beatDragViewportObserver = new MutationObserver(() => {
+    if (!actor.scroll.isConnected) cancelBeatDrag();
+  });
+  beatDragViewportObserver.observe(document, { childList: true, subtree: true });
+  try {
+    scroll.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Window listeners retain terminal ownership when pointer capture is unavailable.
+  }
+  store.setBeatDragging(true);
+  store.requestSeek(Math.max(0, originalTime));
+}
 
 /** Hide both layers when beats are packed tighter than this (px) — too dense to read. */
 function beatsTooDense(beatTimes: number[], pps: number): boolean {
@@ -96,11 +334,22 @@ export const BeatStrip = memo(function BeatStrip({
   pps: number;
   renderTimeRange?: TimelineTimeRange;
 }) {
-  // Active drag: which beat and how far (px) it's been dragged.
-  const [drag, setDrag] = useState<{ index: number; dx: number } | null>(null);
-  const dragRef = useRef<{ index: number; startX: number; origTime: number } | null>(null);
+  const activeActor = useSyncExternalStore(
+    subscribeBeatDrag,
+    getBeatDragSnapshot,
+    getBeatDragSnapshot,
+  );
+  const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+  const projectId = usePlayerStore((state) => state.timelineProjectId);
 
   if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
+  const drag =
+    activeActor &&
+    activeActor.sessionEpoch === sessionEpoch &&
+    activeActor.projectId === projectId &&
+    Math.abs((beatTimes[activeActor.index] ?? Number.NaN) - activeActor.originalTime) < 1e-3
+      ? activeActor
+      : null;
   const cy = BEAT_BAND_H / 2;
   const beatEntries = getTimelineBeatEntries(
     beatTimes,
@@ -141,36 +390,7 @@ export const BeatStrip = memo(function BeatStrip({
               // selection (which otherwise "selects" the whole panel mid-drag).
               e.preventDefault();
               e.stopPropagation();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              dragRef.current = { index: i, startX: e.clientX, origTime: t };
-              setDrag({ index: i, dx: 0 });
-              usePlayerStore.getState().setBeatDragging(true); // hide the playhead guideline
-              usePlayerStore.getState().requestSeek(Math.max(0, t)); // scrub audio at beat
-            }}
-            onPointerMove={(e) => {
-              const d = dragRef.current;
-              if (!d || d.index !== i) return;
-              e.preventDefault();
-              const dx = e.clientX - d.startX;
-              setDrag({ index: i, dx });
-              // Scrub the audio (and move the playhead) to follow the dragged beat.
-              usePlayerStore.getState().requestSeek(Math.max(0, d.origTime + dx / pps));
-            }}
-            onPointerUp={(e) => {
-              const d = dragRef.current;
-              dragRef.current = null;
-              setDrag(null);
-              usePlayerStore.getState().setBeatDragging(false);
-              if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-              if (!d || d.index !== i) return;
-              const dx = e.clientX - d.startX;
-              if (Math.abs(dx) > 2) {
-                const newTime = Math.max(0, d.origTime + dx / pps);
-                moveBeatCompositionTime(d.origTime, newTime);
-                usePlayerStore.getState().requestSeek(newTime); // park scrubber at new beat
-              }
+              beginBeatDrag(e, i, t, pps);
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
