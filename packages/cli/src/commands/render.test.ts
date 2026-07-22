@@ -148,6 +148,12 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 vi.mock("../browser/ffmpeg.js", () => ({
+  H264EncoderUnavailableError: class H264EncoderUnavailableError extends Error {
+    constructor() {
+      super("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
+      this.name = "H264EncoderUnavailableError";
+    }
+  },
   detectH264EncoderMode: vi.fn(() => {
     if (ffmpegEncoderState.error) throw ffmpegEncoderState.error;
     return ffmpegEncoderState.mode;
@@ -396,6 +402,30 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.useGpu).toBe(true);
+  });
+
+  it("rejects MP4 before producer startup when FFmpeg has no supported H.264 encoder", async () => {
+    const { H264EncoderUnavailableError } = await import("../browser/ffmpeg.js");
+    ffmpegEncoderState.error = new H264EncoderUnavailableError();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(
+      renderLocal("/tmp/project", "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "high",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "force-sdr",
+        quiet: true,
+      }),
+    ).rejects.toThrow("Command failed");
+
+    expect(producerState.createdJobs).toHaveLength(0);
+    const output = error.mock.calls.flat().join("\n");
+    expect(output).toContain("MP4 H.264 encoder unavailable");
+    expect(output).toContain("brew install ffmpeg");
+    expect(output).toContain("--format webm");
   });
 
   it("lets the encoder surface its own error when capability detection fails", async () => {
