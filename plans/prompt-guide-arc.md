@@ -1,6 +1,6 @@
 # Prompt Guide arc restructure — novice → capstone
 
-Status: approved design 2026-07-22. Owner: Vance. Supersedes the _structure_ of
+Status: implemented 2026-07-22. Owner: Vance. Supersedes the _structure_ of
 `plans/prompt-guide-expansion.md` (its content and validation rule carry over unchanged).
 Lands on `fix/prompt-guide-validation-bugs`, amending PR #2109.
 
