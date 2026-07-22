@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- mk-emphasis-type ------------------------------------------------
+         Oversized low-contrast background word sliding slowly behind the
+         subject (the promo's "EMPHASIS" texture type). Decorative only —
+         keep it behind real content and mark it aria-hidden. */
+      .mk-emphasis {
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-emph-color: rgba(29, 29, 31, 0.07); /* dark scheme: rgba(245,245,247,0.08) */
+
+        position: absolute;
+        font-family: var(--mk-font);
+        font-weight: 600;
+        font-size: 260px;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        white-space: nowrap;
+        text-transform: uppercase;
+        color: var(--mk-emph-color);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .mk-emphasis CSS, the markup
+         below (keep aria-hidden + data-layout-allow-overflow — the word is
+         decorative and usually wider than the canvas), and the helpers. -->
+    <div
+      id="mk-emph-root"
+      data-composition-id="mk-emphasis-type"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        class="mk-emphasis"
+        id="mk-emph-demo"
+        aria-hidden="true"
+        data-layout-allow-overflow
+        style="top: 400px; left: -40px"
+      >
+        Emphasis
+      </div>
+      <div
+        id="mk-emph-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script, then:
+        //   mkEmphasisIn(tl, "#mk-my-word", 1.0, { drift: -120, hold: 6 });
+        //   mkEmphasisOut(tl, "#mk-my-word", 7.5);
+        window.mkEmphasisIn = function (tl, target, at, opts) {
+          opts = opts || {};
+          var drift = opts.drift === undefined ? -100 : opts.drift;
+          var hold = opts.hold === undefined ? 5 : opts.hold;
+          gsap.set(target, { opacity: 0, x: 40 });
+          tl.to(target, { opacity: 1, duration: 1.0, ease: "power2.out" }, at);
+          tl.to(target, { x: 40 + drift, duration: hold, ease: "sine.inOut" }, at);
+        };
+        window.mkEmphasisOut = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.5, ease: "power2.in" }, at);
+        };
+
+        // Self-preview timeline (not part of the snippet you copy).
+        var tl = gsap.timeline({ paused: true });
+        window.mkEmphasisIn(tl, "#mk-emph-demo", 0.3, { drift: -110, hold: 3.2 });
+        window.mkEmphasisOut(tl, "#mk-emph-demo", 3.4);
+        tl.set("#mk-emph-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["mk-emphasis-type"] = tl;
+      })();
+    </script>
+  </body>
+</html>

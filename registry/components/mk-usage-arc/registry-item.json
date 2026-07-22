@@ -1,0 +1,19 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-usage-arc",
+  "type": "hyperframes:component",
+  "title": "Hairline Arc Gauge",
+  "description": "Thin circular gauge that draws on while its percentage counts up; one helper call drives both",
+  "tags": [
+    "data-viz",
+    "gauge",
+    "minimal"
+  ],
+  "files": [
+    {
+      "path": "mk-usage-arc.html",
+      "target": "compositions/components/mk-usage-arc.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

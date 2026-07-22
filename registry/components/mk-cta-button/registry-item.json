@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-cta-button",
+  "type": "hyperframes:component",
+  "title": "Pill CTA Button",
+  "description": "Rounded call-to-action button with arrow, optional outline frame with shadow, frosted variant, and an arrow-nudge helper",
+  "tags": [
+    "cta",
+    "button",
+    "minimal",
+    "overlay"
+  ],
+  "files": [
+    {
+      "path": "mk-cta-button.html",
+      "target": "compositions/components/mk-cta-button.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

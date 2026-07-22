@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #mk-cw-root {
+        /* ---- mk tokens: override in the host to re-skin the family ---- */
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-ink: #1d1d1f;
+        --mk-paper: #ffffff;
+        --mk-blob-1: #ff7ac8;
+        --mk-blob-2: #45d6c8;
+        --mk-radius-card: 40px;
+        --mk-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      /* the wall: paper sheet + tiled word rows + inversion layer, exits as one */
+      #mk-cw-wall {
+        position: absolute;
+        inset: 0;
+        background: var(--mk-paper);
+        /* no overflow:hidden — the composition root clips; isolation keeps the
+           difference blend scoped to the wall's own tiles */
+        isolation: isolate;
+      }
+      .mk-cw-row {
+        position: absolute;
+        white-space: nowrap;
+        font-family: var(--mk-font);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: var(--mk-ink);
+        line-height: 1;
+      }
+      .mk-cw-tile {
+        display: inline-block;
+      }
+      /* inversion sweep — a paper-colored rect in difference blend:
+         a paper-colored rect XORs the wall, flipping paper<->ink as it arrives */
+      #mk-cw-invert {
+        position: absolute;
+        inset: 0;
+        background: var(--mk-paper);
+        mix-blend-mode: difference;
+      }
+      /* the outgoing frame shrinking to a rounded card mid-transition */
+      #mk-cw-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        border-radius: 0;
+        overflow: hidden;
+        background: linear-gradient(120deg, #fdfbfd 0%, var(--mk-blob-1) 38%, var(--mk-blob-2) 100%);
+        box-shadow: var(--mk-shadow);
+        transform-origin: 50% 50%;
+      }
+      #mk-cw-card img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mk-cw-root"
+      data-composition-id="mk-clone-wall-transition"
+      data-start="0"
+      data-duration="2.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="mk-cw-wall" data-layout-allow-overflow>
+        <div id="mk-cw-tiles" data-layout-allow-overflow></div>
+        <div id="mk-cw-invert" data-layout-allow-overflow></div>
+      </div>
+      <div id="mk-cw-card" data-layout-allow-overflow></div>
+      <div
+        id="mk-cw-drv"
+        class="clip"
+        data-start="0"
+        data-duration="2.4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters (inspector-style CONFIG) ----
+           Overlay-transition model: place this block spanning the host's cut
+           point (e.g. start 0.9s before the cut). The wall fully covers the
+           frame from ~0.6s to ~1.9s local — hard-cut the content beneath
+           anywhere in that window. */
+        var CONFIG = {
+          // no scheme param — scheme-agnostic; re-skin via the --mk-* tokens
+          word: "HyperFrames", // the cloned word
+          fontSize: 240, // px — the tiled text size
+          spreadX: 90, // px gap between tiles (tile spread X)
+          spreadY: 60, // px gap between rows (Spread Y)
+          brickOffset: true, // alternate rows offset by half a tile
+          card: {
+            enabled: true, // outgoing-frame card. In real use set src to a
+            src: null, //     still of the outgoing clip; null = family gradient
+          },
+          driftX: -46, // slow wall drift during the hold
+        };
+
+        var W = 1920,
+          H = 1080,
+          DUR = 2.4;
+
+        var root = document.getElementById("mk-cw-root");
+        var wall = document.getElementById("mk-cw-wall");
+        var tilesBox = document.getElementById("mk-cw-tiles");
+        var invert = document.getElementById("mk-cw-invert");
+        var card = document.getElementById("mk-cw-card");
+
+        /* build the tile wall — rows of repeated words, brick-offset */
+        var rowH = CONFIG.fontSize + CONFIG.spreadY;
+        var rows = Math.ceil(H / rowH) + 1;
+        /* rough tile width estimate to fill each row past both edges */
+        var tileW = CONFIG.word.length * CONFIG.fontSize * 0.58 + CONFIG.spreadX;
+        var perRow = Math.ceil(W / tileW) + 2;
+        for (var r = 0; r < rows; r++) {
+          var row = document.createElement("div");
+          row.id = "mk-cw-row-" + r;
+          row.className = "mk-cw-row";
+          /* rows intentionally run past the canvas and sit beneath the card */
+          row.setAttribute("data-layout-allow-overflow", "");
+          row.setAttribute("data-layout-allow-occlusion", "");
+          row.style.fontSize = CONFIG.fontSize + "px";
+          row.style.top = r * rowH - CONFIG.fontSize * 0.35 + "px";
+          var offset = CONFIG.brickOffset && r % 2 === 1 ? -Math.round(tileW / 2) : 0;
+          row.style.left = offset - tileW + "px";
+          for (var c = 0; c < perRow + 1; c++) {
+            var tile = document.createElement("span");
+            tile.className = "mk-cw-tile";
+            tile.textContent = CONFIG.word;
+            tile.style.marginRight = CONFIG.spreadX + "px";
+            row.appendChild(tile);
+          }
+          tilesBox.appendChild(row);
+        }
+
+        if (CONFIG.card.enabled && CONFIG.card.src) {
+          var img = document.createElement("img");
+          img.src = CONFIG.card.src;
+          card.appendChild(img);
+        }
+        if (!CONFIG.card.enabled) card.style.display = "none";
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* The wall sits in place from t=0, fully hidden beneath the
+           full-bleed card — the card's shrink IS the wall's reveal. */
+
+        /* 0.2–0.95  outgoing frame shrinks to a rounded card on the wall */
+        if (CONFIG.card.enabled) {
+          tl.to(
+            card,
+            {
+              top: 330,
+              left: 640,
+              width: 640,
+              height: 420,
+              borderRadius: 40,
+              duration: 0.75,
+              ease: "power3.inOut",
+            },
+            0.2
+          );
+          /* 1.35–1.75  card is put away */
+          tl.to(card, { scale: 0.6, opacity: 0, duration: 0.4, ease: "power2.in" }, 1.35);
+        }
+
+        /* slow drift keeps the wall alive during the hold */
+        tl.to(tilesBox, { x: CONFIG.driftX, duration: 1.8, ease: "sine.inOut" }, 0.3);
+
+        /* 0.85–1.5  inversion sweeps in and STAYS — wall flips ink<->paper */
+        gsap.set(invert, { x: -W });
+        tl.to(invert, { x: 0, duration: 0.65, ease: "power3.inOut" }, 0.85);
+
+        /* 1.9–2.35  the inverted wall fades off, revealing the cut beneath */
+        tl.to(wall, { opacity: 0, duration: 0.45, ease: "power2.inOut" }, 1.9);
+
+        /* hard kills — wall and card die the moment their fades complete */
+        if (CONFIG.card.enabled) tl.set(card, { visibility: "hidden" }, 1.76);
+        tl.set(root, { visibility: "hidden" }, 2.36);
+
+        window.__timelines["mk-clone-wall-transition"] = tl;
+      })();
+    </script>
+  </body>
+</html>

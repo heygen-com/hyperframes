@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mk-pill-callout",
+  "type": "hyperframes:component",
+  "title": "Capsule Callout Chip",
+  "description": "Rounded capsule chip for handles, tags, and URLs with solid, paper, and frosted-glass variants; slide in/out helpers for the host timeline",
+  "tags": [
+    "callout",
+    "social",
+    "minimal",
+    "overlay"
+  ],
+  "files": [
+    {
+      "path": "mk-pill-callout.html",
+      "target": "compositions/components/mk-pill-callout.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
