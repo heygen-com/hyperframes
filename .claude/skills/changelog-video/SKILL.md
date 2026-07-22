@@ -99,6 +99,26 @@ The aligner prints `MISMATCH` warnings — resolve every one before building
 is the clock**: all beat times come from `vo-words.json`; a VO regen re-opens
 every seam.
 
+**Word-timings are a hard gate.** Before moving on to step 5, verify
+`vo-words.json` is non-empty and has a `words: [...]` array with `start`/`end`
+per word. If it's empty (0 bytes) or missing the array — a known failure mode
+when the TTS provider returns audio but no timestamp payload — DO NOT proceed
+without them. Fallback: forced-align the produced audio against the display
+script using local whisper:
+
+```bash
+uvx --from openai-whisper whisper voiceover.mp3 \
+  --model base.en --language en --word_timestamps True \
+  --output_format json --output_dir .
+# then run align-captions.mjs with --words voiceover.json (same shape)
+```
+
+Whisper mishears TTS renderings ("gee-sap" → "gsap", "heyjen" → "hey Jen",
+etc.) — captions still use the DISPLAY spelling from `script-tokens.json`;
+whisper only supplies the timestamps. `align-captions.mjs` handles the join.
+This fallback is the difference between a captioned build and a silently
+uncaptioned one.
+
 ### 5 · Build
 
 Follow `references/build-spec.md` exactly: brand tokens + fonts (bundled in
@@ -106,6 +126,22 @@ Follow `references/build-spec.md` exactly: brand tokens + fonts (bundled in
 chrome, caption rail, one rationed green moment per scene. Then the doctrine
 order: `ledger.json` (all ordinary seams cut-the-curve LEFT) → seam-stamp →
 internal beats on VO words → seam-gate verify.
+
+**Captions are non-optional.** The master-skeleton ships a caption-rail IIFE
+that reads a `LINES` array — leaving that array empty is a shipped bug, not a
+style choice. Populate it from `captions.json` before proceeding to step 6:
+
+```javascript
+// paste in place of "const LINES = /* … */ []" in the caption-rail IIFE:
+const LINES = /* contents of captions.json */ [
+  { id: 0, end: 2.74, w: [["This", 0.0], ["week,", 0.30], …] },
+  …
+];
+```
+
+If `align-captions.mjs` was skipped or `LINES` is `[]`, the frame check in
+step 6 will fail — do not paper over it by removing `#cap-line` from the
+scaffold.
 
 ### 6 · Gates (all green before presenting)
 
@@ -120,6 +156,12 @@ internal beats on VO words → seam-gate verify.
 4. Do NOT render unless the user asks. After a requested render, verify
    frames from the MP4 (`ffmpeg -ss <t> … -frames:v 1`): captions present,
    background video not black, no tiny/frozen frames.
+5. **Caption presence gate — hard fail.** Sample 3-4 frames spread across
+   the VO's spoken window (e.g. `t=3`, `t=15`, `t=30`, `t=42` for a 48s VO)
+   and confirm the caption rail at `top: 1002` renders visible text on each.
+   If any frame in a spoken interval is missing captions, the build ships
+   uncaptioned — treat it as a red gate and re-check step 5's `LINES`
+   population. This is exactly what went wrong on the Jul 13-20 v4 build.
 
 ## Project layout
 
@@ -136,15 +178,17 @@ projects/active/weekly-changelog-<range>/
 
 ## Anti-patterns
 
-| Don't                                                 | Instead                                                                                                                                               |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bullet-point slides for UI changes                    | Mock the surface acting out the change                                                                                                                |
-| Fake UI for un-representable items                    | Honest checklist scene                                                                                                                                |
-| Plain "JSON"/"CLI" in the TTS text                    | Lexicon spoken forms; display stays standard                                                                                                          |
-| Phonetic spellings in captions                        | Captions always render the display layer                                                                                                              |
-| Guessing an unknown term's pronunciation              | Ask, then grow the lexicon                                                                                                                            |
-| Speaking every changelog item                         | ≤3 per theme; the digest link carries the rest                                                                                                        |
-| Green accents everywhere                              | One green moment per scene (#5ef17c)                                                                                                                  |
-| Starting from a prior video's index.html              | Step 0 — copy `examples/master-skeleton.html` from this skill into `project/index.html`, always                                                       |
-| Hand-crafted `@font-face` / WebGL shader / custom BGM | Step 0 — copy this skill's `assets/` verbatim; the skill's assets ARE the brand                                                                       |
-| Delivered without CloudFront invalidation             | Run `aws cloudfront create-invalidation` on distribution `E2BSLVSZ7FG3U0` for the exact path after any S3 replace — CDN caches the old file otherwise |
+| Don't                                                 | Instead                                                                                                                                                                                          |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bullet-point slides for UI changes                    | Mock the surface acting out the change                                                                                                                                                           |
+| Fake UI for un-representable items                    | Honest checklist scene                                                                                                                                                                           |
+| Plain "JSON"/"CLI" in the TTS text                    | Lexicon spoken forms; display stays standard                                                                                                                                                     |
+| Phonetic spellings in captions                        | Captions always render the display layer                                                                                                                                                         |
+| Guessing an unknown term's pronunciation              | Ask, then grow the lexicon                                                                                                                                                                       |
+| Speaking every changelog item                         | ≤3 per theme; the digest link carries the rest                                                                                                                                                   |
+| Green accents everywhere                              | One green moment per scene (#5ef17c)                                                                                                                                                             |
+| Starting from a prior video's index.html              | Step 0 — copy `examples/master-skeleton.html` from this skill into `project/index.html`, always                                                                                                  |
+| Hand-crafted `@font-face` / WebGL shader / custom BGM | Step 0 — copy this skill's `assets/` verbatim; the skill's assets ARE the brand                                                                                                                  |
+| Delivered without CloudFront invalidation             | Run `aws cloudfront create-invalidation` on distribution `E2BSLVSZ7FG3U0` for the exact path after any S3 replace — CDN caches the old file otherwise                                            |
+| Shipping with the `LINES` array empty in the scaffold | Step 4 must produce a populated `captions.json`; step 5 must paste it into the IIFE; step 6 gate 5 must confirm captions on rendered frames. An empty `LINES` = uncaptioned ship = re-do the run |
+| No `vo-words.json` → skip captions and ship anyway    | Fall back to whisper forced alignment on the produced audio; captions are non-optional                                                                                                           |
