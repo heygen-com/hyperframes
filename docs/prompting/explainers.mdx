@@ -3,13 +3,11 @@ title: Explainers
 description: "What to say to turn an article, notes, or a topic into a faceless explainer — where every visual is invented, not captured."
 ---
 
-## What this makes
+The last ride pointed a workflow at a website. This one drops the site entirely — arbitrary text is the whole input, and every visual downstream is invented rather than captured.
 
-A faceless explainer: arbitrary text — an article, notes, a topic, a brief — becomes a narrated video where every visual is invented per scene (typography, abstract graphics, diagrams, data-viz). The [`/faceless-explainer`](/prompting/overview) workflow picks a design system, reshapes your text into a teaching story, generates its own TTS narration, and builds it frame by frame.
+## Your first win
 
-**Faceless means there's nothing to capture.** No site, no footage, no asset inventory — the visuals are designed downstream. If you have a product to sell use [`/product-launch-video`](/prompting/product-launch); if you have a real site to show use `/website-to-video`; a GitHub PR goes to [`/pr-to-video`](/prompting/code-and-prs). Unsure → start at `/hyperframes`.
-
-## Base prompt
+One prompt to [`/faceless-explainer`](/prompting/overview), with your text pasted in, is enough for a finished explainer — no site, no footage, no design decisions required yet.
 
 Verified, from the [examples](/prompting/examples) page — a ~60-second vertical explainer from pasted text:
 
@@ -20,6 +18,30 @@ Verified, from the [examples](/prompting/examples) page — a ~60-second vertica
 
 
 Note the `~` — with a supplied script the runtime follows the spoken words, so ask for *about* a minute, not exactly one. See the [anatomy](/prompting/anatomy) for the rest of the skeleton.
+
+## What this makes
+
+A faceless explainer: arbitrary text — an article, notes, a topic, a brief — becomes a narrated video where every visual is invented per scene (typography, abstract graphics, diagrams, data-viz). The [`/faceless-explainer`](/prompting/overview) workflow picks a design system, reshapes your text into a teaching story, generates its own TTS narration, and builds it frame by frame.
+
+**Faceless means there's nothing to capture.** No site, no footage, no asset inventory — the visuals are designed downstream. If you have a product to sell use [`/product-launch-video`](/prompting/product-launch); if you have a real site to show use `/website-to-video`; a GitHub PR goes to [`/pr-to-video`](/prompting/code-and-prs). Unsure → start at `/hyperframes`.
+
+## The knobs that matter
+
+What you can already steer from the prompt, before you've learned any technique.
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Verbatim vs summarized** | "use my wording verbatim" or "restructure it freely" | The workflow asks once. Verbatim keeps your voice but locks the word count; summarized lets it cut and reorder for pace |
+| **Duration** | "~60 seconds", never "60 seconds" | With a script the narration sets the real length; a hard number forces the agent to trim or pad the words |
+| **Scene density** | "one idea per scene" | A faceless scene has one invented focal to animate; two ideas in a scene leave nothing to build the motion around, and it reads as a text dump |
+| **Angle** | "concept" / "how-to" / "listicle" / "narrative" | The angle decides the story shape — the workflow reshapes your text into it rather than reading paragraphs in order |
+| **Caption style** | "embedded captions, keywords highlighted in the accent color" | Captions are burned in; naming the highlight color ties them to the palette instead of a default pill |
+| **Palette** | "brand color #FF5533 on off-black" | With no site to borrow from, the preset supplies a full palette; a named accent + ground personalizes it |
+| **Voice** | "male TTS voice, calm" / "warm female voice" | Gender and tone are prompt words; the provider is a workflow decision |
+
+<Tip>
+  The single biggest quality lever here is scene density. "One idea per scene" turns a dense paragraph into a paced sequence — the workflow reorders and compresses your text to hit it, which is exactly what makes an explainer teach instead of recite.
+</Tip>
 
 ## Variants
 
@@ -45,22 +67,6 @@ Note the `~` — with a supplied script the runtime follows the spoken words, so
   </Accordion>
 </AccordionGroup>
 
-## The knobs that matter
-
-| Knob | What to say | Why it matters |
-| --- | --- | --- |
-| **Verbatim vs summarized** | "use my wording verbatim" or "restructure it freely" | The workflow asks once. Verbatim keeps your voice but locks the word count; summarized lets it cut and reorder for pace |
-| **Duration** | "~60 seconds", never "60 seconds" | With a script the narration sets the real length; a hard number forces the agent to trim or pad the words |
-| **Scene density** | "one idea per scene" | A faceless scene has one invented focal to animate; two ideas in a scene leave nothing to build the motion around, and it reads as a text dump |
-| **Angle** | "concept" / "how-to" / "listicle" / "narrative" | The angle decides the story shape — the workflow reshapes your text into it rather than reading paragraphs in order |
-| **Caption style** | "embedded captions, keywords highlighted in the accent color" | Captions are burned in; naming the highlight color ties them to the palette instead of a default pill |
-| **Palette** | "brand color #FF5533 on off-black" | With no site to borrow from, the preset supplies a full palette; a named accent + ground personalizes it |
-| **Voice** | "male TTS voice, calm" / "warm female voice" | Gender and tone are prompt words; the provider is a workflow decision |
-
-<Tip>
-  The single biggest quality lever here is scene density. "One idea per scene" turns a dense paragraph into a paced sequence — the workflow reorders and compresses your text to hit it, which is exactly what makes an explainer teach instead of recite.
-</Tip>
-
 ## Common failure modes
 
 **"60 seconds" instead of "~60 seconds".** A supplied script's spoken duration is not knowable until the TTS renders; a hard target makes the agent mangle the words to hit the clock.
@@ -78,3 +84,5 @@ Note the `~` — with a supplied script the runtime follows the spoken words, so
 **Leaving the look unspecified when you care.** With no brand to read, the preset picks the palette; if you have colors, name them.
 - ❌ `make it look on-brand`
 - ✅ `brand color #FF5533 on off-black`
+
+*Next ride: point a workflow at a merged GitHub PR instead of a blank page → [Code changes and PRs](/prompting/code-and-prs).*

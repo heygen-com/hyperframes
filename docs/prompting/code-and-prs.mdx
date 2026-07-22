@@ -3,13 +3,11 @@ title: Code changes and PRs
 description: "What to say to turn a GitHub pull request into a code-change explainer — changelog, feature reveal, fix, or refactor walkthrough."
 ---
 
-## What this makes
+Two rides in, both built from nothing yet on the page. This one starts from something that already exists and is already true — a merged PR — and turns the diff itself into the story.
 
-A code-change explainer built from a GitHub pull request. The [`/pr-to-video`](/prompting/overview) workflow reads the PR through `gh` — the diff, commits, files, and contributors — reshapes it into a story, and builds it frame by frame, rendering code beats on a purpose-built diff surface.
+## Your first win
 
-The input is a **code change**, not a website or a product page. A PR link (`https://github.com/owner/repo/pull/N`), an `owner/repo#N` ref, or "this PR" in a checked-out repo all work. A product to sell → [`/product-launch-video`](/prompting/product-launch); a topic with no PR → [`/faceless-explainer`](/prompting/explainers). Unsure → start at `/hyperframes`.
-
-## Base prompt
+One prompt to [`/pr-to-video`](/prompting/overview), pointed at a PR link, is enough for a finished code-change explainer — no technique required yet.
 
 Verified, from the [examples](/prompting/examples) page — a 30-second feature reveal:
 
@@ -18,6 +16,31 @@ Verified, from the [examples](/prompting/examples) page — a 30-second feature 
 <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-pr-video.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
 *Rendered from the prompt above, unedited.*
 
+
+## What this makes
+
+A code-change explainer built from a GitHub pull request. The [`/pr-to-video`](/prompting/overview) workflow reads the PR through `gh` — the diff, commits, files, and contributors — reshapes it into a story, and builds it frame by frame, rendering code beats on a purpose-built diff surface.
+
+The input is a **code change**, not a website or a product page. A PR link (`https://github.com/owner/repo/pull/N`), an `owner/repo#N` ref, or "this PR" in a checked-out repo all work. A product to sell → [`/product-launch-video`](/prompting/product-launch); a topic with no PR → [`/faceless-explainer`](/prompting/explainers). Unsure → start at `/hyperframes`.
+
+## The knobs that matter
+
+What you can already steer from the prompt, before you've learned any technique.
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Impact vs diff** | "lead with what users get, not the diff" | The video explains the *change*, it doesn't read the diff aloud; opening on impact answers "why should I care?" before the code |
+| **How many hunks** | "one `code-diff` beat only" / "at most two hunks" | Code beats feature 2-4 real hunks total, each a small legible snippet — a whole file is unreadable at video scale |
+| **Which code block** | `code-diff` for a delta · `code-morph` for a refactor · `code-typing` for new code | The block matches the story: a diff shows added/removed lines, a morph shows one shape becoming another |
+| **Angle** | "changelog" / "feature-reveal" / "fix-explainer" / "refactor-walkthrough" | Sets the story shape; the workflow reshapes the PR into it rather than walking files in diff order |
+| **Audience** | "for developers" (default) / "mixed technical" / "non-technical stakeholders" | Shifts how much the narration assumes — a non-technical cut leans harder on impact and lighter on code |
+| **End card** | "end on version number + repo URL" | The conventional close for a code explainer; state what goes on it so it's a real CTA, not an afterthought |
+| **Narration vs captions** | "calm male narration" or "no narration, kinetic captions instead" | Both are supported; captions-only keeps it silent-friendly for social, narration carries a longer walkthrough |
+| **Length** | "~30s" for one headline, up to ~3 min for a large PR | The workflow reads the change size and recommends a tier — a huge PR is a ceiling on story, not a floor to fill |
+
+<Tip>
+  The style is fixed to the workflow's warm-editorial preset with a navy code surface built for diffs — it's what makes the code beats legible. You don't choose a theme here; you choose the angle, the hunks, and the narration.
+</Tip>
 
 ## Variants
 
@@ -42,22 +65,13 @@ Verified, from the [examples](/prompting/examples) page — a 30-second feature 
   </Accordion>
 </AccordionGroup>
 
-## The knobs that matter
+## Changelog videos
 
-| Knob | What to say | Why it matters |
-| --- | --- | --- |
-| **Impact vs diff** | "lead with what users get, not the diff" | The video explains the *change*, it doesn't read the diff aloud; opening on impact answers "why should I care?" before the code |
-| **How many hunks** | "one `code-diff` beat only" / "at most two hunks" | Code beats feature 2-4 real hunks total, each a small legible snippet — a whole file is unreadable at video scale |
-| **Which code block** | `code-diff` for a delta · `code-morph` for a refactor · `code-typing` for new code | The block matches the story: a diff shows added/removed lines, a morph shows one shape becoming another |
-| **Angle** | "changelog" / "feature-reveal" / "fix-explainer" / "refactor-walkthrough" | Sets the story shape; the workflow reshapes the PR into it rather than walking files in diff order |
-| **Audience** | "for developers" (default) / "mixed technical" / "non-technical stakeholders" | Shifts how much the narration assumes — a non-technical cut leans harder on impact and lighter on code |
-| **End card** | "end on version number + repo URL" | The conventional close for a code explainer; state what goes on it so it's a real CTA, not an afterthought |
-| **Narration vs captions** | "calm male narration" or "no narration, kinetic captions instead" | Both are supported; captions-only keeps it silent-friendly for social, narration carries a longer walkthrough |
-| **Length** | "~30s" for one headline, up to ~3 min for a large PR | The workflow reads the change size and recommends a tier — a huge PR is a ceiling on story, not a floor to fill |
+The `/changelog-video` skill landed after the original guide, and it isn't a `/pr-to-video` variant — it's a second workflow. Where the "Changelog roundup" variant above reshapes a *single* PR into a changelog-style beat sequence, `/changelog-video` spans a stretch of *repo history*: it turns a repo's recent merges into a fully produced, voiced, captioned changelog video, one hero visualization per theme instead of a text digest.
 
-<Tip>
-  The style is fixed to the workflow's warm-editorial preset with a navy code surface built for diffs — it's what makes the code beats legible. You don't choose a theme here; you choose the angle, the hunks, and the narration.
-</Tip>
+> /changelog-video Make a ~50-second 1080x1080 changelog video from the last two weeks of merges to heygen-com/hyperframes. Order themes marquee feature first, then product surface, then performance, then reliability. One hero visualization per theme — mock the actual UI or a faithful analog, never a bullet list. End on a link to the full digest.
+
+<!-- VALIDATION PENDING: changelog-video -->
 
 ## Common failure modes
 
@@ -76,3 +90,5 @@ Verified, from the [examples](/prompting/examples) page — a 30-second feature 
 **Hard-timing a narrated cut.** With narration the spoken length sets the runtime; state a range, not a fixed number.
 - ❌ `a 40-second narrated walkthrough`
 - ✅ `a ~40-second narrated walkthrough`
+
+*Next ride: same one-prompt move, now dressing footage you already shot → [Captions and talking-head footage](/prompting/captions-and-talking-heads).*

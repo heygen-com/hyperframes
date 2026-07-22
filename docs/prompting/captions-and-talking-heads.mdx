@@ -3,6 +3,21 @@ title: Captions and talking-head footage
 description: "Two ways to dress an existing talking-head clip — readable captions or designed graphic overlays — both leaving the footage itself untouched."
 ---
 
+The first three rides built a video from nothing. This one starts from footage you already have — a talking-head clip — and adds a layer on top without touching the shot itself.
+
+## Your first win
+
+One prompt to [`/embedded-captions`](/prompting/overview), pointed at an existing clip, is enough for a finished captioned video — no technique required yet.
+
+Captions route by **identity**, not by mode. You pick one look from the catalog; the engine behind it is a lookup detail you never have to name. The default is a clean verbatim rail — `anchor` — with the occasional peak word composited behind the subject.
+
+> /embedded-captions Add captions to ./interview.mp4. Use the `anchor` identity — clean verbatim rail carrying the spoken words, readable lower-third. Promote the single hardest-hitting word to an embed behind the speaker; highlight one key word in each rail line. Keep the source aspect ratio. Footage stays untouched.
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/captions-anchor-rail.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above on generated avatar footage, unedited — one earned embed behind the speaker, everything else on the rail.*
+
+
+The rail carries most of the text; an **embed** is the scarce, earned peak — one big word matted behind the subject at the climax, never every line. Embedding the whole transcript is the most common mistake this skill guards against.
+
 ## Two things you can add to a talking head
 
 Both workflows take an existing talking-head / interview / podcast clip and add a layer on top. Neither edits the footage — no trims, no recolor, no reframe, no reorder. The clip plays untouched underneath; you're choosing what rides on top of it.
@@ -16,22 +31,23 @@ If the words themselves need to read, you want captions. If you want a produced 
 
 `/embedded-captions` runs locally end to end — it transcribes and mattes the subject itself, no API key — and needs a **single-subject clip**. Multi-speaker clips or hard cuts get split per shot or refused, because the matte is one person.
 
-## Base prompt — captions
-
-Captions route by **identity**, not by mode. You pick one look from the catalog; the engine behind it is a lookup detail you never have to name. The default is a clean verbatim rail — `anchor` — with the occasional peak word composited behind the subject.
-
-> /embedded-captions Add captions to ./interview.mp4. Use the `anchor` identity — clean verbatim rail carrying the spoken words, readable lower-third. Promote the single hardest-hitting word to an embed behind the speaker; highlight one key word in each rail line. Keep the source aspect ratio. Footage stays untouched.
-<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/captions-anchor-rail.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
-*Rendered from the prompt above on generated avatar footage, unedited — one earned embed behind the speaker, everything else on the rail.*
-
-
-The rail carries most of the text; an **embed** is the scarce, earned peak — one big word matted behind the subject at the climax, never every line. Embedding the whole transcript is the most common mistake this skill guards against.
-
 ## Base prompt — overlay cards
 
 > /talking-head-recut Package ./founder-clip.mp4 with designed graphic overlay cards synced to the transcript. 9:16 portrait, warm-paper style. Open with a fullscreen kicker + title hook, drop a lower-third when she names the company, a data callout card counting up the "200+ teams / $1.2M ARR" stat, and a pull-quote card for the strongest line. Speaker stays full-bleed under the cards; shrink her into a corner PiP while the data card holds. The clip plays untouched underneath.
 
 You describe the *cards* — their content, timing, and how the speaker shares the canvas with them (full-bleed, split, PiP, or glass overlay). The skill designs and writes each card; there's no fixed archetype list, so the overlays follow what the transcript actually says.
+
+## The knobs that matter
+
+What you can already steer from the prompt, before you've learned any technique.
+
+**Identity and tone (captions).** One identity picks the entire look — surface, palette, motion, climax behavior. Route by content: explainer / interview / must-read words → a rail-carrying identity, with `anchor` the conservative default where every word has to read; poetic / social / cinematic → a column-flow identity by register (`editorial`, `cream`, `loud`, `neon`); "炸 / 特效 / VFX" → a themed identity (`ordnance`, `terminal`, `stomp`). Unsure → `anchor`: the words read and the scene stays safe. Don't ask for "Standard vs Cinematic vs Theme" — those are engine names; name the identity.
+
+**Verbatim rail vs climax embed.** The rail is the default and carries most of the text. An embed is a promotion — one peak word matted behind the subject, scarce and spaced (roughly one per beat, never two co-visible, at most one apex). Tell the skill *which* lines earn the embed; leave the rest on the rail.
+
+**Style, layout, and canvas (recut).** Pick a style group (warm-paper / clinical / experimental), a layout (split / stack / pip / overlay), and a canvas ratio; the video frame follows from layout × style. The recommended ratio matches the source, but you choose — 16:9 for desktop / YouTube, 9:16 for Reels / Shorts, 4:5 for feed.
+
+**Keyword highlighting.** On the caption rail, a punch word can carry an inline `emphasis` — an accent-color or active-word pop — without leaving the rail. Ask for "highlight the key word in each line" and it stays readable.
 
 ## Variants
 
@@ -58,16 +74,6 @@ You describe the *cards* — their content, timing, and how the speaker shares t
   </Accordion>
 </AccordionGroup>
 
-## The knobs that matter
-
-**Identity and tone (captions).** One identity picks the entire look — surface, palette, motion, climax behavior. Route by content: explainer / interview / must-read words → a rail-carrying identity, with `anchor` the conservative default where every word has to read; poetic / social / cinematic → a column-flow identity by register (`editorial`, `cream`, `loud`, `neon`); "炸 / 特效 / VFX" → a themed identity (`ordnance`, `terminal`, `stomp`). Unsure → `anchor`: the words read and the scene stays safe. Don't ask for "Standard vs Cinematic vs Theme" — those are engine names; name the identity.
-
-**Verbatim rail vs climax embed.** The rail is the default and carries most of the text. An embed is a promotion — one peak word matted behind the subject, scarce and spaced (roughly one per beat, never two co-visible, at most one apex). Tell the skill *which* lines earn the embed; leave the rest on the rail.
-
-**Style, layout, and canvas (recut).** Pick a style group (warm-paper / clinical / experimental), a layout (split / stack / pip / overlay), and a canvas ratio; the video frame follows from layout × style. The recommended ratio matches the source, but you choose — 16:9 for desktop / YouTube, 9:16 for Reels / Shorts, 4:5 for feed.
-
-**Keyword highlighting.** On the caption rail, a punch word can carry an inline `emphasis` — an accent-color or active-word pop — without leaving the rail. Ask for "highlight the key word in each line" and it stays readable.
-
 ## Failure modes
 
 **Asking for footage edits.** Both skills add a layer and leave the a-roll exactly as shot. Trimming, speeding up, recoloring, reframing, or reordering is NLE editing and out of scope — captions and cards are the only additions.
@@ -85,3 +91,5 @@ You describe the *cards* — their content, timing, and how the speaker shares t
 <Tip>
   For the beat-timestamped skeleton these prompts share, see [Prompt anatomy](/prompting/anatomy); for adjectives that map to motion and emphasis settings, [Vocabulary](/prompting/vocabulary). To build a video from scratch instead of dressing existing footage, start at the router in `/hyperframes`.
 </Tip>
+
+*Next ride: swap footage for a soundtrack, or slides, and let the beat or the deck set the pace → [Music videos and slideshows](/prompting/music-and-slideshows).*

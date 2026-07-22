@@ -3,6 +3,22 @@ title: Product launch videos
 description: "What to say to turn a product URL, a script, or a brief into a launch or promo video — and when to reach for a site tour instead."
 ---
 
+This is Level 1 of the Prompt Guide: a run of one-prompt rides, each handing a workflow a single ask and getting a finished video back. You don't need any technique yet — one sentence describing your product, aimed at the right workflow, is already enough for a first draft.
+
+## Your first win
+
+One prompt to [`/product-launch-video`](/prompting/overview), aimed at a live URL, is enough for a finished launch video — no technique required yet.
+
+Verified, from the [examples](/prompting/examples) page — a 45-second launch from a live URL:
+
+> /product-launch-video Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+Read the [anatomy](/prompting/anatomy) of that skeleton — route, spec, structure, copy, voice, level — then swap in your own product.
+
 ## What this makes
 
 A launch or promo that *sells*: SaaS promos, feature reveals, product demos, app and company launches. The [`/product-launch-video`](/prompting/overview) workflow captures the product's site (or takes a pasted script), reads its brand, writes a story, and builds it frame by frame.
@@ -16,17 +32,22 @@ A launch or promo that *sells*: SaaS promos, feature reveals, product demos, app
 
 "Promo for our site" is a launch, even though it names a site — use `/product-launch-video`. A neutral walkthrough of a docs site is a tour — use `/website-to-video`. Unsure → start at `/hyperframes` and let it route.
 
-## Base prompt
+## The knobs that matter
 
-Verified, from the [examples](/prompting/examples) page — a 45-second launch from a live URL:
+What you can already steer from the prompt, before you've learned any technique. Set the ones you care about; leave the rest to the workflow's taste.
 
-> /product-launch-video Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Capture vs no-capture** | Give a URL to capture the real site; give a script or brief for the no-capture path; give just a brand name to have the agent find the URL | Capture borrows the real palette and screenshots; no-capture invents visuals, so it needs your brand colors named |
+| **Palette source** | "use the site's own palette" | The workflow remixes the captured brand tokens onto its frame preset — you get the product's real colors, not a generic theme |
+| **Structure** | "hook stating the problem, N feature beats with captions, end card with CTA" | The workflow leads value-before-evidence; naming the beats keeps the hook and CTA from getting dropped |
+| **Voice & tone** | "female TTS voice, confident" / "calm male voice" | Voice gender and tone are prompt words; the provider itself is a workflow decision — see the [skill](/prompting/overview) for provider mechanics |
+| **BGM level** | "subtle electronic BGM under -18dB" (or "no BGM") | A stated ceiling keeps music under the voice; leave it off entirely for a teaser |
+| **Length & destination** | "~45 seconds", "9:16 for TikTok" | Sweet spot is 30-90s; destination sets the aspect (16:9 embed · 1:1 feed · 9:16 Shorts) |
 
-<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-product-launch.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
-*Rendered from the prompt above, unedited.*
-
-
-Read the [anatomy](/prompting/anatomy) of that skeleton — route, spec, structure, copy, voice, level — then swap in your own product.
+<Tip>
+  Duration and destination are the two cheapest, highest-leverage things to state. Everything else the workflow will choose well if you stay quiet — see [the specification dial](/prompting/specification-dial) for how much to delegate.
+</Tip>
 
 ## Variants
 
@@ -57,23 +78,6 @@ Read the [anatomy](/prompting/anatomy) of that skeleton — route, spec, structu
   </Accordion>
 </AccordionGroup>
 
-## The knobs that matter
-
-Decisions specific to a launch. Set the ones you care about; leave the rest to the workflow's taste.
-
-| Knob | What to say | Why it matters |
-| --- | --- | --- |
-| **Capture vs no-capture** | Give a URL to capture the real site; give a script or brief for the no-capture path; give just a brand name to have the agent find the URL | Capture borrows the real palette and screenshots; no-capture invents visuals, so it needs your brand colors named |
-| **Palette source** | "use the site's own palette" | The workflow remixes the captured brand tokens onto its frame preset — you get the product's real colors, not a generic theme |
-| **Structure** | "hook stating the problem, N feature beats with captions, end card with CTA" | The workflow leads value-before-evidence; naming the beats keeps the hook and CTA from getting dropped |
-| **Voice & tone** | "female TTS voice, confident" / "calm male voice" | Voice gender and tone are prompt words; the provider itself is a workflow decision — see the [skill](/prompting/overview) for provider mechanics |
-| **BGM level** | "subtle electronic BGM under -18dB" (or "no BGM") | A stated ceiling keeps music under the voice; leave it off entirely for a teaser |
-| **Length & destination** | "~45 seconds", "9:16 for TikTok" | Sweet spot is 30-90s; destination sets the aspect (16:9 embed · 1:1 feed · 9:16 Shorts) |
-
-<Tip>
-  Duration and destination are the two cheapest, highest-leverage things to state. Everything else the workflow will choose well if you stay quiet — see [the specification dial](/prompting/specification-dial) for how much to delegate.
-</Tip>
-
 ## Common failure modes
 
 **Hard-timing a verbatim script.** With supplied narration, the real TTS duration sets the length — a hard number forces the agent to cut or pad your words.
@@ -91,3 +95,5 @@ Decisions specific to a launch. Set the ones you care about; leave the rest to t
 **Assuming the agent knows your assets.** On the no-capture path there's no site to read; an unnamed logo or color is invented.
 - ❌ `use our brand colors`
 - ✅ `brand colors #5E6AD2 on off-black; logo at assets/logo.svg`
+
+*Next ride: no product, no site — just text turned into a faceless explainer → [Explainers](/prompting/explainers).*
