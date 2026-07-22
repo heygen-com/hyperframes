@@ -3,6 +3,8 @@ title: Porting from Remotion
 description: "What to say to migrate an existing Remotion (React) composition's source into HyperFrames HTML — and what to expect the agent to refuse."
 ---
 
+This is the last chapter of Level 6, and the last before the capstone level — bringing an existing Remotion project into everything you now know: brand systems, variables, editing, iteration, reference-matching, and export.
+
 ## What this makes
 
 Not a new video — a **translation**. The [`/remotion-to-hyperframes`](/prompting/overview) workflow reads an existing Remotion (React) composition's source and rewrites it as HyperFrames HTML: the same frames, the same timing, the same visual output, running on GSAP instead of React's frame-callback model.
@@ -60,3 +62,5 @@ A translation that "looks right" in preview can still measure meaningfully below
 **Skipping validation on a non-trivial port.** A visual-only check misses timing/easing drift that only shows up in a frame-by-frame SSIM diff.
 - ❌ *(no request to validate — accepting on "looks right")*
 - ✅ `render both and report the SSIM diff`
+
+*Next: [Rules and anti-patterns](/prompting/rules-and-anti-patterns) — the failure modes and fixes that cut across every level.*

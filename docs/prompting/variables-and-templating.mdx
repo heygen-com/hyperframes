@@ -3,7 +3,7 @@ title: Variables and templating
 description: "Ask for the parts that should change to become named slots, then re-render the same composition with different values — one output per record."
 ---
 
-Most videos have a few things that vary and a lot that doesn't. When you know a composition will be reused — a card per customer, a stat per quarter, a name per recipient — say so in the prompt, and name the parts that change. The agent turns them into declared [variables](/concepts/variables): typed, labeled slots filled at render time instead of hardcoded into the HTML.
+[Design systems](/prompting/design-systems) covered the parts of a video that should *never* change per render — the brand. This page covers the parts that should: a card per customer, a stat per quarter, a name per recipient. When you know a composition will be reused, say so in the prompt, and name the parts that change. The agent turns them into declared [variables](/concepts/variables): typed, labeled slots filled at render time instead of hardcoded into the HTML.
 
 The trigger phrase is simple — call out the slots:
 
@@ -65,6 +65,10 @@ A few inputs are read once at compile time and no variable can move them: compos
 
 If total length must differ per output, that's a different root `data-duration` per render, not a variable. See [what can't be a variable](/concepts/variables#what-cant-be-a-variable) for the full list and the compile-time-vs-live-DOM rule behind it.
 
+<Note>
+  An authored CSS custom property always wins over a same-named variable. If your composition already defines its own `:root { --accent: ... }` (a hand-written theme token, say), a variable called `accent` never overwrites it — the authored value stands. A render-time `--variables` override still wins over both. If you need to override an authored value per render, use `--variables`, not a same-named declared variable.
+</Note>
+
 ## Related
 
 <CardGroup cols={2}>
@@ -81,3 +85,5 @@ If total length must differ per output, that's a different root `data-duration` 
     Brand tokens as variables that re-skin every reuse from one value.
   </Card>
 </CardGroup>
+
+*Next: [Editing existing videos](/prompting/editing-existing-videos) — the editor verbs that turn a first render into the twenty edits after it.*
