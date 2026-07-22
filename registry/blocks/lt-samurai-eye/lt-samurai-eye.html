@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1920px;
+        height: 1080px;
+      }
+
+      /* Absolute anchor + hard-kill target. */
+      #root .se-wrap {
+        position: absolute;
+        left: 130px;
+        bottom: 132px;
+      }
+
+      /* Navy brand panel — the ancestor background for the text, with a soft
+         gold left edge and a masked fade on the right. */
+      #root .se-scrim {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        padding: 30px 112px 30px 44px;
+        background-color: #0a0f2e;
+        background-image: linear-gradient(105deg, #0c1233 0%, #0a0f2e 62%, #11173b 100%);
+        border-radius: 3px;
+        box-shadow:
+          inset 4px 0 0 0 #c9a84c,
+          0 22px 60px rgba(5, 8, 26, 0.45);
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 90px), transparent 100%);
+        mask-image: linear-gradient(to right, #000 calc(100% - 90px), transparent 100%);
+        transform-origin: 0% 50%;
+      }
+
+      /* The eye emblem — thin gold frame around a glowing samurai eye. */
+      #root .se-emblem {
+        position: relative;
+        width: 88px;
+        height: 88px;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1.5px solid rgba(201, 168, 76, 0.55);
+        border-radius: 6px;
+      }
+      #root .se-eye {
+        position: relative;
+        width: 60px;
+        height: 33px;
+        border: 2.5px solid #c9a84c;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* Soft blurred gold disc behind the pupil — the ignition glow. */
+      #root .se-glow {
+        position: absolute;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(242, 217, 141, 0.85) 0%,
+          rgba(201, 168, 76, 0) 70%
+        );
+        filter: blur(2px);
+      }
+      #root .se-pupil {
+        position: relative;
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 38% 34%,
+          #f7e9bd 0%,
+          #f2d98d 35%,
+          #c9a84c 68%,
+          #8a6f2a 100%
+        );
+      }
+      /* One-beat ignition flash. */
+      #root .se-flash {
+        position: absolute;
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(255, 252, 240, 0.95) 0%,
+          rgba(255, 252, 240, 0) 65%
+        );
+      }
+
+      /* Text column: name, kicker, drawn baseline. */
+      #root .se-text {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      #root .se-name {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 66px;
+        font-weight: 400;
+        line-height: 0.98;
+        letter-spacing: -0.012em;
+        color: #f6f2e7;
+        white-space: nowrap;
+        text-shadow: 0 2px 26px rgba(5, 8, 26, 0.6);
+      }
+      #root .se-kickwrap {
+        overflow: hidden;
+        padding-bottom: 2px;
+      }
+      #root .se-kicker {
+        display: inline-block;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #c9a84c;
+        white-space: nowrap;
+        text-shadow: 0 1px 10px rgba(5, 8, 26, 0.85);
+      }
+      #root .se-baseline {
+        position: relative;
+        overflow: hidden;
+        height: 4px;
+        width: 100%;
+        min-width: 240px;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #8a6f2a 0%, #c9a84c 50%, #8a6f2a 100%);
+        transform-origin: 0% 50%;
+      }
+      /* Bright highlight that sweeps along the baseline once during the hold. */
+      #root .se-sheen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 38%;
+        background: linear-gradient(
+          90deg,
+          rgba(247, 233, 189, 0) 0%,
+          #f7e9bd 50%,
+          rgba(247, 233, 189, 0) 100%
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lt-samurai-eye"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4.8"
+    >
+      <div id="se-clip" class="clip" data-start="0" data-duration="4.8" data-track-index="0">
+        <div id="se-wrap" class="se-wrap">
+          <div id="se-scrim" class="se-scrim">
+            <div id="se-emblem" class="se-emblem">
+              <div id="se-eye" class="se-eye">
+                <div id="se-glow" class="se-glow"></div>
+                <div id="se-pupil" class="se-pupil"></div>
+                <div id="se-flash" class="se-flash"></div>
+              </div>
+            </div>
+
+            <div id="se-text" class="se-text">
+              <div id="se-name" class="se-name">Ryu Aoyama</div>
+              <div id="se-kickwrap" class="se-kickwrap">
+                <span id="se-kicker" class="se-kicker">Starting Pitcher · No. 18</span>
+              </div>
+              <div id="se-baseline" class="se-baseline">
+                <div id="se-sheen" class="se-sheen"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+
+      var wrap = document.getElementById("se-wrap");
+      var scrim = document.getElementById("se-scrim");
+      var emblem = document.getElementById("se-emblem");
+      var glow = document.getElementById("se-glow");
+      var pupil = document.getElementById("se-pupil");
+      var flash = document.getElementById("se-flash");
+      var nameEl = document.getElementById("se-name");
+      var kicker = document.getElementById("se-kicker");
+      var baseline = document.getElementById("se-baseline");
+      var sheen = document.getElementById("se-sheen");
+
+      // Initial states.
+      gsap.set(scrim, { opacity: 0, x: -34, scaleX: 0.94 });
+      gsap.set(emblem, { scale: 0.6, opacity: 0, transformOrigin: "50% 50%" });
+      gsap.set(glow, { opacity: 0, scale: 0.3 });
+      gsap.set(pupil, { opacity: 0, scale: 0.35 });
+      gsap.set(flash, { opacity: 0, scale: 0.4 });
+      gsap.set(nameEl, { y: 20, opacity: 0 });
+      gsap.set(kicker, { yPercent: 120 });
+      gsap.set(baseline, { scaleX: 0 });
+      gsap.set(sheen, { xPercent: -160 });
+
+      // Intro: panel slides in, frame snaps up, the eye ignites.
+      tl.to(scrim, { opacity: 1, x: 0, scaleX: 1, duration: 0.55, ease: "power3.out" }, 0.1);
+      tl.to(emblem, { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(1.8)" }, 0.3);
+      tl.to(glow, { opacity: 1, scale: 1, duration: 0.4, ease: "power2.out" }, 0.52);
+      tl.to(pupil, { opacity: 1, scale: 1, duration: 0.32, ease: "back.out(2)" }, 0.52);
+      tl.to(flash, { opacity: 0.9, scale: 1, duration: 0.12, ease: "power2.out" }, 0.54);
+      tl.to(flash, { opacity: 0, duration: 0.32, ease: "power2.in" }, 0.68);
+
+      // Name slams in, kicker rises, gold baseline draws left to right.
+      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 0.64);
+      tl.to(kicker, { yPercent: 0, duration: 0.42, ease: "power3.out" }, 0.84);
+      tl.to(baseline, { scaleX: 1, duration: 0.55, ease: "power4.out" }, 0.94);
+
+      // Hold: a single sheen sweep and one gentle glow breath.
+      tl.to(sheen, { xPercent: 280, duration: 1.1, ease: "power2.inOut" }, 1.8);
+      tl.to(glow, { opacity: 0.68, duration: 0.6, ease: "sine.inOut" }, 2.0);
+      tl.to(glow, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 2.6);
+
+      // Exit: baseline retracts, text lifts, frame fades, panel closes.
+      tl.to(
+        baseline,
+        { scaleX: 0, transformOrigin: "100% 50%", duration: 0.32, ease: "power2.in" },
+        4.16,
+      );
+      tl.to(kicker, { yPercent: 120, duration: 0.3, ease: "power2.in" }, 4.18);
+      tl.to(nameEl, { y: -14, opacity: 0, duration: 0.34, ease: "power2.in" }, 4.22);
+      tl.to(emblem, { scale: 0.85, opacity: 0, duration: 0.34, ease: "power2.in" }, 4.28);
+      tl.to(scrim, { opacity: 0, x: -22, scaleX: 0.97, duration: 0.4, ease: "power3.in" }, 4.3);
+      tl.set(wrap, { visibility: "hidden" }, 4.72);
+
+      window.__timelines["lt-samurai-eye"] = tl;
+    </script>
+  </body>
+</html>
