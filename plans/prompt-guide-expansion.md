@@ -196,7 +196,7 @@ What the best guides converge on, and what we adopt:
    Expand the iterating page with these three moves + our absolute-targets rule.
 6. **Timestamped/beat-segmented prompting as a signature device.** Veo 3.1's
    [00:00-00:02] per-segment prompting is the survey's most distinctive device — and
-   it maps one-to-one onto HyperFrames' native data-* timing. Our "Beat N (x-ys)"
+   it maps one-to-one onto HyperFrames' native data-\* timing. Our "Beat N (x-ys)"
    convention is this; promote it explicitly ("more native here than in any
    diffusion model") on anatomy + by-video-type pages.
 7. **Anthropic's IA moves**: thin-router overview, one consolidated living
