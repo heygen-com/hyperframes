@@ -141,17 +141,19 @@ export function computeVideoFrameCoverage(
   for (const video of videos) {
     const entry = byId.get(video.id);
     const slotFrames = expectedFramesForClip(video.start, video.end, fps);
-    // Non-looping clips intentionally hold their final decoded frame when the
-    // authored slot outlasts the source (#2516). Coverage must therefore
-    // measure the source portion, while still requiring the full slot for
-    // looping clips and for missing extractions (where no hold is possible).
+    // A short source in a longer slot has a legitimate delivery ceiling of
+    // the source portion, not the full slot: a non-looping clip holds its
+    // final decoded frame across the tail (#2516/#2606), and a looping clip
+    // reuses its full source frame set per repeat (#2665). In both cases the
+    // full source *has* been delivered — the same 90 unique source frames
+    // cover the 300-frame slot — so coverage must measure source-source, not
+    // slot-source. A missing extraction (no `entry`) still requires the full
+    // slot; there's no delivered set to credit.
     const sourceDuration = entry ? entry.metadata.durationSeconds - video.mediaStart : NaN;
     const hasUsableSourceDuration = Number.isFinite(sourceDuration) && sourceDuration > 0;
     const sourceFrames =
-      entry && !video.loop && hasUsableSourceDuration
-        ? expectedFramesForClip(0, sourceDuration, fps)
-        : slotFrames;
-    const expectedFrames = entry && !video.loop ? Math.min(slotFrames, sourceFrames) : slotFrames;
+      entry && hasUsableSourceDuration ? expectedFramesForClip(0, sourceDuration, fps) : slotFrames;
+    const expectedFrames = entry ? Math.min(slotFrames, sourceFrames) : slotFrames;
     // framePaths is a Map — `size` is the number of distinct captured frames
     // delivered to the runtime injector, which is the load-bearing count
     // (some extractors report a total that includes cache-hit-skipped frames

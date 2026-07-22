@@ -155,12 +155,25 @@ describe("computeVideoFrameCoverage", () => {
     expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 90, ratio: 1 });
   });
 
-  it("still requires the full authored slot for looping clips", () => {
+  it("credits a looping short clip against the source portion — the delivered frame set covers every repeat (#2665)", () => {
+    // Regression #2665: a looping video shorter than its slot delivered all
+    // its source frames (extractor complete), but the pre-fix gate measured
+    // 90 unique / 300 slot = 30% and aborted. Every one of the 300 output
+    // frames maps to one of the 90 source frames — coverage is 100%.
     const videos = [makeVideo({ id: "loop", start: 0, end: 10, loop: true })];
     const extracted = [makeExtracted("loop", 90, { durationSeconds: 3 })];
     const reports = computeVideoFrameCoverage(videos, extracted, 30);
-    expect(reports[0]).toMatchObject({ expectedFrames: 300, capturedFrames: 90 });
-    expect(reports[0]!.ratio).toBeCloseTo(0.3, 5);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 90, ratio: 1 });
+  });
+
+  it("still fails when a looping clip's source extraction is truncated", () => {
+    // Fail-loud preserved for a genuinely-broken loop: only 60/90 source
+    // frames arrived, so the delivered set does NOT cover every repeat.
+    const videos = [makeVideo({ id: "truncated-loop", start: 0, end: 10, loop: true })];
+    const extracted = [makeExtracted("truncated-loop", 60, { durationSeconds: 3 })];
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 60 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(VideoFrameCoverageError);
   });
 
   it("still fails when extraction is truncated before the held-tail source", () => {
