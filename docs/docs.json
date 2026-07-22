@@ -135,6 +135,12 @@
                 ]
               },
               {
+                "group": "Level 7 — Capstone",
+                "pages": [
+                  "prompting/capstone"
+                ]
+              },
+              {
                 "group": "Appendix",
                 "pages": [
                   "prompting/rules-and-anti-patterns"

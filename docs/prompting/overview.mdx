@@ -3,11 +3,28 @@ title: Prompt Guide
 description: "How to prompt AI agents to author HyperFrames videos — setup, the two prompt shapes, and the map of this guide."
 ---
 
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*By the end of this guide, you can build this with a prompt.*
+
 HyperFrames is built for AI agents — compositions are plain HTML, the CLI is non-interactive, and the framework ships [skills](https://github.com/vercel-labs/skills) that teach agents the patterns docs alone don't cover. This guide shows how to prompt agents effectively once skills are installed — the vocabulary that changes output, the iteration patterns that save time, and the rules that prevent breakage.
 
 <Note>
   **Before you prompt**, have three things in place: the skills installed (below), a scaffolded project (`npx hyperframes init my-video`), and the live preview running (`npx hyperframes preview`) so you can judge each render the moment it lands. Prompting without the preview open turns every iteration into a blind guess.
 </Note>
+
+## The level ladder
+
+The guide is one arc, novice to advanced. Each level is what you can do once you've read it — read them in order, or jump straight to whichever gap matches where you are:
+
+| Level | What you can do after it |
+| --- | --- |
+| **1 — [Your first video](/prompting/product-launch)** | Get a finished video from one prompt — the workflow fills the gaps (palette, pacing, structure) for you. |
+| **2 — [Control](/prompting/anatomy)** | Name the parts yourself: route, spec, beats, copy, technique, negatives — the skeleton that removes the decisions agents get wrong. |
+| **3 — [Life](/prompting/motion)** | Motion and transitions that read premium instead of like a slideshow. |
+| **4 — [Substance](/prompting/code-blocks)** | Add real capabilities: code animation, data-viz, overlays, captions, generated artwork, VFX, 3D. |
+| **5 — [Voice & sound](/prompting/media-and-audio)** | Narration, music, and any footage you supply, scored and mixed correctly. |
+| **6 — [Scale](/prompting/design-systems)** | Design systems, variables, storyboards, editing, iterating, matching references, and export — a video as a system, not a one-off. |
+| **7 — [Capstone](/prompting/capstone)** | Everything above, composed into one real prompt and one real render — dissected frame by frame. |
 
 ## One-time setup
 
@@ -74,36 +91,19 @@ Claude Design produces a valid first draft (brand identity, scene content, anima
 
 Most successful HyperFrames prompts fall into one of two shapes.
 
-### Cold start — describe the video
-
-You tell the agent what you want from scratch. Best for greenfield work where you have the creative direction in your head.
+**Cold start — describe the video.** You tell the agent what you want from scratch — best for greenfield work where you already have the creative direction in your head.
 
 > Using `/hyperframes`, create a 10-second product intro with a fade-in title over a dark background and subtle background music.
 
-> Make a 9:16 TikTok-style hook video about [topic] using `/hyperframes`, with bouncy captions synced to a TTS narration.
+Cold-start prompts work best when you specify **duration** ("10 seconds", "5 scenes of 3s each"), **aspect ratio** ("16:9", "9:16 vertical" — defaults to 1920x1080 otherwise), **mood / style** ("minimal Swiss grid", "high-energy social"), and **key elements** (title, lower third, captions, music).
 
-Cold-start prompts work best when you specify:
-
-- **Duration** (e.g. "10 seconds", "30s", "5 scenes of 3s each")
-- **Aspect ratio** ("16:9", "9:16 vertical", "1:1 square") — defaults to 1920x1080 otherwise
-- **Mood / style** ("minimal Swiss grid", "warm grain analog", "high-energy social")
-- **Key elements** (title, lower third, captions, background video, music)
-
-### Warm start — turn context into a video
-
-You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where HyperFrames shines because the agent does the research/summarization step *and* the production step in one flow.
+**Warm start — turn context into a video.** You give the agent something to work with — a URL, a doc, a CSV, a transcript — and ask it to synthesize that into a video. This is where HyperFrames shines because the agent does the research/summarization step *and* the production step in one flow.
 
 > Take a look at this GitHub repo https://github.com/heygen-com/hyperframes and explain its uses and architecture to me using `/hyperframes`.
-
-> Summarize the attached PDF into a 45-second pitch video using `/hyperframes`.
-
-> Read this changelog and turn the top three changes into a 30-second release announcement video using `/hyperframes`.
 
 > Turn this CSV into an animated bar chart race using `/hyperframes`.
 
 Warm-start prompts produce richer, more grounded videos because the agent is writing about *something specific* instead of inventing copy.
-
-
 
 ## Recommended workflow
 
@@ -144,4 +144,5 @@ And at the far end of the [specification dial](/prompting/specification-dial), a
   <Card title="Vocabulary" href="/prompting/vocabulary">Words that map to specific framework settings</Card>
   <Card title="Premium motion" href="/prompting/motion">The six-rule grammar that keeps video from feeling cheap</Card>
   <Card title="Recreating references" href="/prompting/recreating-references">Match something you saw, from text alone</Card>
+  <Card title="Capstone" href="/prompting/capstone">The film above, dissected frame by frame</Card>
 </CardGroup>
