@@ -15,7 +15,11 @@ import { existsSync, realpathSync, statSync, createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
-import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import {
+  ensureSvgNamespace,
+  injectScriptsAtHeadStart,
+  injectScriptsIntoHtml,
+} from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
@@ -788,6 +792,17 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
         : html;
       return c.text(html, 200, { "Content-Type": contentType });
+    }
+
+    if (ext === ".svg") {
+      const svg = ensureSvgNamespace(await readFile(filePath, "utf8"));
+      return new Response(svg, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(Buffer.byteLength(svg)),
+        },
+      });
     }
 
     // Stream binary file content rather than buffering it with readFileSync.
