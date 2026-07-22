@@ -3,6 +3,8 @@ title: Anatomy of a one-shot prompt
 description: "The six-part skeleton — route, spec, beats, copy, technique, negatives — that removes the decisions agents most often get wrong."
 ---
 
+Your Level 1 prompts worked because the workflow filled the gaps for you — the palette, the pacing, the structure. This is Level 2: the skeleton is how you take that control yourself.
+
 The [copy-paste examples](/prompting/examples) share one skeleton. Each part removes a decision agents most often get wrong on a first try:
 
 ```text
@@ -28,6 +30,9 @@ Assembled:
 <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-anatomy-terminal.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
 *Rendered from the prompt above, unedited.*
 
+<Note>
+  The skeleton isn't just prompting style — the framework enforces a version of it on itself. Since the composition-structure mandate (`0aaac7aa3`, PR #2599), a `hyperframes feedback` report on a visual defect requires a `COMPOSITION_STRUCTURE:` block — element census, attribute presence, timeline shape — auto-filled from the composition's own HTML; the CLI soft-warns (never blocks) when it's missing. Same idea as the six parts above: name the shape explicitly, and both you and the framework reason about it faster.
+</Note>
 
 ## The beat formula
 
@@ -70,3 +75,5 @@ The fixes that come up most, as before/after pairs — each exists because of ho
 **Format-blind numbers.** An odometer needs fixed digit columns — "counts $0 → $4.2M" forces an awkward "$0.0M" start.
 - ❌ `counts from $0 to $4.2M`
 - ✅ `counts up to $4.2M`
+
+*Next: [The specification dial](/prompting/specification-dial) — how much of the skeleton to fill in, and when density stops being optional.*
