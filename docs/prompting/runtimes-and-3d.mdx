@@ -47,6 +47,8 @@ Fades, slides, staggers, counters, kinetic type, hover-style reveals — the eve
 
 CSS keyframes and the Web Animations API are also supported adapters, worth naming only when you're bringing existing CSS `@keyframes` or WAAPI code you want kept as-is. For a fresh ask, let the default handle it.
 
+An SVG "line draws itself" effect (animated `strokeDasharray` / `strokeDashoffset`) is also GSAP-default territory — see the appendix's [SVG draw-on rows](/prompting/rules-and-anti-patterns#svg-draw-on) for two lint gotchas worth knowing before you ask for one.
+
 ## Scene-to-scene → shader transitions
 
 Motion *within* a scene is one thing; the handoff *between* scenes is another. For a designed transition — a wipe, a glitch, a liquid dissolve — ask for a shader transition at that specific moment:

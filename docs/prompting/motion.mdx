@@ -33,4 +33,6 @@ Rule 1's ambient idle is *continuous* — a slow, smooth breathing scale. Rule 7
 
 Name the seed and the hold length explicitly — "seeded" and "two-frame hold" are the two words that keep an agent from reaching for `Math.random()` and quietly breaking every re-render. Ask for it, and seeking to frame 214 twice gives you the identical frame twice, exactly like every other HyperFrames render — the imperfection is designed in, not left to chance.
 
+Unseeded randomness is the obvious way to break cold-render correctness, but a handful of GSAP lint rules catch subtler seek-order mistakes — relative tweens colliding with another writer, `repeatRefresh` combined with a relative value, function-valued tween vars, DOM measurement inside timeline callbacks — see the [seek-order safety rows](/prompting/rules-and-anti-patterns#seek-order-safety) in the appendix if the linter ever flags one.
+
 *Next: [Transitions](/prompting/transitions) — the same grammar applied to the cut between scenes, not just the motion inside one.*

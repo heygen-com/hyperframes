@@ -3,23 +3,50 @@ title: Rules and anti-patterns
 description: "The technical rules that keep renders correct, and the prompt patterns that cause friction."
 ---
 
+Every rule below was taught somewhere earlier in this guide — nothing here is new material. This page is the lookup table: skim it when you're debugging a render or hand-editing a composition, and follow a rule's link back to the chapter that explains *why* it exists. The lint-rule rows extend the same seven rules with more specific cases the linter now catches automatically.
+
 ## Rules to know
 
 The skills enforce these automatically, but if you hand-edit compositions or debug issues, these are the rules that matter:
 
-1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about.
+1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about. See the skeleton in [Anatomy of a one-shot prompt](/prompting/anatomy).
 2. **Video elements must be `muted`** — audio goes in separate `<audio>` elements so the renderer can mix it.
-3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values.
+3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values. See [Handmade, still deterministic](/prompting/motion#handmade-still-deterministic).
 4. **Synchronous timeline construction** — no `async`/`await` or `fetch()` during GSAP timeline setup.
 5. **Timed elements need `class="clip"`** — plus `data-start`, `data-duration`, and `data-track-index`.
 6. **Add entrance animations to every scene** — elements appearing without animation feel broken on video.
-7. **Add transitions between scenes** — jump cuts between scenes are almost always unintentional in composed video.
+7. **Add transitions between scenes** — jump cuts between scenes are almost always unintentional in composed video. See [What transitions do and when they trigger](/prompting/transitions#what-transitions-do-and-when-they-trigger).
 
 <Warning>
   Rules 1–5 are technical requirements — breaking them produces incorrect renders. Rules 6–7 are best practices that the skills apply by default. You can override them when you have a reason to.
 </Warning>
 
+## Lint rules to know
 
+The linter added eight more rules that catch subtler seek-order and SVG-drawing mistakes — cases where a render can look right in the live preview and still render wrong on a cold, non-linear render worker. Phrase prompts to avoid these up front rather than debugging them after a render.
+
+### Cold-seek visibility
+
+Elements that start hidden need their visible end state stated explicitly — a render worker that seeks straight to a later frame restores the *authored* hidden state, not whatever the preview showed a moment ago.
+
+- **Reveal the destination, not just the source.** If an element starts hidden and a `gsap.fromTo()` reveals it, ask for the destination vars — not just the `from` vars — to include `opacity: 1` (or `autoAlpha: 1`). Cold render workers restore the hidden authored state, so an element can stay invisible even when sequential preview looks correct. (`gsap_cold_seek_hidden_fromto_missing_reveal`, PR [#2503](https://github.com/heygen-com/hyperframes/pull/2503))
+- **Set the initial hidden state outside the timeline.** Don't rely on a `tl.set(...)` at position 0 inside the timeline itself to hide an element at the start — a zero-duration set exactly at frame 0 may not have applied yet when frame 0 renders. Ask for a bare `gsap.set(...)` outside the timeline, or author the hidden state directly in CSS/HTML. (`gsap_timeline_set_initial_hide`, PR [#2612](https://github.com/heygen-com/hyperframes/pull/2612))
+
+### Seek-order safety
+
+These four all come from the same root cause: a cold render worker seeks non-linearly, so anything whose value depends on *when* or *in what order* it runs can render differently than the live preview did.
+
+- **Don't stack a relative tween on a property another writer is still animating.** `"+=50"` or `"-=20"` captures its base at tween init — sequential playback inits mid-flight of the other writer, a cold worker landing later inits from its end state, and the same frame renders at two different positions. State absolute end values instead, or sequence the tweens so they don't overlap on that property. (`gsap_relative_value_second_writer`, PR [#2612](https://github.com/heygen-com/hyperframes/pull/2612))
+- **Don't combine `repeatRefresh: true` with a relative value on a repeating tween.** The relative offset accumulates per iteration, so a worker seeking straight into iteration N never performed the earlier iterations' accumulation and lands somewhere else. Ask for absolute endpoints (a `fromTo()`) instead if the loop needs to render correctly from any seek position. (`gsap_repeat_refresh_relative_value`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
+- **Function-valued tween vars receive `(index, target, targets)` — the first argument is a number, not the element.** Don't ask for a function value that calls an element method on its first parameter, or that reads transform-sensitive layout (its result would depend on the worker's own seek order). Use the second parameter for the element, index arithmetic like `(i) => i * 20`, or a value computed once at build time. (`gsap_function_value_hazard`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
+- **Don't measure DOM geometry inside a timeline callback.** `getBoundingClientRect()`, `getTotalLength()`, and `getComputedStyle()` all depend on whatever DOM state the render happens to be in — and timeline callbacks re-fire on every seek, so a cold worker's own non-linear seek order can hand the callback a different measurement than the live preview did. Ask for geometry to be computed once at build time instead. (`gsap_callback_dom_measurement`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
+
+### SVG draw-on
+
+Two more ways an SVG "line draws itself" effect (animated `strokeDasharray` / `strokeDashoffset`) can render as a static, undrawn line.
+
+- **Don't declare a multi-value CSS `stroke-dasharray` on the same element GSAP is animating.** GSAP merges dash lists per component, so the CSS gap survives the animation and the draw-on hide only covers one gap's worth — the line stays visible for the whole scene. Put decorative dashing on a separate element if you need both effects. (`svg_drawon_css_dasharray_conflict`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
+- **Give the path a static `d` attribute before anything measures it.** `getTotalLength()` returns 0 in Chrome if the path's `d` isn't set yet — whether because `d` is only assigned inside a function that hasn't run, or never assigned as a static attribute at all — and a dash animation built on a 0-length path is silently dead. (`svg_measure_before_path_d`, PR [#2611](https://github.com/heygen-com/hyperframes/pull/2611))
 
 ## Anti-patterns
 
