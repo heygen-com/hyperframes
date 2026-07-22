@@ -76,7 +76,7 @@ otherwise) and must stay flat 2D (no 3D ancestors).
   y ∈ [288, 944].
 - Outro (≤3.5s): kicker FULL DIGEST, "See what shipped." ~96px, green rule,
   mono URL chip, tag line. Fade all + chrome ~0.5s before end.
-- Caption rail per `script-voice.md` (top: 1002).
+- Caption rail per `script-voice.md` (top: 990, font-size: 32px, height: 52). Mandatory — populate the master-skeleton's `LINES` array from `captions.json` before render; see SKILL.md step 5.
 
 ## Seams + internal life (doctrine mechanics)
 

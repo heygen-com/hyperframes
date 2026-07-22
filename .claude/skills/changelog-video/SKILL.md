@@ -39,7 +39,7 @@ ffmpeg -y -stream_loop 15 -i <SKILL_DIR>/assets/bg-pattern.mp4 -t <TOTAL> \
 cp <SKILL_DIR>/examples/master-skeleton.html project/index.html
 ```
 
-Then **read `references/build-spec.md` end-to-end** (not skimmed) — it defines the brand tokens (TT Norms Pro + ABC Solar Display + TT Norms Mono, cream `#f5f6f4`, rationed green `#5ef17c`, glass cards with green-tinted borders, kicker/sec-chip pill shape, caption rail at `top: 1002`) that every scene inherits from the scaffold.
+Then **read `references/build-spec.md` end-to-end** (not skimmed) — it defines the brand tokens (TT Norms Pro + ABC Solar Display + TT Norms Mono, cream `#f5f6f4`, rationed green `#5ef17c`, glass cards with green-tinted borders, kicker/sec-chip pill shape, 32px caption rail at `top: 990`) that every scene inherits from the scaffold.
 
 Only THEN begin steps 1-6 below. Steps 1-4 (parse, route, script, VO) plan what goes into the scaffold; step 5 fills placeholders (`<RANGE>`, `<TOTAL>`, `<CUT_N>`, `<DUR_N>`, scene bodies) inside the already-copied `project/index.html` — you do NOT rewrite the scaffold's chrome, fonts, palette, or layout shell.
 
@@ -158,7 +158,7 @@ scaffold.
    background video not black, no tiny/frozen frames.
 5. **Caption presence gate — hard fail.** Sample 3-4 frames spread across
    the VO's spoken window (e.g. `t=3`, `t=15`, `t=30`, `t=42` for a 48s VO)
-   and confirm the caption rail at `top: 1002` renders visible text on each.
+   and confirm the caption rail at `top: 990` renders visible text on each.
    If any frame in a spoken interval is missing captions, the build ships
    uncaptioned — treat it as a red gate and re-check step 5's `LINES`
    population. This is exactly what went wrong on the Jul 13-20 v4 build.
