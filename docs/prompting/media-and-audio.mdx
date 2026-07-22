@@ -3,7 +3,7 @@ title: Media and audio
 description: "Ask for the voiceover, music, sound, captions, cutouts, and assets a composition needs — with the precise, unambiguous phrasing the media pipeline acts on."
 ---
 
-HyperFrames owns media *playback*; a companion media pipeline resolves everything else — voice, music, sound effects, images, icons, logos, captions, and background removal. You reach all of it by describing what the composition needs, and the agent resolves each need to a frozen local file. The craft here is precision: vague media asks ("add some music," "no sound") are the ones that come back wrong, because the pipeline does exactly what the words say.
+By now your video moves and reads right; this level gives it a voice. HyperFrames owns media *playback*; a companion media pipeline resolves everything else — voice, music, sound effects, images, icons, logos, captions, and background removal. You reach all of it by describing what the composition needs, and the agent resolves each need to a frozen local file. The craft here is precision: vague media asks ("add some music," "no sound") are the ones that come back wrong, because the pipeline does exactly what the words say.
 
 ## Voiceover (TTS)
 
@@ -76,6 +76,18 @@ Layering footage — a talking head over a scene, a subject in front of a headli
   Two mechanics the workflow skills handle automatically (from the [Remove background guide](/guides/remove-background#compositing-patterns-and-pitfalls)): a cutout that reveals into view is wrapped in a non-timed `<div>` and the *wrapper* is animated (the framework forces `opacity: 1` on timed clips, so animating the video directly does nothing); and both the base video and the cutout mount at `data-start="0"` so their decoders stay in sync at the cut. You rarely need to say this — but it's why "late-mounting" a PiP clip can land a frame off.
 </Note>
 
+## Bring any footage
+
+You don't need to pre-convert supplied footage before naming it in a prompt. If a clip's codec doesn't play back cleanly in a browser — HEVC (H.265) is the common case, straight off an iPhone or a screen recorder — the framework probes the asset and builds a bounded H.264 proxy automatically, cached under `.transcode-cache/`. `preview`, `play`, Studio, and published player pages use the proxy for playback; a render always decodes the original file, so nothing about final quality or color is touched. `hyperframes lint` also flags the asset at info level (`hevc_preview_codec`) so you know a proxy is in play, and it's optional — `--no-proxy` per command, or `media.autoProxy: false` in `hyperframes.json` project-wide. The same mechanism covers alpha-channel sources too (ProRes 4444, alpha WebM proxy to VP9+Opus WebM instead of being refused), so a transparent cutout in a hostile codec isn't a blocker either.
+
+None of this changes how you phrase the ask: name the footage by path like any other supplied asset, and describe the composition you want built from it.
+
+> Build a short picture-in-picture piece from `source-hevc.mp4` — inset it bottom-right over a full-bleed background scene, with a soft rounded border.
+
+<!-- VALIDATION PENDING: proxy-footage -->
+
+See the [Rendering guide](/guides/rendering#input-video-codecs) for the mechanics — proxy generation, caching, and which codecs it covers.
+
 ## The supplied-assets rule
 
 The single most reliable media instruction is an explicit path. The agent will search when you describe an asset, but a path removes every ambiguity about *which* file — and for your own brand assets, it's the only way to guarantee the right one:
@@ -102,3 +114,5 @@ This mirrors the negatives discipline in [Anatomy](/prompting/anatomy): close th
   <Card title="Remove background guide" href="/guides/remove-background">The matting command, its person-only caveat, and alternatives</Card>
   <Card title="Video components" href="/guides/video-components">Installable overlays, captions, and effects</Card>
 </CardGroup>
+
+*Next: [Design systems and brand](/prompting/design-systems) — pointing the agent at a source of brand truth instead of describing a vibe.*
