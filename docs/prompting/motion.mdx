@@ -3,7 +3,7 @@ title: Motion that reads premium
 description: "Seven motion-grammar rules from frame-by-frame study of professional work — nothing stops, the camera acts, action overlaps, imperfection stays reproducible."
 ---
 
-Static frames can be perfect and the video still feels cheap if the motion is dead. Professional motion design follows a grammar you can put directly in prompts:
+By now you can specify a frame precisely — exact copy, exact colors, exact layout, exact timing. This level makes it feel alive. Static frames can be perfect and the video still feels cheap if the motion is dead. Professional motion design follows a grammar you can put directly in prompts:
 
 1. **Nothing ever fully stops.** Every "hold" carries ambient idle motion — a 1-2% breathing scale, slow drift, a shimmer. Never write "holds motionless"; write "settles into a gentle ambient idle." A frozen final second is the single biggest cheap-motion tell.
 2. **The camera is an actor.** Give each scene one continuous camera move — a 4-8% push-in, a slow orbit, parallax between layered planes — easing gently but never settling on screen (compute the ease over a window slightly longer than the render).
@@ -32,3 +32,5 @@ Rule 1's ambient idle is *continuous* — a slow, smooth breathing scale. Rule 7
 > A paper-cutout garden scene: flowers, leaves, and a bee drifting on visible wires, like stop-motion. Seed a random offset per element at the start (same seed every render) so each leaf sways to a slightly different rhythm, but hold each position for exactly two frames before stepping to the next — discrete jumps, not a smooth tween. It should read as intentionally handmade, not glitchy.
 
 Name the seed and the hold length explicitly — "seeded" and "two-frame hold" are the two words that keep an agent from reaching for `Math.random()` and quietly breaking every re-render. Ask for it, and seeking to frame 214 twice gives you the identical frame twice, exactly like every other HyperFrames render — the imperfection is designed in, not left to chance.
+
+*Next: [Transitions](/prompting/transitions) — the same grammar applied to the cut between scenes, not just the motion inside one.*

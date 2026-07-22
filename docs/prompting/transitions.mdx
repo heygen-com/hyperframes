@@ -3,6 +3,8 @@ title: Transitions
 description: "Map energy and mood to named shader and CSS transition blocks, and prompt them per seam."
 ---
 
+[Motion](/prompting/motion)'s seven rules were written for what happens inside one scene. Rule 2's camera and rule 3's overlap apply *between* scenes too — a transition is that same grammar aimed at the cut itself, not a separate feature to bolt on afterward.
+
 ## What transitions do and when they trigger
 
 A transition tells the viewer how two scenes relate — a crossfade says "this continues," a whip pan says "next point," a burn says "something changed." Any composition with more than one scene needs them: without a transition, a scene change reads as an unintentional jump cut (see [rules and anti-patterns](/prompting/rules-and-anti-patterns)). The skills add transitions by default, so prompts trigger this layer whenever you describe scene changes, crossfades, wipes, reveals, or a mood ("warm," "clinical," "glitchy") — or when you name a block directly.
@@ -87,3 +89,5 @@ Name the block and the seam — transitions are the one place where per-seam con
 **Don't invent transition names.** Only the blocks in the [shader](/catalog/blocks/cross-warp-morph) and CSS transition groups exist; a made-up name (`page-curl`, `star-iris`) sends the agent guessing at raw GLSL or an unsupported CSS effect.
 - ❌ `add a page-curl transition`
 - ✅ pick a real block, e.g. `sdf-iris` for an iris reveal
+
+*Next: [Code animations](/prompting/code-blocks) — naming a block and pasting real code for walkthroughs, diffs, and terminal takes.*
