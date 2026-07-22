@@ -76,52 +76,67 @@
             "pages": [
               "prompting/overview",
               {
-                "group": "Fundamentals",
-                "pages": [
-                  "prompting/anatomy",
-                  "prompting/examples",
-                  "prompting/specification-dial",
-                  "prompting/vocabulary",
-                  "prompting/iterating",
-                  "prompting/rules-and-anti-patterns"
-                ]
-              },
-              {
-                "group": "Making it look good",
-                "pages": [
-                  "prompting/visual-specs",
-                  "prompting/motion",
-                  "prompting/generated-artwork",
-                  "prompting/recreating-references"
-                ]
-              },
-              {
-                "group": "By video type",
+                "group": "Level 1 — Your first video",
                 "pages": [
                   "prompting/product-launch",
                   "prompting/explainers",
                   "prompting/code-and-prs",
-                  "prompting/music-and-slideshows",
                   "prompting/captions-and-talking-heads",
-                  "prompting/motion-graphics",
+                  "prompting/music-and-slideshows",
+                  "prompting/motion-graphics"
+                ]
+              },
+              {
+                "group": "Level 2 — Control",
+                "pages": [
+                  "prompting/anatomy",
+                  "prompting/specification-dial",
+                  "prompting/vocabulary",
+                  "prompting/visual-specs",
+                  "prompting/examples"
+                ]
+              },
+              {
+                "group": "Level 3 — Life",
+                "pages": [
+                  "prompting/motion",
+                  "prompting/transitions"
+                ]
+              },
+              {
+                "group": "Level 4 — Substance",
+                "pages": [
+                  "prompting/code-blocks",
+                  "prompting/data-and-maps",
+                  "prompting/overlays-and-lower-thirds",
+                  "prompting/captions-catalog",
+                  "prompting/generated-artwork",
+                  "prompting/vfx-and-liquid-glass",
+                  "prompting/runtimes-and-3d"
+                ]
+              },
+              {
+                "group": "Level 5 — Voice and sound",
+                "pages": [
+                  "prompting/media-and-audio"
+                ]
+              },
+              {
+                "group": "Level 6 — Scale",
+                "pages": [
+                  "prompting/design-systems",
+                  "prompting/variables-and-templating",
+                  "prompting/editing-existing-videos",
+                  "prompting/iterating",
+                  "prompting/recreating-references",
+                  "prompting/rendering-and-output",
                   "prompting/remotion-migration"
                 ]
               },
               {
-                "group": "By feature",
+                "group": "Appendix",
                 "pages": [
-                  "prompting/transitions",
-                  "prompting/captions-catalog",
-                  "prompting/overlays-and-lower-thirds",
-                  "prompting/code-blocks",
-                  "prompting/data-and-maps",
-                  "prompting/vfx-and-liquid-glass",
-                  "prompting/rendering-and-output",
-                  "prompting/editing-existing-videos",
-                  "prompting/media-and-audio",
-                  "prompting/variables-and-templating",
-                  "prompting/runtimes-and-3d",
-                  "prompting/design-systems"
+                  "prompting/rules-and-anti-patterns"
                 ]
               }
             ]
