@@ -9,7 +9,7 @@ Every rule below was taught somewhere earlier in this guide — nothing here is 
 
 The skills enforce these automatically, but if you hand-edit compositions or debug issues, these are the rules that matter:
 
-1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about. See the skeleton in [Anatomy of a one-shot prompt](/prompting/anatomy).
+1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about.
 2. **Video elements must be `muted`** — audio goes in separate `<audio>` elements so the renderer can mix it.
 3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values. See [Handmade, still deterministic](/prompting/motion#handmade-still-deterministic).
 4. **Synchronous timeline construction** — no `async`/`await` or `fetch()` during GSAP timeline setup.
