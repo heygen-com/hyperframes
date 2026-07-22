@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- yt-camera-move --------------------------------------------------
+         The creator-video punch-in as reusable GSAP helpers: dynamic
+         zoom + slide + 3D tilt/pan on any wrapper (a #video-wrap, a
+         sub-composition include, an image card). A talking-head recipe
+         is the default: cubic easing, ~11% zoom.
+
+         Optional: .yt-cm-defocus is an edge-blur overlay that pulses during
+         the move to sell the 3D feel — place it ABOVE the moving layer,
+         covering the same region. */
+      .yt-cm-defocus {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        backdrop-filter: blur(7px);
+        -webkit-backdrop-filter: blur(7px);
+        /* blur only the frame edges; center stays sharp */
+        -webkit-mask-image: radial-gradient(
+          ellipse 62% 58% at 50% 50%,
+          transparent 58%,
+          rgba(0, 0, 0, 0.85) 92%
+        );
+        mask-image: radial-gradient(
+          ellipse 62% 58% at 50% 50%,
+          transparent 58%,
+          rgba(0, 0, 0, 0.85) 92%
+        );
+      }
+      /* ---- self-preview stand-in "footage" (not part of the snippet) ---- */
+      #yt-cm-stage {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: linear-gradient(135deg, #35c8d9 0%, #2a7fff 55%, #7d5cff 100%);
+      }
+      #yt-cm-stage .yt-cm-grid {
+        position: absolute;
+        inset: -60px;
+        background:
+          repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 120px),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 120px);
+      }
+      #yt-cm-stage .yt-cm-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 700;
+        font-size: 120px;
+        letter-spacing: -0.02em;
+        color: rgba(255, 255, 255, 0.92);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .yt-cm-defocus CSS (if you want
+         the edge blur), add <div class="yt-cm-defocus" id="yt-my-defocus"></div>
+         as a sibling ABOVE your moving layer, and copy the helpers into your
+         host script. Then drive any wrapper:
+
+           ytCameraMove(tl, "#video-wrap", 5.0, { zoom: 0.11, slideY: -24 });
+           ytDefocusPulse(tl, "#yt-my-defocus", 5.0, 1.2);
+           ytCameraReset(tl, "#video-wrap", 9.0);
+    -->
+    <div
+      id="yt-cm-root"
+      data-composition-id="yt-camera-move"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-cm-stage">
+        <div class="yt-cm-grid" data-layout-allow-overflow></div>
+        <div class="yt-cm-label">FOOTAGE</div>
+      </div>
+      <div class="yt-cm-defocus" id="yt-cm-defocus"></div>
+      <div
+        id="yt-cm-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script ----
+        // Punch-in / camera move on any wrapper. A talking-head base:
+        // zoom 0.11, cubic ease. tilt/pan are degrees (rotationX/rotationY,
+        // perspective is set for you); slideX/slideY in px; roll in degrees.
+        window.ytCameraMove = function (tl, target, at, opts) {
+          opts = opts || {};
+          var dur = opts.dur === undefined ? 1.2 : opts.dur;
+          gsap.set(target, { transformPerspective: 1200, transformOrigin: opts.origin || "50% 50%" });
+          tl.to(
+            target,
+            {
+              scale: 1 + (opts.zoom === undefined ? 0.11 : opts.zoom),
+              x: opts.slideX || 0,
+              y: opts.slideY || 0,
+              rotationX: opts.tilt || 0,
+              rotationY: opts.pan || 0,
+              rotation: opts.roll || 0,
+              duration: dur,
+              ease: opts.ease || "power2.inOut",
+            },
+            at
+          );
+        };
+        // Return to rest (same easing family).
+        window.ytCameraReset = function (tl, target, at, opts) {
+          opts = opts || {};
+          tl.to(
+            target,
+            {
+              scale: 1,
+              x: 0,
+              y: 0,
+              rotationX: 0,
+              rotationY: 0,
+              rotation: 0,
+              duration: opts.dur === undefined ? 1.2 : opts.dur,
+              ease: opts.ease || "power2.inOut",
+            },
+            at
+          );
+        };
+        // Edge-defocus pulse synced to a move (overlay fades in then out).
+        window.ytDefocusPulse = function (tl, target, at, dur) {
+          dur = dur === undefined ? 1.2 : dur;
+          tl.to(target, { opacity: 1, duration: dur * 0.45, ease: "power2.out" }, at);
+          tl.to(target, { opacity: 0, duration: dur * 0.55, ease: "power2.in" }, at + dur * 0.45);
+        };
+
+        // Self-preview timeline (not part of the snippet you copy):
+        // punch in with a slight tilt, hold, return.
+        var tl = gsap.timeline({ paused: true });
+        window.ytCameraMove(tl, "#yt-cm-stage", 0.4, { zoom: 0.11, slideY: -26, tilt: 3, pan: -2 });
+        window.ytDefocusPulse(tl, "#yt-cm-defocus", 0.4, 1.2);
+        window.ytCameraReset(tl, "#yt-cm-stage", 2.5);
+        window.ytDefocusPulse(tl, "#yt-cm-defocus", 2.5, 1.2);
+        tl.set("#yt-cm-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["yt-camera-move"] = tl;
+      })();
+    </script>
+  </body>
+</html>

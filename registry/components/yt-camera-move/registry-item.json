@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-camera-move",
+  "type": "hyperframes:component",
+  "title": "Camera Punch-In",
+  "description": "Dynamic zoom, slide, and 3D tilt-pan helpers for any wrapper (video, include, card) with cubic-easing defaults and an edge-defocus pulse overlay",
+  "tags": [
+    "camera",
+    "zoom",
+    "effect",
+    "creator"
+  ],
+  "files": [
+    {
+      "path": "yt-camera-move.html",
+      "target": "compositions/components/yt-camera-move.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

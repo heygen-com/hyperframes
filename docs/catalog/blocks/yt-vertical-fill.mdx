@@ -1,0 +1,44 @@
+---
+title: "Vertical Media Filler"
+description: "Portrait media filling a widescreen frame via blurred-scale, mirror, or copy side fills; grid texture and foreground contrast lift (images inside the block; keep live footage in the host)"
+---
+
+# Vertical Media Filler
+
+Portrait media filling a widescreen frame via blurred-scale, mirror, or copy side fills; grid texture and foreground contrast lift (images inside the block; keep live footage in the host)
+
+`placeholder` `vertical` `media`
+
+<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-vertical-fill.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/yt-vertical-fill.png" autoPlay muted loop playsInline />
+
+## Install
+
+<CodeGroup>
+
+```bash Terminal
+npx hyperframes add yt-vertical-fill
+```
+
+</CodeGroup>
+
+## Details
+
+| Property | Value |
+| --- | --- |
+| Type | Block |
+| Dimensions | 1920×1080 |
+| Duration | 8s |
+
+## Files
+
+| File | Target | Type |
+| --- | --- | --- |
+| `yt-vertical-fill.html` | `compositions/yt-vertical-fill.html` | hyperframes:composition |
+
+## Usage
+
+After installing, add the block to your host composition:
+
+```html
+<div data-composition-id="yt-vertical-fill" data-composition-src="compositions/yt-vertical-fill.html" data-start="0" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
+```

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-avatar-pip",
+  "type": "hyperframes:component",
+  "title": "Circle PiP Window",
+  "description": "Circular or rounded-rect masked picture-in-picture window with ring and shadow for a second video or image; pop in/out helpers",
+  "tags": [
+    "pip",
+    "overlay",
+    "creator"
+  ],
+  "files": [
+    {
+      "path": "yt-avatar-pip.html",
+      "target": "compositions/components/yt-avatar-pip.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}

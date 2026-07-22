@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-doc-lower-third",
+  "type": "hyperframes:block",
+  "title": "Documentary Lower Third",
+  "description": "Name and role lower third: accent bar draws down, text slides in, hairline rule grows; overlay and light schemes",
+  "tags": [
+    "lower-third",
+    "title",
+    "creator"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "yt-doc-lower-third.html",
+      "target": "compositions/yt-doc-lower-third.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

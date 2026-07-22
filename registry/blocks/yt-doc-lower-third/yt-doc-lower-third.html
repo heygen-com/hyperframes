@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #yt-lt-root {
+        /* ---- yt tokens ---- */
+        --yt-font: "Inter", -apple-system, sans-serif;
+        --yt-ink: #1d1d1f;
+        --yt-ink-dim: #5a5a5f;
+        /* overlay-scheme text over footage — distinct from the --yt-ink board tokens */
+        --yt-text: #ffffff;
+        --yt-text-dim: rgba(255, 255, 255, 0.75);
+        --yt-red: #e62e2e;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage */
+        font-family: var(--yt-font);
+      }
+      #yt-lt-group {
+        position: absolute;
+        display: flex;
+        gap: 26px;
+        align-items: stretch;
+      }
+      #yt-lt-bar {
+        flex: none;
+        width: 7px;
+        border-radius: 4px;
+        background: var(--yt-red);
+        transform-origin: top center;
+      }
+      #yt-lt-name {
+        font-weight: 700;
+        font-size: 56px;
+        line-height: 1.05;
+        letter-spacing: -0.015em;
+      }
+      #yt-lt-role {
+        margin-top: 8px;
+        font-weight: 500;
+        font-size: 30px;
+        letter-spacing: 0.02em;
+      }
+      #yt-lt-rule {
+        margin-top: 14px;
+        height: 2px;
+        width: 320px;
+        border-radius: 1px;
+        transform-origin: left center;
+      }
+      .yt-overlay #yt-lt-name {
+        color: var(--yt-text);
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+      }
+      .yt-overlay #yt-lt-role {
+        color: var(--yt-text-dim);
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+      }
+      .yt-overlay #yt-lt-rule {
+        background: rgba(255, 255, 255, 0.35);
+      }
+      .yt-light #yt-lt-name {
+        color: var(--yt-ink);
+      }
+      .yt-light #yt-lt-role {
+        color: var(--yt-ink-dim);
+      }
+      .yt-light #yt-lt-rule {
+        background: rgba(0, 0, 0, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="yt-lt-root"
+      data-composition-id="yt-doc-lower-third"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="yt-lt-group">
+        <div id="yt-lt-bar"></div>
+        <div>
+          <div id="yt-lt-name"></div>
+          <div id="yt-lt-role"></div>
+          <div id="yt-lt-rule"></div>
+        </div>
+      </div>
+      <div
+        id="yt-lt-drv"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters ----
+           The documentary lower third ("Lower 03" energy): red bar draws
+           down, name slides in, role follows, hairline rule grows. */
+        var CONFIG = {
+          scheme: "overlay", // "overlay" (white over footage) | "light" (ink)
+          name: "Alex Winters",
+          role: "Field Producer",
+          x: 120,
+          y: 800, // top of the group
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 6;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        var root = document.getElementById("yt-lt-root");
+        var group = document.getElementById("yt-lt-group");
+        root.classList.add(CONFIG.scheme === "light" ? "yt-light" : "yt-overlay");
+        document.getElementById("yt-lt-name").textContent = CONFIG.name;
+        document.getElementById("yt-lt-role").textContent = CONFIG.role;
+        group.style.left = CONFIG.x + "px";
+        group.style.top = CONFIG.y + "px";
+
+        var tl = gsap.timeline({ paused: true });
+
+        if (CONFIG.animationIn) {
+          gsap.set("#yt-lt-bar", { scaleY: 0 });
+          gsap.set(["#yt-lt-name", "#yt-lt-role"], { opacity: 0, x: -28 });
+          gsap.set("#yt-lt-rule", { scaleX: 0 });
+          tl.to("#yt-lt-bar", { scaleY: 1, duration: 0.5, ease: "power2.inOut" }, 0.15);
+          tl.to("#yt-lt-name", { opacity: 1, x: 0, duration: 0.55, ease: "power3.out" }, 0.4);
+          tl.to("#yt-lt-role", { opacity: 1, x: 0, duration: 0.55, ease: "power3.out" }, 0.55);
+          tl.to("#yt-lt-rule", { scaleX: 1, duration: 0.6, ease: "power2.inOut" }, 0.7);
+        } else {
+          gsap.set("#yt-lt-bar", { scaleY: 1 });
+        }
+
+        if (CONFIG.animationOut) {
+          tl.to(group, { opacity: 0, x: -20, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["yt-doc-lower-third"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -564,11 +564,55 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "yt-lcd-background",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-comment-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-prism-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-logo-intro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-vertical-fill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-doc-lower-third",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
     {
       "name": "parallax-unzoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-camera-move",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-avatar-pip",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-feather-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-circle-pointer",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "yt-screen-warp",
       "type": "hyperframes:component"
     }
   ]

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- yt-avatar-pip ---------------------------------------------------
+         The screen-recording PiP: a circular (or rounded-rect) masked window
+         for a second video/image — one drop replaces the manual
+         crop-mask-resize dance. Size via --yt-pip-size, framing via an
+         inline transform scale on the inner media (an "inside scale"). */
+      .yt-pip {
+        --yt-pip-size: 300px;
+        --yt-pip-ring: rgba(255, 255, 255, 0.92);
+        --yt-pip-ring-w: 4px;
+
+        position: absolute;
+        width: var(--yt-pip-size);
+        height: var(--yt-pip-size);
+        border-radius: 50%;
+        overflow: hidden;
+        border: var(--yt-pip-ring-w) solid var(--yt-pip-ring);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+        pointer-events: none;
+      }
+      .yt-pip--rect {
+        border-radius: 22px;
+        width: calc(var(--yt-pip-size) * 1.55);
+      }
+      .yt-pip > img,
+      .yt-pip > video,
+      .yt-pip > .yt-pip-fill {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      /* self-preview stand-in (not part of the snippet) */
+      .yt-pip-fill {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 700;
+        font-size: 92px;
+        color: rgba(255, 255, 255, 0.95);
+        background: linear-gradient(135deg, #ff8fb8 0%, #7d5cff 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview wrapper. WIRING: copy the .yt-pip CSS and the markup
+         pattern below into your host; put a <video data-start ...> or <img>
+         inside. The media element must live in the HOST root (this pattern
+         is copied in) — never inside a mounted sub-composition: sub-comps
+         are never seeked, so framework-owned media there renders black. Position via top/right/bottom/left; add class="clip" +
+         data-start/duration/track-index for host windowing. Framing: style
+         the inner media with transform: scale(1.15) etc. Then:
+
+           ytPipIn(tl, "#yt-my-pip", 2.0);
+           ytPipOut(tl, "#yt-my-pip", 12.0);
+    -->
+    <div
+      id="yt-pip-root"
+      data-composition-id="yt-avatar-pip"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="yt-pip" id="yt-pip-demo" style="left: 120px; bottom: 100px">
+        <div class="yt-pip-fill">AB</div>
+      </div>
+      <div
+        id="yt-pip-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script ----
+        window.ytPipIn = function (tl, target, at) {
+          gsap.set(target, { opacity: 0, scale: 0.55, y: 26 });
+          tl.to(target, { opacity: 1, scale: 1, y: 0, duration: 0.55, ease: "back.out(1.5)" }, at);
+        };
+        window.ytPipOut = function (tl, target, at) {
+          tl.to(target, { opacity: 0, scale: 0.75, y: 18, duration: 0.35, ease: "power2.in" }, at);
+        };
+
+        // Self-preview timeline (not part of the snippet you copy).
+        var tl = gsap.timeline({ paused: true });
+        window.ytPipIn(tl, "#yt-pip-demo", 0.4);
+        window.ytPipOut(tl, "#yt-pip-demo", 3.4);
+        tl.set("#yt-pip-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["yt-avatar-pip"] = tl;
+      })();
+    </script>
+  </body>
+</html>

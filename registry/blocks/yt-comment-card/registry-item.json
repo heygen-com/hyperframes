@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "yt-comment-card",
+  "type": "hyperframes:block",
+  "title": "Comment Cards",
+  "description": "Social comments typing on over footage: avatar pop, username and time, per-character typewriter, likes row; image avatars or initials chips",
+  "tags": [
+    "social",
+    "comments",
+    "creator",
+    "overlay"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "files": [
+    {
+      "path": "yt-comment-card.html",
+      "target": "compositions/yt-comment-card.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
