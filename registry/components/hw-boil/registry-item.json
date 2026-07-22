@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-boil",
+  "type": "hyperframes:component",
+  "title": "Hand-Drawn Boil",
+  "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher and a wobbled-ellipse path generator",
+  "tags": [
+    "handwritten",
+    "effect",
+    "annotation"
+  ],
+  "files": [
+    {
+      "path": "hw-boil.html",
+      "target": "compositions/components/hw-boil.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

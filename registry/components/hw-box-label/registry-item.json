@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-box-label",
+  "type": "hyperframes:component",
+  "title": "Hand-Drawn Box Label",
+  "description": "Wobbled rounded rectangle draws around a region with a handwritten label above or centered",
+  "tags": [
+    "handwritten",
+    "annotation",
+    "overlay"
+  ],
+  "files": [
+    {
+      "path": "hw-box-label.html",
+      "target": "compositions/components/hw-box-label.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-path-text",
+  "type": "hyperframes:block",
+  "title": "Text Along a Path",
+  "description": "Handwriting flowing along any SVG path with a per-character reveal; the path is the only geometry input",
+  "tags": [
+    "handwritten",
+    "typography",
+    "path"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "hw-path-text.html",
+      "target": "compositions/hw-path-text.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

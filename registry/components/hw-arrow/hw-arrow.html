@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- hw-arrow ------------------------------------------------------
+         Hand-wobbled draw-on arrow, boiling. Position the wrapper, pick a
+         curve preset, call the helpers. Requires the hw-boil helpers
+         (hwOnUpdate / hwHash / hwBoil) in the host script. */
+      .hw-arrow {
+        position: absolute;
+        pointer-events: none;
+      }
+      .hw-arrow svg {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .hw-arrow path {
+        fill: none;
+        stroke: var(--hw-arrow-color, var(--hw-ink, #f4f2ec));
+        stroke-width: var(--hw-arrow-w, 6);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hw-arrow.hw-soft path {
+        filter: blur(0.6px);
+      }
+      /* self-preview scene */
+      #hw-ar-scene {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, #274060 0%, #123 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+        font-weight: 700;
+        font-size: 80px;
+        color: rgba(244, 242, 236, 0.92);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview. WIRING: copy the .hw-arrow CSS, the markup pattern,
+         and the hwArrowPath / hwArrowOn / hwArrowOff helpers (plus the
+         hw-boil helpers) into your host. Then:
+
+           document.querySelector("#hw-my-arrow path")
+             .setAttribute("d", hwArrowPath(360, 160, "swoop", 3));
+           hwArrowOn(tl, "#hw-my-arrow", 2.0);
+           hwBoil(tl, "#hw-my-arrow", { frameDrop: 3, seed: 3 });
+           hwArrowOff(tl, "#hw-my-arrow", 8.0);
+    -->
+    <div
+      id="hw-ar-root"
+      data-composition-id="hw-arrow"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-ar-scene"><span>point at things</span></div>
+      <div class="hw-arrow" id="hw-ar-demo" style="left: 560px; top: 320px; width: 380px; height: 180px">
+        <svg viewBox="0 0 380 180"><path id="hw-ar-demo-path"></path></svg>
+      </div>
+      <div
+        id="hw-ar-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- hw-boil helpers (shared family runtime — copy once per host) ---- */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+
+        // ---- hw-arrow helpers (copy these too) ----
+        // Wobbled arrow path in a w x h box, tail at left, head at right.
+        // curve: "straight" | "gentle" | "swoop"
+        window.hwArrowPath = function (w, h, curve, seed) {
+          seed = seed || 1;
+          var bend = curve === "swoop" ? 0.55 : curve === "gentle" ? 0.28 : 0.06;
+          function wob(v, n, range) {
+            return v + window.hwHash(n, seed) * range;
+          }
+          var x0 = wob(4, 1, 3),
+            y0 = wob(h * 0.72, 2, 4),
+            x1 = wob(w - 10, 3, 4),
+            y1 = wob(h * 0.3, 4, 4);
+          var cx1 = wob(w * 0.35, 5, 10),
+            cy1 = wob(h * (0.72 + bend * 0.5), 6, 8);
+          var cx2 = wob(w * 0.7, 7, 10),
+            cy2 = wob(h * (0.3 + bend), 8, 8);
+          var ang = Math.atan2(y1 - cy2, x1 - cx2);
+          function head(da, len) {
+            var a = ang + Math.PI + da;
+            return "M " + x1.toFixed(1) + " " + y1.toFixed(1) + " l " + (Math.cos(a) * len).toFixed(1) + " " + (Math.sin(a) * len).toFixed(1);
+          }
+          return (
+            "M " + x0.toFixed(1) + " " + y0.toFixed(1) +
+            " C " + cx1.toFixed(1) + " " + cy1.toFixed(1) + ", " + cx2.toFixed(1) + " " + cy2.toFixed(1) + ", " + x1.toFixed(1) + " " + y1.toFixed(1) +
+            " " + head(0.5, wob(34, 9, 6)) + " " + head(-0.5, wob(34, 10, 6))
+          );
+        };
+        window.hwArrowOn = function (tl, target, at, dur) {
+          var p = document.querySelector(target + " path");
+          var len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(p, { strokeDashoffset: 0, duration: dur === undefined ? 0.7 : dur, ease: "power2.inOut" }, at);
+        };
+        window.hwArrowOff = function (tl, target, at) {
+          tl.to(target, { opacity: 0, duration: 0.3, ease: "power2.in" }, at);
+        };
+
+        // ---- self-preview ----
+        document.getElementById("hw-ar-demo-path").setAttribute("d", window.hwArrowPath(380, 180, "swoop", 7));
+        var tl = gsap.timeline({ paused: true });
+        window.hwArrowOn(tl, "#hw-ar-demo", 0.4);
+        window.hwBoil(tl, "#hw-ar-demo", { amp: 2, rot: 0.6, frameDrop: 3, seed: 7 });
+        window.hwArrowOff(tl, "#hw-ar-demo", 3.4);
+        tl.set("#hw-ar-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["hw-arrow"] = tl;
+      })();
+    </script>
+  </body>
+</html>

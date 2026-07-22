@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #hw-pl-root {
+        --hw-font-print: "Caveat", cursive;
+        --hw-font-script: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+        --hw-accent: #6d6dff;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent; /* overlays footage or boards */
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-pl-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      #hw-pl-svg path {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hw-pl-box {
+        stroke: var(--hw-ink);
+        stroke-width: 6;
+      }
+      .hw-pl-conn {
+        stroke: var(--hw-accent);
+        stroke-width: 5;
+      }
+      .hw-pl-label {
+        position: absolute;
+        text-align: center;
+        font-weight: 700;
+        color: var(--hw-ink);
+        white-space: nowrap;
+        opacity: 0;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hw-pl-root"
+      data-composition-id="hw-pipeline"
+      data-start="0"
+      data-duration="7"
+      data-width="1920"
+      data-height="1080"
+    >
+      <svg id="hw-pl-svg" viewBox="0 0 1920 1080"></svg>
+      <div id="hw-pl-labels"></div>
+      <div
+        id="hw-pl-drv"
+        class="clip"
+        data-start="0"
+        data-duration="7"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters ----
+           A flowchart "pipeline": wobbled boxes joined by curved
+           connectors, drawing on in sequence, all boiling. */
+        var CONFIG = {
+          nodes: [{ label: "Idea" }, { label: "Record" }, { label: "Shine!" }],
+          boxW: 320,
+          boxH: 170,
+          gap: 190, // px between boxes
+          y: 455, // top of the row; x centers automatically
+          fontSize: 56,
+          seed: 11,
+          boil: { enabled: true, amp: 1.6, rot: 0.4, frameDrop: 3 },
+          animationOut: true,
+        };
+
+        var DUR = 7;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        /* hw family runtime */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+        window.hwWobbleRect = function (w, h, r, seed, amp) {
+          amp = amp === undefined ? 3.5 : amp;
+          function wob(n) {
+            return window.hwHash(n, seed) * amp;
+          }
+          var d = "M " + (r + wob(1)) + " " + wob(2);
+          d += " L " + (w / 2 + wob(3)) + " " + wob(4);
+          d += " L " + (w - r + wob(5)) + " " + wob(6);
+          d += " Q " + (w + wob(7)) + " " + wob(8) + " " + (w + wob(9)) + " " + (r + wob(10));
+          d += " L " + (w + wob(11)) + " " + (h / 2 + wob(12));
+          d += " L " + (w + wob(13)) + " " + (h - r + wob(14));
+          d += " Q " + (w + wob(15)) + " " + (h + wob(16)) + " " + (w - r + wob(17)) + " " + (h + wob(18));
+          d += " L " + (w / 2 + wob(19)) + " " + (h + wob(20));
+          d += " L " + (r + wob(21)) + " " + (h + wob(22));
+          d += " Q " + wob(23) + " " + (h + wob(24)) + " " + wob(25) + " " + (h - r + wob(26));
+          d += " L " + wob(27) + " " + (h / 2 + wob(28));
+          d += " L " + wob(29) + " " + (r + wob(30));
+          d += " Q " + wob(31) + " " + wob(32) + " " + (r + wob(33)) + " " + wob(34);
+          return d;
+        };
+
+        var NS = "http://www.w3.org/2000/svg";
+        var svg = document.getElementById("hw-pl-svg");
+        var labels = document.getElementById("hw-pl-labels");
+        var n = CONFIG.nodes.length;
+        var totalW = n * CONFIG.boxW + (n - 1) * CONFIG.gap;
+        var x0 = (1920 - totalW) / 2;
+
+        var boxes = [],
+          conns = [],
+          labelEls = [];
+        CONFIG.nodes.forEach(function (node, i) {
+          var bx = x0 + i * (CONFIG.boxW + CONFIG.gap);
+          /* outer g owns the translate (GSAP transforms REPLACE the SVG
+             transform attribute — never boil the element that carries it);
+             inner g is the boil target */
+          var gOuter = document.createElementNS(NS, "g");
+          gOuter.setAttribute("transform", "translate(" + bx + " " + CONFIG.y + ")");
+          var g = document.createElementNS(NS, "g");
+          g.setAttribute("id", "hw-pl-box-g-" + i);
+          gOuter.appendChild(g);
+          var p = document.createElementNS(NS, "path");
+          p.setAttribute("class", "hw-pl-box");
+          p.setAttribute("id", "hw-pl-box-" + i);
+          p.setAttribute("d", window.hwWobbleRect(CONFIG.boxW, CONFIG.boxH, 24, CONFIG.seed + i));
+          g.appendChild(p);
+          svg.appendChild(gOuter);
+          boxes.push(p);
+
+          var label = document.createElement("div");
+          label.className = "hw-pl-label";
+          label.id = "hw-pl-label-" + i;
+          label.textContent = node.label;
+          label.style.left = bx + "px";
+          label.style.top = CONFIG.y + CONFIG.boxH / 2 - CONFIG.fontSize * 0.62 + "px";
+          label.style.width = CONFIG.boxW + "px";
+          label.style.fontSize = CONFIG.fontSize + "px";
+          labels.appendChild(label);
+          labelEls.push(label);
+
+          if (i < n - 1) {
+            var cx = bx + CONFIG.boxW,
+              cy = CONFIG.y + CONFIG.boxH / 2;
+            var ex = cx + CONFIG.gap,
+              ey = cy;
+            var c = document.createElementNS(NS, "path");
+            c.setAttribute("class", "hw-pl-conn");
+            c.setAttribute("id", "hw-pl-conn-" + i);
+            c.setAttribute(
+              "d",
+              "M " + (cx + 10) + " " + cy +
+                " Q " + (cx + CONFIG.gap / 2 + window.hwHash(i * 9 + 2, CONFIG.seed) * 16) + " " + (cy - 46 - window.hwHash(i * 9 + 3, CONFIG.seed) * 12) +
+                " " + (ex - 10) + " " + ey +
+                " M " + (ex - 10) + " " + ey + " l -30 -14 M " + (ex - 10) + " " + ey + " l -26 18"
+            );
+            svg.appendChild(c);
+            conns.push(c);
+          }
+        });
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* sequence: box draws -> label -> connector -> next box... */
+        var t = 0.3;
+        CONFIG.nodes.forEach(function (_, i) {
+          var p = boxes[i];
+          var len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(p, { strokeDashoffset: 0, duration: 0.65, ease: "power2.inOut" }, t);
+          tl.to(labelEls[i], { opacity: 1, duration: 0.35, ease: "power2.out" }, t + 0.45);
+          t += 0.7;
+          if (i < conns.length) {
+            var c = conns[i];
+            var cl = c.getTotalLength();
+            gsap.set(c, { strokeDasharray: cl, strokeDashoffset: cl });
+            tl.to(c, { strokeDashoffset: 0, duration: 0.45, ease: "power2.inOut" }, t);
+            t += 0.5;
+          }
+        });
+
+        if (CONFIG.boil.enabled) {
+          var targets = boxes.map(function (_, i) {
+            return "#hw-pl-box-g-" + i;
+          });
+          window.hwBoil(tl, targets.concat([".hw-pl-conn", ".hw-pl-label"]), {
+            amp: CONFIG.boil.amp,
+            rot: CONFIG.boil.rot,
+            frameDrop: CONFIG.boil.frameDrop,
+            seed: CONFIG.seed,
+          });
+        }
+
+        if (CONFIG.animationOut) {
+          tl.to([svg, labels], { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set("#hw-pl-root", { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["hw-pipeline"] = tl;
+      })();
+    </script>
+  </body>
+</html>

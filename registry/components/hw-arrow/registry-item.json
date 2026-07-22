@@ -1,0 +1,25 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-arrow",
+  "type": "hyperframes:component",
+  "title": "Hand-Drawn Arrow",
+  "description": "Wobbled draw-on arrow with straight, gentle, and swoop curve presets; boils while on screen",
+  "tags": [
+    "handwritten",
+    "annotation",
+    "arrow",
+    "overlay"
+  ],
+  "files": [
+    {
+      "path": "hw-arrow.html",
+      "target": "compositions/components/hw-arrow.html",
+      "type": "hyperframes:snippet"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}

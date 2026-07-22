@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #hw-pt-root {
+        --hw-font-print: "Caveat", cursive;
+        --hw-font-script: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-pt-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      #hw-pt-guide {
+        fill: none;
+        stroke: rgba(244, 242, 236, 0.22);
+        stroke-width: 3;
+        stroke-dasharray: 2 14;
+        stroke-linecap: round;
+      }
+      #hw-pt-svg text {
+        font-family: var(--hw-font-print, "Caveat", cursive);
+        font-weight: 700;
+        fill: var(--hw-ink);
+      }
+      #hw-pt-svg tspan {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hw-pt-root"
+      data-composition-id="hw-path-text"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <svg id="hw-pt-svg" viewBox="0 0 1920 1080">
+        <path id="hw-pt-path" d=""></path>
+        <path id="hw-pt-guide" d=""></path>
+        <text id="hw-pt-text" font-size="92">
+          <textPath id="hw-pt-tp" href="#hw-pt-path" startOffset="4%"></textPath>
+        </text>
+      </svg>
+      <div
+        id="hw-pt-drv"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters ----
+           Handwriting along any path — custom path text, natively via
+           SVG textPath (no Fusion overlay). CONFIG.d is the whole design. */
+        var CONFIG = {
+          text: "come on this wild journey with me...",
+          d: "M 220 700 C 520 480, 900 820, 1230 560 S 1700 380, 1780 420",
+          fontSize: 92,
+          showGuide: true, // faint dotted guide under the writing
+          typeCharDelay: 0.05,
+          seed: 12,
+          boil: { enabled: true, amp: 1.4, rot: 0.3, frameDrop: 3 },
+          animationOut: true,
+        };
+
+        var DUR = 6;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        /* hw family runtime */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+
+        document.getElementById("hw-pt-path").setAttribute("d", CONFIG.d);
+        if (CONFIG.showGuide) document.getElementById("hw-pt-guide").setAttribute("d", CONFIG.d);
+        document.getElementById("hw-pt-text").setAttribute("font-size", CONFIG.fontSize);
+
+        /* per-char tspans along the path */
+        var NS = "http://www.w3.org/2000/svg";
+        var tp = document.getElementById("hw-pt-tp");
+        Array.from(CONFIG.text).forEach(function (ch) {
+          var t = document.createElementNS(NS, "tspan");
+          t.textContent = ch;
+          tp.appendChild(t);
+        });
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* guide draws first, then the handwriting types along it */
+        var guide = document.getElementById("hw-pt-guide");
+        if (CONFIG.showGuide) {
+          var glen = guide.getTotalLength();
+          gsap.set(guide, { strokeDasharray: "2 14", strokeDashoffset: glen });
+          tl.to(guide, { strokeDashoffset: 0, duration: 0.9, ease: "power2.inOut" }, 0.2);
+        }
+        var chars = tp.querySelectorAll("tspan");
+        var delay = Math.min(CONFIG.typeCharDelay, 2.6 / Math.max(1, chars.length));
+        tl.to(chars, { opacity: 1, duration: 0.03, stagger: delay, ease: "none" }, 0.7);
+
+        if (CONFIG.boil.enabled) {
+          window.hwBoil(tl, "#hw-pt-svg", {
+            amp: CONFIG.boil.amp,
+            rot: CONFIG.boil.rot,
+            frameDrop: CONFIG.boil.frameDrop,
+            seed: CONFIG.seed,
+          });
+        }
+
+        if (CONFIG.animationOut) {
+          tl.to("#hw-pt-svg", { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set("#hw-pt-root", { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["hw-path-text"] = tl;
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /* Caveat is NOT auto-resolved by the renderer — bundle it. Asset
+         paths are ROOT-RELATIVE (the project root is the base URL for all
+         compositions; ../ traversal is a lint error). Registry installs
+         ship the woff2 as an asset file targeting assets/fonts/. */
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      /* ---- hw-boil -----------------------------------------------------
+         The hand-drawn "boil": jitter that re-poses only every N frames
+         (quake + frame-drop style). Pose is a pure function of quantized
+         timeline time through a seeded hash — fully seek-safe, renders
+         identically on every pass over the same frame.
+
+         RULES:
+         - hwBoil owns x/y/rotation of the boiled element. Entrance/exit
+           tweens go on a WRAPPER around it, never the boiled element.
+         - One timeline has ONE onUpdate — hwOnUpdate is the dispatcher
+           that lets the boil coexist with sweep scalars etc. Register
+           every onUpdate-style render through it. */
+      #hw-boil-root {
+        --hw-font-print: "Caveat", cursive;
+        --hw-font-script: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+        --hw-accent: #6d6dff;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #17161a;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-boil-root svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #hw-boil-root path {
+        fill: none;
+        stroke: var(--hw-ink);
+        stroke-width: 6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      #hw-b-arrow {
+        stroke: var(--hw-accent);
+        stroke-width: 7;
+      }
+      .hw-b-label {
+        position: absolute;
+        font-weight: 700;
+        font-size: 84px;
+        color: var(--hw-ink);
+        white-space: nowrap;
+      }
+      .hw-b-tag {
+        position: absolute;
+        font-family: "Inter", ui-sans-serif, sans-serif;
+        font-weight: 500;
+        font-size: 22px;
+        letter-spacing: 0.12em;
+        color: rgba(244, 242, 236, 0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Self-preview. WIRING: copy the hwOnUpdate / hwHash / hwBoil /
+         hwWobbleEllipse helpers into your host script, then:
+
+           hwBoil(tl, "#hw-my-annotation", { amp: 1.6, rot: 0.5, frameDrop: 3, seed: 2 });
+
+         frameDrop 3-4 = classic boil; 1 = frantic; boil: off = don't call it. -->
+    <div
+      id="hw-boil-root"
+      data-composition-id="hw-boil"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <svg viewBox="0 0 1920 1080">
+        <g id="hw-b-circle-g"><path id="hw-b-circle"></path></g>
+        <g id="hw-b-arrow-g">
+          <path id="hw-b-arrow" d="M 640 640 C 760 700, 980 720, 1130 620 M 1130 620 l -64 -6 M 1130 620 l -18 58"></path>
+        </g>
+      </svg>
+      <div class="hw-b-label" id="hw-b-word" style="left: 1230px; top: 560px">the boil</div>
+      <div class="hw-b-tag" style="left: 350px; top: 782px">FRAME DROP 3</div>
+      <div class="hw-b-tag" style="left: 700px; top: 782px">FRAME DROP 1</div>
+      <div class="hw-b-tag" style="left: 1230px; top: 700px">TEXT, AMP 1.2</div>
+      <div
+        id="hw-b-drv"
+        class="clip"
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // ---- copy these helpers into the host script ----
+
+        // Dispatcher: a GSAP timeline has ONE onUpdate. Register every
+        // per-frame render (boils, sweep scalars) through this instead of
+        // setting eventCallback directly, and they all coexist.
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+
+        // Seeded hash -> [-1, 1]. Pure function of n — no Math.random().
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+
+        // The boil. Owns x/y/rotation of its targets — put entrance tweens
+        // on a wrapper. frameDrop = re-pose every N frames (3-4 classic).
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+
+        // Seeded hand-wobbled ellipse path (smooth quadratic chain).
+        window.hwWobbleEllipse = function (cx, cy, rx, ry, seed, wobblePct) {
+          wobblePct = wobblePct === undefined ? 3 : wobblePct;
+          var N = 14,
+            pts = [];
+          for (var i = 0; i < N; i++) {
+            var a = (i / N) * Math.PI * 2;
+            var wr = 1 + window.hwHash(i * 13 + 5, seed) * (wobblePct / 100);
+            pts.push([cx + Math.cos(a) * rx * wr, cy + Math.sin(a) * ry * wr]);
+          }
+          var mx = (pts[0][0] + pts[N - 1][0]) / 2,
+            my = (pts[0][1] + pts[N - 1][1]) / 2;
+          var d = "M" + mx.toFixed(1) + " " + my.toFixed(1);
+          for (var j = 0; j < N; j++) {
+            var p = pts[j],
+              q = pts[(j + 1) % N];
+            d += " Q" + p[0].toFixed(1) + " " + p[1].toFixed(1) + " " + ((p[0] + q[0]) / 2).toFixed(1) + " " + ((p[1] + q[1]) / 2).toFixed(1);
+          }
+          return d;
+        };
+
+        // ---- self-preview (not part of the snippet you copy) ----
+        var circle = document.getElementById("hw-b-circle");
+        circle.setAttribute("d", window.hwWobbleEllipse(460, 620, 190, 130, 4, 3.2));
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* draw-on entrances (strokeDashoffset — never x/y, the boil owns those) */
+        [circle, document.getElementById("hw-b-arrow")].forEach(function (p, i) {
+          var len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(p, { strokeDashoffset: 0, duration: 0.8, ease: "power2.inOut" }, 0.3 + i * 0.35);
+        });
+        gsap.set("#hw-b-word", { opacity: 0 });
+        tl.to("#hw-b-word", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.1);
+
+        /* three boils with different characters, one dispatcher */
+        window.hwBoil(tl, "#hw-b-circle-g", { amp: 2.2, rot: 0.4, frameDrop: 3, seed: 2 });
+        window.hwBoil(tl, "#hw-b-arrow-g", { amp: 2.6, rot: 0.7, frameDrop: 1, seed: 5 });
+        window.hwBoil(tl, "#hw-b-word", { amp: 1.2, rot: 0.35, frameDrop: 3, seed: 9 });
+
+        tl.set("#hw-boil-root", { visibility: "hidden" }, 3.98);
+        window.__timelines["hw-boil"] = tl;
+      })();
+    </script>
+  </body>
+</html>

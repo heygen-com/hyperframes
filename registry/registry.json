@@ -564,11 +564,55 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-text-cloud",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "hw-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "hw-pipeline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "hw-path-text",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "hw-frame",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "hw-scribble-transition",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "parallax-zoom",
       "type": "hyperframes:component"
     },
     {
       "name": "parallax-unzoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-boil",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-arrow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-callout-circle",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-box-label",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hw-underline",
       "type": "hyperframes:component"
     }
   ]

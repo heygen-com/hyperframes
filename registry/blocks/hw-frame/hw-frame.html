@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Caveat";
+        src: url("assets/fonts/Caveat-700-latin.woff2") format("woff2");
+        font-weight: 700;
+        font-display: block;
+      }
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #hw-fr-root {
+        --hw-font-print: "Caveat", cursive;
+        --hw-font-script: "Caveat", cursive;
+        --hw-ink: #f4f2ec;
+        --hw-accent-warm: #ffb020;
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #1b1a1e;
+        font-family: var(--hw-font-print, "Caveat", cursive);
+      }
+      #hw-fr-media {
+        position: absolute;
+        overflow: hidden;
+        border-radius: 10px;
+      }
+      #hw-fr-media img,
+      #hw-fr-media .hw-fr-fill {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .hw-fr-fill {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 110px;
+        color: rgba(244, 242, 236, 0.9);
+        background: linear-gradient(150deg, #35604a 0%, #14231c 100%);
+      }
+      #hw-fr-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      #hw-fr-svg path {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      #hw-fr-border {
+        stroke: var(--hw-ink);
+        stroke-width: 7;
+      }
+      .hw-fr-doodle {
+        stroke: var(--hw-accent-warm);
+        stroke-width: 5;
+      }
+      #hw-fr-caption {
+        position: absolute;
+        width: 100%;
+        text-align: center;
+        font-weight: 700;
+        font-size: 58px;
+        color: var(--hw-ink);
+        opacity: 0;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="hw-fr-root"
+      data-composition-id="hw-frame"
+      data-start="0"
+      data-duration="8"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="hw-fr-media"></div>
+      <svg id="hw-fr-svg" viewBox="0 0 1920 1080"><path id="hw-fr-border"></path></svg>
+      <div id="hw-fr-caption"></div>
+      <div
+        id="hw-fr-drv"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="0"
+        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters ----
+           A sketched frame: content inside a hand-drawn border with
+           corner doodles + optional caption. IMAGES ONLY inside this block
+           (learning: the runtime never seeks media elements inside
+           sub-compositions) — for live footage keep the media element in
+           the HOST root positioned over the documented media slot below;
+           layering two framed clips = instant PiP. */
+        var CONFIG = {
+          src: null, // IMAGE path; null -> stand-in gradient (demo)
+          slot: { x: 480, y: 180, w: 960, h: 620 }, // the media window (documented for host-side footage)
+          caption: "our trip!",
+          doodles: true, // corner sparks
+          tilt: -1.2, // deg — the whole framed unit sits slightly rotated
+          seed: 14,
+          boil: { enabled: true, amp: 1.6, rot: 0.35, frameDrop: 3 },
+          animationIn: true,
+          animationOut: true,
+        };
+
+        var DUR = 8;
+        function clamp(v, lo, hi) {
+          return Math.min(hi, Math.max(lo, v));
+        }
+        var IN = clamp(DUR * 0.08, 0.3, 0.8);
+        var OUT = clamp(DUR * 0.06, 0.25, 0.6);
+
+        /* hw family runtime */
+        window.hwOnUpdate = function (tl, fn) {
+          if (!tl.__hwRenders) {
+            tl.__hwRenders = [];
+            tl.eventCallback("onUpdate", function () {
+              for (var i = 0; i < tl.__hwRenders.length; i++) tl.__hwRenders[i]();
+            });
+          }
+          tl.__hwRenders.push(fn);
+          fn();
+        };
+        window.hwHash = function (n, seed) {
+          var x = Math.sin(n * 127.1 + (seed || 1) * 311.7) * 43758.5453;
+          return (x - Math.floor(x)) * 2 - 1;
+        };
+        window.hwBoil = function (tl, target, opts) {
+          opts = opts || {};
+          var amp = opts.amp !== undefined ? opts.amp : 1.6;
+          var rot = opts.rot !== undefined ? opts.rot : 0.5;
+          var fps = opts.fps || 30;
+          var drop = opts.frameDrop || 3;
+          var seed = opts.seed || 1;
+          var els = gsap.utils.toArray(target);
+          window.hwOnUpdate(tl, function () {
+            var step = Math.floor((tl.time() * fps) / drop);
+            for (var i = 0; i < els.length; i++) {
+              gsap.set(els[i], {
+                x: window.hwHash(step * 3 + i * 97, seed) * amp,
+                y: window.hwHash(step * 3 + 1 + i * 97, seed) * amp,
+                rotation: (opts.baseRot || 0) + window.hwHash(step * 3 + 2 + i * 97, seed) * rot,
+              });
+            }
+          });
+        };
+        window.hwWobbleRect = function (w, h, r, seed, amp) {
+          amp = amp === undefined ? 3.5 : amp;
+          function wob(n) {
+            return window.hwHash(n, seed) * amp;
+          }
+          var d = "M " + (r + wob(1)) + " " + wob(2);
+          d += " L " + (w / 2 + wob(3)) + " " + wob(4);
+          d += " L " + (w - r + wob(5)) + " " + wob(6);
+          d += " Q " + (w + wob(7)) + " " + wob(8) + " " + (w + wob(9)) + " " + (r + wob(10));
+          d += " L " + (w + wob(11)) + " " + (h / 2 + wob(12));
+          d += " L " + (w + wob(13)) + " " + (h - r + wob(14));
+          d += " Q " + (w + wob(15)) + " " + (h + wob(16)) + " " + (w - r + wob(17)) + " " + (h + wob(18));
+          d += " L " + (w / 2 + wob(19)) + " " + (h + wob(20));
+          d += " L " + (r + wob(21)) + " " + (h + wob(22));
+          d += " Q " + wob(23) + " " + (h + wob(24)) + " " + wob(25) + " " + (h - r + wob(26));
+          d += " L " + wob(27) + " " + (h / 2 + wob(28));
+          d += " L " + wob(29) + " " + (r + wob(30));
+          d += " Q " + wob(31) + " " + wob(32) + " " + (r + wob(33)) + " " + wob(34);
+          return d;
+        };
+
+        var S = CONFIG.slot;
+        var media = document.getElementById("hw-fr-media");
+        media.style.left = S.x + "px";
+        media.style.top = S.y + "px";
+        media.style.width = S.w + "px";
+        media.style.height = S.h + "px";
+        if (CONFIG.src) {
+          var img = document.createElement("img");
+          img.src = CONFIG.src;
+          media.appendChild(img);
+        } else {
+          var d = document.createElement("div");
+          d.className = "hw-fr-fill";
+          d.textContent = "photo";
+          media.appendChild(d);
+        }
+
+        /* border drawn slightly outside the slot */
+        var NS = "http://www.w3.org/2000/svg";
+        var border = document.getElementById("hw-fr-border");
+        var m = 16;
+        border.setAttribute("d", window.hwWobbleRect(S.w + m * 2, S.h + m * 2, 18, CONFIG.seed, 5));
+        border.setAttribute("transform", "translate(" + (S.x - m) + " " + (S.y - m) + ")");
+
+        /* corner doodles: little three-spark bursts */
+        var svg = document.getElementById("hw-fr-svg");
+        var doodles = [];
+        if (CONFIG.doodles) {
+          [
+            [S.x - 40, S.y - 34],
+            [S.x + S.w + 40, S.y - 26],
+            [S.x + S.w + 36, S.y + S.h + 30],
+          ].forEach(function (pt, i) {
+            var p = document.createElementNS(NS, "path");
+            p.setAttribute("class", "hw-fr-doodle");
+            p.setAttribute("id", "hw-fr-doodle-" + i);
+            var dd = "";
+            for (var k = 0; k < 3; k++) {
+              var a = -0.6 - k * 0.5 + window.hwHash(i * 9 + k, CONFIG.seed) * 0.2;
+              var l = 26 + window.hwHash(i * 9 + k + 4, CONFIG.seed) * 8;
+              dd += "M " + pt[0] + " " + pt[1] + " l " + (Math.cos(a) * l).toFixed(1) + " " + (Math.sin(a) * l).toFixed(1) + " ";
+            }
+            p.setAttribute("d", dd);
+            svg.appendChild(p);
+            doodles.push(p);
+          });
+        }
+
+        var caption = document.getElementById("hw-fr-caption");
+        caption.textContent = CONFIG.caption || "";
+        caption.style.top = S.y + S.h + 42 + "px";
+
+        var tl = gsap.timeline({ paused: true });
+
+        if (CONFIG.animationIn) {
+          gsap.set(media, { opacity: 0, scale: 0.96 });
+          tl.to(media, { opacity: 1, scale: 1, duration: IN * 1.4, ease: "power2.out" }, IN * 0.8);
+        }
+        var blen = border.getTotalLength();
+        gsap.set(border, { strokeDasharray: blen, strokeDashoffset: blen });
+        tl.to(border, { strokeDashoffset: 0, duration: 0.9, ease: "power2.inOut" }, 0.2);
+        doodles.forEach(function (p, i) {
+          var l = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: l, strokeDashoffset: l });
+          tl.to(p, { strokeDashoffset: 0, duration: 0.3, ease: "power2.out" }, 1.1 + i * 0.12);
+        });
+        if (CONFIG.caption) tl.to(caption, { opacity: 1, duration: 0.4, ease: "power2.out" }, 1.4);
+
+        /* whole framed unit tilts + boils together */
+        var unit = [media, svg, caption];
+        gsap.set(unit, { rotation: CONFIG.tilt, transformOrigin: "50% 50%" });
+        if (CONFIG.boil.enabled) {
+          window.hwBoil(tl, unit, {
+            amp: CONFIG.boil.amp,
+            rot: CONFIG.boil.rot,
+            frameDrop: CONFIG.boil.frameDrop,
+            seed: CONFIG.seed,
+            baseRot: CONFIG.tilt,
+          });
+        }
+
+        if (CONFIG.animationOut) {
+          tl.to(unit, { opacity: 0, duration: OUT, ease: "power2.in" }, DUR - OUT - 0.05);
+        }
+        tl.set("#hw-fr-root", { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["hw-frame"] = tl;
+      })();
+    </script>
+  </body>
+</html>

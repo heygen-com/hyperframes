@@ -1,0 +1,29 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hw-pipeline",
+  "type": "hyperframes:block",
+  "title": "Hand-Drawn Flowchart",
+  "description": "Wobbled boxes with handwritten labels joined by curved connectors, drawing on in sequence from a node list",
+  "tags": [
+    "handwritten",
+    "diagram",
+    "data-viz"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "files": [
+    {
+      "path": "hw-pipeline.html",
+      "target": "compositions/hw-pipeline.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/fonts/Caveat-700-latin.woff2",
+      "target": "assets/fonts/Caveat-700-latin.woff2",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
