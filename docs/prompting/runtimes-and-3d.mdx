@@ -3,6 +3,8 @@ title: Runtimes and 3D
 description: "GSAP is the default and you rarely name it — but real 3D, existing animation files, and scene transitions each have a runtime worth pinning in the prompt."
 ---
 
+Level 2's copy-paste examples include an isometric-cards prompt that asks to "Build the scene in Three.js via the adapter" — this chapter is why that line is there, and the rest of the runtime map for when GSAP, the default, isn't the right tool.
+
 HyperFrames animates through the [frame-adapter](/concepts/frame-adapters) pattern: any runtime that can answer "what should the screen look like at frame N?" plugs in and renders deterministically. [GSAP](/guides/gsap-animation) is the default adapter and covers most motion — you rarely need to name it. The cases below are the ones where the default choice can go wrong, so the prompt should pick the runtime for you.
 
 ## Real 3D → Three.js via the adapter
@@ -81,3 +83,5 @@ The rule of thumb: anything the video needs to *know* must be present before ren
     Naming the scene-to-scene handoffs worth a shader transition.
   </Card>
 </CardGroup>
+
+*Next: [Media and audio](/prompting/media-and-audio) — precise phrasing for voiceover, music, sound, and assets, instead of motion and rendering.*
