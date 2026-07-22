@@ -110,7 +110,6 @@ interface RenderInput {
    * compositions as an aspect-ratio mismatch.
    */
   outputResolutionAspectAgnostic?: boolean;
-  renderStretch?: number;
 }
 
 interface PreparedRenderInput {
@@ -168,10 +167,6 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
 
   const { variables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
-  const renderStretch =
-    typeof body.renderStretch === "number" && body.renderStretch > 0
-      ? body.renderStretch
-      : undefined;
 
   return {
     outputPath,
@@ -187,7 +182,6 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     outputResolution,
     outputResolutionAspectAgnostic,
     videoFrameFormat,
-    renderStretch,
   };
 }
 
@@ -245,7 +239,6 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
-      renderStretch: input.renderStretch,
     },
   });
   return renderConfigFromRequest(request, { logger: log });

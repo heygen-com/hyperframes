@@ -364,7 +364,6 @@ export interface RenderConfig {
    * alias (`1080p-portrait`). Explicit orientation presets stay strict.
    */
   outputResolutionAspectAgnostic?: boolean;
-  renderStretch?: number;
 }
 
 export interface RenderPerfSummary {
@@ -2190,7 +2189,6 @@ async function executeRenderPipeline(input: {
       width,
       height,
       fps: job.config.fps,
-      renderStretch: job.config.renderStretch ?? 1,
       format: needsAlpha ? "png" : "jpeg",
       quality: needsAlpha ? undefined : job.config.quality === "draft" ? 80 : 95,
       variables: job.config.variables,

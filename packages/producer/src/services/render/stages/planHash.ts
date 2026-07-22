@@ -73,8 +73,6 @@ export interface PlanDimensions {
   width: number;
   height: number;
   format: DistributedFormat;
-  /** intrinsic/target timeline re-time; 1 (or omitted) = no-op, hashed identically to today. */
-  renderStretch?: number;
 }
 
 export interface PlanHashInput {
@@ -129,10 +127,7 @@ export function computePlanHash(input: PlanHashInput): string {
   hash.update(FIELD_DELIMITER);
 
   const d = input.dimensions;
-  // Append renderStretch only when it re-times (!= 1) so unstretched plans hash identically to before.
-  const stretchSuffix =
-    d.renderStretch !== undefined && d.renderStretch !== 1 ? `x${d.renderStretch}` : "";
-  hash.update(`${d.fpsNum}/${d.fpsDen}x${d.width}x${d.height}x${d.format}${stretchSuffix}`, "utf8");
+  hash.update(`${d.fpsNum}/${d.fpsDen}x${d.width}x${d.height}x${d.format}`, "utf8");
 
   return hash.digest("hex");
 }

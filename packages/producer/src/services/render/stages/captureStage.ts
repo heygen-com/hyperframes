@@ -52,7 +52,6 @@ import {
   initializeSession,
   prepareCaptureSessionForReuse,
 } from "@hyperframes/engine";
-import { outputFrameToTimelineSeconds } from "@hyperframes/core";
 import type { FileServerHandle } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
@@ -317,11 +316,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         for (let i = 0; i < rangeFrames; i++) {
           assertNotAborted();
           const absoluteIdx = rangeStart + i;
-          const time = outputFrameToTimelineSeconds(
-            absoluteIdx,
-            job.config.fps,
-            job.config.renderStretch ?? 1,
-          );
+          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
           const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
           await drainPrev();
           prev = { fileIndex: i, encodeResult };
@@ -331,11 +326,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         for (let i = 0; i < rangeFrames; i++) {
           assertNotAborted();
           const absoluteIdx = rangeStart + i;
-          const time = outputFrameToTimelineSeconds(
-            absoluteIdx,
-            job.config.fps,
-            job.config.renderStretch ?? 1,
-          );
+          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
           await captureFrame(session, i, time);
           reportFrame(i);
         }

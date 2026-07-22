@@ -49,8 +49,6 @@ export interface RenderRequestOptions {
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
-  /** intrinsic/target timeline re-time; 1 = no-op. Audio is silence-padded to output length, not time-stretched. */
-  renderStretch?: number;
   engineConfig: EngineConfig;
   distributed?: DistributedRenderOptions;
 }
@@ -104,13 +102,6 @@ function assertOptionalInteger(options: Record<string, unknown>, field: string, 
     (typeof value !== "number" || !Number.isInteger(value) || value < min)
   ) {
     throw new Error(`Render request ${field} must be an integer >= ${min}`);
-  }
-}
-
-function assertOptionalPositiveNumber(options: Record<string, unknown>, field: string): void {
-  const value = options[field];
-  if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
-    throw new Error(`Render request ${field} must be a positive number`);
   }
 }
 
@@ -169,7 +160,6 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   assertOptionalInteger(options, "gifLoop");
   assertOptionalInteger(options, "workers", 1);
   assertOptionalInteger(options, "crf");
-  assertOptionalPositiveNumber(options, "renderStretch");
   for (const field of ["useGpu", "debug", "outputResolutionAspectAgnostic"] as const) {
     assertOptionalBoolean(options, field);
   }
@@ -294,7 +284,6 @@ export function distributedConfigFromRequest(
     videoFrameFormat: options.videoFrameFormat,
     outputResolution: options.outputResolution,
     outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
-    renderStretch: options.renderStretch,
     chunkSize: distributed.chunkSize,
     maxParallelChunks: distributed.maxParallelChunks,
     targetChunkFrames: distributed.targetChunkFrames,
@@ -350,7 +339,6 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("videoFrameFormat", config.videoFrameFormat),
     ...optionalProperty("outputResolution", config.outputResolution),
     ...optionalProperty("outputResolutionAspectAgnostic", config.outputResolutionAspectAgnostic),
-    ...optionalProperty("renderStretch", config.renderStretch),
     ...optionalProperty("hdrMode", config.hdrMode),
     ...optionalProperty("strictness", config.strictness),
     ...optionalProperty("entryFile", config.entryFile),

@@ -39,18 +39,6 @@ export function fpsToNumber(fps: Fps): number {
 }
 
 /**
- * Timeline seek time for an output frame. `renderStretch` (=intrinsic/target,
- * default 1 = no-op) scales the mapping so a short comp spans a longer output.
- */
-export function outputFrameToTimelineSeconds(
-  frameIndex: number,
-  fps: Fps,
-  renderStretch = 1,
-): number {
-  return ((frameIndex * fps.den) / fps.num) * renderStretch;
-}
-
-/**
  * FFmpeg-style fps argument. Returns `"30"` for integer fps and `"30000/1001"`
  * for rationals — both forms are accepted verbatim by FFmpeg's `-r` and
  * `-framerate` flags. We keep integer fps as a bare integer so existing

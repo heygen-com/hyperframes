@@ -251,23 +251,3 @@ describe("sha256Hex", () => {
     expect(sha256Hex(s)).toBe(sha256Hex(new TextEncoder().encode(s)));
   });
 });
-
-describe("computePlanHash — renderStretch byte-identity", () => {
-  const baseDims = { fpsNum: 30, fpsDen: 1, width: 1920, height: 1080, format: "mp4" as const };
-
-  it("renderStretch=1 and undefined hash identically to a pre-renderStretch plan", () => {
-    const omitted = computePlanHash(makeInput({ dimensions: { ...baseDims } }));
-    const one = computePlanHash(makeInput({ dimensions: { ...baseDims, renderStretch: 1 } }));
-    const undef = computePlanHash(
-      makeInput({ dimensions: { ...baseDims, renderStretch: undefined } }),
-    );
-    expect(one).toBe(omitted);
-    expect(undef).toBe(omitted);
-  });
-
-  it("a stretched plan (renderStretch=2) gets a distinct hash", () => {
-    const base = computePlanHash(makeInput({ dimensions: { ...baseDims } }));
-    const stretched = computePlanHash(makeInput({ dimensions: { ...baseDims, renderStretch: 2 } }));
-    expect(stretched).not.toBe(base);
-  });
-});
