@@ -12,14 +12,23 @@ import {
 const capturedCfgs: unknown[] = [];
 const capturedOptions: unknown[] = [];
 
-const mockPage = {
-  evaluate: async () => ({
-    timelineKeys: [],
-    hfDuration: 5,
-    gsapLoaded: false,
-    totalDurationMs: 5000,
-    __hf: {},
-  }),
+type MockSession = {
+  id: number;
+  isInitialized: boolean;
+  browserConsoleBuffer: string[];
+  page: {
+    sessionId: number;
+    evaluate: () => Promise<{
+      timelineKeys: never[];
+      hfDuration: number;
+      gsapLoaded: boolean;
+      totalDurationMs: number;
+      __hf: Record<string, never>;
+    }>;
+  };
+  launchCaptureMode: "beginframe" | "screenshot";
+  beginFrameTimeTicks: number;
+  beginFrameIntervalMs: number;
 };
 
 let initializeSessionCallCount = 0;
@@ -29,6 +38,10 @@ let createSessionCallCount = 0;
 let createSessionFailUntilAttempt = 0;
 let createSessionError: Error | null = null;
 let closeCaptureSessionCallCount = 0;
+let probeBeginFrameAlive = true;
+const createdSessions: MockSession[] = [];
+const closedSessions: MockSession[] = [];
+const durationProbeSessions: MockSession[] = [];
 
 function resetRetryMocks() {
   initializeSessionCallCount = 0;
@@ -38,6 +51,10 @@ function resetRetryMocks() {
   createSessionFailUntilAttempt = 0;
   createSessionError = null;
   closeCaptureSessionCallCount = 0;
+  probeBeginFrameAlive = true;
+  createdSessions.length = 0;
+  closedSessions.length = 0;
+  durationProbeSessions.length = 0;
 }
 
 mock.module("@hyperframes/engine", () => ({
@@ -54,11 +71,29 @@ mock.module("@hyperframes/engine", () => ({
     if (createSessionError && createSessionCallCount <= createSessionFailUntilAttempt) {
       throw createSessionError;
     }
-    return {
+    const sessionId = createSessionCallCount;
+    const session: MockSession = {
+      id: sessionId,
       isInitialized: false,
       browserConsoleBuffer: [],
-      page: mockPage,
+      page: {
+        sessionId,
+        evaluate: async () => ({
+          timelineKeys: [],
+          hfDuration: 5,
+          gsapLoaded: false,
+          totalDurationMs: 5000,
+          __hf: {},
+        }),
+      },
+      launchCaptureMode: (cfg as { forceScreenshot?: boolean }).forceScreenshot
+        ? "screenshot"
+        : "beginframe",
+      beginFrameTimeTicks: 100,
+      beginFrameIntervalMs: 1,
     };
+    createdSessions.push(session);
+    return session;
   },
   initializeSession: async (session: { isInitialized: boolean }) => {
     initializeSessionCallCount++;
@@ -67,10 +102,15 @@ mock.module("@hyperframes/engine", () => ({
     }
     session.isInitialized = true;
   },
-  getCompositionDuration: async () => 5,
-  closeCaptureSession: async () => {
-    closeCaptureSessionCallCount++;
+  getCompositionDuration: async (session: MockSession) => {
+    durationProbeSessions.push(session);
+    return 5;
   },
+  closeCaptureSession: async (session: MockSession) => {
+    closeCaptureSessionCallCount++;
+    closedSessions.push(session);
+  },
+  probeBeginFrameLiveness: async () => probeBeginFrameAlive,
   // Mirror of the real engine classifier. Canonical tests + pattern list
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
   isTransientBrowserError: (error: unknown) => {
@@ -440,6 +480,24 @@ describe("runProbeStage — decimal duration frame count", () => {
 });
 
 describe("runProbeStage — transient browser error retry (#1687)", () => {
+  it("uses the replacement session after a BeginFrame liveness fallback", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    probeBeginFrameAlive = false;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    const result = await runProbeStage(input);
+
+    expect(createSessionCallCount).toBe(2);
+    expect(closedSessions).toEqual([createdSessions[0]]);
+    expect(capturedCfgs[1]).toMatchObject({ forceScreenshot: true });
+    expect(durationProbeSessions).toEqual([createdSessions[1]]);
+    expect(result.probeSession).toBe(createdSessions[1]);
+    expect(result.beginFrameStalled).toBe(true);
+  });
+
   it("retries once on a transient 'Navigating frame was detached' error and succeeds", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;

@@ -55,6 +55,26 @@ function makeHttp503Fetch(): typeof fetch {
     })) as unknown as typeof fetch;
 }
 
+function makeGoogleFontFetch(cssRequests: string[]): typeof fetch {
+  return (async (input: string | URL | Request) => {
+    const requestUrl = input instanceof Request ? input.url : String(input);
+    if (requestUrl.startsWith("https://fonts.googleapis.com/")) {
+      cssRequests.push(requestUrl);
+      const family = new URL(requestUrl).searchParams.get("family")?.split(":", 1)[0] ?? "test";
+      const fontUrl = `https://fonts.gstatic.com/s/test/v1/${family.toLowerCase().replace(/\s+/g, "-")}.woff2`;
+      return new Response(
+        `@font-face {
+          font-style: normal;
+          font-weight: 400;
+          src: url(${fontUrl}) format('woff2');
+        }`,
+        { status: 200 },
+      );
+    }
+    return new Response(new Uint8Array([0, 1, 2, 3]), { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
 describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)", () => {
   it("swallows a network failure and returns the original HTML (no throw)", async () => {
     const result = await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
@@ -95,6 +115,32 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)"
 });
 
 describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
+  for (const [authoredFamily, googleFamily] of [
+    ["DM+Mono", "DM Mono"],
+    ["IBM+Plex+Mono", "IBM Plex Mono"],
+    ["Spline+Sans+Mono", "Spline Sans Mono"],
+  ] as const) {
+    it(`resolves URL-style family ${authoredFamily} through Google Fonts`, async () => {
+      const cssRequests: string[] = [];
+      const html = `<!doctype html><html><head><style>
+        body { font-family: "${authoredFamily}", monospace; }
+      </style></head><body><p>hello</p></body></html>`;
+
+      const result = await injectDeterministicFontFaces(html, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl: makeGoogleFontFetch(cssRequests),
+      });
+
+      expect(cssRequests).toHaveLength(1);
+      const familyParam = new URL(cssRequests[0]!).searchParams.get("family");
+      expect(familyParam?.startsWith(`${googleFamily}:`)).toBe(true);
+      expect(familyParam?.startsWith(`${authoredFamily}:`)).toBe(false);
+      expect(result).toContain(`font-family: "${authoredFamily}"`);
+      expect(result).toContain("data-hyperframes-deterministic-fonts");
+    });
+  }
+
   it("throws FontFetchError on a network failure", async () => {
     let caught: unknown;
     try {

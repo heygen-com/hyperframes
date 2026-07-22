@@ -743,7 +743,13 @@ async function fetchGoogleFont(
   fontText?: string,
 ): Promise<GoogleFontFace[]> {
   const slug = fontSlug(familyName);
-  const encodedFamily = encodeURIComponent(familyName);
+  // Agents sometimes copy the `family=` value from a Google Fonts URL into
+  // CSS, where `+` remains a literal character instead of being decoded as a
+  // space. Resolve that URL-style spelling through the canonical Google family
+  // while preserving `familyName` for the emitted @font-face alias so the
+  // authored CSS still matches it.
+  const googleFamilyName = familyName.replace(/\+/g, " ");
+  const encodedFamily = encodeURIComponent(googleFamilyName);
   const textParam = fontText ? `&text=${encodeURIComponent(fontText)}` : "";
   const url = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`;
 
