@@ -800,6 +800,51 @@ window.__afterTimeline = window.__timelines.scene;
     expect(result).toContain('[id="intro"]');
   });
 
+  it("preserves nested-rule selectors so CSS Nesting inheritance works (#2721)", () => {
+    // Chrome 112+ / Firefox 117+ / Safari 16.5+ support native CSS Nesting.
+    // A nested rule like `.title { … }` inside `[data-composition-id="intro"] { … }`
+    // resolves at match time to `<parent> .title` via the implicit `&` prefix.
+    // The scoper must NOT re-apply the composition scope to the nested selector —
+    // that produces `<scope> <scope> .title`, which matches nothing because the
+    // composition root only appears once in the DOM.
+    const scoped = scopeCssToComposition(
+      `
+        [data-composition-id="intro"] h1 { color: red; }
+        [data-composition-id="intro"] {
+          .title { color: brown; }
+          h2 { color: blue; }
+        }
+      `,
+      "intro",
+    );
+    // Top-level rules still get scoped.
+    expect(scoped).toContain('[data-composition-id="intro"] h1');
+    // Nested rules keep their author-original selectors verbatim so CSS Nesting
+    // can prepend the parent's `&` at match time.
+    expect(scoped).toMatch(/\.title\s*\{/);
+    expect(scoped).toMatch(/h2\s*\{/);
+    // The pre-fix bug re-scoped nested rules to `[…] .title`, which never matched.
+    expect(scoped).not.toContain('[data-composition-id="intro"] .title');
+    expect(scoped).not.toContain('[data-composition-id="intro"] h2');
+  });
+
+  it("preserves deeply-nested CSS Nesting rules (#2721)", () => {
+    const scoped = scopeCssToComposition(
+      `
+        [data-composition-id="intro"] {
+          .card {
+            .header { font-weight: bold; }
+          }
+        }
+      `,
+      "intro",
+    );
+    expect(scoped).toMatch(/\.card\s*\{/);
+    expect(scoped).toMatch(/\.header\s*\{/);
+    expect(scoped).not.toContain('[data-composition-id="intro"] .card');
+    expect(scoped).not.toContain('[data-composition-id="intro"] .header');
+  });
+
   it("wraps scripts with authored root id normalization for #id GSAP selectors", () => {
     const { document } = parseHTML(`
       <div data-composition-id="intro">

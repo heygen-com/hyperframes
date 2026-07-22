@@ -200,6 +200,24 @@ function isInsideGlobalAtRule(rule: Rule): boolean {
   return false;
 }
 
+/**
+ * A Rule nested inside another Rule (CSS Nesting Module Level 1) already
+ * inherits scope from its parent's `&` prefix at match time — re-applying
+ * the composition scope to the nested selector produces
+ * `<scope> <scope> .child`, which matches nothing when the composition
+ * root only appears once in the DOM. Only top-level rules get scoped;
+ * their nested descendants inherit the scope naturally via CSS nesting.
+ * See #2721 for the reproducer that motivated this.
+ */
+function isNestedInsideAnotherRule(rule: Rule): boolean {
+  let current: Node["parent"] = rule.parent;
+  while (current) {
+    if (current.type === "rule") return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 export function scopeCssToComposition(
   css: string,
   compositionId: string,
@@ -216,6 +234,7 @@ export function scopeCssToComposition(
 
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
+    if (isNestedInsideAnotherRule(rule)) return;
     rule.selectors = rule.selectors.map((selector) =>
       scopeSelector(
         selector,
