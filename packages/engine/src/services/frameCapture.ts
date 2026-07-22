@@ -2751,6 +2751,7 @@ async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
   const { page, options } = session;
   const startTime = Date.now();
@@ -2787,6 +2788,7 @@ async function captureFrameCore(
     );
 
     const screenshotStart = Date.now();
+    if (settlePaint) await pageScreenshotCapture(page, options);
     let screenshotBuffer: Buffer;
 
     if (session.captureMode === "beginframe") {
@@ -2920,11 +2922,13 @@ export async function captureFrame(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<CaptureResult> {
   const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
     session,
     frameIndex,
     time,
+    settlePaint,
   );
   const framePath = writeCapturedFrame(session, frameIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
@@ -2957,8 +2961,9 @@ export async function captureFrameToBuffer(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<CaptureBufferResult> {
-  const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time);
+  const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time, settlePaint);
 
   return { buffer, captureTimeMs };
 }
@@ -3265,10 +3270,7 @@ export async function discardWarmupCapture(
   if (session.captureMode !== "screenshot") {
     throw new Error("discardWarmupCapture requires screenshot capture mode");
   }
-  // Snapshot the side-effect counters captureFrameCore mutates. We use a
-  // shallow `{...}` for capturePerf because all five fields are primitive
-  // numbers — no nested state to deep-copy.
-  const perfBefore = { ...session.capturePerf };
+  const perfBefore = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
   const hasDamageBefore = session.beginFrameHasDamageCount;
   const noDamageBefore = session.beginFrameNoDamageCount;
   const dedupCountBefore = session.staticDedupCount;

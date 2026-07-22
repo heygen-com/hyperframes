@@ -3,7 +3,6 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 const frameCaptureMocks = vi.hoisted(() => ({
   createCaptureSession: vi.fn(),
   initializeSession: vi.fn(),
-  discardWarmupCapture: vi.fn(),
   closeCaptureSession: vi.fn(),
   captureFrame: vi.fn(),
   captureFrameToBufferPipelined: vi.fn(),
@@ -57,7 +56,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   frameCaptureMocks.createCaptureSession.mockImplementation(async () => makeWorkerSession());
   frameCaptureMocks.initializeSession.mockResolvedValue(undefined);
-  frameCaptureMocks.discardWarmupCapture.mockResolvedValue(undefined);
   frameCaptureMocks.closeCaptureSession.mockResolvedValue(undefined);
   frameCaptureMocks.captureFrame.mockResolvedValue(undefined);
 });
@@ -68,26 +66,23 @@ describe("executeWorkerTask", () => {
     frameCaptureMocks.initializeSession.mockImplementation(async () => {
       callOrder.push("initialize");
     });
-    frameCaptureMocks.discardWarmupCapture.mockImplementation(async () => {
-      callOrder.push("warmup");
-    });
-    frameCaptureMocks.captureFrame.mockImplementation(async (_session, frameIndex) => {
-      callOrder.push(`capture:${frameIndex}`);
-    });
+    frameCaptureMocks.captureFrame.mockImplementation(
+      async (_session, frameIndex, _time, settle) => {
+        callOrder.push(`capture:${frameIndex}:${settle}`);
+      },
+    );
 
-    const result = await runWorker(1, 36);
+    await runWorker(1, 36);
 
-    expect(result.error).toBeUndefined();
-    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledWith(expect.anything(), 36, 1.2);
-    expect(callOrder).toEqual(["initialize", "warmup", "capture:36", "capture:37"]);
+    expect(callOrder).toEqual(["initialize", "capture:36:true", "capture:37:false"]);
   });
 
   it("does not warm worker zero because its initial state is already painted", async () => {
-    const results = await Promise.all([runWorker(0, 0), runWorker(1, 36)]);
+    const result = await runWorker(0, 0);
 
-    expect(frameCaptureMocks.discardWarmupCapture).toHaveBeenCalledTimes(1);
-    expect(results.map((result) => result.framesCaptured)).toEqual([2, 2]);
-    expect(frameCaptureMocks.captureFrame).toHaveBeenCalledTimes(4);
+    expect(result.framesCaptured).toBe(2);
+    const settles = frameCaptureMocks.captureFrame.mock.calls.map((call) => call[3]);
+    expect(settles).toEqual([false, false]);
   });
 
   it.each(["beginframe", "drawelement"] as const)(
@@ -98,35 +93,20 @@ describe("executeWorkerTask", () => {
       const result = await runWorker(1, 36);
 
       expect(result.error).toBeUndefined();
-      expect(frameCaptureMocks.discardWarmupCapture).not.toHaveBeenCalled();
-      expect(frameCaptureMocks.captureFrame).toHaveBeenCalledTimes(2);
+      const settles = frameCaptureMocks.captureFrame.mock.calls.map((call) => call[3]);
+      expect(settles).toEqual([false, false]);
     },
   );
 
-  it("returns a worker error and closes the session when warmup fails", async () => {
+  it("returns a worker error and closes the session when the paint barrier fails", async () => {
     const session = makeWorkerSession();
     frameCaptureMocks.createCaptureSession.mockResolvedValue(session);
-    frameCaptureMocks.discardWarmupCapture.mockRejectedValue(new Error("warmup failed"));
+    frameCaptureMocks.captureFrame.mockRejectedValue(new Error("warmup failed"));
 
     const result = await runWorker(1, 36);
 
     expect(result).toMatchObject({ error: "warmup failed", framesCaptured: 0 });
-    expect(frameCaptureMocks.captureFrame).not.toHaveBeenCalled();
-    expect(frameCaptureMocks.closeCaptureSession).toHaveBeenCalledWith(session);
-  });
-
-  it("returns a cancellation error and closes the session when aborted during warmup", async () => {
-    const controller = new AbortController();
-    const session = makeWorkerSession();
-    frameCaptureMocks.createCaptureSession.mockResolvedValue(session);
-    frameCaptureMocks.discardWarmupCapture.mockImplementation(async () => {
-      controller.abort();
-    });
-
-    const result = await runWorker(1, 36, controller.signal);
-
-    expect(result).toMatchObject({ error: "Parallel worker cancelled", framesCaptured: 0 });
-    expect(frameCaptureMocks.captureFrame).not.toHaveBeenCalled();
+    expect(frameCaptureMocks.captureFrame).toHaveBeenCalledWith(session, 36, 1.2, true);
     expect(frameCaptureMocks.closeCaptureSession).toHaveBeenCalledWith(session);
   });
 });

@@ -19,11 +19,14 @@
  * `innerCapture` for exactly this reason). We don't need a real Chrome.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { existsSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
+import { captureFrameToBuffer, discardWarmupCapture, type CaptureSession } from "./frameCapture.js";
+import { pageScreenshotCapture } from "./screenshotService.js";
+
+vi.mock("./screenshotService.js");
 
 function makeFakeSession(): CaptureSession {
   // The discardWarmupCapture wrapper only reads `capturePerf`,
@@ -44,6 +47,7 @@ function makeFakeSession(): CaptureSession {
       beforeCaptureMs: 50,
       screenshotMs: 200,
       totalMs: 350,
+      frameMs: [40, 50],
     },
     captureMode: "screenshot",
     beginFrameTimeTicks: 0,
@@ -58,6 +62,20 @@ function cleanupSession(session: CaptureSession): void {
 }
 
 describe("discardWarmupCapture", () => {
+  it("settles and retains screenshots after a single seek", async () => {
+    const session = makeFakeSession();
+    const evaluate = vi.fn(async () => false);
+    session.page = { evaluate } as unknown as CaptureSession["page"];
+    vi.mocked(pageScreenshotCapture)
+      .mockResolvedValueOnce(Buffer.from("warmup"))
+      .mockResolvedValueOnce(Buffer.from("retained"));
+    const result = await captureFrameToBuffer(session, 36, 1.2, true);
+    expect(evaluate.mock.calls.filter((call) => call.length === 2)).toHaveLength(1);
+    expect(pageScreenshotCapture).toHaveBeenCalledTimes(2);
+    expect(result.buffer.toString()).toBe("retained");
+    cleanupSession(session);
+  });
+
   it("rejects BeginFrame sessions before issuing a duplicate compositor tick", async () => {
     const session = makeFakeSession();
     session.captureMode = "beginframe";
@@ -111,7 +129,7 @@ describe("discardWarmupCapture", () => {
 
   it("restores perf counters after the inner capture mutates them", async () => {
     const session = makeFakeSession();
-    const before = { ...session.capturePerf };
+    const before = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
     try {
       await discardWarmupCapture(session, 0, 0, async (s) => {
         s.capturePerf.frames += 1;
@@ -119,6 +137,7 @@ describe("discardWarmupCapture", () => {
         s.capturePerf.beforeCaptureMs += 5;
         s.capturePerf.screenshotMs += 33;
         s.capturePerf.totalMs += 50;
+        s.capturePerf.frameMs.push(999);
         return { buffer: Buffer.alloc(0), quantizedTime: 0, captureTimeMs: 50 };
       });
       expect(session.capturePerf).toEqual(before);

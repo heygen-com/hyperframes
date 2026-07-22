@@ -13,7 +13,6 @@ import { join } from "path";
 import {
   createCaptureSession,
   initializeSession,
-  discardWarmupCapture,
   closeCaptureSession,
   captureFrame,
   captureFrameToBufferPipelined,
@@ -295,6 +294,7 @@ async function captureFrameRange(
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
   const stride = task.frameStride ?? 1;
+  const settleFirstPaint = session.captureMode === "screenshot" && task.startFrame !== 0;
   // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
   // k's in-page worker encode overlaps frame k+stride's produce phase — the
   // same shape as the sequential worker-encode loop. Only engaged when the
@@ -360,12 +360,13 @@ async function captureFrameRange(
     if (signal?.aborted) throw new Error("Parallel worker cancelled");
     const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
     const fileFrameIdx = i - outputOffset;
+    const settlePaint = settleFirstPaint && i === task.startFrame;
 
     if (onFrameBuffer) {
-      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
+      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time, settlePaint);
       await onFrameBuffer(i, buffer, session);
     } else {
-      await captureFrame(session, fileFrameIdx, time);
+      await captureFrame(session, fileFrameIdx, time, settlePaint);
     }
     framesCaptured++;
     if (onFrameCaptured) onFrameCaptured(task.workerId, i);
@@ -419,7 +420,6 @@ async function executeWorkerTask(
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
-    await settleFirstScreenshotFrame(session, task, captureOptions);
     if (process.env.HF_DE_PAR_DEBUG === "1") {
       console.log(
         `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
@@ -459,26 +459,6 @@ async function executeWorkerTask(
   } finally {
     if (session) await closeCaptureSession(session).catch(() => {});
   }
-}
-
-async function settleFirstScreenshotFrame(
-  session: CaptureSession,
-  task: WorkerTask,
-  captureOptions: CaptureOptions,
-): Promise<void> {
-  // Screenshot capture is driven by Page.captureScreenshot rather than
-  // HeadlessExperimental.beginFrame. On a fresh non-zero worker, the first
-  // screenshot can race the paint scheduled by __hf.seek(startTime); issue
-  // one throwaway screenshot at that exact frame so the real capture sees
-  // the settled state. Worker 0 already starts from the initially-painted
-  // frame, and BeginFrame/drawElement sessions must never be double-captured
-  // at the same compositor tick (Chrome stalls on duplicate timestamps).
-  if (session.captureMode !== "screenshot" || task.startFrame === 0) return;
-
-  const outputOffset = task.outputFrameOffset ?? 0;
-  const firstFrameIndex = task.startFrame - outputOffset;
-  const firstTime = (task.startFrame * captureOptions.fps.den) / captureOptions.fps.num;
-  await discardWarmupCapture(session, firstFrameIndex, firstTime);
 }
 
 export const __testing = { executeWorkerTask };
