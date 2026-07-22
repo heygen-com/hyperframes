@@ -84,7 +84,8 @@ None of this changes how you phrase the ask: name the footage by path like any o
 
 > Build a short picture-in-picture piece from `source-hevc.mp4` — inset it bottom-right over a full-bleed background scene, with a soft rounded border.
 
-<!-- VALIDATION PENDING: proxy-footage -->
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/proxy-footage.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited — the source clip is a plain H.265/HEVC file; render decoded it directly via FFmpeg, while preview would have used the automatic H.264 proxy.*
 
 See the [Rendering guide](/guides/rendering#input-video-codecs) for the mechanics — proxy generation, caching, and which codecs it covers.
 
