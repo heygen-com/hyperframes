@@ -105,7 +105,7 @@ transcript) before the captions are trusted.
 ## Caption rail (rendering)
 
 Per `captions-overlay`: a quiet OVERLAY, never a reserved band. One line,
-bottom-center (top: 1002px on 1080-square), TT Norms Pro 500 25px,
-ink .92, soft dark text-shadow, words fading in (0.12s) on their timestamps,
-phrase swaps as sets. Keep critical small text out of the bottom ~80px
+bottom-center (top: 990px, height: 52px on 1080-square), TT Norms Pro 500 32px,
+ink .94, soft dark text-shadow, words fading in (0.12s) on their timestamps,
+phrase swaps as sets. Keep critical small text out of the bottom ~100px
 center span; everything else may run under the rail.
