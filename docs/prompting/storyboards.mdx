@@ -1,0 +1,101 @@
+---
+title: Storyboards
+description: "For multi-scene work, don't prompt the scenes one by one — prompt the plan: the arc, the per-frame beats, and the pacing rule the build follows to fill them in."
+---
+
+[Variables and templating](/prompting/variables-and-templating) was about reusing one composition across many renders. This page is the other axis of scale: one film with many scenes. Past a handful of beats, describing each scene from a blank page — "then frame 2 shows X, then frame 3 shows Y" — is the slow way and the way that drifts, because nothing ties the frames to each other. The fast way is to prompt the **plan** once — the throughline, the job each frame does, the rule that paces reveals — and let the build put frames against it.
+
+## Prompt the plan, not the scenes
+
+A storyboard is a short, structured document that sits above the individual frames: one arc, one direction block that every frame inherits, and a light per-frame spec (not a full description) for each key moment. The workflow reads the plan and builds each frame's HTML sub-composition against it — so a plan that's precise about the *shape* of the film produces frames that already agree with each other on pacing, palette, and payoff, without you re-stating any of that per frame.
+
+The trigger is naming the arc and asking for a storyboard rather than a single scene:
+
+> Storyboard a 3-frame piece: hook → substance → landing, silent, ~15 seconds, with a callback that pays off the opening motif.
+
+Everything below is the vocabulary that turns "storyboard" from a loose word into a plan the build can execute in one pass.
+
+## State the film's shape once
+
+Before any frame, fix four things that every frame will be judged against:
+
+- **Message** — the one-sentence thesis the whole film has to prove. If a frame doesn't serve it, cut the frame, not the message.
+- **Arc** — the beat sequence, named plainly: `Hook → Substance → Landing`, or `Hook → Problem → Solution → Proof → CTA`, or a shape word like "listicle" if the frames are parallel entries rather than a rising sequence.
+- **Audience** — who it's for, in a phrase. It calibrates tone and jargon for every frame at once.
+- **Mood** — one music/energy descriptor (e.g. "tense synth pulse, resolving to warm") that every frame's pacing should agree with, even in a silent piece.
+
+Say these four once, up front, and no individual frame prompt needs to re-justify its tone.
+
+## Set the direction once, apply it to every frame
+
+A storyboard's direction block is the rules every frame obeys without restating them. Four are worth naming explicitly:
+
+**Two-color discipline.** Name a ground color and one ink color, and say the rule out loud: nothing ever gets a second hue for emphasis — a bigger moment is bigger through inversion, weight, scale, or density, not a new color.
+
+- ❌ `use the brand colors, plus a highlight color for the important bits`
+- ✅ `ground: deep navy; ink: warm white. Emphasis = invert, scale up, or go denser — never a third color.`
+
+**VO-paced reveals.** This is the throughline rule for *when* things appear, and it's worth stating close to verbatim because it's genuinely the rule the build follows: *every frame reveals to the VO — at t=0 only what the narrator is saying is on screen; each part arrives on its spoken cue, with reveals spreading across the back half.* Pair it with a hold behavior: say whether a held frame stays fully still or gets a subtle idle (never a slow drift or "breathing" — that reads as unfinished, not as a choice). If the piece is silent, keep the rule's shape but swap the trigger: reveals land on named timestamps instead of spoken clauses — the pacing still has to be deliberate, there's just no VO to key it to.
+
+**One breather.** Across the whole film, name exactly one frame as the breather — the deliberately calmer, more static beat, or the longest held read. Every other frame keeps developing continuously. Naming it prevents the build from either over-animating the one frame that's supposed to let the audience exhale, or under-animating the rest to match it.
+
+**The negative list.** One list of banned visual clichés, stated once and checked against every frame as it's built — not a fresh list per frame, but a standing filter applied per frame: no purple-blue AI gradients, no bokeh, no browser chrome, no drop-shadow cards, no infinite loops or randomness. Swap in whatever clichés are wrong for *your* film; the point is naming them before a frame drifts into one.
+
+## Give each frame a job
+
+With the direction block covering everything shared, each frame's own prompt only needs to say what's different about it:
+
+```text
+[type]        the frame's category      hook · benefit_highlight · social_proof · cta
+[persuasion]  the rhetorical device     before/after · numbered enumeration · counterexample · callback + distillation
+[beat]        the emotional beat        recognition + tension · aha · resolve + inevitability
+[focal]       the one thing the eye lands on
+[roles]       what's foreground / supporting / background, assigned explicitly
+```
+
+`persuasion` and `beat` are the two worth never skipping — they're what stops a frame from being "a scene that shows the stat" and turns it into "a scene that proves the stat, and here's how it *feels* to land." A frame with a named persuasion device and beat gives the build a reason for every choice; a frame with only a visual description gives it none.
+
+## The callback
+
+Introduce a motif early — a shape, a mark, a phrase, a piece of color — and have it return later, denser or fuller, as a deliberate payoff. Say both halves in the plan: where the motif is planted, and how it changes when it returns.
+
+> A single thin accent dot appears top-right in frame 1 at low weight. In the landing frame, that same dot expands and fills into the full logo lockup — same motif, now complete.
+
+Without stating the return explicitly, a rebuild is free to treat the early motif as throwaway texture — the callback only works if the plan says the second appearance is the *same* element, not a new one that resembles it.
+
+## Worked example: a silent 3-frame storyboard
+
+<Tip>
+  `storyboard-mini` below is deliberately small and silent — three frames, ~15 seconds, no narration — so the whole pattern (arc, direction block, per-frame job, one breather, one callback) is checkable in a single cheap render before you write a longer, narrated storyboard.
+</Tip>
+
+> Storyboard a 3-frame, ~15-second, 1920x1080 piece. Silent — no narration, no VO track. Message: "Fernwell gives you back the hours other tools take." Arc: Hook → Substance → Landing. Audience: small-team operators evaluating a new tool. Mood: tense synth pulse resolving to warm.
+>
+> Direction for every frame: ground color deep navy `#0b1220`, ink color warm off-white `#f4efe6` — nothing else gets a hue; emphasis is inversion, scale, or density only. Reveals stage on internal timestamps (the piece is silent, so no spoken cue) — at each frame's t=0 only its first element is on screen, the rest arrive on the timestamps below. Holds stay fully still, no drift or breathing. No purple-blue AI gradients, no bokeh, no browser chrome, no drop-shadow cards, no infinite loops or randomness.
+>
+> Frame 1 — Hook (0.0–4.0s), type: hook, persuasion: counterexample, beat: recognition + tension, focal: the headline. At 0.0s: bold ink headline "Most tools slow you down." slams in, centered. At 1.5s: a single thin accent dot (ink color, small, low weight) fades in top-right — the motif, planted quietly. Hold from 3.0–4.0s.
+>
+> Frame 2 — Substance, **the breather** (4.0–10.0s), type: benefit_highlight, persuasion: numbered enumeration, beat: aha, focal: the stat. This is the one deliberately calmer, more static frame in the piece — everything else develops continuously, this one mostly holds. At 4.0s: the accent dot from frame 1 carries over, now larger, sitting quietly left-of-center. At 5.0s: a big stat "3.2 hrs / week" fades in beside it, no motion after it lands. Static hold 6.0–10.0s.
+>
+> Frame 3 — Landing (10.0–15.0s), type: cta, persuasion: callback + distillation, beat: resolve + inevitability, focal: the completed motif. At 10.0s: the accent dot from frames 1–2 expands and fills into the full Fernwell wordmark lockup — same motif, now complete, denser and larger. At 12.0s: tagline "Fernwell. Built for flow." stamps in below it. Hold 13.5–15.0s.
+
+<!-- VALIDATION PENDING: storyboard-mini -->
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Anatomy of a one-shot prompt" icon="list-ordered" href="/prompting/anatomy">
+    The six-part skeleton a single beat uses — the same discipline, one frame at a time.
+  </Card>
+  <Card title="Recreating something you saw" icon="film" href="/prompting/recreating-references">
+    Transcribing motion frame by frame — the same rigor a storyboard's per-frame timestamps need.
+  </Card>
+  <Card title="Design systems and brand" icon="palette" href="/prompting/design-systems">
+    The two-color discipline and brand tokens a storyboard's direction block draws from.
+  </Card>
+  <Card title="The HyperFrames pipeline" icon="route" href="/guides/pipeline">
+    `STORYBOARD.md` as a production artifact — the file format this chapter's prompts turn into.
+  </Card>
+</CardGroup>
+
+*Next: [Editing existing videos](/prompting/editing-existing-videos) — the editor verbs that turn a first render, storyboard or not, into the twenty edits after it.*

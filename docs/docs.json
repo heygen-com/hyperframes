@@ -126,6 +126,7 @@
                 "pages": [
                   "prompting/design-systems",
                   "prompting/variables-and-templating",
+                  "prompting/storyboards",
                   "prompting/editing-existing-videos",
                   "prompting/iterating",
                   "prompting/recreating-references",
