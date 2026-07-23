@@ -240,6 +240,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "imessage-chat",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "app-showcase",
       "type": "hyperframes:block"
     },
