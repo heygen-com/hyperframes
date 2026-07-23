@@ -562,25 +562,69 @@ function rotationDriftFinding(
  * (excludes scale/entrance animations), a sizable element, and honors
  * `[data-layout-allow-orbit]` opt-outs (applied browser-side).
  */
-function detectRotationPivotDrift(
+function groupRotationSamplesBySelector(
   samples: RotationSample[],
-  canvas: Canvas,
-): AnchoredLayoutIssue[] {
+): Map<string, RotationSample[]> {
   const bySelector = new Map<string, RotationSample[]>();
   for (const sample of samples) {
     const group = bySelector.get(sample.selector);
     if (group) group.push(sample);
     else bySelector.set(sample.selector, [sample]);
   }
+  return bySelector;
+}
+
+/** Enough samples to establish a spin trajectory (one frame can't). */
+function hasEnoughRotationSamples(group: RotationSample[]): boolean {
+  return group.length >= ROTATION_MIN_SAMPLES;
+}
+
+/** Real spin, not a fixed tilt: the rotation angle actually varies across the grid. */
+function isActuallySpinning(group: RotationSample[]): boolean {
+  return maxAngleSpread(group.map((s) => s.angle)) > ROTATION_MIN_ANGLE_SPREAD_DEG;
+}
+
+/** Rigid bbox size in BOTH dimensions. A scale/entrance animation is not pivot
+ * drift; in particular top-anchored height scaling (fixed width, growing height)
+ * moves the AABB center on its own — the earlier width-only guard let that through
+ * as a false positive. */
+function isRotationSizeStable(group: RotationSample[]): boolean {
+  const widths = group.map((s) => s.w);
+  const heights = group.map((s) => s.h);
+  const minWidth = Math.min(...widths);
+  const minHeight = Math.min(...heights);
+  if (minWidth <= 0 || minHeight <= 0) return false;
+  return (
+    Math.max(...widths) / minWidth <= ROTATION_MAX_SIZE_RATIO &&
+    Math.max(...heights) / minHeight <= ROTATION_MAX_SIZE_RATIO
+  );
+}
+
+/** Skip tiny decorative spinners; only sizable rotating figures matter. */
+function isSizableRotation(group: RotationSample[]): boolean {
+  return median(group.map((s) => s.w * s.h)) >= ROTATION_MIN_MEDIAN_AREA_PX;
+}
+
+/** The size/motion gates a selector group must clear before the (viewport-
+ * dependent) center-drift test. Each is a strict FP guard, deliberately so:
+ * a false positive feeds destructive downstream auto-fixes. */
+function isRotationDriftCandidate(group: RotationSample[]): boolean {
+  return (
+    hasEnoughRotationSamples(group) &&
+    isActuallySpinning(group) &&
+    isRotationSizeStable(group) &&
+    isSizableRotation(group)
+  );
+}
+
+export function detectRotationPivotDrift(
+  samples: RotationSample[],
+  canvas: Canvas,
+): AnchoredLayoutIssue[] {
   const findings: AnchoredLayoutIssue[] = [];
   const viewportFloor = ROTATION_DRIFT_VIEWPORT_FRACTION * Math.min(canvas.width, canvas.height);
-  for (const group of bySelector.values()) {
-    if (group.length < ROTATION_MIN_SAMPLES) continue;
-    if (maxAngleSpread(group.map((s) => s.angle)) <= ROTATION_MIN_ANGLE_SPREAD_DEG) continue;
-    const widths = group.map((s) => s.w);
-    const minWidth = Math.min(...widths);
-    if (minWidth <= 0 || Math.max(...widths) / minWidth > ROTATION_MAX_SIZE_RATIO) continue;
-    if (median(group.map((s) => s.w * s.h)) < ROTATION_MIN_MEDIAN_AREA_PX) continue;
+  for (const group of groupRotationSamplesBySelector(samples).values()) {
+    if (!isRotationDriftCandidate(group)) continue;
     const medianSize = median(group.map((s) => Math.max(s.w, s.h)));
     const threshold = Math.max(ROTATION_DRIFT_SIZE_FRACTION * medianSize, viewportFloor);
     const drift = maxCenterDrift(group);
