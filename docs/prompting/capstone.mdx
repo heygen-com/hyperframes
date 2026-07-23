@@ -1,135 +1,119 @@
 ---
-title: Capstone — the film this whole guide builds toward
-description: "One prompt, one composition, every technique in this guide — dissected frame by frame, then re-skinned by value alone."
+title: Capstone — every technique, one template
+description: "One prompt, one reusable composition, every technique in this guide — rendered twice with different variables, dissected frame by frame."
 ---
 
-<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
-*HyperFrames' own promo film — 1920x1080, ~48 seconds, one prompt, unedited.*
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-wrapped-nimbus.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*"OSS Wrapped" for the fictional project Nimbus — 1920x1080, ~66 seconds, one prompt, unedited.*
 
 Every technique in this film has a chapter in this guide.
 
-This page is the payoff of the level ladder: not a new lesson, but the moment everything you've read so far — anatomy, motion, transitions, code animation, data-viz, generated artwork, media, design systems, variables, storyboards, and rendering — shows up in one real prompt that produced one real render. Read it top to bottom once for the shape, then treat it as a reference you come back to per-technique.
+The film is an **OSS Wrapped** — the year-in-review any open-source project could render for itself. The topic is doing real work: a year in review *naturally* needs a chart, a map, a code diff, real footage of a maintainer, a release montage, and a celebration — so every capability chapter shows up because the story calls for it, not as a demo reel. And because a Wrapped is a template by nature, the demo of [variables and templating](/prompting/variables-and-templating) is the film itself: the same composition rendered twice, for two different fictional projects, further down this page.
 
 ## The full prompt, verbatim
 
-This is the exact prompt that produced the render above — nothing paraphrased, nothing trimmed:
+This is the exact prompt that produced both renders — nothing paraphrased, nothing trimmed:
 
-> /general-video Make a ~50-second 1920x1080 public promo film for HyperFrames itself — the open-source framework that turns hand-authored HTML and CSS/GSAP animation into deterministic, frame-accurate rendered video. Build it as a 7-frame storyboard.
+> /general-video Make a ~66-second 1920x1080 "year in review" film — an **OSS Wrapped**: the annual recap any open-source project could render for itself. The composition is a reusable template; it will be rendered twice with different variables (two fictional projects), so nothing project-specific may be hardcoded. Build it as a 10-frame storyboard.
 >
-> **Architecture constraint (important, technical):** author this as a SINGLE composition file — one `index.html` containing all 7 frames as sibling `class="clip"` sections on the timeline. Do NOT split frames into separate files referenced via `data-composition-src`. HyperFrames scopes `data-composition-variables` per composition file — a separate sub-composition file would resolve its own variables independently, and a top-level `--variables` render override would never reach it. Keeping everything in one file and one variable scope is what makes a single `--variables` call re-skin every frame at once.
+> **Architecture constraint (important, technical):** author this as a SINGLE composition file — one `index.html` containing all frames as sibling `class="clip"` sections on the timeline. Do NOT split frames into separate files referenced via `data-composition-src`. HyperFrames scopes `data-composition-variables` per composition file — keeping one file and one variable scope is what lets one `--variables` render call re-skin every frame at once.
+>
+> **Variables (declare once on the root):** `projectName` (string, default "Nimbus"), `tagline` (string, default "Weather data, piped."), `ground` (color, default `#0e1526` deep storm navy), `ink` (color, default `#4fd8eb` bright cyan-teal), `heroStat` (number, default 42), `heroStatLabel` (string, default "RELEASES SHIPPED"). Every appearance of the project name, tagline, palette, and hero stat must resolve from these variables — bind text with `data-var-text` or script, colors with the CSS custom properties. The film must read perfectly under a completely different set (it will be re-rendered as "Forge / Builds that don't break. / coal `#1a120b` / ember `#ff9a3d` / 63 / RELEASES SHIPPED").
 >
 > **Storyboard shape, stated once:**
-> - Message: "Write HTML. Render video." — the whole film proves that a plain HTML file, with real timing attributes, becomes a real MP4.
-> - Arc: Hook → Write → Compile → Proof → Craft → Capability → Landing.
-> - Audience: developers and technical builders evaluating a video-generation tool.
-> - Mood: a confident, driving synth-forward electronic pulse that resolves warm on the landing frame.
+> - Message: "A year of shipping, rendered." — any project's year, turned into a film by one template.
+> - Arc: Hook → Mark → Change → Numbers → World → Voice → Surface → Rhythm → Celebration → Landing.
+> - Audience: open-source maintainers and the developers who follow them.
+> - Mood: proud, kinetic, end-of-year energy — a driving beat that earns a confetti drop and settles warm.
 >
 > **Direction for every frame (state once, every frame obeys it):**
-> - Two-color discipline: ground color deep warm charcoal `#151210`, ink color vivid amber-orange `#ff7a33`. Nothing else ever gets a hue — a bigger moment is bigger through inversion, weight, scale, or density, never a third color.
-> - VO-paced reveals: at each frame's t=0 only what the narrator is saying is on screen; every other element lands on its own spoken cue, with reveals spreading across the back half of the frame.
-> - Holds stay fully still, or carry only a subtle idle (never a slow drift or "breathing" — that reads as unfinished).
-> - Negative list, checked against every frame: no purple-blue AI gradients, no bokeh, no real browser chrome or cursor screenshots, no stock photography, no drop-shadow cards, no infinite loops or randomness.
-> - Callback: Frame 1's kinetic-type accent mark (a single thin geometric line beside the headline) returns in Frame 7 — expanded, denser, complete.
-> - Exactly one breather: Frame 7 (the landing) is the film's one deliberately calmer, mostly-still beat. Every other frame develops continuously.
+> - Two-color discipline: `ground` is the only ground, `ink` the only hue — emphasis via inversion, weight, scale, density, never a third color. Neutral warm off-white for reading text is permitted as non-chromatic.
+> - VO-paced reveals: at each frame's t=0 only what the narrator is saying is on screen; every other element lands on its own spoken cue, reveals spreading across the back half.
+> - Holds stay fully still or carry only a subtle idle — never drift or breathing.
+> - Negative list, checked per frame: no purple-blue AI gradients, no bokeh, no real browser chrome or cursor screenshots, no stock photography, no third hue. (Frosted-glass panels are explicitly sanctioned on Frame 7 only — that frame's technique IS translucency; keep glass off every other frame.)
+> - Callback: Frame 1 plants a thin accent tick-mark motif (a short angled ink stroke, like a checkmark being started); Frame 9 completes it into a full oversized check at the confetti moment; Frame 10 carries it, calm and resolved, in the lockup.
+> - Exactly one breather: Frame 10. Every other frame develops continuously.
+> - SFX cues per frame, resolved from the media pipeline's SFX library and placed exactly on their visual hits: stamp-thuds on type slams, soft whooshes on panel entrances, ticks on counter/beat moments, one riser into the confetti drop. Keep them under the VO.
 >
-> **Density and composition (state once, every frame obeys it — this is what separates a designed frame from elements floating on a void):**
-> - Permanent chrome rides every frame: a faint ink-colored grid (hairlines at ~8% opacity) over the ground, a thin mono meta strip across the top (product name left, frame index and a running timecode right, ink at low weight), and a 1px ink hairline rule near the bottom edge. The chrome never animates per-frame — it is the stage everything else performs on, and it persists across every cut so the film reads as one continuous system.
-> - Every frame assigns three roles and fills all three: a foreground subject (the frame's one focal element, at display scale), supporting elements (labels, secondary figures, small diagrams, tick marks — at least two per frame, each landing on its own later spoken cue), and the background (the permanent chrome). A frame with only a focal element and empty space is unfinished.
-> - Scale discipline: headlines and hero numerals run huge — roughly a tenth of the frame's width per line of display type — and the focal element plus its supporting cluster should command roughly two-thirds of the frame. Compose asymmetrically (a 60/40 or 40/60 split with the focal weighted to one side and supporting elements counterweighting the other) rather than centering one element in emptiness.
-> - Secondary motion fills the back half of every frame's duration: counters tick, hairlines draw themselves, small tick labels stamp in, underlines sweep — something is always resolving on a spoken cue until the frame's hold begins.
-> - Depth: three visible layers minimum per frame — chrome behind, focal subject in front, supporting elements between — with the focal plane visually heaviest.
+> **Density and composition (state once, every frame obeys it):**
+> - Permanent chrome rides every frame: a faint ink-colored grid (hairlines at ~8% opacity), a thin mono meta strip across the top (the project name left — variable-bound — "WRAPPED · &lt;year&gt;" center, frame index + running timecode right, low weight), and a 1px ink hairline rule near the bottom edge. Chrome persists across every cut.
+> - Every frame fills three roles: one focal element at display scale, at least two supporting elements landing on later spoken cues, and the chrome. No element floating alone in empty space.
+> - Display type runs huge (roughly a tenth of frame width per line); focal + supporting cluster commands two-thirds of the frame; compose asymmetrically (60/40 splits), never one centered element in emptiness.
+> - Secondary motion fills every back half: counters tick, hairlines draw, labels stamp, underlines sweep.
+> - Three depth layers minimum per frame.
 >
-> **Frame 1 — Hook (0–6s).** Kinetic type states the pitch, word by word: "Write HTML." then "Render video." — bold ink type on the charcoal ground. Each word lands with a staggered spring-pop overshoot entrance (it overshoots its final scale/position slightly, then settles — not a plain fade). A single thin accent line (the motif) fades in beside the second line at low weight, planted quietly.
+> **Frame 1 — Hook (0–5s).** Kinetic type, word by word with staggered spring-pop overshoot: "A YEAR" / "OF SHIPPING." — then the project name chip stamps in beneath (variable-bound), with the tagline in mono under it. The accent tick-mark motif fades in beside the name at low weight — planted quietly. Supporting: a mono "WRAPPED" kicker and a year chip.
 >
-> **Frame 2 — "Write HTML" (6–13s).** A designed code-editor surface (dark, minimal, no real OS/browser chrome) types itself character by character — real, legible HyperFrames composition markup: an opening `<div class="clip" data-start="0" data-duration="4">` and a couple of lines suggesting a GSAP timeline registration. Natural typing cadence, a blinking cursor between bursts. When the block completes, an ink-colored underline sweeps beneath it.
+> **Frame 2 — Mark in 3D (5–11s).** The project's mark as real 3D — build an abstract geometric emblem (an extruded angular monogram or faceted polyhedron, ink-colored material on the ground, rim-lit) in **Three.js via the frame adapter** (never CSS fake-3D). It rotates in with momentum, overshoots, settles to a three-quarter pose with a slow specular sweep. Supporting: mono axis-tick readouts and a "RENDERED IN 3D" kicker landing on their cues.
 >
-> **Frame 3 — "It becomes video" (13–18s).** A left-to-right pipeline diagram self-draws with hairlines: an HTML-file icon → a small parse/gear icon → a render/film icon → an MP4 badge. Give the final connecting hairline a name and describe it explicitly: this exact line, as it finishes drawing, is what performs a **matched-motion transition** into Frame 4 — don't cut away from it; carry its position and thickness directly into Frame 4's chart baseline, so the two frames read as one continuous motion across the cut.
+> **Frame 3 — The change (11–18s).** The year's biggest change as code: adapt the **`code-diff` registry block** — a diff card where removed/added lines slide in per-line with syntax-real content (invent a plausible API rename for a data-pipeline library), then the key added line gets an ink underline sweep. Supporting: a file-path chip and a "+412 −118" stat chip.
 >
-> **Frame 4 — Proof (18–25s).** A data-viz beat that proves the pipeline's real output: a full bar chart — at least five bars rising in a staggered sequence, each with its own small mono label, gridline ticks along the baseline — while a hero numeral counts up beside it in huge mono tabular figures with its stat label, for example "50+ catalog blocks." The chart's baseline is the exact line that arrived from Frame 3. This frame is a real chart with structure and labels, not one bar and a number.
+> **Frame 4 — Numbers (18–25s).** Adapt the **`data-chart` registry block**: a full bar chart (at least six labeled bars, gridline ticks) staggers up while the hero numeral counts up beside it in huge tabular mono figures — the count lands exactly on `heroStat`, labeled with `heroStatLabel` (both variable-bound). The chart baseline is drawn as a strong 4px ink line. **Matched-motion transition out:** that exact baseline — same y-position, same thickness — becomes Frame 5's equator line; do not cut away from it.
 >
-> **Frame 5 — Generated-artwork hybrid (25–32s).** One illustration-led beat: generate a clean, flat-style abstract raster illustration evoking "frames becoming motion" (not a photo), place it on a contrasting solid ink-color panel, keyed cleanly against that background (no visible seam). Animate a thin code-layer overlay on top of the illustration — moving `data-*` attribute tags / timeline markers drifting across it — as if the code is visibly driving the artwork.
+> **Frame 5 — World (25–32s).** Adapt the **`world-map` registry block**: the dotted world map fades up around the carried-over equator line; contributor pulses light up across continents on their spoken cues (each a small ink dot with an expanding ring), then three great-circle arcs draw between hubs. Supporting: a ticking "CONTRIBUTORS" counter and three tiny city-code labels (invent neutral ones).
 >
-> **Frame 6 — Capability montage (32–40s).** One continuous camera push — a single steady zoom-in that never resets — travels across a sequence of quick-cut capability cards: captions syncing to a waveform, a music-beat grid pulsing, a code diff turning into a callout card, a kinetic title card. Each card is a fully designed miniature scene, not a labeled box: it fills most of the frame, its own internal elements animate during its beat (waveform bars bounce, beat cells pulse in rhythm, diff lines slide in, title words stagger), and it carries its own kicker label plus at least one supporting detail element. Each card is a callback to a different kind of video HyperFrames makes. Cut card-to-card on the beat; the unbroken camera push is what ties the cuts into one continuous motion rather than a series of disconnected jumps.
+> **Frame 6 — Voice (32–43s).** The community's voice as real footage: **generate a short (~8s) talking-head clip of a fictional maintainer via the media pipeline's avatar video generation** (HeyGen avatar path; pick any stock avatar and a voice that reads as a calm engineer), speaking exactly: "We shipped every single week — and the community carried it." Then treat that clip as supplied footage and put the media pipeline through its paces: **transcode the clip to HEVC (`hvc1`) before wiring it in** so the automatic proxy subsystem carries preview while render uses the original; **matte the speaker out with background removal** into a transparent cutout; composite the cutout over a designed scene panel (asymmetric, ink panel behind the speaker, name/handle lower-third chip beside them — the lower-third is part of this frame's design, variable-bound project handle); and add **word-synced captions** from the clip's own transcription, styled with a **catalog caption component** (adapt `caption-kinetic-slam` or a similarly bold caption component from the catalog) rendering each word on its spoken timing. The maintainer's audio ducks the BGM; VO hands off to the clip and resumes after.
 >
-> **Frame 7 — Landing, the film's one breather (40–48s).** Frame 1's accent line returns — now expanded and complete, resolving into a small lockup beside the restated headline "Write HTML. Render video." Below it, a CTA line stamps in: `npx skills add heygen-com/hyperframes`. Everything holds fully still to the end: no drift, no breathing — the calm counterpart to every other frame's continuous motion.
+> **Frame 7 — Surface (43–49s).** Enter through a **shader transition: adapt the `sdf-iris` block** (an iris reveal) — the transition into this frame is the named block, not a cut. Inside: a **liquid-glass beat** — three frosted-glass stat panels (real translucency: blur over the background, hairline ink borders) slide in over a **generated-artwork background** (generate a flat-style abstract raster evoking "a year of motion" in exactly the two-color palette; no photo), each panel carrying one invented secondary stat (issues closed, first-time contributors, stars) with per-word emphasis on the numerals. A thin code-layer of drifting `data-*` tags rides between artwork and glass.
 >
-> **Copy, quoted exactly where it matters:** Frame 1 — "Write HTML." / "Render video." Frame 7 — headline "Write HTML. Render video.", CTA `npx skills add heygen-com/hyperframes`. Frame 2's typed code and Frame 4's stat label are yours to invent, as long as they're real and legible, not placeholder lorem ipsum.
+> **Frame 8 — Rhythm (49–57s).** The releases montage, cut to the actual music: **resolve the BGM first, run beat analysis on it (`hyperframes beats`), and place every cut in this frame on detected beats — a real beat grid, not eyeballed timing.** Quick-cut release cards (version chip + one-line change + a micro-visual each — a spark-line, a check, a tiny diff) under one continuous camera push that never resets; a tick SFX rides each beat cut. At least six cuts.
 >
-> **Technique, pinned per frame:** Frame 1 — staggered spring-pop overshoot per word, not a fade. Frame 2 — a genuine per-character typing beat, not a fade-in of a finished block. Frame 3→4 — an explicit matched-motion transition; name the exact element that carries across. Frame 4 — a real count-up/bar-fill, mono tabular figures. Frame 5 — a generated-image-plus-code-layer composite: both halves must be present and described. Frame 6 — one continuous camera push across the quick cuts, explicitly never resetting between cuts. Frame 7 — the callback (name what returns and how it's changed) plus the film's one deliberate breather.
+> **Frame 9 — Celebration (57–62s).** The seeded handmade beat: "SHIPPED." stamps in huge; the accent tick-mark from Frame 1 returns and completes into a full oversized check with a stamp-thud; and a **paper-cutout confetti burst rains with seeded randomness — name the seed (seed 42) and hold each confetti piece's position for exactly two frames before stepping (two-frame hold, stop-motion feel), so the imperfection is designed and every render is identical.** Riser SFX into the drop, then the burst settles.
 >
-> **Variables:** expose the two direction colors (ground, ink) and the product name ("HyperFrames") as composition variables on the single root file (per the architecture constraint above), so the whole film can be re-skinned by value alone with one `--variables` render call — no per-frame re-declaration.
+> **Frame 10 — Landing, the film's one breather (62–66s).** The completed check motif sits beside the lockup: project name (variable) over "WRAPPED · &lt;year&gt;", tagline in mono beneath, then a final line stamps in: "Rendered with HyperFrames — `npx skills add heygen-com/hyperframes`". Everything holds dead still to the end.
 >
-> **Voice & music:** confident, energetic female narration — Kokoro `af_sky`, passed explicitly via `--voice` rather than auto-selected — reading a tight VO script that matches the per-frame beats above. Add a driving, synth-forward BGM bed at the engine's default narration-bed volume; don't override it.
+> **Copy, quoted exactly where it matters:** Frame 1 — "A YEAR" / "OF SHIPPING." Frame 6 maintainer line — "We shipped every single week — and the community carried it." Frame 9 — "SHIPPED." Frame 10 — "Rendered with HyperFrames" + the install command. All project-specific copy comes from variables.
 >
-> **Negatives:** every frame is VO-paced — none are silent. No second accent hue anywhere in any frame. Frame 2's editor is a designed surface, not a captured screenshot — no real OS or browser chrome. Frame 5's artwork must be generated, not sourced from stock. Frame 6's cuts are only acceptable because the camera push ties them together — no jump cuts without it.
+> **Technique, pinned per frame:** F1 staggered spring-pop, not fades. F2 real Three.js via the frame adapter. F3 `code-diff` registry block adapted. F4 `data-chart` adapted + matched-motion baseline carry into F5. F5 `world-map` adapted. F6 the full footage pipeline: generated avatar clip → HEVC → auto-proxy → background-removal cutout → designed lower-third → catalog caption component word-synced. F7 `sdf-iris` shader transition in + real translucent glass + generated raster + code overlay. F8 cuts on an analyzed beat grid + continuous push. F9 seeded (seed 42) two-frame-hold confetti + callback completion. F10 breather + variable-bound lockup.
+>
+> **Voice & music:** confident, warm female narration — Kokoro `af_sky`, passed explicitly via `--voice` — pacing every frame except the maintainer clip's own audio in F6. Driving, beat-forward electronic BGM resolved from the catalog at the engine's default narration-bed volume (don't override); the same track feeds F8's beat analysis.
+>
+> **Negatives:** no third hue anywhere; glass only on F7; no stock footage or photography (the F6 clip is generated, the F7 artwork is generated); no real OS/browser chrome; no unseeded randomness anywhere — the confetti seed is named; no eyeballed cuts in F8 — beats come from analysis; none of the frames are silent.
 
 ## Walking the prompt, chapter by chapter
 
-The prompt above isn't one skill — it's the whole guide, composed. Here's what each part is doing, and where it was taught.
-
-### The brief
-
-The opening sentence — route, duration, dimensions, one-sentence premise — is the six-part skeleton from [Prompt anatomy](/prompting/anatomy): route (`/general-video`), spec (`~50-second 1920x1080`), and a stated message the rest of the prompt has to prove. The density of every clause after it — exact hex values, named easing behavior, quoted copy — is the [High-fidelity looks](/prompting/visual-specs) discipline: nothing left for the agent to guess where a guess would drift.
-
-### The design system
-
-"Two-color discipline: ground color deep warm charcoal `#151210`, ink color vivid amber-orange `#ff7a33`. Nothing else ever gets a hue" plus the negative list is exactly the brand-as-spec pattern from [Design systems and brand](/prompting/design-systems) — a two-color system and a Do's/Don'ts list stated once, the same shape a `frame.md` frontmatter block would carry, just written inline instead of pointed at a file.
-
-The **density and composition** block is the same move applied to layout instead of color — and it earns its length. An earlier build of this film ran without it: every gate passed, every technique was present, and the frames still read as single elements floating in empty space. Demanding the permanent chrome, three filled roles per frame, display-scale type, and asymmetric splits is what turned "technically correct" into "designed" — the linter can verify a timeline, but only the prompt can demand composition.
-
-### The storyboard
-
-Message, arc, audience, mood, stated once before any frame — that's the four things [Storyboards](/prompting/storyboards) says to fix before you write a single frame. The direction block (VO-pacing rule, hold behavior, the callback, the one breather) is the same page's "set the direction once, apply it to every frame" pattern, word for word in spirit: Frame 1 plants the accent line, Frame 7 pays it off "expanded, denser, complete," and Frame 7 is named as the film's *only* calmer beat so the build doesn't under- or over-animate the wrong frame.
-
-### The frames
-
-Each frame pins a different technique, and each technique has its own chapter:
+The prompt isn't one skill — it's the whole guide, composed. Every frame pins a different technique, and every technique has a chapter:
 
 | Frame | What it demonstrates | Chapter that teaches it |
 | --- | --- | --- |
-| F1 — Hook | Kinetic type, staggered spring-pop overshoot entrances | [Prompt anatomy](/prompting/anatomy) (the skeleton), [Motion that reads premium](/prompting/motion) (the grammar) |
-| F2 — "Write HTML" | Per-character code-typing beat | [Code animations](/prompting/code-blocks) |
-| F3 — "It becomes video" | Self-drawing pipeline diagram + matched-motion transition into F4 | [Transitions](/prompting/transitions) |
-| F4 — Proof | Real count-up / bar-fill data-viz, chart baseline carried over from F3 | [Data and maps](/prompting/data-and-maps) |
-| F5 — Craft | Generated-artwork hybrid: illustration + code-layer overlay | [When to generate artwork](/prompting/generated-artwork) |
-| F6 — Capability montage | Continuous camera push across quick capability cuts | [Motion that reads premium](/prompting/motion) (camera-as-actor), callbacks to Level 1 workflows |
-| F7 — Landing | Callback (F1's motif returns denser) + the film's one breather + CTA | [Storyboards](/prompting/storyboards) |
+| F1 — Hook | Kinetic type, spring-pop overshoot, motif plant | [Prompt anatomy](/prompting/anatomy), [Motion that reads premium](/prompting/motion) |
+| F2 — Mark | Real 3D via the Three.js frame adapter | [Runtimes and 3D](/prompting/runtimes-and-3d) |
+| F3 — Change | `code-diff` registry block, adapted | [Code animations](/prompting/code-blocks) |
+| F4 — Numbers | `data-chart` block + matched-motion baseline carry | [Data and maps](/prompting/data-and-maps), [Transitions](/prompting/transitions) |
+| F5 — World | `world-map` block, arcs, ticking counter | [Data and maps](/prompting/data-and-maps) |
+| F6 — Voice | Generated avatar footage → HEVC proxy → background-removal cutout → lower-third → word-synced caption component | [Media and audio](/prompting/media-and-audio), [Caption styles](/prompting/captions-catalog), [Overlays and lower thirds](/prompting/overlays-and-lower-thirds) |
+| F7 — Surface | `sdf-iris` shader transition, liquid glass, generated artwork + code overlay | [Transitions](/prompting/transitions), [VFX and liquid glass](/prompting/vfx-and-liquid-glass), [When to generate artwork](/prompting/generated-artwork) |
+| F8 — Rhythm | Cuts on a real analyzed beat grid + continuous camera push | [Music videos and slideshows](/prompting/music-and-slideshows), [Motion that reads premium](/prompting/motion) |
+| F9 — Celebration | Seeded (seed 42) two-frame-hold confetti + callback completion | [Motion that reads premium](/prompting/motion) (rule 7) |
+| F10 — Landing | The one breather, variable-bound lockup | [Storyboards](/prompting/storyboards) |
 
-Two more chapters run underneath every frame rather than owning one: [Media and audio](/prompting/media-and-audio) supplies the explicit `af_sky` voice pin and the "don't override the default BGM bed" instruction, and the single-file **architecture constraint** at the top of the prompt is a lesson from [Variables and templating](/prompting/variables-and-templating) applied a level up — see below.
+The registry blocks (`code-diff`, `data-chart`, `world-map`, `sdf-iris`, `caption-kinetic-slam`) are installed and adapted per [Prompt anatomy](/prompting/anatomy)'s technique rule — named exactly, treated as starting points whose demo content gets rewritten to the beat. The storyboard scaffolding — message/arc/audience/mood stated once, a direction block every frame inherits, the callback, the one breather, per-frame SFX cues — is [Storyboards](/prompting/storyboards) at full scale. The **density and composition** block is what turns technically-correct frames into designed ones: permanent chrome, three filled roles per frame, display-scale type, asymmetric splits. An earlier capstone shipped without it and every frame read as elements floating in space — the linter can verify a timeline, but only the prompt can demand composition.
 
-### Why one file, not seven
+Two chapters run underneath everything: [Media and audio](/prompting/media-and-audio) supplies the pinned `af_sky` voice, the BGM bed at its default level, and 40 SFX placements; [High-fidelity looks](/prompting/visual-specs) is the density discipline the whole prompt is written in.
 
-HyperFrames scopes `data-composition-variables` **per composition file**. A storyboard naturally wants to become seven sub-composition files, one per frame, wired in via `data-composition-src` — but if each frame file declares its own `ground`/`ink`/`productName` variables independently, a root-level `--variables` render override has no path to reach them. The first build of this exact film made that mistake: seven files, seven independent variable scopes, and the re-skin render came back pixel-identical to the default — the override simply never arrived.
+### The footage pipeline, end to end
 
-The fix, and the constraint stated explicitly in the prompt above, is to keep all 7 frames as sibling `class="clip"` sections inside **one** `index.html`, sharing one variable scope. That's what makes a single `--variables` call reach every frame in one shot. If your own storyboard genuinely needs separate files (a much longer piece, independently reusable frames), the alternative is forwarding values explicitly via `data-variable-values` on each sub-composition's host element — more wiring, for the same result this film gets for free by staying single-file. Either way, decide the scope up front; it's a much cheaper conversation before the first render than after.
+Frame 6 is one sentence of story and five chapters of machinery: the maintainer clip is **generated** (avatar video via the media pipeline — no stock footage), **transcoded to HEVC** deliberately so the automatic proxy subsystem carries browser preview while render decodes the original, **matted** with background removal into a transparent cutout, **composited** over a designed panel with a variable-bound lower-third, and **captioned** word-by-word from its own transcription through a catalog caption component. That chain — bring any footage, cut out the subject, dress it, caption it — is the [Media and audio](/prompting/media-and-audio) chapter's whole second half, exercised in one beat.
 
-### Validation
+### Why one file, not ten
 
-Nothing above is asserted as correct without a render. The `--strict-variables` flag on the re-skin invocation below (see [Rendering and output](/prompting/rendering-and-output)) is the same "fail loud on a typo" discipline [Variables and templating](/prompting/variables-and-templating) recommends for any template render — a misnamed variable stops the run instead of silently rendering the default.
+HyperFrames scopes `data-composition-variables` **per composition file**. A storyboard naturally wants to split into sub-composition files wired via `data-composition-src` — but each file would resolve its own variables independently, and a root-level `--variables` override would never reach them. Keeping all ten frames as sibling `class="clip"` sections in one `index.html`, sharing one variable scope, is what makes the two-render demo below possible with nothing but a CLI flag. (The alternative — forwarding values per sub-composition via `data-variable-values` — works, but is more wiring for the same result.) See [Variables and templating](/prompting/variables-and-templating).
 
-### The render
+## The templating demo: one composition, two films
 
-The default render at the top of this page is the CLI's default output settings applied to the composition above — 1920x1080, the standard quality tier, MP4 — exactly the [Rendering and output](/prompting/rendering-and-output) defaults, asked for by saying nothing extra.
-
-## Re-skinning it: one `--variables` call, most of the film
-
-Because the film is single-file with `ground`, `ink`, and the product name declared as composition variables, the entire look can change without touching a single line of the composition:
+Nothing project-specific is hardcoded: name, tagline, both palette colors, and the hero stat are declared variables. The film above is the defaults — fictional weather-data toolkit **Nimbus**. Rendering the identical composition again with one flag produces a different project's Wrapped:
 
 ```bash
-hyperframes render --variables '{"ground":"#0d1420","ink":"#c8ff3d"}' --strict-variables
+hyperframes render --variables '{"projectName":"Forge","tagline":"Builds that don'\''t break.","ground":"#1a120b","ink":"#ff9a3d","heroStat":63,"heroStatLabel":"RELEASES SHIPPED"}' --strict-variables
 ```
 
-<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-reskin.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
-*Same composition, same prompt, re-skinned from charcoal/amber to navy/acid-green with one CLI call — no re-prompting.*
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/capstone-wrapped-forge.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The same composition — fictional build tool **Forge**, coal/ember, hero stat 63. Every frame re-skins: the chrome, the chart, the map, the lower-third, even the generated artwork.*
 
-### The honest limit: Frame 5 doesn't re-skin
-
-Six of the film's seven frames — 1 through 4, 6, and 7 — are built from CSS-driven color panels and type, so they follow the `ground`/`ink` override exactly the way [Variables and templating](/prompting/variables-and-templating) describes: the same elements, repainted. Frame 5 does not. Its background is a single generated raster illustration — a whole-frame image baked at generation time, not a separate CSS-color panel with a keyed overlay on top — so there's no CSS variable in that frame for a palette override to reach. A generated illustration bakes its palette at generation time; it doesn't follow a render-time `--variables` override the way CSS-driven elements do.
-
-That's not a bug in this film, and it isn't glossed over here: it's a real, teachable boundary of the technique in [When to generate artwork](/prompting/generated-artwork). If a frame in your own storyboard needs to fully re-skin across renders, keep its background CSS-driven (a panel + keyed overlay, as the direction for this film's other frames does) rather than a single generated image — reserve generated artwork for frames whose backgrounds are fine looking the same across every reskin.
+One detail worth stealing: a generated raster normally bakes its palette at generation time, which would leave that frame stuck in the original colors on a re-render ([When to generate artwork](/prompting/generated-artwork) covers the trade-off). This film sidesteps it — the artwork was generated **palette-neutral** (grayscale) and duotoned live by CSS layers driven by the `ground`/`ink` variables, so even the illustration follows the override. If a frame in your own template needs to re-skin, keep the color in CSS and the shapes in the raster.
 
 ## What this page proved
 
-Nothing in this film uses a technique this guide didn't already teach. Every rule, every knob, every phrase in the prompt above is traceable to a chapter you've already read — the capstone isn't a new set of tricks, it's proof that the ones you have compose.
+Nothing in this film uses a technique this guide didn't already teach. A chart, a map, a diff, real footage, 3D, glass, a shader seam, a beat grid, seeded confetti — every one is traceable to a chapter you've already read, and the whole thing re-renders for a different project with one flag. The capstone isn't a new set of tricks; it's proof that the ones you have compose.
 
 *Next: [Rules and anti-patterns](/prompting/rules-and-anti-patterns) — keep this cheat sheet open while you build.*
