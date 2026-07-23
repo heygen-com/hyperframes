@@ -62,12 +62,9 @@ document.getElementById("title").textContent = title;
 
 ## Media
 
-**NON-NEGOTIABLE: `<video>`/`<audio>` must be a DIRECT child of the host composition root (`index.html`).** The runtime only registers + drives media that is a direct root child. Media placed inside a sub-composition `<template>`, or wrapped in any intermediate `<div>`, is never seeked/decoded → renders blank (paper/white) or black. Do not rely on `lint` or `check` alone; a per-frame `snapshot` reveals the blank panel.
+**`<video>`/`<audio>` work at any nesting depth, including inside a sub-composition `<template>` or a wrapper `<div>`.** The runtime discovers media with a flat `document.querySelectorAll("video, audio")`, resolves each element's host composition via `element.closest("[data-composition-id]")`, and rebases its local `data-start` by the accumulated absolute start of every ancestor composition (`packages/core/src/runtime/{media,startResolver}.ts`). So a scene-specific clip can live in its scene's sub-comp with scene-local `data-start`, and it seeks/decodes correctly. If a panel renders blank after a render, that is a real bug: capture a per-frame `snapshot` and treat it as render-blocking.
 
-Consequences:
-
-- A scene-specific clip still lives at the host root, not in the scene's sub-comp. The sub-comp keeps only the frame/shell; the media is a sibling host element positioned over it.
-- A sub-composition **cannot reach or animate host elements** — neither `document.querySelector("#host-id")` nor a gsap selector string (`tl.to("#host-id", …)`) resolves across the boundary; a sub-comp timeline only drives its own subtree. So **all per-scene motion on host media (scale/opacity/morph/tilt/breathing) must be authored on the MAIN timeline in `index.html`, at GLOBAL time** (scene-local time + the scene slot's `data-start`). For 3D tilt without a perspective parent, use gsap `transformPerspective` on the element. See `composition-patterns.md` archetype B.
+The one real constraint is about **timelines, not media placement**: a sub-composition timeline **cannot reach or animate host elements** — neither `document.querySelector("#host-id")` nor a gsap selector string (`tl.to("#host-id", …)`) resolves across the boundary; a sub-comp timeline only drives its own subtree. So if a media element lives at the host root, **its per-scene motion (scale/opacity/morph/tilt/breathing) must be authored on the MAIN timeline in `index.html`, at GLOBAL time** (scene-local time + the scene slot's `data-start`). Keeping the media inside the scene sub-comp instead lets that sub-comp's own timeline animate it with scene-local time. For 3D tilt without a perspective parent, use gsap `transformPerspective` on the element. See `composition-patterns.md` archetype B.
 
 Video elements must be muted and inline. Audio must be a separate `<audio>` element, even when it uses the same source file.
 
@@ -96,8 +93,7 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 ### Media Rules
 
 - **Do not** call `video.play()`, `audio.play()`, pause, or seek in composition code. HyperFrames owns playback.
-- **Do not** place media inside a sub-comp `<template>` or any wrapper `<div>` — direct host-root child only (see above), else it never decodes.
-- **Do not** drive host media from a sub-comp timeline — it has no effect. Drive it from the main timeline at global time.
+- **Do not** drive host-root media from a sub-comp timeline: a sub-comp timeline cannot reach elements outside its subtree, so it has no effect. Drive host-root media from the main timeline at global time (or keep the media inside the sub-comp whose timeline animates it).
 - **Do not** animate timed media element dimensions; animate a non-timed wrapper instead.
 - **Do not** nest video inside a timed wrapper. Put timing on the media element or keep the wrapper untimed.
 - Add `crossorigin="anonymous"` for external media that needs canvas capture or pixel inspection.

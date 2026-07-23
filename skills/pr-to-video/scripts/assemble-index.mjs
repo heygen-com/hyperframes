@@ -38,14 +38,14 @@
 // `lint` failures surface HERE instead of after assembly + a wasted render):
 //   ① AUTO-REPAIR — a sub-comp root missing data-width/data-height: inject the canvas
 //      dims (the renderer needs them on the cloned root; else lint root_missing_dimensions).
-//   ② HARD FAIL  — <video>/<audio> inside a sub-comp: the runtime only drives media that
-//      is a DIRECT child of the host root, so sub-comp media renders blank/black.
-//   ③ HARD FAIL  — a timed element (data-start+duration+track-index) that is not the root
+//   ② HARD FAIL  — a timed element (data-start+duration+track-index) that is not the root
 //      and lacks class="clip" (shows the whole frame), or two same-track clips that overlap.
+//   (Media inside a sub-comp is NOT a violation: the runtime seeks + decodes nested
+//    <video>/<audio> at any depth — see packages/core/src/runtime/{media,startResolver}.ts.)
 //
 // Exit 0 = index.html written + summary. Exit 1 = fatal contract break (no
 // frames, a built/animated frame missing its src/file, a frame with no
-// duration, an inner data-composition-id mismatch, or a guard ②/③ violation).
+// duration, an inner data-composition-id mismatch, or a guard ② violation).
 // No backstop: fix upstream.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -122,7 +122,7 @@ const outPath = resolve(flag("out", join(hyperframesDir, "index.html")));
 
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const anomalies = [];
-const frameErrors = []; // fatal per-frame composition violations (guards ②/③) — reported together
+const frameErrors = []; // fatal per-frame composition violations (guard ②) — reported together
 const repairs = []; // auto-repairs applied to frame files in place (guard ①)
 
 // ---------- parse storyboard ----------
@@ -130,7 +130,7 @@ if (!existsSync(storyboardPath)) die(`STORYBOARD.md not found at ${storyboardPat
 const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 const { width: WIDTH, height: HEIGHT } = parseFormat(manifest.globals.format);
 
-// ---------- per-frame composition guards (see header ①②③) ----------
+// ---------- per-frame composition guards (see header ①②) ----------
 // String-level checks on each frame's HTML — no DOM parse, deterministic, run in
 // the same pass that already reads the file. OPEN_TAG matches one opening tag while
 // tolerating quoted attribute values that contain ">" (e.g. inline styles).
@@ -167,21 +167,17 @@ function guardFrame(html, label) {
   const errors = [];
   // Scan a copy with comments + <script>/<style> bodies blanked, so a tag-like string
   // in a comment (e.g. "<!-- match the host <video> coords -->") or in GSAP code can't
-  // trip ②/③. ① still splices into the ORIGINAL html, so its offsets stay correct.
+  // trip ②. ① still splices into the ORIGINAL html, so its offsets stay correct.
   const scan = html
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, " ")
     .replace(/<style\b[\s\S]*?<\/style[^>]*>/gi, " ");
 
-  // ② media inside a sub-comp — never driven by the runtime (renders blank/black).
-  const media = scan.match(/<(video|audio)(?=[\s/>])/i);
-  if (media) {
-    errors.push(
-      `${label}: has a <${media[1].toLowerCase()}> inside the sub-composition. The runtime only drives media that is a DIRECT child of the host root (index.html) — sub-comp media renders blank/black. Move the clip to index.html as a root-level <video>/<audio> and drive any per-scene motion on the main timeline (composition-patterns.md archetype B).`,
-    );
-  }
-
-  // ③ timed-element checks: missing class="clip", and same-track window overlap.
+  // ② timed-element checks: missing class="clip", and same-track window overlap.
+  // (Media inside a sub-comp is fine: the runtime's global media sweep seeks + decodes
+  // <video>/<audio> at any nesting depth, re-basing each clip's local data-start by its
+  // host composition's absolute start — no root-child requirement. See
+  // packages/core/src/runtime/{media,startResolver}.ts.)
   const re = new RegExp(OPEN_TAG, "g");
   const clips = [];
   let m;
@@ -291,7 +287,7 @@ for (const f of manifest.frames) {
   } catch (error) {
     die(`${label}: ${error.message}`);
   }
-  // pre-assembly guards: ① repair missing root dims in place, ②/③ collect fatal violations.
+  // pre-assembly guards: ① repair missing root dims in place, ② collects fatal violations.
   const guard = guardFrame(html, label);
   if (guard.repairedHtml) {
     writeFileSync(compAbs, guard.repairedHtml);

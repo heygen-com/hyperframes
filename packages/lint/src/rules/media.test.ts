@@ -348,7 +348,13 @@ describe("media rules", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("flags <video> inside a sub-composition (media must be a host-root child)", async () => {
+  it("does not flag <video> inside a sub-composition (runtime drives nested media)", async () => {
+    // The runtime's global media sweep (querySelectorAll("video, audio")) drives
+    // media at any nesting depth, and startResolver re-bases each nested clip's
+    // local data-start by its host composition's absolute start. Sub-composition
+    // media is therefore seeked + decoded correctly in preview and render — see
+    // packages/core/src/runtime/{media,startResolver,init}.ts. A prior
+    // `media_in_subcomposition` rule wrongly hard-errored this and was removed.
     const html = `<template id="scene-template">
   <div id="root" data-composition-id="scene" data-width="1920" data-height="1080">
     <video id="v1" src="clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
@@ -357,10 +363,7 @@ describe("media rules", () => {
 </template>`;
     const result = await lintHyperframeHtml(html, { isSubComposition: true });
     const finding = result.findings.find((f) => f.code === "media_in_subcomposition");
-    expect(finding).toBeDefined();
-    expect(finding?.severity).toBe("error");
-    expect(finding?.elementId).toBe("v1");
-    expect(finding?.message).toContain("sub-composition");
+    expect(finding).toBeUndefined();
   });
 
   it("does not flag media in a host-root (non-sub) composition", async () => {

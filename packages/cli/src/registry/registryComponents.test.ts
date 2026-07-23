@@ -26,9 +26,7 @@ async function invalidInstallableMedia(entryName: string): Promise<string[]> {
       isSubComposition: true,
     });
     for (const finding of result.findings) {
-      if (finding.code !== "media_in_subcomposition" && finding.code !== "media_missing_src") {
-        continue;
-      }
+      if (finding.code !== "media_missing_src") continue;
       invalidMedia.push(`${entryName}/${file.path}: ${finding.code}`);
     }
   }

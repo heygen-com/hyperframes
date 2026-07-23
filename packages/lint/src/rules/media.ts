@@ -396,29 +396,6 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
     return findings;
   },
 
-  // media_in_subcomposition — <video>/<audio> only render as a DIRECT child of the host
-  // root (index.html). Inside a sub-composition <template> the runtime never seeks/decodes
-  // them, so they render BLANK/black in preview and renders — and the other lint/validate
-  // passes otherwise miss it (only a per-frame snapshot reveals the blank panel).
-  ({ tags, options }) => {
-    const findings: HyperframeLintFinding[] = [];
-    if (!options.isSubComposition) return findings;
-    for (const tag of tags) {
-      if (tag.name !== "video" && tag.name !== "audio") continue;
-      const elementId = readAttr(tag.raw, "id") || undefined;
-      findings.push({
-        code: "media_in_subcomposition",
-        severity: "error",
-        message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> is inside a sub-composition. The runtime only drives media that is a DIRECT child of the host root (index.html); media inside a sub-comp <template> is never seeked/decoded and renders BLANK/black in preview and renders.`,
-        elementId,
-        fixHint:
-          "Move the media OUT of the sub-composition: place the <video>/<audio> as a direct child of #root in index.html, positioned over the scene, and drive any per-scene motion on the MAIN timeline at global time (a sub-comp timeline cannot reach host elements). See composition-patterns.md archetype B.",
-        snippet: truncateSnippet(tag.raw),
-      });
-    }
-    return findings;
-  },
-
   // self_closing_media_tag
   ({ source }) => {
     const findings: HyperframeLintFinding[] = [];
