@@ -302,18 +302,55 @@ function isHTMLElementTarget(el: Element): boolean {
   return "style" in el;
 }
 
-function resolveSingleChildTextTarget(el: Element): Element | null {
-  const inner = el.children.length === 1 ? el.firstElementChild : null;
-  return inner && isHTMLElementTarget(inner) ? inner : null;
+// Void elements can't hold text, so a lone `<br>`/`<img>`/`<hr>`/… child is
+// never the element's text target. Treating one as such made getOwnText read
+// "" (→ `text: null`, surfaced as "not editable") and setOwnText write into the
+// void element, corrupting it — e.g. a `<br>` gained a text child and
+// serialized as invalid `</br>`.
+const VOID_TEXT_TARGET_TAGS = new Set([
+  "AREA",
+  "BASE",
+  "BR",
+  "COL",
+  "EMBED",
+  "HR",
+  "IMG",
+  "INPUT",
+  "LINK",
+  "META",
+  "PARAM",
+  "SOURCE",
+  "TRACK",
+  "WBR",
+]);
+
+function isBrElement(node: Node): boolean {
+  return node.nodeType === 1 && (node as Element).tagName === "BR";
 }
 
-/** Read the text target used by SDK setText. */
+/** A flat text leaf: no element children, or only `<br>` line breaks
+ *  (e.g. `<h1>First<br>Second</h1>`). Such an element's entire content is its
+ *  own text, so setText owns it end-to-end. Vacuously true for zero children. */
+function isTextOrBrLeaf(el: Element): boolean {
+  return Array.from(el.children).every((child) => child.tagName === "BR");
+}
+
+function resolveSingleChildTextTarget(el: Element): Element | null {
+  const inner = el.children.length === 1 ? el.firstElementChild : null;
+  if (!inner || !isHTMLElementTarget(inner)) return null;
+  if (VOID_TEXT_TARGET_TAGS.has(inner.tagName)) return null;
+  return inner;
+}
+
+/** Read the text target used by SDK setText. `<br>` line breaks are surfaced as
+ *  "\n" so a multi-line leaf round-trips through setOwnText. */
 export function getOwnText(el: Element): string {
   const singleChild = resolveSingleChildTextTarget(el);
   if (singleChild) return singleChild.textContent ?? "";
   let text = "";
   el.childNodes.forEach((n) => {
     if (n.nodeType === 3) text += (n as Text).nodeValue ?? "";
+    else if (isBrElement(n)) text += "\n";
   });
   return text;
 }
@@ -327,6 +364,23 @@ export function setOwnText(el: Element, text: string): void {
   }
 
   const doc = el.ownerDocument;
+
+  // Flat text leaf (text and/or `<br>` only): rebuild the text/`<br>` run from
+  // the "\n"-separated value — the inverse of getOwnText. Existing `<br>` nodes
+  // are reused in order so their identity (data-hf-id, etc.) survives an edit
+  // that keeps the line, and a new one is only minted when a line is added.
+  // Never writes text into a `<br>`, so no `</br>` corruption.
+  if (isTextOrBrLeaf(el)) {
+    const spareBrs = Array.from(el.children).filter((child) => child.tagName === "BR");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const lines = text.split("\n");
+    lines.forEach((line, index) => {
+      if (index > 0) el.appendChild(spareBrs.shift() ?? doc.createElement("br"));
+      if (line) el.appendChild(doc.createTextNode(line));
+    });
+    return;
+  }
+
   const children = Array.from(el.childNodes);
   // Track original position of the first text node so we restore there, not at firstChild.
   let firstTextIdx = -1;
