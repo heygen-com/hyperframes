@@ -1,6 +1,7 @@
 {
   "name": "@hyperframes/studio-server",
   "version": "0.7.68",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",

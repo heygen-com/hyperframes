@@ -2,6 +2,7 @@
   "name": "@hyperframes/shader-transitions",
   "version": "0.7.68",
   "description": "WebGL shader transitions for HyperFrames compositions",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
