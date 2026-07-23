@@ -415,7 +415,57 @@ async function collectGridSamples(
       collected.screenshots.push({ time, pngBase64: capture.pngBase64 });
     }
   }
+  await collectMotionOverlapSamples(driver, grid, collected);
   return collected;
+}
+
+// content_overlap sampling density for the dense motion re-pass. The sparse
+// layout grid (default 9 points over multiple seconds) seeks straight past a
+// mid-orbit text-on-text crossing that only overlaps for a fraction of a
+// second: an in-corpus orbit (samples/fuzz016) collides at 28% area for ~0.4s,
+// entirely between two adjacent base samples. 8fps (~0.125s spacing) lands
+// >= 2 samples inside a window that narrow, which is what persistence tiering
+// needs to promote the finding to error. Overlap collection is text-only
+// (collectSolidTextBlocks), far cheaper than a full layout audit, so a fine
+// grid here is affordable where densifying every detector would not be.
+const OVERLAP_SAMPLE_FPS = 8;
+const OVERLAP_MAX_SAMPLES = 120;
+
+function buildOverlapSampleTimes(duration: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const count = Math.min(
+    OVERLAP_MAX_SAMPLES,
+    Math.max(2, Math.ceil(duration * OVERLAP_SAMPLE_FPS) + 1),
+  );
+  const step = duration / (count - 1);
+  return mergeSampleTimes(
+    Array.from({ length: count }, (_, index) => Math.round(index * step * 1000) / 1000),
+  );
+}
+
+/**
+ * Dense motion-overlap re-sampling. Reruns ONLY content_overlap on a fine time
+ * grid so transient text collisions during continuous motion are observed at
+ * all — the detector itself is unchanged (same 0.2-area threshold), only the
+ * sampling density is. Gated on the composition actually animating (the
+ * frozen-sweep geometry fingerprints differ across the base grid): a static
+ * card produces no new work and no new findings. Findings feed the existing
+ * collapse/persistence tiering, so a one-sample graze stays info while a held
+ * collision (samples/fuzz016) re-promotes to error. Skips times already in the
+ * base grid to avoid double-collecting the overlaps collectLayout already found.
+ */
+async function collectMotionOverlapSamples(
+  driver: CheckAuditDriver,
+  grid: SampleGrid,
+  collected: GridSamples,
+): Promise<void> {
+  if (new Set(collected.geometrySignatures).size <= 1) return;
+  const baseTimes = new Set(grid.layoutSamples);
+  for (const time of buildOverlapSampleTimes(grid.duration)) {
+    if (baseTimes.has(time)) continue;
+    await driver.seek(time);
+    collected.layoutIssues.push(...(await driver.collectOverlap(time)));
+  }
 }
 
 // Frozen-sweep guard (#U10): compositions this short can legitimately hold a
