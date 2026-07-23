@@ -2972,6 +2972,7 @@ async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<{ buffer: Buffer; quantizedTime: number; captureTimeMs: number }> {
   const { page, options } = session;
   const startTime = Date.now();
@@ -3008,6 +3009,7 @@ async function captureFrameCore(
     );
 
     const screenshotStart = Date.now();
+    if (settlePaint) await pageScreenshotCapture(page, options);
     let screenshotBuffer: Buffer;
 
     if (session.captureMode === "beginframe") {
@@ -3141,11 +3143,13 @@ export async function captureFrame(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<CaptureResult> {
   const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
     session,
     frameIndex,
     time,
+    settlePaint,
   );
   const framePath = writeCapturedFrame(session, frameIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
@@ -3178,8 +3182,9 @@ export async function captureFrameToBuffer(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  settlePaint: boolean = false,
 ): Promise<CaptureBufferResult> {
-  const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time);
+  const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time, settlePaint);
 
   return { buffer, captureTimeMs };
 }
@@ -3454,14 +3459,15 @@ export type DiscardWarmupInnerCapture = (
  * side-effects (perf counters, BeginFrame damage tallies) so downstream
  * captures see state identical to a fresh session.
  *
- * Distributed chunk workers need this because Chrome's BeginFrame screenshot
- * pipeline maintains a per-process `lastFrameCache`: when a captured frame's
- * `hasDamage` reports `false`, the screenshot path returns the previously
- * captured buffer. For chunk N (N > 0) the worker has no prior frame in its
- * cache, so the very first capture's `hasDamage` reporting diverges from
- * what an in-process render at the same absolute frame index would see (the
- * in-process renderer always has frame N-1 cached). One discard capture
- * before the first real capture primes the cache.
+ * Screenshot-mode parallel workers use this to settle the paint scheduled by
+ * their first non-zero `__hf.seek()`: the throwaway Page.captureScreenshot
+ * produces a frame, allowing rAF/compositor work to land before the real
+ * capture reads the pixels.
+ *
+ * This helper is intentionally forbidden for BeginFrame and drawElement
+ * sessions. Repeating a BeginFrame timestamp stalls Chrome's compositor, and
+ * priming with an earlier frame makes the subsequent real capture move time
+ * backwards, which stalls for the same reason (see producer renderChunk).
  *
  * The function intentionally restores perf state so the warmup capture does
  * NOT bias `getCapturePerfSummary()`'s per-frame averages.
@@ -3482,10 +3488,10 @@ export async function discardWarmupCapture(
   time: number = 0,
   innerCapture: DiscardWarmupInnerCapture = captureFrameCore,
 ): Promise<void> {
-  // Snapshot the side-effect counters captureFrameCore mutates. We use a
-  // shallow `{...}` for capturePerf because all five fields are primitive
-  // numbers — no nested state to deep-copy.
-  const perfBefore = { ...session.capturePerf };
+  if (session.captureMode !== "screenshot") {
+    throw new Error("discardWarmupCapture requires screenshot capture mode");
+  }
+  const perfBefore = { ...session.capturePerf, frameMs: [...session.capturePerf.frameMs] };
   const hasDamageBefore = session.beginFrameHasDamageCount;
   const noDamageBefore = session.beginFrameNoDamageCount;
   const dedupCountBefore = session.staticDedupCount;

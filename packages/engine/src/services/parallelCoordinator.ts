@@ -473,6 +473,7 @@ async function captureFrameRange(
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
   const stride = task.frameStride ?? 1;
+  const settleFirstPaint = session.captureMode === "screenshot" && task.startFrame !== 0;
   // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
   // k's in-page worker encode overlaps frame k+stride's produce phase — the
   // same shape as the sequential worker-encode loop. Only engaged when the
@@ -538,12 +539,13 @@ async function captureFrameRange(
     if (signal?.aborted) throw new Error("Parallel worker cancelled");
     const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
     const fileFrameIdx = i - outputOffset;
+    const settlePaint = settleFirstPaint && i === task.startFrame;
 
     if (onFrameBuffer) {
-      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
+      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time, settlePaint);
       await onFrameBuffer(i, buffer, session);
     } else {
-      await captureFrame(session, fileFrameIdx, time);
+      await captureFrame(session, fileFrameIdx, time, settlePaint);
     }
     framesCaptured++;
     if (onFrameCaptured) onFrameCaptured(task.workerId, i);
@@ -652,6 +654,8 @@ async function executeWorkerTask(
     if (session) await closeCaptureSession(session).catch(() => {});
   }
 }
+
+export const __testing = { executeWorkerTask };
 
 /**
  * drawElement self-verify sample count for multi-worker capture. Each worker

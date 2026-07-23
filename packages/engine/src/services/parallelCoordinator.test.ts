@@ -1,5 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const frameCaptureMocks = vi.hoisted(() => ({
+  createCaptureSession: vi.fn(),
+  initializeSession: vi.fn(),
+  closeCaptureSession: vi.fn(),
+  captureFrame: vi.fn(),
+  captureFrameToBufferPipelined: vi.fn(),
+  captureFrameToBuffer: vi.fn(),
+  getCapturePerfSummary: vi.fn(),
+}));
+
+vi.mock("./frameCapture.js", () => frameCaptureMocks);
+
 import {
+  __testing,
   calculateOptimalWorkers,
   computeWorkerSizing,
   distributeFrames,
@@ -14,6 +28,93 @@ import {
   type WorkerResult,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
+
+const { executeWorkerTask } = __testing;
+
+function makeWorkerSession(
+  captureMode: "screenshot" | "beginframe" | "drawelement" = "screenshot",
+) {
+  return {
+    browserConsoleBuffer: [],
+    captureMode,
+    workerEncodeEnabled: false,
+  };
+}
+
+const captureOptions = {
+  width: 1280,
+  height: 720,
+  fps: { num: 30, den: 1 },
+};
+
+function runWorker(workerId: number, startFrame: number, signal?: AbortSignal) {
+  return executeWorkerTask(
+    { workerId, startFrame, endFrame: startFrame + 2, outputDir: "/tmp" },
+    "http://127.0.0.1:4173",
+    captureOptions,
+    () => null,
+    signal,
+  );
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  frameCaptureMocks.createCaptureSession.mockImplementation(async () => makeWorkerSession());
+  frameCaptureMocks.initializeSession.mockResolvedValue(undefined);
+  frameCaptureMocks.closeCaptureSession.mockResolvedValue(undefined);
+  frameCaptureMocks.captureFrame.mockResolvedValue(undefined);
+});
+
+describe("executeWorkerTask", () => {
+  it("settles a non-zero screenshot worker at its first absolute frame", async () => {
+    const callOrder: string[] = [];
+    frameCaptureMocks.initializeSession.mockImplementation(async () => {
+      callOrder.push("initialize");
+    });
+    frameCaptureMocks.captureFrame.mockImplementation(
+      async (_session, frameIndex, _time, settle) => {
+        callOrder.push(`capture:${frameIndex}:${settle}`);
+      },
+    );
+
+    await runWorker(1, 36);
+
+    expect(callOrder).toEqual(["initialize", "capture:36:true", "capture:37:false"]);
+  });
+
+  it("does not warm worker zero because its initial state is already painted", async () => {
+    const result = await runWorker(0, 0);
+
+    expect(result.framesCaptured).toBe(2);
+    const settles = frameCaptureMocks.captureFrame.mock.calls.map((call) => call[3]);
+    expect(settles).toEqual([false, false]);
+  });
+
+  it.each(["beginframe", "drawelement"] as const)(
+    "does not issue a duplicate warmup capture in %s mode",
+    async (captureMode) => {
+      frameCaptureMocks.createCaptureSession.mockResolvedValue(makeWorkerSession(captureMode));
+
+      const result = await runWorker(1, 36);
+
+      expect(result.error).toBeUndefined();
+      const settles = frameCaptureMocks.captureFrame.mock.calls.map((call) => call[3]);
+      expect(settles).toEqual([false, false]);
+    },
+  );
+
+  it("returns a worker error and closes the session when the paint barrier fails", async () => {
+    const session = makeWorkerSession();
+    frameCaptureMocks.createCaptureSession.mockResolvedValue(session);
+    frameCaptureMocks.captureFrame.mockRejectedValue(new Error("warmup failed"));
+
+    const result = await runWorker(1, 36);
+
+    expect(result).toMatchObject({ error: "warmup failed", framesCaptured: 0 });
+    expect(frameCaptureMocks.captureFrame).toHaveBeenCalledWith(session, 36, 1.2, true);
+    expect(frameCaptureMocks.closeCaptureSession).toHaveBeenCalledWith(session);
+  });
+});
 
 describe("distributeFrames", () => {
   it("distributes frames evenly across workers", () => {
