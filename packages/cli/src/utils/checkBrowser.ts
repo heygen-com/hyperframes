@@ -602,7 +602,7 @@ function parseConnectorNode(value: unknown): ConnectorNodeBox[] {
   const right = numberValue(value, "right");
   const bottom = numberValue(value, "bottom");
   if (!selector || left === null || top === null || right === null || bottom === null) return [];
-  return [{ selector, left, top, right, bottom }];
+  return [{ selector, left, top, right, bottom, ring: value.ring === true }];
 }
 
 async function collectGeometryCandidates(

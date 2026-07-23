@@ -162,13 +162,15 @@ export interface ConnectorLineSample {
   by: number;
 }
 
-/** Screen bbox of one plausible node/box a connector could anchor to. */
+/** Screen bbox of one plausible node/box a connector could anchor to. `ring`
+ * marks a stroke-only SVG shape matched by perimeter, not hollow interior. */
 export interface ConnectorNodeBox {
   selector: string;
   left: number;
   top: number;
   right: number;
   bottom: number;
+  ring: boolean;
 }
 
 /** All connectors + node boxes at one seeked sample, produced by

@@ -5,13 +5,21 @@ import type { ConnectorFrame, ConnectorLineSample, ConnectorNodeBox } from "./ch
 
 const CANVAS = { width: 1000, height: 1000 };
 // Two nodes: a hub near the centre and a satellite the connector should reach.
-const HUB: ConnectorNodeBox = { selector: "#hub", left: 480, top: 480, right: 520, bottom: 520 };
+const HUB: ConnectorNodeBox = {
+  selector: "#hub",
+  left: 480,
+  top: 480,
+  right: 520,
+  bottom: 520,
+  ring: false,
+};
 const SATELLITE: ConnectorNodeBox = {
   selector: "#sat",
   left: 780,
   top: 480,
   right: 860,
   bottom: 520,
+  ring: false,
 };
 
 function frame(
@@ -77,6 +85,32 @@ describe("detectConnectorMotionDetached", () => {
 
   it("does not fire with fewer than the minimum frames", () => {
     expect(detectConnectorMotionDetached(danglingFrames().slice(0, 3), CANVAS)).toHaveLength(0);
+  });
+
+  // Hollow ring centred at 900,500; bbox left stroke is at x=700.
+  const RING: ConnectorNodeBox = {
+    selector: "#ring",
+    left: 700,
+    top: 300,
+    right: 1100,
+    bottom: 700,
+    ring: true,
+  };
+
+  it("treats a loose end landing on a ring's stroke as anchored (no fire)", () => {
+    // End B at 708,500 sits ~8px inside the ring's left stroke → anchored.
+    const frames = [0, 2, 4, 6, 8].map((time) =>
+      frame(time, { selector: "#spoke", ax: 500, ay: 500, bx: 708, by: 500 }, [HUB, RING]),
+    );
+    expect(detectConnectorMotionDetached(frames, CANVAS)).toHaveLength(0);
+  });
+
+  it("still fires when the loose end sits in a ring's hollow centre", () => {
+    // End B at the ring centre 900,500 is ~200px from its perimeter → dangling.
+    const frames = [0, 2, 4, 6, 8].map((time) =>
+      frame(time, { selector: "#spoke", ax: 500, ay: 500, bx: 900, by: 500 }, [HUB, RING]),
+    );
+    expect(detectConnectorMotionDetached(frames, CANVAS)).toHaveLength(1);
   });
 
   it("drops a selector that aliases multiple connectors in one frame", () => {

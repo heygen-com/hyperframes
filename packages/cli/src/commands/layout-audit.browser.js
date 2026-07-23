@@ -1740,6 +1740,8 @@
   const CONNECTOR_MIN_SVG_PX = 100;
   const CONNECTOR_MIN_LEN_PX = 60;
   const CONNECTOR_NODE_MIN_AREA = 400;
+  // SVG dots/markers are small; keep the floor low but above sub-pixel decoration.
+  const CONNECTOR_NODE_MIN_DOT_AREA = 16;
   const CONNECTOR_NODE_CAP = 300;
 
   function lineScreenEndpoints(svg, line) {
@@ -1762,7 +1764,9 @@
   }
 
   // Node/box candidates a connector could anchor to: sized, opaque or text-
-  // bearing, non-SVG elements that are not a full-canvas layer.
+  // bearing HTML elements plus SVG hub/ring/dot shapes. A shape drawn stroke-only
+  // (fill:none) is a ring — the connector attaches to its stroke, so it is marked
+  // `ring` and matched by perimeter, not hollow interior (see pointToNodeGap).
   function connectorNodeBoxes(root, rootRect) {
     const boxes = [];
     const rootArea = rectArea(rootRect);
@@ -1781,6 +1785,23 @@
         top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
+        ring: false,
+      });
+    }
+    for (const shape of Array.from(root.querySelectorAll("circle, ellipse, rect"))) {
+      if (boxes.length >= CONNECTOR_NODE_CAP) break;
+      if (!isVisibleElement(shape, 0.05)) continue;
+      const rect = toRect(shape.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < CONNECTOR_NODE_MIN_DOT_AREA || area >= rootArea * 0.5) continue;
+      const fill = getComputedStyle(shape).fill;
+      boxes.push({
+        selector: selectorFor(shape),
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        ring: fill === "none" || fill === "transparent" || shape.getAttribute("fill") === "none",
       });
     }
     return boxes;
