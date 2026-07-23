@@ -38,6 +38,9 @@ import type {
   CheckGeometryCandidate,
   CheckOptions,
   CheckSeverity,
+  ConnectorFrame,
+  ConnectorLineSample,
+  ConnectorNodeBox,
   ContrastAuditEntry,
   ContrastCapture,
   GeometryCandidateRequest,
@@ -352,6 +355,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     collectLayoutGeometry: () => collectLayoutGeometry(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
     collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
+    collectConnectorSample: (time) => collectConnectorSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -561,6 +565,44 @@ function parseOffPivotRotationSample(value: unknown, time: number): OffPivotRota
       hubCount,
     },
   ];
+}
+
+async function collectConnectorSample(page: Page, time: number): Promise<ConnectorFrame> {
+  const raw = await page.evaluate(() => {
+    const sample = Reflect.get(window, "__hyperframesConnectorSample");
+    if (typeof sample !== "function") return null;
+    return Reflect.apply(sample, window, []);
+  });
+  if (!isRecord(raw)) return { time, connectors: [], nodes: [] };
+  const connectors = Array.isArray(raw.connectors) ? raw.connectors : [];
+  const nodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+  return {
+    time,
+    connectors: connectors.flatMap(parseConnectorLine),
+    nodes: nodes.flatMap(parseConnectorNode),
+  };
+}
+
+function parseConnectorLine(value: unknown): ConnectorLineSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const ax = numberValue(value, "ax");
+  const ay = numberValue(value, "ay");
+  const bx = numberValue(value, "bx");
+  const by = numberValue(value, "by");
+  if (!selector || ax === null || ay === null || bx === null || by === null) return [];
+  return [{ selector, ax, ay, bx, by }];
+}
+
+function parseConnectorNode(value: unknown): ConnectorNodeBox[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const left = numberValue(value, "left");
+  const top = numberValue(value, "top");
+  const right = numberValue(value, "right");
+  const bottom = numberValue(value, "bottom");
+  if (!selector || left === null || top === null || right === null || bottom === null) return [];
+  return [{ selector, left, top, right, bottom }];
 }
 
 async function collectGeometryCandidates(
@@ -1146,6 +1188,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "escaped_container",
   "panel_out_of_canvas",
   "connector_detached",
+  "connector_motion_detached",
   "rotation_pivot_drift",
   "off_pivot_rotation",
   "motion_appears_late",

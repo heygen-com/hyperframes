@@ -45,6 +45,8 @@ import type {
   CheckScreenshot,
   CheckSection,
   CheckSeverity,
+  ConnectorFrame,
+  ConnectorNodeBox,
   ContrastAuditEntry,
   GeometryCandidateRequest,
   MotionSpecResolution,
@@ -197,6 +199,9 @@ interface GridSamples {
   /** Every elongated rotating SVG figure's material-point geometry + dial hub at
    * each layout sample; grouped by selector to detect off_pivot_rotation. */
   indicatorSamples: OffPivotRotationSample[];
+  /** Connector endpoints + node boxes at each layout sample; correlated after
+   * the run to detect connector_motion_detached. */
+  connectorFrames: ConnectorFrame[];
 }
 
 interface GeometrySeen {
@@ -370,6 +375,7 @@ async function collectGridSamples(
     geometrySignatures: [],
     rotationSamples: [],
     indicatorSamples: [],
+    connectorFrames: [],
   };
   for (const time of mergeSampleTimes(grid.layoutSamples, motion.times)) {
     await driver.seek(time);
@@ -384,6 +390,7 @@ async function collectGridSamples(
       collected.geometrySignatures.push(await driver.collectLayoutGeometry());
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorSamples.push(...(await driver.collectOffPivotRotationSample(time)));
+      collected.connectorFrames.push(await driver.collectConnectorSample(time));
     }
     if (canvas) {
       const geometryIssues = await collectGeometryAt(
@@ -909,6 +916,248 @@ export function detectOffPivotRotation(samples: OffPivotRotationSample[]): Ancho
   return findings;
 }
 
+// connector_motion_detached thresholds. Corpus timings: entrances settle by
+// ~2s of a 7-8s composition, so held/steady state starts well before half.
+const CONNECTOR_MIN_FRAMES = 4;
+// An endpoint within this of a node counts as anchored (well under a node's size).
+const CONNECTOR_ATTACH_PX = 24;
+// The dangling end must clear this to flag. Set high, and measured against a
+// dense node-candidate set, so only an endpoint sitting in genuinely empty space
+// fires — a slow drift that still lands near a box, or a snug residual gap, does
+// not. Corpus: fuzz011's detached spokes dangle ~185-190px from every node;
+// legitimate lead-lines to a nearby label stay well under this.
+const CONNECTOR_DETACH_FLOOR_PX = 80;
+const CONNECTOR_DETACH_VIEWPORT_FRACTION = 0.06;
+// Held/steady frames begin at this fraction of the timeline (past entrances).
+const CONNECTOR_HELD_START_FRAC = 0.45;
+const CONNECTOR_MIN_HELD_FRAMES = 2;
+// Fraction of held frames on which the loose end must be detached to flag.
+const CONNECTOR_HELD_DETACH_FRAC = 0.8;
+
+interface ConnectorObservation {
+  time: number;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  nodes: ConnectorNodeBox[];
+}
+
+function pointToNodeGap(x: number, y: number, node: ConnectorNodeBox): number {
+  const dx = Math.max(node.left - x, 0, x - node.right);
+  const dy = Math.max(node.top - y, 0, y - node.bottom);
+  if (dx > 0 || dy > 0) return Math.hypot(dx, dy);
+  // Inside the bbox: a solid node anchors anywhere; a hollow ring only near its
+  // stroke, so measure distance to the bbox perimeter (its hole is not attached).
+  if (!node.ring) return 0;
+  return Math.min(x - node.left, node.right - x, y - node.top, node.bottom - y);
+}
+
+function nearestNodeGap(x: number, y: number, nodes: ConnectorNodeBox[]): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const node of nodes) min = Math.min(min, pointToNodeGap(x, y, node));
+  return min;
+}
+
+/** Group observations by connector selector, dropping any selector that maps to
+ * more than one connector in a single frame — those endpoints can't be tracked
+ * across seeks without aliasing (the false-association risk). */
+function groupConnectorsBySelector(frames: ConnectorFrame[]): Map<string, ConnectorObservation[]> {
+  const bySelector = new Map<string, ConnectorObservation[]>();
+  const ambiguous = new Set<string>();
+  for (const frame of frames) {
+    const seenThisFrame = new Set<string>();
+    for (const connector of frame.connectors) {
+      if (seenThisFrame.has(connector.selector)) ambiguous.add(connector.selector);
+      seenThisFrame.add(connector.selector);
+      const observation: ConnectorObservation = {
+        time: frame.time,
+        ax: connector.ax,
+        ay: connector.ay,
+        bx: connector.bx,
+        by: connector.by,
+        nodes: frame.nodes,
+      };
+      const group = bySelector.get(connector.selector);
+      if (group) group.push(observation);
+      else bySelector.set(connector.selector, [observation]);
+    }
+  }
+  for (const selector of ambiguous) bySelector.delete(selector);
+  return bySelector;
+}
+
+interface EndpointHeldGaps {
+  minGap: number;
+  detachedFraction: number;
+  danglingGap: number;
+}
+
+/** Per-endpoint held-frame gap summary: closest it ever gets to a node, the
+ * fraction of held frames it sits beyond the detach threshold, and the gap it
+ * settles at when detached. */
+function endpointHeldGaps(
+  group: ConnectorObservation[],
+  pick: (o: ConnectorObservation) => { x: number; y: number },
+  holdStart: number,
+  detachThreshold: number,
+): EndpointHeldGaps | null {
+  const heldGaps: number[] = [];
+  for (const observation of group) {
+    if (observation.nodes.length === 0 || observation.time < holdStart) continue;
+    const point = pick(observation);
+    heldGaps.push(nearestNodeGap(point.x, point.y, observation.nodes));
+  }
+  if (heldGaps.length < CONNECTOR_MIN_HELD_FRAMES) return null;
+  const detached = heldGaps.filter((gap) => gap > detachThreshold);
+  return {
+    minGap: Math.min(...heldGaps),
+    detachedFraction: detached.length / heldGaps.length,
+    danglingGap: detached.length > 0 ? Math.min(...detached) : 0,
+  };
+}
+
+function isAnchored(gaps: EndpointHeldGaps): boolean {
+  return gaps.minGap <= CONNECTOR_ATTACH_PX;
+}
+
+function isDangling(gaps: EndpointHeldGaps): boolean {
+  return gaps.detachedFraction >= CONNECTOR_HELD_DETACH_FRAC;
+}
+
+// Gauge-indicator geometry: the anchored end pivots near a ring/arc centre and
+// the loose end extends radially outward. That is a needle/pointer (owned by a
+// separate gauge check), not a broken node connector. A defective radial
+// connector points the other way — anchored on a peripheral node, loose end
+// drifting toward the centre — so this only excludes true centre-pivot pointers.
+const GAUGE_HUB_CENTRE_FRACTION = 0.25;
+
+function isGaugeIndicator(
+  anchored: { x: number; y: number },
+  dangling: { x: number; y: number },
+  nodes: ConnectorNodeBox[],
+): boolean {
+  for (const node of nodes) {
+    if (!node.ring) continue;
+    const cx = (node.left + node.right) / 2;
+    const cy = (node.top + node.bottom) / 2;
+    const size = Math.max(node.right - node.left, node.bottom - node.top);
+    const dAnchored = Math.hypot(anchored.x - cx, anchored.y - cy);
+    const dDangling = Math.hypot(dangling.x - cx, dangling.y - cy);
+    if (dAnchored <= GAUGE_HUB_CENTRE_FRACTION * size && dDangling > dAnchored) return true;
+  }
+  return false;
+}
+
+function connectorDetachFinding(
+  selector: string,
+  point: { x: number; y: number },
+  gap: number,
+  time: number,
+): AnchoredLayoutIssue {
+  const rect: LayoutRect = {
+    left: point.x - 4,
+    top: point.y - 4,
+    right: point.x + 4,
+    bottom: point.y + 4,
+    width: 8,
+    height: 8,
+  };
+  return {
+    code: "connector_motion_detached",
+    severity: "warning",
+    time,
+    selector,
+    dataAttributes: {},
+    sourceFile: "index.html",
+    bbox: rectToBbox(rect),
+    rect,
+    message: `Connector has one endpoint on a node but the other sits ${Math.round(gap)}px from every node across the held frames — it points into empty space (a fixed endpoint while its target moved: wrong rotation pivot, or a path measured once at build).`,
+    fixHint:
+      "Bind BOTH endpoints to their nodes for the whole timeline: rotate the connector inside the same group as its nodes (about the shared centre), or recompute its path when node positions change instead of measuring once at build.",
+  };
+}
+
+/**
+ * connector_motion_detached: a connector (SVG <line>/<path>) that stays anchored
+ * to a node at ONE endpoint while its OTHER endpoint sits in empty space — far
+ * from every node — across the held (steady) frames. This is the sibling of the
+ * per-frame `connector_detached` check, which requires BOTH endpoints far from
+ * anchors on a single frame and so deliberately ignores the half-attached case.
+ * But that half-attached case is the dominant real failure under motion: a
+ * spoke/edge whose one end stays pinned (e.g. at a hub) while the other drifts
+ * off a node that kept moving — rotated about a wrong pivot, or with a path
+ * measured once at build then never updated as the target animated.
+ *
+ * FP-guarded, deliberately strict: one endpoint must be genuinely anchored
+ * (structural, not a name match); the loose end must clear a high detach
+ * threshold on ~all held frames (measured against a dense node-candidate set, so
+ * only an endpoint in truly empty space fires — snug residual gaps and lead
+ * lines to a nearby label do not); and a selector that aliases multiple
+ * connectors in one frame is dropped.
+ */
+interface DanglePick {
+  anchored: { x: number; y: number };
+  dangling: { x: number; y: number };
+  gap: number;
+}
+
+/** If exactly one endpoint is anchored and the other persistently dangles, name
+ * the anchored/dangling points and the dangling gap; else null. */
+function danglingEndpoint(
+  last: ConnectorObservation,
+  gapsA: EndpointHeldGaps,
+  gapsB: EndpointHeldGaps,
+): DanglePick | null {
+  const a = { x: last.ax, y: last.ay };
+  const b = { x: last.bx, y: last.by };
+  if (isAnchored(gapsA) && isDangling(gapsB) && !isAnchored(gapsB)) {
+    return { anchored: a, dangling: b, gap: gapsB.danglingGap };
+  }
+  if (isAnchored(gapsB) && isDangling(gapsA) && !isAnchored(gapsA)) {
+    return { anchored: b, dangling: a, gap: gapsA.danglingGap };
+  }
+  return null;
+}
+
+/** One connector's held trajectory → a finding, or null. A finding needs one
+ * endpoint anchored to a node and the other persistently in empty space, and is
+ * suppressed for gauge-indicator geometry (see isGaugeIndicator). */
+function connectorGroupFinding(
+  selector: string,
+  group: ConnectorObservation[],
+  holdStart: number,
+  detachThreshold: number,
+): AnchoredLayoutIssue | null {
+  const last = group.length >= CONNECTOR_MIN_FRAMES ? group[group.length - 1] : undefined;
+  if (!last) return null;
+  const gapsA = endpointHeldGaps(group, (o) => ({ x: o.ax, y: o.ay }), holdStart, detachThreshold);
+  const gapsB = endpointHeldGaps(group, (o) => ({ x: o.bx, y: o.by }), holdStart, detachThreshold);
+  if (!gapsA || !gapsB) return null;
+  const pick = danglingEndpoint(last, gapsA, gapsB);
+  if (!pick || isGaugeIndicator(pick.anchored, pick.dangling, last.nodes)) return null;
+  return connectorDetachFinding(selector, pick.dangling, pick.gap, last.time);
+}
+
+export function detectConnectorMotionDetached(
+  frames: ConnectorFrame[],
+  canvas: Canvas,
+): AnchoredLayoutIssue[] {
+  const findings: AnchoredLayoutIssue[] = [];
+  const duration = frames.reduce((max, frame) => Math.max(max, frame.time), 0);
+  if (duration <= 0) return findings;
+  const holdStart = CONNECTOR_HELD_START_FRAC * duration;
+  const detachThreshold = Math.max(
+    CONNECTOR_DETACH_FLOOR_PX,
+    CONNECTOR_DETACH_VIEWPORT_FRACTION * Math.min(canvas.width, canvas.height),
+  );
+  for (const [selector, group] of groupConnectorsBySelector(frames)) {
+    const finding = connectorGroupFinding(selector, group, holdStart, detachThreshold);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
 /** Error-severity findings with real geometry become labeled overview boxes.
  * Contrast failures are annotated separately by the driver itself, since
  * they're only known once contrast measurement for this sample completes. */
@@ -949,6 +1198,10 @@ export async function runAuditGrid(
     await driver.getCanvas(),
   );
   const offPivotFindings = detectOffPivotRotation(collected.indicatorSamples);
+  const connectorFindings = detectConnectorMotionDetached(
+    collected.connectorFrames,
+    await driver.getCanvas(),
+  );
   const contrast = buildContrastResults(collected.contrastEntries);
   return {
     duration: grid.duration,
@@ -961,6 +1214,7 @@ export async function runAuditGrid(
       ...sweepFindings,
       ...rotationFindings,
       ...offPivotFindings,
+      ...connectorFindings,
     ],
     motionIssues,
     motionSampleCount: collected.motionFrames.length,

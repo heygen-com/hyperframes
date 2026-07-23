@@ -1729,4 +1729,93 @@
     }
     return samples;
   };
+
+  // connector_motion_detached sampling. Per seeked frame, report every diagram
+  // connector's two screen-space endpoints AND every plausible node/box bbox.
+  // Node accumulates these across the grid and flags an endpoint that stays
+  // anchored to a node while the other endpoint sits in empty space on the held
+  // frames — a connector whose coordinates were frozen (wrong rotation pivot, or
+  // measured once at build) while its target kept moving. Icon-sized SVGs and
+  // short strokes are filtered out so only real diagram connectors count.
+  const CONNECTOR_MIN_SVG_PX = 100;
+  const CONNECTOR_MIN_LEN_PX = 60;
+  const CONNECTOR_NODE_MIN_AREA = 400;
+  const CONNECTOR_NODE_CAP = 300;
+
+  function lineScreenEndpoints(svg, line) {
+    if (typeof line.getScreenCTM !== "function" || typeof svg.createSVGPoint !== "function") {
+      return null;
+    }
+    const matrix = line.getScreenCTM();
+    if (!matrix) return null;
+    const map = (x, y) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      const mapped = point.matrixTransform(matrix);
+      return { x: mapped.x, y: mapped.y };
+    };
+    return {
+      start: map(line.x1.baseVal.value, line.y1.baseVal.value),
+      end: map(line.x2.baseVal.value, line.y2.baseVal.value),
+    };
+  }
+
+  // Node/box candidates a connector could anchor to: sized, opaque or text-
+  // bearing, non-SVG elements that are not a full-canvas layer.
+  function connectorNodeBoxes(root, rootRect) {
+    const boxes = [];
+    const rootArea = rectArea(rootRect);
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (boxes.length >= CONNECTOR_NODE_CAP) break;
+      if (element.closest("svg") || !isVisibleElement(element, 0.05)) continue;
+      const opaque =
+        RASTER_TAGS.has(element.tagName) || hasOpaqueBackground(getComputedStyle(element));
+      if (!opaque && !textContentFor(element)) continue;
+      const rect = toRect(element.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < CONNECTOR_NODE_MIN_AREA || area >= rootArea * 0.5) continue;
+      boxes.push({
+        selector: selectorFor(element),
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+      });
+    }
+    return boxes;
+  }
+
+  window.__hyperframesConnectorSample = function collectConnectorSample() {
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const rootRect = rootRectFor(root);
+    const connectors = [];
+    for (const svg of Array.from(root.querySelectorAll("svg"))) {
+      if (!isVisibleElement(svg, 0.05) || hasAllowOverflowFlag(svg)) continue;
+      const svgRect = svg.getBoundingClientRect();
+      if (svgRect.width < CONNECTOR_MIN_SVG_PX || svgRect.height < CONNECTOR_MIN_SVG_PX) continue;
+      for (const line of Array.from(svg.querySelectorAll("line, path"))) {
+        if (line.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
+        if (!isVisibleElement(line, 0.05)) continue;
+        const ends =
+          line.tagName.toLowerCase() === "line"
+            ? lineScreenEndpoints(svg, line)
+            : pathScreenEndpoints(svg, line);
+        if (!ends) continue;
+        const len = Math.hypot(ends.end.x - ends.start.x, ends.end.y - ends.start.y);
+        if (len < CONNECTOR_MIN_LEN_PX) continue;
+        connectors.push({
+          selector: selectorFor(line),
+          ax: round(ends.start.x),
+          ay: round(ends.start.y),
+          bx: round(ends.end.x),
+          by: round(ends.end.y),
+        });
+      }
+    }
+    return { connectors, nodes: connectorNodeBoxes(root, rootRect) };
+  };
 })();
