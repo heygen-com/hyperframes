@@ -45,8 +45,7 @@
         content: "";
         position: absolute;
         bottom: 0;
-        left: 0;
-        right: 0;
+        inset-inline: 0;
         height: 80px;
         background: linear-gradient(to top, rgba(29, 155, 240, 0.08), transparent);
         pointer-events: none;
@@ -80,6 +79,8 @@
         flex-direction: column;
         gap: 2px;
         flex: 1;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="x-post"] .name-row {
@@ -112,7 +113,7 @@
       [data-composition-id="x-post"] .x-logo {
         position: absolute;
         top: 2px;
-        right: 0;
+        inset-inline-end: 0;
         width: 32px;
         height: 32px;
       }
@@ -134,6 +135,8 @@
         -webkit-line-clamp: 4;
         -webkit-box-orient: vertical;
         overflow: hidden;
+        text-align: start;
+        unicode-bidi: plaintext;
       }
 
       [data-composition-id="x-post"] .hashtag {
@@ -163,7 +166,7 @@
         align-items: center;
         flex: 1;
         justify-content: space-between;
-        padding-right: 60px;
+        padding-inline-end: 60px;
       }
 
       [data-composition-id="x-post"] .metrics-right {
@@ -219,8 +222,8 @@
             </svg>
           </div>
           <div class="user-info">
-            <div class="name-row">
-              <span class="display-name">Hyperframes</span>
+            <div class="name-row" dir="auto">
+              <span class="display-name" dir="auto">Hyperframes</span>
               <span class="verified-badge">
                 <svg viewBox="0 0 22 22" fill="none">
                   <circle cx="11" cy="11" r="11" fill="#1d9bf0" />
@@ -231,7 +234,7 @@
                 </svg>
               </span>
             </div>
-            <span class="handle">@hyperframes</span>
+            <span class="handle" dir="auto">@hyperframes</span>
           </div>
           <div class="x-logo">
             <svg viewBox="0 0 24 24" fill="#e7e9ea">
@@ -243,13 +246,13 @@
         </div>
 
         <!-- Tweet body: prompt to replace with your content -->
-        <div class="tweet-body">
+        <div class="tweet-body" dir="auto">
           Prompt to replace this text with your tweet. Change the display name, handle, timestamp,
           and engagement counts to match your content. <span class="hashtag">#YourHashtag</span>
         </div>
 
         <!-- Timestamp: prompt to replace -->
-        <div class="timestamp">1:10 PM &middot; Apr 7, 2026</div>
+        <div class="timestamp" dir="auto">1:10 PM &middot; Apr 7, 2026</div>
 
         <!-- Metrics bar -->
         <div class="metrics-bar">

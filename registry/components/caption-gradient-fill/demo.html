@@ -41,7 +41,7 @@
       .gr-group {
         position: absolute;
         bottom: 120px;
-        left: 0;
+        inset-inline-start: 0;
         width: 100%;
         display: flex;
         flex-wrap: wrap;
@@ -64,7 +64,7 @@
         background-clip: text;
         color: transparent;
         background-size: 350% 100%;
-        background-position: 100% 0;
+        background-position: var(--gradient-fill-start, 100%) 0;
       }
     </style>
   </head>
@@ -84,6 +84,11 @@
     <script>
       (function () {
         window.__timelines = window.__timelines || {};
+        var isRtl = getComputedStyle(document.documentElement).direction === "rtl";
+        var gradientAngle = isRtl ? "270deg" : "90deg";
+        var gradientStart = isRtl ? "0% 0" : "100% 0";
+        var gradientMid = isRtl ? "55% 0" : "45% 0";
+        var gradientEnd = isRtl ? "100% 0" : "0% 0";
 
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
@@ -143,7 +148,9 @@
         ];
 
         var SIRI_GRAD =
-          "linear-gradient(90deg, " +
+          "linear-gradient(" +
+          gradientAngle +
+          ", " +
           "#fe9f1b 0%, #f76e49 10%, #ff2063 20%, " +
           "#fd56cb 30%, #ef7aff 40%, #fe9f1b 50%, " +
           "white 50.5%, white 100%)";
@@ -172,7 +179,7 @@
             span.style.fontSize = fontSize + "px";
             span.style.background = SIRI_GRAD;
             span.style.backgroundSize = "350% 100%";
-            span.style.backgroundPosition = "100% 0";
+            span.style.backgroundPosition = gradientStart;
             span.style.webkitBackgroundClip = "text";
             span.style.backgroundClip = "text";
             grp.appendChild(span);
@@ -194,15 +201,15 @@
             var el = document.getElementById("gr-w-" + wi);
             var dur = w.end - w.start;
 
-            tl.set(el, { backgroundPosition: "100% 0", scale: 1 }, g.start);
+            tl.set(el, { backgroundPosition: gradientStart, scale: 1 }, g.start);
             tl.set(el, { scale: 1.04 }, w.start);
             tl.fromTo(
               el,
-              { backgroundPosition: "45% 0" },
-              { backgroundPosition: "0% 0", duration: dur, ease: "none" },
+              { backgroundPosition: gradientMid },
+              { backgroundPosition: gradientEnd, duration: dur, ease: "none" },
               w.start,
             );
-            tl.set(el, { backgroundPosition: "100% 0" }, w.end);
+            tl.set(el, { backgroundPosition: gradientStart }, w.end);
             tl.to(el, { scale: 1, duration: 0.15, ease: "power2.out" }, w.end);
           });
 

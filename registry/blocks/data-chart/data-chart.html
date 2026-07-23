@@ -109,7 +109,7 @@
 
         [data-composition-id="data-chart"] .header {
           margin-bottom: 40px;
-          text-align: left;
+          text-align: start;
         }
 
         [data-composition-id="data-chart"] .headline {
@@ -117,7 +117,9 @@
           font-size: 42px;
           margin: 0;
           padding: 0;
-          clip-path: inset(0 100% 0 0);
+          clip-path: inset(
+            0 var(--chart-reveal-hidden-end, 100%) 0 var(--chart-reveal-hidden-start, 0)
+          );
           white-space: nowrap;
         }
 
@@ -125,7 +127,9 @@
           font-size: 16px;
           color: #666;
           margin: 8px 0 16px 0;
-          clip-path: inset(0 100% 0 0);
+          clip-path: inset(
+            0 var(--chart-reveal-hidden-end, 100%) 0 var(--chart-reveal-hidden-start, 0)
+          );
           white-space: nowrap;
         }
 
@@ -167,7 +171,8 @@
         [data-composition-id="data-chart"] .source {
           position: absolute;
           bottom: 0;
-          left: 0;
+          inset-inline-start: 0;
+          text-align: start;
           font-size: 11px;
           color: #999;
           opacity: 0;
@@ -209,6 +214,10 @@
         (function () {
           const svg = document.querySelector('[data-composition-id="data-chart"] .chart-svg');
           const tl = gsap.timeline({ paused: true });
+          const isRtl = getComputedStyle(document.documentElement).direction === "rtl";
+          const root = document.querySelector('[data-composition-id="data-chart"]');
+          root.style.setProperty("--chart-reveal-hidden-start", isRtl ? "100%" : "0");
+          root.style.setProperty("--chart-reveal-hidden-end", isRtl ? "0" : "100%");
 
           // Data
           const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
