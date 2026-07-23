@@ -105,6 +105,56 @@ describe("detectConnectorMotionDetached", () => {
     expect(detectConnectorMotionDetached(frames, CANVAS)).toHaveLength(0);
   });
 
+  it("does not fire on a gauge needle: anchored at the arc centre, loose end radially outward", () => {
+    // Arc ring centred at 900,500; needle base on the hub near centre, tip out
+    // past the arc — a pointer, not a broken connector.
+    const hub: ConnectorNodeBox = {
+      selector: "#hub",
+      left: 890,
+      top: 490,
+      right: 910,
+      bottom: 510,
+      ring: false,
+    };
+    const arc: ConnectorNodeBox = {
+      selector: "#arc",
+      left: 700,
+      top: 300,
+      right: 1100,
+      bottom: 700,
+      ring: true,
+    };
+    const frames = [0, 2, 4, 6, 8].map((time) =>
+      frame(time, { selector: "#needle", ax: 900, ay: 500, bx: 900, by: 180 }, [hub, arc]),
+    );
+    expect(detectConnectorMotionDetached(frames, CANVAS)).toHaveLength(0);
+  });
+
+  it("still fires on a radial connector drifting toward the centre (not outward)", () => {
+    // Anchored on a peripheral node; loose end drifts inward to empty space near
+    // a ring centre — the fuzz011 shape, opposite of a gauge pointer.
+    const peripheral: ConnectorNodeBox = {
+      selector: "#panel",
+      left: 120,
+      top: 120,
+      right: 260,
+      bottom: 200,
+      ring: false,
+    };
+    const arc: ConnectorNodeBox = {
+      selector: "#arc",
+      left: 700,
+      top: 300,
+      right: 1100,
+      bottom: 700,
+      ring: true,
+    };
+    const frames = [0, 2, 4, 6, 8].map((time) =>
+      frame(time, { selector: "#spoke", ax: 180, ay: 160, bx: 900, by: 500 }, [peripheral, arc]),
+    );
+    expect(detectConnectorMotionDetached(frames, CANVAS)).toHaveLength(1);
+  });
+
   it("still fires when the loose end sits in a ring's hollow centre", () => {
     // End B at the ring centre 900,500 is ~200px from its perimeter → dangling.
     const frames = [0, 2, 4, 6, 8].map((time) =>
