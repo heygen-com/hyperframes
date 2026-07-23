@@ -478,6 +478,11 @@ const ROTATION_MAX_SIZE_RATIO = 1.6;
 const ROTATION_MIN_MEDIAN_AREA_PX = 2500;
 const ROTATION_DRIFT_SIZE_FRACTION = 0.1;
 const ROTATION_DRIFT_VIEWPORT_FRACTION = 0.02;
+// Absolute drift floor: below this a "drift" is subpixel/AABB noise from small
+// elements, not an off-pivot bug. Every real off-pivot case measured in the fuzz
+// eval drifted >200px, so this floor drops noise (e.g. a 30px status chip) with
+// zero true-positive loss.
+const ROTATION_DRIFT_ABS_FLOOR_PX = 80;
 
 function median(values: number[]): number {
   if (values.length === 0) return 0;
@@ -631,7 +636,11 @@ export function detectRotationPivotDrift(
   for (const group of groupRotationSamplesBySelector(samples).values()) {
     if (!isRotationDriftCandidate(group)) continue;
     const medianSize = median(group.map((s) => Math.max(s.w, s.h)));
-    const threshold = Math.max(ROTATION_DRIFT_SIZE_FRACTION * medianSize, viewportFloor);
+    const threshold = Math.max(
+      ROTATION_DRIFT_SIZE_FRACTION * medianSize,
+      viewportFloor,
+      ROTATION_DRIFT_ABS_FLOOR_PX,
+    );
     const drift = maxCenterDrift(group);
     if (drift <= threshold) continue;
     const finding = rotationDriftFinding(group, drift);

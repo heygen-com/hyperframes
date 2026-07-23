@@ -11,13 +11,13 @@ function sample(overrides: Partial<RotationSample> = {}): RotationSample {
 }
 
 /** A group that SHOULD fire: spins (0→90→180), size-stable, sizable, and its
- * bbox center travels 50px — the wrong-pivot signature. threshold here is
- * max(0.1*200, 0.02*1000) = 20px, so 50px drift clears it. */
+ * bbox center travels 100px — the wrong-pivot signature. threshold here is
+ * max(0.1*200, 0.02*1000, 80) = 80px, so 100px drift clears it. */
 function driftingSpinner(): RotationSample[] {
   return [
     sample({ time: 0, angle: 0, cx: 250, cy: 250 }),
-    sample({ time: 1, angle: 90, cx: 250, cy: 280 }),
-    sample({ time: 2, angle: 180, cx: 250, cy: 300 }),
+    sample({ time: 1, angle: 90, cx: 250, cy: 300 }),
+    sample({ time: 2, angle: 180, cx: 250, cy: 350 }),
   ];
 }
 
@@ -29,7 +29,7 @@ describe("detectRotationPivotDrift", () => {
     expect(f?.code).toBe("rotation_pivot_drift");
     expect(f?.severity).toBe("warning");
     expect(f?.selector).toBe("#spokes");
-    expect(f?.message).toContain("50px");
+    expect(f?.message).toContain("100px");
     expect(f?.fixHint).toContain("transformOrigin");
   });
 
@@ -43,7 +43,7 @@ describe("detectRotationPivotDrift", () => {
   it("does not fire when the element barely rotates (fixed tilt, not spinning)", () => {
     const group = [
       sample({ time: 0, angle: 0, cx: 250, cy: 250 }),
-      sample({ time: 1, angle: 2, cx: 250, cy: 280 }),
+      sample({ time: 1, angle: 2, cx: 250, cy: 300 }),
       sample({ time: 2, angle: 4, cx: 250, cy: 300 }),
     ];
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
@@ -125,8 +125,8 @@ describe("detectRotationPivotDrift", () => {
     // 170° → -100° → -10° is ~270° of genuine travel across the seam.
     const group = [
       sample({ time: 0, angle: 170, cx: 250, cy: 250 }),
-      sample({ time: 1, angle: -100, cx: 250, cy: 280 }),
-      sample({ time: 2, angle: -10, cx: 250, cy: 300 }),
+      sample({ time: 1, angle: -100, cx: 250, cy: 300 }),
+      sample({ time: 2, angle: -10, cx: 250, cy: 350 }),
     ];
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(1);
   });
