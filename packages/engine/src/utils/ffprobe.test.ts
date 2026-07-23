@@ -404,3 +404,143 @@ describe("ffprobe missing-binary fallback", () => {
     await expect(extractAudioMetadata("/tmp/example.mp3")).rejects.toThrow(/install FFmpeg/i);
   });
 });
+
+describe("ffprobe option separator", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("places -- before the file path so paths starting with - are not parsed as options", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 320,
+              height: 180,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+            },
+          ],
+          format: { duration: "1.5" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    const filePath = "/tmp/-dangerous-name.mp4";
+    await extractMediaMetadata(filePath);
+
+    const args = calls[0]?.args ?? [];
+    const filePathIndex = args.indexOf(filePath);
+    expect(filePathIndex).toBeGreaterThan(0);
+    expect(args[filePathIndex - 1]).toBe("--");
+  });
+
+  it("uses -- for audio and keyframe probes too", async () => {
+    const { spawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "audio", codec_name: "aac", sample_rate: "48000", channels: 2 }],
+          format: { duration: "1.25" },
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ nb_read_packets: "783" }],
+          format: {},
+        }),
+      },
+      { kind: "exit", code: 0, stdout: "0.000\n1.000\n" },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractAudioMetadata, analyzeKeyframeIntervals } = await import("./ffprobe.js");
+    await extractAudioMetadata("/tmp/-audio.wav");
+    await analyzeKeyframeIntervals("/tmp/-video.mp4");
+
+    const args = calls.flatMap((call) => [...(call.args ?? [])]);
+    expect(args.filter((arg) => arg === "--")).toHaveLength(3);
+  });
+});
+
+describe("ffprobe frame rate parsing", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it.each([
+    { r: "30/1", avg: "30/1", expected: 30 },
+    { r: "30000/1001", avg: "30000/1001", expected: 29.97 },
+    { r: "30/", avg: undefined, expected: 0 },
+    { r: "30/0", avg: undefined, expected: 0 },
+    { r: "0/0", avg: undefined, expected: 0 },
+    { r: "abc/def", avg: undefined, expected: 0 },
+    { r: "60", avg: undefined, expected: 60 },
+  ])("parses r=$r avg=$avg as fps=$expected", async ({ r, avg, expected }) => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 320,
+              height: 180,
+              r_frame_rate: r,
+              avg_frame_rate: avg,
+            },
+          ],
+          format: { duration: "1.5" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    const meta = await extractMediaMetadata("/tmp/frame-rate.mp4");
+
+    expect(meta.fps).toBe(expected);
+  });
+});
+
+describe("extractPngMetadataFromBuffer cICP ordering", () => {
+  it("does not emit color space until IHDR provides width and height", () => {
+    const ihdr = pngChunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 16, 2, 0, 0, 0]);
+    const cicp = pngChunk("cICP", [9, 16, 0, 1]);
+    const iend = pngChunk("IEND", []);
+
+    // cICP before IHDR is invalid PNG ordering; make sure we don't return
+    // zero-sized metadata in that case.
+    const malformed = buildPngWithChunks([cicp, ihdr, iend]);
+    expect(extractPngMetadataFromBuffer(malformed)).toEqual({
+      width: 1,
+      height: 1,
+      colorSpace: {
+        colorPrimaries: "bt2020",
+        colorTransfer: "smpte2084",
+        colorSpace: "gbr",
+      },
+    });
+
+    // Without any IHDR, a cICP alone should not produce a result.
+    const onlyCicp = buildPngWithChunks([cicp, iend]);
+    expect(extractPngMetadataFromBuffer(onlyCicp)).toBeNull();
+  });
+});

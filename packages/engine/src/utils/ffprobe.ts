@@ -156,6 +156,7 @@ export function extractPngMetadataFromBuffer(buf: Buffer): StillImageMetadata | 
   let width = 0;
   let height = 0;
   let seenIdat = false;
+  let colorSpaceFromCicp: VideoColorSpace | null = null;
   let pos = 8;
   while (pos + 12 <= buf.length) {
     const chunkLen = buf.readUInt32BE(pos);
@@ -180,27 +181,23 @@ export function extractPngMetadataFromBuffer(buf: Buffer): StillImageMetadata | 
       const transferCode = chunkData[1] ?? 0;
       const matrixCode = chunkData[2] ?? 0;
 
-      return {
-        width,
-        height,
-        colorSpace: {
-          colorPrimaries:
-            primariesCode === 9
-              ? "bt2020"
-              : primariesCode === 1
+      colorSpaceFromCicp = {
+        colorPrimaries:
+          primariesCode === 9
+            ? "bt2020"
+            : primariesCode === 1
+              ? "bt709"
+              : `unknown-${primariesCode}`,
+        colorTransfer:
+          transferCode === 16
+            ? "smpte2084"
+            : transferCode === 18
+              ? "arib-std-b67"
+              : transferCode === 1
                 ? "bt709"
-                : `unknown-${primariesCode}`,
-          colorTransfer:
-            transferCode === 16
-              ? "smpte2084"
-              : transferCode === 18
-                ? "arib-std-b67"
-                : transferCode === 1
-                  ? "bt709"
-                  : `unknown-${transferCode}`,
-          colorSpace:
-            matrixCode === 9 ? "bt2020nc" : matrixCode === 0 ? "gbr" : `unknown-${matrixCode}`,
-        },
+                : `unknown-${transferCode}`,
+        colorSpace:
+          matrixCode === 9 ? "bt2020nc" : matrixCode === 0 ? "gbr" : `unknown-${matrixCode}`,
       };
     }
 
@@ -208,7 +205,7 @@ export function extractPngMetadataFromBuffer(buf: Buffer): StillImageMetadata | 
     pos += 12 + chunkLen;
   }
 
-  return width > 0 && height > 0 ? { width, height, colorSpace: null } : null;
+  return width > 0 && height > 0 ? { width, height, colorSpace: colorSpaceFromCicp } : null;
 }
 
 function extractStillImageMetadata(filePath: string): StillImageMetadata | null {
@@ -242,9 +239,13 @@ function parseFrameRate(frameRateStr: string | undefined): number {
   if (parts.length === 2) {
     const num = parseFloat(parts[0] ?? "");
     const den = parseFloat(parts[1] ?? "");
-    if (den !== 0) return Math.round((num / den) * 100) / 100;
+    if (Number.isFinite(num) && Number.isFinite(den) && den !== 0) {
+      return Math.round((num / den) * 100) / 100;
+    }
+    return 0;
   }
-  return parseFloat(frameRateStr) || 0;
+  const parsed = parseFloat(frameRateStr);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -270,6 +271,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
         "json",
         "-show_format",
         "-show_streams",
+        "--",
         filePath,
       ]);
       output = parseProbeJson(stdout);
@@ -361,7 +363,7 @@ export async function extractAudioMetadata(
 
   const probePromise = (async (): Promise<AudioMetadata> => {
     const stdout = await runFfprobe(
-      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
       options?.signal,
     );
     const output = parseProbeJson(stdout);
@@ -383,6 +385,7 @@ export async function extractAudioMetadata(
         "stream=nb_read_packets",
         "-print_format",
         "json",
+        "--",
         filePath,
       ]);
       const packetOutput = parseProbeJson(packetStdout);
@@ -452,6 +455,7 @@ async function analyzeKeyframeIntervalsUncached(filePath: string): Promise<Keyfr
     "frame=pts_time",
     "-of",
     "csv=p=0",
+    "--",
     filePath,
   ]);
 
