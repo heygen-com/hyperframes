@@ -1,5 +1,6 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 import {
   readAttr,
   readDecodedAttr,
@@ -23,6 +24,87 @@ function selectorTargetsCompositionId(selector: string, compositionId: string): 
   return new RegExp(
     String.raw`\[\s*data-composition-id\s*=\s*(?:"${escaped}"|'${escaped}')\s*\]`,
   ).test(selector);
+}
+
+function repeatedDescendantId(selector: string): string | null {
+  let repeated: string | null = null;
+
+  const requiredPseudoIds = (pseudo: selectorParser.Pseudo): Set<string> => {
+    if (![":is", ":where"].includes(pseudo.value.toLowerCase()) || pseudo.nodes.length === 0) {
+      return new Set<string>();
+    }
+
+    const optionIdSets: Set<string>[] = [];
+    for (const option of pseudo.nodes) {
+      // Only promote ids from a single compound. For selector-list branches with
+      // combinators, determining which compound is the subject requires fuller
+      // selector semantics; skipping them avoids false positives.
+      if (option.nodes.some((node) => node.type === "combinator")) return new Set<string>();
+      const optionIds = new Set<string>(
+        option.nodes.filter((node) => node.type === "id").map((node) => node.value),
+      );
+      optionIdSets.push(optionIds);
+    }
+    const [firstOptionIds, ...remainingOptionIds] = optionIdSets;
+    return new Set<string>(
+      [...(firstOptionIds ?? [])].filter((id) =>
+        remainingOptionIds.every((optionIds) => optionIds.has(id)),
+      ),
+    );
+  };
+
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const firstCompoundById = new Map<string, number>();
+        let compound = 0;
+        selectorNode.each((node) => {
+          if (repeated) return;
+          if (node.type === "combinator") {
+            compound += 1;
+            return;
+          }
+          const requiredIds =
+            node.type === "id"
+              ? [node.value]
+              : node.type === "pseudo"
+                ? [...requiredPseudoIds(node)]
+                : [];
+          for (const id of requiredIds) {
+            const firstCompound = firstCompoundById.get(id);
+            if (firstCompound !== undefined && firstCompound !== compound) {
+              repeated = id;
+              return;
+            }
+            firstCompoundById.set(id, compound);
+          }
+        });
+      });
+    }).processSync(selector);
+  } catch {
+    return null;
+  }
+  return repeated;
+}
+
+function resolvedRuleSelectors(rule: postcss.Rule): string[] {
+  let ancestor: postcss.AnyNode | undefined = rule.parent;
+  while (ancestor && ancestor.type !== "rule") ancestor = ancestor.parent;
+  if (!ancestor || ancestor.type !== "rule") return rule.selectors;
+
+  const parentSelectors = resolvedRuleSelectors(ancestor);
+  return parentSelectors.flatMap((parentSelector) =>
+    rule.selectors.map((childSelector) => {
+      const nestingToken = /(^|[\s>+~,(])&/g;
+      if (nestingToken.test(childSelector)) {
+        return childSelector.replace(
+          nestingToken,
+          (_, separator: string) => separator + parentSelector,
+        );
+      }
+      return `${parentSelector} ${childSelector}`;
+    }),
+  );
 }
 
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
@@ -317,6 +399,35 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           fixHint: `Change window.__timelines["${key}"] to match the data-composition-id attribute, or vice versa.`,
         });
       }
+    }
+    return findings;
+  },
+
+  // repeated_id_descendant_selector
+  ({ styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const reported = new Set<string>();
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkRules((rule) => {
+        for (const selector of resolvedRuleSelectors(rule)) {
+          const repeatedId = repeatedDescendantId(selector);
+          if (!repeatedId || reported.has(repeatedId)) continue;
+          reported.add(repeatedId);
+          findings.push({
+            code: "repeated_id_descendant_selector",
+            severity: "error",
+            message: `Selector "${selector}" requires #${repeatedId} to be nested inside another #${repeatedId}. IDs must be unique, so this selector cannot match a valid composition.`,
+            selector,
+            fixHint: `Remove the duplicate ancestor: change \`#${repeatedId} #${repeatedId}\` to \`#${repeatedId}\`.`,
+          });
+        }
+      });
     }
     return findings;
   },

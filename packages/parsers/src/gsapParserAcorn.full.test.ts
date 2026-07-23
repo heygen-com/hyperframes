@@ -12,7 +12,7 @@
  * commit adds the acorn motionPath parser itself.
  */
 import { describe, it, expect } from "vitest";
-import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
+import { gsapScriptUsesMotionPath, parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { serializeGsapAnimations } from "./gsapSerialize.js";
 import type { GsapAnimation, GsapPercentageKeyframe } from "./gsapSerialize.js";
 import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants.js";
@@ -936,6 +936,69 @@ describe("native GSAP keyframes parsing", () => {
 // ── motionPath parsing ────────────────────────────────────────────────────────
 
 describe("motionPath parsing", () => {
+  it("detects standalone and ESM MotionPathPlugin tween properties", () => {
+    expect(gsapScriptUsesMotionPath('gsap.to("#dot", { motionPath: { path: "#route" } });')).toBe(
+      true,
+    );
+    expect(
+      gsapScriptUsesMotionPath(`
+        import { gsap } from "gsap";
+        const tl = gsap.timeline();
+        tl.to("#dot", { motionPath: { path: "#route" } });
+      `),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath('gsap.timeline().to("#dot", { motionPath: { path: "#route" } });'),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath('gsap.to("#dot", { x: 10 }).to("#dot", { motionPath: {} });'),
+    ).toBe(true);
+    expect(
+      gsapScriptUsesMotionPath(`
+        const vars = { x: 100 };
+        function build() {
+          const vars = { motionPath: { path: "#route" } };
+          return vars;
+        }
+        gsap.to("#dot", vars);
+      `),
+    ).toBe(false);
+    expect(
+      gsapScriptUsesMotionPath(`
+        function buildTimeline() {
+          const tl = gsap.timeline();
+          return tl;
+        }
+        function unrelated() {
+          const tl = { to() {} };
+          tl.to("#dot", { motionPath: { path: "#route" } });
+        }
+      `),
+    ).toBe(false);
+    expect(
+      gsapScriptUsesMotionPath(`
+        const intro = gsap.timeline();
+        const outro = gsap.timeline();
+        const fromVars = { motionPath: { path: "#route" } };
+        outro.to("#other", { opacity: 0 }).fromTo("#dot", fromVars, { opacity: 1 });
+      `),
+    ).toBe(true);
+    expect(gsapScriptUsesMotionPath('const config = { motionPath: { path: "#route" } };')).toBe(
+      false,
+    );
+  });
+
+  it("parses ESM plugin-native selector paths even when they cannot become editable arc data", () => {
+    const result = parseGsapScriptAcorn(`
+      import { gsap } from "gsap";
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    `);
+
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0]?.arcPath).toBeUndefined();
+  });
+
   it("parses motionPath with waypoint array and curviness", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });

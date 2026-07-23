@@ -45,6 +45,22 @@ const SCOPE_NODE_TYPES = new Set([
   "ArrowFunctionExpression",
 ]);
 
+function parseProgram(script: string): any {
+  try {
+    return acorn.parse(script, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      locations: true,
+    });
+  } catch {
+    return acorn.parse(script, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      locations: true,
+    });
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type ScopeBindings = ReadonlyMap<string, number | string | boolean>;
@@ -1850,11 +1866,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
  */
 export function parseGsapScriptAcorn(script: string): ParsedGsap {
   try {
-    const ast = acorn.parse(script, {
-      ecmaVersion: "latest",
-      sourceType: "script",
-      locations: true,
-    });
+    const ast = parseProgram(script);
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
     const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
@@ -1919,6 +1931,87 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
   } catch {
     return { animations: [], timelineVar: "tl", preamble: "", postamble: "" };
   }
+}
+
+/** Source offset of the first timeline or standalone GSAP MotionPathPlugin tween. */
+export function gsapScriptMotionPathFirstUseIndex(script: string): number | null {
+  try {
+    const ast = parseProgram(script);
+    const scope = collectScopeBindings(ast);
+    const identifierBindings = collectIdentifierBindingIndex(ast);
+    const timelineRef = findTimelineVar(ast, scope).ref;
+    const timelineDeclarations = new Set<any>();
+    let firstUseIndex: number | null = null;
+
+    acornWalk.ancestor(ast, {
+      VariableDeclarator(node: any) {
+        if (node.id?.type === "Identifier" && isGsapTimelineCall(node.init)) {
+          timelineDeclarations.add(node);
+        }
+      },
+      AssignmentExpression(node: any, _: unknown, ancestors: any[]) {
+        if (node.left?.type === "Identifier" && isGsapTimelineCall(node.right)) {
+          const declaration = findVisibleIdentifierDeclaration(
+            node.left.name,
+            ancestors,
+            identifierBindings,
+            node.start,
+          );
+          if (declaration) timelineDeclarations.add(declaration.node);
+        }
+      },
+    } as any);
+
+    acornWalk.ancestor(ast, {
+      CallExpression(node: any, _: unknown, ancestors: any[]) {
+        const callee = node.callee;
+        const method = callee?.property?.name;
+        if (callee?.type !== "MemberExpression" || !GSAP_METHODS.has(method)) return;
+        let rootObject = callee.object;
+        while (rootObject?.type === "CallExpression") rootObject = rootObject.callee?.object;
+        const isGsapRooted = rootObject?.type === "Identifier" && rootObject.name === "gsap";
+        const visibleTimelineDeclaration =
+          rootObject?.type === "Identifier"
+            ? findVisibleIdentifierDeclaration(
+                rootObject.name,
+                ancestors,
+                identifierBindings,
+                node.start,
+              )
+            : undefined;
+        const isTimelineTween =
+          (timelineRef?.kind === "member" ? isTimelineRootedCall(node, timelineRef) : false) ||
+          (!!visibleTimelineDeclaration &&
+            timelineDeclarations.has(visibleTimelineDeclaration.node));
+        if (!isGsapRooted && !isTimelineTween) return;
+        const varsArgs =
+          method === "fromTo" ? [node.arguments?.[1], node.arguments?.[2]] : [node.arguments?.[1]];
+        if (
+          varsArgs.some((varsArg) => {
+            if (findPropertyNode(varsArg, "motionPath")) return true;
+            if (varsArg?.type !== "Identifier") return false;
+            const declaration = findVisibleIdentifierDeclaration(
+              varsArg.name,
+              ancestors,
+              identifierBindings,
+              node.start,
+            );
+            return !!findPropertyNode(declaration?.node.init, "motionPath");
+          })
+        )
+          firstUseIndex = firstUseIndex === null ? node.start : Math.min(firstUseIndex, node.start);
+      },
+    } as any);
+
+    return firstUseIndex;
+  } catch {
+    return null;
+  }
+}
+
+/** True when a timeline or standalone GSAP tween authors a MotionPathPlugin property. */
+export function gsapScriptUsesMotionPath(script: string): boolean {
+  return gsapScriptMotionPathFirstUseIndex(script) !== null;
 }
 
 // ── Label extraction (WS-C) ──────────────────────────────────────────────────

@@ -56,7 +56,8 @@
     "@hyperframes/parsers": "workspace:*",
     "htmlparser2": "^10.1.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.8",
+    "postcss-selector-parser": "^7.1.4"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

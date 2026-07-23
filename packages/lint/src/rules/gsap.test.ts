@@ -1011,6 +1011,300 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("reports motionPath usage without MotionPathPlugin", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "missing_gsap_plugin");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("MotionPathPlugin");
+  });
+
+  it("reports standalone gsap.to motionPath usage without MotionPathPlugin", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("reports ESM motionPath usage without importing MotionPathPlugin", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3/index.js";
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("accepts motionPath usage when MotionPathPlugin is loaded", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+  <script>
+    gsap.registerPlugin(MotionPathPlugin);
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("reports MotionPathPlugin loaded after the animation script", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });</script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it.each(["defer", "async", 'type="module"'])(
+    "does not treat an earlier non-blocking %s plugin script as available to classic code",
+    async (attribute) => {
+      const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script ${attribute} src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });</script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+    },
+  );
+
+  it("treats defer on an inline classic tween as blocking", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+  <script defer>gsap.to("#dot", { motionPath: { path: "#route" } });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("accepts a deferred classic plugin before a non-async module tween", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+  <script type="module">gsap.to("#dot", { motionPath: { path: "#route" } });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("ignores async and defer text inside quoted attribute values", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script data-note="foo async defer" src="https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js"></script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" } });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("recognizes valid unquoted module attributes", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type=module src=https://cdn.jsdelivr.net/npm/gsap@3/dist/MotionPathPlugin.min.js></script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" } });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("treats async on an inline classic plugin definition as blocking", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script async>const MotionPathPlugin = {};</script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" } });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("does not accept plugin-like substrings in import specifiers", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import kit from "./AutoMotionPathPluginKit.js";
+    gsap.to("#dot", { motionPath: { path: "#route" } });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("accepts a static plugin import in the same async module as the tween", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script async type="module">
+    import { gsap, MotionPathPlugin } from "gsap/all";
+    gsap.registerPlugin(MotionPathPlugin);
+    gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("reports an inline plugin definition that occurs after the tween", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>
+    gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });
+    const MotionPathPlugin = {};
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("does not treat a long comment-only MotionPathPlugin mention as a loaded bundle", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>${" ".repeat(5100)}// TODO load MotionPathPlugin</script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("does not treat a MotionPathPlugin string literal as a loaded bundle", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>const docs = "MotionPathPlugin";</script>
+  <script>gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("still reports motionPath when code registers an unloaded plugin global", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    gsap.registerPlugin(MotionPathPlugin);
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    window.__timelines = { main: tl };
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeDefined();
+  });
+
+  it("does not treat an unrelated motionPath object as GSAP plugin usage", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>
+    const mapOptions = { motionPath: { path: "#route" } };
+    console.log("motionPath: disabled", mapOptions);
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("allows sub-compositions to inherit MotionPathPlugin from their host", async () => {
+    const html = `
+<template>
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+      window.__timelines = { scene: tl };
+    </script>
+  </div>
+</template>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("accepts an inline ESM import of MotionPathPlugin", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3/index.js";
+    import { MotionPathPlugin } from "https://cdn.jsdelivr.net/npm/gsap@3/MotionPathPlugin.js";
+    gsap.registerPlugin(MotionPathPlugin);
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#dot", { motionPath: { path: "#route" }, duration: 1 }, 0);
+    window.__timelines = { main: tl };
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("accepts a default-aliased ESM import sourced from MotionPathPlugin", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3/index.js";
+    import MP from "https://cdn.jsdelivr.net/npm/gsap@3/MotionPathPlugin.js";
+    gsap.registerPlugin(MP);
+    gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
+  it("accepts a named MotionPathPlugin import from a barrel module", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script type="module">
+    import { gsap, MotionPathPlugin as MP } from "./vendor";
+    gsap.registerPlugin(MP);
+    gsap.to("#dot", { motionPath: { path: "#route" }, duration: 1 });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_gsap_plugin")).toBeUndefined();
+  });
+
   it("does NOT report overlapping_gsap_tweens for distinct unresolved-target tweens", async () => {
     // Each tween targets a DIFFERENT element via a target the parser cannot resolve
     // statically (a helper call). Both collapse to the `__unresolved__` sentinel, but
