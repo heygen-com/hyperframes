@@ -542,29 +542,13 @@ function rotationDriftFinding(
     sourceFile: "index.html",
     bbox: rectToBbox(rect),
     rect,
-    message: `Rotating element's bounding-box center drifts ${Math.round(drift)}px across rotation — it is not spinning about its own center (check transformOrigin/svgOrigin; use svgOrigin/percent, not hardcoded px).`,
+    message: `Rotating element's bounding-box center drifts ${Math.round(drift)}px across rotation — it is not spinning about its own center (check transformOrigin/svgOrigin).`,
     fixHint:
-      "Set transformOrigin/svgOrigin to the element's own center (percent or svgOrigin), not a hardcoded pixel point that assumes an unresized coordinate space.",
+      "The bounding-box center should stay fixed while the element spins; check its transformOrigin/svgOrigin so rotation pivots about the element's own center rather than a point in a coordinate space it was resized out of.",
   };
 }
 
-/**
- * rotation_pivot_drift: an element that visibly SPINS (its rotation angle varies
- * across the seek grid) while its bounding-box CENTER travels is pivoting about
- * the wrong point — the classic symptom of a transformOrigin/svgOrigin authored
- * as hardcoded pixels against a coordinate space the element was later resized
- * out of (e.g. spokes set to `250px 250px` inside a 460px-rendered 500-viewBox
- * SVG). A correctly centered spinner holds its bbox center fixed.
- *
- * Cross-sample by necessity — one frame can't distinguish spin-in-place from
- * pivot drift. FP guards are deliberately strict because a false positive feeds
- * destructive downstream auto-fixes: requires real rotation, a stable bbox size
- * (excludes scale/entrance animations), a sizable element, and honors
- * `[data-layout-allow-orbit]` opt-outs (applied browser-side).
- */
-function groupRotationSamplesBySelector(
-  samples: RotationSample[],
-): Map<string, RotationSample[]> {
+function groupRotationSamplesBySelector(samples: RotationSample[]): Map<string, RotationSample[]> {
   const bySelector = new Map<string, RotationSample[]>();
   for (const sample of samples) {
     const group = bySelector.get(sample.selector);
@@ -617,6 +601,27 @@ function isRotationDriftCandidate(group: RotationSample[]): boolean {
   );
 }
 
+/**
+ * rotation_pivot_drift: an element that visibly SPINS (its rotation angle varies
+ * across the seek grid) while its bounding-box CENTER travels is pivoting about
+ * the wrong point — the classic symptom of a transformOrigin/svgOrigin authored
+ * as hardcoded pixels against a coordinate space the element was later resized
+ * out of (e.g. spokes set to `250px 250px` inside a 460px-rendered 500-viewBox
+ * SVG). A correctly centered spinner holds its bbox center fixed.
+ *
+ * Cross-sample by necessity — one frame can't distinguish spin-in-place from
+ * pivot drift. FP guards are deliberately strict because a false positive feeds
+ * destructive downstream auto-fixes: requires real rotation, a stable bbox size
+ * in both axes (excludes scale/entrance animations), a sizable element, and
+ * honors `[data-layout-allow-orbit]` opt-outs (applied browser-side).
+ *
+ * Invariant: samples are grouped by `selector`, assumed stable across seeks.
+ * An element without a stable id/class can fall back to a `nth-of-type(N)`
+ * selector whose N shifts as siblings enter/exit — so in that fringe it may be
+ * mis-grouped (a missed detection, or in a rare exit-then-enter aliasing case a
+ * spurious one). Author-crafted rotating figures effectively always carry stable
+ * anchors; a stable-anchor gate on the browser sampler is the structural fix.
+ */
 export function detectRotationPivotDrift(
   samples: RotationSample[],
   canvas: Canvas,

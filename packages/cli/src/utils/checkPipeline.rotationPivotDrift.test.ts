@@ -109,6 +109,28 @@ describe("detectRotationPivotDrift", () => {
     expect(findings.map((f) => f.selector)).toEqual(["#spokes"]);
   });
 
+  // Wrap-aware angle spread across the ±180° discontinuity. A wobble between
+  // -175° and 175° is ~10° of travel, not ~350°; naive abs-diff would misread it
+  // as a fast spin and (with a drifting center) fire falsely.
+  it("does not treat a ±180° boundary wobble as spinning", () => {
+    const group = [
+      sample({ time: 0, angle: -175, cx: 250, cy: 250 }),
+      sample({ time: 1, angle: 175, cx: 250, cy: 280 }),
+      sample({ time: 2, angle: -172, cx: 250, cy: 300 }),
+    ];
+    expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
+  });
+
+  it("still detects a real spin that crosses the ±180° boundary", () => {
+    // 170° → -100° → -10° is ~270° of genuine travel across the seam.
+    const group = [
+      sample({ time: 0, angle: 170, cx: 250, cy: 250 }),
+      sample({ time: 1, angle: -100, cx: 250, cy: 280 }),
+      sample({ time: 2, angle: -10, cx: 250, cy: 300 }),
+    ];
+    expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(1);
+  });
+
   it("returns nothing for an empty sample set", () => {
     expect(detectRotationPivotDrift([], CANVAS)).toHaveLength(0);
   });
