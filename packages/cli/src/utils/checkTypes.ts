@@ -120,6 +120,19 @@ export interface CheckGeometryCandidate extends CheckAnchor {
   overflow?: LayoutOverflow;
 }
 
+/** One rotatable element's geometry at a single seeked sample, produced by
+ * `__hyperframesRotationSample` (layout-audit.browser.js) and accumulated
+ * across the grid to detect `rotation_pivot_drift`. */
+export interface RotationSample {
+  time: number;
+  selector: string;
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  angle: number;
+}
+
 export type MotionSpecResolution =
   | { kind: "none" }
   | { kind: "valid"; path: string; spec: MotionSpec }
@@ -137,6 +150,9 @@ export interface CheckAuditDriver {
    * fingerprint of the current seeked state, for detecting a timeline that
    * never advances under seek. See layout-audit.browser.js. */
   collectLayoutGeometry(): Promise<string>;
+  /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
+   * the current seeked state. Accumulated across the grid — see checkPipeline. */
+  collectRotationSample(time: number): Promise<RotationSample[]>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,

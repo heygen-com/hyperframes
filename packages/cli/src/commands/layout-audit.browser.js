@@ -1480,4 +1480,55 @@
     }
     return parts.join("|");
   };
+
+  // Rotation-pivot sampling (rotation_pivot_drift). Per sample, report every
+  // rotatable candidate's bbox center, size, and current rotation angle. Node
+  // accumulates these across the seek grid and, after the run, flags any
+  // element that spins (angle varies) while its bbox CENTER drifts — the
+  // signature of a wrong transformOrigin/svgOrigin (spokes swinging off-axis
+  // instead of spinning in place). Single frame can't tell spin from pivot
+  // drift, so this is a cross-sample finder, not a per-sample one.
+  function rotationAngleDeg(transform) {
+    if (!transform || transform === "none") return null;
+    const match = transform.match(/matrix(3d)?\(([^)]+)\)/);
+    if (!match) return null;
+    const values = match[2].split(",").map((part) => Number.parseFloat(part));
+    // matrix(a,b,c,d,e,f) → a=values[0], b=values[1]. matrix3d shares the same
+    // leading two entries for the in-plane 2D rotation component.
+    const a = values[0];
+    const b = values[1];
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return (Math.atan2(b, a) * 180) / Math.PI;
+  }
+
+  window.__hyperframesRotationSample = function collectRotationSample() {
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const samples = [];
+    // Cap the candidate set so a pathological composition can't blow up the
+    // per-sample payload; transformed elements above a minimum area only.
+    const CANDIDATE_CAP = 200;
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (samples.length >= CANDIDATE_CAP) break;
+      // Intended orbits/satellites opt out — their bbox center is SUPPOSED to
+      // travel, so a drift finding there is a false positive.
+      if (element.closest("[data-layout-allow-orbit]")) continue;
+      if (!isVisibleElement(element, 0.05)) continue;
+      const angle = rotationAngleDeg(getComputedStyle(element).transform);
+      if (angle === null) continue; // identity / untransformed — not a candidate
+      const box = element.getBoundingClientRect();
+      if (box.width * box.height <= 400) continue;
+      samples.push({
+        selector: selectorFor(element),
+        cx: round(box.left + box.width / 2),
+        cy: round(box.top + box.height / 2),
+        w: round(box.width),
+        h: round(box.height),
+        angle: round(angle),
+      });
+    }
+    return samples;
+  };
 })();

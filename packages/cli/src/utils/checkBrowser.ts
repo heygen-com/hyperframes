@@ -42,6 +42,7 @@ import type {
   ContrastCapture,
   GeometryCandidateRequest,
   MotionSpecResolution,
+  RotationSample,
   RunAuditGrid,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
@@ -347,6 +348,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     },
     collectLayout: (time, tolerance) => collectLayout(page, time, tolerance),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
+    collectRotationSample: (time) => collectRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -466,6 +468,30 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
     const result = Reflect.apply(geometry, window, []);
     return typeof result === "string" ? result : "";
   });
+}
+
+async function collectRotationSample(page: Page, time: number): Promise<RotationSample[]> {
+  const raw = await page.evaluate(() => {
+    const sample = Reflect.get(window, "__hyperframesRotationSample");
+    if (typeof sample !== "function") return [];
+    const result = Reflect.apply(sample, window, []);
+    return Array.isArray(result) ? result : [];
+  });
+  return raw.flatMap((value) => parseRotationSample(value, time));
+}
+
+function parseRotationSample(value: unknown, time: number): RotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const cx = numberValue(value, "cx");
+  const cy = numberValue(value, "cy");
+  const w = numberValue(value, "w");
+  const h = numberValue(value, "h");
+  const angle = numberValue(value, "angle");
+  if (!selector || cx === null || cy === null || w === null || h === null || angle === null) {
+    return [];
+  }
+  return [{ time, selector, cx, cy, w, h, angle }];
 }
 
 async function collectGeometryCandidates(
@@ -1051,6 +1077,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "escaped_container",
   "panel_out_of_canvas",
   "connector_detached",
+  "rotation_pivot_drift",
   "motion_appears_late",
   "motion_out_of_order",
   "motion_off_frame",

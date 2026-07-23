@@ -48,6 +48,7 @@ import type {
   ContrastAuditEntry,
   GeometryCandidateRequest,
   MotionSpecResolution,
+  RotationSample,
 } from "./checkTypes.js";
 
 export type {
@@ -189,6 +190,9 @@ interface GridSamples {
   contrastMs: number;
   /** One geometry+opacity fingerprint per layout sample (#U10 frozen-sweep guard). */
   geometrySignatures: string[];
+  /** Every rotatable element's geometry at each layout sample; grouped by
+   * selector after the run to detect rotation_pivot_drift. */
+  rotationSamples: RotationSample[];
 }
 
 interface GeometrySeen {
@@ -360,6 +364,7 @@ async function collectGridSamples(
     screenshots: [],
     contrastMs: 0,
     geometrySignatures: [],
+    rotationSamples: [],
   };
   for (const time of mergeSampleTimes(grid.layoutSamples, motion.times)) {
     await driver.seek(time);
@@ -372,6 +377,7 @@ async function collectGridSamples(
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
       collected.geometrySignatures.push(await driver.collectLayoutGeometry());
+      collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
     }
     if (canvas) {
       const geometryIssues = await collectGeometryAt(
@@ -455,6 +461,136 @@ function detectSweepStatic(
   ];
 }
 
+// rotation_pivot_drift thresholds. A spinning element's bbox center should be
+// fixed; drift beyond this signals a wrong pivot (transformOrigin/svgOrigin).
+const ROTATION_MIN_SAMPLES = 3;
+// Degrees of angle spread that count as "actually spinning" (vs a static tilt).
+const ROTATION_MIN_ANGLE_SPREAD_DEG = 20;
+// Max bbox-width ratio across samples — above this it is scaling/entrancing,
+// not spinning in place. A rigid anisotropic shape's axis-aligned bbox
+// oscillates under rotation on its own (a plain square already swings 1.41x
+// between flat and 45deg), so this must sit above that; 1.6 admits rotating
+// squares/mild rectangles while still excluding gross scale/entrance growth
+// and thin bars/lines whose bbox swings many-fold (e.g. a rotating reference
+// arm). The bbox-CENTER drift below is the real spin-in-place discriminator.
+const ROTATION_MAX_SIZE_RATIO = 1.6;
+// Skip tiny decorative spinners; only sizable rotating figures matter.
+const ROTATION_MIN_MEDIAN_AREA_PX = 2500;
+const ROTATION_DRIFT_SIZE_FRACTION = 0.1;
+const ROTATION_DRIFT_VIEWPORT_FRACTION = 0.02;
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const upper = sorted[mid] ?? 0;
+  return sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + upper) / 2 : upper;
+}
+
+/** Widest angular gap between any two samples, wrap-aware (0/360 continuity). */
+function maxAngleSpread(angles: number[]): number {
+  let max = 0;
+  for (let i = 0; i < angles.length; i++) {
+    const a = angles[i];
+    if (a === undefined) continue;
+    for (let j = i + 1; j < angles.length; j++) {
+      const b = angles[j];
+      if (b === undefined) continue;
+      const raw = Math.abs(a - b) % 360;
+      max = Math.max(max, Math.min(raw, 360 - raw));
+    }
+  }
+  return max;
+}
+
+/** Largest distance between any two bbox centers across the samples. */
+function maxCenterDrift(samples: RotationSample[]): number {
+  let max = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const first = samples[i];
+    if (!first) continue;
+    for (let j = i + 1; j < samples.length; j++) {
+      const second = samples[j];
+      if (!second) continue;
+      max = Math.max(max, Math.hypot(first.cx - second.cx, first.cy - second.cy));
+    }
+  }
+  return max;
+}
+
+function rotationDriftFinding(
+  samples: RotationSample[],
+  drift: number,
+): AnchoredLayoutIssue | null {
+  const last = samples[samples.length - 1];
+  if (!last) return null;
+  const rect: LayoutRect = {
+    left: last.cx - last.w / 2,
+    top: last.cy - last.h / 2,
+    right: last.cx + last.w / 2,
+    bottom: last.cy + last.h / 2,
+    width: last.w,
+    height: last.h,
+  };
+  return {
+    code: "rotation_pivot_drift",
+    // EF promotes this to error separately; keep it a warning here.
+    severity: "warning",
+    time: last.time,
+    selector: last.selector,
+    dataAttributes: {},
+    sourceFile: "index.html",
+    bbox: rectToBbox(rect),
+    rect,
+    message: `Rotating element's bounding-box center drifts ${Math.round(drift)}px across rotation — it is not spinning about its own center (check transformOrigin/svgOrigin; use svgOrigin/percent, not hardcoded px).`,
+    fixHint:
+      "Set transformOrigin/svgOrigin to the element's own center (percent or svgOrigin), not a hardcoded pixel point that assumes an unresized coordinate space.",
+  };
+}
+
+/**
+ * rotation_pivot_drift: an element that visibly SPINS (its rotation angle varies
+ * across the seek grid) while its bounding-box CENTER travels is pivoting about
+ * the wrong point — the classic symptom of a transformOrigin/svgOrigin authored
+ * as hardcoded pixels against a coordinate space the element was later resized
+ * out of (e.g. spokes set to `250px 250px` inside a 460px-rendered 500-viewBox
+ * SVG). A correctly centered spinner holds its bbox center fixed.
+ *
+ * Cross-sample by necessity — one frame can't distinguish spin-in-place from
+ * pivot drift. FP guards are deliberately strict because a false positive feeds
+ * destructive downstream auto-fixes: requires real rotation, a stable bbox size
+ * (excludes scale/entrance animations), a sizable element, and honors
+ * `[data-layout-allow-orbit]` opt-outs (applied browser-side).
+ */
+function detectRotationPivotDrift(
+  samples: RotationSample[],
+  canvas: Canvas,
+): AnchoredLayoutIssue[] {
+  const bySelector = new Map<string, RotationSample[]>();
+  for (const sample of samples) {
+    const group = bySelector.get(sample.selector);
+    if (group) group.push(sample);
+    else bySelector.set(sample.selector, [sample]);
+  }
+  const findings: AnchoredLayoutIssue[] = [];
+  const viewportFloor = ROTATION_DRIFT_VIEWPORT_FRACTION * Math.min(canvas.width, canvas.height);
+  for (const group of bySelector.values()) {
+    if (group.length < ROTATION_MIN_SAMPLES) continue;
+    if (maxAngleSpread(group.map((s) => s.angle)) <= ROTATION_MIN_ANGLE_SPREAD_DEG) continue;
+    const widths = group.map((s) => s.w);
+    const minWidth = Math.min(...widths);
+    if (minWidth <= 0 || Math.max(...widths) / minWidth > ROTATION_MAX_SIZE_RATIO) continue;
+    if (median(group.map((s) => s.w * s.h)) < ROTATION_MIN_MEDIAN_AREA_PX) continue;
+    const medianSize = median(group.map((s) => Math.max(s.w, s.h)));
+    const threshold = Math.max(ROTATION_DRIFT_SIZE_FRACTION * medianSize, viewportFloor);
+    const drift = maxCenterDrift(group);
+    if (drift <= threshold) continue;
+    const finding = rotationDriftFinding(group, drift);
+    if (finding) findings.push(finding);
+  }
+  return findings;
+}
+
 /** Error-severity findings with real geometry become labeled overview boxes.
  * Contrast failures are annotated separately by the driver itself, since
  * they're only known once contrast measurement for this sample completes. */
@@ -490,6 +626,10 @@ export async function runAuditGrid(
     collected.geometrySignatures,
     motionIssues,
   );
+  const rotationFindings = detectRotationPivotDrift(
+    collected.rotationSamples,
+    await driver.getCanvas(),
+  );
   const contrast = buildContrastResults(collected.contrastEntries);
   return {
     duration: grid.duration,
@@ -497,7 +637,7 @@ export async function runAuditGrid(
     transitionSamples: grid.transitionSamples,
     transitionSamplesDropped: grid.transitionSamplesDropped,
     runtimeFindings: [],
-    layoutIssues: [...collected.layoutIssues, ...sweepFindings],
+    layoutIssues: [...collected.layoutIssues, ...sweepFindings, ...rotationFindings],
     motionIssues,
     motionSampleCount: collected.motionFrames.length,
     contrastSamples: grid.contrastSamples,
