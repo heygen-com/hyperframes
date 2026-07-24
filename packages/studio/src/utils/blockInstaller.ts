@@ -30,7 +30,7 @@ interface AddBlockOptions {
   projectId: string;
   blockName: string;
   activeCompPath: string | null;
-  placement?: { start: number; track: number };
+  placement?: { start: number; duration?: number; track?: number };
   visualPosition?: { left: number; top: number };
   previewIframe?: HTMLIFrameElement | null;
   currentTime?: number;
@@ -56,6 +56,121 @@ function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string
   return `${baseName}_${i}`;
 }
 
+async function installRegistryItem({
+  projectId,
+  blockName,
+  showToast,
+}: Pick<AddBlockOptions, "projectId" | "blockName" | "showToast">): Promise<{
+  block: RegistryItem;
+  compositionFile: string;
+} | null> {
+  const response = await fetch(`/api/projects/${projectId}/registry/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ blockName }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Install failed" }));
+    showToast((error as { error?: string }).error || "Failed to install block");
+    return null;
+  }
+  const { written, block } = (await response.json()) as {
+    written: string[];
+    block: RegistryItem;
+  };
+  const compositionFile = written.find((file) => file.endsWith(".html")) ?? written[0];
+  if (!compositionFile) {
+    showToast("Installed but no composition file was written");
+    return null;
+  }
+  return { block, compositionFile };
+}
+
+async function makeComponentBackgroundTransparent(
+  block: RegistryItem,
+  compositionFile: string,
+  readProjectFile: AddBlockOptions["readProjectFile"],
+  writeProjectFile: AddBlockOptions["writeProjectFile"],
+): Promise<void> {
+  if (block.type !== "hyperframes:component") return;
+  const content = await readProjectFile(compositionFile);
+  const transparentContent = content.replace(
+    /background:\s*(?:#(?:0a0a0a|000000|000|0a0805)|rgba?\([^)]*\))\s*;/g,
+    "background: transparent;",
+  );
+  if (transparentContent !== content) await writeProjectFile(compositionFile, transparentContent);
+}
+
+function resolveBlockPlacement({
+  block,
+  placement,
+  timelineElements,
+  currentTime,
+}: {
+  block: RegistryItem;
+  placement: AddBlockOptions["placement"];
+  timelineElements: TimelineElement[];
+  currentTime: number;
+}) {
+  const isBlock = block.type === "hyperframes:block";
+  const {
+    start: placementStart = currentTime,
+    duration: placementDuration,
+    track: placementTrack,
+  } = placement ?? {};
+  const start = Number(formatTimelineAttributeNumber(placementStart));
+  const blockDuration = "duration" in block ? (block as { duration: number }).duration : undefined;
+  const duration =
+    placementDuration ??
+    blockDuration ??
+    timelineElements.reduce(
+      (max, element) => Math.max(max, (element.start ?? 0) + (element.duration ?? 0)),
+      10,
+    );
+  const nextTrack = Math.max(0, ...timelineElements.map((element) => element.track)) + 1;
+  const track = placementTrack ?? (isBlock ? 0 : nextTrack);
+  return { duration, isBlock, start, track };
+}
+
+function buildSubCompositionHtml({
+  id,
+  compositionFile,
+  start,
+  duration,
+  track,
+  width,
+  height,
+  left,
+  top,
+  zIndex,
+}: {
+  id: string;
+  compositionFile: string;
+  start: number;
+  duration: number;
+  track: number;
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+  zIndex: number;
+}): string {
+  return [
+    `<div`,
+    `  id="${id}"`,
+    `  data-hf-id="hf-${generateId()}"`,
+    `  data-composition-id="${id}"`,
+    `  data-composition-src="${compositionFile}"`,
+    `  data-start="${formatTimelineAttributeNumber(start)}"`,
+    `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
+    `  data-track-index="${track}"`,
+    `  data-width="${width}"`,
+    `  data-height="${height}"`,
+    `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
+    `></div>`,
+  ].join("\n");
+}
+
 export async function addBlockToProject(
   opts: AddBlockOptions,
 ): Promise<{ block: RegistryItem; compositionPath: string } | null> {
@@ -75,115 +190,53 @@ export async function addBlockToProject(
   } = opts;
 
   try {
-    const res = await fetch(`/api/projects/${projectId}/registry/install`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blockName }),
+    const installed = await installRegistryItem({ projectId, blockName, showToast });
+    if (!installed) return null;
+    const { block, compositionFile } = installed;
+    await makeComponentBackgroundTransparent(
+      block,
+      compositionFile,
+      readProjectFile,
+      writeProjectFile,
+    );
+
+    const targetPath = activeCompPath || "index.html";
+    const originalContent = await readProjectFile(targetPath);
+    const relevantElements = timelineElements.filter(
+      (element) => (element.sourceFile || targetPath) === targetPath,
+    );
+    const { duration, isBlock, start, track } = resolveBlockPlacement({
+      block,
+      placement,
+      timelineElements: relevantElements,
+      currentTime: opts.currentTime ?? 0,
     });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Install failed" }));
-      showToast((err as { error?: string }).error || "Failed to install block");
-      return null;
-    }
-
-    const { written, block } = (await res.json()) as {
-      written: string[];
-      block: RegistryItem;
-    };
-
-    const compositionFile = written.find((f) => f.endsWith(".html")) ?? written[0];
-    if (!compositionFile) {
-      showToast("Installed but no composition file was written");
-      return null;
-    }
-
-    if (block.type === "hyperframes:component") {
-      const compContent = await readProjectFile(compositionFile);
-      const transparentContent = compContent.replace(
-        /background:\s*(?:#(?:0a0a0a|000000|000|0a0805)|rgba?\([^)]*\))\s*;/g,
-        "background: transparent;",
-      );
-      if (transparentContent !== compContent) {
-        await writeProjectFile(compositionFile, transparentContent);
-      }
-    }
-
-    {
-      const targetPath = activeCompPath || "index.html";
-      const originalContent = await readProjectFile(targetPath);
-      const existingIds = collectHtmlIds(originalContent);
-      const compId = buildUniqueCompositionId(block.name, existingIds);
-
-      const resolvedTargetPath = targetPath || "index.html";
-      const relevantElements = timelineElements.filter(
-        (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
-      );
-
-      const isBlock = block.type === "hyperframes:block";
-      const { width: hostWidth, height: hostHeight } =
-        resolveTimelineAssetCompositionSize(originalContent);
-      const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
-
-      const currentTime = opts.currentTime ?? 0;
-      const start = placement
-        ? Number(formatTimelineAttributeNumber(placement.start))
-        : Number(formatTimelineAttributeNumber(currentTime));
-      const blockDuration =
-        "duration" in block ? (block as { duration: number }).duration : undefined;
-      const duration =
-        blockDuration ??
-        relevantElements.reduce(
-          (max, te) => Math.max(max, (te.start ?? 0) + (te.duration ?? 0)),
-          10,
-        );
-      const track =
-        placement?.track ??
-        (isBlock
-          ? 0
-          : relevantElements.length > 0
-            ? Math.max(...relevantElements.map((te) => te.track)) + 1
-            : 1);
-
-      const zIndex = getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1;
-
-      const width = hostDims.width;
-      const height = hostDims.height;
-
-      const left = visualPosition ? Math.round(visualPosition.left) : 0;
-      const top = visualPosition ? Math.round(visualPosition.top) : 0;
-
-      const subCompHtml = [
-        `<div`,
-        // A stable id (+ hf-id) is what authored sub-comps carry; without it the
-        // timeline can't dedup the host and renders duplicate clips that multiply
-        // on every interaction. Matches the authored-comp shape.
-        `  id="${compId}"`,
-        `  data-hf-id="hf-${generateId()}"`,
-        `  data-composition-id="${compId}"`,
-        `  data-composition-src="${compositionFile}"`,
-        `  data-start="${formatTimelineAttributeNumber(start)}"`,
-        `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
-        `  data-track-index="${track}"`,
-        `  data-width="${width}"`,
-        `  data-height="${height}"`,
-        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
-        `></div>`,
-      ].join("\n");
-
-      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
-      patchedContent = extendRootDurationInSource(patchedContent, start + duration);
-
-      await saveProjectFilesWithHistory({
-        projectId,
-        label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
-        kind: "timeline",
-        files: { [targetPath]: patchedContent },
-        readFile: async () => originalContent,
-        writeFile: writeProjectFile,
-        recordEdit,
-      });
-    }
+    const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
+    const subComposition = buildSubCompositionHtml({
+      id: buildUniqueCompositionId(block.name, collectHtmlIds(originalContent)),
+      compositionFile,
+      start,
+      duration,
+      track,
+      width,
+      height,
+      left: visualPosition ? Math.round(visualPosition.left) : 0,
+      top: visualPosition ? Math.round(visualPosition.top) : 0,
+      zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
+    });
+    const patchedContent = extendRootDurationInSource(
+      insertTimelineAssetIntoSource(originalContent, subComposition),
+      start + duration,
+    );
+    await saveProjectFilesWithHistory({
+      projectId,
+      label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
+      kind: "timeline",
+      files: { [targetPath]: patchedContent },
+      readFile: async () => originalContent,
+      writeFile: writeProjectFile,
+      recordEdit,
+    });
 
     await refreshFileTree();
     reloadPreview();

@@ -31,7 +31,10 @@ import {
   EMPTY_COLOR_GRADING_SCOPE_RESULT,
   type ColorGradingScope,
 } from "./studioColorGradingScope";
-import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
+import type {
+  AddMediaOverlayHandler,
+  BackgroundRemovalProgress,
+} from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 
@@ -71,6 +74,7 @@ export interface StudioRightPanelProps extends StudioEditPersistenceProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
+  onAddMediaOverlay?: AddMediaOverlayHandler;
 }
 
 // fallow-ignore-next-line complexity
@@ -88,6 +92,7 @@ export function StudioRightPanel({
   domEditSaveTimestampRef,
   recordEdit,
   onToggleElementHidden,
+  onAddMediaOverlay,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -372,6 +377,7 @@ export function StudioRightPanel({
         onRemoveTextField={handleDomRemoveTextField}
         onAskAgent={handleAskAgent}
         onImportAssets={handleImportFiles}
+        onAddMediaOverlay={onAddMediaOverlay}
         fontAssets={fontAssets}
         onImportFonts={handleImportFonts}
         previewIframeRef={previewIframeRef}

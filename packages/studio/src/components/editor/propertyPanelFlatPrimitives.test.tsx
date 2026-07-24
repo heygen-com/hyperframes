@@ -1159,20 +1159,20 @@ describe("FlatSelectRow — label/value options", () => {
     const { host, root } = renderInto(
       <FlatSelectRow
         label="Preset"
-        value="natural-lift"
+        value="clean-studio"
         options={[
           { value: "neutral", label: "Neutral" },
-          { value: "natural-lift", label: "Natural Lift" },
-          { value: "fresh-pop", label: "Fresh Pop" },
+          { value: "clean-studio", label: "Clean Studio" },
+          { value: "bright-pop", label: "Bright Pop" },
         ]}
         tier="explicitCustom"
         onChange={vi.fn()}
       />,
     );
     const select = host.querySelector("select");
-    expect(select?.value).toBe("natural-lift");
+    expect(select?.value).toBe("clean-studio");
     const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toEqual(["Neutral", "Natural Lift", "Fresh Pop"]);
+    expect(options).toEqual(["Neutral", "Clean Studio", "Bright Pop"]);
     act(() => root.unmount());
   });
 

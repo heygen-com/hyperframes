@@ -19,6 +19,18 @@ export interface BackgroundRemovalResult {
   provider?: string;
 }
 
+export interface MediaOverlayPlacement {
+  start: number;
+  duration?: number;
+  track?: number;
+  compositionPath?: string;
+}
+
+export type AddMediaOverlayHandler = (
+  blockName: string,
+  placement: MediaOverlayPlacement,
+) => Promise<void>;
+
 export interface PropertyPanelProps {
   projectId: string;
   projectDir: string | null;
@@ -69,6 +81,7 @@ export interface PropertyPanelProps {
   onAskAgent: () => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
+  onAddMediaOverlay?: AddMediaOverlayHandler;
   fontAssets?: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
