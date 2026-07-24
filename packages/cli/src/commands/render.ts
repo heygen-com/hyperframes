@@ -75,7 +75,11 @@ import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
-import { detectH264EncoderMode } from "../browser/ffmpeg.js";
+import {
+  detectH264EncoderMode,
+  getFFmpegInstallHint,
+  H264EncoderUnavailableError,
+} from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.js";
 import { killOrphanedProcesses } from "../utils/orphanCleanup.js";
@@ -817,6 +821,14 @@ export async function renderLocal(
     try {
       encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
     } catch (error) {
+      if (error instanceof H264EncoderUnavailableError) {
+        errorBox(
+          "MP4 H.264 encoder unavailable",
+          error.message,
+          `Install an FFmpeg build with libx264 support (${getFFmpegInstallHint()}), or render WebM instead: hyperframes render --format webm --output output.webm`,
+        );
+        failCommand();
+      }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
       if (!options.quiet) {
