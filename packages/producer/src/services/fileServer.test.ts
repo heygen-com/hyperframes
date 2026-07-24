@@ -315,6 +315,28 @@ describe("parseRangeHeader", () => {
 });
 
 describe("createFileServer", () => {
+  it("adds the SVG namespace before serving an external image", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-svg-xmlns-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(
+        join(projectDir, "icon.svg"),
+        '<svg width="10" height="10"><circle cx="5" cy="5" r="4"/></svg>',
+      );
+
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}/icon.svg`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toBe("image/svg+xml");
+        expect(await response.text()).toBe(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="4"/></svg>',
+        );
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("serves ES modules with a JavaScript MIME type", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mjs-"));
     try {

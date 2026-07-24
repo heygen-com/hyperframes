@@ -95,6 +95,29 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain("./bg.svg");
   });
 
+  it("adds the SVG namespace before inlining an external image", async () => {
+    const svg = '<svg width="320" height="180"><circle cx="160" cy="90" r="56"/></svg>';
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="1">
+          <img id="external-svg" src="assets/icon.svg">
+        </div>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.main = {}</script>
+      </body></html>`,
+      "assets/icon.svg": svg,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const { document } = parseHTML(bundled);
+    const src = document.getElementById("external-svg")?.getAttribute("src") ?? "";
+    const encodedSvg = src.replace("data:image/svg+xml;base64,", "");
+
+    expect(src).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(Buffer.from(encodedSvg, "base64").toString("utf8")).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><circle cx="160" cy="90" r="56"/></svg>',
+    );
+  });
+
   it("preserves external SVG fragment references used by <use>", async () => {
     const spriteSvg = `<svg xmlns="http://www.w3.org/2000/svg">
       <symbol id="patch-head" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></symbol>
