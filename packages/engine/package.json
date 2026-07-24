@@ -58,7 +58,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.5",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
     "hono": "^4.6.0",
