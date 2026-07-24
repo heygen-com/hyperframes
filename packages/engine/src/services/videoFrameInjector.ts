@@ -148,25 +148,6 @@ function createFrameSourceCache(
 
 export const __testing = { createFrameSourceCache };
 
-async function redrawRuntimeColorGrading(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const hf = (
-      window as Window & {
-        __hf?: {
-          colorGrading?: { redraw?: () => unknown };
-        };
-      }
-    ).__hf;
-    const redraw = hf?.colorGrading?.redraw;
-    if (typeof redraw !== "function") return;
-    try {
-      redraw();
-    } catch {
-      // Optional page-side shader layer.
-    }
-  });
-}
-
 /**
  * Creates a BeforeCaptureHook that injects pre-extracted video frames
  * into the page, replacing native <video> elements with frame images.
@@ -248,7 +229,6 @@ export function createVideoFrameInjector(
         }, time);
       }
     }
-    await redrawRuntimeColorGrading(page);
   };
 }
 

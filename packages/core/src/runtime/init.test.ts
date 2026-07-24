@@ -1320,6 +1320,46 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.style.visibility).toBe("hidden");
   });
 
+  it("allocates color grading only for the active timed media", () => {
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "4");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    for (const [id, start] of [
+      ["first", "0"],
+      ["second", "2"],
+    ]) {
+      const video = document.createElement("video");
+      video.id = id;
+      video.setAttribute("data-start", start);
+      video.setAttribute("data-duration", "2");
+      video.setAttribute("data-color-grading", '{"adjust":{"exposure":0.1}}');
+      Object.defineProperty(video, "paused", { value: true, configurable: true });
+      Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+      video.load = () => {};
+      root.appendChild(video);
+    }
+
+    window.__timelines = { main: createMockTimeline(4) };
+    initSandboxRuntimeModular();
+
+    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(document.getElementById("first")?.style.visibility).toBe("visible");
+    expect(document.getElementById("second")?.style.visibility).toBe("hidden");
+
+    window.__player?.seek(3);
+
+    expect(getContextSpy).toHaveBeenCalledTimes(2);
+    expect(document.getElementById("first")?.style.visibility).toBe("hidden");
+    expect(document.getElementById("second")?.style.visibility).toBe("visible");
+  });
+
   it("plays scheduled child timelines without a captured root timeline when audio has failed", () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());
@@ -2120,6 +2160,36 @@ describe("initSandboxRuntimeModular", () => {
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  it("redraws animated grading from the transport clock only during playback", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    window.__timelines = { root: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+
+    const runtime = (
+      window as Window & { __hf?: { colorGrading?: { redrawAnimated: () => number } } }
+    ).__hf?.colorGrading;
+    if (!runtime) throw new Error("Expected color grading runtime");
+    const redrawAnimated = vi.spyOn(runtime, "redrawAnimated");
+
+    raf.step(16);
+    expect(redrawAnimated).not.toHaveBeenCalled();
+
+    window.__player?.play();
+    raf.step(16);
+    expect(redrawAnimated).toHaveBeenCalledTimes(1);
+
+    window.__player?.pause();
+    raf.step(16);
+    expect(redrawAnimated).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a usable bound timeline when the registry entry is replaced", () => {

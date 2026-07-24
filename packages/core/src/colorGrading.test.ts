@@ -13,6 +13,7 @@ import {
   normalizeHfColorGradingWithVariables,
   serializeHfColorGrading,
 } from "./colorGrading";
+import { lintHyperframeHtml } from "./lint";
 
 describe("color grading", () => {
   it("derives grade and effect preset views from their actual payloads", () => {
@@ -26,6 +27,32 @@ describe("color grading", () => {
       "two-ink-print",
     ]);
     expect(HF_COLOR_GRADING_PRESETS).toHaveLength(18);
+  });
+
+  it("keeps every canonical grading key accepted by lint", async () => {
+    const grading = normalizeHfColorGrading("neutral");
+    expect(grading).not.toBeNull();
+    const html = (attribute: string) => `
+      <html><body>
+        <div id="root" data-composition-id="c1" data-start="0" data-width="1920" data-height="1080" data-duration="1">
+          <img class="clip" data-start="0" data-duration="1" src="media.jpg" data-color-grading='${attribute}'>
+        </div>
+        <script>window.__timelines = {};</script>
+      </body></html>
+    `;
+
+    const valid = await lintHyperframeHtml(html(serializeHfColorGrading(grading)));
+    expect(valid.findings.filter((finding) => finding.severity === "error")).toEqual([]);
+
+    const invalid = await lintHyperframeHtml(html('{"effects":{"notARealEffect":1}}'));
+    expect(invalid.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "color_grading_invalid_structure",
+          severity: "error",
+        }),
+      ]),
+    );
   });
 
   it("parses preset shorthand", () => {

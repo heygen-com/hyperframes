@@ -170,13 +170,14 @@ describe("parseGsapScript", () => {
   it("extracts all GSAP properties including non-standard ones", () => {
     const script = `
       const tl = gsap.timeline({ paused: true });
-      tl.to("#el1", { opacity: 1, backgroundColor: "red", x: 50, duration: 0.5 }, 0);
+      tl.to("#el1", { opacity: 1, backgroundColor: "red", x: 50, "--hf-color-grading-intensity": 0.5, duration: 0.5 }, 0);
     `;
     const result = parseGsapScript(script);
 
     expect(result.animations[0].properties.opacity).toBe(1);
     expect(result.animations[0].properties.x).toBe(50);
     expect(result.animations[0].properties.backgroundColor).toBe("red");
+    expect(result.animations[0].properties["--hf-color-grading-intensity"]).toBe(0.5);
   });
 
   it("extracts ease from properties", () => {

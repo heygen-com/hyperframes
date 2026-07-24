@@ -181,9 +181,12 @@ describe("injectVideoFramesBatch replacement layout", () => {
       '<html><body><div id="root"><video id="clip" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video></div></body></html>',
     );
 
+    const events: string[] = [];
     Object.defineProperty(window.HTMLImageElement.prototype, "decode", {
       configurable: true,
-      value: () => Promise.resolve(),
+      value: async () => {
+        events.push("decode");
+      },
     });
 
     const video = document.getElementById("clip") as HTMLVideoElement;
@@ -232,6 +235,10 @@ describe("injectVideoFramesBatch replacement layout", () => {
     const previousDocument = globals.document;
     globals.window = window;
     globals.document = document;
+    const redraw = vi.fn(() => events.push("redraw"));
+    (window as unknown as { __hf: { colorGrading: { redraw: () => void } } }).__hf = {
+      colorGrading: { redraw },
+    };
     try {
       const page = {
         evaluate: async (
@@ -266,6 +273,8 @@ describe("injectVideoFramesBatch replacement layout", () => {
     expect(img?.style.right).toBe("auto");
     expect(img?.style.bottom).toBe("auto");
     expect(img?.style.inset).toBe("auto");
+    expect(redraw).toHaveBeenCalledOnce();
+    expect(events).toEqual(["decode", "redraw"]);
   });
 });
 
@@ -569,6 +578,10 @@ describe("video-frame injection respects ancestor visibility", () => {
     seededImg.classList.add("__render_frame__");
     seededImg.style.opacity = "0";
     setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
+    const setSourceVisibility = vi.fn();
+    (setup.window as unknown as { __hf: unknown }).__hf = {
+      colorGrading: { setSourceVisibility },
+    };
 
     try {
       await syncVideoFrameVisibility(passthroughPage(), ["pip"]);
@@ -578,6 +591,7 @@ describe("video-frame injection respects ancestor visibility", () => {
 
     expect(seededImg.style.opacity).toBe("1");
     expect(seededImg.style.visibility).toBe("visible");
+    expect(setSourceVisibility).toHaveBeenCalledWith(setup.video, true);
   });
 
   it("syncVideoFrameVisibility shows the replacement <img> when a plain [data-start] host is visibility:hidden", async () => {
@@ -643,6 +657,10 @@ describe("video-frame injection respects ancestor visibility", () => {
     seededImg.style.visibility = "visible";
     setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
     const setPropertySpy = vi.spyOn(seededImg.style, "setProperty");
+    const setSourceVisibility = vi.fn();
+    (setup.window as unknown as { __hf: unknown }).__hf = {
+      colorGrading: { setSourceVisibility },
+    };
 
     try {
       await syncVideoFrameVisibility(passthroughPage(), ["pip"]);
@@ -652,6 +670,7 @@ describe("video-frame injection respects ancestor visibility", () => {
 
     expect(seededImg.style.visibility).toBe("hidden");
     expect(setPropertySpy).toHaveBeenCalledWith("visibility", "hidden", "important");
+    expect(setSourceVisibility).toHaveBeenCalledWith(setup.video, false);
   });
 
   it("applyDomLayerMask does not revive hidden idless timed descendants of a shown layer", async () => {
