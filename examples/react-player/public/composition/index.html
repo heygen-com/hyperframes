@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Motion Blur — Velocity Showcase</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #06060a;
+      }
+
+      #comp {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "SF Mono", ui-monospace, monospace;
+        background: #06060a;
+      }
+
+      .header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 80px;
+        display: flex;
+        align-items: flex-end;
+        padding: 0 72px 20px;
+        border-bottom: 1px solid #0f0f18;
+      }
+      .header-title {
+        font-size: 11px;
+        letter-spacing: 0.4em;
+        text-transform: uppercase;
+        color: #1e1e2a;
+      }
+      .header-sub {
+        margin-left: auto;
+        font-size: 11px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #14141c;
+      }
+
+      /* Each group = one speed level, containing a shape row + text row */
+      .group {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 184px; /* 72 + 16 + 72 + 24 bottom */
+      }
+
+      /* Group bottom separator */
+      .group::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 72px;
+        right: 72px;
+        height: 1px;
+        background: #0d0d15;
+      }
+
+      /* Duration label — left, spanning both rows */
+      .dur {
+        position: absolute;
+        left: 72px;
+        top: 0;
+        width: 90px;
+        height: 160px; /* 72+16+72 */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .dur-num {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: #fff;
+        line-height: 1;
+      }
+      .dur-unit {
+        font-size: 9px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #252532;
+        margin-top: 5px;
+      }
+
+      /* Row-type hint ("shape" / "text") — right of dur label */
+      .row-hint {
+        position: absolute;
+        left: 176px;
+        width: 44px;
+        height: 72px;
+        display: flex;
+        align-items: center;
+        font-size: 8px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #161620;
+      }
+
+      /* Speed label — right, spanning both rows */
+      .spd {
+        position: absolute;
+        right: 72px;
+        top: 0;
+        width: 100px;
+        height: 160px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+      }
+      .spd-label {
+        font-size: 10px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #181822;
+      }
+
+      /* Animated elements — both types live at left:0, GSAP drives x */
+      .pill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 200px;
+        height: 72px;
+        border-radius: 36px;
+        will-change: transform, filter;
+      }
+
+      .word {
+        position: absolute;
+        left: 0;
+        top: 88px; /* 72 + 16 gap */
+        height: 72px;
+        line-height: 72px;
+        white-space: nowrap;
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        will-change: transform, filter;
+      }
+
+      /* Inner divider between shape row and text row */
+      .inner-div {
+        position: absolute;
+        left: 220px;
+        right: 200px;
+        top: 80px; /* 72 + 8 */
+        height: 1px;
+        background: #0a0a12;
+      }
+
+      /* Track guide lines */
+      .track-a,
+      .track-b {
+        position: absolute;
+        left: 220px;
+        right: 200px;
+        height: 1px;
+        background: #0c0c14;
+      }
+      .track-a {
+        top: 35px;
+      } /* center of shape row */
+      .track-b {
+        top: 123px;
+      } /* 88 + 35 = center of text row */
+    </style>
+  </head>
+  <body>
+    <div
+      id="comp"
+      data-composition-id="motion-blur-example"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="4"
+    >
+      <div class="header" data-layout-ignore>
+        <span class="header-title">Motion Blur — Velocity Showcase</span>
+        <span class="header-sub">feGaussianBlur + scaleX · blur ∝ velocity</span>
+      </div>
+
+      <!-- Group 1: 3.0s slow — top: 80 -->
+      <div class="group" style="top: 80px">
+        <div class="dur" data-layout-ignore>
+          <span class="dur-num">3.0</span><span class="dur-unit">seconds</span>
+        </div>
+        <div class="row-hint" data-layout-ignore style="top: 0">shape</div>
+        <div class="row-hint" data-layout-ignore style="top: 88px">text</div>
+        <div class="track-a"></div>
+        <div class="inner-div"></div>
+        <div class="track-b"></div>
+        <div
+          class="pill"
+          id="s1"
+          style="
+            background: linear-gradient(135deg, #60a5fa, #2563eb);
+            box-shadow: 0 0 32px rgba(96, 165, 250, 0.18);
+          "
+        ></div>
+        <div
+          class="word"
+          id="t1"
+          style="color: #3b82f6; text-shadow: 0 0 40px rgba(96, 165, 250, 0.3)"
+        >
+          DRIFT
+        </div>
+        <div class="spd" data-layout-ignore><span class="spd-label">slow</span></div>
+      </div>
+
+      <!-- Group 2: 1.5s medium — top: 264 -->
+      <div class="group" style="top: 264px">
+        <div class="dur" data-layout-ignore>
+          <span class="dur-num">1.5</span><span class="dur-unit">seconds</span>
+        </div>
+        <div class="row-hint" data-layout-ignore style="top: 0">shape</div>
+        <div class="row-hint" data-layout-ignore style="top: 88px">text</div>
+        <div class="track-a"></div>
+        <div class="inner-div"></div>
+        <div class="track-b"></div>
+        <div
+          class="pill"
+          id="s2"
+          style="
+            background: linear-gradient(135deg, #34d399, #059669);
+            box-shadow: 0 0 32px rgba(52, 211, 153, 0.18);
+          "
+        ></div>
+        <div
+          class="word"
+          id="t2"
+          style="color: #10b981; text-shadow: 0 0 40px rgba(52, 211, 153, 0.3)"
+        >
+          GLIDE
+        </div>
+        <div class="spd" data-layout-ignore><span class="spd-label">medium</span></div>
+      </div>
+
+      <!-- Group 3: 0.7s fast — top: 448 -->
+      <div class="group" style="top: 448px">
+        <div class="dur" data-layout-ignore>
+          <span class="dur-num">0.7</span><span class="dur-unit">seconds</span>
+        </div>
+        <div class="row-hint" data-layout-ignore style="top: 0">shape</div>
+        <div class="row-hint" data-layout-ignore style="top: 88px">text</div>
+        <div class="track-a"></div>
+        <div class="inner-div"></div>
+        <div class="track-b"></div>
+        <div
+          class="pill"
+          id="s3"
+          style="
+            background: linear-gradient(135deg, #c084fc, #7c3aed);
+            box-shadow: 0 0 32px rgba(192, 132, 252, 0.18);
+          "
+        ></div>
+        <div
+          class="word"
+          id="t3"
+          style="color: #a855f7; text-shadow: 0 0 40px rgba(192, 132, 252, 0.3)"
+        >
+          RUSH
+        </div>
+        <div class="spd" data-layout-ignore><span class="spd-label">fast</span></div>
+      </div>
+
+      <!-- Group 4: 0.35s faster — top: 632 -->
+      <div class="group" style="top: 632px">
+        <div class="dur" data-layout-ignore>
+          <span class="dur-num">0.35</span><span class="dur-unit">seconds</span>
+        </div>
+        <div class="row-hint" data-layout-ignore style="top: 0">shape</div>
+        <div class="row-hint" data-layout-ignore style="top: 88px">text</div>
+        <div class="track-a"></div>
+        <div class="inner-div"></div>
+        <div class="track-b"></div>
+        <div
+          class="pill"
+          id="s4"
+          style="
+            background: linear-gradient(135deg, #fb923c, #ea580c);
+            box-shadow: 0 0 32px rgba(251, 146, 60, 0.18);
+          "
+        ></div>
+        <div
+          class="word"
+          id="t4"
+          style="color: #f97316; text-shadow: 0 0 40px rgba(251, 146, 60, 0.3)"
+        >
+          BLAST
+        </div>
+        <div class="spd" data-layout-ignore><span class="spd-label">faster</span></div>
+      </div>
+
+      <!-- Group 5: 0.2s extreme — top: 816 -->
+      <div class="group" style="top: 816px">
+        <div class="dur" data-layout-ignore>
+          <span class="dur-num">0.2</span><span class="dur-unit">seconds</span>
+        </div>
+        <div class="row-hint" data-layout-ignore style="top: 0">shape</div>
+        <div class="row-hint" data-layout-ignore style="top: 88px">text</div>
+        <div class="track-a"></div>
+        <div class="inner-div"></div>
+        <div class="track-b"></div>
+        <div
+          class="pill"
+          id="s5"
+          style="
+            background: linear-gradient(135deg, #f87171, #dc2626);
+            box-shadow: 0 0 32px rgba(248, 113, 113, 0.18);
+          "
+        ></div>
+        <div
+          class="word"
+          id="t5"
+          style="color: #ef4444; text-shadow: 0 0 40px rgba(248, 113, 113, 0.3)"
+        >
+          WARP
+        </div>
+        <div class="spd" data-layout-ignore><span class="spd-label">extreme</span></div>
+      </div>
+
+      <script>
+        (function () {
+          /* ── attachMotionBlur ─────────────────────────────────────── */
+          if (!window._hfMbUid) window._hfMbUid = 0;
+          var ns = "http://www.w3.org/2000/svg";
+
+          function attachMotionBlur(selector, tl, opts) {
+            opts = opts || {};
+            var blurScale = opts.blurScale !== undefined ? opts.blurScale : 0.008;
+            var blurMax = opts.blurMax !== undefined ? opts.blurMax : 20;
+            var stretchScale = opts.stretchScale !== undefined ? opts.stretchScale : 0.0002;
+            var stretchMax = opts.stretchMax !== undefined ? opts.stretchMax : 0;
+            var axis = opts.axis || "both";
+
+            var items = Array.isArray(selector) ? selector : [selector];
+            var targets = items.reduce(function (acc, s) {
+              if (typeof s === "string") {
+                document.querySelectorAll(s).forEach(function (el) {
+                  acc.push(el);
+                });
+              } else if (s instanceof Element) {
+                acc.push(s);
+              }
+              return acc;
+            }, []);
+
+            // Ghost trail: copies placed only behind the element → inherently one-sided.
+            // Top layer: small Gaussian at current position so element looks blurry, not sharp.
+            var GHOST_CFG = [
+              { frac: 0.25, slope: 0.55 },
+              { frac: 0.55, slope: 0.28 },
+              { frac: 1.0, slope: 0.1 },
+            ];
+
+            var state = targets.map(function (el) {
+              var uid = "hf-mb-" + window._hfMbUid++;
+              var svg = document.createElementNS(ns, "svg");
+              svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden;");
+
+              var filter = document.createElementNS(ns, "filter");
+              filter.id = uid;
+              filter.setAttribute("x", "-110%");
+              filter.setAttribute("y", "-25%");
+              filter.setAttribute("width", "260%");
+              filter.setAttribute("height", "150%");
+
+              var ghosts = GHOST_CFG.map(function (cfg, gi) {
+                var feOff = document.createElementNS(ns, "feOffset");
+                feOff.setAttribute("in", "SourceGraphic");
+                feOff.setAttribute("dx", "0");
+                feOff.setAttribute("dy", "0");
+                feOff.setAttribute("result", "go" + gi);
+
+                var feGB = document.createElementNS(ns, "feGaussianBlur");
+                feGB.setAttribute("in", "go" + gi);
+                feGB.setAttribute("stdDeviation", "0 0");
+                feGB.setAttribute("result", "gb" + gi);
+
+                var feCT = document.createElementNS(ns, "feComponentTransfer");
+                feCT.setAttribute("in", "gb" + gi);
+                feCT.setAttribute("result", "gf" + gi);
+                var feFuncA = document.createElementNS(ns, "feFuncA");
+                feFuncA.setAttribute("type", "linear");
+                feFuncA.setAttribute("slope", String(cfg.slope));
+                feCT.appendChild(feFuncA);
+
+                filter.appendChild(feOff);
+                filter.appendChild(feGB);
+                filter.appendChild(feCT);
+                return { feOff: feOff, feGB: feGB, frac: cfg.frac };
+              });
+
+              var feTopBlur = document.createElementNS(ns, "feGaussianBlur");
+              feTopBlur.setAttribute("in", "SourceGraphic");
+              feTopBlur.setAttribute("stdDeviation", "0 0");
+              feTopBlur.setAttribute("result", "top");
+              filter.appendChild(feTopBlur);
+
+              var feMerge = document.createElementNS(ns, "feMerge");
+              for (var mi = GHOST_CFG.length - 1; mi >= 0; mi--) {
+                var mn = document.createElementNS(ns, "feMergeNode");
+                mn.setAttribute("in", "gf" + mi);
+                feMerge.appendChild(mn);
+              }
+              var mnTop = document.createElementNS(ns, "feMergeNode");
+              mnTop.setAttribute("in", "top");
+              feMerge.appendChild(mnTop);
+              filter.appendChild(feMerge);
+
+              svg.appendChild(filter);
+              document.body.appendChild(svg);
+
+              return {
+                el: el,
+                ghosts: ghosts,
+                feTopBlur: feTopBlur,
+                filterId: uid,
+                prevX: parseFloat(gsap.getProperty(el, "x")) || 0,
+                prevY: parseFloat(gsap.getProperty(el, "y")) || 0,
+                prevTime: tl.time(),
+              };
+            });
+
+            // tl.eventCallback("onUpdate") is not available in the HyperFrames renderer —
+            // the runtime proxies the timeline. Tween onUpdate fires on every seek instead.
+            var _proxy = { t: 0 };
+            tl.to(
+              _proxy,
+              {
+                t: 1,
+                duration: Math.max(tl.duration(), 0.1),
+                ease: "none",
+                onUpdate: function () {
+                  var time = tl.time();
+
+                  state.forEach(function (s) {
+                    var x = parseFloat(gsap.getProperty(s.el, "x")) || 0;
+                    var y = parseFloat(gsap.getProperty(s.el, "y")) || 0;
+                    var dt = time - s.prevTime;
+
+                    if (dt > 0.0005) {
+                      var vx = axis !== "y" ? (x - s.prevX) / dt : 0;
+                      var vy = axis !== "x" ? (y - s.prevY) / dt : 0;
+
+                      var bx = Math.min(Math.abs(vx) * blurScale, blurMax);
+                      var by = Math.min(Math.abs(vy) * blurScale, blurMax);
+                      var bxFinal = axis !== "y" ? bx : Math.max(by * 0.08, 0.4);
+                      var byFinal = axis !== "x" ? by : Math.max(bx * 0.08, 0.4);
+                      var active = bx > 0.3 || by > 0.3;
+
+                      if (active) {
+                        s.el.style.filter = "url(#" + s.filterId + ")";
+                        s.ghosts.forEach(function (g) {
+                          var dx =
+                            axis !== "y" ? (vx >= 0 ? -bxFinal * g.frac : bxFinal * g.frac) : 0;
+                          var dy =
+                            axis !== "x" ? (vy >= 0 ? -byFinal * g.frac : byFinal * g.frac) : 0;
+                          g.feOff.setAttribute("dx", dx.toFixed(2));
+                          g.feOff.setAttribute("dy", dy.toFixed(2));
+                          var gbx =
+                            axis !== "y"
+                              ? (bxFinal * g.frac * 0.5).toFixed(2)
+                              : Math.max(byFinal * g.frac * 0.04, 0.4).toFixed(2);
+                          var gby =
+                            axis !== "x"
+                              ? (byFinal * g.frac * 0.5).toFixed(2)
+                              : Math.max(bxFinal * g.frac * 0.04, 0.4).toFixed(2);
+                          g.feGB.setAttribute("stdDeviation", gbx + " " + gby);
+                        });
+                        s.feTopBlur.setAttribute(
+                          "stdDeviation",
+                          (bxFinal * 0.15).toFixed(2) + " " + (byFinal * 0.15).toFixed(2),
+                        );
+                        if (stretchMax > 0) {
+                          var sx = 1 + Math.min(Math.abs(vx) * stretchScale, stretchMax);
+                          var sy = 1 + Math.min(Math.abs(vy) * stretchScale, stretchMax);
+                          var ox = axis !== "y" ? (vx >= 0 ? "100% 50%" : "0% 50%") : "50% 50%";
+                          var oy = axis !== "x" ? (vy >= 0 ? "50% 100%" : "50% 0%") : "50% 50%";
+                          gsap.set(s.el, {
+                            scaleX: axis !== "y" ? sx : 1,
+                            scaleY: axis !== "x" ? sy : 1,
+                            transformOrigin: axis === "x" ? ox : axis === "y" ? oy : "50% 50%",
+                          });
+                        }
+                      } else {
+                        s.el.style.filter = "";
+                        s.ghosts.forEach(function (g) {
+                          g.feOff.setAttribute("dx", "0");
+                          g.feOff.setAttribute("dy", "0");
+                          g.feGB.setAttribute("stdDeviation", "0 0");
+                        });
+                        s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                        if (stretchMax > 0) {
+                          gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                        }
+                      }
+
+                      s.prevX = x;
+                      s.prevY = y;
+                      s.prevTime = time;
+                    } else if (dt < -0.0005) {
+                      s.el.style.filter = "";
+                      s.ghosts.forEach(function (g) {
+                        g.feOff.setAttribute("dx", "0");
+                        g.feOff.setAttribute("dy", "0");
+                        g.feGB.setAttribute("stdDeviation", "0 0");
+                      });
+                      s.feTopBlur.setAttribute("stdDeviation", "0 0");
+                      if (stretchMax > 0) {
+                        gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                      }
+                      s.prevX = x;
+                      s.prevY = y;
+                      s.prevTime = time;
+                    }
+                    // dt ≈ 0: runtime double-fires — skip.
+                  });
+                },
+              },
+              0,
+            );
+          }
+
+          /* ── Timeline ─────────────────────────────────────────────── */
+          var tl = gsap.timeline({ paused: true });
+
+          // All elements start at x=-400 (off-screen left), travel to x=1920 (off-screen right).
+          // Shape + text in each group share the same duration → same velocity → same blur.
+          gsap.set(["#s1", "#s2", "#s3", "#s4", "#s5", "#t1", "#t2", "#t3", "#t4", "#t5"], {
+            x: -400,
+          });
+
+          tl.to(["#s1", "#t1"], { x: 1640, duration: 3.0, ease: "power3.inOut" }, 0);
+          tl.to(["#s2", "#t2"], { x: 1640, duration: 1.5, ease: "power3.inOut" }, 0);
+          tl.to(["#s3", "#t3"], { x: 1640, duration: 0.7, ease: "power3.inOut" }, 0);
+          tl.to(["#s4", "#t4"], { x: 1640, duration: 0.35, ease: "power3.inOut" }, 0);
+          tl.to(["#s5", "#t5"], { x: 1640, duration: 0.2, ease: "power3.inOut" }, 0);
+
+          tl.set(document.body, {}, 4);
+
+          attachMotionBlur(
+            ["#s1", "#s2", "#s3", "#s4", "#s5", "#t1", "#t2", "#t3", "#t4", "#t5"],
+            tl,
+            { axis: "x", blurMax: 80, stretchMax: 0 },
+          );
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["motion-blur-example"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

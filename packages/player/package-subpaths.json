@@ -20,6 +20,15 @@
       },
       "types": "./dist/slideshow/hyperframes-slideshow.d.ts",
       "environments": ["browser"]
+    },
+    "./react": {
+      "source": "./dist/react/index.js",
+      "runtime": {
+        "import": "./dist/react/index.js",
+        "require": "./dist/react/index.cjs"
+      },
+      "types": "./dist/react/index.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }

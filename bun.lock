@@ -21,9 +21,27 @@
         "yaml": "^2.9.0",
       },
     },
+    "examples/react-player": {
+      "name": "@hyperframes/react-player-example",
+      "version": "0.7.69",
+      "dependencies": {
+        "@hyperframes/player": "workspace:*",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "@vitejs/plugin-react": "^4.0.0",
+        "happy-dom": "^20.9.0",
+        "typescript": "^5.0.0",
+        "vite": "^6.4.2",
+        "vitest": "^3.2.4",
+      },
+    },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -55,7 +73,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "bin": {
         "hyperframes": "./bin/hyperframes.mjs",
       },
@@ -106,7 +124,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
         "@hyperframes/lint": "workspace:*",
@@ -131,7 +149,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -150,7 +168,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -170,7 +188,7 @@
     },
     "packages/lint": {
       "name": "@hyperframes/lint",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
         "htmlparser2": "^10.1.0",
@@ -188,7 +206,7 @@
     },
     "packages/parsers": {
       "name": "@hyperframes/parsers",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "acorn": "^8.17.0",
@@ -208,22 +226,32 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.1.0",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "gsap": "^3.12.5",
         "puppeteer-core": "^25.2.1",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "tsup": "^8.0.0",
         "typescript": "^5.0.0",
         "vitest": "^3.2.4",
       },
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+      },
+      "optionalPeers": [
+        "react",
+      ],
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -268,7 +296,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -298,7 +326,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -310,7 +338,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -358,7 +386,7 @@
     },
     "packages/studio-server": {
       "name": "@hyperframes/studio-server",
-      "version": "0.7.60",
+      "version": "0.7.69",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -740,6 +768,8 @@
     "@hyperframes/player": ["@hyperframes/player@workspace:packages/player"],
 
     "@hyperframes/producer": ["@hyperframes/producer@workspace:packages/producer"],
+
+    "@hyperframes/react-player-example": ["@hyperframes/react-player-example@workspace:examples/react-player"],
 
     "@hyperframes/sdk": ["@hyperframes/sdk@workspace:packages/sdk"],
 
