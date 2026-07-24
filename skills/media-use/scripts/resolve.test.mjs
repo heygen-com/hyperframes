@@ -553,6 +553,7 @@ test("--help exits 0", () => {
   assert.ok(out.includes("media-use resolve"));
   assert.ok(out.includes("--type"));
   assert.ok(out.includes("--for"));
+  assert.ok(out.includes("--analyze"));
   assert.ok(out.includes("--from"));
   assert.ok(out.includes("--local-only"));
   assert.ok(out.includes("--stats"));
@@ -762,6 +763,33 @@ test("smart grade merges measured adjust and keeps stdout valid JSON", () => {
   assert.equal(parsed.ok, true);
   assert.ok(parsed.grading.adjust.exposure > 0, "under-exposed frame should suggest lift");
   assert.match(proc.stderr, /media-use: measured/);
+  cleanup();
+});
+
+test("grade analysis returns evidence without recording a candidate", () => {
+  if (!HAS_FFMPEG) {
+    console.log("  (skipped: ffmpeg not on PATH)");
+    return;
+  }
+  setup();
+  const frame = makeFrame(tmp, "under.png", "0x202020");
+  const proc = spawnResolve([
+    "--type",
+    "grade",
+    "--for",
+    frame,
+    "--analyze",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  assert.equal(proc.status, 0, proc.stderr);
+  const parsed = JSON.parse(proc.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "grade-analysis");
+  assert.ok(parsed.adjust.exposure > 0, "under-exposed frame should suggest lift");
+  assert.ok(parsed.measured.frames > 0);
+  assert.equal(readManifest(tmp).length, 0);
   cleanup();
 });
 

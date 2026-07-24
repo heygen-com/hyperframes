@@ -15,8 +15,6 @@ export const LIBRARY_LUT_OFFLINE_CODE = "MEDIA_USE_LIBRARY_LUT_OFFLINE";
 // Keep this list in lockstep with the core runtime contract.
 export const CORE_PRESET_IDS = [
   "neutral",
-  "natural-lift",
-  "fresh-pop",
   "warm-daylight",
   "clean-studio",
   "skin-soft",
@@ -26,25 +24,36 @@ export const CORE_PRESET_IDS = [
   "vintage-wash",
   "mono-clean",
   "mono-fade",
-  "warm-clean",
-  "cool-clean",
   "soft-boost",
   "bright-pop",
   "deep-contrast",
+  "creator-camcorder",
+  "vhs-playback",
+  "home-movie-8mm",
+  "editorial-halftone",
+  "two-ink-print",
 ];
 
 const PRESET_SYNONYMS = {
   neutral: ["neutral", "identity", "none", "ungraded", "natural base"],
-  "natural-lift": ["natural lift", "natural light", "gentle lift", "soft natural"],
-  "fresh-pop": ["fresh pop", "fresh", "bright fresh", "clean colorful"],
   "warm-daylight": [
     "warm daylight",
     "warm natural light",
     "golden daylight",
     "sunlit",
     "warm sunny",
+    "warm product",
   ],
-  "clean-studio": ["clean studio", "studio clean", "cool studio", "product studio"],
+  "clean-studio": [
+    "clean studio",
+    "studio clean",
+    "cool studio",
+    "product studio",
+    "natural light",
+    "gentle lift",
+    "soft natural",
+    "cool crisp",
+  ],
   "skin-soft": ["skin soft", "soft skin", "portrait soft", "beauty skin"],
   "food-pop": ["food pop", "food vibrant", "appetizing", "restaurant color"],
   "night-lift": ["night lift", "night", "low light lift", "city night"],
@@ -52,11 +61,21 @@ const PRESET_SYNONYMS = {
   "vintage-wash": ["vintage wash", "vintage", "retro wash", "aged film"],
   "mono-clean": ["mono clean", "black white clean", "monochrome clean"],
   "mono-fade": ["mono fade", "black white fade", "faded monochrome"],
-  "warm-clean": ["warm clean", "clean warm", "warm product"],
-  "cool-clean": ["cool clean", "clean cool", "cool crisp"],
   "soft-boost": ["soft boost", "soft bright", "gentle boost"],
-  "bright-pop": ["bright pop", "bright punchy", "vivid bright"],
+  "bright-pop": [
+    "bright pop",
+    "bright punchy",
+    "vivid bright",
+    "fresh",
+    "bright fresh",
+    "clean colorful",
+  ],
   "deep-contrast": ["deep contrast", "high contrast punchy", "punchy contrast", "bold contrast"],
+  "creator-camcorder": ["creator camcorder", "creator video", "ugc camera", "handheld creator"],
+  "vhs-playback": ["vhs playback", "vhs tape", "analog tape", "degraded tape"],
+  "home-movie-8mm": ["8mm home movie", "8mm film", "family film", "small gauge film"],
+  "editorial-halftone": ["editorial halftone", "halftone", "print dots", "newsprint"],
+  "two-ink-print": ["two ink print", "two ink editorial", "duotone print", "poster print"],
 };
 
 function presetCandidates() {
@@ -103,10 +122,8 @@ export function matchColorLook(intent) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-  for (const candidate of presetCandidates()) {
-    if (candidate.preset === normalized) {
-      return { kind: "preset", preset: candidate.preset, score: 99 };
-    }
+  if (CORE_PRESET_IDS.includes(normalized)) {
+    return { kind: "preset", preset: normalized, score: 99 };
   }
 
   const candidates = [...presetCandidates(), ...libraryCandidates()]

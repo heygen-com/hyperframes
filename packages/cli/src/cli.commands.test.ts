@@ -35,6 +35,12 @@ describe("CLI command registration", () => {
     );
   });
 
+  it("registers media-treatment as the only treatment authoring command", () => {
+    const loaders = commandLoaderBlock();
+    expect(loaders).toContain('"media-treatment"');
+    expect(loaders).not.toContain('"color-grading"');
+  });
+
   // A command actively reconciling skills (`skills check`/`skills update`)
   // must not also nudge the user to go reconcile skills — that nudge is
   // either redundant (it just ran) or misleading (a stale cached count from

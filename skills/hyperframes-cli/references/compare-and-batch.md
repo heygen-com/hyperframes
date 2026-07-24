@@ -48,7 +48,7 @@ npx hyperframes grade-compare \
 `grades.json` is an array of labeled HyperFrames grading blocks:
 
 ```json
-[{ "label": "warm", "grading": { "temperature": 0.2, "contrast": 0.1 } }]
+[{ "label": "warm", "grading": { "adjust": { "temperature": 0.2, "contrast": 0.1 } } }]
 ```
 
 Or compare explicit LUT files:
