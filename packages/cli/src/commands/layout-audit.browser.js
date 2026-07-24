@@ -1729,4 +1729,126 @@
     }
     return samples;
   };
+
+  // connector_motion_detached sampling. Per seeked frame, report every diagram
+  // connector's two screen-space endpoints AND every plausible node/box bbox.
+  // Node accumulates these across the grid and flags an endpoint that stays
+  // anchored to a node while the other endpoint sits in empty space on the held
+  // frames — a connector whose coordinates were frozen (wrong rotation pivot, or
+  // measured once at build) while its target kept moving. Icon-sized SVGs and
+  // short strokes are filtered out so only real diagram connectors count.
+  const CONNECTOR_MIN_SVG_PX = 100;
+  const CONNECTOR_MIN_LEN_PX = 60;
+  // Gauge needles/pointers/ticks are one-end-anchored indicators, not node-to-node
+  // connectors — a separate (gauge) check owns them. Skip by id/class of the line
+  // or any group ancestor up to the SVG.
+  const CONNECTOR_INDICATOR_NAME = /needle|pointer|gauge|tick|indicator/i;
+  const CONNECTOR_NODE_MIN_AREA = 400;
+  // SVG dots/markers are small; keep the floor low but above sub-pixel decoration.
+  const CONNECTOR_NODE_MIN_DOT_AREA = 16;
+  const CONNECTOR_NODE_CAP = 300;
+
+  function isIndicatorConnector(line, svg) {
+    for (let node = line; node && node !== svg.parentElement; node = node.parentElement) {
+      if (CONNECTOR_INDICATOR_NAME.test(connectorNameFor(node))) return true;
+    }
+    return false;
+  }
+
+  function lineScreenEndpoints(svg, line) {
+    if (typeof line.getScreenCTM !== "function" || typeof svg.createSVGPoint !== "function") {
+      return null;
+    }
+    const matrix = line.getScreenCTM();
+    if (!matrix) return null;
+    const map = (x, y) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      const mapped = point.matrixTransform(matrix);
+      return { x: mapped.x, y: mapped.y };
+    };
+    return {
+      start: map(line.x1.baseVal.value, line.y1.baseVal.value),
+      end: map(line.x2.baseVal.value, line.y2.baseVal.value),
+    };
+  }
+
+  // Node/box candidates a connector could anchor to: sized, opaque or text-
+  // bearing HTML elements plus SVG hub/ring/dot shapes. A shape drawn stroke-only
+  // (fill:none) is a ring — the connector attaches to its stroke, so it is marked
+  // `ring` and matched by perimeter, not hollow interior (see pointToNodeGap).
+  function connectorNodeBoxes(root, rootRect) {
+    const boxes = [];
+    const rootArea = rectArea(rootRect);
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (boxes.length >= CONNECTOR_NODE_CAP) break;
+      if (element.closest("svg") || !isVisibleElement(element, 0.05)) continue;
+      const opaque =
+        RASTER_TAGS.has(element.tagName) || hasOpaqueBackground(getComputedStyle(element));
+      if (!opaque && !textContentFor(element)) continue;
+      const rect = toRect(element.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < CONNECTOR_NODE_MIN_AREA || area >= rootArea * 0.5) continue;
+      boxes.push({
+        selector: selectorFor(element),
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        ring: false,
+      });
+    }
+    for (const shape of Array.from(root.querySelectorAll("circle, ellipse, rect"))) {
+      if (boxes.length >= CONNECTOR_NODE_CAP) break;
+      if (!isVisibleElement(shape, 0.05)) continue;
+      const rect = toRect(shape.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < CONNECTOR_NODE_MIN_DOT_AREA || area >= rootArea * 0.5) continue;
+      const fill = getComputedStyle(shape).fill;
+      boxes.push({
+        selector: selectorFor(shape),
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        ring: fill === "none" || fill === "transparent" || shape.getAttribute("fill") === "none",
+      });
+    }
+    return boxes;
+  }
+
+  window.__hyperframesConnectorSample = function collectConnectorSample() {
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const rootRect = rootRectFor(root);
+    const connectors = [];
+    for (const svg of Array.from(root.querySelectorAll("svg"))) {
+      if (!isVisibleElement(svg, 0.05) || hasAllowOverflowFlag(svg)) continue;
+      const svgRect = svg.getBoundingClientRect();
+      if (svgRect.width < CONNECTOR_MIN_SVG_PX || svgRect.height < CONNECTOR_MIN_SVG_PX) continue;
+      for (const line of Array.from(svg.querySelectorAll("line, path"))) {
+        if (line.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
+        if (!isVisibleElement(line, 0.05)) continue;
+        if (isIndicatorConnector(line, svg)) continue;
+        const ends =
+          line.tagName.toLowerCase() === "line"
+            ? lineScreenEndpoints(svg, line)
+            : pathScreenEndpoints(svg, line);
+        if (!ends) continue;
+        const len = Math.hypot(ends.end.x - ends.start.x, ends.end.y - ends.start.y);
+        if (len < CONNECTOR_MIN_LEN_PX) continue;
+        connectors.push({
+          selector: selectorFor(line),
+          ax: round(ends.start.x),
+          ay: round(ends.start.y),
+          bx: round(ends.end.x),
+          by: round(ends.end.y),
+        });
+      }
+    }
+    return { connectors, nodes: connectorNodeBoxes(root, rootRect) };
+  };
 })();

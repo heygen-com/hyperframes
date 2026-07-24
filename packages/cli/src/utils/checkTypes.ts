@@ -153,6 +153,35 @@ export interface OffPivotRotationSample {
   hubCount: number;
 }
 
+/** One diagram connector's two screen endpoints at a single seeked sample. */
+export interface ConnectorLineSample {
+  selector: string;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+}
+
+/** Screen bbox of one plausible node/box a connector could anchor to. `ring`
+ * marks a stroke-only SVG shape matched by perimeter, not hollow interior. */
+export interface ConnectorNodeBox {
+  selector: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  ring: boolean;
+}
+
+/** All connectors + node boxes at one seeked sample, produced by
+ * `__hyperframesConnectorSample` and accumulated across the grid to detect
+ * `connector_motion_detached`. */
+export interface ConnectorFrame {
+  time: number;
+  connectors: ConnectorLineSample[];
+  nodes: ConnectorNodeBox[];
+}
+
 export type MotionSpecResolution =
   | { kind: "none" }
   | { kind: "valid"; path: string; spec: MotionSpec }
@@ -180,6 +209,9 @@ export interface CheckAuditDriver {
   /** off_pivot_rotation: every elongated rotating SVG figure's material-point
    * geometry + resolved dial hub at the current seeked state. */
   collectOffPivotRotationSample(time: number): Promise<OffPivotRotationSample[]>;
+  /** connector_motion_detached: every connector's endpoints + every node bbox
+   * at the current seeked state. Accumulated across the grid — see checkPipeline. */
+  collectConnectorSample(time: number): Promise<ConnectorFrame>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,
