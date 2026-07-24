@@ -79,6 +79,7 @@ const { values: args } = parseArgs({
     from: { type: "string" },
     params: { type: "string" },
     for: { type: "string" },
+    analyze: { type: "boolean", default: false },
     "local-only": { type: "boolean", default: false },
     provider: { type: "string" },
     "avatar-id": { type: "string" },
@@ -115,6 +116,7 @@ Options:
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
+  --analyze       Return --for grade evidence without recording a candidate
   --local-only    Offline: skip every network provider
   --provider      Force one generator (e.g. codex, mflux, kokoro, heygen)
   --avatar-id     Override the default avatar for heygen.video generation
@@ -195,6 +197,26 @@ if (args.reuse !== undefined) {
 // Ingest: freeze a user-supplied local file or direct public URL (no search).
 if (args.from) {
   await ingest(args.from);
+  process.exit(0);
+}
+
+if (args.analyze) {
+  if (type !== "grade" || !args.for) {
+    console.error("error: --analyze requires --type grade and --for <media>");
+    process.exit(2);
+  }
+  const mediaPath = resolve(args.for);
+  if (!existsSync(mediaPath)) {
+    console.error(`error: --for file not found: ${mediaPath}`);
+    process.exit(2);
+  }
+  const analysis = analyzeMediaGrade(mediaPath);
+  if (args.json) {
+    console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
+  } else {
+    console.log(formatMeasuredNote(mediaPath, analysis.measured));
+    console.log(`suggested adjust: ${JSON.stringify(analysis.adjust)}`);
+  }
   process.exit(0);
 }
 

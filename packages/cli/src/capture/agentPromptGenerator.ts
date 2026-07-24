@@ -200,6 +200,10 @@ Source: ${url}
 
 To create a video from this capture, use the \`product-launch-video\` skill.
 
+For later changes to how real footage or images look or reveal, load \`media-use\`
+and its media-treatment policy before editing; do not recreate canonical
+treatments with CSS/SVG filters or overlays.
+
 ## What's in This Capture
 
 | File | Contents |

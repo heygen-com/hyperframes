@@ -43,6 +43,10 @@ const GROUPS: Group[] = [
       ["keyframes", "Inspect keyframes and render onion-shot diagnostics"],
       ["snapshot", "Capture key frames as PNG screenshots for visual verification"],
       [
+        "media-treatment",
+        "Discover, apply, or clear deterministic media treatments on one media element",
+      ],
+      [
         "grade-compare",
         "Render candidate color grades onto a reference frame as one labeled comparison PNG",
       ],

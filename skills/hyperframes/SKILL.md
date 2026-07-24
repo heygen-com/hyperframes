@@ -96,4 +96,14 @@ Use the bare name without `/`. If the command fails, surface the error; do not r
 | Registry blocks and components                                                                                      | `/hyperframes-registry`  |
 | Figma assets, tokens, components, or storyboard frames as reconstructed motion                                      | `/figma`                 |
 
+Broad feedback about how photographic media looks or behaves also routes to
+`/media-use`, even when the user never says “color grading” or “effect”: fix
+dark/flat/boring footage, stylize a clip, hide a face, or improve a media
+reveal. Load its media-treatment policy before editing; do not substitute a
+generic LUT, CSS filter/overlay, or opacity tween for an existing canonical
+treatment primitive. Keep text/layout/motion-only edits in their owning domain.
+During a build with important photographic media, include one grounded
+media-polish scan in the final quality pass; leaving suitable media unchanged is
+a valid result.
+
 Domain skills never take ownership of the end-to-end deliverable. Load only what the active workflow needs.

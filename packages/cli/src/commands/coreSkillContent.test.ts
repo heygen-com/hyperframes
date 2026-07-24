@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HF_COLOR_GRADING_PALETTES } from "@hyperframes/core";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
@@ -71,5 +72,123 @@ describe("media-use TTS documentation", () => {
     expect(tts).not.toMatch(/hyperframes tts[^\n]*--words/);
     expect(captions).not.toMatch(/hyperframes tts[^\n]*--provider/);
     expect(captions).toContain("heygen-tts.mjs");
+  });
+});
+
+describe("media treatment routing documentation", () => {
+  it("routes broad media feedback through media-use to deterministic persistence", () => {
+    const router = read("skills", "hyperframes", "SKILL.md");
+    const mediaUse = read("skills", "media-use", "SKILL.md");
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+
+    expect(router).toContain("dark/flat/boring footage");
+    expect(router).toContain("`/media-use`");
+    expect(router).toMatch(/do not substitute a\s+generic LUT/);
+    expect(mediaUse).toContain("references/media-treatments.md");
+    expect(mediaUse).toContain("`hyperframes media-treatment`");
+    expect(mediaUse).toContain("Do not generate a `.cube` LUT");
+    expect(mediaUse).toMatch(/Do not recreate supported vignette, grain, blur, pixelate/);
+    expect(mediaUse).toContain("Photographic media that feels visually flat or off-topic");
+    expect(mediaUse).toContain("A meaningful media entrance/reveal that feels static");
+    expect(treatments).toContain("## Classify the request");
+    expect(treatments).toContain("Persist pixel settings with `hyperframes media-treatment`");
+    expect(treatments).toContain("do not generate a LUT");
+    expect(treatments).toMatch(/Do not run the generic grade\/LUT\s+resolver first/);
+    expect(treatments).toContain("apply to the entire selected real `<img>` or");
+    expect(treatments).toContain("external segmentation/tracking tool");
+  });
+
+  it("keeps vague media feedback bounded and composes optional overlays through Registry", () => {
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+
+    expect(treatments).toContain("too many shadows and a bit boring");
+    expect(treatments).toContain("lift shadows/protect highlights");
+    expect(treatments).toContain("retro texture, HUD, or palette effect");
+    expect(treatments).toContain("make this reveal cooler");
+    expect(treatments).toContain("preserve color and animate one supported effect");
+    expect(treatments).toContain("use the focused capability result's `animation`");
+    expect(treatments).toMatch(/return temporary treatment\s+values to neutral/);
+    expect(treatments).toContain("hyperframes add <name> --dir <project>");
+    expect(treatments).toContain("do not make the user discover Catalog");
+    expect(treatments).toContain("never duplicate an existing component");
+    expect(treatments).toContain("snapshots/treatment-before/contact-sheet.jpg");
+    expect(treatments).toContain("do not encode a draft solely to prove a static correction");
+    expect(treatments).toMatch(/Do not report visual\s+quality from command success alone/);
+  });
+
+  it("documents every deliberately keyframeable treatment control", () => {
+    const grading = read("skills", "media-use", "references", "grading.md");
+
+    for (const property of [
+      "intensity",
+      "lut-intensity",
+      "exposure",
+      "blur",
+      "bloom",
+      "kuwahara",
+      "pixelate",
+      "ascii",
+      "dither",
+    ]) {
+      expect(grading).toContain(`--hf-color-grading-${property}`);
+    }
+  });
+
+  it("keeps named palette recipes synchronized with Core", () => {
+    const recipes = read("skills", "media-use", "references", "media-treatment-recipes.md");
+
+    for (const palette of HF_COLOR_GRADING_PALETTES) {
+      expect(recipes).toContain(`\`${palette.id}\``);
+      for (const color of palette.colors) expect(recipes).toContain(`\`${color}\``);
+    }
+  });
+
+  it("routes calibrated shader effects that need agent intent recipes", () => {
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+    const recipes = read("skills", "media-use", "references", "media-treatment-recipes.md");
+
+    for (const heading of [
+      "Monochrome Screen Print",
+      "Engraved Illustration",
+      "Crosshatched Sketch",
+      "CRT Display",
+    ]) {
+      expect(treatments).toContain(`\`${heading}\``);
+      expect(recipes).toContain(`## ${heading}`);
+    }
+  });
+
+  it("teaches agents that recipes are optional seeds for capability-built treatments", () => {
+    const skill = read("skills", "media-use", "SKILL.md");
+    const treatments = read("skills", "media-use", "references", "media-treatments.md");
+    const recipes = read("skills", "media-use", "references", "media-treatment-recipes.md");
+
+    for (const content of [skill, treatments])
+      expect(content).toContain("hyperframes media-treatment --capabilities --json");
+    expect(recipes).toContain("hyperframes media-treatment --capabilities --json");
+    expect(treatments).toContain("--capability <id>");
+    expect(treatments).toMatch(/Use\s+`--all` only for/);
+    expect(treatments).toContain("Recipes are optional macros");
+    expect(recipes).toContain("optional tested seeds");
+    expect(treatments).toMatch(/Compose one\s+nested payload/);
+  });
+
+  it("places the media-treatment discovery gate in new project instructions", () => {
+    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+      const template = read("packages", "cli", "src", "templates", "_shared", file);
+      expect(template).toContain("Changing how real footage or images look or reveal?");
+      expect(template).toContain("Load `/media-use`");
+      expect(template).toContain("do not improvise equivalent CSS/SVG filters or overlays");
+    }
+
+    const capturedProjectPrompt = read(
+      "packages",
+      "cli",
+      "src",
+      "capture",
+      "agentPromptGenerator.ts",
+    );
+    expect(capturedProjectPrompt).toContain("load \\`media-use\\`");
+    expect(capturedProjectPrompt).toContain("do not recreate canonical");
   });
 });
