@@ -182,7 +182,7 @@ describe("installRuntimeControlBridge", () => {
   it("dispatches set-color-grading command with target and grading payload", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
-    const grading = { preset: "warm-clean", intensity: 0.7 };
+    const grading = { preset: "warm-daylight", intensity: 0.7 };
     const target = { id: "hero-video", selectorIndex: 0 };
     handler(makeControlMessage("set-color-grading", { target, grading }));
     expect(deps.onSetColorGrading).toHaveBeenCalledWith(target, grading);

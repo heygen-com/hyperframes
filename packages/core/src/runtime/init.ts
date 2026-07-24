@@ -2174,6 +2174,7 @@ export function initSandboxRuntimeModular(): void {
   });
   picker.installPickerApi();
 
+  syncTimedElementVisibility(state.currentTime);
   const colorGrading = createColorGradingRuntime();
   colorGradingRuntime = colorGrading;
   registerRuntimeCleanup(() => {
@@ -2838,6 +2839,9 @@ export function initSandboxRuntimeModular(): void {
       // affected — the seek runs whenever the clock is playing.
       if (clock.isPlaying() || !hasActiveStudioManualEditGesture()) {
         seekTimelineAndAdapters(t);
+      }
+      if (clock.isPlaying()) {
+        colorGrading.redrawAnimated();
       }
 
       // Looping is handled at the player layer (<hyperframes-player>),

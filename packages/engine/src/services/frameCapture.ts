@@ -2356,6 +2356,14 @@ async function prepareFrameForCapture(
   if (session.onBeforeCapture) {
     await session.onBeforeCapture(page, quantizedTime);
   }
+  await page.evaluate(async () => {
+    const runtime = (
+      window as Window & {
+        __hf?: { colorGrading?: { waitForActiveLuts?: () => Promise<number> } };
+      }
+    ).__hf?.colorGrading;
+    await runtime?.waitForActiveLuts?.();
+  });
   const beforeCaptureMs = Date.now() - beforeCaptureStart;
 
   // Page-side compositing three-phase protocol:

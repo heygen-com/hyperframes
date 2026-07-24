@@ -16,6 +16,123 @@ function classNamesFromAttr(classAttr: string | null): string[] {
   return classAttr.split(/\s+/).filter(Boolean);
 }
 
+const COLOR_GRADING_TOP_LEVEL_KEYS = new Set([
+  "enabled",
+  "preset",
+  "intensity",
+  "adjust",
+  "details",
+  "effects",
+  "palette",
+  "lut",
+  "colorSpace",
+]);
+
+const COLOR_GRADING_SECTION_KEYS: Record<string, ReadonlySet<string>> = {
+  adjust: new Set([
+    "exposure",
+    "contrast",
+    "highlights",
+    "shadows",
+    "whites",
+    "blacks",
+    "temperature",
+    "tint",
+    "vibrance",
+    "saturation",
+  ]),
+  details: new Set([
+    "vignette",
+    "vignetteMidpoint",
+    "vignetteRoundness",
+    "vignetteFeather",
+    "grain",
+    "grainSize",
+    "grainRoughness",
+  ]),
+  effects: new Set([
+    "blur",
+    "pixelate",
+    "chromaBleed",
+    "tapeDamage",
+    "tapeTracking",
+    "tapeNoise",
+    "tapeSpeed",
+    "filmArtifacts",
+    "halftone",
+    "halftoneSize",
+    "twoInkPrint",
+    "twoInkPrintSize",
+    "ascii",
+    "asciiSize",
+    "asciiInvert",
+    "asciiStyle",
+    "asciiColor",
+    "asciiRotation",
+    "dither",
+    "ditherSize",
+    "bloom",
+    "bloomRadius",
+    "monoScreen",
+    "monoScreenSize",
+    "monoScreenAngle",
+    "monoScreenSpread",
+    "monoScreenShape",
+    "monoScreenInvert",
+    "scanlines",
+    "scanlineCount",
+    "scanlineSoftness",
+    "chromaticAberration",
+    "chromaticAngle",
+    "crtCurvature",
+    "digitalGlitch",
+    "digitalGlitchColorSplit",
+    "digitalGlitchLineTear",
+    "digitalGlitchPixelate",
+    "digitalGlitchBlockAmount",
+    "digitalGlitchBlockDisplacement",
+    "digitalGlitchBlockOpacity",
+    "digitalGlitchSpeed",
+    "engraving",
+    "engravingSpacing",
+    "engravingMinThickness",
+    "engravingMaxThickness",
+    "engravingAngle",
+    "engravingContrast",
+    "engravingSharpness",
+    "engravingWave",
+    "engravingWaveFrequency",
+    "crosshatch",
+    "crosshatchSpacing",
+    "crosshatchThickness",
+    "crosshatchAngle",
+    "crosshatchContrast",
+    "crosshatchEdges",
+    "crosshatchLineWeight",
+    "crosshatchWave",
+    "crosshatchWaveFrequency",
+    "kuwahara",
+    "kuwaharaRadius",
+    "kuwaharaSharpness",
+    "kuwaharaSaturation",
+  ]),
+  lut: new Set(["src", "intensity"]),
+};
+
+const COLOR_GRADING_VARIABLE_REF = /^\$(?:\{[A-Za-z0-9_.:-]+\}|[A-Za-z0-9_.:-]+)$/;
+const COLOR_GRADING_PALETTE_COLOR = /^#[0-9a-f]{6}$/i;
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function colorGradingSectionFor(key: string): string | null {
+  for (const [section, keys] of Object.entries(COLOR_GRADING_SECTION_KEYS)) {
+    if (keys.has(key)) return section;
+  }
+  return null;
+}
+
 type MediaSelectorIndex = {
   ids: Set<string>;
   classes: Set<string>;
@@ -243,6 +360,120 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
           `${tagName} src=${src} data-start=${dataStart} data-duration=${dataDuration}`,
         ),
       });
+    }
+    return findings;
+  },
+
+  // color_grading_* — grading is a structured media-only contract. Unknown
+  // keys are ignored by the runtime, so catch them before an agent can report
+  // controls that never actually rendered.
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const raw = readDecodedAttr(tag.raw, "data-color-grading");
+      if (raw === null) continue;
+      const elementId = readAttr(tag.raw, "id") || undefined;
+      const report = (code: string, message: string, fixHint: string) => {
+        findings.push({
+          code,
+          severity: "error",
+          message,
+          elementId,
+          fixHint,
+          snippet: truncateSnippet(tag.raw),
+        });
+      };
+      if (tag.name !== "video" && tag.name !== "img") {
+        report(
+          "color_grading_non_media",
+          `data-color-grading on <${tag.name}> has no effect. The shader runtime only grades real <video> and <img> elements.`,
+          "Move the grading attribute to the real <video> or <img> media element. Do not attach it to a wrapper or CSS background.",
+        );
+        continue;
+      }
+
+      const trimmed = raw.trim();
+      if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        report(
+          "color_grading_invalid_json",
+          "data-color-grading contains malformed JSON and will not render.",
+          'Use valid JSON, for example {"preset":"skin-soft","intensity":0.6,"adjust":{"highlights":-0.08}}.',
+        );
+        continue;
+      }
+      if (!isJsonObject(parsed)) {
+        report(
+          "color_grading_invalid_structure",
+          "data-color-grading JSON must be an object.",
+          'Use an object such as {"preset":"skin-soft","intensity":0.6}.',
+        );
+        continue;
+      }
+
+      const unknownTopLevel = Object.keys(parsed).filter(
+        (key) => !COLOR_GRADING_TOP_LEVEL_KEYS.has(key),
+      );
+      if (unknownTopLevel.length > 0) {
+        const sections = new Set(unknownTopLevel.map(colorGradingSectionFor).filter(Boolean));
+        report(
+          "color_grading_invalid_structure",
+          `data-color-grading has unsupported top-level key(s) that the runtime ignores: ${unknownTopLevel.join(", ")}.`,
+          sections.size === 1
+            ? `Move those controls under "${Array.from(sections)[0]}".`
+            : "Use only enabled, preset, intensity, adjust, details, effects, palette, lut, and colorSpace at the top level.",
+        );
+      }
+
+      const palette = parsed.palette;
+      if (
+        palette !== undefined &&
+        !(
+          (typeof palette === "string" && COLOR_GRADING_VARIABLE_REF.test(palette.trim())) ||
+          (Array.isArray(palette) &&
+            palette.length >= 2 &&
+            palette.length <= 6 &&
+            palette.every(
+              (color) => typeof color === "string" && COLOR_GRADING_PALETTE_COLOR.test(color),
+            ))
+        )
+      ) {
+        report(
+          "color_grading_invalid_structure",
+          'data-color-grading "palette" must contain 2 to 6 hexadecimal colors.',
+          'Use 2 to 6 colors in the intended mapping order, each written as exact "#RRGGBB", or use a project variable reference. Dark-to-light is conventional; reversing the order intentionally inverts the result.',
+        );
+      }
+
+      for (const [section, allowedKeys] of Object.entries(COLOR_GRADING_SECTION_KEYS)) {
+        const value = parsed[section];
+        if (
+          value === undefined ||
+          (typeof value === "string" &&
+            (section === "lut" || COLOR_GRADING_VARIABLE_REF.test(value.trim()))) ||
+          (section === "lut" && value === null)
+        ) {
+          continue;
+        }
+        if (!isJsonObject(value)) {
+          report(
+            "color_grading_invalid_structure",
+            `data-color-grading "${section}" must be an object or variable reference.`,
+            `Put ${section} controls inside a JSON object under "${section}".`,
+          );
+          continue;
+        }
+        const unknownKeys = Object.keys(value).filter((key) => !allowedKeys.has(key));
+        if (unknownKeys.length === 0) continue;
+        report(
+          "color_grading_invalid_structure",
+          `data-color-grading "${section}" has unsupported key(s) that the runtime ignores: ${unknownKeys.join(", ")}.`,
+          `Correct or remove the unsupported "${section}" keys.`,
+        );
+      }
     }
     return findings;
   },
