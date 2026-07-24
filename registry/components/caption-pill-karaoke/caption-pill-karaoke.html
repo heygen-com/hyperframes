@@ -235,8 +235,17 @@
 
         function hfApplyStageConfig(data, durationS) {
           var res = (data && data.resolution) || HF_DEFAULT_RESOLUTION;
-          var W = Math.max(1, Math.round(Number(res.width) || HF_DEFAULT_RESOLUTION.width));
-          var H = Math.max(1, Math.round(Number(res.height) || HF_DEFAULT_RESOLUTION.height));
+          // Mirror the published validator's <=8192 bound defensively — the
+          // validator is an optional pre-flight, and an unbounded stage size
+          // would OOM render workers.
+          var W = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.width) || HF_DEFAULT_RESOLUTION.width)),
+          );
+          var H = Math.min(
+            8192,
+            Math.max(1, Math.round(Number(res.height) || HF_DEFAULT_RESOLUTION.height)),
+          );
           var root = document.getElementById(HF_ROOT_ID);
           [document.documentElement, document.body, root].forEach(function (el) {
             el.style.width = W + "px";
@@ -464,6 +473,9 @@
 
         function fontSizeForGroup(words) {
           var size = BASE_FONT_SIZE;
+          // MIN_FONT_SIZE is a hard floor returned unverified below — self-heal
+          // accepts residual overflow at the floor (clipped by the stage)
+          // rather than shrinking below legibility.
           while (size > MIN_FONT_SIZE && !fitsInTwoLinesAtSize(words, size)) {
             size -= 2;
           }
