@@ -812,10 +812,10 @@ describe("PropertyPanel — Media group (Plan 4)", () => {
 // design_handoff scrollable-open-section: collapsed headers before/after the
 // open group render in normal document flow and never move (no sticky, no
 // stacking offsets) — only the open group's own body content scrolls, in a
-// dedicated region between the two fixed header stacks. Worked example: 6
-// groups [text, style, layout, motion, grade, media], motion open (index 3)
+// dedicated region between the two fixed header stacks. Worked example: 7
+// groups [text, style, layout, motion, grade, effects, media], motion open (index 3)
 // -> text/style/layout render as fixed collapsed headers before it, motion
-// renders as an open header + scrollable body, grade/media render as fixed
+// renders as an open header + scrollable body, grade/effects/media render as fixed
 // collapsed headers after it — in exactly that DOM order, nothing sticky.
 describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", () => {
   it(
@@ -839,13 +839,14 @@ describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", 
       });
       // Filter to just the group entries (drop any non-group nulls).
       const groupTitles = titles.filter((t): t is string => t !== null);
-      expect(groupTitles).toHaveLength(6);
+      expect(groupTitles).toHaveLength(7);
       expect(groupTitles[0]).toContain("Text");
       expect(groupTitles[1]).toContain("Style");
       expect(groupTitles[2]).toContain("Layout");
       expect(groupTitles[3]).toContain("Motion");
       expect(groupTitles[4]).toContain("Grade");
-      expect(groupTitles[5]).toContain("Media");
+      expect(groupTitles[5]).toContain("Effects");
+      expect(groupTitles[6]).toContain("Media");
 
       // The open group (Motion, index 3) is the one wrapped in
       // data-flat-group-open, sitting between the before/after collapsed
@@ -880,14 +881,15 @@ describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", 
       const collapsedRows = Array.from(
         host.querySelectorAll<HTMLButtonElement>('[data-flat-group-collapsed="true"]'),
       );
-      expect(collapsedRows).toHaveLength(6);
+      expect(collapsedRows).toHaveLength(7);
       const titlesInOrder = collapsedRows.map((el) => el.textContent ?? "");
       expect(titlesInOrder[0]).toContain("Text");
       expect(titlesInOrder[1]).toContain("Style");
       expect(titlesInOrder[2]).toContain("Layout");
       expect(titlesInOrder[3]).toContain("Motion");
       expect(titlesInOrder[4]).toContain("Grade");
-      expect(titlesInOrder[5]).toContain("Media");
+      expect(titlesInOrder[5]).toContain("Effects");
+      expect(titlesInOrder[6]).toContain("Media");
 
       const body = host.querySelector('[data-flat-panel-body="true"]');
       expect(body?.querySelector(".overflow-y-auto")).toBeNull();

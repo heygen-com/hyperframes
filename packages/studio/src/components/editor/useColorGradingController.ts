@@ -4,6 +4,7 @@ import {
   isHfColorGradingActive,
   normalizeHfColorGrading,
   serializeHfColorGrading,
+  type HfColorGradingActiveEffectKey,
   type HfColorGradingTarget,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
@@ -18,6 +19,13 @@ import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../../player/lib/runtimeProtocol";
+import {
+  useColorGradingPreviews,
+  type ColorGradingPresetPreviews,
+  type ColorGradingPreviewOptions,
+} from "./useColorGradingPreviews";
+
+export type { ColorGradingPresetPreviews, ColorGradingPreviewOptions };
 
 const COLOR_GRADING_DATA_KEY = HF_COLOR_GRADING_ATTR.replace(/^data-/, "");
 const RUNTIME_STATUS_REFRESH_DELAYS = [50, 250, 1000, 2500] as const;
@@ -152,7 +160,15 @@ export interface ColorGradingControllerState {
   applyBusy: boolean;
   runtimeStatus: RuntimeColorGradingStatus;
   mediaMetadata: MediaMetadata | null;
+  presetPreviews: ColorGradingPresetPreviews;
+  effectPreviews: ColorGradingPresetPreviews;
+  requestPresetPreviews: () => void;
+  requestEffectPreviews: (effects: readonly HfColorGradingActiveEffectKey[]) => void;
   commitColorGrading: (next: NormalizedHfColorGrading) => void;
+  previewColorGrading: (
+    next: NormalizedHfColorGrading | null,
+    options?: ColorGradingPreviewOptions,
+  ) => void;
   commitCompare: (enabled: boolean) => void;
   setApplyScope: (scope: "source-file" | "project") => void;
   applyToScope: () => Promise<void>;
@@ -195,20 +211,11 @@ export function useColorGradingController({
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPersistValueRef = useRef<string | null | undefined>(undefined);
   const pendingPersistGradingRef = useRef<NormalizedHfColorGrading | null>(null);
-  // Identity the pending edit was made FOR, snapshotted at schedule time —
-  // read by a global flush instead of identityKeyRef.current, which may no
-  // longer describe this edit's element by the time the flush runs.
+  // Capture the edited element because selection can change before persistence.
   const pendingPersistIdentityRef = useRef<string | null>(null);
-  // The last grading value actually confirmed saved — distinct from `grading`
-  // (the optimistic value shown immediately on commit). A rejected persist
-  // reverts to this instead of leaving the UI permanently showing a value
-  // that was never written.
+  // Keep a confirmed value so an optimistic edit can be reverted on failure.
   const confirmedGradingRef = useRef(grading);
-  // Monotonic per-commit version — guards against TWO edits on the SAME
-  // element racing (not just a selection change). If edit A's persist is
-  // still in flight when edit B commits, A's eventual settle must not stamp
-  // confirmedGradingRef with its now-superseded value or revert `grading`
-  // out from under B's newer optimistic state.
+  // Prevent an older same-element write from settling over a newer edit.
   const gradingVersionRef = useRef(0);
   const statusTimersRef = useRef<number[]>([]);
   const latestGradingRef = useRef(grading);
@@ -216,22 +223,7 @@ export function useColorGradingController({
   latestGradingRef.current = grading;
   compareEnabledRef.current = compareEnabled;
 
-  // Reset all per-element STATE when the selection changes to a different
-  // element — unlike the legacy ColorGradingSection (remounted via a
-  // `key={selectionIdentityKey(element)}` from its parent), this hook is
-  // called unconditionally on every render, so nothing naturally remounts it.
-  // Without this, switching selection reuses the previous element's grading/
-  // compare/mediaMetadata state. Adjusting state during render (comparing
-  // against a ref) is React's documented pattern for STATE updates
-  // specifically — it resolves in the same render pass instead of flashing
-  // stale state for one frame, and is safe to repeat if React discards and
-  // re-runs this render, since every value here is a pure function of
-  // `element`. It must NOT be used for side effects or for consuming
-  // shared mutable state (like the pending-persist timer/value) — a
-  // discarded render would have already consumed them with no corresponding
-  // effect ever running to compensate. That part happens below, in an
-  // effect's cleanup, which is guaranteed to run only for a render that
-  // actually committed.
+  // Reset derived state during render to avoid flashing the previous selection.
   const identityKey = selectionIdentityKey(element);
   const identityKeyRef = useRef(identityKey);
   if (identityKeyRef.current !== identityKey) {
@@ -248,22 +240,9 @@ export function useColorGradingController({
     setMediaMetadata(null);
   }
 
-  // Flushes — never discards — a still-pending edit when selection moves to
-  // a different element, and cancels the debounce timer. Implemented as an
-  // effect CLEANUP (not the render-phase block above, and not a queued ref
-  // consumed by a separate effect): a cleanup only ever runs for the
-  // specific effect instance that actually committed for `identityKey`, so
-  // there's no window where a discarded/interrupted render could have
-  // already consumed pendingPersistValueRef without this ever running to
-  // compensate. The cleanup's closure captures onSetAttributeLive/target
-  // bound to the OUTGOING identity, since it runs before the next effect
-  // instance (for the NEW identity) is established.
+  // Flush a pending write through the outgoing selection's committed callback.
   useEffect(() => {
     return () => {
-      // Stale runtime-status timers scheduled for the OUTGOING element must
-      // not fire after this: readRuntimeColorGradingStatus closes over
-      // `target`, so an old timer firing post-switch would stamp the NEW
-      // element's runtimeStatus with the OLD element's answer.
       for (const timer of statusTimersRef.current) clearTimeout(timer);
       statusTimersRef.current = [];
       if (persistTimerRef.current) {
@@ -316,11 +295,7 @@ export function useColorGradingController({
       })
       .then((result) => {
         if (controller.signal.aborted) return;
-        // Only cache a definitive answer from a successful response — a non-OK
-        // status is a transient/server failure, not a stable "no metadata"
-        // result, and caching it would suppress the HDR banner for this asset
-        // for the page's whole lifetime. Leave the key absent so the next
-        // selection retries.
+        // Cache only successful responses so transient failures remain retryable.
         if (!result.ok) {
           setMediaMetadata(null);
           return;
@@ -329,8 +304,6 @@ export function useColorGradingController({
         setMediaMetadata(result.metadata);
       })
       .catch(() => {
-        // Same reasoning as the non-OK branch above: don't cache a network-
-        // level fetch failure either.
         if (!controller.signal.aborted) setMediaMetadata(null);
       });
     return () => controller.abort();
@@ -364,13 +337,6 @@ export function useColorGradingController({
         onSettled?: (ok: boolean) => void,
       ) => void | Promise<void>,
     ) => {
-      // Two guards, not one: identity (selection moved to a DIFFERENT
-      // element — that element already got its own confirmedGradingRef
-      // baseline from the reset block) and version (a NEWER edit landed on
-      // the SAME element — e.g. the user dragged Exposure, then Contrast,
-      // before Exposure's persist settled; Exposure settling afterward must
-      // not stamp confirmedGradingRef with its now-superseded value or
-      // revert `grading` out from under Contrast's newer optimistic state).
       const applySettled = (ok: boolean) => {
         if (identityKeyRef.current !== attemptIdentityKey) return;
         if (!isLatestAttempt()) return;
@@ -378,25 +344,13 @@ export function useColorGradingController({
           confirmedGradingRef.current = attemptedGrading;
           return;
         }
-        // Persist failed — the optimistic grading was never actually saved.
-        // Revert to the last confirmed-good value instead of leaving the
-        // control showing an unsaved state as if it succeeded.
         const reverted = confirmedGradingRef.current;
         latestGradingRef.current = reverted;
         setGrading(reverted);
         setRuntimeStatus({ state: "unavailable", message: "Save failed — reverted" });
       };
-      // `onSettled` is the real signal — the underlying commit runner
-      // (runDomEditCommit) intentionally swallows persist failures so a
-      // caller `await`-ing this promise never sees a rejection; a rejection
-      // handler here alone would be dead code against the actual Studio
-      // callback. The `.catch` below is a fallback for any OTHER
-      // implementation of onSetAttributeLive that rejects instead.
-      // `setAttributeLive` is passed in by the caller rather than read from a
-      // ref: a debounced persist for element A must call the callback that
-      // was live when A's edit was SCHEDULED, not whatever the ref holds by
-      // the time the timer fires — a "latest" ref would let a stale timer
-      // wrongly target a since-selected element B's callback.
+      // The callback is the primary result signal; the rejection path supports
+      // other setAttributeLive implementations.
       const result = setAttributeLive(COLOR_GRADING_DATA_KEY, value ?? null, applySettled);
       return trackStudioPendingEdit(
         Promise.resolve(result).then(
@@ -416,20 +370,10 @@ export function useColorGradingController({
     if (pendingPersistValueRef.current === undefined) return undefined;
     const value = pendingPersistValueRef.current;
     const attemptedGrading = pendingPersistGradingRef.current ?? latestGradingRef.current;
-    // Snapshotted at schedule time, not identityKeyRef.current read fresh
-    // here — an async flush could otherwise tag the attempt with whatever
-    // identity is "current" by then, not the one this edit was made for.
     const attemptIdentityKey = pendingPersistIdentityRef.current ?? identityKeyRef.current;
     pendingPersistValueRef.current = undefined;
     pendingPersistGradingRef.current = null;
     pendingPersistIdentityRef.current = null;
-    // A flush cancels the pending debounce timer above, so this becomes the
-    // one-and-only in-flight attempt for this element — bump the version so
-    // it still registers as "the latest attempt" against the same guard a
-    // regular debounced commit uses, instead of unconditionally claiming
-    // that title. Without this, a newer edit landing after the flush starts
-    // but before it settles would have its own eventual settle silently
-    // lose the version race to this unconditionally-"latest" flush.
     const isLatestAttempt = bumpDomEditCommitVersion(gradingVersionRef);
     return persistColorGradingValue(
       value,
@@ -458,6 +402,14 @@ export function useColorGradingController({
     },
     [previewIframeRef, target],
   );
+  const previewController = useColorGradingPreviews({
+    grading,
+    gradingRef: latestGradingRef,
+    identityKey,
+    target,
+    previewIframeRef,
+    postColorGrading,
+  });
 
   const postCompare = useCallback(
     (enabled: boolean) => {
@@ -509,6 +461,7 @@ export function useColorGradingController({
 
   const commitColorGrading = useCallback(
     (nextGrading: NormalizedHfColorGrading) => {
+      latestGradingRef.current = nextGrading;
       setGrading(nextGrading);
       setRuntimeStatus({ state: "pending", message: "Updating shader" });
       postColorGrading(nextGrading);
@@ -524,14 +477,7 @@ export function useColorGradingController({
         : null;
       pendingPersistGradingRef.current = nextGrading;
       pendingPersistIdentityRef.current = identityKeyRef.current;
-      // Captured now (edit time), not read fresh inside the timer — the
-      // timer fires 350ms later and may run after selection has already
-      // moved on, at which point identityKeyRef.current would no longer
-      // describe the element this edit was actually made for.
       const attemptIdentityKey = identityKeyRef.current;
-      // Bumps a monotonic version and hands back a checker bound to THIS
-      // specific commit — reused from the same primitive the DOM-attribute
-      // commit runner uses for the identical same-target-rapid-edits race.
       const isLatestAttempt = bumpDomEditCommitVersion(gradingVersionRef);
       persistTimerRef.current = setTimeout(() => {
         const value = pendingPersistValueRef.current;
@@ -587,7 +533,12 @@ export function useColorGradingController({
     applyBusy,
     runtimeStatus,
     mediaMetadata,
+    presetPreviews: previewController.presetPreviews,
+    effectPreviews: previewController.effectPreviews,
+    requestPresetPreviews: previewController.requestPresetPreviews,
+    requestEffectPreviews: previewController.requestEffectPreviews,
     commitColorGrading,
+    previewColorGrading: previewController.previewColorGrading,
     commitCompare,
     setApplyScope,
     applyToScope,

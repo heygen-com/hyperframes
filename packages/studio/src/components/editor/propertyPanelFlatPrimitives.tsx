@@ -8,6 +8,8 @@ import {
   type PropertyValueTier,
 } from "./propertyPanelValueTier";
 
+export const FLAT_PREVIEW_GRID = "grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-1";
+
 /* ------------------------------------------------------------------ */
 /*  FlatRow — single-column label/value property row                   */
 /* ------------------------------------------------------------------ */

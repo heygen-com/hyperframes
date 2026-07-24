@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  HF_COLOR_GRADING_PRESETS,
+  HF_COLOR_GRADING_GRADE_PRESETS,
   isHfColorGradingActive,
   normalizeHfColorGrading,
   type HfColorGradingAdjustKey,
   type HfColorGradingDetailKey,
-  type HfColorGradingEffectKey,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { LUT_EXT } from "../../utils/mediaTypes";
-import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
-import { resolveValueTier } from "./propertyPanelValueTier";
-import type { ColorGradingControllerState, MediaMetadata } from "./useColorGradingController";
+import { FLAT_PREVIEW_GRID, FlatSlider } from "./propertyPanelFlatPrimitives";
+import type {
+  ColorGradingControllerState,
+  ColorGradingPresetPreviews,
+  ColorGradingPreviewOptions,
+  MediaMetadata,
+} from "./useColorGradingController";
+import { presetPreviewHandlers } from "./propertyPanelPresetPreview";
 
 const STATUS_DOT_CLASS: Record<ColorGradingControllerState["runtimeStatus"]["state"], string> = {
   active: "bg-emerald-400",
@@ -123,8 +127,6 @@ export function FlatColorGradingAccessory({
   );
 }
 
-const PRESET_OPTIONS = HF_COLOR_GRADING_PRESETS.map((p) => ({ value: p.id, label: p.label }));
-
 const ADJUST_SLIDERS: Array<{
   key: HfColorGradingAdjustKey;
   label: string;
@@ -182,11 +184,6 @@ const VIGNETTE_TUNE_KEYS: HfColorGradingDetailKey[] = [
 ];
 const GRAIN_TUNE_KEYS: HfColorGradingDetailKey[] = ["grainSize", "grainRoughness"];
 
-const EFFECT_SLIDERS: Array<{ key: HfColorGradingEffectKey; label: string }> = [
-  { key: "blur", label: "Blur" },
-  { key: "pixelate", label: "Pixelate" },
-];
-
 function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   if (metadata?.color.dynamicRange !== "hdr") return null;
   const details = [
@@ -231,23 +228,32 @@ export function FlatColorGradingSection({
   assets,
   onImportAssets,
   onCommitColorGrading,
+  onPreviewColorGrading,
   applyScope,
   applyBusy,
   onSetApplyScope,
   onApplyToScope,
   onApplyScopeAvailable,
   mediaMetadata,
+  presetPreviews,
+  onRequestPresetPreviews,
 }: {
   grading: NormalizedHfColorGrading;
   assets: string[];
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   onCommitColorGrading: (next: NormalizedHfColorGrading) => void;
+  onPreviewColorGrading: (
+    next: NormalizedHfColorGrading | null,
+    options?: ColorGradingPreviewOptions,
+  ) => void;
   applyScope: "source-file" | "project";
   applyBusy: boolean;
   onSetApplyScope: (scope: "source-file" | "project") => void;
   onApplyToScope: () => void;
   onApplyScopeAvailable: boolean;
   mediaMetadata: MediaMetadata | null;
+  presetPreviews: ColorGradingPresetPreviews;
+  onRequestPresetPreviews: () => void;
 }) {
   const track = useTrackDesignInput();
   const lutInputRef = useRef<HTMLInputElement>(null);
@@ -260,10 +266,21 @@ export function FlatColorGradingSection({
   const lut = grading.lut;
   const selectedLutName = lut?.src ? (lut.src.split("/").pop() ?? lut.src) : null;
 
-  const applyPreset = (presetId: string) => {
-    const next = normalizeHfColorGrading({ preset: presetId, intensity: 1, lut: grading.lut });
-    if (next) onCommitColorGrading(next);
+  useEffect(() => {
+    if (
+      presetPreviews.status !== "loading" &&
+      HF_COLOR_GRADING_GRADE_PRESETS.some((preset) => !presetPreviews.images[preset.id])
+    ) {
+      onRequestPresetPreviews();
+    }
+  }, [onRequestPresetPreviews, presetPreviews.images, presetPreviews.status]);
+
+  const resolvePreset = (presetId: string) => {
+    const resolved = normalizeHfColorGrading({ preset: presetId, lut: grading.lut });
+    return resolved ? { ...resolved, effects: grading.effects, palette: grading.palette } : grading;
   };
+
+  useEffect(() => () => onPreviewColorGrading(null), [onPreviewColorGrading]);
   const updateIntensity = (value: number) => {
     onCommitColorGrading({ ...grading, intensity: value / 100 });
   };
@@ -319,22 +336,60 @@ export function FlatColorGradingSection({
   return (
     <div className="space-y-1.5">
       <HdrBanner metadata={mediaMetadata} />
-      <div data-flat-grade-preset="true" className="flex min-h-[30px] items-center justify-between">
-        <span className="text-[11px] text-panel-text-2">Preset</span>
-        <FlatSelectRow
-          label=""
-          ariaLabel="Preset"
-          value={grading.preset ?? "neutral"}
-          options={PRESET_OPTIONS}
-          tier={resolveValueTier(
-            grading.preset === "neutral" ? undefined : (grading.preset ?? undefined),
-            "neutral",
-          )}
-          onChange={applyPreset}
-        />
+      <div data-flat-grade-presets="true" className="space-y-1.5">
+        <div data-flat-grade-preset-group="presets" className={FLAT_PREVIEW_GRID}>
+          {HF_COLOR_GRADING_GRADE_PRESETS.map((preset) => {
+            const label = preset.label;
+            const selected = grading.preset === preset.id;
+            const preview = presetPreviews.images[preset.id];
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                data-flat-grade-preset={preset.id}
+                aria-pressed={selected}
+                {...presetPreviewHandlers({
+                  id: preset.id,
+                  label,
+                  resolve: () => resolvePreset(preset.id),
+                  onPreview: onPreviewColorGrading,
+                  onCommit: onCommitColorGrading,
+                  onTrack: (name) => track("button", `Apply ${name}`),
+                })}
+                className={`min-w-0 overflow-hidden border text-left text-[10px] transition-colors ${
+                  selected
+                    ? "border-panel-accent bg-panel-accent/10 text-panel-text-0"
+                    : "border-panel-hairline bg-panel-bg-soft text-panel-text-3 hover:border-panel-border-input hover:text-panel-text-1"
+                }`}
+              >
+                <span
+                  data-flat-grade-preview-frame={preset.id}
+                  className="flex w-full items-center justify-center overflow-hidden bg-black/20"
+                  style={{ aspectRatio: `${presetPreviews.width} / ${presetPreviews.height}` }}
+                >
+                  {preview ? (
+                    <img
+                      data-flat-grade-preview={preset.id}
+                      src={preview}
+                      alt=""
+                      draggable={false}
+                      className="block h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span
+                      data-flat-grade-preview-placeholder={presetPreviews.status}
+                      className="h-full w-full bg-panel-bg-soft"
+                    />
+                  )}
+                </span>
+                <span className="block truncate px-2 py-1.5">{label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
       <FlatSlider
-        label="Strength"
+        label="Amount"
         value={Math.round(grading.intensity * 100)}
         min={0}
         max={100}
@@ -462,7 +517,7 @@ export function FlatColorGradingSection({
 
       <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
         <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Finishing
+          Finish
         </div>
         <div className="flex items-center gap-1.5">
           <div className="flex-1">{renderDetailSlider("vignette")}</div>
@@ -495,42 +550,6 @@ export function FlatColorGradingSection({
             )}
           </div>
         )}
-      </div>
-
-      <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          Effects
-        </div>
-        {EFFECT_SLIDERS.map((slider) => {
-          const value = grading.effects[slider.key];
-          const isSet = value > 1e-6;
-          return (
-            <div key={slider.key} data-flat-grade-effect="true">
-              <FlatSlider
-                label={slider.label}
-                value={Math.round(value * 100)}
-                min={0}
-                max={100}
-                tier={isSet ? "explicitCustom" : "default"}
-                displayValue={`${Math.round(value * 100)}%`}
-                onCommit={(next) =>
-                  onCommitColorGrading({
-                    ...grading,
-                    intensity: visibleIntensity(grading),
-                    effects: { ...grading.effects, [slider.key]: next / 100 },
-                  })
-                }
-                onReset={() =>
-                  onCommitColorGrading({
-                    ...grading,
-                    intensity: visibleIntensity(grading),
-                    effects: { ...grading.effects, [slider.key]: 0 },
-                  })
-                }
-              />
-            </div>
-          );
-        })}
       </div>
 
       {onApplyScopeAvailable && (
