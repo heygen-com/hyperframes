@@ -9,7 +9,7 @@ import {
   unlinkSync,
   utimesSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
@@ -96,7 +96,7 @@ export class ProxyCapacityError extends ProxyTranscodeError {
 
 export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
   constructor() {
-    super("media proxy source must be inside the project", null, "");
+    super("media proxy source must be addressed through the project", null, "");
     this.name = "ProxySourceOutsideProjectError";
   }
 }
@@ -129,33 +129,52 @@ export async function waitForProxy<T>(
 }
 
 /**
- * Cache key inputs per the plan: source path relative to the project (so the
- * cache is portable across checkouts at different absolute locations), mtime
- * and file size (mtime alone can collide on same-second re-exports on
- * coarse-timestamp filesystems; size catches nearly all such cases at zero
- * cost), and a params version token so changing the ffmpeg recipe below
- * invalidates every cached proxy cleanly.
+ * Cache key inputs per the plan: project-relative source path (portable across
+ * checkouts), canonical source identity (so retargeted external symlinks do
+ * not reuse a proxy), mtime and file size (mtime alone can collide on
+ * same-second re-exports on coarse-timestamp filesystems; size catches nearly
+ * all such cases at zero cost), and a params version token so changing the
+ * ffmpeg recipe below invalidates every cached proxy cleanly.
  */
 type CanonicalProxySource = {
   projectDir: string;
   sourcePath: string;
   relativePath: string;
+  cacheIdentity: string;
 };
 
 function canonicalizeProxySource(
   projectDir: string,
   absoluteSourcePath: string,
 ): CanonicalProxySource {
-  const canonicalProjectDir = realpathSync(projectDir);
-  const canonicalSourcePath = realpathSync(absoluteSourcePath);
-  const relPath = relative(canonicalProjectDir, canonicalSourcePath);
-  if (relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath)) {
+  const requestedProjectDir = resolve(projectDir);
+  const requestedSourcePath = resolve(absoluteSourcePath);
+  const requestedRelativePath = relative(requestedProjectDir, requestedSourcePath);
+  if (
+    requestedRelativePath === ".." ||
+    requestedRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(requestedRelativePath)
+  ) {
     throw new ProxySourceOutsideProjectError();
   }
+
+  const canonicalProjectDir = realpathSync(projectDir);
+  const canonicalSourcePath = realpathSync(absoluteSourcePath);
+  const canonicalRelativePath = relative(canonicalProjectDir, canonicalSourcePath);
+  const sourceIsInsideCanonicalProject =
+    canonicalRelativePath !== ".." &&
+    !canonicalRelativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(canonicalRelativePath);
   return {
     projectDir: canonicalProjectDir,
     sourcePath: canonicalSourcePath,
-    relativePath: relPath.normalize("NFC"),
+    relativePath: requestedRelativePath.normalize("NFC"),
+    // An external target needs a stable identity in addition to its project-local
+    // symlink path, otherwise retargeting the link can reuse an unrelated proxy.
+    cacheIdentity: (sourceIsInsideCanonicalProject
+      ? canonicalRelativePath
+      : canonicalSourcePath
+    ).normalize("NFC"),
   };
 }
 
@@ -163,7 +182,7 @@ function buildProxyCacheKey(source: CanonicalProxySource, variant: ProxyVariant)
   const stat = statSync(source.sourcePath);
   return createHash("sha256")
     .update(
-      `${source.relativePath}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}`,
+      `${source.relativePath}\0${source.cacheIdentity}\0${stat.mtimeMs}\0${stat.size}\0${PROXY_PARAMS_VERSION}\0${variant}`,
     )
     .digest("hex");
 }

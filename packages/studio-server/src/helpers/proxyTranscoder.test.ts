@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -497,9 +498,9 @@ describe("resolveProxy", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("rejects an in-project symlink whose target escapes the project", async () => {
+  it("proxies an external target reached through an in-project symlink", async () => {
     const { spawn, calls } = createSpawnSpy();
-    const { resolveProxy, ProxySourceOutsideProjectError } = await loadModule(spawn, FFMPEG_PATH);
+    const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
     const projectDir = tmpProject();
     const outsideDir = tmpProject();
     const outsidePath = join(outsideDir, "outside.mov");
@@ -507,10 +508,15 @@ describe("resolveProxy", () => {
     writeFileSync(outsidePath, "source-bytes");
     symlinkSync(outsidePath, sourcePath);
 
-    await expect(resolveProxy(projectDir, sourcePath)).rejects.toBeInstanceOf(
-      ProxySourceOutsideProjectError,
-    );
-    expect(calls).toHaveLength(0);
+    const cachePath = getProxyCachePath(projectDir, sourcePath);
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toContain(realpathSync(outsidePath));
+    succeed(calls[0]!);
+    await expect(result).resolves.toBe(cachePath);
+    expect(cachePath.startsWith(join(realpathSync(projectDir), ".transcode-cache"))).toBe(true);
   });
 
   it("retries after the source file changes (mtime in the cache key invalidates the remembered failure)", async () => {

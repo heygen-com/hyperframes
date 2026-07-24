@@ -534,6 +534,11 @@ describe("hf-id surfacing in preview route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("image/svg+xml");
     expect(await response.text()).toBe("<svg>shared</svg>");
+
+    const traversal = await app.request(
+      "http://localhost/projects/demo/preview/..%2f..%2f..%2fetc%2fpasswd",
+    );
+    expect(traversal.status).toBe(404);
   });
 
   it("sub-comp route does NOT persist ids inside a plain <template> (runtime clone-source)", async () => {
@@ -1093,6 +1098,51 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).toHaveBeenCalledWith(
         projectDir,
         join(projectDir, "/videos/hevc.mp4"),
+        "h264",
+      );
+    });
+
+    it("injects and serves a proxy for a hostile video through an external asset symlink", async () => {
+      const projectDir = createProjectDir();
+      const externalDir = mkdtempSync(join(tmpdir(), "hf-preview-shared-video-"));
+      tempDirs.push(externalDir);
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(externalDir, "clip.mov"), "shared-hevc-bytes");
+      if (!tryCreateSymlink(externalDir, join(projectDir, "assets", "shared"), "dir")) return;
+
+      const proxyPath = join(projectDir, ".transcode-cache", "shared.mp4");
+      const resolveProxyMock = vi.fn(async () => {
+        mkdirSync(join(projectDir, ".transcode-cache"), { recursive: true });
+        writeFileSync(proxyPath, "proxy-bytes");
+        return proxyPath;
+      });
+      const scanMapMock = vi.fn(async () => ({
+        "/assets/shared/clip.mov": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"',
+        },
+      }));
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        scanMapImpl: scanMapMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const preview = await app.request("http://localhost/projects/demo/preview");
+      expect(await preview.text()).toContain("/assets/shared/clip.mov");
+      expect(scanMapMock).toHaveBeenCalled();
+
+      const proxied = await app.request(
+        "http://localhost/projects/demo/preview/assets/shared/clip.mov?hf-proxy=h264",
+      );
+      expect(proxied.status).toBe(200);
+      expect(proxied.headers.get("Content-Type")).toBe("video/mp4");
+      expect(await proxied.text()).toBe("proxy-bytes");
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "assets", "shared", "clip.mov"),
         "h264",
       );
     });
