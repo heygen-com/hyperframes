@@ -1572,6 +1572,10 @@
     return false;
   }
 
+  // KEEP IN SYNC with `fitCircle` in packages/cli/src/utils/checkPipeline.ts —
+  // this browser copy resolves arc-drawn dial hubs and is injected as a raw
+  // string (no import across the puppeteer boundary), so the Kåsa math is
+  // intentionally duplicated per-language. Any change must land in both copies.
   function fitCirclePoints(points) {
     const count = points.length;
     if (count < 3) return null;
@@ -1602,10 +1606,12 @@
     const cx = uc + meanX;
     const cy = vc + meanY;
     const radius = Math.sqrt(uc * uc + vc * vc + (suu + svv) / count);
-    let residual = 0;
-    for (const point of points)
-      residual += Math.abs(Math.hypot(point.x - cx, point.y - cy) - radius);
-    return { cx, cy, radius, residual: residual / count };
+    let squaredError = 0;
+    for (const point of points) {
+      const delta = Math.hypot(point.x - cx, point.y - cy) - radius;
+      squaredError += delta * delta;
+    }
+    return { cx, cy, radius, residual: Math.sqrt(squaredError / count) };
   }
 
   // Fallback for dials drawn as arc <path> rather than <circle> rings: sample
@@ -1662,7 +1668,10 @@
   }
 
   window.__hyperframesOffPivotRotationSample = function collectOffPivotRotationSample() {
-    const root = document.querySelector("[data-composition-id]") || document.body;
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
     const samples = [];
     const hubCache = new Map();
     const CANDIDATE_CAP = 60;

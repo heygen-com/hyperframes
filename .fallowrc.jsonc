@@ -593,6 +593,23 @@
       // makes non-trivial.
       "packages/studio-server/src/helpers/screenshotClip.ts",
       "packages/studio/vite.browser.ts",
+      // off_pivot_rotation Kåsa circle fit (feat/needle-pivot-offset-check):
+      // fitCirclePoints in layout-audit.browser.js and fitCircle in
+      // checkPipeline.ts are the same least-squares circle fit, but the browser
+      // copy is injected as a raw string via page.addScriptTag and cannot import
+      // the Node-side module across puppeteer's serialization boundary. The two
+      // copies carry matching "KEEP IN SYNC" headers; the duplication is
+      // intentional and per-language, so it's exempted here rather than faked
+      // away with cosmetic divergence.
+      "packages/cli/src/commands/layout-audit.browser.js",
+      "packages/cli/src/utils/checkPipeline.ts",
+      // check.test.ts: the fakeDriver-based command tests share a pre-existing
+      // arrange/act/assert scaffold (runScenario + vi.fn runPipeline + spy +
+      // createCheckCommand). Adding the required collectOffPivotRotationSample
+      // stub to the CheckAuditDriver fake shifts line numbers and re-flags that
+      // inherited clone; consistent with the norm above of leaving parallel
+      // command-test cases unabstracted.
+      "packages/cli/src/commands/check.test.ts",
     ],
   },
   "health": {

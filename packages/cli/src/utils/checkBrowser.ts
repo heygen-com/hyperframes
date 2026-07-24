@@ -42,6 +42,7 @@ import type {
   ContrastCapture,
   GeometryCandidateRequest,
   MotionSpecResolution,
+  OffPivotFrame,
   OffPivotRotationSample,
   RotationSample,
   RunAuditGrid,
@@ -472,13 +473,20 @@ async function collectLayoutGeometry(page: Page): Promise<string> {
   });
 }
 
-async function collectRotationSample(page: Page, time: number): Promise<RotationSample[]> {
-  const raw = await page.evaluate(() => {
-    const sample = Reflect.get(window, "__hyperframesRotationSample");
+/** Invoke a `window.__hyperframes*` sampler injected by layout-audit.browser.js
+ * and return its array result (or [] when absent / non-array). Shared by the
+ * per-frame sample collectors so the page.evaluate boilerplate lives once. */
+async function evaluateSampler(page: Page, globalName: string): Promise<unknown[]> {
+  return page.evaluate((name) => {
+    const sample = Reflect.get(window, name);
     if (typeof sample !== "function") return [];
     const result = Reflect.apply(sample, window, []);
     return Array.isArray(result) ? result : [];
-  });
+  }, globalName);
+}
+
+async function collectRotationSample(page: Page, time: number): Promise<RotationSample[]> {
+  const raw = await evaluateSampler(page, "__hyperframesRotationSample");
   return raw.flatMap((value) => parseRotationSample(value, time));
 }
 
@@ -496,55 +504,47 @@ function parseRotationSample(value: unknown, time: number): RotationSample[] {
   return [{ time, selector, cx, cy, w, h, angle }];
 }
 
-async function collectOffPivotRotationSample(
-  page: Page,
-  time: number,
-): Promise<OffPivotRotationSample[]> {
-  const raw = await page.evaluate(() => {
-    const sample = Reflect.get(window, "__hyperframesOffPivotRotationSample");
-    if (typeof sample !== "function") return [];
-    const result = Reflect.apply(sample, window, []);
-    return Array.isArray(result) ? result : [];
-  });
-  return raw.flatMap((value) => parseOffPivotRotationSample(value, time));
+async function collectOffPivotRotationSample(page: Page, time: number): Promise<OffPivotFrame> {
+  const raw = await evaluateSampler(page, "__hyperframesOffPivotRotationSample");
+  return { time, samples: raw.flatMap(parseOffPivotRotationSample) };
 }
 
-function parseOffPivotRotationSample(value: unknown, time: number): OffPivotRotationSample[] {
+/** Read every named key as a finite number; null if ANY is missing/non-finite.
+ * The mapped return type keeps each field a plain `number` (not `number |
+ * undefined`) so callers read `nums.ax` without re-narrowing. */
+function requiredNumbers<K extends string>(
+  value: Record<string, unknown>,
+  keys: readonly K[],
+): { [P in K]: number } | null {
+  const out = {} as { [P in K]: number };
+  for (const key of keys) {
+    const num = numberValue(value, key);
+    if (num === null) return null;
+    out[key] = num;
+  }
+  return out;
+}
+
+const OFF_PIVOT_REQUIRED_NUMBERS = ["ax", "ay", "bx", "by", "len", "angle", "hubCount"] as const;
+
+function parseOffPivotRotationSample(value: unknown): OffPivotRotationSample[] {
   if (!isRecord(value)) return [];
   const selector = stringValue(value, "selector");
-  const ax = numberValue(value, "ax");
-  const ay = numberValue(value, "ay");
-  const bx = numberValue(value, "bx");
-  const by = numberValue(value, "by");
-  const len = numberValue(value, "len");
-  const angle = numberValue(value, "angle");
-  const hubCount = numberValue(value, "hubCount");
-  if (
-    !selector ||
-    ax === null ||
-    ay === null ||
-    bx === null ||
-    by === null ||
-    len === null ||
-    angle === null ||
-    hubCount === null
-  ) {
-    return [];
-  }
+  const nums = requiredNumbers(value, OFF_PIVOT_REQUIRED_NUMBERS);
+  if (!selector || !nums) return [];
   return [
     {
-      time,
       selector,
-      ax,
-      ay,
-      bx,
-      by,
-      len,
-      angle,
+      ax: nums.ax,
+      ay: nums.ay,
+      bx: nums.bx,
+      by: nums.by,
+      len: nums.len,
+      angle: nums.angle,
       hx: numberValue(value, "hx"),
       hy: numberValue(value, "hy"),
       hr: numberValue(value, "hr"),
-      hubCount,
+      hubCount: nums.hubCount,
     },
   ];
 }

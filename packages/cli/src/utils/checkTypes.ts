@@ -137,9 +137,9 @@ export interface RotationSample {
  * sample, produced by `__hyperframesOffPivotRotationSample`. `(ax,ay)`/`(bx,by)` are
  * two fixed material points on the figure (major-axis endpoints) mapped to
  * screen space, so their cross-frame trajectory recovers the true center of
- * rotation; `(hx,hy)` is the dial's static hub and `hr` its radius. */
+ * rotation; `(hx,hy)` is the dial's static hub and `hr` its radius. The sample
+ * time is hoisted to the enclosing {@link OffPivotFrame}, not repeated here. */
 export interface OffPivotRotationSample {
-  time: number;
   selector: string;
   ax: number;
   ay: number;
@@ -151,6 +151,14 @@ export interface OffPivotRotationSample {
   hy: number | null;
   hr: number | null;
   hubCount: number;
+}
+
+/** All elongated rotating figures at one seeked sample. Time is hoisted to the
+ * frame (matching {@link ConnectorFrame}) so the per-figure samples don't repeat
+ * it; frames are accumulated across the grid to detect off_pivot_rotation. */
+export interface OffPivotFrame {
+  time: number;
+  samples: OffPivotRotationSample[];
 }
 
 export type MotionSpecResolution =
@@ -174,8 +182,9 @@ export interface CheckAuditDriver {
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
   collectRotationSample(time: number): Promise<RotationSample[]>;
   /** off_pivot_rotation: every elongated rotating SVG figure's material-point
-   * geometry + resolved dial hub at the current seeked state. */
-  collectOffPivotRotationSample(time: number): Promise<OffPivotRotationSample[]>;
+   * geometry + resolved dial hub at the current seeked state, as a time-hoisted
+   * frame envelope. */
+  collectOffPivotRotationSample(time: number): Promise<OffPivotFrame>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,
