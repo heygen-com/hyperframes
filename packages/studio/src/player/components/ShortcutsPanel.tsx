@@ -153,10 +153,8 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
         <button
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
-          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
-            showShortcuts
-              ? "border-neutral-600 text-neutral-200 bg-neutral-800"
-              : "border-neutral-800 text-neutral-600 hover:text-neutral-300 hover:border-neutral-600"
+          className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+            showShortcuts ? "text-neutral-200" : "text-neutral-600 hover:text-neutral-300"
           }`}
           aria-label="Shortcuts and tools"
           aria-expanded={showShortcuts}

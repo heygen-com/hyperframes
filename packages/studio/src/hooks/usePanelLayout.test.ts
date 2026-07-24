@@ -2,10 +2,16 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import { usePanelLayout } from "./usePanelLayout";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeEach(() => {
+  window.localStorage.clear();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1496 });
+});
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -42,6 +48,54 @@ function renderPanelLayout() {
 }
 
 describe("usePanelLayout — right inspector panes", () => {
+  it("opens Design with the intended viewport-scaled panel widths", () => {
+    const harness = renderPanelLayout();
+
+    expect(harness.getState()).toMatchObject({
+      leftWidth: 384,
+      rightWidth: 424,
+      rightCollapsed: false,
+      rightPanelTab: "design",
+    });
+
+    harness.unmount();
+  });
+
+  it("persists the latest pointer width even before React rerenders", () => {
+    const harness = renderPanelLayout();
+    const state = harness.getState();
+    const target = { setPointerCapture: vi.fn() };
+
+    act(() => {
+      state.handlePanelResizeStart("left", {
+        preventDefault: vi.fn(),
+        target,
+        pointerId: 1,
+        clientX: 100,
+      } as unknown as React.PointerEvent);
+      state.handlePanelResizeMove({ clientX: 140 } as React.PointerEvent);
+      state.handlePanelResizeEnd();
+    });
+
+    expect(harness.getState().leftWidth).toBe(424);
+    expect(readStudioUiPreferences().leftWidth).toBe(424);
+    harness.unmount();
+  });
+
+  it("accumulates and persists rapid keyboard resize steps", () => {
+    const harness = renderPanelLayout();
+    const state = harness.getState();
+
+    act(() => {
+      state.adjustPanelWidth("right", 16);
+      state.adjustPanelWidth("right", 16);
+    });
+
+    expect(harness.getState().rightWidth).toBe(456);
+    expect(readStudioUiPreferences().rightWidth).toBe(456);
+    harness.unmount();
+  });
+
   it("toggleRightInspectorPane independently flips one pane, allowing both open at once", () => {
     const harness = renderPanelLayout();
     expect(harness.getState().rightInspectorPanes).toEqual({ layers: false, design: true });

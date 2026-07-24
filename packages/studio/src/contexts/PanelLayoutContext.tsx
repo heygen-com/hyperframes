@@ -14,9 +14,8 @@ export function usePanelLayoutContext(): PanelLayoutValue {
 export function PanelLayoutProvider({
   value: {
     leftWidth,
-    setLeftWidth,
     rightWidth,
-    setRightWidth,
+    adjustPanelWidth,
     leftCollapsed,
     setLeftCollapsed,
     rightCollapsed,
@@ -39,9 +38,8 @@ export function PanelLayoutProvider({
   const stable = useMemo<PanelLayoutValue>(
     () => ({
       leftWidth,
-      setLeftWidth,
       rightWidth,
-      setRightWidth,
+      adjustPanelWidth,
       leftCollapsed,
       setLeftCollapsed,
       rightCollapsed,
@@ -58,9 +56,8 @@ export function PanelLayoutProvider({
     }),
     [
       leftWidth,
-      setLeftWidth,
       rightWidth,
-      setRightWidth,
+      adjustPanelWidth,
       leftCollapsed,
       setLeftCollapsed,
       rightCollapsed,
