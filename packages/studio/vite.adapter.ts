@@ -25,6 +25,8 @@ import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer"
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
 
+const REGISTRY_SUBDIRECTORIES = ["blocks", "components"] as const;
+
 export function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(resolve(parentDir), resolve(childPath));
   return (
@@ -38,6 +40,8 @@ export function resolveViteAutoProxy(value: string | undefined): boolean {
 }
 
 export function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
+  const registryRoot = resolve(__dirname, "../../registry");
+  const registryPreviewRoot = resolve(__dirname, "../../docs/images/catalog");
   let _bundler:
     | ((
         dir: string,
@@ -330,9 +334,8 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
 
     // fallow-ignore-next-line complexity
     async listRegistryCatalog(): Promise<RegistryItem[]> {
-      const registryRoot = resolve(__dirname, "../../registry");
       const items: RegistryItem[] = [];
-      for (const subdir of ["blocks", "components"]) {
+      for (const subdir of REGISTRY_SUBDIRECTORIES) {
         const dir = join(registryRoot, subdir);
         if (!existsSync(dir)) continue;
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -341,8 +344,23 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           if (!existsSync(manifestPath)) continue;
           try {
             const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-            if (manifest.type === "hyperframes:block" || manifest.type === "hyperframes:component")
-              items.push(manifest);
+            if (manifest.type !== "hyperframes:block" && manifest.type !== "hyperframes:component")
+              continue;
+            const generatedDir = join(registryPreviewRoot, subdir);
+            const poster = join(generatedDir, `${manifest.name}.png`);
+            const video = join(generatedDir, `${manifest.name}.mp4`);
+            items.push({
+              ...manifest,
+              preview: {
+                ...(manifest.preview ?? {}),
+                ...(existsSync(poster)
+                  ? { poster: `/api/registry/previews/${encodeURIComponent(manifest.name)}/poster` }
+                  : {}),
+                ...(existsSync(video)
+                  ? { video: `/api/registry/previews/${encodeURIComponent(manifest.name)}/video` }
+                  : {}),
+              },
+            });
           } catch {
             /* skip malformed manifests */
           }
@@ -351,12 +369,24 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return items;
     },
 
+    async readRegistryPreview({ itemName, kind }) {
+      const extension = kind === "poster" ? "png" : "mp4";
+      const contentType = kind === "poster" ? "image/png" : "video/mp4";
+      for (const subdir of REGISTRY_SUBDIRECTORIES) {
+        const previewPath = join(registryPreviewRoot, subdir, `${itemName}.${extension}`);
+        if (!isPathWithin(registryPreviewRoot, previewPath)) return null;
+        if (existsSync(previewPath)) {
+          return { content: readFileSync(previewPath), contentType };
+        }
+      }
+      return null;
+    },
+
     // fallow-ignore-next-line complexity
     async installRegistryBlock(opts: {
       project: ResolvedProject;
       blockName: string;
     }): Promise<{ written: string[]; block: RegistryItem }> {
-      const registryRoot = resolve(__dirname, "../../registry");
       let itemDir = join(registryRoot, "blocks", opts.blockName);
       if (!existsSync(join(itemDir, "registry-item.json"))) {
         itemDir = join(registryRoot, "components", opts.blockName);

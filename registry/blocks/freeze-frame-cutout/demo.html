@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #freeze-frame-demo {
+        width: 960px;
+        height: 540px;
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+      }
+
+      #freeze-demo-background,
+      #freeze-demo-cutout,
+      #freeze-demo-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #freeze-demo-background {
+        object-fit: cover;
+        filter: saturate(0.28) contrast(1.1) brightness(0.72);
+        transform: scale(1.04) rotate(-0.4deg);
+      }
+
+      #freeze-demo-cutout {
+        z-index: 10;
+        object-fit: contain;
+        filter: drop-shadow(3px 0 0 #fff) drop-shadow(-3px 0 0 #fff) drop-shadow(0 3px 0 #fff)
+          drop-shadow(0 -3px 0 #fff) drop-shadow(14px 18px 8px rgb(16 18 23 / 46%));
+      }
+
+      #freeze-demo-overlay {
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="freeze-frame-demo"
+      data-composition-id="freeze-frame-demo"
+      data-start="0"
+      data-duration="4"
+      data-width="960"
+      data-height="540"
+    >
+      <img
+        id="freeze-demo-background"
+        class="clip"
+        src="./demo-background.jpg"
+        alt=""
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+      />
+      <img
+        id="freeze-demo-cutout"
+        class="clip"
+        src="./demo-cutout.webp"
+        alt=""
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+      />
+      <div
+        id="freeze-demo-overlay"
+        data-composition-id="freeze-frame-cutout"
+        data-composition-src="freeze-frame-cutout.html"
+        data-start="0"
+        data-duration="4"
+        data-track-index="2"
+        data-width="960"
+        data-height="540"
+      ></div>
+    </div>
+
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.fromTo(
+        "#freeze-demo-cutout",
+        { y: 42, scale: 0.86, rotation: -2 },
+        { y: 0, scale: 1, rotation: 0.4, duration: 0.5, ease: "back.out(1.35)" },
+        1,
+      );
+      tl.to({}, { duration: 4, ease: "none" }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["freeze-frame-demo"] = tl;
+    </script>
+  </body>
+</html>

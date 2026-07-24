@@ -1,0 +1,24 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "organic-light-leak-overlay",
+  "type": "hyperframes:block",
+  "title": "Organic Light Leak Overlay",
+  "description": "Finite CSS light-leak overlay for memory beats and motivated transitions",
+  "tags": ["light-leak", "film", "memory", "transition", "overlay", "media-treatment-overlay"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4,
+  "files": [
+    {
+      "path": "organic-light-leak-overlay.html",
+      "target": "compositions/organic-light-leak-overlay.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/organic-light-leak-overlay.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/organic-light-leak-overlay.mp4"
+  }
+}

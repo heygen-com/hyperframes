@@ -198,6 +198,12 @@ export interface StudioApiAdapter {
   /** Optional: list all registry items (blocks + components) for the catalog. */
   listRegistryCatalog?(): Promise<RegistryItem[]>;
 
+  /** Optional: serve a generated local poster/video for Registry catalog cards. */
+  readRegistryPreview?(opts: {
+    itemName: string;
+    kind: "poster" | "video";
+  }): Promise<{ content: Buffer; contentType: "image/png" | "video/mp4" } | null>;
+
   /** Optional: install a registry item into a project directory. */
   installRegistryBlock?(opts: {
     project: ResolvedProject;

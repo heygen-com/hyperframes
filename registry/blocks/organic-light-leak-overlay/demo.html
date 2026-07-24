@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #organic-light-leak-demo {
+        width: 960px;
+        height: 540px;
+        margin: 0;
+        overflow: hidden;
+        background: #090909;
+      }
+
+      #light-leak-demo-backdrop,
+      #light-leak-demo-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #light-leak-demo-backdrop {
+        object-fit: cover;
+      }
+
+      #light-leak-demo-overlay {
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="organic-light-leak-demo"
+      data-composition-id="organic-light-leak-demo"
+      data-start="0"
+      data-duration="4"
+      data-width="960"
+      data-height="540"
+    >
+      <img
+        id="light-leak-demo-backdrop"
+        class="clip"
+        src="./demo-backdrop.jpg"
+        alt=""
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+      />
+      <div
+        id="light-leak-demo-overlay"
+        data-composition-id="organic-light-leak-overlay"
+        data-composition-src="organic-light-leak-overlay.html"
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+        data-width="960"
+        data-height="540"
+      ></div>
+    </div>
+
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.to("#light-leak-demo-backdrop", { scale: 1.025, duration: 4, ease: "none" }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["organic-light-leak-demo"] = tl;
+    </script>
+  </body>
+</html>
