@@ -916,7 +916,12 @@ function selectHubFindings(candidates: IndicatorCandidate[]): AnchoredLayoutIssu
   const byHub = groupBy(candidates, (candidate) => candidate.hubKey);
   const findings: AnchoredLayoutIssue[] = [];
   for (const group of byHub.values()) {
-    if (countAngularBodies(group.map((c) => c.angleAboutHub)) >= 2) continue;
+    // Count angular bodies only over ELIGIBLE (off-pivot) candidates. Sibling
+    // hands that are correctly hubbed (finding === null) are not orbiting
+    // bodies, so counting them would falsely suppress a lone off-pivot hand on
+    // a multi-hand clock/dial whose other hands pivot correctly.
+    const eligible = group.filter((c) => c.finding !== null);
+    if (countAngularBodies(eligible.map((c) => c.angleAboutHub)) >= 2) continue;
     const best = group
       .filter((c) => c.finding !== null)
       .reduce<IndicatorCandidate | null>(

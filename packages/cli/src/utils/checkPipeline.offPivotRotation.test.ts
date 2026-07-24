@@ -217,6 +217,20 @@ describe("detectOffPivotRotation", () => {
     expect(detectOffPivotRotation(toFrames(bodyA, bodyB))).toHaveLength(0);
   });
 
+  it("flags one off-pivot hand on a multi-hand clock whose sibling hands are correctly hubbed", () => {
+    // Analog clock: three hands on one hub at (500,500). Two are correctly
+    // hubbed (center-of-rotation on the hub → not eligible findings); one is
+    // off-pivot (orbits (500,300), 200px above the hub). The multi-body
+    // suppression must count only ELIGIBLE candidates — the two hubbed hands
+    // are not orbiting bodies, so the lone off-pivot hand is NOT suppressed.
+    const offPivot = sweep({ cx: 500, cy: 300, selector: "#hand-second" });
+    const hubbedA = sweep({ cx: 500, cy: 500, selector: "#hand-hour" });
+    const hubbedB = sweep({ cx: 500, cy: 500, selector: "#hand-minute" });
+    const findings = detectOffPivotRotation(toFrames(offPivot, hubbedA, hubbedB));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.selector).toBe("#hand-second");
+  });
+
   it("returns nothing for an empty sample set", () => {
     expect(detectOffPivotRotation([])).toHaveLength(0);
   });
