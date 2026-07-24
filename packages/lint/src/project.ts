@@ -6,6 +6,7 @@ import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-compositi
 import { parseHTML } from "linkedom";
 import {
   cleanAssetUrl,
+  hasUnresolvedTemplatingToken,
   isRemoteOrInlineUrl,
   isWithinProjectRoot,
   maskNonScannableRanges,
@@ -283,6 +284,7 @@ function lintAudioSrcNotFound(
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue;
+      if (hasUnresolvedTemplatingToken(src)) continue;
       const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
         missingSrcs.push(src);
@@ -328,6 +330,7 @@ function lintMissingLocalAsset(
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue;
+      if (hasUnresolvedTemplatingToken(src)) continue;
       const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
@@ -378,6 +381,7 @@ function lintTextureMaskAssetNotFound(
         const url = cleanAssetUrl(rawUrl);
         if (!url || isRemoteOrInlineUrl(url)) continue;
         if (/^__[A-Z_]+__$/.test(url)) continue;
+        if (hasUnresolvedTemplatingToken(url)) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,
@@ -526,6 +530,7 @@ function lintMissingOrEmptySubComposition(
       const srcPath = (match[1] ?? "").trim();
       if (!srcPath) continue;
       if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder
+      if (hasUnresolvedTemplatingToken(srcPath)) continue; // late-bound templating token
 
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses

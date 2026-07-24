@@ -424,3 +424,32 @@ describe("hevc_preview_codec", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("audio_src_not_found with templating tokens", () => {
+  // A src carrying an unresolved templating placeholder is late-bound before render,
+  // so the static linter cannot resolve it to a file and must not report it missing.
+  function audioProject(src: string): string {
+    return makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <audio id="a1" class="clip" data-start="0" data-duration="3" data-track-index="10" src="${src}"></audio>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+  }
+
+  async function hasAudioSrcNotFound(project: string): Promise<boolean> {
+    const { results } = await lintProject(project);
+    const findings: HyperframeLintFinding[] = results.flatMap((entry) => entry.result.findings);
+    return findings.some((finding) => finding.code === "audio_src_not_found");
+  }
+
+  it("does not flag unresolved <<token>>, {{ token }}, or ${token} audio srcs", async () => {
+    for (const token of ["<<tts_abc>>", "{{ audioUrl }}", "${audioUrl}"]) {
+      expect(await hasAudioSrcNotFound(audioProject(token))).toBe(false);
+    }
+  });
+
+  it("still flags a genuinely missing local audio file", async () => {
+    expect(await hasAudioSrcNotFound(audioProject("audio/missing.mp3"))).toBe(true);
+  });
+});
