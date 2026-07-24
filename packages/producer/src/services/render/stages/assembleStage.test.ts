@@ -49,7 +49,7 @@ describe("runAssembleStage audio duration parity", () => {
     muxVideoWithAudioMock.mockResolvedValue({ success: true });
     padOrTrimAudioMock.mockResolvedValue({
       success: true,
-      outputPath: "/tmp/audio.duration-normalized.aac",
+      outputPath: "/tmp/audio.duration-normalized.m4a",
       targetDurationSeconds: 1,
       sourceDurationSeconds: 1.024,
       operation: "trim",
@@ -62,14 +62,14 @@ describe("runAssembleStage audio duration parity", () => {
     expect(padOrTrimAudioMock).toHaveBeenCalledWith({
       videoPath: "/tmp/video-only.mp4",
       audioPath: "/tmp/audio.aac",
-      outputPath: "/tmp/audio.duration-normalized.aac",
+      outputPath: "/tmp/audio.duration-normalized.m4a",
     });
     expect(muxVideoWithAudioMock).toHaveBeenCalledWith(
       "/tmp/video-only.mp4",
-      "/tmp/audio.duration-normalized.aac",
+      "/tmp/audio.duration-normalized.m4a",
       "/tmp/output.mp4",
       undefined,
-      { audioCodec: "aac" },
+      { audioCodec: "aac", preserveAudioPrimingEditList: true },
       { num: 30, den: 1 },
     );
   });
@@ -80,14 +80,14 @@ describe("runAssembleStage audio duration parity", () => {
     expect(padOrTrimAudioMock).toHaveBeenCalledWith({
       videoPath: "/tmp/video-only.mp4",
       audioPath: "/tmp/audio.m4a",
-      outputPath: "/tmp/audio.duration-normalized.aac",
+      outputPath: "/tmp/audio.duration-normalized.m4a",
     });
   });
 
   it("fails instead of muxing an unnormalized AAC tail", async () => {
     padOrTrimAudioMock.mockResolvedValue({
       success: false,
-      outputPath: "/tmp/audio.duration-normalized.aac",
+      outputPath: "/tmp/audio.duration-normalized.m4a",
       targetDurationSeconds: 1,
       sourceDurationSeconds: 1.024,
       operation: "trim",

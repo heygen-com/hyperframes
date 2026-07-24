@@ -418,6 +418,54 @@ describe("muxVideoWithAudio audio codec handling", () => {
     });
   });
 
+  it("keeps negative-timestamp repair for an M4A without a known priming edit list", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac" },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("copy");
+    expect(calls[0]!.args).toContain("-avoid_negative_ts");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("preserves a known M4A priming edit list instead of shifting copied video", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.duration-normalized.m4a",
+      "/tmp/output.mp4",
+      undefined,
+      { audioCodec: "aac", preserveAudioPrimingEditList: true },
+      { num: 30, den: 1 },
+    );
+
+    await flushMuxCodecResolution();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("copy");
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
+
+    emitClose(calls[0]!.proc, 0);
+    await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
   it("uses the caller-provided AAC codec contract instead of the sidecar extension", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();

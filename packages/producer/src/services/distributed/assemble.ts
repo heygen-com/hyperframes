@@ -289,9 +289,12 @@ export async function assemble(
     }
 
     // ── 3. Audio: pad-or-trim then mux ────────────────────────────────────
-    let audioForMux: string | null = null;
+    let normalizedAudio: {
+      path: string;
+      preserveAudioPrimingEditList: boolean;
+    } | null = null;
     if (audioPath !== null && existsSync(audioPath)) {
-      const paddedAudioPath = join(workDir, "audio-padded.aac");
+      const paddedAudioPath = join(workDir, "audio-padded.m4a");
       const padTrimResult = await padOrTrimAudioToVideoFrameCount({
         videoPath: postConcatPath,
         audioPath,
@@ -301,7 +304,10 @@ export async function assemble(
       if (!padTrimResult.success) {
         throw new Error(`[assemble] audio pad/trim failed: ${padTrimResult.error}`);
       }
-      audioForMux = paddedAudioPath;
+      normalizedAudio = {
+        path: paddedAudioPath,
+        preserveAudioPrimingEditList: padTrimResult.operation !== "copy",
+      };
       log.info("[assemble] audio normalized for mux", {
         operation: padTrimResult.operation,
         targetDurationSeconds: padTrimResult.targetDurationSeconds,
@@ -314,14 +320,17 @@ export async function assemble(
     // because it operates on a `RenderJob` and emits `updateJobStatus`
     // payloads — the distributed activity has no job to thread through.
     const muxOutputPath =
-      audioForMux !== null ? join(workDir, `mux.${plan.dimensions.format}`) : postConcatPath;
-    if (audioForMux !== null) {
+      normalizedAudio !== null ? join(workDir, `mux.${plan.dimensions.format}`) : postConcatPath;
+    if (normalizedAudio !== null) {
       const muxResult = await muxVideoWithAudio(
         postConcatPath,
-        audioForMux,
+        normalizedAudio.path,
         muxOutputPath,
         abortSignal,
-        { audioCodec: "aac" },
+        {
+          audioCodec: "aac",
+          preserveAudioPrimingEditList: normalizedAudio.preserveAudioPrimingEditList,
+        },
         { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
       );
       if (!muxResult.success) {

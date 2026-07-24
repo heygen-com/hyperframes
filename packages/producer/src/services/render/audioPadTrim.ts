@@ -14,12 +14,13 @@
  *     "audio cuts off early" or "video shows a frozen final frame" bugs.
  *
  * The fix: post-pad/trim audio to *exactly* `frameCount / fps` seconds at
- * assemble time. Pad by concat-copying a generated silence tail, trim with
- * `-t`, and avoid re-encoding the already mixed source AAC in either case.
+ * assemble time. Both branches decode/filter and re-encode AAC. Concatenating
+ * ADTS packets with `-c:a copy` is unsafe because concat timestamp estimation
+ * can stretch the terminal packet in the final MP4.
  */
 
 import { spawn } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import {
   extractAudioMetadata,
   formatFfmpegError,
@@ -89,21 +90,11 @@ export interface PadTrimAudioResult {
   error?: string;
 }
 
-export type PadTrimAudioStepKind = "copy" | "trim" | "pad-silence" | "pad-concat";
+export type PadTrimAudioStepKind = "copy" | "trim" | "normalize";
 
 export interface PadTrimAudioStep {
   kind: PadTrimAudioStepKind;
   args: string[];
-  /**
-   * Concat-demuxer script materialization. When both fields are set, the
-   * runner writes `concatListContent` to `concatListPath` synchronously
-   * before spawning ffmpeg, and the step's `args` reference that path via
-   * `-i concatListPath`. Feeding the concat script through a real file
-   * (instead of `pipe:0`) is what makes bare-path directives work on both
-   * Linux and Windows — see `concatFileLine` for the platform history.
-   */
-  concatListPath?: string;
-  concatListContent?: string;
 }
 
 export interface PadTrimAudioPlan {
@@ -121,8 +112,8 @@ export interface PadTrimAudioPlan {
  *     tail, then concat-copy the source AAC plus that tail. This avoids
  *     re-encoding the already mixed `audio.aac`; the pad branch remains the
  *     inverse of trim instead of becoming a second full-source AAC encode.
- *   - `sourceDuration > targetDuration` → trim with `-t target`. `-c:a copy`
- *     is preserved when the input is already AAC.
+ *   - `sourceDuration > targetDuration` → filter to the exact target and
+ *     re-encode AAC so packet padding cannot outlast the video.
  *   - `|Δ| < AUDIO_DURATION_TOLERANCE_SECONDS` → no-op `copy`, but we still
  *     run ffmpeg with `-c:a copy` to materialize the output path.
  */
@@ -131,7 +122,6 @@ export function buildPadTrimAudioPlan(
   outputPath: string,
   sourceDurationSeconds: number,
   targetDurationSeconds: number,
-  audioInfo: Pick<AudioProbeInfo, "sampleRate" | "channels"> = {},
 ): PadTrimAudioPlan {
   const delta = targetDurationSeconds - sourceDurationSeconds;
   const targetSec = formatSeconds(targetDurationSeconds);
@@ -143,57 +133,57 @@ export function buildPadTrimAudioPlan(
     };
   }
   if (delta > 0) {
-    const padDur = formatSeconds(delta);
-    const silencePath = `${outputPath}.pad-silence.aac`;
-    const concatListPath = `${outputPath}.concat-list.txt`;
     return {
       operation: "pad",
       steps: [
         {
-          kind: "pad-silence",
+          kind: "normalize",
           args: [
-            "-f",
-            "lavfi",
             "-i",
-            `anullsrc=channel_layout=${channelLayoutForChannels(audioInfo.channels)}:sample_rate=${sampleRateForFilter(audioInfo.sampleRate)}`,
+            audioPath,
+            "-af",
+            `apad=whole_dur=${targetSec}`,
             "-t",
-            padDur,
+            targetSec,
             "-c:a",
             "aac",
             "-b:a",
             "192k",
             "-y",
-            silencePath,
-          ],
-        },
-        {
-          kind: "pad-concat",
-          args: [
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concatListPath,
-            "-c:a",
-            "copy",
-            "-y",
             outputPath,
           ],
-          concatListPath,
-          concatListContent: `${concatFileLine(audioPath)}\n${concatFileLine(silencePath)}\n`,
         },
       ],
-      cleanupPaths: [silencePath, concatListPath],
+      cleanupPaths: [],
     };
   }
-  // Trim. `-t` truncates AAC without re-encoding because AAC frames are
-  // independently decodable; ffmpeg snaps the cut point to the nearest
-  // packet boundary, fine for the ±1ms tolerance we care about here.
+  // Packet-copy trimming snaps to AAC frame boundaries (typically 1024
+  // samples), which can leave ~20ms beyond the target. Decode/filter/re-encode
+  // into M4A so ffmpeg records the exact presentation duration.
   return {
     operation: "trim",
     steps: [
-      { kind: "trim", args: ["-i", audioPath, "-t", targetSec, "-c:a", "copy", "-y", outputPath] },
+      {
+        kind: "trim",
+        args: [
+          "-i",
+          audioPath,
+          "-af",
+          `atrim=duration=${targetSec},asetpts=PTS-STARTPTS`,
+          // `atrim` limits decoded samples but does not cap muxer timestamps
+          // introduced by encoder delay/flush.  The output duration contract
+          // is enforced at the container boundary as well; without `-t`, a
+          // long primed source can retain its original tail after re-encode.
+          "-t",
+          targetSec,
+          "-c:a",
+          "aac",
+          "-b:a",
+          "192k",
+          "-y",
+          outputPath,
+        ],
+      },
     ],
     cleanupPaths: [],
   };
@@ -222,43 +212,6 @@ export function buildPadTrimAudioArgs(
 function formatSeconds(sec: number): string {
   // 6 decimal places = ~microseconds, well under one AAC frame at 48 kHz.
   return sec.toFixed(6);
-}
-
-function sampleRateForFilter(sampleRate: number | undefined): number {
-  return sampleRate !== undefined && Number.isFinite(sampleRate) && sampleRate > 0
-    ? Math.round(sampleRate)
-    : 48000;
-}
-
-function channelLayoutForChannels(channels: number | undefined): string {
-  if (channels === 1) return "mono";
-  if (channels === 6) return "5.1";
-  if (channels === 8) return "7.1";
-  return "stereo";
-}
-
-function concatFileLine(path: string): string {
-  // Bare paths in concat directives — NOT `file://` URLs. Two failure
-  // modes on the round trip to a working shape:
-  //   1. `file:///C:/…` — FFmpeg 8.x on Windows fails to open URL-form
-  //      paths from the concat demuxer with "Impossible to open
-  //      file:///C:/…" (its `file:` protocol strips the scheme leaving
-  //      `///C:/…`, which Windows path parsing then rejects). Field-
-  //      signal reports ts=1784169914 / 1784177061 / 1784177375 (all
-  //      win32/x64 CLI 0.7.59; the last isolated the module's arg shape
-  //      vs a working manual `apad=whole_dur` command).
-  //   2. Bare `/tmp/…` when the concat script was fed via `pipe:0` —
-  //      FFmpeg's URL joiner resolves absolute POSIX paths against the
-  //      base `pipe:` URL, producing `pipe:/tmp/…` which the demuxer
-  //      then tries to open as a pipe. Broke Linux CI (regression shard
-  //      + producer integration) once the `file://` prefix was dropped.
-  // Fix: emit bare paths AND materialize the concat script into a real
-  // file (see `concatListPath`/`concatListContent` on the pad-concat
-  // step), matching sibling `assemble.ts`'s concat convention. A real
-  // file's directory becomes the base URL, and absolute paths in the
-  // script resolve as-is on both platforms. The single-quote escaping
-  // (`'\''`) is the concat demuxer's own escape rule.
-  return `file '${path.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -323,7 +276,6 @@ export async function padOrTrimAudioToVideoFrameCount(
     input.outputPath,
     audioInfo.durationSeconds,
     targetDurationSeconds,
-    audioInfo,
   );
 
   try {
@@ -332,9 +284,6 @@ export async function padOrTrimAudioToVideoFrameCount(
       // needs one. Doing this here (instead of piping via `pipe:0` in the
       // runner) is what makes the demuxer's URL resolution treat
       // absolute paths as absolute — see `concatFileLine` for context.
-      if (step.concatListPath !== undefined && step.concatListContent !== undefined) {
-        writeFileSync(step.concatListPath, step.concatListContent, "utf-8");
-      }
       const ffmpegResult = await runner(step.args);
       if (!ffmpegResult.success) {
         return {
