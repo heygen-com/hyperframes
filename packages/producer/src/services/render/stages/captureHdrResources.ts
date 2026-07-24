@@ -33,6 +33,7 @@ import {
   normalizeObjectFit,
   queryElementStacking,
   resampleRgb48leObjectFit,
+  resolveProjectRelativeSrc,
   runFfmpeg,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
@@ -67,7 +68,6 @@ export function planHdrResources(args: {
   nativeHdrImageIds: Set<string>;
   projectDir: string;
   compiledDir: string;
-  existsSync: (p: string) => boolean;
 }): HdrResourcePrep {
   const { composition, nativeHdrVideoIds, nativeHdrImageIds, projectDir, compiledDir } = args;
   const hdrVideoIds = composition.videos
@@ -76,12 +76,14 @@ export function planHdrResources(args: {
   const hdrVideoSrcPaths = new Map<string, string>();
   for (const v of composition.videos) {
     if (!hdrVideoIds.includes(v.id)) continue;
-    let srcPath = v.src;
-    if (!srcPath.startsWith("/")) {
-      const fromCompiled = join(compiledDir, srcPath);
-      srcPath = args.existsSync(fromCompiled) ? fromCompiled : join(projectDir, srcPath);
-    }
-    hdrVideoSrcPaths.set(v.id, srcPath);
+    // Resolve via the shared SDR resolver so a percent-encoded `<video src>`
+    // (`视频1.mp4` → `%E8%A7%86%E9%A2%911.mp4` in the compiled DOM URL) decodes
+    // back to the real on-disk filename before ffmpeg sees it. The old
+    // hand-rolled join passed the encoded string straight through, so HDR
+    // pre-extraction failed with "No such file" on non-ASCII media
+    // (PRINFRA-349 symptom c). resolveProjectRelativeSrc also handles query
+    // strings, origin-root URLs, and `..` traversal identically to the SDR path.
+    hdrVideoSrcPaths.set(v.id, resolveProjectRelativeSrc(v.src, projectDir, compiledDir));
   }
   const hdrVideoStartTimes = new Map<string, number>();
   for (const v of composition.videos) {
