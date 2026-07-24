@@ -786,6 +786,10 @@ function recoverPivot(group: OffPivotRotationSample[]): CircleFit | null {
     (fit): fit is CircleFit => fit !== null,
   );
   if (fits.length === 0) return null;
+  // Scoped-known blind spot: we keep the wider-radius endpoint fit and, if it
+  // fails the residual gate below, return null rather than falling back to the
+  // narrower fit. Deliberately conservative — a missed pointer (false negative)
+  // over threading both fits and risking a spurious pivot on a noisy arc.
   const best = fits.reduce((widest, fit) => (fit.radius > widest.radius ? fit : widest));
   if (best.radius <= 0) return null;
   if (best.residual > INDICATOR_MAX_FIT_RESIDUAL_FRACTION * best.radius) return null;
@@ -892,6 +896,10 @@ function buildIndicatorCandidate(group: TimedIndicatorSample[]): IndicatorCandid
   const length = median(group.map((s) => s.len));
   const eligible = drift > INDICATOR_DRIFT_LENGTH_FRACTION * length;
   return {
+    // Scoped-known blind spot: hubs bucketed by rounded screen coords, so two
+    // separate dials whose screen hubs land in the same 5px bucket merge into
+    // one multi-body group (rare — distinct dials stacked at ~identical screen
+    // position). Key by owning <svg> identity if that pattern shows up.
     hubKey: `${Math.round(hub.hx / 5)}:${Math.round(hub.hy / 5)}`,
     angleAboutHub: angleAboutHub(group, hub),
     drift,
