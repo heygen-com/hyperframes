@@ -48,6 +48,7 @@ import type {
   ContrastAuditEntry,
   GeometryCandidateRequest,
   MotionSpecResolution,
+  OffPivotRotationSample,
   RotationSample,
 } from "./checkTypes.js";
 
@@ -193,6 +194,9 @@ interface GridSamples {
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
+  /** Every elongated rotating SVG figure's material-point geometry + dial hub at
+   * each layout sample; grouped by selector to detect off_pivot_rotation. */
+  indicatorSamples: OffPivotRotationSample[];
 }
 
 interface GeometrySeen {
@@ -365,6 +369,7 @@ async function collectGridSamples(
     contrastMs: 0,
     geometrySignatures: [],
     rotationSamples: [],
+    indicatorSamples: [],
   };
   for (const time of mergeSampleTimes(grid.layoutSamples, motion.times)) {
     await driver.seek(time);
@@ -378,6 +383,7 @@ async function collectGridSamples(
       issuesAtTime.push(...layoutIssues);
       collected.geometrySignatures.push(await driver.collectLayoutGeometry());
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
+      collected.indicatorSamples.push(...(await driver.collectOffPivotRotationSample(time)));
     }
     if (canvas) {
       const geometryIssues = await collectGeometryAt(
@@ -640,6 +646,219 @@ export function detectRotationPivotDrift(
   return findings;
 }
 
+// off_pivot_rotation thresholds. A pointer must actually sweep, sit on a
+// resolvable dial hub, and its recovered center-of-rotation must land far from
+// that hub relative to the pointer's own length.
+const INDICATOR_MIN_SAMPLES = 3;
+const INDICATOR_MIN_ANGLE_SPREAD_DEG = 20;
+const INDICATOR_MIN_HUB_CIRCLES = 2;
+// A circle fit whose residual exceeds this fraction of the orbit radius is not
+// a clean rotation (jitter/scatter) — skip rather than risk a bad center.
+const INDICATOR_MAX_FIT_RESIDUAL_FRACTION = 0.25;
+// Drift beyond this fraction of the pointer length is a wrong pivot. A correctly
+// hubbed needle recovers a center within a few px of the hub (≈0); a base/edge
+// pivot mistake puts the recovered center a large fraction of the needle away.
+const INDICATOR_DRIFT_LENGTH_FRACTION = 0.35;
+
+interface CircleFit {
+  cx: number;
+  cy: number;
+  radius: number;
+  residual: number;
+}
+
+/** Kåsa algebraic circle fit; null when the points are near-collinear/degenerate
+ * (no stable center recoverable). */
+function fitCircle(points: Array<{ x: number; y: number }>): CircleFit | null {
+  const count = points.length;
+  if (count < 3) return null;
+  const meanX = points.reduce((sum, p) => sum + p.x, 0) / count;
+  const meanY = points.reduce((sum, p) => sum + p.y, 0) / count;
+  let suu = 0;
+  let svv = 0;
+  let suv = 0;
+  let suuu = 0;
+  let svvv = 0;
+  let suvv = 0;
+  let svuu = 0;
+  for (const point of points) {
+    const u = point.x - meanX;
+    const v = point.y - meanY;
+    suu += u * u;
+    svv += v * v;
+    suv += u * v;
+    suuu += u * u * u;
+    svvv += v * v * v;
+    suvv += u * v * v;
+    svuu += v * u * u;
+  }
+  const determinant = suu * svv - suv * suv;
+  if (Math.abs(determinant) < 1e-6) return null;
+  const rhsU = (suuu + suvv) / 2;
+  const rhsV = (svvv + svuu) / 2;
+  const uc = (rhsU * svv - rhsV * suv) / determinant;
+  const vc = (rhsV * suu - rhsU * suv) / determinant;
+  const cx = uc + meanX;
+  const cy = vc + meanY;
+  const radius = Math.sqrt(uc * uc + vc * vc + (suu + svv) / count);
+  let residual = 0;
+  for (const point of points) {
+    residual += Math.abs(Math.hypot(point.x - cx, point.y - cy) - radius);
+  }
+  return { cx, cy, radius, residual: residual / count };
+}
+
+function groupIndicatorSamplesBySelector(
+  samples: OffPivotRotationSample[],
+): Map<string, OffPivotRotationSample[]> {
+  const bySelector = new Map<string, OffPivotRotationSample[]>();
+  for (const sample of samples) {
+    const group = bySelector.get(sample.selector);
+    if (group) group.push(sample);
+    else bySelector.set(sample.selector, [sample]);
+  }
+  return bySelector;
+}
+
+/** Recover the center-of-rotation from whichever major-axis endpoint traces the
+ * larger orbit (more movement → more numerically stable), rejecting scattered
+ * fits. */
+function recoverPivot(group: OffPivotRotationSample[]): CircleFit | null {
+  const endpointA = group.map((s) => ({ x: s.ax, y: s.ay }));
+  const endpointB = group.map((s) => ({ x: s.bx, y: s.by }));
+  const fits = [fitCircle(endpointA), fitCircle(endpointB)].filter(
+    (fit): fit is CircleFit => fit !== null,
+  );
+  if (fits.length === 0) return null;
+  const best = fits.reduce((widest, fit) => (fit.radius > widest.radius ? fit : widest));
+  if (best.radius <= 0) return null;
+  if (best.residual > INDICATOR_MAX_FIT_RESIDUAL_FRACTION * best.radius) return null;
+  return best;
+}
+
+function offPivotRotationFinding(
+  group: OffPivotRotationSample[],
+  drift: number,
+): AnchoredLayoutIssue | null {
+  const last = group[group.length - 1];
+  if (!last) return null;
+  const rect: LayoutRect = {
+    left: Math.min(last.ax, last.bx) - 4,
+    top: Math.min(last.ay, last.by) - 4,
+    right: Math.max(last.ax, last.bx) + 4,
+    bottom: Math.max(last.ay, last.by) + 4,
+    width: Math.abs(last.bx - last.ax) + 8,
+    height: Math.abs(last.by - last.ay) + 8,
+  };
+  return {
+    code: "off_pivot_rotation",
+    severity: "warning",
+    time: last.time,
+    selector: last.selector,
+    dataAttributes: {},
+    sourceFile: "index.html",
+    bbox: rectToBbox(rect),
+    rect,
+    message: `Gauge/dial pointer rotates about a point ${Math.round(drift)}px from the dial hub — its center-of-rotation is off the hub, so it points wrong or overshoots the track (check the rotating group's pivot: translate to the hub before rotate, or set svgOrigin/transform-origin to the hub).`,
+    fixHint:
+      "The pointer's center-of-rotation must coincide with the dial hub. Rotate the group about the hub (e.g. transform-origin/svgOrigin set to the hub center, or translate the group so its rotation pivot lands on the hub) rather than about the element's own bbox center.",
+  };
+}
+
+/**
+ * off_pivot_rotation: a gauge needle / clock hand / radar sweep / dial pointer
+ * that rotates about the WRONG pivot — its center-of-rotation is far from the
+ * dial's hub, so the pointer aims wrong, runs off the track, or leaves the canvas.
+ *
+ * This is a HUB-REFERENCED check by necessity: a correctly-swept needle's bbox
+ * center orbits identically to a broken one (the pivot sits at the needle's
+ * base/edge either way), so no element-intrinsic measure separates them. The
+ * browser sampler records two fixed MATERIAL points on the pointer per frame; a
+ * circle fit recovers the true center-of-rotation, which is then compared to the
+ * dial's static hub (the screen point shared by the most non-rotating circles).
+ *
+ * FP guards are strict: requires real sweep (angle varies), a resolvable hub
+ * (≥2 concentric static circles), a clean circle fit (low residual), and drift
+ * exceeding a fraction of the pointer's own length. When no hub reference can be
+ * resolved it does not fire, so a lone decorative rotator can't trip it.
+ */
+interface IndicatorCandidate {
+  hubKey: string;
+  angleAboutHub: number;
+  drift: number;
+  length: number;
+  finding: AnchoredLayoutIssue | null;
+}
+
+/** Distinct angular positions about the hub among a set of candidates (nested
+ * blade parts share one angle; orbiting bodies spread to several). */
+function countAngularBodies(angles: number[]): number {
+  const clusters: number[] = [];
+  for (const angle of angles) {
+    if (
+      !clusters.some((rep) => Math.min(Math.abs(angle - rep), 360 - Math.abs(angle - rep)) <= 25)
+    ) {
+      clusters.push(angle);
+    }
+  }
+  return clusters.length;
+}
+
+export function detectOffPivotRotation(samples: OffPivotRotationSample[]): AnchoredLayoutIssue[] {
+  const candidates: IndicatorCandidate[] = [];
+  for (const group of groupIndicatorSamplesBySelector(samples).values()) {
+    if (group.length < INDICATOR_MIN_SAMPLES) continue;
+    if (maxAngleSpread(group.map((s) => s.angle)) <= INDICATOR_MIN_ANGLE_SPREAD_DEG) continue;
+    const last = group[group.length - 1];
+    if (
+      !last ||
+      last.hx === null ||
+      last.hy === null ||
+      last.hubCount < INDICATOR_MIN_HUB_CIRCLES
+    ) {
+      continue;
+    }
+    const pivot = recoverPivot(group);
+    if (!pivot) continue;
+    const drift = Math.hypot(pivot.cx - last.hx, pivot.cy - last.hy);
+    const length = median(group.map((s) => s.len));
+    const angleAboutHub =
+      (Math.atan2((last.ay + last.by) / 2 - last.hy, (last.ax + last.bx) / 2 - last.hx) * 180) /
+      Math.PI;
+    const hubKey = `${Math.round(last.hx / 5)}:${Math.round(last.hy / 5)}`;
+    const eligible = drift > INDICATOR_DRIFT_LENGTH_FRACTION * length;
+    candidates.push({
+      hubKey,
+      angleAboutHub,
+      drift,
+      length,
+      finding: eligible ? offPivotRotationFinding(group, drift) : null,
+    });
+  }
+  // Per hub: multiple bodies at distinct angular positions = an orbit/atom/radial
+  // system, not a single dial pointer — suppress. A real pointer (group + nested
+  // blades) collapses to one angular cluster. Otherwise emit one finding per hub,
+  // keeping the longest pointer.
+  const byHub = new Map<string, IndicatorCandidate[]>();
+  for (const candidate of candidates) {
+    const group = byHub.get(candidate.hubKey);
+    if (group) group.push(candidate);
+    else byHub.set(candidate.hubKey, [candidate]);
+  }
+  const findings: AnchoredLayoutIssue[] = [];
+  for (const group of byHub.values()) {
+    if (countAngularBodies(group.map((c) => c.angleAboutHub)) >= 2) continue;
+    const best = group
+      .filter((c) => c.finding !== null)
+      .reduce<IndicatorCandidate | null>(
+        (max, c) => (!max || c.length > max.length ? c : max),
+        null,
+      );
+    if (best?.finding) findings.push(best.finding);
+  }
+  return findings;
+}
+
 /** Error-severity findings with real geometry become labeled overview boxes.
  * Contrast failures are annotated separately by the driver itself, since
  * they're only known once contrast measurement for this sample completes. */
@@ -679,6 +898,7 @@ export async function runAuditGrid(
     collected.rotationSamples,
     await driver.getCanvas(),
   );
+  const offPivotFindings = detectOffPivotRotation(collected.indicatorSamples);
   const contrast = buildContrastResults(collected.contrastEntries);
   return {
     duration: grid.duration,
@@ -686,7 +906,12 @@ export async function runAuditGrid(
     transitionSamples: grid.transitionSamples,
     transitionSamplesDropped: grid.transitionSamplesDropped,
     runtimeFindings: [],
-    layoutIssues: [...collected.layoutIssues, ...sweepFindings, ...rotationFindings],
+    layoutIssues: [
+      ...collected.layoutIssues,
+      ...sweepFindings,
+      ...rotationFindings,
+      ...offPivotFindings,
+    ],
     motionIssues,
     motionSampleCount: collected.motionFrames.length,
     contrastSamples: grid.contrastSamples,

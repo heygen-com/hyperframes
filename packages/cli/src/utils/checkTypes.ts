@@ -133,6 +133,26 @@ export interface RotationSample {
   angle: number;
 }
 
+/** One elongated rotating SVG figure's material geometry at a single seeked
+ * sample, produced by `__hyperframesOffPivotRotationSample`. `(ax,ay)`/`(bx,by)` are
+ * two fixed material points on the figure (major-axis endpoints) mapped to
+ * screen space, so their cross-frame trajectory recovers the true center of
+ * rotation; `(hx,hy)` is the dial's static hub and `hr` its radius. */
+export interface OffPivotRotationSample {
+  time: number;
+  selector: string;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  len: number;
+  angle: number;
+  hx: number | null;
+  hy: number | null;
+  hr: number | null;
+  hubCount: number;
+}
+
 export type MotionSpecResolution =
   | { kind: "none" }
   | { kind: "valid"; path: string; spec: MotionSpec }
@@ -153,6 +173,9 @@ export interface CheckAuditDriver {
   /** rotation_pivot_drift: every rotatable element's bbox center/size/angle at
    * the current seeked state. Accumulated across the grid — see checkPipeline. */
   collectRotationSample(time: number): Promise<RotationSample[]>;
+  /** off_pivot_rotation: every elongated rotating SVG figure's material-point
+   * geometry + resolved dial hub at the current seeked state. */
+  collectOffPivotRotationSample(time: number): Promise<OffPivotRotationSample[]>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,

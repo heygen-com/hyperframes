@@ -1531,4 +1531,188 @@
     }
     return samples;
   };
+
+  // Needle-pivot sampling (off_pivot_rotation). A gauge/clock/radar pointer
+  // whose center-of-rotation sits far from the dial hub. bbox-intrinsic measures
+  // can't tell a correct sweep from a broken one (a base-pivoted needle's bbox
+  // center orbits either way), so this records two MATERIAL points on each
+  // elongated rotating SVG figure — mapped through getScreenCTM so the actual
+  // rendered transform is honored regardless of svgOrigin/transform-origin — and
+  // the dial's static hub (the point shared by the most non-rotating circles).
+  // The pipeline fits a rotation to the material-point trajectories to recover
+  // the real center-of-rotation and flags it when it drifts off that hub.
+  function ctmRotationDeg(ctm) {
+    if (!ctm) return null;
+    return (Math.atan2(ctm.b, ctm.a) * 180) / Math.PI;
+  }
+
+  function ctmScale(ctm) {
+    return Math.hypot(ctm.a, ctm.b);
+  }
+
+  function mapPoint(svg, ctm, x, y) {
+    const point = svg.createSVGPoint();
+    point.x = x;
+    point.y = y;
+    const mapped = point.matrixTransform(ctm);
+    return { x: mapped.x, y: mapped.y };
+  }
+
+  // Walks up to (and including) the composition root, NOT just the owner <svg>:
+  // an element spun by a div ancestor above its svg must not be mistaken for a
+  // static hub anchor (else a lone rotating arc becomes its own dial center).
+  function hasRotatedAncestor(element, root) {
+    let node = element;
+    while (node) {
+      const angle = rotationAngleDeg(getComputedStyle(node).transform);
+      if (angle !== null && Math.abs(angle) > 1) return true;
+      if (node === root) break;
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  function fitCirclePoints(points) {
+    const count = points.length;
+    if (count < 3) return null;
+    const meanX = points.reduce((sum, p) => sum + p.x, 0) / count;
+    const meanY = points.reduce((sum, p) => sum + p.y, 0) / count;
+    let suu = 0,
+      svv = 0,
+      suv = 0,
+      suuu = 0,
+      svvv = 0,
+      suvv = 0,
+      svuu = 0;
+    for (const point of points) {
+      const u = point.x - meanX;
+      const v = point.y - meanY;
+      suu += u * u;
+      svv += v * v;
+      suv += u * v;
+      suuu += u * u * u;
+      svvv += v * v * v;
+      suvv += u * v * v;
+      svuu += v * u * u;
+    }
+    const det = suu * svv - suv * suv;
+    if (Math.abs(det) < 1e-6) return null;
+    const uc = (((suuu + suvv) / 2) * svv - ((svvv + svuu) / 2) * suv) / det;
+    const vc = (((svvv + svuu) / 2) * suu - ((suuu + suvv) / 2) * suv) / det;
+    const cx = uc + meanX;
+    const cy = vc + meanY;
+    const radius = Math.sqrt(uc * uc + vc * vc + (suu + svv) / count);
+    let residual = 0;
+    for (const point of points)
+      residual += Math.abs(Math.hypot(point.x - cx, point.y - cy) - radius);
+    return { cx, cy, radius, residual: residual / count };
+  }
+
+  // Fallback for dials drawn as arc <path> rather than <circle> rings: sample
+  // the largest static, near-circular path and recover its arc center.
+  function arcHubForSvg(svg, root) {
+    let best = null;
+    for (const path of Array.from(svg.querySelectorAll("path"))) {
+      if (hasRotatedAncestor(path, root)) continue;
+      if (typeof path.getTotalLength !== "function") continue;
+      const total = path.getTotalLength();
+      if (total < 200) continue;
+      const ctm = path.getScreenCTM();
+      if (!ctm) continue;
+      const points = [];
+      for (let i = 0; i <= 16; i++) {
+        const local = path.getPointAtLength((total * i) / 16);
+        points.push(mapPoint(svg, ctm, local.x, local.y));
+      }
+      const fit = fitCirclePoints(points);
+      if (!fit || fit.radius < 40) continue;
+      if (fit.residual > 0.05 * fit.radius) continue;
+      if (!best || fit.radius > best.radius) best = fit;
+    }
+    return best ? { hx: best.cx, hy: best.cy, hr: best.radius, count: 2 } : null;
+  }
+
+  function dialHubForSvg(svg, root) {
+    const centers = [];
+    for (const circle of Array.from(svg.querySelectorAll("circle"))) {
+      if (hasRotatedAncestor(circle, root)) continue;
+      const ctm = circle.getScreenCTM();
+      if (!ctm) continue;
+      const cx = Number.parseFloat(circle.getAttribute("cx") || "0");
+      const cy = Number.parseFloat(circle.getAttribute("cy") || "0");
+      const center = mapPoint(svg, ctm, cx, cy);
+      const radius = Number.parseFloat(circle.getAttribute("r") || "0") * ctmScale(ctm);
+      centers.push({ x: center.x, y: center.y, radius });
+    }
+    let best = null;
+    for (const anchor of centers) {
+      const cluster = centers.filter(
+        (other) => Math.hypot(other.x - anchor.x, other.y - anchor.y) <= 8,
+      );
+      if (!best || cluster.length > best.cluster.length) best = { anchor, cluster };
+    }
+    if (best && best.cluster.length >= 2) {
+      const count = best.cluster.length;
+      const hx = best.cluster.reduce((sum, item) => sum + item.x, 0) / count;
+      const hy = best.cluster.reduce((sum, item) => sum + item.y, 0) / count;
+      const hr = best.cluster.reduce((max, item) => Math.max(max, item.radius), 0);
+      return { hx, hy, hr, count };
+    }
+    return arcHubForSvg(svg, root);
+  }
+
+  window.__hyperframesOffPivotRotationSample = function collectOffPivotRotationSample() {
+    const root = document.querySelector("[data-composition-id]") || document.body;
+    const samples = [];
+    const hubCache = new Map();
+    const CANDIDATE_CAP = 60;
+    for (const element of Array.from(
+      root.querySelectorAll("path, polygon, line, rect, polyline, g"),
+    )) {
+      if (samples.length >= CANDIDATE_CAP) break;
+      const svg = element.ownerSVGElement;
+      if (!svg || typeof element.getBBox !== "function") continue;
+      if (element.closest("[data-layout-allow-orbit]")) continue;
+      if (!isVisibleElement(element, 0.05)) continue;
+      const ctm = element.getScreenCTM();
+      const angle = ctmRotationDeg(ctm);
+      if (ctm === null || angle === null) continue;
+      let bbox;
+      try {
+        bbox = element.getBBox();
+      } catch {
+        continue;
+      }
+      const long = Math.max(bbox.width, bbox.height);
+      const short = Math.min(bbox.width, bbox.height);
+      if (short <= 0 || long / short < 3 || long < 40) continue;
+      const vertical = bbox.height >= bbox.width;
+      const midMajor = vertical ? bbox.x + bbox.width / 2 : bbox.y + bbox.height / 2;
+      const a = vertical
+        ? mapPoint(svg, ctm, midMajor, bbox.y)
+        : mapPoint(svg, ctm, bbox.x, midMajor);
+      const b = vertical
+        ? mapPoint(svg, ctm, midMajor, bbox.y + bbox.height)
+        : mapPoint(svg, ctm, bbox.x + bbox.width, midMajor);
+      let hub = hubCache.get(svg);
+      if (hub === undefined) {
+        hub = dialHubForSvg(svg, root);
+        hubCache.set(svg, hub);
+      }
+      samples.push({
+        selector: selectorFor(element),
+        ax: round(a.x),
+        ay: round(a.y),
+        bx: round(b.x),
+        by: round(b.y),
+        len: round(Math.hypot(b.x - a.x, b.y - a.y)),
+        angle: round(angle),
+        hx: hub ? round(hub.hx) : null,
+        hy: hub ? round(hub.hy) : null,
+        hr: hub ? round(hub.hr) : null,
+        hubCount: hub ? hub.count : 0,
+      });
+    }
+    return samples;
+  };
 })();

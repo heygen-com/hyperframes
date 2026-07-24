@@ -150,6 +150,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
     collectRotationSample: vi.fn(async (_time: number) => []),
+    collectOffPivotRotationSample: vi.fn(async (_time: number) => []),
     collectGeometryCandidates: vi.fn(async () => []),
     collectMotionFrame: vi.fn(async (time: number) => ({ time, data: {}, liveness: {} })),
     anchorMotionIssues: vi.fn(async (issues: LayoutIssue[]) =>

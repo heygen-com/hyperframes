@@ -26,6 +26,9 @@ export type LayoutIssueCode =
   // Cross-sample rotation finding — a spinning element whose bbox center drifts
   // because it pivots about the wrong point (bad transformOrigin/svgOrigin).
   | "rotation_pivot_drift"
+  // Hub-referenced rotation finding — a gauge/clock/radar pointer whose recovered
+  // center-of-rotation sits far from the dial's static hub (wrong pivot point).
+  | "off_pivot_rotation"
   // Frozen-sweep guard (#U10) — a whole-run meta-finding, not a per-sample
   // geometry observation; never persistence-tiered (see `applyPersistenceTier`).
   | "sweep_static"

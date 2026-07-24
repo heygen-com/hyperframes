@@ -42,6 +42,7 @@ import type {
   ContrastCapture,
   GeometryCandidateRequest,
   MotionSpecResolution,
+  OffPivotRotationSample,
   RotationSample,
   RunAuditGrid,
 } from "./checkTypes.js";
@@ -349,6 +350,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     collectLayout: (time, tolerance) => collectLayout(page, time, tolerance),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
+    collectOffPivotRotationSample: (time) => collectOffPivotRotationSample(page, time),
     collectGeometryCandidates: (time, request) => collectGeometryCandidates(page, time, request),
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
@@ -492,6 +494,59 @@ function parseRotationSample(value: unknown, time: number): RotationSample[] {
     return [];
   }
   return [{ time, selector, cx, cy, w, h, angle }];
+}
+
+async function collectOffPivotRotationSample(
+  page: Page,
+  time: number,
+): Promise<OffPivotRotationSample[]> {
+  const raw = await page.evaluate(() => {
+    const sample = Reflect.get(window, "__hyperframesOffPivotRotationSample");
+    if (typeof sample !== "function") return [];
+    const result = Reflect.apply(sample, window, []);
+    return Array.isArray(result) ? result : [];
+  });
+  return raw.flatMap((value) => parseOffPivotRotationSample(value, time));
+}
+
+function parseOffPivotRotationSample(value: unknown, time: number): OffPivotRotationSample[] {
+  if (!isRecord(value)) return [];
+  const selector = stringValue(value, "selector");
+  const ax = numberValue(value, "ax");
+  const ay = numberValue(value, "ay");
+  const bx = numberValue(value, "bx");
+  const by = numberValue(value, "by");
+  const len = numberValue(value, "len");
+  const angle = numberValue(value, "angle");
+  const hubCount = numberValue(value, "hubCount");
+  if (
+    !selector ||
+    ax === null ||
+    ay === null ||
+    bx === null ||
+    by === null ||
+    len === null ||
+    angle === null ||
+    hubCount === null
+  ) {
+    return [];
+  }
+  return [
+    {
+      time,
+      selector,
+      ax,
+      ay,
+      bx,
+      by,
+      len,
+      angle,
+      hx: numberValue(value, "hx"),
+      hy: numberValue(value, "hy"),
+      hr: numberValue(value, "hr"),
+      hubCount,
+    },
+  ];
 }
 
 async function collectGeometryCandidates(
@@ -1078,6 +1133,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "panel_out_of_canvas",
   "connector_detached",
   "rotation_pivot_drift",
+  "off_pivot_rotation",
   "motion_appears_late",
   "motion_out_of_order",
   "motion_off_frame",
