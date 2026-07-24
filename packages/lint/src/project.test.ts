@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { ChildProcess, execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
@@ -45,6 +45,28 @@ afterEach(() => {
     rmSync(d, { recursive: true, force: true });
   }
   dirs = [];
+});
+
+describe("external symlink assets", () => {
+  it("does not report a shared asset addressed through an in-project symlink", async () => {
+    const project = makeProject(
+      validHtml().replace("</div>", '<img src="assets/shared/sample.svg" /></div>'),
+    );
+    const externalDir = tmpProject("shared-assets");
+    dirs.push(externalDir);
+    mkdirSync(join(project, "assets"));
+    writeFileSync(join(externalDir, "sample.svg"), "<svg>shared</svg>");
+    try {
+      symlinkSync(externalDir, join(project, "assets", "shared"), "dir");
+    } catch {
+      return;
+    }
+
+    const { results } = await lintProject(project);
+    const findings = results.flatMap((result) => result.result.findings);
+
+    expect(findings.some((finding) => finding.code === "missing_local_asset")).toBe(false);
+  });
 });
 
 describe("missing_or_empty_sub_composition", () => {

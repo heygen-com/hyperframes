@@ -516,6 +516,26 @@ describe("hf-id surfacing in preview route", () => {
     expect(readFileSync(svgPath, "utf-8")).toBe(svgBytes);
   });
 
+  it("serves an asset reached through an in-project symlink to a shared external directory", async () => {
+    const projectDir = createProjectDir();
+    const externalDir = mkdtempSync(join(tmpdir(), "hf-preview-shared-assets-"));
+    tempDirs.push(externalDir);
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(externalDir, "sample.svg"), "<svg>shared</svg>");
+    if (!tryCreateSymlink(externalDir, join(projectDir, "assets", "shared"), "dir")) return;
+
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/preview/assets/shared/sample.svg",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await response.text()).toBe("<svg>shared</svg>");
+  });
+
   it("sub-comp route does NOT persist ids inside a plain <template> (runtime clone-source)", async () => {
     const { readFileSync } = await import("node:fs");
     const projectDir = createProjectDir();

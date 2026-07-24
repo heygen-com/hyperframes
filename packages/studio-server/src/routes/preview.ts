@@ -1,8 +1,9 @@
 import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
@@ -528,7 +529,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const subPath = decodeURIComponent(
       c.req.path.replace(`/projects/${project.id}/preview/`, "").split("?")[0] ?? "",
     );
-    const file = resolveWithinProject(project.dir, subPath);
+    // Assets are read-only and should mirror the renderer: permit a path that
+    // is lexically inside the project even if an explicit project symlink
+    // targets a shared directory outside it. Composition source files still
+    // use resolveWithinProject because preview mutates their data-hf-id values.
+    const candidate = resolve(project.dir, subPath);
+    const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
     if (!file) {
       return c.text("not found", 404);
     }
