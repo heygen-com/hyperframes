@@ -76,6 +76,22 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "camcorder-hud",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "editorial-flash-overlay",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "organic-light-leak-overlay",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "freeze-frame-cutout",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "shimmer-sweep",
       "type": "hyperframes:component"
     },

@@ -42,6 +42,7 @@ import {
   createRenderJob,
   executeRenderJob,
 } from "../packages/producer/src/index.js";
+import { compileForRender } from "../packages/producer/src/services/htmlCompiler.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -90,10 +91,13 @@ function discoverItems(kindFilter: ItemKind | null, nameFilter: string | null): 
       const manifestPath = join(sourceDir, "registry-item.json");
       if (!existsSync(manifestPath)) continue;
 
-      // Blocks: find the first composition file. Components: use demo.html.
+      // Prefer an authored demo when present; otherwise render the installable
+      // composition for blocks and demo.html for components.
       let entryFile: string;
-      if (kind === "component") {
+      if (existsSync(join(sourceDir, "demo.html"))) {
         entryFile = "demo.html";
+      } else if (kind === "component") {
+        continue;
       } else {
         const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
         const compFile = manifest.files?.find(
@@ -123,7 +127,7 @@ function outputDir(kind: ItemKind): string {
   return resolve(repoRoot, "docs/images/catalog", typeDir);
 }
 
-function prepareProjectDir(item: CatalogItem): string {
+async function prepareProjectDir(item: CatalogItem): Promise<string> {
   const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   cpSync(item.sourceDir, tmpDir, { recursive: true });
@@ -170,7 +174,6 @@ function prepareProjectDir(item: CatalogItem): string {
         }
       }
       writeFileSync(join(tmpDir, "index.html"), content, "utf-8");
-      return tmpDir;
     }
   }
   if (!existsSync(join(tmpDir, "index.html"))) {
@@ -215,6 +218,13 @@ function prepareProjectDir(item: CatalogItem): string {
 </body>
 </html>`;
     writeFileSync(join(tmpDir, "index.html"), wrapper, "utf-8");
+  }
+
+  const indexPath = join(tmpDir, "index.html");
+  const indexHtml = readFileSync(indexPath, "utf-8");
+  if (indexHtml.includes("data-composition-src")) {
+    const compiled = await compileForRender(tmpDir, indexPath, join(tmpDir, "_downloads"));
+    writeFileSync(indexPath, compiled.html, "utf-8");
   }
 
   return tmpDir;
@@ -327,7 +337,7 @@ async function main(): Promise<void> {
 
   for (const item of items) {
     console.log(`[${item.kind}] ${item.name}`);
-    const projectDir = prepareProjectDir(item);
+    const projectDir = await prepareProjectDir(item);
     try {
       await generateThumbnail(item, projectDir);
       if (!skipVideo) {

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #editorial-flash-demo {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #080808;
+      }
+
+      #ef-demo-backdrop,
+      #ef-demo-overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #ef-demo-backdrop {
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="editorial-flash-demo"
+      data-composition-id="editorial-flash-demo"
+      data-start="0"
+      data-duration="4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <img
+        id="ef-demo-backdrop"
+        class="clip"
+        src="./demo-backdrop.jpg"
+        alt=""
+        data-start="0"
+        data-duration="4"
+        data-track-index="0"
+      />
+      <div
+        id="ef-demo-overlay"
+        data-composition-id="editorial-flash-overlay"
+        data-composition-src="editorial-flash-overlay.html"
+        data-start="0"
+        data-duration="4"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script>
+      var tl = gsap.timeline({ paused: true });
+      tl.to("#ef-demo-backdrop", { scale: 1.035, duration: 4, ease: "none" }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["editorial-flash-demo"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "freeze-frame-cutout",
+  "type": "hyperframes:block",
+  "title": "Freeze-Frame Dressing",
+  "description": "Timeline-driven paper, tape, and flash dressing for a freeze-frame or background-removed subject",
+  "tags": [
+    "freeze-frame",
+    "cutout",
+    "scrapbook",
+    "paper",
+    "social",
+    "overlay",
+    "media-treatment-overlay"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4,
+  "files": [
+    {
+      "path": "freeze-frame-cutout.html",
+      "target": "compositions/freeze-frame-cutout.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-cutout.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/freeze-frame-cutout.mp4"
+  }
+}

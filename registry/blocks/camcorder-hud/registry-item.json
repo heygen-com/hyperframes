@@ -1,0 +1,32 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "camcorder-hud",
+  "type": "hyperframes:block",
+  "title": "Camcorder HUD",
+  "description": "Responsive REC, battery, authored date, and timeline-driven counter overlay for creator-camera and camcorder treatments",
+  "tags": [
+    "camcorder",
+    "camera",
+    "recording",
+    "hud",
+    "overlay",
+    "creator",
+    "media-treatment-overlay"
+  ],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4,
+  "files": [
+    {
+      "path": "camcorder-hud.html",
+      "target": "compositions/camcorder-hud.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camcorder-hud.png",
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/camcorder-hud.mp4"
+  }
+}
