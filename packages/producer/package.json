@@ -86,7 +86,7 @@
     "@fontsource/oswald": "^5.2.8",
     "@fontsource/outfit": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.5",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
     "@hyperframes/lint": "workspace:^",

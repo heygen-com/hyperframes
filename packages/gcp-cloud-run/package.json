@@ -70,7 +70,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.14.0",
     "@google-cloud/workflows": "^4.2.0",
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.0.5",
     "@hyperframes/producer": "workspace:^",
     "hono": "^4.6.0",
     "puppeteer-core": "^25.2.1",

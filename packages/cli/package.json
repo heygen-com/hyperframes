@@ -29,7 +29,7 @@
     "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.8.0",
+    "@hono/node-server": "^2.0.5",
     "@puppeteer/browsers": "^3.0.6",
     "adm-zip": "^0.5.16",
     "citty": "^0.2.1",
