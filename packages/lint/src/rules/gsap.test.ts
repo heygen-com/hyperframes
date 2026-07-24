@@ -865,6 +865,26 @@ describe("GSAP rules", () => {
     expect(finding?.fixHint).toContain("Math.max(0, Math.floor");
   });
 
+  it("warns on repeat: -1 when an explicit finite composition duration bounds export", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="8"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#spinner", { rotation: 360, duration: 0.8, repeat: -1, ease: "none" }, 0);
+    window.__timelines["main"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("finite 8s window");
+    expect(finding?.fixHint).toContain("explicit finite composition");
+  });
+
   it("does not error on finite repeat values", async () => {
     const html = `
 <html><body>

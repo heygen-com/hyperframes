@@ -1550,8 +1550,12 @@ export const gsapRules: LintRule<LintContext>[] = [
   },
 
   // gsap_infinite_repeat
-  ({ scripts }) => {
+  ({ scripts, rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
+    const declaredDuration = Number.parseFloat(
+      rootTag ? (readAttr(rootTag.raw, "data-duration") ?? "") : "",
+    );
+    const hasFiniteCompositionWindow = Number.isFinite(declaredDuration) && declaredDuration > 0;
     // Match repeat: -1 in GSAP tweens or timeline configs
     const pattern = /repeat\s*:\s*-1(?!\d)/g;
     for (const { snippet } of scanScriptsForRegexMatches(scripts, pattern, {
@@ -1561,14 +1565,16 @@ export const gsapRules: LintRule<LintContext>[] = [
     })) {
       findings.push({
         code: "gsap_infinite_repeat",
-        severity: "error",
-        message:
-          "GSAP tween uses `repeat: -1` (infinite). Infinite repeats break the deterministic " +
-          "capture engine which seeks to exact frame times. Use a finite repeat count calculated " +
-          "from the composition duration: `repeat: Math.max(0, Math.floor(duration / cycleDuration) - 1)`.",
-        fixHint:
-          "Replace `repeat: -1` with a finite count, e.g. `repeat: Math.max(0, Math.floor(totalDuration / singleCycleDuration) - 1)`. " +
-          "Use Math.floor (not Math.ceil) so the animation fits, and clamp at zero so a short composition cannot evaluate to -1.",
+        severity: hasFiniteCompositionWindow ? "warning" : "error",
+        message: hasFiniteCompositionWindow
+          ? `GSAP tween uses \`repeat: -1\` (infinite), but the composition declares a finite ${declaredDuration}s window. ` +
+            "HyperFrames clips deterministic seeking and export to that explicit duration."
+          : "GSAP tween uses `repeat: -1` (infinite) without a finite composition `data-duration`. " +
+            "The timeline can report an unbounded duration and make render planning fail.",
+        fixHint: hasFiniteCompositionWindow
+          ? "Keep the explicit finite composition `data-duration`. Use a finite repeat count only when the loop itself must end before the composition does."
+          : "Add a finite composition `data-duration`, or replace `repeat: -1` with " +
+            "`repeat: Math.max(0, Math.floor(totalDuration / singleCycleDuration) - 1)`.",
         snippet: truncateSnippet(snippet),
       });
     }
