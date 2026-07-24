@@ -148,6 +148,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
     seek: vi.fn(async (_time: number) => undefined),
     collectLayout: vi.fn(async (_time: number, _tolerance: number) => []),
+    collectOverlap: vi.fn(async (_time: number) => []),
     collectLayoutGeometry: vi.fn(async () => `geometry-${geometryCallCount++}`),
     collectRotationSample: vi.fn(async (_time: number) => []),
     collectOffPivotRotationSample: vi.fn(async (_time: number) => []),
@@ -1341,5 +1342,34 @@ describe("contrast candidate round-trip", () => {
     expect(source).toMatch(/prepared\.map\(\(entry\) => entry\.raw\)/);
     expect(source).toMatch(/raw: unknown;/);
     expect(source).not.toMatch(/prepared\.map\(\(entry\) => entry\.candidate\)/);
+  });
+});
+
+describe("dense motion-overlap re-sampling", () => {
+  it("surfaces a held content_overlap that only the dense grid observes", async () => {
+    // collectLayout (sparse base grid) sees nothing; collectOverlap (dense
+    // grid) reports the collision — as it would for a mid-motion crossing the
+    // base samples seek past. Held across the dense grid, it promotes to error.
+    const driver = fakeDriver({
+      collectLayout: vi.fn(async (_time: number) => []),
+      collectOverlap: vi.fn(async (time: number) => [
+        layoutIssue("warning", { time, code: "content_overlap" }),
+      ]),
+    });
+    const { report } = await runScenario(driver);
+    expect(driver.collectOverlap).toHaveBeenCalled();
+    expect(report.layout.findings.some((f) => f.code === "content_overlap")).toBe(true);
+    expect(report.layout.errorCount).toBeGreaterThan(0);
+  });
+
+  it("skips the dense overlap pass when the composition never animates", async () => {
+    // A constant geometry fingerprint means the timeline never advanced — no
+    // transient crossing is possible, so the dense pass must not run.
+    const driver = fakeDriver({
+      collectLayoutGeometry: vi.fn(async () => "static"),
+      collectOverlap: vi.fn(async (_time: number) => []),
+    });
+    await runScenario(driver);
+    expect(driver.collectOverlap).not.toHaveBeenCalled();
   });
 });

@@ -1425,6 +1425,20 @@
     return issues;
   };
 
+  // content_overlap only, for the dense motion re-sampling grid (checkPipeline
+  // detectMotionTextOverlap). Two free-positioned text blocks crossing mid-orbit
+  // collide for a fraction of a second the sparse layout grid seeks straight
+  // past; this reruns just the overlap detector — same collectSolidTextBlocks /
+  // overlapIssue 0.2-area threshold, no new detection surface — on a fine grid.
+  window.__hyperframesOverlapAudit = function auditOverlap(options) {
+    const time = options && typeof options.time === "number" ? options.time : 0;
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    return contentOverlapIssues(root, time);
+  };
+
   // Frozen-sweep guard (#U10, checkPipeline.ts): a compact per-sample
   // fingerprint of every visible element's box + opacity, in DOM order. Node
   // calls this once per seeked grid point and compares the strings across the

@@ -166,6 +166,10 @@ export interface CheckAuditDriver {
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
   seek(time: number): Promise<void>;
   collectLayout(time: number, tolerance: number): Promise<AnchoredLayoutIssue[]>;
+  /** content_overlap only, for the dense motion re-sampling grid — catches
+   * transient text-on-text collisions the sparse layout grid seeks past. See
+   * checkPipeline detectMotionTextOverlap. */
+  collectOverlap(time: number): Promise<AnchoredLayoutIssue[]>;
   /** Frozen-sweep guard (#U10): an opaque per-sample geometry+opacity
    * fingerprint of the current seeked state, for detecting a timeline that
    * never advances under seek. See layout-audit.browser.js. */
