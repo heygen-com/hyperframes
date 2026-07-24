@@ -34,9 +34,10 @@ The player loads the composition in a sandboxed iframe, auto-detects its dimensi
 import "@hyperframes/player";
 
 // The custom element is now registered — use it in your markup
-// React: <hyperframes-player src="..." controls />
-// Vue:   <hyperframes-player :src="url" controls />
+// Vue: <hyperframes-player :src="url" controls />
 ```
+
+React users should prefer the dedicated bindings — see [React](#react) below.
 
 ### Poster image
 
@@ -131,6 +132,61 @@ player.shaderLoading; // "composition" | "player" | "none" (read/write)
 // Inner iframe access (for advanced consumers — see "Advanced: iframe access" below)
 player.iframeElement; // HTMLIFrameElement (read-only)
 ```
+
+## React
+
+The `@hyperframes/player/react` subpath ships typed React bindings (React 18/19, optional peer dependency) — no manual custom-element wiring:
+
+```tsx
+import { HyperframesPlayer } from "@hyperframes/player/react";
+
+function Demo() {
+  return (
+    <HyperframesPlayer
+      src="./my-composition/index.html"
+      controls
+      onReady={({ duration }) => console.log(`Duration: ${duration}s`)}
+      onEnded={() => console.log("Done!")}
+      style={{ maxWidth: 800, aspectRatio: "16 / 9" }}
+    />
+  );
+}
+```
+
+Props are camelCase mirrors of the attributes above (`audioSrc`, `audioLocked`, `playbackRate`, `autoPlay`, `shaderCaptureScale`, `shaderLoading`, plus `className`/`style`), and every player event has a callback prop with the `CustomEvent` detail unwrapped (`onReady`, `onPlay`, `onPause`, `onTimeUpdate`, `onEnded`, `onError`, `onScenes`, `onShaderTransitionState`, `onRateChange`, `onVolumeChange`).
+
+Imperative control goes through a ref handle:
+
+```tsx
+import { useRef } from "react";
+import { HyperframesPlayer, type HyperframesPlayerHandle } from "@hyperframes/player/react";
+
+function Controlled({ src }: { src: string }) {
+  const player = useRef<HyperframesPlayerHandle>(null);
+
+  return (
+    <>
+      <HyperframesPlayer ref={player} src={src} />
+      <button onClick={() => player.current?.play()}>Play</button>
+      <button onClick={() => player.current?.seek(2.5)}>Jump to 2.5s</button>
+    </>
+  );
+}
+```
+
+The handle exposes `play()`, `pause()`, `seek()`, `stopMedia()`, the color grading API, and read-only state: `currentTime`, `duration`, `paused`, `ready`, `scenes`, `element` (the raw `<hyperframes-player>`), and `iframeElement` (see "Advanced: iframe access" below).
+
+The component registers the custom element on mount via a dynamic import, so it is safe to render from SSR frameworks (Next.js, Remix) — the player module is only evaluated in the browser. To pre-register the element before the first player mounts, call `ensurePlayerDefined()` (browser only — throws during SSR):
+
+```ts
+import { ensurePlayerDefined } from "@hyperframes/player/react";
+
+ensurePlayerDefined();
+```
+
+Handle methods are safe no-ops until the element has registered and upgraded; gate playback logic on `onReady` as you would with the raw element.
+
+A runnable demo app lives at [`examples/react-player`](../../examples/react-player).
 
 ## Advanced: iframe access
 

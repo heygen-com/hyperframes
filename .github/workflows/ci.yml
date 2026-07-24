@@ -49,6 +49,7 @@ jobs:
           filters: |
             code:
               - "packages/**"
+              - "examples/**"
               - "scripts/**"
               - "package.json"
               - "bun.lock"
