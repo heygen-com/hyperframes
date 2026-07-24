@@ -28,6 +28,7 @@ import {
   resolveDefaultFpsArg,
 } from "../../utils/renderArgs.js";
 import { normalizeSkillSlug } from "../../telemetry/skill.js";
+import { loadProjectConfig } from "../../utils/projectConfig.js";
 
 const VALID_QUALITY = new Set(["draft", "standard", "high"]);
 const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
@@ -192,9 +193,14 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   const quality = qualityRaw as RenderQuality;
 
-  const authoringSkill = normalizeSkillSlug(args.skill);
+  // Attribution resolves the explicit --skill flag first, then falls back to
+  // the owning skill persisted in hyperframes.json — so re-renders, batch
+  // renders, and `npm run render` (which never re-pass the flag) stay
+  // attributed to the workflow that created the project.
+  const flagSkill = normalizeSkillSlug(args.skill);
+  const authoringSkill = flagSkill ?? loadProjectConfig(project.dir).authoringSkill;
   const invalidAuthoringSkill =
-    typeof args.skill === "string" && args.skill.trim() !== "" && !authoringSkill
+    typeof args.skill === "string" && args.skill.trim() !== "" && !flagSkill
       ? args.skill
       : undefined;
 

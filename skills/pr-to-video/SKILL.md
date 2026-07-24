@@ -42,7 +42,7 @@ The capability preflight runs before fetch, story work, audio, or frame dispatch
 
 Initialize only if `$PROJECT_DIR/hyperframes.json` is missing. Its basename comes from the PR, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
 
-`npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+`npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=pr-to-video` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 Every relative-path command below runs with `$PROJECT_DIR` as its working directory. Examples without an explicit subshell mean `(cd "$PROJECT_DIR" && …)`; never change the caller repository's working tree.
 

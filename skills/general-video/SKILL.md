@@ -39,7 +39,7 @@ Apply the first matching row; do not evaluate lower state rows:
 For a new project, choose a kebab-case directory name from the brief and scaffold before writing the brief:
 
 ```bash
-npx hyperframes init "videos/<project>" --non-interactive --example=blank
+npx hyperframes init "videos/<project>" --non-interactive --example=blank --skill=general-video
 ```
 
 Then write `BRIEF.md` at the project root using `../hyperframes-core/references/brief-format.md`. In an existing project, the root is the directory containing `hyperframes.json`. Record only the confirmed preference-backed fields named by the brief format, using `node <MEDIA_DIR>/scripts/prefs.mjs record --hyperframes <PROJECT_ROOT>`; never record inferred defaults. Here `<MEDIA_DIR>` is the installed `/media-use` skill directory and `<PROJECT_ROOT>` is the directory containing `hyperframes.json`. If the intent layer adopted a recipe, apply it now with `node <MEDIA_DIR>/scripts/recipe.mjs use --hyperframes <PROJECT_ROOT> --name <name>` and do not ask again.

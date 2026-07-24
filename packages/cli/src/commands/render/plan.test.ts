@@ -81,4 +81,22 @@ describe("createRenderPlan", () => {
     const plan = createRenderPlan({ dir: projectDir, "frames-cache-dir": "OFF" });
     expect(plan.environment.HYPERFRAMES_EXTRACT_CACHE_DIR).toBe("OFF");
   });
+
+  it("attributes a flag-less render to the skill persisted in hyperframes.json", () => {
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ authoringSkill: "product-launch-video" }),
+    );
+    const plan = createRenderPlan({ dir: projectDir });
+    expect(plan.authoringSkill).toBe("product-launch-video");
+  });
+
+  it("lets an explicit --skill flag override the persisted project owner", () => {
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ authoringSkill: "product-launch-video" }),
+    );
+    const plan = createRenderPlan({ dir: projectDir, skill: "motion-graphics" });
+    expect(plan.authoringSkill).toBe("motion-graphics");
+  });
 });

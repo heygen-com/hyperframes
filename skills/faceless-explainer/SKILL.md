@@ -27,7 +27,7 @@ Goal: Enter with a confirmed brief, create the HyperFrames project, and make the
 
 Initialize only if `hyperframes.json` is missing. Name `<project>` from the topic in kebab-case, such as `compound-interest-explained`; never use workspace name or timestamp.
 
-`npx hyperframes init "videos/<project>" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
+`npx hyperframes init "videos/<project>" --non-interactive --example=blank --skill=faceless-explainer` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
 After init, let `<PROJECT_ROOT>` be `videos/<project>` and run every subsequent relative-path command with that directory as its working directory. In the commands below, `.` means `<PROJECT_ROOT>`; never write `.media`, `capture`, or output files in the caller directory.
 

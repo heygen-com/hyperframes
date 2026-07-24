@@ -102,7 +102,7 @@ Read the samples. Refuse if:
 ## Pipeline — 5 steps
 
 ```
-1. hyperframes init <project> --non-interactive --video <video.mp4>
+1. hyperframes init <project> --non-interactive --video <video.mp4> --skill=embedded-captions
 2. bash scripts/prepare.sh <project>       # matte ∥ transcribe (parallel) → safe-zones. One command.
                                            #   → frames_fg/ transcript.json safe-zones.json
 3. [AGENT STEP — the only creative step] author a small JSON; see below by mode

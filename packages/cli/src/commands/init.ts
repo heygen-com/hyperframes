@@ -556,6 +556,7 @@ async function scaffoldProject(
   durationSeconds?: number,
   tailwind = false,
   resolution?: CanvasResolution,
+  authoringSkill?: string,
 ): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
@@ -588,10 +589,17 @@ async function scaffoldProject(
 
   // Write hyperframes.json so `hyperframes add` knows which registry to use
   // and where to drop block/component files. Overwritten only if absent.
+  // When the scaffolding workflow declared itself via --skill, stamp the owning
+  // skill here so every later render of this project is attributed to it.
   if (!existsSync(resolve(destDir, "hyperframes.json"))) {
     const { writeProjectConfig, DEFAULT_PROJECT_CONFIG } =
       await import("../utils/projectConfig.js");
-    writeProjectConfig(destDir, DEFAULT_PROJECT_CONFIG);
+    const { normalizeSkillSlug } = await import("../telemetry/skill.js");
+    const skill = normalizeSkillSlug(authoringSkill);
+    writeProjectConfig(
+      destDir,
+      skill ? { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill } : DEFAULT_PROJECT_CONFIG,
+    );
   }
 
   writeDefaultPackageJson(destDir, name);
@@ -727,6 +735,13 @@ export default defineCommand({
       type: "string",
       description:
         "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. Default: keep template dimensions (typically 1920x1080).",
+    },
+    skill: {
+      type: "string",
+      description:
+        "Owning authoring workflow slug (e.g. product-launch-video). Stamped into " +
+        "hyperframes.json so every render of this project is attributed to it on " +
+        "anonymous telemetry, without re-passing --skill on each render. Ignored unless it is a slug.",
     },
   },
   async run({ args }) {
@@ -898,6 +913,7 @@ export default defineCommand({
           videoDuration,
           tailwind,
           resolutionPreset,
+          args.skill,
         );
       } catch (err) {
         console.error(
@@ -1112,6 +1128,7 @@ export default defineCommand({
         videoDuration,
         tailwind,
         resolutionPreset,
+        args.skill,
       );
       if (!isBundled) {
         spin.stop(c.success(`Downloaded ${templateId}`));

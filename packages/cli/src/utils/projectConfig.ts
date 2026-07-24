@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
+import { normalizeSkillSlug } from "../telemetry/skill.js";
 
 export const PROJECT_CONFIG_FILENAME = "hyperframes.json";
 const PROJECT_CONFIG_SCHEMA_URL = "https://hyperframes.heygen.com/schema/hyperframes.json";
@@ -40,6 +41,14 @@ export interface ProjectConfig {
   paths: ProjectConfigPaths;
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
+  /**
+   * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
+   * by `hyperframes init --skill` or seeded from the first `hyperframes render
+   * --skill`, then read back so every later render of this project — re-render,
+   * `npm run render`, `--batch`, preview — is attributed to it on anonymous
+   * telemetry without the caller re-passing the flag.
+   */
+  authoringSkill?: string;
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -92,6 +101,9 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
           ? partial.media.autoProxy
           : DEFAULT_PROJECT_CONFIG.media?.autoProxy,
     },
+    // Slug-gate on read so a hand-edited or corrupt value never reaches the
+    // telemetry stream; an invalid slug simply drops the attribution.
+    authoringSkill: normalizeSkillSlug(partial.authoringSkill),
   };
 }
 
@@ -126,4 +138,31 @@ export function resolveAutoProxy(projectDir: string, flagValue: boolean | undefi
     return flagValue;
   }
   return loadProjectConfig(projectDir).media?.autoProxy ?? true;
+}
+
+/**
+ * Persist the owning authoring-skill slug into `hyperframes.json` so every
+ * later render of this project — re-render, `npm run render`, `--batch`,
+ * preview — is attributed to the workflow that created it, without the caller
+ * re-passing `--skill`.
+ *
+ * Seed-once: an existing stamp is never overwritten (the creating workflow owns
+ * the identity; a one-off `--skill` on a later render still governs that
+ * render's telemetry but does not rewrite the project's owner). An invalid or
+ * empty slug is ignored. Best effort: a read-only or missing project directory
+ * never fails the render it rode in on.
+ */
+export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown): void {
+  const skill = normalizeSkillSlug(rawSkill);
+  if (!skill) return;
+  try {
+    const current = readProjectConfig(projectDir);
+    if (current?.authoringSkill) return;
+    writeProjectConfig(projectDir, {
+      ...(current ?? DEFAULT_PROJECT_CONFIG),
+      authoringSkill: skill,
+    });
+  } catch {
+    // Attribution is best-effort telemetry, never a render blocker.
+  }
 }

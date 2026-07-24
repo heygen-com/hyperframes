@@ -84,7 +84,7 @@ Only when `$PROJECT_DIR/hyperframes.json` is absent:
 ```bash
 PROJECT_DIR="${MOTION_GRAPHICS_DIR:-videos/<project-name>}"
 mkdir -p "$(dirname "$PROJECT_DIR")"
-npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank
+npx hyperframes init "$PROJECT_DIR" --non-interactive --example=blank --skill=motion-graphics
 ```
 
 `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.

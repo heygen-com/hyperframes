@@ -3,6 +3,7 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { createRenderPlan, resolveBrowserGpuForCli, type RenderFormat } from "./render/plan.js";
+import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { presentRenderPlan } from "./render/present.js";
 import { executeRenderPlan, renderLintContinuationHint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
@@ -351,6 +352,9 @@ export default defineCommand({
   // Keep the transport adapter thin: each phase has one ownership boundary.
   async run({ args }) {
     const plan = createRenderPlan(args);
+    // Teach the project its owning skill from an explicit --skill so every
+    // later flag-less render (re-render, `npm run render`, batch) inherits it.
+    seedProjectAuthoringSkill(plan.project.dir, args.skill);
     await presentRenderPlan(plan);
     await executeRenderPlan(plan, {
       renderDocker,
