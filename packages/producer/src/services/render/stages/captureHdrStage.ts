@@ -212,7 +212,6 @@ export async function runCaptureHdrStage(
     nativeHdrImageIds,
     projectDir,
     compiledDir,
-    existsSync,
   });
 
   const domSession = await createCaptureSession(
