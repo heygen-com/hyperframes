@@ -20,12 +20,15 @@ describe("studio UI preferences", () => {
     const storage = createStorage();
 
     writeStudioUiPreferences({ timelineVisible: false }, storage);
+    writeStudioUiPreferences({ leftWidth: 384, rightWidth: 424 }, storage);
     writeStudioUiPreferences({ playbackRate: 1.5 }, storage);
     writeStudioUiPreferences({ audioMuted: true }, storage);
     writeStudioUiPreferences({ previewZoom: { zoomPercent: 160, panX: -20, panY: 12 } }, storage);
 
     expect(readStudioUiPreferences(storage)).toEqual({
       timelineVisible: false,
+      leftWidth: 384,
+      rightWidth: 424,
       playbackRate: 1.5,
       audioMuted: true,
       previewZoom: { zoomPercent: 160, panX: -20, panY: 12 },
@@ -38,6 +41,8 @@ describe("studio UI preferences", () => {
       "hf-studio-ui-preferences",
       JSON.stringify({
         leftCollapsed: "yes",
+        leftWidth: "wide",
+        rightWidth: Number.NaN,
         timelineVisible: true,
         playbackRate: Number.NaN,
         audioMuted: "false",

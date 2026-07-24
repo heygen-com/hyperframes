@@ -1,15 +1,13 @@
-import { useRef, useCallback, useEffect, memo } from "react";
+import { useRef, useEffect, memo } from "react";
 import gsap from "gsap";
 import { MorphSVGPlugin } from "gsap/MorphSVGPlugin";
-import { formatFrameTime, formatTime, stepFrameTime } from "../lib/time";
-import { usePlayerStore } from "../store/playerStore";
+import { formatFrameTime, formatTime } from "../lib/time";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { SpeedMenu } from "./SpeedMenu";
-import { useSeekBarDrag, resolveSeekPercent } from "./useSeekBarDrag";
-
-export { resolveSeekPercent };
 
 /* ── Icon sub-components ─────────────────────────────────────────── */
 
@@ -78,10 +76,8 @@ const MuteButton = memo(function MuteButton({
         disabled={controlsDisabled}
         aria-label={label}
         aria-pressed={audioMuted}
-        className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors disabled:pointer-events-none ${
-          audioMuted
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-30 ${
+          audioMuted ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
         }`}
       >
         <svg
@@ -131,10 +127,8 @@ const LoopButton = memo(function LoopButton({
           setLoopEnabled(!loopEnabled);
         }}
         disabled={disabled}
-        className={`h-7 w-7 flex items-center justify-center rounded-md border transition-colors ${
-          loopEnabled
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+        className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-30 ${
+          loopEnabled ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={loopEnabled ? "Disable loop playback" : "Enable loop playback"}
         aria-pressed={loopEnabled}
@@ -175,10 +169,8 @@ const FullscreenButton = memo(function FullscreenButton({
           trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
           onToggleFullscreen();
         }}
-        className={`h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-md border transition-colors ${
-          isFullscreen
-            ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-            : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:bg-neutral-800"
+        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+          isFullscreen ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
       >
@@ -211,118 +203,6 @@ const FullscreenButton = memo(function FullscreenButton({
         </svg>
       </button>
     </Tooltip>
-  );
-});
-
-/* ── Seek bar sub-component ──────────────────────────────────────── */
-
-function SeekBarMarker({ position, duration }: { position: number; duration: number }) {
-  if (duration <= 0) return null;
-  return (
-    <div
-      className="absolute z-[3] pointer-events-none"
-      style={{
-        left: `${Math.min(100, (position / duration) * 100)}%`,
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-        width: "2px",
-        height: "10px",
-        background: "#3CE6AC",
-        borderRadius: "1px",
-      }}
-    />
-  );
-}
-
-function WorkAreaOverlay({
-  inPoint,
-  outPoint,
-  duration,
-}: {
-  inPoint: number | null;
-  outPoint: number | null;
-  duration: number;
-}) {
-  if ((inPoint === null && outPoint === null) || duration <= 0) return null;
-  return (
-    <>
-      <div
-        className="absolute top-0 bottom-0 pointer-events-none"
-        style={{
-          left: `${inPoint !== null ? Math.min(100, (inPoint / duration) * 100) : 0}%`,
-          right: `${outPoint !== null ? 100 - Math.min(100, (outPoint / duration) * 100) : 0}%`,
-          background: "rgba(60,230,172,0.15)",
-        }}
-      />
-      {inPoint !== null && <SeekBarMarker position={inPoint} duration={duration} />}
-      {outPoint !== null && <SeekBarMarker position={outPoint} duration={duration} />}
-    </>
-  );
-}
-
-const SeekBar = memo(function SeekBar({
-  disabled,
-  duration,
-  inPoint,
-  outPoint,
-  progressFillRef,
-  progressThumbRef,
-  seekBarRef,
-  sliderRef,
-  onPointerDown,
-  onKeyDown,
-}: {
-  disabled: boolean;
-  duration: number;
-  inPoint: number | null;
-  outPoint: number | null;
-  progressFillRef: React.RefObject<HTMLDivElement | null>;
-  progressThumbRef: React.RefObject<HTMLDivElement | null>;
-  seekBarRef: React.RefObject<HTMLDivElement | null>;
-  sliderRef: React.RefObject<HTMLDivElement | null>;
-  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-}) {
-  return (
-    <div
-      ref={(el) => {
-        (seekBarRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        (sliderRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-      }}
-      role="slider"
-      tabIndex={disabled ? -1 : 0}
-      aria-label="Seek"
-      aria-disabled={disabled || undefined}
-      aria-valuemin={0}
-      aria-valuemax={Math.round(duration)}
-      aria-valuenow={0}
-      className={`min-w-[96px] flex-1 h-6 flex items-center group outline-none focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:rounded ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      }`}
-      style={{ touchAction: "none" }}
-      onPointerDown={onPointerDown}
-      onKeyDown={onKeyDown}
-    >
-      <div
-        className="w-full rounded-full relative"
-        style={{ background: "rgba(255,255,255,0.15)", height: "3px" }}
-      >
-        <WorkAreaOverlay inPoint={inPoint} outPoint={outPoint} duration={duration} />
-        <div
-          ref={progressFillRef}
-          className="absolute top-0 bottom-0 left-0 z-[1] rounded-full"
-          style={{ background: "linear-gradient(90deg, var(--hf-accent, #3CE6AC), #2BBFA0)" }}
-        />
-        <div
-          ref={progressThumbRef}
-          className="absolute top-1/2 z-[4] w-3 h-3 rounded-full -translate-y-1/2 -translate-x-1/2 transition-transform group-hover:scale-125"
-          style={{
-            background: "var(--hf-accent, #3CE6AC)",
-            boxShadow: "0 0 6px rgba(60,230,172,0.4), 0 1px 4px rgba(0,0,0,0.4)",
-          }}
-        />
-      </div>
-    </div>
   );
 });
 
@@ -359,12 +239,7 @@ export const PlayerControls = memo(function PlayerControls({
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const setTimeDisplayMode = usePlayerStore.getState().setTimeDisplayMode;
 
-  const progressFillRef = useRef<HTMLDivElement>(null);
-  const progressThumbRef = useRef<HTMLDivElement>(null);
   const timeDisplayRef = useRef<HTMLSpanElement>(null);
-  const seekBarRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
   const currentTimeRef = useRef(0);
   const timeDisplayModeRef = useRef(timeDisplayMode);
   timeDisplayModeRef.current = timeDisplayMode;
@@ -380,48 +255,48 @@ export const PlayerControls = memo(function PlayerControls({
       timeDisplayMode === "frame" ? formatFrameTime(t, duration) : formatTime(t);
   }, [duration, timeDisplayMode]);
 
-  const { handlePointerDown } = useSeekBarDrag(
-    {
-      seekBarRef,
-      progressFillRef,
-      progressThumbRef,
-      sliderRef,
-      timeDisplayRef,
-      isDraggingRef,
-      durationRef,
-      currentTimeRef,
-      timeDisplayModeRef,
-    },
-    onSeek,
-    disabled,
-    duration,
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (disabled || !timelineReady || duration <= 0) return;
-      const step = e.shiftKey ? 10 : 1;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        onSeek(stepFrameTime(currentTimeRef.current, -step));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        onSeek(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
-      }
-    },
-    [disabled, timelineReady, duration, onSeek],
-  );
+  useMountEffect(() => {
+    const updateTime = (time: number) => {
+      currentTimeRef.current = time;
+      if (!timeDisplayRef.current) return;
+      const currentDuration = durationRef.current;
+      timeDisplayRef.current.textContent =
+        timeDisplayModeRef.current === "frame"
+          ? formatFrameTime(time, currentDuration)
+          : formatTime(time);
+    };
+    const unsubscribe = liveTime.subscribe(updateTime);
+    updateTime(usePlayerStore.getState().currentTime);
+    return unsubscribe;
+  });
 
   return (
     <div
-      // No own background/border: the transport blends into the preview
-      // panel's surface — buttons carry their own chrome.
-      className="px-4 py-2 flex flex-wrap items-center gap-x-2 gap-y-1"
+      className="grid h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-3"
       aria-disabled={disabled || undefined}
       style={{
-        paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
+        paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
+      <Tooltip
+        label={timeDisplayMode === "time" ? "Switch to frame display" : "Switch to time display"}
+      >
+        <button
+          type="button"
+          onClick={() => setTimeDisplayMode(timeDisplayMode === "time" ? "frame" : "time")}
+          disabled={disabled}
+          className="min-w-0 justify-self-start whitespace-nowrap font-mono text-[11px] tabular-nums text-neutral-400 transition-colors hover:text-neutral-200 disabled:pointer-events-none"
+        >
+          <span ref={timeDisplayRef}>{formatTime(0)}</span>
+          {timeDisplayMode === "time" ? (
+            <>
+              <span className="mx-0.5 text-neutral-700">/</span>
+              <span className="text-neutral-600">{formatTime(duration)}</span>
+            </>
+          ) : null}
+        </button>
+      </Tooltip>
+
       <Tooltip label={isPlaying ? "Pause" : "Play"}>
         <button
           type="button"
@@ -431,73 +306,37 @@ export const PlayerControls = memo(function PlayerControls({
             onTogglePlay();
           }}
           disabled={controlsDisabled}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          style={{ background: "rgba(255,255,255,0.06)" }}
+          className="flex h-8 w-8 items-center justify-center justify-self-center rounded-md text-neutral-100 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
         >
           <PlayPauseMorphIcon playing={isPlaying} />
         </button>
       </Tooltip>
 
-      <Tooltip
-        label={timeDisplayMode === "time" ? "Switch to frame display" : "Switch to time display"}
-      >
-        <button
-          type="button"
-          onClick={() => setTimeDisplayMode(timeDisplayMode === "time" ? "frame" : "time")}
+      <div className="flex min-w-0 items-center justify-self-end">
+        <MuteButton
+          audioMuted={audioMuted}
+          controlsDisabled={controlsDisabled}
+          setAudioMuted={setAudioMuted}
+        />
+        <SpeedMenu
+          playbackRate={playbackRate}
+          setPlaybackRate={setPlaybackRate}
           disabled={disabled}
-          className="font-mono text-[11px] tabular-nums flex-shrink-0 w-[118px] text-left transition-colors disabled:pointer-events-none hover:opacity-80"
-          style={{ color: "#A1A1AA", cursor: "pointer" }}
-        >
-          <span ref={timeDisplayRef}>{formatTime(0)}</span>
-          {timeDisplayMode === "time" ? (
-            <>
-              <span style={{ color: "#3F3F46", margin: "0 2px" }}>/</span>
-              <span style={{ color: "#52525B" }}>{formatTime(duration)}</span>
-            </>
-          ) : null}
-        </button>
-      </Tooltip>
-
-      <SeekBar
-        disabled={disabled}
-        duration={duration}
-        inPoint={inPoint}
-        outPoint={outPoint}
-        progressFillRef={progressFillRef}
-        progressThumbRef={progressThumbRef}
-        seekBarRef={seekBarRef}
-        sliderRef={sliderRef}
-        onPointerDown={handlePointerDown}
-        onKeyDown={handleKeyDown}
-      />
-
-      <MuteButton
-        audioMuted={audioMuted}
-        controlsDisabled={controlsDisabled}
-        setAudioMuted={setAudioMuted}
-      />
-
-      <SpeedMenu
-        playbackRate={playbackRate}
-        setPlaybackRate={setPlaybackRate}
-        disabled={disabled}
-      />
-
-      <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
-
-      {onToggleFullscreen && (
-        <FullscreenButton isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
-      )}
-
-      <ShortcutsPanel
-        disabled={disabled}
-        duration={duration}
-        inPoint={inPoint}
-        outPoint={outPoint}
-        setInPoint={setInPoint}
-        setOutPoint={setOutPoint}
-        onSeek={onSeek}
-      />
+        />
+        <LoopButton loopEnabled={loopEnabled} disabled={disabled} setLoopEnabled={setLoopEnabled} />
+        {onToggleFullscreen && (
+          <FullscreenButton isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
+        )}
+        <ShortcutsPanel
+          disabled={disabled}
+          duration={duration}
+          inPoint={inPoint}
+          outPoint={outPoint}
+          setInPoint={setInPoint}
+          setOutPoint={setOutPoint}
+          onSeek={onSeek}
+        />
+      </div>
     </div>
   );
 });

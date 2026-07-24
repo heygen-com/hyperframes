@@ -19,7 +19,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 
 // Timeline gets a generous default height so the preview isn't oversized and the
 // tracks have room to breathe (CapCut-style). Users can still drag the divider.
-const DEFAULT_TIMELINE_H = 340;
+const DEFAULT_TIMELINE_H = 360;
 
 export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
   return compositionLoading;
