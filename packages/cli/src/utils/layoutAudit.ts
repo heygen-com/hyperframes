@@ -12,6 +12,10 @@ export type LayoutOverflow = Partial<Record<"left" | "right" | "top" | "bottom",
 export type LayoutIssueCode =
   | "text_box_overflow"
   | "clipped_text"
+  // Content clipped away by an overflow-hidden ancestor: scrollWidth/scrollHeight
+  // exceeds the visible client box even though the (already-clipped) bbox shows
+  // no spill — the gap the bbox-based overflow checks structurally miss.
+  | "text_truncated"
   | "canvas_overflow"
   | "container_overflow"
   | "content_overlap"
@@ -209,6 +213,7 @@ const HELD_ACROSS_SAMPLES_MIN_OCCURRENCES = 2;
 const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "text_box_overflow",
   "clipped_text",
+  "text_truncated",
   "canvas_overflow",
   "container_overflow",
   "content_overlap",

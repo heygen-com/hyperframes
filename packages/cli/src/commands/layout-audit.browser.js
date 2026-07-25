@@ -109,6 +109,14 @@
     return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
   }
 
+  // Truncation (content clipped away by an overflow-hidden box) has its own
+  // explicit opt-out on top of the shared allow-overflow/bleed flags, so an
+  // author can green-light an intentional ellipsis/masked reel without also
+  // silencing bbox-overflow reporting.
+  function hasTruncationOptOut(element) {
+    return hasTextClipOptOut(element) || !!element.closest("[data-layout-allow-truncation]");
+  }
+
   function opacityChain(element) {
     let opacity = 1;
     for (let current = element; current; current = current.parentElement) {
@@ -538,6 +546,99 @@
     }
 
     return issues;
+  }
+
+  const TRUNCATION_MAX_FINDINGS = 40;
+
+  // The clipping box that actually swallows `element`'s overflowing content:
+  // the element itself if it clips, otherwise the nearest clipping ancestor
+  // BELOW the composition root. Root-level clipping is canvas_overflow's job
+  // (a box extending past the canvas edge is a bbox breach, not content-box
+  // truncation), so the walk stops before the root. Returns null when nothing
+  // clips — that overflow is harmlessly visible and already covered by the
+  // bbox-based overflow checks.
+  function truncationClipper(element, root) {
+    if (clipsOverflow(getComputedStyle(element))) return element;
+    for (
+      let current = element.parentElement;
+      current && current !== root;
+      current = current.parentElement
+    ) {
+      if (clipsOverflow(getComputedStyle(current))) return current;
+    }
+    return null;
+  }
+
+  function buildTruncationIssue(candidate, time, tolerance) {
+    const { element, clipper, overflowX, overflowY } = candidate;
+    const clientWidth = element.clientWidth;
+    const clientHeight = element.clientHeight;
+    const scrollWidth = element.scrollWidth;
+    const scrollHeight = element.scrollHeight;
+    const text = textContentFor(element, false);
+    const snippet = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+    const overflow = {};
+    if (overflowX > tolerance) overflow.right = round(overflowX);
+    if (overflowY > tolerance) overflow.bottom = round(overflowY);
+    const dims =
+      overflowX > tolerance
+        ? `content width ${Math.round(scrollWidth)}px exceeds visible ${Math.round(clientWidth)}px`
+        : `content height ${Math.round(scrollHeight)}px exceeds visible ${Math.round(clientHeight)}px`;
+    return {
+      code: "text_truncated",
+      severity: "warning",
+      time,
+      selector: selectorFor(element),
+      containerSelector: selectorFor(clipper),
+      text,
+      message: `Text is clipped by its container — "${snippet}" is truncated (${dims}).`,
+      rect: toRect(element.getBoundingClientRect()),
+      overflow,
+      fixHint:
+        "Widen the container, reduce the text, or allow wrapping; if the clip is intentional add data-layout-allow-truncation.",
+    };
+  }
+
+  // scrollWidth/clientWidth truncation detector. getBoundingClientRect returns
+  // the already-clipped box for text cut off by an overflow:hidden ancestor, so
+  // the bbox overflow checks (text_box_overflow/container_overflow) see no
+  // spill and the lost content is invisible to them. scrollWidth > clientWidth
+  // (or scrollHeight > clientHeight) exposes it: the content box is larger than
+  // the visible box, and a clipping element hides the difference.
+  function textTruncationIssues(root, time, tolerance) {
+    const candidates = [];
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) continue;
+      if (element.closest("svg")) continue;
+      if (!isVisibleElement(element, 0.05)) continue;
+      if (hasTruncationOptOut(element)) continue;
+      // Must carry visible text (own or from descendants) — skip pure
+      // containers, spacers and media wrappers.
+      if (!textContentFor(element, false)) continue;
+      const overflowX = element.scrollWidth - element.clientWidth;
+      const overflowY = element.scrollHeight - element.clientHeight;
+      if (overflowX <= tolerance && overflowY <= tolerance) continue;
+      const clipper = truncationClipper(element, root);
+      if (!clipper) continue;
+      // An element that clips its OWN overflow and directly owns its text is
+      // already reported as `clipped_text` (error) — don't double-report it.
+      if (clipper === element && hasOwnTextCandidate(element, true)) continue;
+      candidates.push({ element, clipper, overflowX, overflowY });
+    }
+
+    // Report the innermost truncated box per nesting chain: a clipping
+    // container and the text child that overflows it both trip the check, so
+    // drop any candidate that contains another candidate — the child anchors
+    // the defect tightest and avoids duplicate findings on one clip.
+    const elements = candidates.map((candidate) => candidate.element);
+    const innermost = candidates.filter(
+      (candidate) =>
+        !elements.some((other) => other !== candidate.element && candidate.element.contains(other)),
+    );
+
+    return innermost
+      .slice(0, TRUNCATION_MAX_FINDINGS)
+      .map((candidate) => buildTruncationIssue(candidate, time, tolerance));
   }
 
   function hasAllowOverlapFlag(element) {
@@ -1417,6 +1518,7 @@
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
+    issues.push(...textTruncationIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));
     const escaped = escapedContainerIssues(root, time);
     issues.push(...escaped.issues);

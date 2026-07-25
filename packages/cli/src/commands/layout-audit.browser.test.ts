@@ -310,6 +310,207 @@ describe("layout-audit.browser", () => {
     );
     expect(parentOverflow).toBeUndefined();
   });
+
+  // text_truncated: content clipped away by an overflow-hidden ANCESTOR. The
+  // bbox overflow checks miss this because getBoundingClientRect returns the
+  // already-clipped box — only scrollWidth > clientWidth exposes the lost text.
+  function defineScrollMetrics(
+    id: string,
+    metrics: {
+      clientWidth: number;
+      scrollWidth: number;
+      clientHeight: number;
+      scrollHeight: number;
+    },
+  ): void {
+    const element = document.querySelector(`#${id}`);
+    if (!(element instanceof HTMLElement)) throw new Error(`missing #${id}`);
+    Object.defineProperties(element, {
+      clientWidth: { configurable: true, value: metrics.clientWidth },
+      scrollWidth: { configurable: true, value: metrics.scrollWidth },
+      clientHeight: { configurable: true, value: metrics.clientHeight },
+      scrollHeight: { configurable: true, value: metrics.scrollHeight },
+    });
+  }
+
+  it("flags text whose scrollWidth exceeds clientWidth inside an overflow:hidden ancestor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="window">
+          <div id="label">Microgrid Active</div>
+        </div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 100,
+      scrollWidth: 240,
+      clientHeight: 20,
+      scrollHeight: 20,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        window: rect({ left: 40, top: 60, width: 100, height: 20 }),
+        label: rect({ left: 40, top: 60, width: 100, height: 20 }),
+      },
+      { window: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+
+    const truncated = runAudit().filter((issue) => issue.code === "text_truncated");
+    expect(truncated).toHaveLength(1);
+    expect(truncated[0]).toMatchObject({
+      code: "text_truncated",
+      selector: "#label",
+      containerSelector: "#window",
+    });
+    expect(truncated[0]?.message).toContain("content width 240px exceeds visible 100px");
+    expect(truncated[0]?.fixHint).toContain("data-layout-allow-truncation");
+  });
+
+  it("flags vertical truncation (scrollHeight exceeds clientHeight) under a clipping ancestor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="window">
+          <div id="label">Two crammed lines of copy</div>
+        </div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 200,
+      scrollWidth: 200,
+      clientHeight: 24,
+      scrollHeight: 60,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        window: rect({ left: 40, top: 60, width: 200, height: 24 }),
+        label: rect({ left: 40, top: 60, width: 200, height: 24 }),
+      },
+      { window: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+
+    const truncated = runAudit().filter((issue) => issue.code === "text_truncated");
+    expect(truncated).toHaveLength(1);
+    expect(truncated[0]?.message).toContain("content height 60px exceeds visible 24px");
+  });
+
+  it("does not flag text that fits its box inside a clipping ancestor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="window">
+          <div id="label">Fits fine</div>
+        </div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 200,
+      scrollWidth: 200,
+      clientHeight: 20,
+      scrollHeight: 20,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        window: rect({ left: 40, top: 60, width: 200, height: 20 }),
+        label: rect({ left: 40, top: 60, width: 200, height: 20 }),
+      },
+      { window: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "text_truncated")).toBe(false);
+  });
+
+  it("does not flag content overflowing a NON-clipping container (visible overflow, not lost)", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="window">
+          <div id="label">Overflows but stays visible</div>
+        </div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 100,
+      scrollWidth: 240,
+      clientHeight: 20,
+      scrollHeight: 20,
+    });
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      window: rect({ left: 40, top: 60, width: 100, height: 20 }),
+      label: rect({ left: 40, top: 60, width: 100, height: 20 }),
+    });
+    installAuditScript();
+
+    // #window has default overflow:visible — nothing clips, so the overflow is
+    // painted visibly and belongs to the bbox overflow checks, not truncation.
+    expect(runAudit().some((issue) => issue.code === "text_truncated")).toBe(false);
+  });
+
+  it("leaves self-clipping text with its own text node to clipped_text (no double-report)", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="label">Self clipped ellipsis label</div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 100,
+      scrollWidth: 240,
+      clientHeight: 20,
+      scrollHeight: 20,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        label: rect({ left: 40, top: 60, width: 100, height: 20 }),
+      },
+      { label: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.some((issue) => issue.code === "clipped_text")).toBe(true);
+    expect(issues.some((issue) => issue.code === "text_truncated")).toBe(false);
+  });
+
+  it("suppresses truncation under data-layout-allow-truncation and data-layout-allow-overflow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="window">
+          <div id="label">Intentionally truncated label</div>
+        </div>
+      </div>
+    `;
+    defineScrollMetrics("label", {
+      clientWidth: 100,
+      scrollWidth: 240,
+      clientHeight: 20,
+      scrollHeight: 20,
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        window: rect({ left: 40, top: 60, width: 100, height: 20 }),
+        label: rect({ left: 40, top: 60, width: 100, height: 20 }),
+      },
+      { window: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+
+    const truncatedCount = () =>
+      runAudit().filter((issue) => issue.code === "text_truncated").length;
+    expect(truncatedCount()).toBe(1);
+
+    document.querySelector("#label")?.setAttribute("data-layout-allow-truncation", "");
+    expect(truncatedCount()).toBe(0);
+    document.querySelector("#label")?.removeAttribute("data-layout-allow-truncation");
+
+    document.querySelector("#window")?.setAttribute("data-layout-allow-overflow", "");
+    expect(truncatedCount()).toBe(0);
+  });
 });
 
 it("is inert unless text or media candidates are explicitly requested", () => {

@@ -1122,6 +1122,7 @@ function parseOverflow(value: unknown): LayoutIssue["overflow"] | null {
 const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "text_box_overflow",
   "clipped_text",
+  "text_truncated",
   "canvas_overflow",
   "container_overflow",
   "content_overlap",
