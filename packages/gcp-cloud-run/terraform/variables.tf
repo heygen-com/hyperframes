@@ -13,6 +13,15 @@ variable "project_name" {
   type        = string
   description = "Name prefix applied to the service / workflow / bucket / service accounts."
   default     = "hyperframes"
+
+  validation {
+    condition = (
+      length(var.project_name) >= 3 &&
+      length(var.project_name) <= 23 &&
+      can(regex("^[a-z][a-z0-9-]*[a-z0-9]$", var.project_name))
+    )
+    error_message = "project_name must be 3-23 lowercase letters, digits, or hyphens, begin with a letter, and end with a letter or digit so derived service-account IDs remain valid."
+  }
 }
 
 variable "image" {

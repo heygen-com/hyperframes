@@ -26,7 +26,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Storage } from "@google-cloud/storage";
-import type { SerializableDistributedRenderConfig } from "../events.js";
+import type { CloudRunPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatGcsUri } from "../gcsTransport.js";
 import { deploySite, type SiteHandle } from "./deploySite.js";
@@ -52,6 +52,11 @@ export interface RenderToCloudRunOptions {
   siteHandle?: SiteHandle;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
+  /**
+   * Distributed plan transport. Defaults to `"v1"` for backwards
+   * compatibility; v2 is always an explicit whole-render opt-in.
+   */
+  planProtocol?: CloudRunPlanProtocol;
   /** GCS bucket from the Terraform output (`render_bucket_name`). */
   bucketName: string;
   /** GCP project id hosting the workflow. */
@@ -144,6 +149,7 @@ export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<R
     OutputGcsUri: outputGcsUri,
     ServiceUrl: opts.serviceUrl,
     Config: opts.config,
+    PlanProtocol: opts.planProtocol ?? "v1",
   };
 
   // Reject oversize input client-side. Cloud Workflows caps the execution

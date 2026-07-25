@@ -97,6 +97,7 @@ COPY packages/parsers/package.json packages/parsers/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
+COPY scripts/package-subpaths.mjs scripts/package-subpaths.mjs
 RUN bun install --frozen-lockfile
 
 # Copy source for the packages the render path needs.

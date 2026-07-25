@@ -26,9 +26,23 @@ main:
           - planOutputGcsPrefix: ${args.PlanOutputGcsPrefix}
           - outputGcsUri: ${args.OutputGcsUri}
           - config: ${args.Config}
+          # Backward-compatible default. v2 is accepted only through an
+          # explicit top-level PlanProtocol opt-in.
+          - planProtocol: ${default(map.get(args, "PlanProtocol"), "v1")}
 
     # ── Plan (Activity A) ────────────────────────────────────────────────────
-    - plan:
+    - selectPlanProtocol:
+        switch:
+          - condition: ${planProtocol == "v1"}
+            next: planV1
+          - condition: ${planProtocol == "v2"}
+            next: planV2
+        next: unsupportedPlanProtocol
+    - unsupportedPlanProtocol:
+        raise:
+          code: PLAN_PROTOCOL_UNSUPPORTED
+          message: ${"PlanProtocol must be v1 or v2; got " + string(planProtocol)}
+    - planV1:
         try:
           call: http.post
           args:
@@ -36,22 +50,69 @@ main:
             timeout: 1800
             auth:
               type: OIDC
+              audience: ${serviceUrl}
             body:
               Action: plan
+              PlanProtocol: v1
               ProjectGcsUri: ${projectGcsUri}
               PlanOutputGcsPrefix: ${planOutputGcsPrefix}
               Config: ${config}
-          result: planResp
+          result: planRespV1
         retry:
           predicate: ${retryable}
-          max_retries: 4
+          max_retries: 6
           backoff:
             initial_delay: 2
             max_delay: 60
             multiplier: 2
-    - capturePlan:
+        next: capturePlanV1
+    - capturePlanV1:
         assign:
-          - planResult: ${planResp.body}
+          - planResult: ${planRespV1.body}
+        next: validatePlanResult
+    - planV2:
+        try:
+          call: http.post
+          args:
+            url: ${serviceUrl}
+            timeout: 1800
+            auth:
+              type: OIDC
+              audience: ${serviceUrl}
+            body:
+              Action: plan
+              PlanProtocol: v2
+              ProjectGcsUri: ${projectGcsUri}
+              PlanOutputGcsPrefix: ${planOutputGcsPrefix}
+              Config: ${config}
+          result: planRespV2
+        retry:
+          predicate: ${retryable}
+          max_retries: 6
+          backoff:
+            initial_delay: 2
+            max_delay: 60
+            multiplier: 2
+        next: capturePlanV2
+    - capturePlanV2:
+        assign:
+          - planResult: ${planRespV2.body}
+        next: validatePlanResult
+    - validatePlanResult:
+        # Fail closed before fan-out. A v2 render may never fall back to a
+        # v1 PlanGcsUri, and a v1 render may never consume v2 locators.
+        switch:
+          - condition: ${planProtocol == "v1" and (not("PlanProtocol" in planResult) or planResult.PlanProtocol == "v1") and ("PlanGcsUri" in planResult) and not("PlanV2ManifestGcsUri" in planResult) and not("PlanV2ArtifactGcsPrefix" in planResult)}
+            next: captureChunkCount
+          - condition: ${planProtocol == "v2" and ("PlanProtocol" in planResult) and planResult.PlanProtocol == "v2" and ("PlanV2ManifestGcsUri" in planResult) and ("PlanV2ArtifactGcsPrefix" in planResult) and not("PlanGcsUri" in planResult)}
+            next: captureChunkCount
+        next: planProtocolLocatorMismatch
+    - planProtocolLocatorMismatch:
+        raise:
+          code: PLAN_PROTOCOL_LOCATOR_MISMATCH
+          message: "Plan response did not match the selected protocol's disjoint locator contract."
+    - captureChunkCount:
+        assign:
           - chunkCount: ${planResult.ChunkCount}
 
     # ── BuildChunkList + AssertChunkCount ──────────────────────────────────────
@@ -98,7 +159,12 @@ main:
             value: idx
             in: ${chunkIndexes}
             steps:
-              - renderOneChunk:
+              - selectChunkProtocol:
+                  switch:
+                    - condition: ${planProtocol == "v2"}
+                      next: renderOneChunkV2
+                  next: renderOneChunkV1
+              - renderOneChunkV1:
                   try:
                     call: http.post
                     args:
@@ -106,8 +172,10 @@ main:
                       timeout: 1800
                       auth:
                         type: OIDC
+                        audience: ${serviceUrl}
                       body:
                         Action: renderChunk
+                        PlanProtocol: v1
                         ChunkIndex: ${idx}
                         PlanGcsUri: ${planResult.PlanGcsUri}
                         PlanHash: ${planResult.PlanHash}
@@ -121,13 +189,46 @@ main:
                       initial_delay: 2
                       max_delay: 60
                       multiplier: 2
+                  next: storeChunk
+              - renderOneChunkV2:
+                  try:
+                    call: http.post
+                    args:
+                      url: ${serviceUrl}
+                      timeout: 1800
+                      auth:
+                        type: OIDC
+                        audience: ${serviceUrl}
+                      body:
+                        Action: renderChunk
+                        PlanProtocol: v2
+                        ChunkIndex: ${idx}
+                        PlanV2ManifestGcsUri: ${planResult.PlanV2ManifestGcsUri}
+                        PlanV2ArtifactGcsPrefix: ${planResult.PlanV2ArtifactGcsPrefix}
+                        PlanHash: ${planResult.PlanHash}
+                        ChunkOutputGcsPrefix: ${planOutputGcsPrefix}
+                        Format: ${planResult.Format}
+                    result: chunkResp
+                  retry:
+                    predicate: ${retryable}
+                    max_retries: 4
+                    backoff:
+                      initial_delay: 2
+                      max_delay: 60
+                      multiplier: 2
+                  next: storeChunk
               - storeChunk:
                   assign:
                     - chunkUris[idx]: ${chunkResp.body.ChunkGcsUri}
                     - chunkResults[idx]: ${chunkResp.body}
 
     # ── Assemble (Activity C) ──────────────────────────────────────────────────
-    - assemble:
+    - selectAssembleProtocol:
+        switch:
+          - condition: ${planProtocol == "v2"}
+            next: assembleV2
+        next: assembleV1
+    - assembleV1:
         try:
           call: http.post
           args:
@@ -135,8 +236,10 @@ main:
             timeout: 1800
             auth:
               type: OIDC
+              audience: ${serviceUrl}
             body:
               Action: assemble
+              PlanProtocol: v1
               PlanGcsUri: ${planResult.PlanGcsUri}
               ChunkGcsUris: ${chunkUris}
               AudioGcsUri: ${planResult.AudioGcsUri}
@@ -154,6 +257,38 @@ main:
             initial_delay: 2
             max_delay: 60
             multiplier: 2
+        next: done
+    - assembleV2:
+        try:
+          call: http.post
+          args:
+            url: ${serviceUrl}
+            timeout: 1800
+            auth:
+              type: OIDC
+              audience: ${serviceUrl}
+            body:
+              Action: assemble
+              PlanProtocol: v2
+              PlanV2ManifestGcsUri: ${planResult.PlanV2ManifestGcsUri}
+              PlanV2ArtifactGcsPrefix: ${planResult.PlanV2ArtifactGcsPrefix}
+              PlanHash: ${planResult.PlanHash}
+              ChunkGcsUris: ${chunkUris}
+              # Audio is an assembler-scoped v2 artifact and is materialized
+              # from the manifest, never carried through a v1 AudioGcsUri.
+              AudioGcsUri: null
+              OutputGcsUri: ${outputGcsUri}
+              Format: ${planResult.Format}
+              Cfr: ${("cfr" in config) and config.cfr}
+          result: assembleResp
+        retry:
+          predicate: ${retryable}
+          max_retries: 4
+          backoff:
+            initial_delay: 2
+            max_delay: 60
+            multiplier: 2
+        next: done
 
     - done:
         return:
@@ -161,9 +296,11 @@ main:
           Chunks: ${chunkResults}
           Assemble: ${assembleResp.body}
 
-# Retry predicate: retry transient/server failures (429 + 5xx), never the
-# handler's non-retryable 400s (bad input, plan-hash mismatch, unsupported
-# format, …). Connection / timeout errors carry no `.code`; retry those too.
+# Retry predicate: retry transient/server failures (403 from Cloud Run IAM
+# propagation, 429, and 5xx), never the handler's non-retryable 400s (bad
+# input, plan-hash mismatch, unsupported format, …). The handler does not emit
+# 403, so that status is always from Cloud Run's authentication edge.
+# Connection / timeout errors carry no `.code`; retry those too.
 retryable:
   params: [e]
   steps:
@@ -172,6 +309,8 @@ retryable:
           - condition: ${not("code" in e)}
             return: true
           - condition: ${e.code == 429}
+            return: true
+          - condition: ${e.code == 403}
             return: true
           - condition: ${e.code >= 500 and e.code < 600}
             return: true

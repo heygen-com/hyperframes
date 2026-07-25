@@ -78,9 +78,17 @@ describe("renderToCloudRun", () => {
     expect(arg.OutputGcsUri).toBe("gs://b/renders/hf-render-fixed/output.mp4");
     expect(arg.ServiceUrl).toBe("https://render-abc.run.app");
     expect(arg.Config.format).toBe("mp4");
+    expect(arg.PlanProtocol).toBe("v1");
     expect(fake.lastParent).toBe(
       "projects/proj/locations/us-central1/workflows/hyperframes-render",
     );
+  });
+
+  it("forwards an explicit v2 whole-render opt-in", async () => {
+    const fake = new FakeExecutions();
+    await renderToCloudRun({ ...opts(fake), planProtocol: "v2" });
+    const arg = JSON.parse(fake.lastArgument ?? "{}");
+    expect(arg.PlanProtocol).toBe("v2");
   });
 
   it("derives the output extension from the format", async () => {

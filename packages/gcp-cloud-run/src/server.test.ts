@@ -15,16 +15,22 @@
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CURRENT_PLAN_PROTOCOL,
+  createPlanV2FromV1,
+  PLAN_V2_INTEGRITY_UNRECOVERABLE,
+  PlanV2IntegrityError,
   PlanProtocolUnsupportedError,
   type AssembleResult,
   type ChunkResult,
   type PlanResult,
+  type PlanV2Result,
 } from "@hyperframes/producer/distributed";
+import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
 import { asStorage, FakeGcs } from "./__fixtures__/fakeGcs.js";
 import type { AssembleEvent, CloudRunEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { createApp, dispatch, type HandlerDeps, unwrapEvent } from "./server.js";
@@ -58,6 +64,30 @@ async function seedPlanTar(gcs: FakeGcs, uri: string, planHash: string): Promise
   const tarPath = join(mkTmp("hf-plan-tar-"), "plan.tar.gz");
   await tarDirectory(planDir, tarPath);
   gcs.seedFromFile(uri, tarPath);
+}
+
+function makeMinimalV1PlanDir(dir: string, withAudio: boolean): void {
+  mkdirSync(join(dir, "meta"), { recursive: true });
+  mkdirSync(join(dir, "compiled"), { recursive: true });
+  writeFileSync(join(dir, "compiled", "index.html"), "<html>gcp v2 fixture</html>");
+  const planJson = {
+    planHash: "a".repeat(64),
+    chunkCount: 1,
+    totalFrames: 30,
+    dimensions: { fpsNum: 30, fpsDen: 1, width: 640, height: 360, format: "mp4" },
+    ffmpegVersion: "6.0",
+    producerVersion: "test",
+    fontSnapshotSha: "font-snapshot-test",
+  };
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
+  writeFileSync(
+    join(dir, "meta", "chunks.json"),
+    JSON.stringify([{ index: 0, startFrame: 0, endFrame: 30 }]),
+  );
+  writeFileSync(join(dir, "meta", "encoder.json"), "{}");
+  if (withAudio) writeFileSync(join(dir, "audio.aac"), "AAC");
+  planJson.planHash = recomputePlanHashFromPlanDir(dir);
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
 }
 
 const planResult: PlanResult = {
@@ -207,6 +237,139 @@ describe("dispatch", () => {
     expect(gcs.objects.has("gs://b/renders/r1/output.mp4")).toBe(true);
   });
 
+  // This end-to-end adapter contract is intentionally one narrative test: it
+  // verifies ordering and target isolation across all three handler roles.
+  // fallow-ignore-next-line complexity
+  it("runs v2 plan → target-scoped chunk → assemble with manifest-last CAS", async () => {
+    const gcs = new FakeGcs();
+    await seedProjectTar(gcs, "gs://b/sites/v2/project.tar.gz");
+    const root = mkTmp("hf-v2-e2e-");
+    const planV2 = async (
+      _projectDir: string,
+      _config: unknown,
+      planV2Dir: string,
+    ): Promise<PlanV2Result> => {
+      const v1Dir = join(root, "v1");
+      makeMinimalV1PlanDir(v1Dir, true);
+      return createPlanV2FromV1(v1Dir, planV2Dir);
+    };
+    const renderChunk = async (
+      planDir: string,
+      chunkIndex: number,
+      outputBase: string,
+    ): Promise<ChunkResult> => {
+      expect(existsSync(join(planDir, "audio.aac"))).toBe(false);
+      writeFileSync(outputBase, `chunk-${chunkIndex}`);
+      return {
+        outputPath: outputBase,
+        outputKind: "file",
+        framesEncoded: 30,
+        sha256: "b".repeat(64),
+      };
+    };
+    const assemble = async (
+      _planDir: string,
+      _chunks: string[],
+      audioPath: string | null,
+      finalOutput: string,
+    ): Promise<AssembleResult> => {
+      expect(audioPath).not.toBeNull();
+      expect(readFileSync(audioPath as string, "utf8")).toBe("AAC");
+      writeFileSync(finalOutput, "v2-output");
+      return { framesEncoded: 30, fileSize: 9 };
+    };
+    const deps = depsWith(gcs, { planV2, renderChunk, assemble });
+
+    const planned = await dispatch(
+      {
+        Action: "plan",
+        PlanProtocol: "v2",
+        ProjectGcsUri: "gs://b/sites/v2/project.tar.gz",
+        PlanOutputGcsPrefix: "gs://b/renders/v2/",
+        Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+      },
+      deps,
+    );
+    expect(planned).toMatchObject({
+      PlanProtocol: "v2",
+      PlanV2ManifestGcsUri: "gs://b/renders/v2/v2/manifest.json",
+      PlanV2ArtifactGcsPrefix: "gs://b/renders/v2/v2/artifacts/sha256",
+      AudioGcsUri: null,
+    });
+    expect("PlanGcsUri" in planned).toBe(false);
+    const uploadUris = gcs.ops.filter((op) => op.kind === "upload").map((op) => op.uri);
+    expect(uploadUris.at(-1)).toBe("gs://b/renders/v2/v2/manifest.json");
+    expect(gcs.metadata.get(uploadUris.at(-1) ?? "")?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    await dispatch(
+      {
+        Action: "plan",
+        PlanProtocol: "v2",
+        ProjectGcsUri: "gs://b/sites/v2/project.tar.gz",
+        PlanOutputGcsPrefix: "gs://b/renders/v2/",
+        Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+      },
+      deps,
+    );
+    expect(gcs.ops.filter((op) => op.kind === "upload").map((op) => op.uri)).toEqual(uploadUris);
+    if (!("PlanProtocol" in planned) || planned.PlanProtocol !== "v2") {
+      throw new Error("expected v2 plan result");
+    }
+
+    const beforeChunk = gcs.ops.length;
+    const chunk = await dispatch(
+      {
+        Action: "renderChunk",
+        PlanProtocol: "v2",
+        PlanV2ManifestGcsUri: planned.PlanV2ManifestGcsUri,
+        PlanV2ArtifactGcsPrefix: planned.PlanV2ArtifactGcsPrefix,
+        PlanHash: planned.PlanHash,
+        ChunkIndex: 0,
+        ChunkOutputGcsPrefix: "gs://b/renders/v2/",
+        Format: "mp4",
+      },
+      deps,
+    );
+    if (chunk.Action !== "renderChunk") throw new Error("expected chunk result");
+    const audioDigest = createHash("sha256").update("AAC").digest("hex");
+    const audioUri = `${planned.PlanV2ArtifactGcsPrefix}/${audioDigest.slice(0, 2)}/${audioDigest}`;
+    expect(gcs.ops.slice(beforeChunk).some((operation) => operation.uri === audioUri)).toBe(false);
+
+    await dispatch(
+      {
+        Action: "assemble",
+        PlanProtocol: "v2",
+        PlanV2ManifestGcsUri: planned.PlanV2ManifestGcsUri,
+        PlanV2ArtifactGcsPrefix: planned.PlanV2ArtifactGcsPrefix,
+        PlanHash: planned.PlanHash,
+        ChunkGcsUris: [chunk.ChunkGcsUri],
+        AudioGcsUri: null,
+        OutputGcsUri: "gs://b/renders/v2/output.mp4",
+        Format: "mp4",
+      },
+      deps,
+    );
+    expect(
+      gcs.ops.some((operation) => operation.kind === "download" && operation.uri === audioUri),
+    ).toBe(true);
+  });
+
+  it("rejects mixed v1/v2 locators at runtime", async () => {
+    const event = {
+      Action: "renderChunk",
+      PlanProtocol: "v2",
+      PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
+      PlanV2ManifestGcsUri: "gs://b/renders/r1/v2/manifest.json",
+      PlanV2ArtifactGcsPrefix: "gs://b/renders/r1/v2/artifacts/sha256",
+      PlanHash: PLAN_HASH,
+      ChunkIndex: 0,
+      ChunkOutputGcsPrefix: "gs://b/renders/r1/",
+      Format: "mp4",
+    } as unknown as RenderChunkEvent;
+    await expect(dispatch(event, depsWith(new FakeGcs()))).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+    });
+  });
+
   it("rejects an unknown action", async () => {
     const gcs = new FakeGcs();
     await expect(
@@ -230,6 +393,27 @@ describe("bucket allowlist guard", () => {
         Format: "mp4",
       };
       await expect(dispatch(event, depsWith(gcs))).rejects.toThrow(/GCS_URI_NOT_ALLOWED/);
+    } finally {
+      if (prev === undefined) delete process.env.HYPERFRAMES_RENDER_BUCKET;
+      else process.env.HYPERFRAMES_RENDER_BUCKET = prev;
+    }
+  });
+
+  it("checks both v2 manifest and artifact-prefix buckets", async () => {
+    const prev = process.env.HYPERFRAMES_RENDER_BUCKET;
+    process.env.HYPERFRAMES_RENDER_BUCKET = "allowed-bucket";
+    try {
+      const event: RenderChunkEvent = {
+        Action: "renderChunk",
+        PlanProtocol: "v2",
+        PlanV2ManifestGcsUri: "gs://allowed-bucket/v2/manifest.json",
+        PlanV2ArtifactGcsPrefix: "gs://evil-bucket/v2/artifacts/sha256",
+        PlanHash: PLAN_HASH,
+        ChunkIndex: 0,
+        ChunkOutputGcsPrefix: "gs://allowed-bucket/renders/r1/",
+        Format: "mp4",
+      };
+      await expect(dispatch(event, depsWith(new FakeGcs()))).rejects.toThrow(/GCS_URI_NOT_ALLOWED/);
     } finally {
       if (prev === undefined) delete process.env.HYPERFRAMES_RENDER_BUCKET;
       else process.env.HYPERFRAMES_RENDER_BUCKET = prev;
@@ -327,7 +511,45 @@ describe("createApp HTTP mapping", () => {
 
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("PlanProtocolUnsupportedError");
+    expect(body.error).toBe("PLAN_PROTOCOL_UNSUPPORTED");
+  });
+
+  it("returns 400 for plan v2 integrity error names and code aliases", async () => {
+    for (const error of [
+      new PlanV2IntegrityError("corrupt test artifact"),
+      Object.assign(new Error("corrupt test artifact"), {
+        name: PLAN_V2_INTEGRITY_UNRECOVERABLE,
+      }),
+      Object.assign(new Error("corrupt test artifact"), {
+        code: PLAN_V2_INTEGRITY_UNRECOVERABLE,
+      }),
+    ]) {
+      const gcs = new FakeGcs();
+      await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
+      const app = createApp(
+        depsWith(gcs, {
+          renderChunk: async () => {
+            throw error;
+          },
+        }),
+      );
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          Action: "renderChunk",
+          PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
+          PlanHash: PLAN_HASH,
+          ChunkIndex: 0,
+          ChunkOutputGcsPrefix: "gs://b/renders/r1/",
+          Format: "mp4",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe(PLAN_V2_INTEGRITY_UNRECOVERABLE);
+    }
   });
 
   it("returns 500 for a retryable/unknown error", async () => {

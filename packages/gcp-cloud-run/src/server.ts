@@ -28,8 +28,15 @@ import {
   type AssembleResult,
   type ChunkResult,
   type DistributedRenderConfig,
+  listPlanV2ArtifactsForTarget,
+  materializePlanV2Target,
   plan,
+  planV2,
   type PlanResult,
+  type PlanV2Artifact,
+  type PlanV2MaterializationTarget,
+  type PlanV2Result,
+  readPlanV2Manifest,
   renderChunk,
 } from "@hyperframes/producer/distributed";
 import { resolveChromeExecutablePath } from "./chromium.js";
@@ -47,9 +54,12 @@ import type {
 import { type DistributedFormat, formatExtension } from "./formatExtension.js";
 import {
   downloadGcsObjectToFile,
+  downloadGcsObjectToFileVerified,
   parseGcsUri,
+  sha256File,
   tarDirectory,
   untarDirectory,
+  uploadContentAddressedFileToGcs,
   uploadFileToGcs,
 } from "./gcsTransport.js";
 
@@ -74,6 +84,7 @@ export interface HandlerDeps {
   storage?: Storage;
   primitives?: {
     plan: typeof plan;
+    planV2?: typeof planV2;
     renderChunk: typeof renderChunk;
     assemble: typeof assemble;
   };
@@ -91,6 +102,7 @@ export interface HandlerDeps {
 // fallow-ignore-next-line complexity
 export async function dispatch(event: CloudRunEvent, deps?: HandlerDeps): Promise<CloudRunResult> {
   const unwrapped = unwrapEvent(event);
+  validatePlanProtocolShape(unwrapped);
   validateEventGcsUris(unwrapped);
   logEvent({ event: "handler_start", action: unwrapped.Action, input: summarizeEvent(unwrapped) });
   try {
@@ -113,13 +125,66 @@ export async function dispatch(event: CloudRunEvent, deps?: HandlerDeps): Promis
       }
     }
   } catch (err) {
+    normalizeTerminalErrorName(err);
     logEvent({
       event: "handler_error",
       action: unwrapped.Action,
+      input: summarizeEvent(unwrapped),
       message: err instanceof Error ? err.message : String(err),
       name: err instanceof Error ? err.name : undefined,
     });
     throw err;
+  }
+}
+
+// This is the single fail-closed boundary for the wire union. Keeping all
+// forbidden locator combinations together makes mixed-protocol input auditable.
+// fallow-ignore-next-line complexity
+function validatePlanProtocolShape(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+  const raw = event as unknown as Record<string, unknown>;
+  const protocol = raw.PlanProtocol;
+  if (protocol !== undefined && protocol !== "v1" && protocol !== "v2") {
+    const error = new Error(
+      `[handler] unsupported PlanProtocol ${JSON.stringify(protocol)}; expected "v1", "v2", or absent`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (event.Action === "plan") return;
+
+  const hasV1Locator = typeof raw.PlanGcsUri === "string";
+  const hasV2Manifest = typeof raw.PlanV2ManifestGcsUri === "string";
+  const hasV2Prefix = typeof raw.PlanV2ArtifactGcsPrefix === "string";
+  const valid =
+    protocol === "v2"
+      ? !hasV1Locator && hasV2Manifest && hasV2Prefix
+      : hasV1Locator && !hasV2Manifest && !hasV2Prefix;
+  if (!valid) {
+    const error = new Error(
+      `[handler] ${protocol === "v2" ? "v2" : "v1"} ${event.Action} event has mixed or missing plan locators`,
+    );
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+  if (protocol === "v2" && event.Action === "assemble" && event.AudioGcsUri !== null) {
+    const error = new Error("[handler] v2 assemble audio must be materialized from the manifest");
+    error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+    throw error;
+  }
+}
+
+/** Normalize producer error codes to the stable HTTP/workflow discriminator. */
+// The explicit mapping is the public Cloud Workflows retry contract.
+// fallow-ignore-next-line complexity
+function normalizeTerminalErrorName(error: unknown): void {
+  if (!error || typeof error !== "object") return;
+  const candidate = error as { code?: unknown; name?: string };
+  if (
+    candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
+    candidate.code === "PLAN_TOO_LARGE" ||
+    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE"
+  ) {
+    candidate.name = candidate.code;
   }
 }
 
@@ -171,6 +236,8 @@ function logEvent(payload: Record<string, unknown>): void {
  * include the entire project config; we only emit the routable fields
  * needed to triage a failure from Cloud Logging.
  */
+// Keep event variants together so Cloud Logging has one redaction boundary.
+// fallow-ignore-next-line complexity
 function summarizeEvent(
   event: PlanEvent | RenderChunkEvent | AssembleEvent,
 ): Record<string, unknown> {
@@ -179,18 +246,25 @@ function summarizeEvent(
       return {
         projectGcsUri: event.ProjectGcsUri,
         planOutputGcsPrefix: event.PlanOutputGcsPrefix,
+        planProtocol: event.PlanProtocol ?? "v1",
         format: event.Config.format,
         fps: event.Config.fps,
       };
     case "renderChunk":
       return {
-        planGcsUri: event.PlanGcsUri,
+        planProtocol: event.PlanProtocol ?? "v1",
+        ...(event.PlanProtocol === "v2"
+          ? { planV2ManifestGcsUri: event.PlanV2ManifestGcsUri }
+          : { planGcsUri: event.PlanGcsUri }),
         chunkIndex: event.ChunkIndex,
         format: event.Format,
       };
     case "assemble":
       return {
-        planGcsUri: event.PlanGcsUri,
+        planProtocol: event.PlanProtocol ?? "v1",
+        ...(event.PlanProtocol === "v2"
+          ? { planV2ManifestGcsUri: event.PlanV2ManifestGcsUri }
+          : { planGcsUri: event.PlanGcsUri }),
         chunkCount: event.ChunkGcsUris.length,
         hasAudio: event.AudioGcsUri !== null,
         outputGcsUri: event.OutputGcsUri,
@@ -215,6 +289,9 @@ function primeChrome(deps?: HandlerDeps): void {
 
 // fallow-ignore-next-line complexity
 async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanResultBody> {
+  if (event.PlanProtocol === "v2") {
+    return handlePlanV2(event, deps);
+  }
   const started = Date.now();
   const storage = deps?.storage ?? getStorage();
   const primitive = deps?.primitives?.plan ?? plan;
@@ -274,6 +351,79 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanRes
   }
 }
 
+/**
+ * Stage immutable v2 artifacts, upload them to content-addressed keys, then
+ * publish the manifest as the final commit point.
+ */
+// fallow-ignore-next-line complexity
+async function handlePlanV2(
+  event: Extract<PlanEvent, { PlanProtocol: "v2" }>,
+  deps?: HandlerDeps,
+): Promise<Extract<PlanResultBody, { PlanProtocol: "v2" }>> {
+  const started = Date.now();
+  const storage = deps?.storage ?? getStorage();
+  const primitive = deps?.primitives?.planV2 ?? planV2;
+  primeChrome(deps);
+
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-plan-v2-"));
+  const projectArchive = join(work, "project.tar.gz");
+  const projectDir = join(work, "project");
+  const planV2Dir = join(work, "plan-v2");
+  try {
+    await downloadGcsObjectToFile(storage, event.ProjectGcsUri, projectArchive);
+    await untarDirectory(projectArchive, projectDir);
+    const result: PlanV2Result = await primitive(projectDir, { ...event.Config }, planV2Dir);
+    const manifest = readPlanV2Manifest(planV2Dir);
+    if (manifest.planHash !== result.planHash) {
+      throwPlanHashMismatch(result.planHash, manifest.planHash);
+    }
+
+    const outputPrefix = `${trimTrailingSlash(event.PlanOutputGcsPrefix)}/v2`;
+    const artifactPrefix = `${outputPrefix}/artifacts/sha256`;
+    const uniqueArtifacts = [
+      ...new Map(manifest.artifacts.map((artifact) => [artifact.sha256, artifact])).values(),
+    ];
+    await mapConcurrent(uniqueArtifacts, 16, async (artifact) => {
+      await uploadContentAddressedFileToGcs(
+        storage,
+        planV2BlobPath(planV2Dir, artifact.sha256),
+        planV2BlobUri(artifactPrefix, artifact.sha256),
+        artifact.sha256,
+      );
+    });
+
+    const manifestUri = `${outputPrefix}/manifest.json`;
+    await uploadContentAddressedFileToGcs(
+      storage,
+      result.manifestPath,
+      manifestUri,
+      await sha256File(result.manifestPath),
+      "application/json",
+    );
+
+    return {
+      Action: "plan",
+      PlanProtocol: "v2",
+      PlanV2ManifestGcsUri: manifestUri,
+      PlanV2ArtifactGcsPrefix: artifactPrefix,
+      PlanHash: result.planHash,
+      ChunkCount: result.chunkCount,
+      TotalFrames: result.totalFrames,
+      Fps: result.fps,
+      Width: result.width,
+      Height: result.height,
+      Format: result.format,
+      HasAudio: manifest.artifacts.some((artifact) => artifact.path === "audio.aac"),
+      AudioGcsUri: null,
+      FfmpegVersion: result.ffmpegVersion,
+      ProducerVersion: result.producerVersion,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
 // ── RenderChunk ─────────────────────────────────────────────────────────────
 
 // fallow-ignore-next-line complexity
@@ -281,6 +431,9 @@ async function handleRenderChunk(
   event: RenderChunkEvent,
   deps?: HandlerDeps,
 ): Promise<RenderChunkResultBody> {
+  if (event.PlanProtocol === "v2") {
+    return handleRenderChunkV2(event, deps);
+  }
   const started = Date.now();
   const storage = deps?.storage ?? getStorage();
   const primitive = deps?.primitives?.renderChunk ?? renderChunk;
@@ -331,6 +484,51 @@ async function handleRenderChunk(
   }
 }
 
+/** Materialize only this chunk's verified v2 dependencies before rendering. */
+// fallow-ignore-next-line complexity
+async function handleRenderChunkV2(
+  event: Extract<RenderChunkEvent, { PlanProtocol: "v2" }>,
+  deps?: HandlerDeps,
+): Promise<RenderChunkResultBody> {
+  const started = Date.now();
+  const storage = deps?.storage ?? getStorage();
+  const primitive = deps?.primitives?.renderChunk ?? renderChunk;
+  primeChrome(deps);
+
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-chunk-v2-"));
+  try {
+    const planDir = await downloadAndMaterializePlanV2(
+      storage,
+      event,
+      { role: "chunk", chunkIndex: event.ChunkIndex },
+      work,
+    );
+    const chunkOutputBase = join(
+      work,
+      event.Format === "png-sequence"
+        ? `chunk-${pad(event.ChunkIndex)}`
+        : `chunk-${pad(event.ChunkIndex)}${formatExtension(event.Format)}`,
+    );
+    const result = await primitive(planDir, event.ChunkIndex, chunkOutputBase);
+    const chunkUri = await uploadChunkOutput(
+      storage,
+      result,
+      event.ChunkOutputGcsPrefix,
+      event.ChunkIndex,
+    );
+    return {
+      Action: "renderChunk",
+      ChunkGcsUri: chunkUri,
+      ChunkIndex: event.ChunkIndex,
+      Sha256: result.sha256,
+      FramesEncoded: result.framesEncoded,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
 async function uploadChunkOutput(
   storage: Storage,
   result: ChunkResult,
@@ -361,6 +559,9 @@ async function handleAssemble(
   event: AssembleEvent,
   deps?: HandlerDeps,
 ): Promise<AssembleResultBody> {
+  if (event.PlanProtocol === "v2") {
+    return handleAssembleV2(event, deps);
+  }
   const started = Date.now();
   const storage = deps?.storage ?? getStorage();
   const primitive = deps?.primitives?.assemble ?? assemble;
@@ -417,6 +618,127 @@ async function handleAssemble(
   }
 }
 
+/**
+ * Materialize the assembler target. Audio is declared assembler-only by the
+ * v2 manifest and therefore is never downloaded by chunk workers.
+ */
+// fallow-ignore-next-line complexity
+async function handleAssembleV2(
+  event: Extract<AssembleEvent, { PlanProtocol: "v2" }>,
+  deps?: HandlerDeps,
+): Promise<AssembleResultBody> {
+  const started = Date.now();
+  const storage = deps?.storage ?? getStorage();
+  const primitive = deps?.primitives?.assemble ?? assemble;
+  const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-cr-assemble-v2-"));
+  try {
+    const planDir = await downloadAndMaterializePlanV2(storage, event, { role: "assembler" }, work);
+    const audioPath = existsSync(join(planDir, "audio.aac")) ? join(planDir, "audio.aac") : null;
+    const chunkPaths = await downloadChunkObjects(storage, event.ChunkGcsUris, work, event.Format);
+    const finalOutput =
+      event.Format === "png-sequence"
+        ? join(work, "output-frames")
+        : join(work, `output${formatExtension(event.Format)}`);
+    const result = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
+      cfr: event.Cfr === true,
+    });
+    if (event.Format === "png-sequence") {
+      const tarball = `${finalOutput}.tar.gz`;
+      await tarDirectory(finalOutput, tarball);
+      await uploadFileToGcs(storage, tarball, event.OutputGcsUri, "application/gzip");
+    } else {
+      await uploadFileToGcs(storage, finalOutput, event.OutputGcsUri);
+    }
+    return {
+      Action: "assemble",
+      OutputGcsUri: event.OutputGcsUri,
+      FramesEncoded: result.framesEncoded,
+      FileSize: result.fileSize,
+      DurationMs: Date.now() - started,
+    };
+  } finally {
+    cleanupDir(work);
+  }
+}
+
+async function downloadAndMaterializePlanV2(
+  storage: Storage,
+  event: {
+    PlanV2ManifestGcsUri: string;
+    PlanV2ArtifactGcsPrefix: string;
+    PlanHash: string;
+  },
+  target: PlanV2MaterializationTarget,
+  work: string,
+): Promise<string> {
+  const transportDir = join(work, "plan-v2");
+  mkdirSync(transportDir, { recursive: true });
+  await downloadGcsObjectToFile(
+    storage,
+    event.PlanV2ManifestGcsUri,
+    join(transportDir, "plan.json"),
+  );
+  const manifest = readPlanV2Manifest(transportDir);
+  if (manifest.planHash !== event.PlanHash) {
+    throwPlanHashMismatch(event.PlanHash, manifest.planHash);
+  }
+  const artifacts = listPlanV2ArtifactsForTarget(manifest, target);
+  const uniqueArtifacts = [
+    ...new Map(artifacts.map((artifact) => [artifact.sha256, artifact])).values(),
+  ];
+  await mapConcurrent(uniqueArtifacts, 16, async (artifact) => {
+    await downloadPlanV2Artifact(storage, event.PlanV2ArtifactGcsPrefix, transportDir, artifact);
+  });
+  const planDir = join(work, "plan");
+  materializePlanV2Target(transportDir, target, planDir);
+  return planDir;
+}
+
+async function downloadPlanV2Artifact(
+  storage: Storage,
+  artifactPrefix: string,
+  planV2Dir: string,
+  artifact: Readonly<PlanV2Artifact>,
+): Promise<void> {
+  await downloadGcsObjectToFileVerified(
+    storage,
+    planV2BlobUri(artifactPrefix, artifact.sha256),
+    planV2BlobPath(planV2Dir, artifact.sha256),
+    artifact.sha256,
+  );
+}
+
+function planV2BlobPath(planV2Dir: string, digest: string): string {
+  return join(planV2Dir, "artifacts", "sha256", digest.slice(0, 2), digest);
+}
+
+function planV2BlobUri(prefix: string, digest: string): string {
+  return `${trimTrailingSlash(prefix)}/${digest.slice(0, 2)}/${digest}`;
+}
+
+function throwPlanHashMismatch(expected: string, actual: string): never {
+  const error = new Error(
+    `PLAN_HASH_MISMATCH: event PlanHash=${expected} did not match v2 manifest planHash=${actual}`,
+  );
+  error.name = "PLAN_HASH_MISMATCH";
+  throw error;
+}
+
+async function mapConcurrent<T>(
+  values: readonly T[],
+  concurrency: number,
+  fn: (value: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < values.length) {
+      const index = cursor++;
+      await fn(values[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
+}
+
 async function downloadChunkObjects(
   storage: Storage,
   uris: string[],
@@ -454,15 +776,21 @@ async function downloadChunkObjects(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Collect every GCS URI that the handler will touch for a given event. */
+// This exhaustive event projection is the bucket-allowlist security boundary.
+// fallow-ignore-next-line complexity
 function getEventGcsUris(event: PlanEvent | RenderChunkEvent | AssembleEvent): string[] {
   switch (event.Action) {
     case "plan":
       return [event.ProjectGcsUri, event.PlanOutputGcsPrefix];
     case "renderChunk":
-      return [event.PlanGcsUri, event.ChunkOutputGcsPrefix];
+      return event.PlanProtocol === "v2"
+        ? [event.PlanV2ManifestGcsUri, event.PlanV2ArtifactGcsPrefix, event.ChunkOutputGcsPrefix]
+        : [event.PlanGcsUri, event.ChunkOutputGcsPrefix];
     case "assemble":
       return [
-        event.PlanGcsUri,
+        ...(event.PlanProtocol === "v2"
+          ? [event.PlanV2ManifestGcsUri, event.PlanV2ArtifactGcsPrefix]
+          : [event.PlanGcsUri]),
         ...event.ChunkGcsUris,
         event.OutputGcsUri,
         event.AudioGcsUri,
@@ -578,6 +906,9 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   // Handler-boundary guards.
   "GCS_URI_NOT_ALLOWED",
   "PLAN_HASH_MISMATCH",
+  "PLAN_ARTIFACT_DIGEST_MISMATCH",
+  "PLAN_PROTOCOL_UNSUPPORTED",
+  "PLAN_V2_INTEGRITY_UNRECOVERABLE",
   // Producer error class names (`.name`) + their string code aliases — the
   // class sets `.name` to the class name but wraps a `code`; cover both so a
   // raw-code throw is caught too. Mirrors the AWS state machine's
@@ -585,11 +916,11 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   "FormatNotSupportedInDistributedError",
   "PlanTooLargeError",
   "PlanProtocolUnsupportedError",
+  "PlanV2IntegrityError",
   "RenderChunkValidationError",
   "FFMPEG_VERSION_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
   "PLAN_TOO_LARGE",
-  "PLAN_PROTOCOL_UNSUPPORTED",
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "ChromeBinaryUnavailableError",

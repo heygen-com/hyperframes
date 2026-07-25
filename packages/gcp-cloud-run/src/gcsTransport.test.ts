@@ -10,10 +10,13 @@ import { join } from "node:path";
 import { asStorage, FakeGcs } from "./__fixtures__/fakeGcs.js";
 import {
   downloadGcsObjectToFile,
+  downloadGcsObjectToFileVerified,
   formatGcsUri,
   parseGcsUri,
+  sha256File,
   tarDirectory,
   untarDirectory,
+  uploadContentAddressedFileToGcs,
   uploadFileToGcs,
 } from "./gcsTransport.js";
 
@@ -110,5 +113,73 @@ describe("download/upload bridge", () => {
     await expect(uploadFileToGcs(asStorage(gcs), "/no/such/file", "gs://b/k")).rejects.toThrow(
       /upload source missing/,
     );
+  });
+});
+
+describe("content-addressed v2 artifacts", () => {
+  it("uploads once and reuses an object with matching digest metadata", async () => {
+    const gcs = new FakeGcs();
+    const source = join(mkTmp("hf-cas-upload-"), "artifact.bin");
+    writeFileSync(source, "immutable bytes");
+    const digest = await sha256File(source);
+    const uri = `gs://bucket/v2/artifacts/sha256/${digest.slice(0, 2)}/${digest}`;
+
+    expect(await uploadContentAddressedFileToGcs(asStorage(gcs), source, uri, digest)).toBe(
+      "uploaded",
+    );
+    expect(await uploadContentAddressedFileToGcs(asStorage(gcs), source, uri, digest)).toBe(
+      "reused",
+    );
+    expect(gcs.ops.filter((op) => op.kind === "upload")).toHaveLength(1);
+    expect(gcs.metadata.get(uri)?.sha256).toBe(digest);
+  });
+
+  it("refuses to overwrite an immutable key with conflicting metadata", async () => {
+    const gcs = new FakeGcs();
+    const source = join(mkTmp("hf-cas-conflict-"), "artifact.bin");
+    writeFileSync(source, "expected bytes");
+    const digest = await sha256File(source);
+    const uri = `gs://bucket/v2/artifacts/sha256/${digest.slice(0, 2)}/${digest}`;
+    gcs.seed(uri, Buffer.from("same length!!!"));
+    gcs.metadata.set(uri, { sha256: "0".repeat(64) });
+
+    await expect(
+      uploadContentAddressedFileToGcs(asStorage(gcs), source, uri, digest),
+    ).rejects.toMatchObject({ name: "PLAN_ARTIFACT_DIGEST_MISMATCH" });
+    expect(gcs.ops.some((op) => op.kind === "upload")).toBe(false);
+  });
+
+  it("reuses an identical object that wins the create-only generation race", async () => {
+    const gcs = new FakeGcs();
+    const source = join(mkTmp("hf-cas-race-"), "artifact.bin");
+    writeFileSync(source, "racing bytes");
+    const digest = await sha256File(source);
+    const uri = `gs://bucket/v2/artifacts/sha256/${digest.slice(0, 2)}/${digest}`;
+    gcs.beforeUpload = (uploadUri) => {
+      gcs.beforeUpload = undefined;
+      gcs.seed(uploadUri, readFileSync(source));
+      gcs.metadata.set(uploadUri, { sha256: digest });
+    };
+
+    expect(await uploadContentAddressedFileToGcs(asStorage(gcs), source, uri, digest)).toBe(
+      "reused",
+    );
+    expect(gcs.ops.some((op) => op.kind === "upload")).toBe(false);
+  });
+
+  it("deletes a downloaded artifact when digest verification fails", async () => {
+    const gcs = new FakeGcs();
+    const work = mkTmp("hf-cas-download-");
+    const expectedSource = join(work, "expected.bin");
+    const destination = join(work, "download.bin");
+    writeFileSync(expectedSource, "expected");
+    const expected = await sha256File(expectedSource);
+    const uri = "gs://bucket/v2/artifacts/corrupt";
+    gcs.seed(uri, Buffer.from("corrupt"));
+
+    await expect(
+      downloadGcsObjectToFileVerified(asStorage(gcs), uri, destination, expected),
+    ).rejects.toMatchObject({ name: "PLAN_ARTIFACT_DIGEST_MISMATCH" });
+    expect(existsSync(destination)).toBe(false);
   });
 });

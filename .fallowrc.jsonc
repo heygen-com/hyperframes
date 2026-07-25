@@ -4,6 +4,7 @@
     "packages/producer/src/**/*.test.ts",
     "packages/aws-lambda/src/**/*.test.ts",
     "packages/gcp-cloud-run/src/**/*.test.ts",
+    "packages/gcp-cloud-run/terraform/*.test.ts",
     "packages/producer/src/regression-harness.ts",
     "packages/producer/src/regression-harness-distributed.test.ts",
     "packages/producer/src/regression-harness-lambda-local.ts",
@@ -403,6 +404,12 @@
       // extracting a shared cloud abstraction would couple independent packages.
       "packages/aws-lambda/src/handler.ts",
       "packages/aws-lambda/src/s3Transport.ts",
+      // The GCP handler deliberately mirrors the AWS protocol lifecycle while
+      // retaining provider-specific GCS, HTTP, and Cloud Workflows semantics.
+      // Its tests also mirror the same wire-contract cases; a cross-provider
+      // test abstraction would hide the adapter boundary being asserted.
+      "packages/gcp-cloud-run/src/server.ts",
+      "packages/gcp-cloud-run/src/server.test.ts",
       // sourcePatcher.ts: pre-existing internal clones between the inline-style
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.

@@ -133,6 +133,11 @@ resource "google_workflows_workflow" "render" {
   region          = var.region
   service_account = google_service_account.workflow_sa.id
   source_contents = file(local.workflow_source)
+  # Do not publish an executable workflow until its identity has permission to
+  # reach Cloud Run. IAM propagation remains eventually consistent, so the
+  # workflow also retries the edge's transient 403 response with bounded
+  # backoff.
+  depends_on = [google_cloud_run_v2_service_iam_member.workflow_invokes_run]
   # Allow `terraform destroy` to remove the workflow without a manual step;
   # the definition is reproducible from this module.
   deletion_protection = false
