@@ -128,6 +128,7 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
     logEvent({
       event: "handler_error",
       action: unwrapped.Action,
+      input: summarizeEvent(unwrapped),
       message: err instanceof Error ? err.message : String(err),
       name: err instanceof Error ? err.name : undefined,
     });
@@ -137,7 +138,7 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
 
 /**
  * AWS Lambda reports `Error.name` to Step Functions, while producer errors
- * expose stable machine codes separately. Normalize the two terminal codes
+ * expose stable machine codes separately. Normalize the terminal codes
  * whose historical class names differ from their orchestration contracts.
  */
 // The explicit error-name mapping is the public Step Functions failure contract.
@@ -145,7 +146,11 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
 function normalizeTerminalErrorName(error: unknown): void {
   if (!error || typeof error !== "object") return;
   const candidate = error as { code?: unknown; name?: string };
-  if (candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" || candidate.code === "PLAN_TOO_LARGE") {
+  if (
+    candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
+    candidate.code === "PLAN_TOO_LARGE" ||
+    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE"
+  ) {
     candidate.name = candidate.code;
   }
 }

@@ -27,6 +27,7 @@ import {
   type PlanResult,
   type PlanV2Result,
 } from "@hyperframes/producer/distributed";
+import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
 import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { handler, unwrapEvent } from "./handler.js";
 
@@ -241,39 +242,46 @@ describe("handler dispatch", () => {
   });
 
   it("normalizes producer terminal codes to Step Functions error names", async () => {
-    const tmpRoot = makeTmpRoot();
-    const s3 = new FakeS3Client();
-    s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
-    const terminal = new Error("too large") as Error & { code: "PLAN_TOO_LARGE" };
-    terminal.name = "PlanTooLargeError";
-    terminal.code = "PLAN_TOO_LARGE";
+    for (const code of [
+      "PLAN_TOO_LARGE",
+      "PLAN_PROTOCOL_UNSUPPORTED",
+      "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+    ] as const) {
+      const tmpRoot = makeTmpRoot();
+      const s3 = new FakeS3Client();
+      s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+      const terminal = Object.assign(new Error(`terminal: ${code}`), {
+        code,
+        name: "ProducerError",
+      });
 
-    await expect(
-      handler(
-        {
-          Action: "plan",
-          ProjectS3Uri: "s3://bucket/project.tar.gz",
-          PlanOutputS3Prefix: "s3://bucket/renders/terminal/",
-          Config: { fps: 30, width: 640, height: 360, format: "mp4" },
-        },
-        {
-          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
-          primitives: {
-            plan: mock(async () => {
-              throw terminal;
-            }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
-            renderChunk: mock(async () => {
-              throw new Error("unused");
-            }) as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
-            assemble: mock(async () => {
-              throw new Error("unused");
-            }) as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+      await expect(
+        handler(
+          {
+            Action: "plan",
+            ProjectS3Uri: "s3://bucket/project.tar.gz",
+            PlanOutputS3Prefix: "s3://bucket/renders/terminal/",
+            Config: { fps: 30, width: 640, height: 360, format: "mp4" },
           },
-          tmpRoot,
-          skipChromeResolution: true,
-        },
-      ),
-    ).rejects.toMatchObject({ name: "PLAN_TOO_LARGE" });
+          {
+            s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+            primitives: {
+              plan: mock(async () => {
+                throw terminal;
+              }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
+              renderChunk: mock(async () => {
+                throw new Error("unused");
+              }) as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+              assemble: mock(async () => {
+                throw new Error("unused");
+              }) as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+            },
+            tmpRoot,
+            skipChromeResolution: true,
+          },
+        ),
+      ).rejects.toMatchObject({ name: code });
+    }
   });
 
   it("plan honors a pre-set PRODUCER_HEADLESS_SHELL_PATH instead of re-resolving Chrome", async () => {
@@ -752,21 +760,24 @@ async function makeMinimalPlanTar(): Promise<Buffer> {
 
 function makeMinimalV1PlanDir(dir: string, withAudio: boolean): void {
   mkdirSync(join(dir, "meta"), { recursive: true });
-  writeFileSync(
-    join(dir, "plan.json"),
-    JSON.stringify({
-      planHash: "a".repeat(64),
-      chunkCount: 1,
-      totalFrames: 30,
-      dimensions: { fpsNum: 30, fpsDen: 1, width: 640, height: 360, format: "mp4" },
-      ffmpegVersion: "6.0",
-      producerVersion: "test",
-    }),
-  );
+  mkdirSync(join(dir, "compiled"), { recursive: true });
+  writeFileSync(join(dir, "compiled", "index.html"), "<html>aws v2 fixture</html>");
+  const planJson = {
+    planHash: "a".repeat(64),
+    chunkCount: 1,
+    totalFrames: 30,
+    dimensions: { fpsNum: 30, fpsDen: 1, width: 640, height: 360, format: "mp4" },
+    ffmpegVersion: "6.0",
+    producerVersion: "test",
+    fontSnapshotSha: "font-snapshot-test",
+  };
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
   writeFileSync(
     join(dir, "meta", "chunks.json"),
     JSON.stringify([{ index: 0, startFrame: 0, endFrame: 30 }]),
   );
   writeFileSync(join(dir, "meta", "encoder.json"), "{}");
   if (withAudio) writeFileSync(join(dir, "audio.aac"), "AAC");
+  planJson.planHash = recomputePlanHashFromPlanDir(dir);
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
 }

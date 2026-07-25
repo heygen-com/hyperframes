@@ -70,11 +70,11 @@ export type PlanEvent = PlanV1Event | PlanV2Event;
 interface RenderChunkEventBase {
   Action: "renderChunk";
   /**
-   * `PlanResult.planHash` from the Plan invocation. The handler verifies
-   * this against the untarred planDir's `plan.json` before invoking the
-   * producer, throwing a typed `PLAN_HASH_MISMATCH` on divergence so the
-   * state machine routes it as non-retryable. Defense-in-depth — the
-   * producer also re-checks internally.
+   * `PlanResult.planHash` from the Plan invocation. For v1, the handler
+   * verifies it against the untarred planDir's `plan.json`; for v2, it
+   * verifies it against the content-addressed manifest before invoking the
+   * producer. Divergence throws a typed `PLAN_HASH_MISMATCH` so the state
+   * machine routes it as non-retryable.
    */
   PlanHash: string;
   /** 0-based chunk index this invocation should render. */

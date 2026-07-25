@@ -37,6 +37,19 @@ case "$MOCK_MODE:$operation" in
     echo "AccessDenied: credentials expired" >&2
     exit 253
     ;;
+  owned:"cloudformation describe-stacks")
+    printf 'run-a\n'
+    ;;
+  foreign:"cloudformation describe-stacks")
+    printf 'run-b\n'
+    ;;
+  ownership-missing:"cloudformation describe-stacks")
+    echo "ValidationError: Stack with id smoke does not exist" >&2
+    exit 255
+    ;;
+  reserve:"cloudformation create-stack"|reserve:"cloudformation wait")
+    exit 0
+    ;;
   discovery:"cloudformation list-stack-resources")
     cat <<'JSON'
 {"StackResourceSummaries":[
@@ -62,6 +75,14 @@ name_b=$(hf_derive_project_name "hyperframes-lambda-smoke-a-very-long-shared-pre
 [ "$name_a" != "$name_b" ]
 [ "${#name_a}" -le 49 ]
 [ "${#name_b}" -le 49 ]
+run_a=$(hf_new_smoke_run_id)
+run_b=$(hf_new_smoke_run_id)
+[ "$run_a" != "$run_b" ]
+bucket_a=$(hf_sam_deploy_bucket_name "767398024897" "us-east-2" "$run_a")
+bucket_b=$(hf_sam_deploy_bucket_name "767398024897" "us-east-2" "$run_b")
+[ "$bucket_a" != "$bucket_b" ]
+[ "${#bucket_a}" -le 63 ]
+[ "${#bucket_b}" -le 63 ]
 
 MOCK_MODE=absent PATH="$WORK/bin:$PATH" \
   hf_assert_deploy_isolation "smoke" "$name_a"
@@ -78,6 +99,19 @@ if MOCK_MODE=auth PATH="$WORK/bin:$PATH" \
   exit 1
 fi
 grep -q "could not prove" "$WORK/auth-error"
+
+[ "$(MOCK_MODE=owned PATH="$WORK/bin:$PATH" \
+  hf_stack_ownership_status "smoke" "run-a")" = "owned" ]
+[ "$(MOCK_MODE=ownership-missing PATH="$WORK/bin:$PATH" \
+  hf_stack_ownership_status "smoke" "run-a")" = "absent" ]
+if MOCK_MODE=foreign PATH="$WORK/bin:$PATH" \
+  hf_stack_ownership_status "smoke" "run-a" 2>"$WORK/foreign-error"; then
+  echo "expected foreign stack ownership to fail closed" >&2
+  exit 1
+fi
+grep -q "refusing cleanup" "$WORK/foreign-error"
+MOCK_MODE=reserve PATH="$WORK/bin:$PATH" \
+  hf_reserve_smoke_stack "smoke" "run-a"
 
 discovered=$(MOCK_MODE=discovery PATH="$WORK/bin:$PATH" \
   hf_discover_stack_resources "smoke")

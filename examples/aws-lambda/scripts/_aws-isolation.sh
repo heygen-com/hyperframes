@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # AWS resource-name isolation and failed-deploy discovery helpers.
 
+hf_new_smoke_run_id() {
+  local seconds seed digest
+  seconds=$(date +%s)
+  seed="${seconds}:$$:${RANDOM}:${BASHPID:-$$}"
+  digest=$(printf '%s' "$seed" | sha256sum | awk '{print substr($1,1,16)}')
+  printf '%s-%s\n' "$seconds" "$digest"
+}
+
+hf_sam_deploy_bucket_name() {
+  local account_id="$1" region="$2" run_id="$3" digest
+  digest=$(printf '%s' "$run_id" | sha256sum | awk '{print substr($1,1,20)}')
+  printf 'hf-sam-%s-%s-%s\n' "$account_id" "$region" "$digest"
+}
+
 hf_derive_project_name() {
   local stack_name="$1" prefix digest
   prefix=$(printf '%s' "$stack_name" |
@@ -81,6 +95,52 @@ hf_assert_deploy_isolation() {
     hf_assert_named_list_absent "log group $states_log" \
       aws logs describe-log-groups --log-group-name-prefix "$states_log" \
       --query "logGroups[?logGroupName=='$states_log'].logGroupName" --output text
+}
+
+# Atomically reserve the exact stack name before SAM can create or update it.
+# CloudFormation's create-stack call is the compare-and-set: only one concurrent
+# smoke run can acquire a name that both preflight checks observed as absent.
+hf_reserve_smoke_stack() {
+  local stack_name="$1" run_id="$2"
+  aws cloudformation create-stack \
+    --stack-name "$stack_name" \
+    --template-body \
+      '{"Resources":{"SmokeOwnershipHandle":{"Type":"AWS::CloudFormation::WaitConditionHandle"}}}' \
+    --tags "Key=HyperframesSmokeRun,Value=$run_id" >/dev/null &&
+    aws cloudformation wait stack-create-complete --stack-name "$stack_name"
+}
+
+# Print "owned" when the stack has this run's ownership tag and
+# "absent" when there is no stack. Any foreign/missing tag or AWS API error
+# fails closed so a cleanup trap cannot delete a concurrent run's resources.
+hf_stack_ownership_status() {
+  local stack_name="$1" run_id="$2" output_file error_file owner status detail
+  output_file=$(mktemp)
+  error_file=$(mktemp)
+  if aws cloudformation describe-stacks \
+    --stack-name "$stack_name" \
+    --query "Stacks[0].Tags[?Key=='HyperframesSmokeRun'].Value | [0]" \
+    --output text >"$output_file" 2>"$error_file"; then
+    owner=$(tr -d '\r\n' <"$output_file")
+    rm -f "$output_file" "$error_file"
+    if [ "$owner" != "$run_id" ]; then
+      echo "ERROR: refusing cleanup: stack ownership is '${owner:-missing}', expected '$run_id'" >&2
+      return 3
+    fi
+    printf 'owned\n'
+    return
+  else
+    status=$?
+  fi
+  if hf_known_absent "does not exist" "$error_file"; then
+    rm -f "$output_file" "$error_file"
+    printf 'absent\n'
+    return
+  fi
+  detail=$(tr '\n' ' ' <"$error_file" | cut -c1-240)
+  echo "ERROR: could not verify stack ownership (exit=$status): $detail" >&2
+  rm -f "$output_file" "$error_file"
+  return 2
 }
 
 # Return a JSON object with any physical resources CloudFormation managed to

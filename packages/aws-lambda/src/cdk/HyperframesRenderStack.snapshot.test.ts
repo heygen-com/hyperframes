@@ -20,11 +20,12 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, Stack } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
+import { parse as parseYaml } from "yaml";
 import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
 
 // CDK synth + Template.fromStack is slow on cold start in CI (~5-8s on
@@ -67,12 +68,15 @@ const EXPECTED_STATE_NAMES = [
 const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "FFMPEG_VERSION_MISMATCH",
   "PLAN_HASH_MISMATCH",
+  "S3_URI_NOT_ALLOWED",
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "PLAN_TOO_LARGE",
   "PlanTooLargeError",
   "PLAN_PROTOCOL_UNSUPPORTED",
   "PlanProtocolUnsupportedError",
+  "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+  "PlanV2IntegrityError",
   "PLAN_ARTIFACT_DIGEST_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
   "ChromeBinaryUnavailableError",
@@ -178,6 +182,33 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("classifies plan v2 integrity failures as terminal in every v2 Lambda task", () => {
+    const v2TaskStates = Object.values(getV2TaskStates(SYNTHED.definition));
+
+    for (const state of v2TaskStates) {
+      const errors = new Set<string>();
+      collectNonRetryableErrors(state, errors);
+      expect(errors.has("PLAN_V2_INTEGRITY_UNRECOVERABLE")).toBe(true);
+      expect(errors.has("PlanV2IntegrityError")).toBe(true);
+    }
+  });
+
+  it("keeps SAM and CDK terminal classifiers identical for every v2 Lambda task", () => {
+    const cdkTasks = getV2TaskStates(SYNTHED.definition);
+    const samTasks = getV2TaskStates(readSamDefinition());
+
+    for (const taskName of ["PlanV2", "RenderChunkV2", "AssembleV2"] as const) {
+      const cdkErrors = new Set<string>();
+      const samErrors = new Set<string>();
+      collectNonRetryableErrors(cdkTasks[taskName], cdkErrors);
+      collectNonRetryableErrors(samTasks[taskName], samErrors);
+      expect({ taskName, errors: [...samErrors].sort() }).toEqual({
+        taskName,
+        errors: [...cdkErrors].sort(),
+      });
+    }
+  });
+
   it("keeps v1 and v2 locators disjoint across orchestration branches", () => {
     const { definition } = SYNTHED;
     const v1 = JSON.stringify({
@@ -206,4 +237,67 @@ function collectNonRetryableErrors(state: unknown, out: Set<string>): void {
       for (const err of retry.ErrorEquals) out.add(err);
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${label} must be an object`);
+  return value;
+}
+
+function requireRecordProperty(
+  record: Record<string, unknown>,
+  property: string,
+  label: string,
+): Record<string, unknown> {
+  return requireRecord(record[property], label);
+}
+
+function getV2TaskStates(definition: {
+  States: Record<string, unknown>;
+}): Record<"PlanV2" | "RenderChunkV2" | "AssembleV2", unknown> {
+  const renderChunksV2 = requireRecord(definition.States.RenderChunksV2, "RenderChunksV2 state");
+  const processor = isRecord(renderChunksV2.Iterator)
+    ? renderChunksV2.Iterator
+    : requireRecord(renderChunksV2.ItemProcessor, "RenderChunksV2 processor");
+  const innerStates = requireRecord(processor.States, "RenderChunksV2 processor states");
+  return {
+    PlanV2: definition.States.PlanV2,
+    RenderChunkV2: innerStates.RenderChunkV2,
+    AssembleV2: definition.States.AssembleV2,
+  };
+}
+
+function readSamDefinition(): { States: Record<string, unknown> } {
+  const source = readFileSync(
+    new URL("../../../../examples/aws-lambda/template.yaml", import.meta.url),
+    "utf8",
+  );
+  // CloudFormation intrinsic tags are irrelevant to classifier parity. The
+  // YAML parser preserves their scalar values while this option suppresses
+  // warnings for the intentionally unresolved `!Ref`/`!GetAtt` tags.
+  const parsed: unknown = parseYaml(source, { logLevel: "silent" });
+  const root = requireRecord(parsed, "SAM template");
+  const resources = requireRecordProperty(root, "Resources", "SAM resources");
+  const stateMachine = requireRecordProperty(
+    resources,
+    "RenderStateMachine",
+    "SAM RenderStateMachine",
+  );
+  const properties = requireRecordProperty(
+    stateMachine,
+    "Properties",
+    "SAM state-machine properties",
+  );
+  const definition = requireRecordProperty(
+    properties,
+    "Definition",
+    "SAM state-machine definition",
+  );
+  return {
+    States: requireRecordProperty(definition, "States", "SAM state-machine states"),
+  };
 }

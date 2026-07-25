@@ -27,7 +27,7 @@
 #   --fixture <name>           (default: mp4-h264-sdr)
 #   --chunk-counts <list>      (default: 2,4,8)
 #   --psnr-threshold <db>      (default: fixture meta.json minPsnr)
-#   --stack-name <name>        (default: hyperframes-lambda-smoke-<timestamp>)
+#   --stack-name <name>        (default: hyperframes-lambda-smoke-<unique-run-id>)
 #   --region <region>          (default: $AWS_REGION or us-east-1)
 #   --profile <name>           (default: $AWS_PROFILE, otherwise the AWS
 #                               default profile resolution chain)
@@ -78,7 +78,8 @@ CHUNK_COUNTS="${CHUNK_COUNTS:-2,4,8}"
 # calibrated for that content/runtime boundary. Override it via
 # --psnr-threshold (or PSNR_THRESHOLD) for a stricter experiment.
 PSNR_THRESHOLD="${PSNR_THRESHOLD-}"
-STACK_NAME="${STACK_NAME:-hyperframes-lambda-smoke-$(date +%s)}"
+SMOKE_RUN_ID="${HYPERFRAMES_SMOKE_RUN_ID:-$(hf_new_smoke_run_id)}"
+STACK_NAME="${STACK_NAME:-hyperframes-lambda-smoke-${SMOKE_RUN_ID}}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE="${AWS_PROFILE:-}"
 PLAN_PROTOCOL="${PLAN_PROTOCOL:-v1}"
@@ -106,7 +107,7 @@ Flags:
   --fixture <name>              fixture under packages/producer/tests/distributed/ (default: mp4-h264-sdr)
   --chunk-counts <list>         comma-separated chunk counts to benchmark (default: 2,4,8)
   --psnr-threshold <db>         PSNR floor (default: fixture meta.json minPsnr)
-  --stack-name <name>           SAM stack name (default: hyperframes-lambda-smoke-<timestamp>)
+  --stack-name <name>           SAM stack name (default: hyperframes-lambda-smoke-<unique-run-id>)
   --region <region>             AWS region (default: $AWS_REGION or us-east-1)
   --profile <name>              AWS profile (default: $AWS_PROFILE)
   --plan-protocol <v1|v2|both>  plan transport(s) to compare (default: v1)
@@ -241,42 +242,57 @@ cleanup_and_exit() {
   else
     echo "→ Tearing down stack $STACK_NAME"
     local cleanup_identity_ok=true
+    local stack_cleanup_allowed=false
+    local ownership_status=""
     local discovery_errors=()
     if ! aws sts get-caller-identity >/dev/null; then
       cleanup_identity_ok=false
       echo "ERROR: AWS identity check failed before cleanup; absence cannot be trusted" >&2
     fi
-    local discovered
-    if discovered=$(hf_discover_stack_resources "$STACK_NAME"); then
-      if [ -z "$BUCKET" ]; then
-        BUCKET=$(jq -r '.renderBucket' <<<"$discovered")
-      fi
-      if [ -z "$STATE_MACHINE_ARN" ]; then
-        STATE_MACHINE_ARN=$(jq -r '.stateMachineArn' <<<"$discovered")
-      fi
-    else
-      discovery_errors+=("verification-error:cloudformation-resource-discovery")
-    fi
-    if [ -n "$BUCKET" ]; then
-      if ! hf_delete_s3_bucket_completely "$BUCKET"; then
-        echo "WARN: failed to purge/delete retained render bucket s3://$BUCKET" >&2
+    if [ "$cleanup_identity_ok" = true ]; then
+      if ownership_status=$(hf_stack_ownership_status "$STACK_NAME" "$SMOKE_RUN_ID"); then
+        if [ "$ownership_status" = "owned" ]; then
+          stack_cleanup_allowed=true
+        else
+          echo "→ Stack is absent; skipping stack-scoped destructive cleanup"
+        fi
+      else
+        discovery_errors+=("verification-error:cloudformation-stack-ownership")
       fi
     fi
-    if ! (cd "$SAM_DIR" && sam delete \
-      --stack-name "$STACK_NAME" \
-      --region "$AWS_REGION" \
-      --no-prompts); then
-      echo "WARN: sam delete failed for $STACK_NAME" >&2
-    fi
-    if ! aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"; then
-      echo "WARN: CloudFormation did not confirm stack deletion for $STACK_NAME" >&2
-    fi
-    if aws logs describe-log-groups \
-      --log-group-name-prefix "/aws/lambda/${PROJECT_NAME}-render" \
-      --query "logGroups[?logGroupName=='/aws/lambda/${PROJECT_NAME}-render'].logGroupName" \
-      --output text | grep -q .; then
-      if ! aws logs delete-log-group --log-group-name "/aws/lambda/${PROJECT_NAME}-render"; then
-        echo "WARN: failed to delete Lambda log group" >&2
+    if [ "$stack_cleanup_allowed" = true ]; then
+      local discovered
+      if discovered=$(hf_discover_stack_resources "$STACK_NAME"); then
+        if [ -z "$BUCKET" ]; then
+          BUCKET=$(jq -r '.renderBucket' <<<"$discovered")
+        fi
+        if [ -z "$STATE_MACHINE_ARN" ]; then
+          STATE_MACHINE_ARN=$(jq -r '.stateMachineArn' <<<"$discovered")
+        fi
+      else
+        discovery_errors+=("verification-error:cloudformation-resource-discovery")
+      fi
+      if [ -n "$BUCKET" ]; then
+        if ! hf_delete_s3_bucket_completely "$BUCKET"; then
+          echo "WARN: failed to purge/delete retained render bucket s3://$BUCKET" >&2
+        fi
+      fi
+      if ! (cd "$SAM_DIR" && sam delete \
+        --stack-name "$STACK_NAME" \
+        --region "$AWS_REGION" \
+        --no-prompts); then
+        echo "WARN: sam delete failed for $STACK_NAME" >&2
+      fi
+      if ! aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"; then
+        echo "WARN: CloudFormation did not confirm stack deletion for $STACK_NAME" >&2
+      fi
+      if aws logs describe-log-groups \
+        --log-group-name-prefix "/aws/lambda/${PROJECT_NAME}-render" \
+        --query "logGroups[?logGroupName=='/aws/lambda/${PROJECT_NAME}-render'].logGroupName" \
+        --output text | grep -q .; then
+        if ! aws logs delete-log-group --log-group-name "/aws/lambda/${PROJECT_NAME}-render"; then
+          echo "WARN: failed to delete Lambda log group" >&2
+        fi
       fi
     fi
     if [ -n "$SAM_DEPLOY_BUCKET" ]; then
@@ -382,17 +398,24 @@ if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
   exit 1
 fi
 
-# This check runs before cleanup is armed or any resource is created. A name
-# collision must never route through cleanup, because cleanup is destructive.
+# This check runs before cleanup is armed or any resource is created.
 echo "→ Pre-flight: proving exact AWS resource names are unused"
 if ! hf_assert_deploy_isolation "$STACK_NAME" "$PROJECT_NAME"; then
   echo "ERROR: refusing to reuse or clean resources not created by this run." >&2
   exit 1
 fi
 
-# From this point onward, unexpected failures must tear down resources created
-# by this exact, preflight-isolated run.
+# Arm cleanup before atomically reserving the stack name. If another smoke run
+# wins the create-stack race, ownership verification prevents this run from
+# touching it. If this run wins, every later destructive action requires the
+# same ownership tag.
 trap 'cleanup_and_exit $?' EXIT
+
+echo "→ Pre-flight: atomically reserving stack name for this smoke run"
+if ! hf_reserve_smoke_stack "$STACK_NAME" "$SMOKE_RUN_ID"; then
+  echo "ERROR: could not reserve stack name; another run may have won the race." >&2
+  cleanup_and_exit 1
+fi
 
 mkdir -p "$ARTIFACT_DIR/renders"
 
@@ -419,7 +442,7 @@ echo "→ SAM deploy (stack=$STACK_NAME, region=$AWS_REGION)"
 # at its default makes concurrent smoke stacks overwrite/collide. A dedicated
 # SAM bucket also lets teardown remove every object created by this run.
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-SAM_DEPLOY_BUCKET="hf-sam-${ACCOUNT_ID}-${AWS_REGION}-$(date +%s)-$$"
+SAM_DEPLOY_BUCKET=$(hf_sam_deploy_bucket_name "$ACCOUNT_ID" "$AWS_REGION" "$SMOKE_RUN_ID")
 if [ "$AWS_REGION" = "us-east-1" ]; then
   aws s3api create-bucket --bucket "$SAM_DEPLOY_BUCKET" >/dev/null
 else
@@ -434,6 +457,7 @@ if ! (cd "$SAM_DIR" && sam deploy \
         --capabilities CAPABILITY_IAM \
         --no-confirm-changeset \
         --no-fail-on-empty-changeset \
+        --tags "HyperframesSmokeRun=$SMOKE_RUN_ID" \
         --parameter-overrides \
           "ProjectName=$PROJECT_NAME" \
           ChromeSource=sparticuz \
