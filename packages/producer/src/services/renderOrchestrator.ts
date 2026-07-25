@@ -82,6 +82,7 @@ import {
   applyConcreteGpuScreenshotClamp,
   scaleProtocolTimeoutForComposition,
   classifyCaptureFailure,
+  cloneCaptureWarning,
   isMemoryExhaustionError,
   isDrawElementVerificationError,
   getDrawElementVerificationDetails,
@@ -613,22 +614,28 @@ export function applyRenderWarningPolicy(
     if (existing.has(key)) continue;
     existing.add(key);
     job.warnings.push({
-      ...warning,
+      ...cloneCaptureWarning(warning),
       stage: "capture-readiness",
-      details: warning.details
-        ? {
-            ...warning.details,
-            sources: warning.details.sources ? [...warning.details.sources] : undefined,
-          }
-        : undefined,
     });
   }
   if (job.warnings.length === 0) return;
 
   const strictness = job.config.strictness ?? "best-effort";
+  const typedRetryability = job.warnings.flatMap((warning) =>
+    warning.details?.retryable === undefined ? [] : [warning.details.retryable],
+  );
   log.warn("Render completed capture with correctness warnings", {
     strictness,
     warningCodes: job.warnings.map((warning) => warning.code),
+    warningReasons: job.warnings.flatMap((warning) => warning.details?.failureReasons ?? []),
+    warningStages: job.warnings.flatMap((warning) => warning.details?.failureStages ?? []),
+    warningOwners: job.warnings.flatMap((warning) =>
+      warning.details?.failureOwner ? [warning.details.failureOwner] : [],
+    ),
+    warningRetryable:
+      typedRetryability.length === 0
+        ? undefined
+        : typedRetryability.every((retryable) => retryable),
   });
   const hasAudioProcessingFailure = job.warnings.some(
     (warning) => warning.code === "audio_processing_failed",
@@ -2184,13 +2191,30 @@ async function executeRenderPipeline(input: {
     const { audioOutputPath, hasAudio } = audioResult;
     perfStages.audioProcessMs = audioResult.audioProcessMs;
     if (audioResult.audioError) {
+      const audioFailures = audioResult.audioFailures ?? [];
+      const failureOwner =
+        audioFailures.length === 0
+          ? undefined
+          : audioFailures.some((failure) => failure.owner === "system")
+            ? "system"
+            : "user";
+      const retryable =
+        audioFailures.length === 0
+          ? undefined
+          : audioFailures.every((failure) => failure.retryable);
       applyRenderWarningPolicy(
         job,
         [
           {
             code: "audio_processing_failed",
             message: `Audio mix failed; output would be video-only: ${audioResult.audioError}`,
-            details: { mediaType: "audio" },
+            details: {
+              mediaType: "audio",
+              failureReasons: [...new Set(audioFailures.map((failure) => failure.reason))],
+              failureStages: [...new Set(audioFailures.map((failure) => failure.stage))],
+              failureOwner,
+              retryable,
+            },
           },
         ],
         log,

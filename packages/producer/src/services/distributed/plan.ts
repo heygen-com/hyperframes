@@ -42,6 +42,7 @@ import {
   getEncoderPreset,
   normalizeVp9CpuUsed,
   resolveConfig,
+  type AudioProcessingFailure,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import {
@@ -269,15 +270,30 @@ export interface PlanResult {
 export function applyDistributedAudioWarningPolicy(
   job: RenderJob,
   audioError: string,
+  audioFailures: readonly AudioProcessingFailure[] = [],
   log: ProducerLogger = defaultLogger,
 ): void {
+  const failureOwner =
+    audioFailures.length === 0
+      ? undefined
+      : audioFailures.some((failure) => failure.owner === "system")
+        ? "system"
+        : "user";
+  const retryable =
+    audioFailures.length === 0 ? undefined : audioFailures.every((failure) => failure.retryable);
   applyRenderWarningPolicy(
     job,
     [
       {
         code: "audio_processing_failed",
         message: `Audio mix failed; output would be video-only: ${audioError}`,
-        details: { mediaType: "audio" },
+        details: {
+          mediaType: "audio",
+          failureReasons: [...new Set(audioFailures.map((failure) => failure.reason))],
+          failureStages: [...new Set(audioFailures.map((failure) => failure.stage))],
+          failureOwner,
+          retryable,
+        },
       },
     ],
     log,
@@ -943,7 +959,7 @@ export async function plan(
     assertNotAborted,
   });
   if (audioResult.audioError) {
-    applyDistributedAudioWarningPolicy(job, audioResult.audioError, log);
+    applyDistributedAudioWarningPolicy(job, audioResult.audioError, audioResult.audioFailures, log);
   }
 
   // Promote staged artifacts from the temp work tree into the final planDir

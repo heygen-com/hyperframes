@@ -1,3 +1,4 @@
+import { cloneCaptureWarnings } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
 import type { ProgressCallback, RenderJob } from "../renderOrchestrator.js";
 import { updateJobStatus } from "./shared.js";
@@ -5,15 +6,7 @@ import { updateJobStatus } from "./shared.js";
 function snapshotJob(job: RenderJob): RenderJob {
   return {
     ...job,
-    warnings: job.warnings.map((warning) => ({
-      ...warning,
-      details: warning.details
-        ? {
-            ...warning.details,
-            sources: warning.details.sources ? [...warning.details.sources] : undefined,
-          }
-        : undefined,
-    })),
+    warnings: cloneCaptureWarnings(job.warnings),
   };
 }
 

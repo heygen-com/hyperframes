@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 /**
  * Unit tests for `services/distributed/plan.ts`.
  *
@@ -76,8 +77,63 @@ describe("distributed warning policy", () => {
 
   it("rejects distributed audio degradation in best-effort mode", () => {
     const job = createJob("best-effort");
-    expect(() => applyDistributedAudioWarningPolicy(job, "mix failed")).toThrow(RenderQualityError);
+    expect(() =>
+      applyDistributedAudioWarningPolicy(job, "mix failed", [
+        {
+          stage: "mix",
+          reason: "ffmpeg_unsupported",
+          owner: "system",
+          retryable: false,
+          detail: "Option not found",
+        },
+      ]),
+    ).toThrow(RenderQualityError);
     expect(job.warnings.map((warning) => warning.code)).toEqual(["audio_processing_failed"]);
+    expect(job.warnings[0]?.details).toEqual(
+      expect.objectContaining({
+        failureReasons: ["ffmpeg_unsupported"],
+        failureStages: ["mix"],
+        failureOwner: "system",
+        retryable: false,
+      }),
+    );
+  });
+
+  it("only marks a multi-cause audio failure retryable when every cause is retryable", () => {
+    const job = createJob("best-effort");
+    expect(() =>
+      applyDistributedAudioWarningPolicy(job, "mixed failure", [
+        {
+          stage: "download",
+          reason: "download_failed",
+          owner: "system",
+          retryable: true,
+          detail: "temporary download failure",
+        },
+        {
+          stage: "prepare",
+          reason: "invalid_media",
+          owner: "user",
+          retryable: false,
+          detail: "invalid media",
+        },
+      ]),
+    ).toThrow(RenderQualityError);
+    expect(job.warnings[0]?.details).toEqual(
+      expect.objectContaining({
+        failureOwner: "system",
+        retryable: false,
+      }),
+    );
+  });
+
+  it("does not invent ownership or retryability for legacy untyped failures", () => {
+    const job = createJob("best-effort");
+    expect(() => applyDistributedAudioWarningPolicy(job, "legacy failure")).toThrow(
+      RenderQualityError,
+    );
+    expect(job.warnings[0]?.details?.failureOwner).toBeUndefined();
+    expect(job.warnings[0]?.details?.retryable).toBeUndefined();
   });
 });
 

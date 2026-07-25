@@ -44,6 +44,7 @@ import {
   type HdrTransfer,
   type StreamingEncoder,
   closeCaptureSession,
+  cloneCaptureWarnings,
   createCaptureSession,
   getEncoderPreset,
   initTransparentBackground,
@@ -126,18 +127,6 @@ export interface CaptureHdrStageResult {
   /** ffmpeg-reported encode duration; overlapped with capture. */
   encodeMs: number;
   warnings: CaptureWarning[];
-}
-
-function cloneCaptureWarnings(warnings: readonly CaptureWarning[]): CaptureWarning[] {
-  return warnings.map((warning) => ({
-    ...warning,
-    details: warning.details
-      ? {
-          ...warning.details,
-          sources: warning.details.sources ? [...warning.details.sources] : undefined,
-        }
-      : undefined,
-  }));
 }
 
 export async function runCaptureHdrStage(

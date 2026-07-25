@@ -33,6 +33,38 @@ describe("OrderedRenderEventPublisher", () => {
     ]);
   });
 
+  it("deep-clones typed warning arrays across the progress sink boundary", async () => {
+    const deliveredReasons: string[][] = [];
+    const publisher = new OrderedRenderEventPublisher(
+      async (snapshot) => {
+        const reasons = snapshot.warnings[0]?.details?.failureReasons;
+        if (reasons) {
+          deliveredReasons.push([...reasons]);
+          reasons.push("sink_mutation");
+        }
+      },
+      { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+    );
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    job.warnings.push({
+      code: "audio_processing_failed",
+      message: "audio failed",
+      stage: "capture-readiness",
+      details: {
+        mediaType: "audio",
+        failureReasons: ["ffmpeg_timeout"],
+        failureStages: ["prepare"],
+      },
+    });
+
+    publisher.publish(job, "warning");
+    job.warnings[0]!.details!.failureReasons!.push("source_mutation");
+    await publisher.flush();
+
+    expect(deliveredReasons).toEqual([["ffmpeg_timeout"]]);
+    expect(job.warnings[0]?.details?.failureReasons).toEqual(["ffmpeg_timeout", "source_mutation"]);
+  });
+
   it("contains sink rejection and still delivers the terminal event", async () => {
     const delivered: number[] = [];
     const warn = vi.fn();
@@ -147,6 +179,71 @@ describe("updateJobStatus", () => {
     ).toThrow(RenderQualityError);
     expect(job.config.strictness).toBe("best-effort");
     expect(job.warnings).toHaveLength(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      "Render completed capture with correctness warnings",
+      expect.objectContaining({ warningRetryable: undefined }),
+    );
+  });
+
+  it("logs bounded audio failure taxonomy without requiring raw stderr", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    expect(() =>
+      applyRenderWarningPolicy(
+        job,
+        [
+          {
+            code: "audio_processing_failed",
+            message: "raw diagnostic stays on the warning object",
+            details: {
+              mediaType: "audio",
+              failureReasons: ["ffmpeg_timeout"],
+              failureStages: ["prepare"],
+              failureOwner: "system",
+              retryable: true,
+            },
+          },
+        ],
+        log,
+      ),
+    ).toThrow(RenderQualityError);
+    expect(log.warn).toHaveBeenCalledWith(
+      "Render completed capture with correctness warnings",
+      expect.objectContaining({
+        warningCodes: ["audio_processing_failed"],
+        warningReasons: ["ffmpeg_timeout"],
+        warningStages: ["prepare"],
+        warningOwners: ["system"],
+        warningRetryable: true,
+      }),
+    );
+  });
+
+  it("only logs an aggregate warning as retryable when every typed warning is retryable", () => {
+    const job = createRenderJob({ fps: 30, quality: "high" });
+    const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    expect(() =>
+      applyRenderWarningPolicy(
+        job,
+        [
+          {
+            code: "audio_processing_failed",
+            message: "temporary audio failure",
+            details: { mediaType: "audio", retryable: true },
+          },
+          {
+            code: "media_load_failed",
+            message: "terminal media failure",
+            details: { mediaType: "video", retryable: false },
+          },
+        ],
+        log,
+      ),
+    ).toThrow(RenderQualityError);
+    expect(log.warn).toHaveBeenCalledWith(
+      "Render completed capture with correctness warnings",
+      expect.objectContaining({ warningRetryable: false }),
+    );
   });
 
   it("fails explicitly strict renders on correctness warnings", () => {

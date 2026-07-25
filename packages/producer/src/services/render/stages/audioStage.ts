@@ -16,7 +16,7 @@
  */
 
 import { join } from "node:path";
-import { processCompositionAudio } from "@hyperframes/engine";
+import { processCompositionAudio, type AudioProcessingFailure } from "@hyperframes/engine";
 import type { CompositionMetadata } from "../shared.js";
 
 export interface AudioStageInput {
@@ -45,6 +45,8 @@ export interface AudioStageResult {
    * both when there was no audio to mix and when the mix succeeded.
    */
   audioError?: string;
+  /** Bounded typed causes for policy, telemetry, and caller classification. */
+  audioFailures?: AudioProcessingFailure[];
 }
 
 export async function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
@@ -55,6 +57,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
   const audioOutputPath = join(workDir, "audio.aac");
   let hasAudio = false;
   let audioError: string | undefined;
+  let audioFailures: AudioProcessingFailure[] | undefined;
 
   if (audios.length > 0) {
     const audioResult = await processCompositionAudio(
@@ -70,6 +73,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     assertNotAborted();
 
     hasAudio = audioResult.success;
+    audioFailures = audioResult.failures;
     // processCompositionAudio's error (per-element failures or the mix's own
     // error) used to be discarded here — the caller only saw hasAudio flip to
     // false with no explanation, so a real audio failure looked identical to
@@ -78,5 +82,11 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
   }
   const audioProcessMs = Date.now() - stage3Start;
 
-  return { audioOutputPath, hasAudio, audioProcessMs, audioError };
+  return {
+    audioOutputPath,
+    hasAudio,
+    audioProcessMs,
+    audioError,
+    audioFailures,
+  };
 }

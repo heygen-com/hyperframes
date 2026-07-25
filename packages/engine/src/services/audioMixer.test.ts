@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,9 +30,10 @@ const { runFfmpegMock, capturedFilterScripts } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../utils/runFfmpeg.js", () => ({
-  runFfmpeg: runFfmpegMock,
-}));
+vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/runFfmpeg.js")>();
+  return { ...actual, runFfmpeg: runFfmpegMock };
+});
 
 import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
@@ -79,6 +81,8 @@ describe("processCompositionAudio", () => {
 
     expect(filter).toContain("volume=0");
     expect(filter).toContain("[mixed]volume=1[out]");
+    expect(filter).toContain("apad,atrim=0:2");
+    expect(filter).not.toContain("whole_dur");
     expect(filter).not.toContain("normalize=");
     expect(filter).not.toContain("weights=");
   });
@@ -157,7 +161,9 @@ describe("processCompositionAudio", () => {
       return {
         success: !isMissingCuePrepare,
         durationMs: 1,
-        stderr: isMissingCuePrepare ? "Invalid data found when processing input" : "",
+        stderr: isMissingCuePrepare
+          ? "https://media.example.test/private.wav?token=secret /tmp/hf/private secret.wav: Invalid data found when processing input"
+          : "",
         exitCode: isMissingCuePrepare ? 1 : 0,
       };
     });
@@ -194,8 +200,203 @@ describe("processCompositionAudio", () => {
 
     expect(result.success).toBe(false);
     expect(result.tracksProcessed).toBe(1);
-    expect(result.error).toMatch(/Prepare failed: missing-cue/);
+    expect(result.error).toContain("Invalid data found when processing input");
+    expect(result.error).toContain("<redacted-url>");
+    expect(result.error).toContain("<redacted-path>");
+    expect(result.error).not.toContain("token=secret");
+    expect(result.error).not.toContain("/tmp/hf/private");
+    expect(result.error).not.toContain("secret.wav");
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "prepare",
+        reason: "invalid_media",
+        owner: "user",
+        retryable: false,
+        elementId: "missing-cue",
+      }),
+    ]);
     expect(runFfmpegMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves and classifies unsupported FFmpeg filter failures", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    runFfmpegMock
+      .mockResolvedValueOnce({
+        success: true,
+        durationMs: 1,
+        stderr: "",
+        exitCode: 0,
+        terminationReason: "exit",
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        durationMs: 1,
+        stderr: "Error applying option 'whole_dur': Option not found",
+        exitCode: 8,
+        terminationReason: "exit",
+      });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Option not found");
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "ffmpeg_unsupported",
+        owner: "system",
+        retryable: false,
+      }),
+    ]);
+  });
+
+  it("preserves a sanitized FFmpeg spawn failure cause", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    runFfmpegMock.mockResolvedValueOnce({
+      success: false,
+      durationMs: 1,
+      stderr: "",
+      exitCode: null,
+      terminationReason: "spawn_error",
+      error: new Error("spawn C:\\private\\ffmpeg.exe ENOENT"),
+    });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("ENOENT");
+    expect(result.error).toContain("<redacted-path>");
+    expect(result.error).not.toContain("C:\\private\\ffmpeg.exe");
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "prepare",
+        reason: "ffmpeg_unavailable",
+        owner: "system",
+        retryable: true,
+      }),
+    ]);
+  });
+
+  it("keeps invalid data from producer-generated mix inputs system-owned", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    runFfmpegMock
+      .mockResolvedValueOnce({
+        success: true,
+        durationMs: 1,
+        stderr: "",
+        exitCode: 0,
+        terminationReason: "exit",
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        durationMs: 1,
+        stderr: "Invalid data found when processing input",
+        exitCode: 1,
+        terminationReason: "exit",
+      });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "mix",
+        reason: "ffmpeg_failed",
+        owner: "system",
+        retryable: false,
+      }),
+    ]);
+  });
+
+  it("bounds per-cause details and the aggregate error across many authored IDs", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    const oversizedId = "authored-id-".repeat(300);
+
+    const result = await processCompositionAudio(
+      Array.from({ length: 3 }, (_, index) => ({
+        id: `${oversizedId}-${index}`,
+        src: `missing-${index}.wav`,
+        start: 0,
+        end: 2,
+        mediaStart: 0,
+        layer: index,
+        volume: 1,
+        type: "audio" as const,
+      })),
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.length).toBeLessThanOrEqual(2_000);
+    expect(result.failures).toHaveLength(3);
+    expect(result.failures?.every((failure) => failure.detail.length <= 2_000)).toBe(true);
   });
 
   it("uses frame-evaluated volume automation when keyframes are present", async () => {
@@ -402,7 +603,10 @@ describe("processCompositionAudio", () => {
 
     const filter = capturedFilterScripts.at(-1);
     expect(filter).toContain(`amix=inputs=${trackCount}`);
-    expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount);
+    // Each track is trimmed once to its authored clip and once after portable
+    // indefinite `apad` to cap the padded stream at composition duration.
+    expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount * 2);
+    expect((filter?.match(/apad,/g) ?? []).length).toBe(trackCount);
   });
 
   it("retries with the current file-valued filter option when a nightly removes the legacy alias", async () => {

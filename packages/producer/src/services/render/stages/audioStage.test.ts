@@ -53,12 +53,25 @@ describe("runAudioStage", () => {
       durationMs: 1,
       tracksProcessed: 0,
       error: "Source not found: a1 (narration.wav)",
+      failures: [
+        {
+          stage: "source",
+          reason: "source_not_found",
+          owner: "user",
+          retryable: false,
+          elementId: "a1",
+          detail: "Source not found for audio element a1",
+        },
+      ],
     });
 
     const result = await runAudioStage(makeInput());
 
     expect(result.hasAudio).toBe(false);
     expect(result.audioError).toBe("Source not found: a1 (narration.wav)");
+    expect(result.audioFailures).toEqual([
+      expect.objectContaining({ reason: "source_not_found", stage: "source" }),
+    ]);
   });
 
   it("falls back to a generic message when the mixer fails without an error string", async () => {
@@ -95,5 +108,6 @@ describe("runAudioStage", () => {
     expect(processCompositionAudioMock).not.toHaveBeenCalled();
     expect(result.hasAudio).toBe(false);
     expect(result.audioError).toBeUndefined();
+    expect(result.audioFailures).toBeUndefined();
   });
 });

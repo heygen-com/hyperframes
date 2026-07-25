@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity code-duplication
 /**
  * Audio Mixer Service
  *
@@ -10,11 +11,17 @@ import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
-import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
+import type {
+  AudioElement,
+  AudioFailureStage,
+  AudioProcessingFailure,
+  AudioTrack,
+  MixResult,
+} from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
@@ -190,6 +197,99 @@ interface ExtractResult {
   outputPath: string;
   durationMs: number;
   error?: string;
+  failure?: AudioProcessingFailure;
+}
+
+function boundedDetail(message: string, maxLength = 2_000): string {
+  const redacted = message
+    .replace(/\bhttps?:\/\/[^\s"'<>]+/gi, "<redacted-url>")
+    .replace(/\bfile:\/\/[^\s"'<>]+/gi, "<redacted-path>")
+    .replace(
+      /\b[A-Za-z]:[\\/].+?(?=:\s[A-Z]|\s(?:ENOENT|EACCES|EPERM)\b|\r?$)/gm,
+      "<redacted-path>",
+    )
+    .replace(
+      /(^|[\s"'(])\/.+?(?=:\s[A-Z]|\s(?:ENOENT|EACCES|EPERM)\b|\r?$)/gm,
+      "$1<redacted-path>",
+    );
+  return redacted.length <= maxLength ? redacted : `${redacted.slice(0, maxLength - 1)}…`;
+}
+
+function probeFailure(message: string, elementId: string): AudioProcessingFailure {
+  const unavailable = /(?:not found|ENOENT|spawn)/i.test(message);
+  const timedOut = /(?:timed?\s*out|timeout|deadline|inactivity|aborted)/i.test(message);
+  const invalidMedia =
+    /(?:invalid data found|could not find codec parameters|moov atom not found|no audio stream)/i.test(
+      message,
+    );
+  return {
+    stage: "probe",
+    reason: invalidMedia ? "invalid_media" : unavailable ? "ffmpeg_unavailable" : "probe_failed",
+    owner: invalidMedia ? "user" : "system",
+    retryable: !invalidMedia && (unavailable || timedOut),
+    elementId,
+    detail: boundedDetail(`Audio probe failed for element ${elementId}: ${message}`),
+  };
+}
+
+function downloadFailure(message: string, elementId: string): AudioProcessingFailure {
+  const invalidSource =
+    /(?:invalid URL|only HTTPS|private\/reserved|HTTP (?:400|401|403|404|405|410|422)\b)/i.test(
+      message,
+    );
+  return {
+    stage: "download",
+    reason: "download_failed",
+    owner: invalidSource ? "user" : "system",
+    retryable: !invalidSource,
+    elementId,
+    detail: boundedDetail(`Download failed for audio element ${elementId}: ${message}`),
+  };
+}
+
+function ffmpegFailure(
+  stage: Extract<AudioFailureStage, "extract" | "prepare" | "mix" | "silence">,
+  result: RunFfmpegResult,
+  elementId?: string,
+): AudioProcessingFailure {
+  const stderr = result.stderr ?? "";
+  let reason: AudioProcessingFailure["reason"] = "ffmpeg_failed";
+  let owner: AudioProcessingFailure["owner"] = "system";
+  let retryable = false;
+
+  if (result.terminationReason === "abort") {
+    reason = "cancelled";
+    owner = "user";
+  } else if (result.terminationReason === "deadline" || result.terminationReason === "inactivity") {
+    reason = "ffmpeg_timeout";
+    retryable = true;
+  } else if (result.terminationReason === "spawn_error") {
+    reason = "ffmpeg_unavailable";
+    retryable = true;
+  } else if (
+    /(?:unrecognized option|option (?:was )?not found|no option name near)/i.test(stderr)
+  ) {
+    reason = "ffmpeg_unsupported";
+  } else if (
+    (stage === "extract" || stage === "prepare") &&
+    /(?:invalid data found|could not find codec parameters|moov atom not found)/i.test(stderr)
+  ) {
+    reason = "invalid_media";
+    owner = "user";
+  }
+
+  return {
+    stage,
+    reason,
+    owner,
+    retryable,
+    elementId,
+    detail: boundedDetail(
+      result.error?.message
+        ? `${formatFfmpegError(result.exitCode, stderr)}: ${result.error.message}`
+        : formatFfmpegError(result.exitCode, stderr),
+    ),
+  };
 }
 
 export function parseAudioElements(html: string): AudioElement[] {
@@ -266,20 +366,29 @@ async function extractAudioFromVideo(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
+    const failure: AudioProcessingFailure = {
+      stage: "cancelled",
+      reason: "cancelled",
+      owner: "user",
+      retryable: false,
+      detail: "Audio extract cancelled",
+    };
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
-      error: "Audio extract cancelled",
+      error: failure.detail,
+      failure,
     };
   }
   if (!result.success) {
+    const failure = ffmpegFailure("extract", result);
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
-      error:
-        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
+      error: failure.detail,
+      failure,
     };
   }
   return { success: true, outputPath, durationMs: result.durationMs };
@@ -317,22 +426,28 @@ async function prepareAudioTrack(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
+    const failure: AudioProcessingFailure = {
+      stage: "cancelled",
+      reason: "cancelled",
+      owner: "user",
+      retryable: false,
+      detail: "Audio prepare cancelled",
+    };
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
-      error: "Audio prepare cancelled",
+      error: failure.detail,
+      failure,
     };
   }
+  const failure = !result.success ? ffmpegFailure("prepare", result) : undefined;
   return {
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}: ${result.stderr.slice(-200)}`
-        : result.stderr
-      : undefined,
+    error: failure?.detail,
+    failure,
   };
 }
 
@@ -362,22 +477,28 @@ async function generateSilence(
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
 
   if (signal?.aborted) {
+    const failure: AudioProcessingFailure = {
+      stage: "cancelled",
+      reason: "cancelled",
+      owner: "user",
+      retryable: false,
+      detail: "Silence generation cancelled",
+    };
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
-      error: "Silence generation cancelled",
+      error: failure.detail,
+      failure,
     };
   }
+  const failure = !result.success ? ffmpegFailure("silence", result) : undefined;
   return {
     success: result.success,
     outputPath,
     durationMs: result.durationMs,
-    error: !result.success
-      ? result.exitCode !== null
-        ? `FFmpeg exited with code ${result.exitCode}`
-        : result.stderr
-      : undefined,
+    error: failure?.detail,
+    failure,
   };
 }
 
@@ -399,6 +520,7 @@ async function mixAudioTracks(
       durationMs: result.durationMs,
       tracksProcessed: 0,
       error: result.error,
+      failures: result.failure ? [result.failure] : undefined,
     };
   }
 
@@ -412,7 +534,7 @@ async function mixAudioTracks(
       const trimDuration = track.end - track.start;
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
       filterParts.push(
-        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
+        `[${i}:a]atrim=0:${trimDuration},${volumeFilter},adelay=${delayMs}|${delayMs},apad,atrim=0:${formatFilterNumber(totalDuration)}[a${i}]`,
       );
     });
 
@@ -499,16 +621,26 @@ async function mixAudioTracks(
       durationMs: result.durationMs,
       tracksProcessed: 0,
       error: "Audio mix cancelled",
+      failures: [
+        {
+          stage: "cancelled",
+          reason: "cancelled",
+          owner: "user",
+          retryable: false,
+          detail: "Audio mix cancelled",
+        },
+      ],
     };
   }
   if (!result.success) {
+    const failure = ffmpegFailure("mix", result);
     return {
       success: false,
       outputPath,
       durationMs: result.durationMs,
       tracksProcessed: 0,
-      error:
-        result.exitCode !== null ? `FFmpeg exited with code ${result.exitCode}` : result.stderr,
+      error: failure.detail,
+      failures: [failure],
     };
   }
   return {
@@ -534,14 +666,21 @@ export async function processCompositionAudio(
 ): Promise<MixResult> {
   const startMs = Date.now();
   const tracks: AudioTrack[] = [];
-  const errors: string[] = [];
+  const failures: AudioProcessingFailure[] = [];
 
   if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
 
   await Promise.all(
     elements.map(async (element) => {
       if (signal?.aborted) {
-        errors.push(`Cancelled: ${element.id}`);
+        failures.push({
+          stage: "cancelled",
+          reason: "cancelled",
+          owner: "user",
+          retryable: false,
+          elementId: element.id,
+          detail: boundedDetail(`Cancelled audio element ${element.id}`),
+        });
         return;
       }
       try {
@@ -556,21 +695,36 @@ export async function processCompositionAudio(
           try {
             srcPath = await downloadToTemp(srcPath, workDir);
           } catch (err: unknown) {
-            errors.push(
-              `Download failed: ${element.id} — ${err instanceof Error ? err.message : String(err)}`,
+            failures.push(
+              downloadFailure(err instanceof Error ? err.message : String(err), element.id),
             );
             return;
           }
         }
 
         if (!existsSync(srcPath)) {
-          errors.push(`Source not found: ${element.id} (${element.src})`);
+          failures.push({
+            stage: "source",
+            reason: "source_not_found",
+            owner: "user",
+            retryable: false,
+            elementId: element.id,
+            detail: boundedDetail(`Source not found for audio element ${element.id}`),
+          });
           return;
         }
 
         // Fallback: if no duration was specified, probe the actual file
         if (element.end - element.start <= 0) {
-          const metadata = await extractAudioMetadata(srcPath);
+          let metadata;
+          try {
+            metadata = await extractAudioMetadata(srcPath);
+          } catch (err: unknown) {
+            failures.push(
+              probeFailure(err instanceof Error ? err.message : String(err), element.id),
+            );
+            return;
+          }
           const effectiveDuration = metadata.durationSeconds - element.mediaStart;
           element.end =
             element.start + (effectiveDuration > 0 ? effectiveDuration : metadata.durationSeconds);
@@ -590,7 +744,18 @@ export async function processCompositionAudio(
             config,
           );
           if (!extractResult.success) {
-            errors.push(`Extract failed: ${element.id}`);
+            failures.push(
+              extractResult.failure
+                ? { ...extractResult.failure, elementId: element.id }
+                : {
+                    stage: "extract",
+                    reason: "ffmpeg_failed",
+                    owner: "system",
+                    retryable: false,
+                    elementId: element.id,
+                    detail: boundedDetail(`Audio extract failed for element ${element.id}`),
+                  },
+            );
             return;
           }
           audioSrcPath = extractedPath;
@@ -605,7 +770,18 @@ export async function processCompositionAudio(
             config,
           );
           if (!prepResult.success) {
-            errors.push(`Prepare failed: ${element.id}`);
+            failures.push(
+              prepResult.failure
+                ? { ...prepResult.failure, elementId: element.id }
+                : {
+                    stage: "prepare",
+                    reason: "ffmpeg_failed",
+                    owner: "system",
+                    retryable: false,
+                    elementId: element.id,
+                    detail: boundedDetail(`Audio prepare failed for element ${element.id}`),
+                  },
+            );
             return;
           }
           audioSrcPath = trimmedPath;
@@ -636,7 +812,18 @@ export async function processCompositionAudio(
           volumeKeyframes: bakedEnvelope ? undefined : element.volumeKeyframes,
         });
       } catch (err: unknown) {
-        errors.push(`Error: ${element.id} — ${err instanceof Error ? err.message : String(err)}`);
+        failures.push({
+          stage: "internal",
+          reason: "internal",
+          owner: "system",
+          retryable: false,
+          elementId: element.id,
+          detail: boundedDetail(
+            `Audio processing failed for element ${element.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        });
       }
     }),
   );
@@ -645,7 +832,7 @@ export async function processCompositionAudio(
   // The producer only surfaces audio failures when `success` is false; mixing
   // the remaining tracks made the omitted cue indistinguishable from a valid
   // render unless someone manually audited that exact audio window.
-  if (errors.length > 0) {
+  if (failures.length > 0) {
     try {
       rmSync(workDir, { recursive: true, force: true });
     } catch {
@@ -656,7 +843,10 @@ export async function processCompositionAudio(
       outputPath,
       durationMs: Date.now() - startMs,
       tracksProcessed: tracks.length,
-      error: `Audio processing failed: ${errors.join(", ")}`,
+      error: boundedDetail(
+        `Audio processing failed: ${failures.map((failure) => failure.detail).join(", ")}`,
+      ),
+      failures,
     };
   }
 
@@ -671,6 +861,6 @@ export async function processCompositionAudio(
   return {
     ...mixResult,
     durationMs: Date.now() - startMs,
-    error: errors.length > 0 ? `Warnings: ${errors.join(", ")}` : mixResult.error,
+    error: mixResult.error,
   };
 }

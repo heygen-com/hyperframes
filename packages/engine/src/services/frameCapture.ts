@@ -55,6 +55,7 @@ import type {
   CaptureWarning,
   SubTimelineWaitOutcome,
 } from "../types.js";
+import { cloneCaptureWarnings } from "./captureWarning.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -3773,15 +3774,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     p95TotalMs: percentileOf(session.capturePerf.frameMs, 0.95),
     p99TotalMs: percentileOf(session.capturePerf.frameMs, 0.99),
     subTimelineWaitOutcome: session.subTimelineWaitOutcome,
-    warnings: session.warnings.map((warning) => ({
-      ...warning,
-      details: warning.details
-        ? {
-            ...warning.details,
-            sources: warning.details.sources ? [...warning.details.sources] : undefined,
-          }
-        : undefined,
-    })),
+    warnings: cloneCaptureWarnings(session.warnings),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
     // armed ⟺ a non-empty static set survived verification; predicted === its size.
