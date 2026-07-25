@@ -278,6 +278,49 @@ describe("resolveTimelineExpansionRawId", () => {
     ).toBe("scene");
   });
 
+  it("THE BUG: keeps a composition expanded with the playhead parked on its end", () => {
+    // Clip windows are half-open, so at the very end of the timeline the
+    // playhead was inside nothing and every expanded row collapsed.
+    const manifest = [
+      clip({ id: "scene", start: 0, duration: 12 }),
+      clip({ id: "headline", start: 0, duration: 12 }),
+    ];
+    const parentMap = new Map([["headline", "scene"]]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: false,
+        currentTime: 12,
+        manifest,
+        parentMap,
+      }),
+    ).toBe("scene");
+  });
+
+  it("prefers the starting clip over the ending one on a shared seam", () => {
+    const manifest = [
+      clip({ id: "first", start: 0, duration: 5 }),
+      clip({ id: "first-child", start: 0, duration: 5 }),
+      clip({ id: "second", start: 5, duration: 5 }),
+      clip({ id: "second-child", start: 5, duration: 5 }),
+    ];
+    const parentMap = new Map([
+      ["first-child", "first"],
+      ["second-child", "second"],
+    ]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: false,
+        currentTime: 5,
+        manifest,
+        parentMap,
+      }),
+    ).toBe("second");
+  });
+
   it("auto-expands the innermost active nested composition when paused", () => {
     const manifest = [
       clip({ id: "outer", start: 0, duration: 10 }),

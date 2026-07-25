@@ -50,6 +50,11 @@ function clipContainsTime(clip: ClipManifestClip, time: number): boolean {
   return Number.isFinite(time) && time >= clip.start && time < clip.start + clip.duration;
 }
 
+/** Half-open containment plus the closing boundary — see the fallback below. */
+function clipTouchesTime(clip: ClipManifestClip, time: number): boolean {
+  return Number.isFinite(time) && time >= clip.start && time <= clip.start + clip.duration;
+}
+
 function getActiveParentDepth(id: string, parentMap: Map<string, string>, activeIds: Set<string>) {
   let depth = 0;
   let parent = parentMap.get(id);
@@ -70,11 +75,20 @@ function findActiveExpandableCompositionId(
   parentMap: Map<string, string>,
 ): string | null {
   const parentIds = new Set(parentMap.values());
-  const activeIds = new Set<string>();
-  for (const clip of manifest) {
-    if (!clip.id || !parentIds.has(clip.id) || !clipContainsTime(clip, currentTime)) continue;
-    activeIds.add(clip.id);
-  }
+  const collect = (matches: (clip: ClipManifestClip, time: number) => boolean) => {
+    const ids = new Set<string>();
+    for (const clip of manifest) {
+      if (clip.id && parentIds.has(clip.id) && matches(clip, currentTime)) ids.add(clip.id);
+    }
+    return ids;
+  };
+  // Clip windows are half-open, so a playhead parked exactly on a clip's end is
+  // inside nothing — at the end of the timeline that collapsed every expanded
+  // sub-composition row and its keyframe lanes. Only when the strict pass finds
+  // nothing do we accept the closing boundary, so a playhead landing on the seam
+  // between two adjacent clips still expands the one that is starting.
+  const strict = collect(clipContainsTime);
+  const activeIds = strict.size > 0 ? strict : collect(clipTouchesTime);
   let bestId: string | null = null;
   let bestDepth = -1;
   for (const id of activeIds) {
