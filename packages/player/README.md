@@ -153,7 +153,9 @@ function Demo() {
 }
 ```
 
-Props are camelCase mirrors of the attributes above (`audioSrc`, `audioLocked`, `playbackRate`, `autoPlay`, `shaderCaptureScale`, `shaderLoading`, plus `className`/`style`), and every player event has a callback prop with the `CustomEvent` detail unwrapped (`onReady`, `onPlay`, `onPause`, `onTimeUpdate`, `onEnded`, `onError`, `onScenes`, `onShaderTransitionState`, `onRateChange`, `onVolumeChange`).
+Props are camelCase mirrors of the attributes above (`audioSrc`, `audioLocked`, `playbackRate`, `autoPlay`, `shaderCaptureScale`, `shaderLoading`, plus `className`/`style`). Other host attributes (`id`, `role`, `tabIndex`, `aria-*`, `data-*`, DOM event handlers) pass through the `elementProps` prop.
+
+Every player event has a callback prop with the `CustomEvent` detail unwrapped: `onReady`, `onPlay`, `onPause`, `onTimeUpdate`, `onEnded`, `onError`, `onScenes`, `onShaderTransitionState`, `onRateChange`, `onVolumeChange`, `onRuntimeProtocolError`, `onAudioOwnershipChange`, and `onPlaybackError`. A contract test scans the player sources for `dispatchEvent` sites, so the binding cannot silently drift from the element's event surface.
 
 Imperative control goes through a ref handle:
 

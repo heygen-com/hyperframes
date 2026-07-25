@@ -1,5 +1,12 @@
 export { HyperframesPlayer } from "./player.js";
-export type { HyperframesPlayerHandle, HyperframesPlayerProps, PlayerScene } from "./player.js";
+export type {
+  HyperframesPlayerHandle,
+  HyperframesPlayerProps,
+  PlayerAudioOwner,
+  PlayerElementProps,
+  PlayerRuntimeProtocolErrorCode,
+  PlayerScene,
+} from "./player.js";
 export { ensurePlayerDefined } from "./register.js";
 export type {
   ColorGradingCompareState,

@@ -10,6 +10,16 @@ import { HyperframesPlayer, type HyperframesPlayerHandle } from "./player.js";
 vi.mock("@hyperframes/player", () => ({}));
 
 class StubPlayerElement extends HTMLElement {
+  // Mirrors the real element: attribute application synchronously dispatches
+  // events from attributeChangedCallback, so listeners bound too late would
+  // deterministically miss the initial ratechange/volumechange.
+  static get observedAttributes() {
+    return ["playback-rate", "volume"];
+  }
+  attributeChangedCallback(name: string) {
+    if (name === "playback-rate") this.dispatchEvent(new Event("ratechange"));
+    if (name === "volume") this.dispatchEvent(new Event("volumechange"));
+  }
   play = vi.fn();
   pause = vi.fn();
   seek = vi.fn();
@@ -105,6 +115,43 @@ describe("HyperframesPlayer", () => {
     expect(el.style.maxWidth).toBe("800px");
   });
 
+  it("forwards host attributes through elementProps", async () => {
+    await render(
+      <HyperframesPlayer
+        className="hero"
+        elementProps={{
+          id: "promo-player",
+          role: "region",
+          tabIndex: 0,
+          "aria-label": "Launch video",
+          "data-analytics": "hero",
+        }}
+      />,
+    );
+    const el = playerElement();
+    expect(el.getAttribute("id")).toBe("promo-player");
+    expect(el.getAttribute("role")).toBe("region");
+    expect(el.getAttribute("tabindex")).toBe("0");
+    expect(el.getAttribute("aria-label")).toBe("Launch video");
+    expect(el.getAttribute("data-analytics")).toBe("hero");
+    expect(el.getAttribute("class")).toBe("hero");
+  });
+
+  it("captures events dispatched synchronously by the initial attribute sync", async () => {
+    const onRateChange = vi.fn();
+    const onVolumeChange = vi.fn();
+    await render(
+      <HyperframesPlayer
+        playbackRate={2}
+        volume={0.5}
+        onRateChange={onRateChange}
+        onVolumeChange={onVolumeChange}
+      />,
+    );
+    expect(onRateChange).toHaveBeenCalledTimes(1);
+    expect(onVolumeChange).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards player events to callbacks", async () => {
     const onReady = vi.fn();
     const onTimeUpdate = vi.fn();
@@ -121,6 +168,45 @@ describe("HyperframesPlayer", () => {
     expect(onReady).toHaveBeenCalledWith({ duration: 12 });
     expect(onTimeUpdate).toHaveBeenCalledWith({ currentTime: 3 });
     expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards protocol, audio-ownership, and playback-error events", async () => {
+    const onRuntimeProtocolError = vi.fn();
+    const onAudioOwnershipChange = vi.fn();
+    const onPlaybackError = vi.fn();
+    await render(
+      <HyperframesPlayer
+        onRuntimeProtocolError={onRuntimeProtocolError}
+        onAudioOwnershipChange={onAudioOwnershipChange}
+        onPlaybackError={onPlaybackError}
+      />,
+    );
+    const el = playerElement();
+    const error = new Error("NotAllowedError");
+    await act(async () => {
+      el.dispatchEvent(
+        new CustomEvent("runtimeprotocolerror", {
+          detail: { code: "unsupported_protocol_version", receivedVersion: 99 },
+        }),
+      );
+      el.dispatchEvent(
+        new CustomEvent("audioownershipchange", {
+          detail: { owner: "parent", reason: "autoplay-blocked" },
+        }),
+      );
+      el.dispatchEvent(
+        new CustomEvent("playbackerror", { detail: { source: "parent-proxy", error } }),
+      );
+    });
+    expect(onRuntimeProtocolError).toHaveBeenCalledWith({
+      code: "unsupported_protocol_version",
+      receivedVersion: 99,
+    });
+    expect(onAudioOwnershipChange).toHaveBeenCalledWith({
+      owner: "parent",
+      reason: "autoplay-blocked",
+    });
+    expect(onPlaybackError).toHaveBeenCalledWith({ source: "parent-proxy", error });
   });
 
   it("uses the latest callback without rebinding listeners", async () => {
