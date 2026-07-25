@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
 import { readFileSync } from "fs";
-import { extname } from "path";
+import { basename, extname } from "path";
 import { redactTelemetryString } from "@hyperframes/core";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
@@ -10,8 +10,32 @@ import { trackChildProcess } from "./processTracker.js";
 const FFPROBE_STDERR_MAX_BYTES = 8 * 1024;
 const FFPROBE_ERROR_MAX_CHARS = 4 * 1024;
 
+function redactFfprobeInput(stderr: string, filePath: string): string {
+  if (!filePath) return stderr;
+
+  let redacted = stderr.split(filePath).join("[input]");
+  const inputBasename = basename(filePath);
+  if (inputBasename) redacted = redacted.split(inputBasename).join("[input]");
+
+  // ManagedChildProcess retains an 8 KiB byte tail. When that boundary lands
+  // inside the input path, stderr starts with only a suffix of the path, so
+  // neither exact-path nor generic absolute-path redaction can recognize it.
+  if (!redacted.startsWith("[input]")) {
+    for (let offset = 1; offset < filePath.length; offset += 1) {
+      const suffix = filePath.slice(offset);
+      if (suffix.length < 4 || !redacted.startsWith(suffix)) continue;
+      const boundary = redacted[suffix.length];
+      if (boundary !== undefined && !/[\s:'")\]}]/.test(boundary)) continue;
+      redacted = `[input]${redacted.slice(suffix.length)}`;
+      break;
+    }
+  }
+
+  return redacted;
+}
+
 function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
-  const stderrWithoutInput = filePath ? stderr.split(filePath).join("[input]") : stderr;
+  const stderrWithoutInput = redactFfprobeInput(stderr, filePath);
   const redacted = redactTelemetryString(stderrWithoutInput, FFPROBE_STDERR_MAX_BYTES);
   if (redacted.length <= FFPROBE_ERROR_MAX_CHARS) return redacted;
   return `…${redacted.slice(-(FFPROBE_ERROR_MAX_CHARS - 1))}`;
