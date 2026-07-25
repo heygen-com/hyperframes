@@ -531,6 +531,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       activeTool: "select",
       selectedKeyframes: new Set(),
       expandedClipIds: new Set(),
+      focusedEaseSegment: null,
       selectedElementIds: new Set(),
       clipRevealRequest: null,
       keyframeCache: new Map(),

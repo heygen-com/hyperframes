@@ -28,6 +28,7 @@ export function LayerDisclosureRow({
     >
       <button
         type="button"
+        aria-expanded={isExpanded}
         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${name} keyframes`}
         title={`${isExpanded ? "Collapse" : "Expand"} keyframe lanes`}
         className="flex h-5 w-4 shrink-0 items-center justify-center rounded border-0 bg-transparent p-0 text-white/55 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
@@ -44,10 +45,9 @@ export function LayerDisclosureRow({
           style={{ transform: isExpanded ? "rotate(90deg)" : undefined }}
         />
       </button>
-      <span
-        aria-label="Layer keyframe indicator"
-        className="shrink-0 text-[13px] leading-none text-white/40"
-      >
+      {/* Decorative: the disclosure button above already names the row's keyframe
+          state, and aria-label on a plain span is not exposed reliably anyway. */}
+      <span aria-hidden="true" className="shrink-0 text-[13px] leading-none text-white/40">
         ◇
       </span>
       <span className="min-w-0 flex-1 truncate font-medium">{name}</span>

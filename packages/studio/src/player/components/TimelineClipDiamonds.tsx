@@ -417,12 +417,23 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
                 pendingRetimeRef.current.delete(kfKey);
               }
             };
+            // A rejected drop (the destination time is already occupied) snaps
+            // the diamond back to its source position, so the pending entry AND
+            // the selection have to revert with it — parking on the ghost drop
+            // position strands the playhead + selection on a keyframe that does
+            // not exist there.
+            const revertRetime = () => {
+              clearPending();
+              onClickKeyframe?.(fromTarget);
+            };
             void onMoveKeyframe?.(fromTarget, res.toClipPct).then((committed) => {
-              if (!committed) clearPending();
-            }, clearPending);
+              if (!committed) revertRetime();
+            }, revertRetime);
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
-            // something looks identical to one that silently did nothing.
+            // something looks identical to one that silently did nothing. Done
+            // optimistically so the gesture stays responsive; revertRetime puts
+            // it back if the move is rejected.
             onClickKeyframe?.({
               ...target,
               percentage: res.toClipPct,

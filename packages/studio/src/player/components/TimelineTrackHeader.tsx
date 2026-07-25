@@ -1,4 +1,5 @@
 import { useState } from "react";
+import gsap from "gsap";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import {
   classifyPropertyGroup,
@@ -51,31 +52,60 @@ function roundValue(value: number): string {
   return String(Math.round(value * 100) / 100);
 }
 
+/** GSAP applies a keyframe's `ease` to the segment ARRIVING at it, so the curve
+ *  between two keyframes is named by the later one (with the tween-level
+ *  `easeEach`/`ease` as the fallback). Sampling linearly would report a value the
+ *  element never has at that time, and stamp that wrong value onto a keyframe
+ *  added from the track header. Unknown ease names parse to undefined -> linear. */
+function easedProgress(progress: number, animation: GsapAnimation, ease?: string): number {
+  const resolved = ease ?? animation.keyframes?.easeEach ?? animation.ease;
+  if (!resolved || resolved === "none") return progress;
+  return gsap.parseEase(resolved)?.(progress) ?? progress;
+}
+
+interface PropertyStop {
+  percentage: number;
+  value: number | string;
+  ease?: string;
+}
+
+function propertyStops(animation: GsapAnimation, property: string): PropertyStop[] {
+  return (animation.keyframes?.keyframes ?? [])
+    .filter((keyframe) => property in keyframe.properties)
+    .map((keyframe) => ({
+      percentage: keyframe.percentage,
+      value: keyframe.properties[property],
+      ease: keyframe.ease,
+    }));
+}
+
+/** A pair only interpolates when both ends are numeric and actually span time;
+ *  string values (colors, keywords) and zero-width pairs hold the earlier value. */
+function isInterpolable(
+  before: PropertyStop,
+  after: PropertyStop,
+): before is PropertyStop & { value: number } {
+  return (
+    typeof before.value === "number" &&
+    typeof after.value === "number" &&
+    before.percentage !== after.percentage
+  );
+}
+
 function propertyValueAt(
   animation: GsapAnimation,
   property: string,
   tweenPercentage: number,
 ): number | string | undefined {
-  const keyframes = animation.keyframes?.keyframes ?? [];
-  const values = keyframes
-    .filter((keyframe) => property in keyframe.properties)
-    .map((keyframe) => ({
-      percentage: keyframe.percentage,
-      value: keyframe.properties[property],
-    }));
-  const before = values.filter((value) => value.percentage <= tweenPercentage).at(-1);
-  const after = values.find((value) => value.percentage >= tweenPercentage);
+  const stops = propertyStops(animation, property);
+  const before = stops.filter((stop) => stop.percentage <= tweenPercentage).at(-1);
+  const after = stops.find((stop) => stop.percentage >= tweenPercentage);
   if (!before) return after?.value;
   if (!after) return before.value;
-  if (
-    typeof before.value !== "number" ||
-    typeof after.value !== "number" ||
-    before.percentage === after.percentage
-  ) {
-    return before.value;
-  }
+  if (!isInterpolable(before, after)) return before.value;
   const progress = (tweenPercentage - before.percentage) / (after.percentage - before.percentage);
-  return before.value + (after.value - before.value) * progress;
+  const eased = easedProgress(progress, animation, after.ease);
+  return before.value + ((after.value as number) - before.value) * eased;
 }
 
 function valuesAt(
@@ -331,6 +361,14 @@ function PropertyGroupNavigation({
   onSeek?: (time: number) => void;
   children: React.ReactNode;
 }) {
+  // The 12x20px glyph is all the lane row has room for, so the WCAG 24x24
+  // target is met with a centered transparent ::before overlay instead of a
+  // bigger box; focus-visible matches every other control in this header.
+  const CHEVRON_BUTTON_CLASS =
+    "relative h-5 w-3 border-0 bg-transparent p-0 text-white/55 hover:text-white disabled:text-white/15 " +
+    "focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC] " +
+    "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 " +
+    "before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
   const seekTo = (keyframe: { percentage: number } | null) => {
     if (keyframe) {
       onSeek?.(expandedElement.start + (keyframe.percentage / 100) * expandedElement.duration);
@@ -342,7 +380,7 @@ function PropertyGroupNavigation({
         type="button"
         aria-label={`Previous ${label} keyframe`}
         disabled={!navigation.prevKeyframe}
-        className="h-5 w-3 border-0 bg-transparent p-0 text-white/55 hover:text-white disabled:text-white/15"
+        className={CHEVRON_BUTTON_CLASS}
         onClick={() => seekTo(navigation.prevKeyframe)}
       >
         ‹
@@ -352,7 +390,7 @@ function PropertyGroupNavigation({
         type="button"
         aria-label={`Next ${label} keyframe`}
         disabled={!navigation.nextKeyframe}
-        className="h-5 w-3 border-0 bg-transparent p-0 text-white/55 hover:text-white disabled:text-white/15"
+        className={CHEVRON_BUTTON_CLASS}
         onClick={() => seekTo(navigation.nextKeyframe)}
       >
         ›
@@ -436,7 +474,8 @@ function PropertyGroupHeaderRow({
       >
         <button
           type="button"
-          aria-label={`Toggle ${label} keyframe`}
+          aria-pressed={!!navigation.currentKeyframe}
+          aria-label={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           title={`${navigation.currentKeyframe ? "Remove" : "Add"} ${label} keyframe`}
           className="flex h-5 w-4 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-[11px] text-[#3CE6AC] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#3CE6AC]"
           onClick={() => {

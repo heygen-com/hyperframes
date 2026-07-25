@@ -47,6 +47,11 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
+  // A clip bar in an EXPANDED row still renders at TRACK_H (the property lanes
+  // occupy the rest of the row — see TimelineLanes' clipHeight), so the drag
+  // ghost and drop placeholder must clamp to it or they stretch to the full
+  // expanded row height and stop matching the clip being dragged.
+  const draggedClipHeight = Math.min(draggedRowHeight, TRACK_H) - CLIP_Y * 2;
   const {
     onResizeElement,
     onMoveElement,
@@ -177,7 +182,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             top: getTimelineRowTop(draggedRowIndex, props.rowHeights) + CLIP_Y,
             left: props.contentOrigin + draggedClip.previewStart * props.pps,
             width: Math.max(draggedClip.element.duration * props.pps, 4),
-            height: draggedRowHeight - CLIP_Y * 2,
+            height: draggedClipHeight,
             border: "1px solid rgba(60,230,172,0.55)",
             background: "rgba(60,230,172,0.12)",
             borderRadius: 4,
@@ -230,7 +235,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
             top: activeDraggedPosition.top,
             left: activeDraggedPosition.left,
             width: Math.max(activeDraggedElement.duration * props.pps, 4),
-            height: draggedRowHeight - CLIP_Y * 2,
+            height: draggedClipHeight,
             zIndex: 40,
           }}
         >

@@ -5,6 +5,23 @@ import type {
 } from "@hyperframes/core/gsap-parser";
 import { PROPERTY_DEFAULTS } from "./gsapShared";
 
+/**
+ * A static position hold (only x/y, no real motion) is a `set`, not a keyframe —
+ * it must not synthesize a diamond. Covers both `tl.set(...)` and the
+ * `tl.to({ duration: 0, immediateRender: true })` hold that remove-all-keyframes
+ * collapses to (otherwise shown as a stray 0% keyframe).
+ *
+ * Single owner: the collapsed keyframe cache and the expanded property lanes'
+ * `gsapAnimations` map MUST agree on it, or a hold draws a phantom expanded lane
+ * with no matching collapsed diamond.
+ */
+export function isStaticPositionHold(anim: GsapAnimation): boolean {
+  if (anim.keyframes) return false;
+  if (anim.method !== "set" && (anim.duration ?? 0) !== 0) return false;
+  const propKeys = Object.keys(anim.properties).filter((k) => k !== "immediateRender");
+  return propKeys.length > 0 && propKeys.every((k) => k === "x" || k === "y");
+}
+
 export function deduplicateKeyframes<
   T extends GsapPercentageKeyframe & { animationId?: string; easeAmbiguous?: boolean },
 >(keyframes: T[]): T[] {

@@ -390,4 +390,36 @@ describe("deleteSelectedKeyframes", () => {
       expect.objectContaining({ softReload: true }),
     );
   });
+
+  it("drops keyframes that belong to other elements", () => {
+    // A stale selection from a previously active element must not delete
+    // anything on the element that is active now.
+    usePlayerStore.setState({
+      selectedElementId: "card",
+      selectedKeyframes: new Set([
+        timelineKeyframeSelectionKey("card", {
+          percentage: 30,
+          tweenPercentage: 20,
+          propertyGroup: "position",
+          animationId: "card-position",
+        }),
+        timelineKeyframeSelectionKey("other", {
+          percentage: 70,
+          tweenPercentage: 80,
+          propertyGroup: "position",
+          animationId: "card-position",
+        }),
+      ]),
+    });
+    const handleGsapRemoveKeyframe =
+      vi.fn<(animId: string, pct: number, options?: Partial<CommitMutationOptions>) => void>();
+
+    deleteSelectedKeyframes({
+      selectedGsapAnimations: [{ id: "card-position", keyframes: {} }],
+      handleGsapRemoveKeyframe,
+    });
+
+    expect(handleGsapRemoveKeyframe).toHaveBeenCalledTimes(1);
+    expect(handleGsapRemoveKeyframe.mock.calls[0]?.[1]).toBe(20);
+  });
 });

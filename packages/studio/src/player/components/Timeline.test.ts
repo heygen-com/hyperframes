@@ -108,7 +108,7 @@ function renderBasicTimeline() {
 }
 
 describe("Timeline provider boundary", () => {
-  it("keeps all-collapsed horizontal positions at the 32px gutter", () => {
+  it("keeps all-collapsed horizontal positions at the gutter plus the pre-t=0 pad", () => {
     usePlayerStore.setState({
       duration: 11,
       timelineReady: true,
@@ -121,13 +121,13 @@ describe("Timeline provider boundary", () => {
     const { root, clip, trackHeader, rulerTick, rulerOrigin, playhead } =
       renderTimelineGeometry("clip-1");
 
-    expect(trackHeader.style.width).toBe("32px");
+    expect(trackHeader.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
     expect(clip.style.left).toBe("1000px");
     expect(clip.style.height).toBe("");
     expect(clip.style.bottom).toBe(`${CLIP_Y}px`);
-    expect(rulerOrigin.style.width).toBe("32px");
+    expect(rulerOrigin.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
     expect(rulerTick.style.left).toBe("999.5px");
-    expect(playhead.style.left).toBe(`${1032 - PLAYHEAD_HEAD_W / 2}px`);
+    expect(playhead.style.left).toBe(`${GUTTER + TRACKS_LEFT_PAD + 1000 - PLAYHEAD_HEAD_W / 2}px`);
     expect(playhead.style.width).toBe(`${PLAYHEAD_HEAD_W}px`);
     expect(
       resolveTimelineAssetDrop(

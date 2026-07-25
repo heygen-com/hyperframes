@@ -84,12 +84,24 @@ function validRowHeight(height: number | undefined): number {
   return height;
 }
 
+/**
+ * Memoized by the rowHeights array identity: a marquee/drag pointer tick calls
+ * getTimelineRowTop once per clip, and each call would otherwise rebuild the
+ * whole cumulative array (O(clips x rows) allocations per tick). rowHeights is
+ * itself memoized upstream (useTimelineTrackLayout), so the identity is stable
+ * for the life of a gesture. Callers must treat the result as read-only.
+ */
+const rowOffsetsCache = new WeakMap<readonly number[], number[]>();
+
 /** Cumulative top offsets, including the final bottom boundary. */
 export function getTimelineRowOffsets(rowHeights: readonly number[]): number[] {
+  const cached = rowOffsetsCache.get(rowHeights);
+  if (cached) return cached;
   const offsets = [0];
   for (const height of rowHeights) {
     offsets.push((offsets[offsets.length - 1] ?? 0) + validRowHeight(height));
   }
+  rowOffsetsCache.set(rowHeights, offsets);
   return offsets;
 }
 

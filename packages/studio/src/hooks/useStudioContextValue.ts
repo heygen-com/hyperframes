@@ -96,6 +96,9 @@ export function useInspectorState(
       inspectorPanelActive,
       inspectorButtonActive:
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
+      // Deliberately wider than shouldShowSelectedDomBounds: the on-canvas path
+      // handles ARE the arc-drag affordance, so gating them on an open Inspector
+      // would make keyframe path editing reachable only from a side panel.
       shouldShowMotionPath: !!domEditSelection && !isPlaying && !isGestureRecording,
       // Keep the selection box drawn even when the Inspector is collapsed —
       // closing the panel shouldn't visually deselect the element.

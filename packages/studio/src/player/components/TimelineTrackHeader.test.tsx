@@ -32,6 +32,7 @@ function animation(
   keyframes: Array<{
     percentage: number;
     properties: Record<string, number | string>;
+    ease?: string;
   }>,
 ): GsapAnimation {
   return {
@@ -113,7 +114,7 @@ describe("TimelineTrackHeader", () => {
     const onTogglePropertyGroupKeyframe = vi.fn();
     const view = renderHeader({ currentTime: 0.5, onTogglePropertyGroupKeyframe });
 
-    click(view.host, "Toggle Opacity keyframe");
+    click(view.host, "Add Opacity keyframe");
     expect(onTogglePropertyGroupKeyframe).toHaveBeenLastCalledWith(
       ELEMENT,
       expect.objectContaining({
@@ -126,7 +127,7 @@ describe("TimelineTrackHeader", () => {
     );
 
     view.rerender({ currentTime: 1, onTogglePropertyGroupKeyframe });
-    click(view.host, "Toggle Opacity keyframe");
+    click(view.host, "Remove Opacity keyframe");
     expect(onTogglePropertyGroupKeyframe).toHaveBeenLastCalledWith(
       ELEMENT,
       expect.objectContaining({
@@ -170,13 +171,13 @@ describe("TimelineTrackHeader", () => {
   it("fills the toggle diamond exactly at that group's keyframe", () => {
     const view = renderHeader({ currentTime: 0.5 });
     const positionToggle = view.host.querySelector<HTMLButtonElement>(
-      'button[aria-label="Toggle Position keyframe"]',
+      'button[aria-label="Add Position keyframe"]',
     );
     expect(positionToggle?.textContent).toBe("◇");
 
     view.rerender({ currentTime: 1 });
     expect(
-      view.host.querySelector<HTMLButtonElement>('button[aria-label="Toggle Position keyframe"]')
+      view.host.querySelector<HTMLButtonElement>('button[aria-label="Remove Position keyframe"]')
         ?.textContent,
     ).toBe("◆");
     act(() => view.root.unmount());
@@ -194,6 +195,36 @@ describe("TimelineTrackHeader", () => {
       "150, 75",
     );
     expect(view.host.querySelector('[data-property-group="visual"]')?.textContent).toContain("75%");
+    act(() => view.root.unmount());
+  });
+
+  it("samples mid-segment values along the segment's ease, not linearly", () => {
+    // GSAP hangs a segment's ease on the keyframe it arrives at, so 0% -> 50%
+    // runs power2.in. Half way through that segment power2.in(0.5) = 0.125, so
+    // the readout is 12.5/6.25 and NOT the linear 50/25.
+    const eased = animation("eased-position", "position", [
+      { percentage: 0, properties: { x: 0, y: 0 } },
+      { percentage: 50, properties: { x: 100, y: 50 }, ease: "power2.in" },
+      { percentage: 100, properties: { x: 200, y: 100 }, ease: "power2.in" },
+    ]);
+    const onTogglePropertyGroupKeyframe = vi.fn();
+    const view = renderHeader({
+      animations: [eased],
+      currentTime: 0.5,
+      onTogglePropertyGroupKeyframe,
+    });
+
+    expect(view.host.querySelector('[data-property-group="position"]')?.textContent).toContain(
+      "12.5, 6.25",
+    );
+
+    // The same sampled value is what an added keyframe gets stamped with, so a
+    // header insert lands on the existing curve instead of deforming it.
+    click(view.host, "Add Position keyframe");
+    expect(onTogglePropertyGroupKeyframe).toHaveBeenCalledOnce();
+    expect(onTogglePropertyGroupKeyframe.mock.calls[0][1]).toMatchObject({
+      properties: { x: 12.5, y: 6.25 },
+    });
     act(() => view.root.unmount());
   });
 

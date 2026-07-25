@@ -21,7 +21,7 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
-import { GUTTER, LABEL_COL_W, generateTicks } from "./timelineLayout";
+import { GUTTER, LABEL_COL_W, TRACKS_LEFT_PAD, generateTicks } from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -128,7 +128,10 @@ export const Timeline = memo(function Timeline({
     [gsapAnimations],
   );
   const labelMode = STUDIO_KEYFRAMES_ENABLED && hasKeyframedClips;
-  const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER;
+  // Without the label column the pre-t=0 breathing room is still TRACKS_LEFT_PAD
+  // (dropping it would jam clip 0 against the gutter on every non-keyframed
+  // composition); in label mode the 232px label column already provides it.
+  const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
   const contentGutter = labelMode ? GUTTER : 0;
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);

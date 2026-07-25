@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
+import { useMemo, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import {
   classifyPropertyGroup,
   type GsapAnimation,
@@ -59,6 +59,14 @@ function sourceGroups(animations: readonly GsapAnimation[]) {
   return groups;
 }
 
+/** Resolve the ease from THIS keyframe's own source tween. A lane can merge
+ *  several tweens, so a shared lane-level fallback would label a segment with a
+ *  different animation's ease than the one the ease editor targets (it routes
+ *  by animationId). */
+function keyframeEase(keyframe: { ease?: string }, animation: GsapAnimation): string | undefined {
+  return keyframe.ease ?? animation.keyframes?.easeEach ?? animation.ease;
+}
+
 function groupKeyframes(
   animations: readonly GsapAnimation[],
   group: PropertyGroupName,
@@ -79,6 +87,7 @@ function groupKeyframes(
         tweenPercentage: keyframe.percentage,
         propertyGroup: group,
         animationId: animation.id,
+        ease: keyframeEase(keyframe, animation),
       });
     }
   }
@@ -116,15 +125,33 @@ export function TimelinePropertyLanes({
   onMoveKeyframe,
   suppressClickRef,
 }: TimelinePropertyLanesProps) {
-  if (clipWidthPx < 20 || clipDuration <= 0) return null;
-  const lanes = getTimelinePropertyLanes(animations, clipStart, clipDuration);
+  // Memoized: TimelineDiamondLane is React.memo'd, and rebuilding the lanes (and
+  // a fresh keyframesData literal per lane) on every render would re-render every
+  // diamond in every expanded clip on each playhead tick.
+  const lanes = useMemo(
+    () =>
+      clipWidthPx < 20 || clipDuration <= 0
+        ? []
+        : getTimelinePropertyLanes(animations, clipStart, clipDuration),
+    [animations, clipStart, clipDuration, clipWidthPx],
+  );
+  const laneData = useMemo(
+    () =>
+      lanes.map((lane) => ({
+        ...lane,
+        keyframesData: { format: "percentage" as const, keyframes: lane.keyframes },
+      })),
+    [lanes],
+  );
 
-  if (lanes.length === 0) return null;
+  if (laneData.length === 0) return null;
   return (
     <>
-      {lanes.map(({ group, animations: groupAnimations, keyframes }, laneIndex) => (
+      {laneData.map(({ group, keyframesData }, laneIndex) => (
         <div
           key={group}
+          role="group"
+          aria-label={`${group} keyframes`}
           data-property-group={group}
           data-timeline-property-lane=""
           data-timeline-lane-top={getTimelineLaneTop(laneIndex)}
@@ -137,10 +164,7 @@ export function TimelinePropertyLanes({
           }}
         >
           <TimelineDiamondLane
-            keyframesData={{ format: "percentage", keyframes }}
-            globalEase={
-              groupAnimations[0]?.keyframes?.easeEach ?? groupAnimations[0]?.ease ?? "none"
-            }
+            keyframesData={keyframesData}
             clipWidthPx={clipWidthPx}
             clipHeightPx={LANE_H}
             accentColor={accentColor}
