@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -181,26 +181,19 @@ vi.mock("../utils/orphanCleanup.js", () => ({
   }),
 }));
 
+// Collect the heavy render module once, after Vitest has hoisted the mocks
+// above. Keeping this import out of a hook means parallel monorepo contention
+// cannot turn module collection into a `beforeAll` timeout.
+const renderModule = await import("./render.js");
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
-  // Pre-resolve once. The first dynamic `import("./render.js")` in this file
-  // cold-loads a heavy module graph (core + engine + producer, incl. linkedom),
-  // slow under the parallel monorepo run — the generous hook timeout that
-  // absorbs that contention now lives in vitest.config.ts (shared by all CLI
-  // suites). Importing once in `beforeAll` keeps every test fast and isolated.
-  let renderLocal: typeof import("./render.js").renderLocal;
-  let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
-  let renderLintContinuationHint: typeof import("./render.js").renderLintContinuationHint;
-  let resetTrialState: typeof import("./render.js").__resetDeParallelRouterTrialStateForTests;
-
-  beforeAll(async () => {
-    ({
-      renderLocal,
-      resolveBrowserGpuForCli,
-      renderLintContinuationHint,
-      __resetDeParallelRouterTrialStateForTests: resetTrialState,
-    } = await import("./render.js"));
-  });
+  const {
+    renderLocal,
+    resolveBrowserGpuForCli,
+    renderLintContinuationHint,
+    __resetDeParallelRouterTrialStateForTests: resetTrialState,
+  } = renderModule;
 
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
@@ -713,14 +706,8 @@ describe("renderLocal browser GPU config", () => {
 });
 
 describe("renderLocal — DE parallel-router CLI trial", () => {
-  let renderLocal: typeof import("./render.js").renderLocal;
-  let resetTrialState: typeof import("./render.js").__resetDeParallelRouterTrialStateForTests;
+  const { renderLocal, __resetDeParallelRouterTrialStateForTests: resetTrialState } = renderModule;
   const savedEnv = new Map<string, string | undefined>();
-
-  beforeAll(async () => {
-    ({ renderLocal, __resetDeParallelRouterTrialStateForTests: resetTrialState } =
-      await import("./render.js"));
-  });
 
   beforeEach(() => {
     producerState.createdJobs = [];
@@ -1110,13 +1097,7 @@ describe("renderLocal — DE parallel-router CLI trial", () => {
 });
 
 describe("checkRenderResolutionPreflight", () => {
-  let checkRenderResolutionPreflight: typeof import("./render.js").checkRenderResolutionPreflight;
-
-  // Cold-imports render.js (heavy graph); the generous hook timeout for parallel
-  // CI contention lives in vitest.config.ts. See the note above.
-  beforeAll(async () => {
-    ({ checkRenderResolutionPreflight } = await import("./render.js"));
-  });
+  const { checkRenderResolutionPreflight } = renderModule;
 
   // Dims must be read the same way the producer's compiler reads them:
   // `data-width` / `data-height` on the `[data-composition-id]` root.
