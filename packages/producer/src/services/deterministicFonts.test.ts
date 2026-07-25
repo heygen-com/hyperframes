@@ -1,5 +1,22 @@
 import { describe, expect, it } from "bun:test";
-import { FONT_ALIASES, FONT_ALIAS_KEYS } from "./deterministicFonts.js";
+import {
+  FONT_ALIASES,
+  FONT_ALIAS_KEYS,
+  normalizeSystemFontPrimaryFamilies,
+} from "./deterministicFonts.js";
+
+describe("normalizeSystemFontPrimaryFamilies", () => {
+  it("does not rewrite quoted generic or CSS-wide family names", () => {
+    const html = `<!doctype html><html><head><style>
+      :root { --display: "serif"; }
+      h1 { font-family: "system-ui", sans-serif; }
+      h2 { font-family: "inherit"; }
+    </style></head><body>
+      <div style='font-family: "serif"' data-font-family='"system-ui"'>text</div>
+    </body></html>`;
+    expect(normalizeSystemFontPrimaryFamilies(html)).toBe(html);
+  });
+});
 
 describe("FONT_ALIASES cross-platform coverage", () => {
   it("maps macOS sans-serif system fonts to inter", () => {

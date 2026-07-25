@@ -180,6 +180,19 @@ describe("parseFontFamilyValue", () => {
   it("handles an all-whitespace value as empty", () => {
     expect(parseFontFamilyValue(`   `)).toEqual([]);
   });
+
+  it("keeps commas inside quotes and var() fallbacks", () => {
+    expect(parseFontFamilyValue(`"ACME, Inc", var(--heading, "Montserrat Bold"), serif`)).toEqual([
+      "ACME, Inc",
+      `var(--heading, "Montserrat Bold")`,
+      "serif",
+    ]);
+  });
+
+  it("rejects stray production close-paren artifacts as invalid values", () => {
+    expect(parseFontFamilyValue(`Montserrat Bold")`)).toEqual([]);
+    expect(parseFontFamilyValue("serif)")).toEqual([]);
+  });
 });
 
 describe("validateNoSystemFonts", () => {
@@ -296,5 +309,71 @@ describe("validateNoSystemFonts", () => {
       body { font-family: var(--ui-font), sans-serif; }
     </style>`;
     expect(() => validateNoSystemFonts(ok)).not.toThrow();
+  });
+
+  it("accepts quoted family names containing commas and no-space function shapes", () => {
+    const ok = `<style>
+      body {
+        font-family: "ACME, Inc", "ACME(Display)", "var(--Display)",
+          var(--runtime), env(font-name), sans-serif;
+      }
+    </style>`;
+    expect(() => validateNoSystemFonts(ok)).not.toThrow();
+  });
+
+  it("handles CSS-wide keywords explicitly without treating them as font files", () => {
+    for (const keyword of ["inherit", "initial", "unset", "revert", "revert-layer"]) {
+      expect(() =>
+        validateNoSystemFonts(`<style>body { font-family: ${keyword}; }</style>`),
+      ).not.toThrow();
+    }
+  });
+
+  it("does not classify quoted generic or CSS-wide names as keywords, including through root vars", () => {
+    const quoted = `<style>
+      :root { --display: "system-ui"; }
+      body { font-family: var(--display), sans-serif; }
+      h1 { font-family: "inherit"; }
+      h2 { font-family: "serif"; }
+    </style>`;
+    expect(() => validateNoSystemFonts(quoted)).not.toThrow();
+  });
+
+  it("does not guess an unresolved variable from its fallback", () => {
+    const dynamic = `<style>
+      body { font-family: var(--runtime-font, "Inter"), sans-serif; }
+    </style>`;
+    expect(() => validateNoSystemFonts(dynamic)).not.toThrow();
+  });
+
+  it("does not guess when a scoped declaration makes a :root value ambiguous", () => {
+    const scoped = `<style>
+      :root { --ui-font: "Inter"; }
+      .system-card { --ui-font: system-ui; }
+      body { font-family: var(--ui-font), sans-serif; }
+    </style>`;
+    expect(() => validateNoSystemFonts(scoped)).not.toThrow();
+  });
+
+  it("does not guess cyclic root variables", () => {
+    const cyclic = `<style>
+      :root { --heading: var(--body); --body: var(--heading, "Inter"); }
+      body { font-family: var(--heading), sans-serif; }
+    </style>`;
+    expect(() => validateNoSystemFonts(cyclic)).not.toThrow();
+  });
+
+  it("malformed CSS invalidates only matching static aliases", () => {
+    const differentName = `
+      <style>:root { --ui-font: system-ui; }</style>
+      <style>.broken { --other: "Outfit";</style>
+      <style>body { font-family: var(--ui-font), sans-serif; }</style>`;
+    expect(() => validateNoSystemFonts(differentName)).toThrow(PlanValidationError);
+
+    const sameName = `
+      <style>:root { --ui-font: system-ui; }</style>
+      <style>.broken { --ui-font: "Outfit";</style>
+      <style>body { font-family: var(--ui-font), sans-serif; }</style>`;
+    expect(() => validateNoSystemFonts(sameName)).not.toThrow();
   });
 });

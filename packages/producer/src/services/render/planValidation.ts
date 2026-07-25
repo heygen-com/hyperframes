@@ -6,11 +6,12 @@
  */
 
 import { BROWSER_GPU_NOT_SOFTWARE } from "@hyperframes/engine";
+import { isCssWideFontFamilyKeyword } from "@hyperframes/parsers/composition";
 import {
   collectFontFamilyCustomProperties,
   GENERIC_FAMILIES,
   iterateFontFamilyDeclarations,
-  resolveFontFamilyDeclarationFamilies,
+  resolveFontFamilyDeclarationCandidates,
 } from "../deterministicFonts.js";
 
 /**
@@ -123,12 +124,20 @@ export function validateNoGpuEncode(config: ValidateNoGpuEncodeInput): void {
 export function validateNoSystemFonts(compiledHtml: string): void {
   const customProperties = collectFontFamilyCustomProperties(compiledHtml);
   for (const { surface, declaration } of iterateFontFamilyDeclarations(compiledHtml)) {
-    const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
-    if (families.length === 0) continue;
-    const primaryRaw = families[0]!;
-    // Unresolved var() primaries are left to the browser; resolved custom
-    // properties are checked above so common `--font: system-ui` aliases fail.
-    if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
+    const candidates = resolveFontFamilyDeclarationCandidates(declaration, customProperties);
+    const primary = candidates[0];
+    if (!primary) continue;
+    const primaryRaw = primary.value;
+    // CSS-wide keywords and unresolved function primaries depend on the normal
+    // browser cascade. The shared resolver replaces only unambiguous static
+    // :root variables, so preserve legacy behavior and do not guess the value.
+    if (
+      primary.kind === "function" ||
+      (!primary.quoted && isCssWideFontFamilyKeyword(primaryRaw))
+    ) {
+      continue;
+    }
+    if (primary.quoted || !GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,
       `[planValidation] Composition declares a host-OS / generic primary ${surface}: ` +

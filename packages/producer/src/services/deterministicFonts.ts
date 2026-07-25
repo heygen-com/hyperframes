@@ -9,6 +9,14 @@ import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
 } from "@hyperframes/core/fonts/system-locator";
+import {
+  collectStaticRootFontFamilyCustomProperties,
+  isCssWideFontFamilyKeyword,
+  parseFontFamilyValue,
+  parseFontFamilyValueTokens,
+  resolveFontFamilyDeclarationCandidates,
+  type FontFamilyCustomPropertyDeclaration,
+} from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
@@ -55,17 +63,12 @@ export const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
  * preserved. Pass each name through `normalizeFamilyName` for case-
  * insensitive comparisons.
  */
-export function parseFontFamilyValue(value: string): string[] {
-  return value
-    .split(",")
-    .map((piece) => piece.trim().replace(/^['"]/, "").replace(/['"]$/, "").trim())
-    .filter((piece) => piece.length > 0);
-}
+export { parseFontFamilyValue, resolveFontFamilyDeclarationCandidates };
 
 function systemPrimaryReplacement(value: string, deterministicPrimary: string): string | null {
-  const families = parseFontFamilyValue(value);
-  if (families.length === 0) return null;
-  if (!GENERIC_FAMILIES.has(normalizeFamilyName(families[0]!))) return null;
+  const primary = parseFontFamilyValueTokens(value)[0];
+  if (!primary || primary.quoted) return null;
+  if (!GENERIC_FAMILIES.has(normalizeFamilyName(primary.value))) return null;
   return `${deterministicPrimary}, ${value.trim()}`;
 }
 
@@ -175,12 +178,34 @@ export type FontFamilyDeclaration = {
   families: string[];
 };
 
-function collectCssCustomProperties(css: string, customProperties: Map<string, string>): void {
+function collectCssCustomPropertyDeclarations(
+  css: string,
+  declarations: FontFamilyCustomPropertyDeclaration[],
+): void {
   const root = parseCssRoot(css);
-  if (!root) return;
+  if (!root) {
+    for (const match of css.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)) {
+      declarations.push({
+        name: match[1]!,
+        value: "",
+        staticRoot: false,
+      });
+    }
+    return;
+  }
   root.walkDecls((decl) => {
     if (!decl.prop.startsWith("--")) return;
-    customProperties.set(decl.prop, decl.value);
+    const parent = decl.parent;
+    const staticRoot =
+      parent?.type === "rule" &&
+      (parent as Rule).selector.trim() === ":root" &&
+      parent.parent?.type === "root";
+    declarations.push({
+      name: decl.prop,
+      value: decl.value,
+      staticRoot,
+      important: decl.important,
+    });
   });
 }
 
@@ -216,61 +241,23 @@ function* iterateInlineStyleFontFamilyDeclarations(
 }
 
 /**
- * Collect simple CSS custom-property font aliases from style blocks and inline
- * styles. CSS cascade is richer than this map, but for compiler-generated
- * imports the common shape is `--font: Inter, sans-serif` paired with
- * `font-family: var(--font)`.
+ * Collect only custom-property font aliases whose value is statically
+ * provable: unconditional top-level `:root` declarations with no scoped,
+ * dynamic, or inline declaration of the same property. Ambiguous values remain
+ * unresolved for the browser cascade.
  */
 export function collectFontFamilyCustomProperties(html: string): Map<string, string> {
   const { document } = parseHTML(html);
-  const customProperties = new Map<string, string>();
+  const declarations: FontFamilyCustomPropertyDeclaration[] = [];
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
-    collectCssCustomProperties(styleEl.textContent ?? "", customProperties);
+    collectCssCustomPropertyDeclarations(styleEl.textContent ?? "", declarations);
   }
   for (const el of Array.from(document.querySelectorAll("[style]"))) {
-    collectCssCustomProperties(`*{${el.getAttribute("style") ?? ""}}`, customProperties);
+    collectCssCustomPropertyDeclarations(`*{${el.getAttribute("style") ?? ""}}`, declarations);
   }
 
-  return customProperties;
-}
-
-function primaryCssVariableName(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed.toLowerCase().startsWith("var(")) return null;
-
-  let depth = 0;
-  for (let index = 0; index < trimmed.length; index += 1) {
-    const char = trimmed[index];
-    if (char === "(") {
-      depth += 1;
-      continue;
-    }
-    if (char !== ")") continue;
-    depth -= 1;
-    if (depth !== 0) continue;
-
-    const varExpression = trimmed.slice(0, index + 1);
-    const inner = varExpression.slice(4, -1).trim();
-    const commaIndex = inner.indexOf(",");
-    const variableName = (commaIndex === -1 ? inner : inner.slice(0, commaIndex)).trim();
-    return /^--[A-Za-z0-9_-]+$/.test(variableName) ? variableName : null;
-  }
-
-  return null;
-}
-
-export function resolveFontFamilyDeclarationFamilies(
-  declaration: string,
-  customProperties: ReadonlyMap<string, string>,
-): string[] {
-  const families = parseFontFamilyValue(declaration);
-  const variableName = primaryCssVariableName(declaration);
-  if (!variableName) return families;
-
-  const resolved = customProperties.get(variableName);
-  if (!resolved) return families;
-  return [...parseFontFamilyValue(resolved), ...families.slice(1)];
+  return collectStaticRootFontFamilyCustomProperties(declarations);
 }
 
 /**
@@ -419,13 +406,17 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   const requested = new Map<string, string>();
   const customProperties = collectFontFamilyCustomProperties(html);
   for (const { declaration } of iterateFontFamilyDeclarations(html)) {
-    for (const originalCase of resolveFontFamilyDeclarationFamilies(
-      declaration,
-      customProperties,
-    )) {
-      const normalized = originalCase.toLowerCase();
-      if (!normalized || GENERIC_FAMILIES.has(normalized)) continue;
-      if (normalized.startsWith("var(")) continue;
+    for (const candidate of resolveFontFamilyDeclarationCandidates(declaration, customProperties)) {
+      const originalCase = candidate.value;
+      const normalized = normalizeFamilyName(originalCase);
+      if (
+        !normalized ||
+        (!candidate.quoted &&
+          (GENERIC_FAMILIES.has(normalized) || isCssWideFontFamilyKeyword(normalized))) ||
+        candidate.kind === "function"
+      ) {
+        continue;
+      }
       if (!requested.has(normalized)) requested.set(normalized, originalCase);
     }
   }
@@ -457,6 +448,9 @@ function buildFontFaceRule(
   ].join("\n");
 }
 
+// This existing fetch/face assembly funnel has multiple format and fallback
+// branches; this change only shifts its lines while adding shared parsing.
+// fallow-ignore-next-line complexity
 async function buildFontFaceCss(
   requestedFamilies: Map<string, string>,
   options: InternalFontFetchOptions,
@@ -737,6 +731,9 @@ async function ensureWoff2DataUri(
   return `data:font/woff2;base64,${readFileSync(cachePath).toString("base64")}`;
 }
 
+// This existing network/cache retry funnel is unchanged apart from line
+// movement caused by the shared parser integration.
+// fallow-ignore-next-line complexity
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,

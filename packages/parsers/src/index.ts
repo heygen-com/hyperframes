@@ -22,3 +22,14 @@ export {
   CANONICAL_FONT_DISPLAY_NAMES,
   resolveAliasDisplayName,
 } from "./fontAliases.js";
+export {
+  CSS_WIDE_FONT_FAMILY_KEYWORDS,
+  collectStaticRootFontFamilyCustomProperties,
+  isCssWideFontFamilyKeyword,
+  parseFontFamilyValue,
+  parseFontFamilyValueTokens,
+  resolveFontFamilyDeclarationCandidates,
+  resolveFontFamilyDeclarationFamilies,
+  type FontFamilyCustomPropertyDeclaration,
+  type FontFamilyValueToken,
+} from "./fontFamilyValue.js";

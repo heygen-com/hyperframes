@@ -389,12 +389,104 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
-    it("does not flag a var() with a quoted fallback font", async () => {
+    it("flags a concrete undeclared var() fallback without a close-paren artifact", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>h1 { font-family: var(--heading, 'Geist'), sans-serif; }</style>
       </div>`;
       const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("geist");
+      expect(findings[0]!.message).not.toContain("geist')");
+    });
+
+    it("does not manufacture production close-paren family artifacts from var() fallbacks", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          h1 { font-family: var(--heading, "Montserrat Bold"), var(--body, serif); }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("montserrat bold");
+      expect(findings[0]!.message).not.toContain(`montserrat bold")`);
+      expect(findings[0]!.message).not.toContain("serif)");
+    });
+
+    it("does not guess scoped or cyclic custom-property values", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          :root { --heading: "Inter"; --cycle-a: var(--cycle-b); --cycle-b: var(--cycle-a); }
+          .card { --heading: "Geist"; }
+          h1 { font-family: var(--heading); }
+          h2 { font-family: var(--cycle-a); }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
       expect(findings).toHaveLength(0);
+    });
+
+    it("ignores CSS-wide keywords explicitly", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          body { font-family: inherit; }
+          h1 { font-family: revert-layer; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("treats quoted generic and CSS-wide names as real families through root resolution", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          :root { --display: "system-ui"; }
+          body { font-family: var(--display), sans-serif; }
+          h1 { font-family: "inherit"; }
+          h2 { font-family: "serif"; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("system-ui");
+      expect(findings[0]!.message).toContain("inherit");
+      expect(findings[0]!.message).toContain("serif");
+    });
+
+    it("keeps quoted commas and no-space function-shaped names as families", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          h1 {
+            font-family: "ACME, Inc", "ACME(Display)", "var(--Display)",
+              var(--runtime), env(font-name), sans-serif;
+          }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("acme, inc");
+      expect(findings[0]!.message).toContain("acme(display)");
+      expect(findings[0]!.message).toContain("var(--display)");
+      expect(findings[0]!.message).not.toContain("var(--runtime)");
+      expect(findings[0]!.message).not.toContain("env(font-name)");
+    });
+
+    it("malformed CSS invalidates only matching static aliases", async () => {
+      const differentName = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>:root { --heading: "Geist"; }</style>
+        <style>.broken { --other: "Outfit";</style>
+        <style>h1 { font-family: var(--heading); }</style>
+      </div>`;
+      const retainedFindings = await findByCode(differentName, "font_family_without_font_face");
+      expect(retainedFindings).toHaveLength(1);
+      expect(retainedFindings[0]!.message).toContain("geist");
+
+      const sameName = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>:root { --heading: "Geist"; }</style>
+        <style>.broken { --heading: "Outfit";</style>
+        <style>h1 { font-family: var(--heading); }</style>
+      </div>`;
+      const unresolvedFindings = await findByCode(sameName, "font_family_without_font_face");
+      expect(unresolvedFindings).toHaveLength(0);
     });
 
     it("still flags a real undeclared font sitting next to a system stack", async () => {

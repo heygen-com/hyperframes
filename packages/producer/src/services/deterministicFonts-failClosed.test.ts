@@ -17,6 +17,7 @@
 import { describe, expect, it } from "bun:test";
 import { parseHTML } from "linkedom";
 import {
+  collectFontFamilyCustomProperties,
   FONT_FETCH_FAILED,
   FontFetchError,
   injectDeterministicFontFaces,
@@ -62,7 +63,9 @@ function makeGoogleFontFetch(cssRequests: string[]): typeof fetch {
     if (requestUrl.startsWith("https://fonts.googleapis.com/")) {
       cssRequests.push(requestUrl);
       const family = new URL(requestUrl).searchParams.get("family")?.split(":", 1)[0] ?? "test";
-      const fontUrl = `https://fonts.gstatic.com/s/test/v1/${family.toLowerCase().replace(/\s+/g, "-")}.woff2`;
+      const fontUrl = `https://fonts.gstatic.com/s/test/v1/${family
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")}.woff2`;
       return new Response(
         `@font-face {
           font-style: normal;
@@ -286,6 +289,126 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
       fetchImpl: makeFailingFetch(),
     });
     expect(result).toBe(html);
+  });
+
+  it("extracts explicit var() fallback families without close-paren artifacts", async () => {
+    const cssRequests: string[] = [];
+    const html = `<!doctype html><html><head><style>
+      body {
+        font-family: var(--heading, "Montserrat Bold"),
+          var(--body, serif);
+      }
+    </style></head><body><h1>hello</h1></body></html>`;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+      fetchImpl: makeGoogleFontFetch(cssRequests),
+    });
+    const requestedFamilies = cssRequests.map(
+      (request) => new URL(request).searchParams.get("family")?.split(":", 1)[0],
+    );
+    expect(requestedFamilies).toEqual(["Montserrat Bold"]);
+    expect(result).toContain(`font-family: "Montserrat Bold"`);
+    expect(result).not.toContain(`font-family: "Montserrat Bold\\")"`);
+    expect(result).not.toContain(`font-family: "serif)"`);
+  });
+
+  it("resolves a static :root variable through a nested fallback", async () => {
+    const cssRequests: string[] = [];
+    const html = `<!doctype html><html><head><style>
+      :root { --heading: var(--missing-brand, "Montserrat Bold"); }
+      body { font-family: var(--heading), serif; }
+    </style></head><body><h1>hello</h1></body></html>`;
+    await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+      fetchImpl: makeGoogleFontFetch(cssRequests),
+    });
+    expect(
+      new URL(cssRequests[0]!).searchParams.get("family")?.startsWith("Montserrat Bold:"),
+    ).toBe(true);
+  });
+
+  it("treats CSS-wide keywords as values rather than fetchable family names", async () => {
+    const html = `<!doctype html><html><head><style>
+      body { font-family: inherit; }
+      h1 { font-family: revert-layer; }
+    </style></head><body><h1>hello</h1></body></html>`;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+      fetchImpl: makeFailingFetch(),
+    });
+    expect(result).toBe(html);
+  });
+
+  it("fetches quoted generic and CSS-wide names, including through a root variable", async () => {
+    const cssRequests: string[] = [];
+    const html = `<!doctype html><html><head><style>
+      :root { --display: "system-ui"; }
+      body { font-family: var(--display), sans-serif; }
+      h1 { font-family: "inherit"; }
+      h2 { font-family: "serif"; }
+    </style></head><body><h1>hello</h1><h2>world</h2></body></html>`;
+    await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+      fetchImpl: makeGoogleFontFetch(cssRequests),
+    });
+    expect(
+      cssRequests.map((request) => new URL(request).searchParams.get("family")?.split(":", 1)[0]),
+    ).toEqual(["system-ui", "inherit", "serif"]);
+  });
+
+  it("does not mistake no-space quoted family names for CSS functions", async () => {
+    const cssRequests: string[] = [];
+    const html = `<!doctype html><html><head><style>
+      body {
+        font-family: "ACME(Display)", "var(--Display)",
+          var(--runtime-font), env(font-name), sans-serif;
+      }
+    </style></head><body><h1>hello</h1></body></html>`;
+    await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+      fetchImpl: makeGoogleFontFetch(cssRequests),
+    });
+    expect(
+      cssRequests.map((request) => new URL(request).searchParams.get("family")?.split(":", 1)[0]),
+    ).toEqual(["ACME(Display)", "var(--Display)"]);
+  });
+
+  it("invalidates only aliases named by malformed CSS blocks", () => {
+    const differentName = `<!doctype html><html><head>
+      <style>:root { --heading: "Inter"; }</style>
+      <style>.broken { --other: "Outfit";</style>
+    </head><body></body></html>`;
+    expect(collectFontFamilyCustomProperties(differentName).get("--heading")).toBe(`"Inter"`);
+
+    const sameName = `<!doctype html><html><head>
+      <style>:root { --heading: "Inter"; }</style>
+      <style>.broken { --heading: "Outfit";</style>
+    </head><body></body></html>`;
+    expect(collectFontFamilyCustomProperties(sameName).has("--heading")).toBe(false);
+  });
+
+  it("ignores commented @font-face declarations when scanning requested families", async () => {
+    const html = `<!doctype html><html><head><style>
+      @font-face {
+        /* a comment containing punctuation: }, var(--font, "Wrong") */
+        font-family: "Declared (Local)";
+        src: url("./declared.woff2");
+      }
+      body { font-family: "Inter", sans-serif; }
+    </style></head><body><h1>hello</h1></body></html>`;
+    const fetchImpl = (async () =>
+      new Response("/* no extra faces */", { status: 200 })) as unknown as typeof fetch;
+    const result = await injectDeterministicFontFaces(html, {
+      failClosedFontFetch: true,
+      fetchImpl,
+    });
+    expect(result).toContain("data-hyperframes-deterministic-fonts");
+    expect(result).not.toContain(`font-family: "Wrong"`);
   });
 
   it("resolves simple CSS var() font aliases when injecting deterministic fonts", async () => {

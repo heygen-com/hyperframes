@@ -1,8 +1,14 @@
 import {
+  collectStaticRootFontFamilyCustomProperties,
   FONT_ALIAS_KEYS,
   GOOGLE_FONT_FAMILY_ALIAS_KEYS,
+  isCssWideFontFamilyKeyword,
   resolveAliasDisplayName,
+  resolveFontFamilyDeclarationCandidates,
+  type FontFamilyCustomPropertyDeclaration,
+  type FontFamilyValueToken,
 } from "@hyperframes/parsers/composition";
+import postcss, { type AtRule, type Declaration, type Rule, type Root } from "postcss";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { isRegistrySourceFile, isRegistryInstalledFile } from "./composition";
 
@@ -26,10 +32,6 @@ const GENERIC_FAMILIES = new Set([
   // (e.g. `-apple-system, system-ui, sans-serif`).
   "-apple-system",
   "blinkmacsystemfont",
-  "inherit",
-  "initial",
-  "unset",
-  "revert",
 ]);
 
 // A CSS comment can contain a `}` (e.g. `@font-face { /* 400 } regular */
@@ -60,38 +62,103 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
   return families;
 }
 
-// Normalize one comma-separated font-family entry to a lowercase family name,
-// or null if it carries no resolvable name. `var(--heading)` (or any function
-// token) is an indirection the linter cannot statically resolve, so the literal
-// `var(...)` is not a font name and flagging it is a false positive. Comma-split
-// fallbacks like `var(--x, 'Inter')` also leave a dangling `)` on the fallback
-// part, so skip anything bearing parentheses.
-function normalizeUsedFontName(part: string): string | null {
-  const name = part
+function normalizeUsedFontName(candidate: FontFamilyValueToken): string | null {
+  const name = candidate.value
     .trim()
     .replace(/\s*!important\s*$/i, "")
-    .replace(/^['"]|['"]$/g, "")
     .trim()
     .toLowerCase();
-  if (!name || name.includes("(") || name.includes(")")) return null;
+  if (
+    !name ||
+    candidate.kind === "function" ||
+    (!candidate.quoted && (isCssWideFontFamilyKeyword(name) || GENERIC_FAMILIES.has(name)))
+  ) {
+    return null;
+  }
   return name;
+}
+
+function parseCssRoot(css: string): Root | null {
+  try {
+    return postcss.parse(css);
+  } catch {
+    return null;
+  }
+}
+
+function isFontFaceDeclaration(decl: Declaration): boolean {
+  const parent = decl.parent;
+  return parent?.type === "atrule" && (parent as AtRule).name.toLowerCase() === "font-face";
+}
+
+function collectLintCustomProperties(
+  styles: Array<{ content: string }>,
+  parsedRoots: Array<Root | null>,
+): Map<string, string> {
+  const declarations: FontFamilyCustomPropertyDeclaration[] = [];
+  for (let index = 0; index < styles.length; index += 1) {
+    const root = parsedRoots[index];
+    if (!root) {
+      for (const match of styles[index]!.content.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)) {
+        declarations.push({
+          name: match[1]!,
+          value: "",
+          staticRoot: false,
+        });
+      }
+      continue;
+    }
+    root.walkDecls((decl) => {
+      if (!decl.prop.startsWith("--")) return;
+      const parent = decl.parent;
+      declarations.push({
+        name: decl.prop,
+        value: decl.value,
+        staticRoot:
+          parent?.type === "rule" &&
+          (parent as Rule).selector.trim() === ":root" &&
+          parent.parent?.type === "root",
+        important: decl.important,
+      });
+    });
+  }
+  return collectStaticRootFontFamilyCustomProperties(declarations);
 }
 
 function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   const used: string[] = [];
   const seen = new Set<string>();
+  const parsedRoots = styles.map((style) => parseCssRoot(style.content));
+  const roots = parsedRoots.filter((root) => root !== null);
+  const customProperties = collectLintCustomProperties(styles, parsedRoots);
+
+  const addDeclaration = (declaration: string) => {
+    for (const candidate of resolveFontFamilyDeclarationCandidates(declaration, customProperties)) {
+      const name = normalizeUsedFontName(candidate);
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        used.push(name);
+      }
+    }
+  };
+
+  for (const root of roots) {
+    root.walkDecls((decl) => {
+      if (decl.prop.toLowerCase() !== "font-family" || isFontFaceDeclaration(decl)) return;
+      addDeclaration(decl.value);
+    });
+  }
+
+  // Preserve best-effort lint coverage for malformed stylesheets PostCSS
+  // cannot parse. The shared value parser still prevents function commas from
+  // manufacturing stray `)` family names.
   const propRe = /font-family\s*:\s*([^;}{]+)/gi;
   for (const style of styles) {
+    if (parseCssRoot(style.content)) continue;
     const withoutFontFace = stripCssComments(style.content).replace(/@font-face\s*\{[^}]*\}/gi, "");
     let match: RegExpExecArray | null;
     while ((match = propRe.exec(withoutFontFace)) !== null) {
-      for (const part of match[1]!.split(",")) {
-        const name = normalizeUsedFontName(part);
-        if (name && !GENERIC_FAMILIES.has(name) && !seen.has(name)) {
-          seen.add(name);
-          used.push(name);
-        }
-      }
+      addDeclaration(match[1]!);
     }
   }
   return used;
