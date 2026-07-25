@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "declaration": true,
     "declarationMap": true,
@@ -11,7 +12,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // The react subpath dynamic-imports the package by name (self-reference).
+    // Resolve it to source so tsc/dts never treat dist/ output as an input.
+    "paths": {
+      "@hyperframes/player": ["./src/hyperframes-player.ts"]
+    }
   },
   "include": ["src"]
 }

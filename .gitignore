@@ -97,8 +97,15 @@ examples/*
 !examples/k8s-jobs/**
 !examples/gcp-cloud-run
 !examples/gcp-cloud-run/**
+!examples/react-player
+!examples/react-player/**
 # …but never the local smoke run's build/render artifacts.
 examples/gcp-cloud-run/scripts/gcp-smoke-artifacts/
+# …and never the react-player example's vite build output or node_modules
+# (the blanket dist/ and node_modules/ rules match unanchored, but the
+# `!examples/react-player/**` negation above would otherwise re-include them).
+examples/react-player/dist/
+examples/react-player/node_modules/
 packages/studio/data/
 
 .desloppify/

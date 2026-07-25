@@ -1,0 +1,124 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0d0d12;
+  color: #e8e8f0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+header h1 {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+header p {
+  margin: 0;
+  color: #9a9ab0;
+  font-size: 14px;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  color: #8ec7ff;
+}
+
+.player {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.transport button {
+  min-width: 76px;
+  padding: 8px 0;
+  border: 1px solid #2c2c3a;
+  border-radius: 8px;
+  background: #1a1a24;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.transport button:hover {
+  background: #23232f;
+}
+
+.transport input[type="range"] {
+  flex: 1;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: #9a9ab0;
+  white-space: nowrap;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 14px;
+  color: #c4c4d4;
+}
+
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.options select {
+  background: #1a1a24;
+  color: inherit;
+  border: 1px solid #2c2c3a;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.log h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #9a9ab0;
+  margin: 0 0 8px;
+}
+
+.log ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log li {
+  padding: 6px 10px;
+  background: #14141c;
+  border-radius: 6px;
+}
+
+.empty {
+  color: #62627a;
+  font-size: 13px;
+}
