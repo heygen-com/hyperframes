@@ -25,6 +25,7 @@ import {
   PlanTooLargeError,
   plan,
 } from "./plan.js";
+import { planV2, readPlanV2Manifest } from "./planV2.js";
 import { DISTRIBUTED_DURATION_OUT_OF_RANGE } from "../render/planValidation.js";
 
 const FIXTURE_HTML = `<!doctype html>
@@ -141,6 +142,40 @@ describe("plan() PLAN_TOO_LARGE throw path", () => {
         planDir,
       );
       expect(result.planHash).toMatch(/^[0-9a-f]{64}$/);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "lets planV2 complete the same render that trips the v1 transport cap",
+    async () => {
+      const projectDir = mkdtempSync(join(runRoot, "project-v1-v2-pressure-"));
+      writeFileSync(join(projectDir, "index.html"), FIXTURE_HTML, "utf-8");
+      const config = {
+        fps: 30 as const,
+        width: 320,
+        height: 240,
+        format: "mp4" as const,
+        planDirSizeLimitBytes: 1024,
+      };
+
+      const v1PlanDir = mkdtempSync(join(runRoot, "plandir-v1-pressure-"));
+      let v1Error: unknown;
+      try {
+        await plan(projectDir, config, v1PlanDir);
+      } catch (error) {
+        v1Error = error;
+      }
+      expect(v1Error).toBeInstanceOf(PlanTooLargeError);
+      expect((v1Error as PlanTooLargeError).code).toBe(PLAN_TOO_LARGE);
+
+      const v2PlanDir = join(runRoot, "plandir-v2-pressure");
+      const v2 = await planV2(projectDir, config, v2PlanDir);
+      const manifest = readPlanV2Manifest(v2.planDir);
+      expect(v2.planProtocol.schemaVersion).toBe(2);
+      expect(v2.planHash).toBe(manifest.planHash);
+      expect(v2.sourcePlanV1Hash).toBe(manifest.sourcePlanV1Hash);
+      expect(manifest.artifacts.length).toBeGreaterThan(0);
     },
     TIMEOUT_MS,
   );

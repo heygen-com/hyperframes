@@ -54,6 +54,26 @@ export {
   PlanTooLargeError,
 } from "./services/distributed/plan.js";
 
+// ── Plan v2 content-addressed transport ────────────────────────────────────
+export {
+  createPlanV2FromV1,
+  listPlanV2ArtifactsForTarget,
+  materializePlanV2Target,
+  planV2,
+  readPlanV2Manifest,
+  validatePlanV2MaterializedTarget,
+  PLAN_V2_INTEGRITY_UNRECOVERABLE,
+  PLAN_V2_MATERIALIZATION_MARKER,
+  PlanV2IntegrityError,
+  type PlanV2Artifact,
+  type PlanV2Limitations,
+  type PlanV2Manifest,
+  type PlanV2MaterializationResult,
+  type PlanV2MaterializationTarget,
+  type PlanV2Result,
+} from "./services/distributed/planV2.js";
+export { assembleV2, renderChunkV2 } from "./services/distributed/planV2Execution.js";
+
 // ── RenderChunk (Activity B) ────────────────────────────────────────────────
 export {
   applyRuntimeEnvSnapshot,
@@ -91,14 +111,21 @@ export {
   getDistributedRenderCapabilities,
   PLAN_ARTIFACT_LAYOUT,
   PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_V2,
   PLAN_PROTOCOL_UNSUPPORTED,
   PLAN_SCHEMA_VERSION,
+  PLAN_V2_ARTIFACT_LAYOUT,
+  PLAN_V2_HASH_SCHEMA,
+  PLAN_V2_SCHEMA_VERSION,
   PlanProtocolUnsupportedError,
   readPlanProtocol,
+  readPlanProtocolV1,
   type DistributedRenderCapabilities,
   type PlanProtocolConsumerCapabilities,
   type PlanProtocolDescriptor,
   type PlanProtocolV1Descriptor,
+  type PlanProtocolV2Descriptor,
+  type SupportedPlanProtocolDescriptor,
 } from "./services/distributed/planProtocol.js";
 
 // ── Format union ────────────────────────────────────────────────────────────

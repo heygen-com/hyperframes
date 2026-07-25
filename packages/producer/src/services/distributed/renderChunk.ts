@@ -80,7 +80,8 @@ import {
   type PlanVideosJson,
   readFfmpegVersion,
 } from "./shared.js";
-import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocol } from "./planProtocol.js";
+import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProtocol.js";
+import { validatePlanV2MaterializedTarget } from "./planV2.js";
 
 /**
  * Non-retryable error codes raised when the planDir is structurally
@@ -184,6 +185,7 @@ export interface ChunkResult {
 export function rebuildExtractedFramesFromPlanDir(
   planDir: string,
   videos: PlanVideosJson["extracted"],
+  indexMode: "dense-v1" | "sparse-v2" = "dense-v1",
 ): ExtractedFrames[] {
   const result: ExtractedFrames[] = [];
   for (const v of videos) {
@@ -206,7 +208,12 @@ export function rebuildExtractedFramesFromPlanDir(
     for (let i = 0; i < frames.length; i++) {
       const frameName = frames[i];
       if (!frameName) continue;
-      framePaths.set(i, join(outputDir, frameName));
+      // V1 plans preserve the historical sorted-position behavior even for
+      // unusual zero-based filenames. V2 materialization is sparse, so only
+      // that mode derives the original index from ffmpeg's 1-based filename.
+      const numbered = indexMode === "sparse-v2" ? /(\d+)(?=\.[^.]+$)/.exec(frameName) : null;
+      const frameIndex = numbered ? Number(numbered[1]) - 1 : i;
+      framePaths.set(frameIndex, join(outputDir, frameName));
     }
     result.push({
       videoId: v.videoId,
@@ -342,7 +349,12 @@ export async function renderChunk(
     );
   }
   const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJson;
-  readPlanProtocol(plan, DISTRIBUTED_RENDER_CAPABILITIES.roles.chunk);
+  readPlanProtocolV1(plan, DISTRIBUTED_RENDER_CAPABILITIES.roles.chunk);
+  const planHashStarted = Date.now();
+  const v2Manifest = validatePlanV2MaterializedTarget(planDir, {
+    role: "chunk",
+    chunkIndex,
+  });
   for (const required of [encoderJsonPath, chunksJsonPath]) {
     if (!existsSync(required)) {
       throw new RenderChunkValidationError(
@@ -421,8 +433,8 @@ export async function renderChunk(
   // the chunk renders. Distinct from the other validation paths above
   // because `MISSING_PLAN_ARTIFACT` etc. are structural; this is purely
   // content-fingerprint drift.
-  const planHashStarted = Date.now();
-  const recomputedPlanHash = recomputePlanHashFromPlanDir(planDir);
+  const recomputedPlanHash =
+    v2Manifest === null ? recomputePlanHashFromPlanDir(planDir) : plan.planHash;
   const planHashMs = Date.now() - planHashStarted;
   if (recomputedPlanHash !== plan.planHash) {
     throw new RenderChunkValidationError(
@@ -486,7 +498,11 @@ export async function renderChunk(
         ? createVideoFrameInjector(
             createFrameLookupTable(
               planVideos.videos,
-              rebuildExtractedFramesFromPlanDir(planDir, planVideos.extracted),
+              rebuildExtractedFramesFromPlanDir(
+                planDir,
+                planVideos.extracted,
+                v2Manifest === null ? "dense-v1" : "sparse-v2",
+              ),
             ),
           )
         : null;

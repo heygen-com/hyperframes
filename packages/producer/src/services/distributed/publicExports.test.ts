@@ -52,10 +52,14 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     );
     expect(distributedSubpath.FFMPEG_VERSION_MISMATCH).toBe("FFMPEG_VERSION_MISMATCH");
     expect(distributedSubpath.PLAN_HASH_MISMATCH).toBe("PLAN_HASH_MISMATCH");
+    expect(distributedSubpath.PLAN_V2_INTEGRITY_UNRECOVERABLE).toBe(
+      "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+    );
 
     expect(typeof distributedSubpath.PlanTooLargeError).toBe("function");
     expect(typeof distributedSubpath.FormatNotSupportedInDistributedError).toBe("function");
     expect(typeof distributedSubpath.PlanValidationError).toBe("function");
+    expect(typeof distributedSubpath.PlanV2IntegrityError).toBe("function");
     expect(typeof distributedSubpath.RenderChunkValidationError).toBe("function");
   });
 
@@ -69,6 +73,9 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     expect(distributedSubpath.PLAN_SCHEMA_VERSION).toBe(1);
     expect(distributedSubpath.PLAN_ARTIFACT_LAYOUT).toBe("plan-dir-v1");
     expect(distributedSubpath.PLAN_HASH_SCHEMA).toBe("hyperframes-plan-hash-v1");
+    expect(distributedSubpath.PLAN_V2_SCHEMA_VERSION).toBe(2);
+    expect(distributedSubpath.PLAN_V2_ARTIFACT_LAYOUT).toBe("content-addressed-plan-v2");
+    expect(distributedSubpath.PLAN_V2_HASH_SCHEMA).toBe("hyperframes-plan-manifest-hash-v2");
     expect(distributedSubpath.PLAN_PROTOCOL_UNSUPPORTED).toBe("PLAN_PROTOCOL_UNSUPPORTED");
     expect(distributedSubpath.CURRENT_PLAN_PROTOCOL).toEqual({
       schemaVersion: 1,
@@ -77,19 +84,24 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     });
     expect(distributedSubpath.DISTRIBUTED_RENDER_CAPABILITIES.roles).toEqual({
       planner: {
-        produces: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+        produces: [distributedSubpath.CURRENT_PLAN_PROTOCOL, distributedSubpath.PLAN_PROTOCOL_V2],
       },
       chunk: {
-        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL, distributedSubpath.PLAN_PROTOCOL_V2],
         acceptsLegacyV1WithoutDescriptor: true,
       },
       assembler: {
-        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL, distributedSubpath.PLAN_PROTOCOL_V2],
         acceptsLegacyV1WithoutDescriptor: true,
       },
     });
     expect(typeof distributedSubpath.getDistributedRenderCapabilities).toBe("function");
     expect(typeof distributedSubpath.readPlanProtocol).toBe("function");
+    expect(typeof distributedSubpath.planV2).toBe("function");
+    expect(typeof distributedSubpath.renderChunkV2).toBe("function");
+    expect(typeof distributedSubpath.assembleV2).toBe("function");
+    expect(typeof distributedSubpath.readPlanV2Manifest).toBe("function");
+    expect(typeof distributedSubpath.materializePlanV2Target).toBe("function");
     expect(typeof distributedSubpath.PlanProtocolUnsupportedError).toBe("function");
   });
 });
@@ -108,7 +120,9 @@ describe("@hyperframes/producer (main entry)", () => {
     );
     expect(typeof producerIndex.getDistributedRenderCapabilities).toBe("function");
     expect(producerIndex.PLAN_PROTOCOL_UNSUPPORTED).toBe("PLAN_PROTOCOL_UNSUPPORTED");
+    expect(producerIndex.PLAN_V2_INTEGRITY_UNRECOVERABLE).toBe("PLAN_V2_INTEGRITY_UNRECOVERABLE");
     expect(typeof producerIndex.readPlanProtocol).toBe("function");
+    expect(typeof producerIndex.PlanV2IntegrityError).toBe("function");
     expect(typeof producerIndex.PlanProtocolUnsupportedError).toBe("function");
   });
 

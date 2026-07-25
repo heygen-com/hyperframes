@@ -11,6 +11,9 @@
 export const PLAN_SCHEMA_VERSION = 1 as const;
 export const PLAN_ARTIFACT_LAYOUT = "plan-dir-v1" as const;
 export const PLAN_HASH_SCHEMA = "hyperframes-plan-hash-v1" as const;
+export const PLAN_V2_SCHEMA_VERSION = 2 as const;
+export const PLAN_V2_ARTIFACT_LAYOUT = "content-addressed-plan-v2" as const;
+export const PLAN_V2_HASH_SCHEMA = "hyperframes-plan-manifest-hash-v2" as const;
 export const PLAN_PROTOCOL_UNSUPPORTED = "PLAN_PROTOCOL_UNSUPPORTED" as const;
 
 export interface PlanProtocolDescriptor {
@@ -25,11 +28,26 @@ export interface PlanProtocolV1Descriptor extends PlanProtocolDescriptor {
   readonly hashSchema: typeof PLAN_HASH_SCHEMA;
 }
 
+export interface PlanProtocolV2Descriptor extends PlanProtocolDescriptor {
+  readonly schemaVersion: typeof PLAN_V2_SCHEMA_VERSION;
+  readonly artifactLayout: typeof PLAN_V2_ARTIFACT_LAYOUT;
+  readonly hashSchema: typeof PLAN_V2_HASH_SCHEMA;
+}
+
+export type SupportedPlanProtocolDescriptor = PlanProtocolV1Descriptor | PlanProtocolV2Descriptor;
+
 /** Descriptor written by the current producer and accepted by v1 workers. */
 export const CURRENT_PLAN_PROTOCOL: Readonly<PlanProtocolV1Descriptor> = Object.freeze({
   schemaVersion: PLAN_SCHEMA_VERSION,
   artifactLayout: PLAN_ARTIFACT_LAYOUT,
   hashSchema: PLAN_HASH_SCHEMA,
+});
+
+/** Explicit opt-in descriptor for the content-addressed v2 transport layout. */
+export const PLAN_PROTOCOL_V2: Readonly<PlanProtocolV2Descriptor> = Object.freeze({
+  schemaVersion: PLAN_V2_SCHEMA_VERSION,
+  artifactLayout: PLAN_V2_ARTIFACT_LAYOUT,
+  hashSchema: PLAN_V2_HASH_SCHEMA,
 });
 
 export interface PlanProtocolConsumerCapabilities {
@@ -52,14 +70,14 @@ export const DISTRIBUTED_RENDER_CAPABILITIES: Readonly<DistributedRenderCapabili
   Object.freeze({
     roles: Object.freeze({
       planner: Object.freeze({
-        produces: Object.freeze([CURRENT_PLAN_PROTOCOL]),
+        produces: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
       }),
       chunk: Object.freeze({
-        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL]),
+        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
         acceptsLegacyV1WithoutDescriptor: true,
       }),
       assembler: Object.freeze({
-        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL]),
+        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
         acceptsLegacyV1WithoutDescriptor: true,
       }),
     }),
@@ -87,7 +105,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function protocolMatches(
   descriptor: Record<string, unknown>,
-  expected: PlanProtocolDescriptor,
+  expected: SupportedPlanProtocolDescriptor,
 ): boolean {
   return (
     descriptor.schemaVersion === expected.schemaVersion &&
@@ -117,7 +135,7 @@ export function readPlanProtocol(
   planJson: unknown,
   capabilities: Readonly<PlanProtocolConsumerCapabilities> = DISTRIBUTED_RENDER_CAPABILITIES.roles
     .chunk,
-): Readonly<PlanProtocolV1Descriptor> {
+): Readonly<SupportedPlanProtocolDescriptor> {
   if (!isRecord(planJson)) {
     throw new PlanProtocolUnsupportedError("plan.json must contain a JSON object");
   }
@@ -145,11 +163,32 @@ export function readPlanProtocol(
     }
   }
 
-  if (
-    !protocolMatches(descriptor, CURRENT_PLAN_PROTOCOL) ||
-    !capabilitiesAccept(capabilities, CURRENT_PLAN_PROTOCOL)
-  ) {
+  const protocol = protocolMatches(descriptor, CURRENT_PLAN_PROTOCOL)
+    ? CURRENT_PLAN_PROTOCOL
+    : protocolMatches(descriptor, PLAN_PROTOCOL_V2)
+      ? PLAN_PROTOCOL_V2
+      : null;
+  if (protocol === null || !capabilitiesAccept(capabilities, protocol)) {
     throw new PlanProtocolUnsupportedError("unsupported plan.json protocol descriptor");
+  }
+  return protocol;
+}
+
+/**
+ * Validate that a directory is directly consumable by the legacy execution
+ * functions. A v2 transport must be materialized first; rejecting it here
+ * prevents readers from probing paths that have different meanings in v2.
+ */
+export function readPlanProtocolV1(
+  planJson: unknown,
+  capabilities: Readonly<PlanProtocolConsumerCapabilities> = DISTRIBUTED_RENDER_CAPABILITIES.roles
+    .chunk,
+): Readonly<PlanProtocolV1Descriptor> {
+  const protocol = readPlanProtocol(planJson, capabilities);
+  if (protocol !== CURRENT_PLAN_PROTOCOL) {
+    throw new PlanProtocolUnsupportedError(
+      "content-addressed v2 plan must be materialized before v1 layout access",
+    );
   }
   return CURRENT_PLAN_PROTOCOL;
 }

@@ -75,6 +75,7 @@ import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
 import {
   buildSyntheticRenderJob,
   type DistributedFormat,
+  PLAN_AUDIO_RELATIVE_PATH,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
   readFfmpegVersion,
@@ -225,7 +226,8 @@ export interface DistributedRenderConfig {
    * 10 GB `/tmp` budget alongside the chunk worker's frame buffer +
    * ffmpeg working set). Adapters that deploy onto storage with
    * tighter ceilings can pass a smaller cap; tests pass a tiny cap to
-   * exercise the throw path.
+   * exercise the throw path. This applies to the monolithic v1 transport;
+   * `planV2()` emits content-addressed role dependencies and bypasses it.
    */
   planDirSizeLimitBytes?: number;
 
@@ -340,9 +342,8 @@ export const MIN_CHUNK_SIZE = 10;
 /**
  * Default hard ceiling on `<planDir>/` size in bytes. 2 GB fits inside
  * AWS Lambda's 10 GB `/tmp` alongside the chunk worker's captured frames
- * and ffmpeg's temporary files. Compositions that exceed this have to
- * fall back to the in-process renderer until per-chunk video-frame
- * slicing lands.
+ * and ffmpeg's temporary files. Compositions that exceed this can opt into
+ * `planV2()` or fall back to the in-process renderer.
  */
 export const PLAN_DIR_SIZE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -364,8 +365,9 @@ export class PlanTooLargeError extends Error {
       `[plan] planDir size ${formatBytes(sizeBytes)} exceeds the configured ceiling ` +
         `${formatBytes(limitBytes)} (PLAN_TOO_LARGE). The default 2 GB cap fits inside AWS ` +
         `Lambda's 10 GB /tmp budget alongside the chunk worker's frame buffer and ffmpeg's ` +
-        `working set. To unblock: shorten the composition, lower the framerate, or use the ` +
-        `in-process renderer (\`executeRenderJob\`) — it has no planDir size cap.`,
+        `working set. To unblock: use the content-addressed \`planV2()\` transport, shorten ` +
+        `the composition, lower the framerate, or use the in-process renderer ` +
+        `(\`executeRenderJob\`) — it has no planDir size cap.`,
     );
     this.name = "PlanTooLargeError";
     this.sizeBytes = sizeBytes;
@@ -1006,7 +1008,7 @@ export async function plan(
     "utf-8",
   );
 
-  const planAudioPath = join(planDir, "audio.aac");
+  const planAudioPath = join(planDir, PLAN_AUDIO_RELATIVE_PATH);
   if (audioResult.hasAudio && existsSync(audioResult.audioOutputPath)) {
     renameSync(audioResult.audioOutputPath, planAudioPath);
   }

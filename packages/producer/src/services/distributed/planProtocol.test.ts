@@ -1,3 +1,7 @@
+// These protocol rejection cases intentionally repeat the arrange/assert shape
+// so each malformed wire descriptor remains independently readable.
+// fallow-ignore-file code-duplication
+
 import { afterEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +13,7 @@ import {
   getDistributedRenderCapabilities,
   PLAN_ARTIFACT_LAYOUT,
   PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_V2,
   PLAN_PROTOCOL_UNSUPPORTED,
   PLAN_SCHEMA_VERSION,
   PlanProtocolUnsupportedError,
@@ -126,6 +131,10 @@ describe("readPlanProtocol()", () => {
     ).toBe(CURRENT_PLAN_PROTOCOL);
   });
 
+  it("accepts the explicit v2 descriptor", () => {
+    expect(readPlanProtocol({ protocol: PLAN_PROTOCOL_V2 })).toBe(PLAN_PROTOCOL_V2);
+  });
+
   it("rejects malformed and partial descriptors", () => {
     for (const protocol of [
       null,
@@ -166,19 +175,19 @@ describe("readPlanProtocol()", () => {
 });
 
 describe("getDistributedRenderCapabilities()", () => {
-  it("reports explicit v1 support for every distributed role", () => {
+  it("reports explicit v1 and v2 support for every distributed role", () => {
     expect(getDistributedRenderCapabilities()).toBe(DISTRIBUTED_RENDER_CAPABILITIES);
     expect(DISTRIBUTED_RENDER_CAPABILITIES).toEqual({
       roles: {
         planner: {
-          produces: [CURRENT_PLAN_PROTOCOL],
+          produces: [CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2],
         },
         chunk: {
-          accepts: [CURRENT_PLAN_PROTOCOL],
+          accepts: [CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2],
           acceptsLegacyV1WithoutDescriptor: true,
         },
         assembler: {
-          accepts: [CURRENT_PLAN_PROTOCOL],
+          accepts: [CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2],
           acceptsLegacyV1WithoutDescriptor: true,
         },
       },
@@ -271,6 +280,21 @@ describe("distributed plan protocol readers", () => {
 
     expect(caught).toBeInstanceOf(PlanProtocolUnsupportedError);
     expect((caught as PlanProtocolUnsupportedError).code).toBe(PLAN_PROTOCOL_UNSUPPORTED);
+  });
+
+  it("legacy activities reject a recognized v2 root before v1 layout access", async () => {
+    const planDir = createReaderPlan({
+      includeProtocol: true,
+      protocol: PLAN_PROTOCOL_V2,
+      omitDownstreamArtifacts: true,
+    });
+
+    await expect(renderChunk(planDir, 0, join(planDir, "unused-output"))).rejects.toThrow(
+      "must be materialized before v1 layout access",
+    );
+    await expect(assemble(planDir, [], null, join(planDir, "unused-output"))).rejects.toThrow(
+      "must be materialized before v1 layout access",
+    );
   });
 
   it("assemble rejects a partial protocol before parsing chunks", async () => {

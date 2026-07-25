@@ -32,6 +32,13 @@ export type DistributedFormat = "mp4" | "mov" | "png-sequence" | "webm";
 export const PLAN_VIDEOS_META_RELATIVE_PATH = "meta/videos.json";
 
 /**
+ * Relative path of the normalized audio artifact written into a distributed
+ * plan. Keep writers and transport readers coupled through this contract
+ * rather than duplicating a filename literal.
+ */
+export const PLAN_AUDIO_RELATIVE_PATH = "audio.aac";
+
+/**
  * On-disk shape of `<planDir>/meta/videos.json`. The engine's
  * `ExtractedFrames` shape carries an absolute `outputDir`, a `framePaths`
  * Map, and potentially an open file descriptor — none of those survive
