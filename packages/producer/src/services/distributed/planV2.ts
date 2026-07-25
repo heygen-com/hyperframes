@@ -27,6 +27,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createFrameLookupTable, type ExtractedFrames } from "@hyperframes/engine";
 import { recomputePlanHashFromPlanDir, type ChunkSliceJson } from "../render/stages/freezePlan.js";
@@ -38,6 +39,13 @@ import {
   type PlanProtocolV2Descriptor,
 } from "./planProtocol.js";
 import {
+  LocalPlanV2ArtifactPublisher,
+  type PlanV2ArtifactPublisher,
+  type PlanV2PublishBlob,
+} from "./planV2Publisher.js";
+import { PLAN_V2_INTEGRITY_UNRECOVERABLE, PlanV2IntegrityError } from "./planV2Errors.js";
+import { planV2BlobPath } from "./planV2Layout.js";
+import {
   PLAN_AUDIO_RELATIVE_PATH,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type DistributedFormat,
@@ -46,23 +54,7 @@ import {
 
 const PLAN_V2_HASH_PREFIX = "hyperframes-plan-manifest-hash-v2\x00";
 export const PLAN_V2_MATERIALIZATION_MARKER = ".hyperframes-plan-v2.json";
-export const PLAN_V2_INTEGRITY_UNRECOVERABLE = "PLAN_V2_INTEGRITY_UNRECOVERABLE" as const;
-
-/**
- * A deterministic plan-v2 validation or integrity failure. Distributed
- * adapters classify both the class name and code as terminal so immutable
- * corruption does not consume the retry budget.
- */
-export class PlanV2IntegrityError extends Error {
-  // Public adapters inspect this typed code even though OSS producer does not.
-  // fallow-ignore-next-line unused-class-member
-  readonly code: typeof PLAN_V2_INTEGRITY_UNRECOVERABLE = PLAN_V2_INTEGRITY_UNRECOVERABLE;
-
-  constructor(message: string) {
-    super(`[planV2] ${message}`);
-    this.name = "PlanV2IntegrityError";
-  }
-}
+export { PLAN_V2_INTEGRITY_UNRECOVERABLE, PlanV2IntegrityError };
 
 export type PlanV2MaterializationTarget =
   | Readonly<{ role: "chunk"; chunkIndex: number }>
@@ -115,6 +107,16 @@ export interface PlanV2Result {
   readonly ffmpegVersion: string;
   readonly producerVersion: string;
   readonly limitations: Readonly<PlanV2Limitations>;
+}
+
+export interface PlanV2WithPublisherOptions {
+  /**
+   * Parent for the planner-private v1 staging directory. Remote adapters
+   * normally leave this unset and use the OS temp directory. The local
+   * compatibility wrapper keeps staging beside its destination so hard links
+   * can avoid a second set of data blocks.
+   */
+  readonly stagingParentDir?: string;
 }
 
 export interface PlanV2MaterializationResult {
@@ -186,10 +188,6 @@ function listFiles(root: string): Array<{ path: string; absolutePath: string }> 
   }
   walk(rootResolved);
   return files.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function blobPath(planV2Dir: string, sha256: string): string {
-  return join(planV2Dir, "artifacts", "sha256", sha256.slice(0, 2), sha256);
 }
 
 /** Hash large plan artifacts with bounded memory (important above the v1 2 GiB cap). */
@@ -447,11 +445,14 @@ function writeBlob(sourcePath: string, destinationPath: string): void {
   }
 }
 
-/** Convert a frozen v1 execution directory into the immutable v2 transport. */
-export function createPlanV2FromV1(planV1Dir: string, planV2Dir: string): PlanV2Result {
-  if (existsSync(planV2Dir)) {
-    throw new PlanV2IntegrityError(`output directory already exists: ${planV2Dir}`);
-  }
+interface PlanV2Publication {
+  readonly manifest: PlanV2Manifest;
+  readonly blobs: readonly Readonly<PlanV2PublishBlob>[];
+}
+
+// Artifact classification intentionally keeps every fail-safe branch together.
+// fallow-ignore-next-line complexity
+function buildPlanV2Publication(planV1Dir: string): PlanV2Publication {
   const v1PlanPath = join(planV1Dir, "plan.json");
   if (!existsSync(v1PlanPath)) {
     throw new PlanV2IntegrityError(`v1 plan is missing plan.json: ${v1PlanPath}`);
@@ -474,60 +475,139 @@ export function createPlanV2FromV1(planV1Dir: string, planV2Dir: string): PlanV2
     );
   }
 
+  const artifacts: PlanV2Artifact[] = [];
+  const blobs = new Map<string, PlanV2PublishBlob>();
+  const dimensions = v1Plan.dimensions;
+  if (!isRecord(dimensions)) {
+    throw new PlanV2IntegrityError("v1 plan.json.dimensions must be an object");
+  }
+  const videoDependencyPlan = buildVideoChunkDependencies(planV1Dir, dimensions);
+  for (const file of listFiles(planV1Dir)) {
+    const targets = artifactTargets(file.path, videoDependencyPlan.dependencies);
+    if (
+      file.path.startsWith("video-frames/") &&
+      targets.chunks !== "all" &&
+      targets.chunks.length === 0 &&
+      !targets.assembler
+    ) {
+      continue;
+    }
+    const sha256 = sha256File(file.absolutePath);
+    const sizeBytes = statSync(file.absolutePath).size;
+    if (!blobs.has(sha256)) {
+      blobs.set(sha256, { sourcePath: file.absolutePath, sha256, sizeBytes });
+    }
+    artifacts.push({
+      path: file.path,
+      sha256,
+      sizeBytes,
+      ...targets,
+    });
+  }
+
+  const base: Omit<PlanV2Manifest, "planHash"> = {
+    protocol: PLAN_PROTOCOL_V2,
+    sourcePlanV1Hash,
+    chunkCount: readPositiveInteger(v1Plan.chunkCount, "chunkCount"),
+    totalFrames: readPositiveInteger(v1Plan.totalFrames, "totalFrames"),
+    fps: readV1PlanFps(dimensions),
+    width: readPositiveInteger(dimensions.width, "dimensions.width"),
+    height: readPositiveInteger(dimensions.height, "dimensions.height"),
+    format: readDistributedFormat(dimensions.format),
+    ffmpegVersion: readString(v1Plan.ffmpegVersion, "ffmpegVersion"),
+    producerVersion: readString(v1Plan.producerVersion, "producerVersion"),
+    limitations: { videoDependencyMode: videoDependencyPlan.mode },
+    artifacts,
+  };
+  return {
+    manifest: {
+      ...base,
+      planHash: computeManifestHash(base),
+    },
+    blobs: [...blobs.values()],
+  };
+}
+
+/** Convert a frozen v1 execution directory into the immutable v2 transport. */
+export function createPlanV2FromV1(planV1Dir: string, planV2Dir: string): PlanV2Result {
+  if (existsSync(planV2Dir)) {
+    throw new PlanV2IntegrityError(`output directory already exists: ${planV2Dir}`);
+  }
+  const publication = buildPlanV2Publication(planV1Dir);
   mkdirSync(dirname(planV2Dir), { recursive: true });
   const tempDir = mkdtempSync(join(dirname(planV2Dir), ".plan-v2-build-"));
   try {
-    const artifacts: PlanV2Artifact[] = [];
-    const dimensions = v1Plan.dimensions;
-    if (!isRecord(dimensions)) {
-      throw new PlanV2IntegrityError("v1 plan.json.dimensions must be an object");
+    for (const blob of publication.blobs) {
+      writeBlob(blob.sourcePath, planV2BlobPath(tempDir, blob.sha256));
     }
-    const videoDependencyPlan = buildVideoChunkDependencies(planV1Dir, dimensions);
-    for (const file of listFiles(planV1Dir)) {
-      const targets = artifactTargets(file.path, videoDependencyPlan.dependencies);
-      if (
-        file.path.startsWith("video-frames/") &&
-        targets.chunks !== "all" &&
-        targets.chunks.length === 0 &&
-        !targets.assembler
-      ) {
-        continue;
-      }
-      const sha256 = sha256File(file.absolutePath);
-      const sizeBytes = statSync(file.absolutePath).size;
-      writeBlob(file.absolutePath, blobPath(tempDir, sha256));
-      artifacts.push({
-        path: file.path,
-        sha256,
-        sizeBytes,
-        ...targets,
-      });
-    }
-
-    const base: Omit<PlanV2Manifest, "planHash"> = {
-      protocol: PLAN_PROTOCOL_V2,
-      sourcePlanV1Hash,
-      chunkCount: readPositiveInteger(v1Plan.chunkCount, "chunkCount"),
-      totalFrames: readPositiveInteger(v1Plan.totalFrames, "totalFrames"),
-      fps: readV1PlanFps(dimensions),
-      width: readPositiveInteger(dimensions.width, "dimensions.width"),
-      height: readPositiveInteger(dimensions.height, "dimensions.height"),
-      format: readDistributedFormat(dimensions.format),
-      ffmpegVersion: readString(v1Plan.ffmpegVersion, "ffmpegVersion"),
-      producerVersion: readString(v1Plan.producerVersion, "producerVersion"),
-      limitations: { videoDependencyMode: videoDependencyPlan.mode },
-      artifacts,
-    };
-    const manifest: PlanV2Manifest = {
-      ...base,
-      planHash: computeManifestHash(base),
-    };
-    writeFileSync(join(tempDir, "plan.json"), canonicalJsonStringify(manifest), "utf-8");
+    writeFileSync(
+      join(tempDir, "plan.json"),
+      canonicalJsonStringify(publication.manifest),
+      "utf-8",
+    );
     renameSync(tempDir, planV2Dir);
-    return resultFromManifest(planV2Dir, manifest);
+    return resultFromManifest(planV2Dir, publication.manifest);
   } catch (error) {
     rmSync(tempDir, { recursive: true, force: true });
     throw error;
+  }
+}
+
+export async function publishPlanV2FromV1(
+  planV1Dir: string,
+  publisher: PlanV2ArtifactPublisher,
+): Promise<PlanV2Manifest> {
+  try {
+    const publication = buildPlanV2Publication(planV1Dir);
+    const concurrency = 16;
+    for (let offset = 0; offset < publication.blobs.length; offset += concurrency) {
+      const batch = publication.blobs.slice(offset, offset + concurrency);
+      const results = await Promise.allSettled(batch.map((blob) => publisher.putBlob(blob)));
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+    }
+    await publisher.commitManifest(canonicalJsonStringify(publication.manifest));
+    return publication.manifest;
+  } catch (error) {
+    try {
+      await publisher.abort();
+    } catch {
+      // Preserve the publication failure; cleanup is best-effort.
+    }
+    throw error;
+  }
+}
+
+/**
+ * Plan into a storage-neutral publisher. Implementations may write to a local
+ * directory, S3, GCS, or another durable CAS. Only the planner's private
+ * staging directory is local; distributed workers receive adapter-owned
+ * manifest and artifact locators.
+ */
+export async function planV2WithPublisher(
+  projectDir: string,
+  config: DistributedRenderConfig,
+  publisher: PlanV2ArtifactPublisher,
+  options: Readonly<PlanV2WithPublisherOptions> = {},
+): Promise<PlanV2Manifest> {
+  const stagingRoot = mkdtempSync(join(options.stagingParentDir ?? tmpdir(), ".plan-v2-source-"));
+  try {
+    await plan(
+      projectDir,
+      { ...config, planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER },
+      stagingRoot,
+    );
+    return await publishPlanV2FromV1(stagingRoot, publisher);
+  } catch (error) {
+    try {
+      await publisher.abort();
+    } catch {
+      // Preserve the planning/publication failure; cleanup is best-effort.
+    }
+    throw error;
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
   }
 }
 
@@ -544,18 +624,11 @@ export async function planV2(
   if (existsSync(planV2Dir)) {
     throw new PlanV2IntegrityError(`output directory already exists: ${planV2Dir}`);
   }
-  mkdirSync(dirname(planV2Dir), { recursive: true });
-  const stagingDir = mkdtempSync(join(dirname(planV2Dir), ".plan-v2-source-"));
-  try {
-    await plan(
-      projectDir,
-      { ...config, planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER },
-      stagingDir,
-    );
-    return createPlanV2FromV1(stagingDir, planV2Dir);
-  } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
-  }
+  const publisher = new LocalPlanV2ArtifactPublisher(planV2Dir);
+  const manifest = await planV2WithPublisher(projectDir, config, publisher, {
+    stagingParentDir: dirname(planV2Dir),
+  });
+  return resultFromManifest(planV2Dir, manifest);
 }
 
 function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2Result {
@@ -747,7 +820,7 @@ export function listPlanV2ArtifactsForTarget(
 }
 
 function verifyBlob(planV2Dir: string, artifact: Readonly<PlanV2Artifact>): string {
-  const sourcePath = blobPath(planV2Dir, artifact.sha256);
+  const sourcePath = planV2BlobPath(planV2Dir, artifact.sha256);
   if (!existsSync(sourcePath)) {
     throw new PlanV2IntegrityError(`missing content-addressed artifact ${artifact.sha256}`);
   }

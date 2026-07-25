@@ -60,6 +60,8 @@ export {
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   planV2,
+  planV2WithPublisher,
+  publishPlanV2FromV1,
   readPlanV2Manifest,
   validatePlanV2MaterializedTarget,
   PLAN_V2_INTEGRITY_UNRECOVERABLE,
@@ -71,7 +73,14 @@ export {
   type PlanV2MaterializationResult,
   type PlanV2MaterializationTarget,
   type PlanV2Result,
+  type PlanV2WithPublisherOptions,
 } from "./services/distributed/planV2.js";
+export {
+  LocalPlanV2ArtifactPublisher,
+  type LocalPlanV2ArtifactPublisherOptions,
+  type PlanV2ArtifactPublisher,
+  type PlanV2PublishBlob,
+} from "./services/distributed/planV2Publisher.js";
 export { assembleV2, renderChunkV2 } from "./services/distributed/planV2Execution.js";
 
 // ── RenderChunk (Activity B) ────────────────────────────────────────────────

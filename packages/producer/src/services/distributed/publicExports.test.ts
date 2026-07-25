@@ -98,6 +98,9 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     expect(typeof distributedSubpath.getDistributedRenderCapabilities).toBe("function");
     expect(typeof distributedSubpath.readPlanProtocol).toBe("function");
     expect(typeof distributedSubpath.planV2).toBe("function");
+    expect(typeof distributedSubpath.planV2WithPublisher).toBe("function");
+    expect(typeof distributedSubpath.publishPlanV2FromV1).toBe("function");
+    expect(typeof distributedSubpath.LocalPlanV2ArtifactPublisher).toBe("function");
     expect(typeof distributedSubpath.renderChunkV2).toBe("function");
     expect(typeof distributedSubpath.assembleV2).toBe("function");
     expect(typeof distributedSubpath.readPlanV2Manifest).toBe("function");
@@ -122,6 +125,8 @@ describe("@hyperframes/producer (main entry)", () => {
     expect(producerIndex.PLAN_PROTOCOL_UNSUPPORTED).toBe("PLAN_PROTOCOL_UNSUPPORTED");
     expect(producerIndex.PLAN_V2_INTEGRITY_UNRECOVERABLE).toBe("PLAN_V2_INTEGRITY_UNRECOVERABLE");
     expect(typeof producerIndex.readPlanProtocol).toBe("function");
+    expect(typeof producerIndex.planV2WithPublisher).toBe("function");
+    expect(typeof producerIndex.publishPlanV2FromV1).toBe("function");
     expect(typeof producerIndex.PlanV2IntegrityError).toBe("function");
     expect(typeof producerIndex.PlanProtocolUnsupportedError).toBe("function");
   });

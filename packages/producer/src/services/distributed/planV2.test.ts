@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -20,9 +21,11 @@ import {
   materializePlanV2Target,
   PLAN_V2_INTEGRITY_UNRECOVERABLE,
   PlanV2IntegrityError,
+  publishPlanV2FromV1,
   readPlanV2Manifest,
   validatePlanV2MaterializedTarget,
 } from "./planV2.js";
+import { LocalPlanV2ArtifactPublisher, type PlanV2ArtifactPublisher } from "./planV2Publisher.js";
 
 const tempDirs: string[] = [];
 
@@ -396,6 +399,149 @@ describe("Plan v2 manifest", () => {
         join(root, "destination"),
       ),
     ).toThrow("missing content-addressed artifact");
+  });
+});
+
+describe("Plan v2 artifact publisher", () => {
+  it("publishes the manifest last and hard-links local immutable blobs", async () => {
+    const root = tempPath("hf-plan-v2-publisher-");
+    const v1 = createV1Plan(root, { audio: true });
+    const destination = join(root, "v2");
+    const publisher = new LocalPlanV2ArtifactPublisher(destination);
+    const manifest = await publishPlanV2FromV1(v1, publisher);
+    const artifact = manifest.artifacts.find(
+      (candidate) => candidate.path === "compiled/asset.txt",
+    );
+    if (artifact === undefined) throw new Error("test fixture is missing compiled/asset.txt");
+    const sourceStat = statSync(join(v1, artifact.path));
+    const blobStat = statSync(
+      join(destination, "artifacts", "sha256", artifact.sha256.slice(0, 2), artifact.sha256),
+    );
+
+    expect(readPlanV2Manifest(destination)).toEqual(manifest);
+    expect({ dev: blobStat.dev, ino: blobStat.ino }).toEqual({
+      dev: sourceStat.dev,
+      ino: sourceStat.ino,
+    });
+  });
+
+  it("falls back to an atomic copy when hard-linking is unavailable", async () => {
+    const root = tempPath("hf-plan-v2-publisher-copy-");
+    const v1 = createV1Plan(root);
+    const destination = join(root, "v2");
+    const publisher = new LocalPlanV2ArtifactPublisher(destination, {
+      linkFile() {
+        throw Object.assign(new Error("cross-device link"), { code: "EXDEV" });
+      },
+    });
+    const manifest = await publishPlanV2FromV1(v1, publisher);
+    const artifact = manifest.artifacts.find(
+      (candidate) => candidate.path === "compiled/asset.txt",
+    );
+    if (artifact === undefined) throw new Error("test fixture is missing compiled/asset.txt");
+    const sourcePath = join(v1, artifact.path);
+    const blobPath = join(
+      destination,
+      "artifacts",
+      "sha256",
+      artifact.sha256.slice(0, 2),
+      artifact.sha256,
+    );
+
+    expect(readFileSync(blobPath)).toEqual(readFileSync(sourcePath));
+    expect({ dev: statSync(blobPath).dev, ino: statSync(blobPath).ino }).not.toEqual({
+      dev: statSync(sourcePath).dev,
+      ino: statSync(sourcePath).ino,
+    });
+  });
+
+  it("produces byte-identical local CAS output through both publication paths", async () => {
+    const root = tempPath("hf-plan-v2-publisher-parity-");
+    const v1 = createV1Plan(root, { audio: true });
+    const directDir = join(root, "direct");
+    const publishedDir = join(root, "published");
+    createPlanV2FromV1(v1, directDir);
+    const publisher = new LocalPlanV2ArtifactPublisher(publishedDir);
+    const manifest = await publishPlanV2FromV1(v1, publisher);
+
+    expect(readFileSync(join(publishedDir, "plan.json"))).toEqual(
+      readFileSync(join(directDir, "plan.json")),
+    );
+    for (const artifact of manifest.artifacts) {
+      const suffix = join("artifacts", "sha256", artifact.sha256.slice(0, 2), artifact.sha256);
+      expect(readFileSync(join(publishedDir, suffix))).toEqual(
+        readFileSync(join(directDir, suffix)),
+      );
+    }
+  });
+
+  it("supports a remote publisher contract with no shared destination filesystem", async () => {
+    const root = tempPath("hf-plan-v2-remote-publisher-");
+    const v1 = createV1Plan(root, { audio: true });
+    const blobs = new Map<string, Buffer>();
+    let committedManifest: string | undefined;
+    const publisher: PlanV2ArtifactPublisher = {
+      async putBlob(blob) {
+        blobs.set(blob.sha256, readFileSync(blob.sourcePath));
+      },
+      async commitManifest(manifestBytes) {
+        committedManifest = manifestBytes;
+      },
+      async abort() {},
+    };
+
+    const manifest = await publishPlanV2FromV1(v1, publisher);
+    expect(committedManifest).toBe(canonicalJsonStringify(manifest));
+    expect(blobs.size).toBe(new Set(manifest.artifacts.map((artifact) => artifact.sha256)).size);
+    for (const artifact of manifest.artifacts) {
+      expect(blobs.get(artifact.sha256)?.byteLength).toBe(artifact.sizeBytes);
+    }
+  });
+
+  it("rejects malformed digests before constructing a local CAS path", async () => {
+    const root = tempPath("hf-plan-v2-publisher-digest-");
+    const sourcePath = join(root, "source");
+    writeFileSync(sourcePath, "bytes");
+    const publisher = new LocalPlanV2ArtifactPublisher(join(root, "v2"));
+
+    await expect(
+      publisher.putBlob({ sourcePath, sha256: "../escape", sizeBytes: 5 }),
+    ).rejects.toThrow("must be a lowercase sha256 digest");
+    await publisher.abort();
+  });
+
+  it("refuses to commit a manifest until every referenced blob is durable", async () => {
+    const root = tempPath("hf-plan-v2-publisher-incomplete-");
+    const publisher = new LocalPlanV2ArtifactPublisher(join(root, "v2"));
+    const digest = "a".repeat(64);
+
+    await expect(
+      publisher.commitManifest(JSON.stringify({ artifacts: [{ sha256: digest }] })),
+    ).rejects.toThrow("cannot commit manifest before referenced blob is durable");
+    await publisher.abort();
+  });
+
+  it("aborts without committing a manifest when a blob publish fails", async () => {
+    const root = tempPath("hf-plan-v2-publisher-failure-");
+    const calls: string[] = [];
+    const publisher: PlanV2ArtifactPublisher = {
+      async putBlob(blob) {
+        calls.push(`blob:${blob.sha256}`);
+        throw new Error("injected blob failure");
+      },
+      async commitManifest() {
+        calls.push("manifest");
+      },
+      async abort() {
+        calls.push("abort");
+      },
+    };
+
+    await expect(publishPlanV2FromV1(createV1Plan(root), publisher)).rejects.toThrow(
+      "injected blob failure",
+    );
+    expect(calls.at(-1)).toBe("abort");
+    expect(calls).not.toContain("manifest");
   });
 });
 
