@@ -207,7 +207,7 @@ async function mixTracks(
     const trimDuration = track.duration > 0 ? track.duration : totalDuration;
 
     filterParts.push(
-      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration}[a${i}]`,
+      `[${i}:a]atrim=0:${trimDuration},volume=${track.volume},adelay=${delayMs}|${delayMs},apad,atrim=0:${totalDuration}[a${i}]`,
     );
   });
 

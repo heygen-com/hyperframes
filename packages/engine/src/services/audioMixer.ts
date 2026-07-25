@@ -217,16 +217,25 @@ function boundedDetail(message: string, maxLength = 2_000): string {
 
 function probeFailure(message: string, elementId: string): AudioProcessingFailure {
   const unavailable = /(?:not found|ENOENT|spawn)/i.test(message);
-  const timedOut = /(?:timed?\s*out|timeout|deadline|inactivity|aborted)/i.test(message);
+  const cancelled = /(?:aborted|AbortError|cancelled|canceled)/i.test(message);
+  const timedOut = /(?:timed?\s*out|timeout|deadline|inactivity)/i.test(message);
   const invalidMedia =
     /(?:invalid data found|could not find codec parameters|moov atom not found|no audio stream)/i.test(
       message,
     );
   return {
     stage: "probe",
-    reason: invalidMedia ? "invalid_media" : unavailable ? "ffmpeg_unavailable" : "probe_failed",
-    owner: invalidMedia ? "user" : "system",
-    retryable: !invalidMedia && (unavailable || timedOut),
+    reason: cancelled
+      ? "cancelled"
+      : invalidMedia
+        ? "invalid_media"
+        : unavailable
+          ? "ffmpeg_unavailable"
+          : timedOut
+            ? "ffmpeg_timeout"
+            : "probe_failed",
+    owner: cancelled || invalidMedia ? "user" : "system",
+    retryable: !cancelled && !invalidMedia && (unavailable || timedOut),
     elementId,
     detail: boundedDetail(`Audio probe failed for element ${elementId}: ${message}`),
   };

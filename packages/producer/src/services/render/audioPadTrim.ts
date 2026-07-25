@@ -246,7 +246,7 @@ function concatFileLine(path: string): string {
   //      `///C:/…`, which Windows path parsing then rejects). Field-
   //      signal reports ts=1784169914 / 1784177061 / 1784177375 (all
   //      win32/x64 CLI 0.7.59; the last isolated the module's arg shape
-  //      vs a working manual `apad=whole_dur` command).
+  //      vs a working manual pad/trim command).
   //   2. Bare `/tmp/…` when the concat script was fed via `pipe:0` —
   //      FFmpeg's URL joiner resolves absolute POSIX paths against the
   //      base `pipe:` URL, producing `pipe:/tmp/…` which the demuxer

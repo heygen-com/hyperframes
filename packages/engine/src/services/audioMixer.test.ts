@@ -11,10 +11,16 @@ import { tmpdir } from "node:os";
 // filter content synchronously, while the file still exists, into an
 // index-aligned side array (rather than re-reading it from disk after
 // processCompositionAudio resolves, by which point it's already gone).
-const { runFfmpegMock, capturedFilterScripts } = vi.hoisted(() => {
+const { runFfmpegMock, capturedFilterScripts, extractAudioMetadataMock } = vi.hoisted(() => {
   const capturedFilterScripts: string[] = [];
   return {
     capturedFilterScripts,
+    extractAudioMetadataMock: vi.fn(async () => ({
+      durationSeconds: 2,
+      sampleRate: 48_000,
+      channels: 2,
+      audioCodec: "aac",
+    })),
     runFfmpegMock: vi.fn(async (args: string[]) => {
       const legacyIdx = args.indexOf("-filter_complex_script");
       const currentIdx = args.indexOf("-/filter_complex");
@@ -35,6 +41,11 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return { ...actual, runFfmpeg: runFfmpegMock };
 });
 
+vi.mock("../utils/ffprobe.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/ffprobe.js")>();
+  return { ...actual, extractAudioMetadata: extractAudioMetadataMock };
+});
+
 import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 describe("processCompositionAudio", () => {
@@ -42,10 +53,66 @@ describe("processCompositionAudio", () => {
 
   afterEach(() => {
     runFfmpegMock.mockClear();
+    extractAudioMetadataMock.mockReset();
+    extractAudioMetadataMock.mockResolvedValue({
+      durationSeconds: 2,
+      sampleRate: 48_000,
+      channels: 2,
+      audioCodec: "aac",
+    });
     capturedFilterScripts.length = 0;
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it.each([
+    {
+      message: "AbortError: ffprobe operation aborted",
+      reason: "cancelled",
+      owner: "user",
+      retryable: false,
+    },
+    {
+      message: "ffprobe timed out after inactivity deadline",
+      reason: "ffmpeg_timeout",
+      owner: "system",
+      retryable: true,
+    },
+  ] as const)("classifies probe failure '$reason' independently", async (expected) => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+    extractAudioMetadataMock.mockRejectedValueOnce(new Error(expected.message));
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 0,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "probe",
+        reason: expected.reason,
+        owner: expected.owner,
+        retryable: expected.retryable,
+      }),
+    ]);
   });
 
   it("preserves muted tracks and uses unity master gain by default", async () => {
