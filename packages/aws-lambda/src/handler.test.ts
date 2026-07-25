@@ -18,7 +18,12 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssembleResult, ChunkResult, PlanResult } from "@hyperframes/producer/distributed";
+import {
+  CURRENT_PLAN_PROTOCOL,
+  type AssembleResult,
+  type ChunkResult,
+  type PlanResult,
+} from "@hyperframes/producer/distributed";
 import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { handler, unwrapEvent } from "./handler.js";
 
@@ -157,6 +162,7 @@ describe("handler dispatch", () => {
         writeFileSync(join(planDir, "meta", "chunks.json"), "[]");
         return {
           planDir,
+          planProtocol: CURRENT_PLAN_PROTOCOL,
           planHash: "fakehash",
           chunkCount: 4,
           totalFrames: 720,
@@ -224,6 +230,7 @@ describe("handler dispatch", () => {
         writeFileSync(join(planDir, "meta", "chunks.json"), "[]");
         return {
           planDir,
+          planProtocol: CURRENT_PLAN_PROTOCOL,
           planHash: "fakehash",
           chunkCount: 1,
           totalFrames: 30,

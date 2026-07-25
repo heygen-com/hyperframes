@@ -584,10 +584,12 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   // non-retryable list.
   "FormatNotSupportedInDistributedError",
   "PlanTooLargeError",
+  "PlanProtocolUnsupportedError",
   "RenderChunkValidationError",
   "FFMPEG_VERSION_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
   "PLAN_TOO_LARGE",
+  "PLAN_PROTOCOL_UNSUPPORTED",
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "ChromeBinaryUnavailableError",

@@ -82,6 +82,25 @@ export {
 } from "./services/distributed/renderConfigValidation.js";
 export { hashProjectDir } from "./services/distributed/projectHash.js";
 
+// ── Plan protocol compatibility ────────────────────────────────────────────
+// Workers validate this descriptor before consuming layout-specific
+// artifacts. Missing descriptors remain compatible with legacy v1 plans.
+export {
+  CURRENT_PLAN_PROTOCOL,
+  DISTRIBUTED_RENDER_CAPABILITIES,
+  getDistributedRenderCapabilities,
+  PLAN_ARTIFACT_LAYOUT,
+  PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_UNSUPPORTED,
+  PLAN_SCHEMA_VERSION,
+  PlanProtocolUnsupportedError,
+  readPlanProtocol,
+  type DistributedRenderCapabilities,
+  type PlanProtocolConsumerCapabilities,
+  type PlanProtocolDescriptor,
+  type PlanProtocolV1Descriptor,
+} from "./services/distributed/planProtocol.js";
+
 // ── Format union ────────────────────────────────────────────────────────────
 // Canonical output-format type. The aws-lambda package re-exports it so
 // CLI / adopter SDKs can derive runtime allowlists from one source.

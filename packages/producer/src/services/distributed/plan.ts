@@ -79,6 +79,7 @@ import {
   readFfmpegVersion,
   readProducerVersion,
 } from "./shared.js";
+import { CURRENT_PLAN_PROTOCOL, type PlanProtocolV1Descriptor } from "./planProtocol.js";
 
 /**
  * Caller-supplied configuration for a distributed render. `fps`, `width`,
@@ -254,6 +255,7 @@ export interface DistributedRenderConfig {
  */
 export interface PlanResult {
   planDir: string;
+  planProtocol: Readonly<PlanProtocolV1Descriptor>;
   planHash: string;
   chunkCount: number;
   totalFrames: number;
@@ -1084,6 +1086,7 @@ export async function plan(
 
   return {
     planDir,
+    planProtocol: CURRENT_PLAN_PROTOCOL,
     planHash,
     chunkCount,
     totalFrames,

@@ -80,6 +80,7 @@ import {
   type PlanVideosJson,
   readFfmpegVersion,
 } from "./shared.js";
+import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocol } from "./planProtocol.js";
 
 /**
  * Non-retryable error codes raised when the planDir is structurally
@@ -229,6 +230,7 @@ export function rebuildExtractedFramesFromPlanDir(
 
 /** Plan-time JSON manifest written by `freezePlan`. */
 interface PlanJson {
+  protocol?: unknown;
   planHash: string;
   producerVersion: string;
   ffmpegVersion: string;
@@ -333,7 +335,15 @@ export async function renderChunk(
   const planJsonPath = join(planDir, "plan.json");
   const encoderJsonPath = join(planDir, "meta", "encoder.json");
   const chunksJsonPath = join(planDir, "meta", "chunks.json");
-  for (const required of [planJsonPath, encoderJsonPath, chunksJsonPath]) {
+  if (!existsSync(planJsonPath)) {
+    throw new RenderChunkValidationError(
+      MISSING_PLAN_ARTIFACT,
+      `[renderChunk] planDir is missing required artifact: ${planJsonPath}`,
+    );
+  }
+  const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJson;
+  readPlanProtocol(plan, DISTRIBUTED_RENDER_CAPABILITIES.roles.chunk);
+  for (const required of [encoderJsonPath, chunksJsonPath]) {
     if (!existsSync(required)) {
       throw new RenderChunkValidationError(
         MISSING_PLAN_ARTIFACT,
@@ -341,7 +351,6 @@ export async function renderChunk(
       );
     }
   }
-  const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJson;
   const encoder = JSON.parse(readFileSync(encoderJsonPath, "utf-8")) as LockedRenderConfig;
   const chunks = JSON.parse(readFileSync(chunksJsonPath, "utf-8")) as ChunkSliceJson[];
 

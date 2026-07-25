@@ -64,6 +64,8 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "PLAN_TOO_LARGE",
+  "PLAN_PROTOCOL_UNSUPPORTED",
+  "PlanProtocolUnsupportedError",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
   "ChromeBinaryUnavailableError",
 ]);

@@ -64,6 +64,34 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     expect(typeof distributedSubpath.applyRuntimeEnvSnapshot).toBe("function");
     expect(typeof distributedSubpath.readWebGlVendorInfoFromCanvas).toBe("function");
   });
+
+  it("exports the plan protocol contract", () => {
+    expect(distributedSubpath.PLAN_SCHEMA_VERSION).toBe(1);
+    expect(distributedSubpath.PLAN_ARTIFACT_LAYOUT).toBe("plan-dir-v1");
+    expect(distributedSubpath.PLAN_HASH_SCHEMA).toBe("hyperframes-plan-hash-v1");
+    expect(distributedSubpath.PLAN_PROTOCOL_UNSUPPORTED).toBe("PLAN_PROTOCOL_UNSUPPORTED");
+    expect(distributedSubpath.CURRENT_PLAN_PROTOCOL).toEqual({
+      schemaVersion: 1,
+      artifactLayout: "plan-dir-v1",
+      hashSchema: "hyperframes-plan-hash-v1",
+    });
+    expect(distributedSubpath.DISTRIBUTED_RENDER_CAPABILITIES.roles).toEqual({
+      planner: {
+        produces: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+      },
+      chunk: {
+        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+        acceptsLegacyV1WithoutDescriptor: true,
+      },
+      assembler: {
+        accepts: [distributedSubpath.CURRENT_PLAN_PROTOCOL],
+        acceptsLegacyV1WithoutDescriptor: true,
+      },
+    });
+    expect(typeof distributedSubpath.getDistributedRenderCapabilities).toBe("function");
+    expect(typeof distributedSubpath.readPlanProtocol).toBe("function");
+    expect(typeof distributedSubpath.PlanProtocolUnsupportedError).toBe("function");
+  });
 });
 
 describe("@hyperframes/producer (main entry)", () => {
@@ -71,6 +99,17 @@ describe("@hyperframes/producer (main entry)", () => {
     expect(typeof producerIndex.plan).toBe("function");
     expect(typeof producerIndex.renderChunk).toBe("function");
     expect(typeof producerIndex.assemble).toBe("function");
+  });
+
+  it("re-exports the plan protocol contract", () => {
+    expect(producerIndex.CURRENT_PLAN_PROTOCOL).toBe(distributedSubpath.CURRENT_PLAN_PROTOCOL);
+    expect(producerIndex.DISTRIBUTED_RENDER_CAPABILITIES).toBe(
+      distributedSubpath.DISTRIBUTED_RENDER_CAPABILITIES,
+    );
+    expect(typeof producerIndex.getDistributedRenderCapabilities).toBe("function");
+    expect(producerIndex.PLAN_PROTOCOL_UNSUPPORTED).toBe("PLAN_PROTOCOL_UNSUPPORTED");
+    expect(typeof producerIndex.readPlanProtocol).toBe("function");
+    expect(typeof producerIndex.PlanProtocolUnsupportedError).toBe("function");
   });
 
   it("preserves the existing in-process exports (executeRenderJob unchanged)", () => {

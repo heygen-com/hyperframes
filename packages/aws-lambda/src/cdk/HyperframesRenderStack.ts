@@ -200,6 +200,8 @@ export class HyperframesRenderStack extends Construct {
       "BROWSER_GPU_NOT_SOFTWARE",
       "FONT_FETCH_FAILED",
       "PLAN_TOO_LARGE",
+      "PLAN_PROTOCOL_UNSUPPORTED",
+      "PlanProtocolUnsupportedError",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
       "ChromeBinaryUnavailableError",
     ];
@@ -208,12 +210,16 @@ export class HyperframesRenderStack extends Construct {
       "PLAN_HASH_MISMATCH",
       "S3_URI_NOT_ALLOWED",
       "BROWSER_GPU_NOT_SOFTWARE",
+      "PLAN_PROTOCOL_UNSUPPORTED",
+      "PlanProtocolUnsupportedError",
       "ChromeBinaryUnavailableError",
     ];
     const NON_RETRYABLE_ASSEMBLE = [
       "FFMPEG_VERSION_MISMATCH",
       "PLAN_HASH_MISMATCH",
       "S3_URI_NOT_ALLOWED",
+      "PLAN_PROTOCOL_UNSUPPORTED",
+      "PlanProtocolUnsupportedError",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
       "ChromeBinaryUnavailableError",
     ];

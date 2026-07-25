@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join, relative, resolve } from "node:path";
 
 import type { Fps } from "@hyperframes/core";
+import { CURRENT_PLAN_PROTOCOL } from "../../distributed/planProtocol.js";
 import {
   canonicalJsonStringify,
   computePlanHash,
@@ -355,6 +356,7 @@ export async function freezePlan(input: FreezePlanInput): Promise<FreezePlanResu
   });
 
   const planJson = {
+    protocol: CURRENT_PLAN_PROTOCOL,
     planHash,
     producerVersion,
     ffmpegVersion: encoder.ffmpegVersion,

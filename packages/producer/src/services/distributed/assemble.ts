@@ -40,6 +40,7 @@ import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { formatExportFrameName } from "../../utils/paths.js";
 import { padOrTrimAudioToVideoFrameCount } from "../render/audioPadTrim.js";
 import type { ChunkSliceJson } from "../render/stages/freezePlan.js";
+import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocol } from "./planProtocol.js";
 import type { DistributedFormat } from "./shared.js";
 
 /**
@@ -56,6 +57,7 @@ export interface AssembleResult {
 
 /** Shape of the planDir's top-level `plan.json` — only the fields `assemble` needs. */
 interface PlanJsonForAssemble {
+  protocol?: unknown;
   planHash: string;
   totalFrames: number;
   hasAudio: boolean;
@@ -118,10 +120,11 @@ export async function assemble(
   if (!existsSync(planJsonPath)) {
     throw new Error(`[assemble] planDir missing plan.json: ${planJsonPath}`);
   }
+  const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJsonForAssemble;
+  readPlanProtocol(plan, DISTRIBUTED_RENDER_CAPABILITIES.roles.assembler);
   if (!existsSync(chunksJsonPath)) {
     throw new Error(`[assemble] planDir missing meta/chunks.json: ${chunksJsonPath}`);
   }
-  const plan = JSON.parse(readFileSync(planJsonPath, "utf-8")) as PlanJsonForAssemble;
   const chunks = JSON.parse(readFileSync(chunksJsonPath, "utf-8")) as ChunkSliceJson[];
   if (chunkPaths.length !== chunks.length) {
     throw new Error(

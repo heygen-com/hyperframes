@@ -18,7 +18,13 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssembleResult, ChunkResult, PlanResult } from "@hyperframes/producer/distributed";
+import {
+  CURRENT_PLAN_PROTOCOL,
+  PlanProtocolUnsupportedError,
+  type AssembleResult,
+  type ChunkResult,
+  type PlanResult,
+} from "@hyperframes/producer/distributed";
 import { asStorage, FakeGcs } from "./__fixtures__/fakeGcs.js";
 import type { AssembleEvent, CloudRunEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { createApp, dispatch, type HandlerDeps, unwrapEvent } from "./server.js";
@@ -56,6 +62,7 @@ async function seedPlanTar(gcs: FakeGcs, uri: string, planHash: string): Promise
 
 const planResult: PlanResult = {
   planDir: "(set at call time)",
+  planProtocol: CURRENT_PLAN_PROTOCOL,
   planHash: PLAN_HASH,
   chunkCount: 3,
   totalFrames: 90,
@@ -293,6 +300,34 @@ describe("createApp HTTP mapping", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("PLAN_HASH_MISMATCH");
+  });
+
+  it("returns 400 for an unsupported plan protocol", async () => {
+    const gcs = new FakeGcs();
+    await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
+    const app = createApp(
+      depsWith(gcs, {
+        renderChunk: async () => {
+          throw new PlanProtocolUnsupportedError("unsupported test protocol");
+        },
+      }),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        Action: "renderChunk",
+        PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
+        PlanHash: PLAN_HASH,
+        ChunkIndex: 0,
+        ChunkOutputGcsPrefix: "gs://b/renders/r1/",
+        Format: "mp4",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("PlanProtocolUnsupportedError");
   });
 
   it("returns 500 for a retryable/unknown error", async () => {

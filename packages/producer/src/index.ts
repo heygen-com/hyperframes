@@ -133,10 +133,23 @@ export {
 // separate subpath import.
 export {
   assemble,
+  CURRENT_PLAN_PROTOCOL,
+  DISTRIBUTED_RENDER_CAPABILITIES,
+  getDistributedRenderCapabilities,
+  PLAN_ARTIFACT_LAYOUT,
+  PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_UNSUPPORTED,
+  PLAN_SCHEMA_VERSION,
   plan,
+  PlanProtocolUnsupportedError,
+  readPlanProtocol,
   renderChunk,
   type AssembleResult,
   type ChunkResult,
+  type DistributedRenderCapabilities,
   type DistributedRenderConfig,
+  type PlanProtocolConsumerCapabilities,
+  type PlanProtocolDescriptor,
+  type PlanProtocolV1Descriptor,
   type PlanResult,
 } from "./distributed.js";
