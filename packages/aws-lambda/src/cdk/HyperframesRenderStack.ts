@@ -200,8 +200,10 @@ export class HyperframesRenderStack extends Construct {
       "BROWSER_GPU_NOT_SOFTWARE",
       "FONT_FETCH_FAILED",
       "PLAN_TOO_LARGE",
+      "PlanTooLargeError",
       "PLAN_PROTOCOL_UNSUPPORTED",
       "PlanProtocolUnsupportedError",
+      "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
       "ChromeBinaryUnavailableError",
     ];
@@ -210,8 +212,11 @@ export class HyperframesRenderStack extends Construct {
       "PLAN_HASH_MISMATCH",
       "S3_URI_NOT_ALLOWED",
       "BROWSER_GPU_NOT_SOFTWARE",
+      "PLAN_TOO_LARGE",
+      "PlanTooLargeError",
       "PLAN_PROTOCOL_UNSUPPORTED",
       "PlanProtocolUnsupportedError",
+      "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "ChromeBinaryUnavailableError",
     ];
     const NON_RETRYABLE_ASSEMBLE = [
@@ -221,6 +226,9 @@ export class HyperframesRenderStack extends Construct {
       "PLAN_PROTOCOL_UNSUPPORTED",
       "PlanProtocolUnsupportedError",
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
+      "PLAN_TOO_LARGE",
+      "PlanTooLargeError",
+      "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "ChromeBinaryUnavailableError",
     ];
 
@@ -233,6 +241,7 @@ export class HyperframesRenderStack extends Construct {
         "Config.$": "$.Config",
       }),
       resultSelector: {
+        PlanProtocol: "v1",
         "PlanS3Uri.$": "$.Payload.PlanS3Uri",
         "PlanHash.$": "$.Payload.PlanHash",
         "ChunkCount.$": "$.Payload.ChunkCount",
@@ -247,6 +256,35 @@ export class HyperframesRenderStack extends Construct {
       maxAttempts: 0,
     });
     plan.addRetry({
+      errors: ["States.ALL"],
+      interval: Duration.seconds(2),
+      maxAttempts: 4,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+    });
+
+    const planV2 = new tasks.LambdaInvoke(this, "PlanV2", {
+      lambdaFunction: this.renderFunction,
+      payload: sfn.TaskInput.fromObject({
+        Action: "plan",
+        PlanProtocol: "v2",
+        "ProjectS3Uri.$": "$.ProjectS3Uri",
+        "PlanOutputS3Prefix.$": "$.PlanOutputS3Prefix",
+        "Config.$": "$.Config",
+      }),
+      resultSelector: {
+        PlanProtocol: "v2",
+        "PlanV2ManifestS3Uri.$": "$.Payload.PlanV2ManifestS3Uri",
+        "PlanV2ArtifactS3Prefix.$": "$.Payload.PlanV2ArtifactS3Prefix",
+        "PlanHash.$": "$.Payload.PlanHash",
+        "ChunkCount.$": "$.Payload.ChunkCount",
+        "Format.$": "$.Payload.Format",
+        "HasAudio.$": "$.Payload.HasAudio",
+      },
+      resultPath: "$.Plan",
+    });
+    planV2.addRetry({ errors: NON_RETRYABLE_PLAN, maxAttempts: 0 });
+    planV2.addRetry({
       errors: ["States.ALL"],
       interval: Duration.seconds(2),
       maxAttempts: 4,
@@ -337,11 +375,100 @@ export class HyperframesRenderStack extends Construct {
       maxDelay: Duration.seconds(60),
     });
 
+    const renderChunkV2Task = new tasks.LambdaInvoke(this, "RenderChunkV2", {
+      lambdaFunction: this.renderFunction,
+      payload: sfn.TaskInput.fromObject({
+        Action: "renderChunk",
+        PlanProtocol: "v2",
+        "ChunkIndex.$": "$.ChunkIndex",
+        "PlanV2ManifestS3Uri.$": "$.PlanV2ManifestS3Uri",
+        "PlanV2ArtifactS3Prefix.$": "$.PlanV2ArtifactS3Prefix",
+        "PlanHash.$": "$.PlanHash",
+        "ChunkOutputS3Prefix.$": "$.ChunkOutputS3Prefix",
+        "Format.$": "$.Format",
+      }),
+      resultSelector: {
+        "ChunkS3Uri.$": "$.Payload.ChunkS3Uri",
+        "ChunkIndex.$": "$.Payload.ChunkIndex",
+        "Sha256.$": "$.Payload.Sha256",
+      },
+    });
+    renderChunkV2Task.addRetry({ errors: NON_RETRYABLE_CHUNK, maxAttempts: 0 });
+    renderChunkV2Task.addRetry({
+      errors: ["States.ALL"],
+      interval: Duration.seconds(2),
+      maxAttempts: 4,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+    });
+
+    const renderChunksV2 = new sfn.Map(this, "RenderChunksV2", {
+      itemsPath: "$.Iterator.ChunkIndexes",
+      itemSelector: {
+        "ChunkIndex.$": "$$.Map.Item.Value",
+        "PlanV2ManifestS3Uri.$": "$.Plan.PlanV2ManifestS3Uri",
+        "PlanV2ArtifactS3Prefix.$": "$.Plan.PlanV2ArtifactS3Prefix",
+        "PlanHash.$": "$.Plan.PlanHash",
+        "ChunkOutputS3Prefix.$": "$.PlanOutputS3Prefix",
+        "Format.$": "$.Plan.Format",
+      },
+      maxConcurrencyPath: "$.Plan.ChunkCount",
+      resultPath: "$.Chunks",
+    });
+    renderChunksV2.itemProcessor(renderChunkV2Task);
+
+    const assembleV2 = new tasks.LambdaInvoke(this, "AssembleV2", {
+      lambdaFunction: this.renderFunction,
+      payload: sfn.TaskInput.fromObject({
+        Action: "assemble",
+        PlanProtocol: "v2",
+        "PlanV2ManifestS3Uri.$": "$.Plan.PlanV2ManifestS3Uri",
+        "PlanV2ArtifactS3Prefix.$": "$.Plan.PlanV2ArtifactS3Prefix",
+        "PlanHash.$": "$.Plan.PlanHash",
+        "ChunkS3Uris.$": "$.Chunks[*].ChunkS3Uri",
+        AudioS3Uri: null,
+        "OutputS3Uri.$": "$.OutputS3Uri",
+        "Format.$": "$.Plan.Format",
+      }),
+      resultSelector: {
+        "OutputS3Uri.$": "$.Payload.OutputS3Uri",
+        "FramesEncoded.$": "$.Payload.FramesEncoded",
+        "FileSize.$": "$.Payload.FileSize",
+      },
+      resultPath: "$.Output",
+    });
+    assembleV2.addRetry({ errors: NON_RETRYABLE_ASSEMBLE, maxAttempts: 0 });
+    assembleV2.addRetry({
+      errors: ["States.ALL"],
+      interval: Duration.seconds(2),
+      maxAttempts: 4,
+      backoffRate: 2,
+      maxDelay: Duration.seconds(60),
+    });
+
+    const selectWorkerProtocol = new sfn.Choice(this, "SelectWorkerProtocol")
+      .when(
+        sfn.Condition.stringEquals("$.Plan.PlanProtocol", "v2"),
+        renderChunksV2.next(assembleV2),
+      )
+      .otherwise(renderChunks.next(assemble));
     const assertChunkCount = new sfn.Choice(this, "AssertChunkCount")
-      .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), renderChunks.next(assemble))
+      .when(sfn.Condition.numberGreaterThan("$.Plan.ChunkCount", 0), selectWorkerProtocol)
       .otherwise(planProducedZero);
 
-    return plan.next(buildChunkList).next(assertChunkCount);
+    plan.next(buildChunkList);
+    planV2.next(buildChunkList);
+    buildChunkList.next(assertChunkCount);
+
+    const unsupportedPlanProtocol = new sfn.Fail(this, "UnsupportedPlanProtocol", {
+      error: "PLAN_PROTOCOL_UNSUPPORTED",
+      cause: 'PlanProtocol must be "v1", "v2", or absent (defaults to v1).',
+    });
+    return new sfn.Choice(this, "SelectPlanProtocol")
+      .when(sfn.Condition.stringEquals("$.PlanProtocol", "v2"), planV2)
+      .when(sfn.Condition.stringEquals("$.PlanProtocol", "v1"), plan)
+      .when(sfn.Condition.isPresent("$.PlanProtocol"), unsupportedPlanProtocol)
+      .otherwise(plan);
   }
 }
 

@@ -25,6 +25,8 @@ export type { SerializableDistributedRenderConfig } from "@hyperframes/producer/
 
 /** Discriminator for the three roles the one Lambda image fulfills. */
 export type LambdaAction = "plan" | "renderChunk" | "assemble";
+/** Transport protocol selected for one complete distributed render. */
+export type LambdaPlanProtocol = "v1" | "v2";
 
 /**
  * Top-level shape of any event the handler may receive.
@@ -42,7 +44,7 @@ export type LambdaEvent =
   | { Input: LambdaEvent };
 
 /** Activity A: produce a planDir, upload to S3. */
-export interface PlanEvent {
+interface PlanEventBase {
   Action: "plan";
   /** S3 URI pointing at a `tar -czf`-archived project directory (`s3://bucket/key.tar.gz`). */
   ProjectS3Uri: string;
@@ -52,11 +54,21 @@ export interface PlanEvent {
   Config: SerializableDistributedRenderConfig;
 }
 
+/** Legacy/default plan transport. Absence is deliberately interpreted as v1. */
+export interface PlanV1Event extends PlanEventBase {
+  PlanProtocol?: "v1";
+}
+
+/** Explicit opt-in to the content-addressed v2 plan transport. */
+export interface PlanV2Event extends PlanEventBase {
+  PlanProtocol: "v2";
+}
+
+export type PlanEvent = PlanV1Event | PlanV2Event;
+
 /** Activity B: fetch planDir, render one chunk, upload result. */
-export interface RenderChunkEvent {
+interface RenderChunkEventBase {
   Action: "renderChunk";
-  /** S3 URI of the plan tar produced by a PlanEvent invocation. */
-  PlanS3Uri: string;
   /**
    * `PlanResult.planHash` from the Plan invocation. The handler verifies
    * this against the untarred planDir's `plan.json` before invoking the
@@ -73,11 +85,28 @@ export interface RenderChunkEvent {
   Format: DistributedFormat;
 }
 
-/** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
-export interface AssembleEvent {
-  Action: "assemble";
-  /** S3 URI of the plan tar produced by a PlanEvent invocation. */
+/** Legacy/default chunk event. */
+export interface RenderChunkV1Event extends RenderChunkEventBase {
+  PlanProtocol?: "v1";
+  /** S3 URI of the v1 plan tar produced by a PlanEvent invocation. */
   PlanS3Uri: string;
+}
+
+/**
+ * V2 chunk event. It intentionally cannot carry `PlanS3Uri`: the manifest
+ * describes the exact content-addressed artifacts needed by this chunk.
+ */
+export interface RenderChunkV2Event extends RenderChunkEventBase {
+  PlanProtocol: "v2";
+  PlanV2ManifestS3Uri: string;
+  PlanV2ArtifactS3Prefix: string;
+}
+
+export type RenderChunkEvent = RenderChunkV1Event | RenderChunkV2Event;
+
+/** Activity C: fetch planDir + all chunks + audio, assemble, upload final. */
+interface AssembleEventBase {
+  Action: "assemble";
   /** S3 URIs of every chunk, ordered by chunk index. Length must equal `chunkCount`. */
   ChunkS3Uris: string[];
   /** S3 URI of the planDir's `audio.aac` if the composition has audio; `null` otherwise. */
@@ -98,12 +127,28 @@ export interface AssembleEvent {
   Cfr?: boolean;
 }
 
+/** Legacy/default assemble event. */
+export interface AssembleV1Event extends AssembleEventBase {
+  PlanProtocol?: "v1";
+  /** S3 URI of the v1 plan tar produced by a PlanEvent invocation. */
+  PlanS3Uri: string;
+}
+
+/** V2 assemble event, scoped to manifest-declared assembler artifacts. */
+export interface AssembleV2Event extends AssembleEventBase {
+  PlanProtocol: "v2";
+  PlanV2ManifestS3Uri: string;
+  PlanV2ArtifactS3Prefix: string;
+  PlanHash: string;
+}
+
+export type AssembleEvent = AssembleV1Event | AssembleV2Event;
+
 // ── Result types — kept small to fit Step Functions history budgets ─────────
 
 /** Result of a `plan` invocation. Carries enough to size the Map(N) state. */
-export interface PlanLambdaResult {
+interface PlanLambdaResultBase {
   Action: "plan";
-  PlanS3Uri: string;
   PlanHash: string;
   ChunkCount: number;
   TotalFrames: number;
@@ -117,6 +162,20 @@ export interface PlanLambdaResult {
   ProducerVersion: string;
   DurationMs: number;
 }
+
+/** Existing v1 result. Kept unchanged for wire compatibility. */
+export interface PlanV1LambdaResult extends PlanLambdaResultBase {
+  PlanS3Uri: string;
+}
+
+/** V2 result. The two v2 locators are never aliases for `PlanS3Uri`. */
+export interface PlanV2LambdaResult extends PlanLambdaResultBase {
+  PlanProtocol: "v2";
+  PlanV2ManifestS3Uri: string;
+  PlanV2ArtifactS3Prefix: string;
+}
+
+export type PlanLambdaResult = PlanV1LambdaResult | PlanV2LambdaResult;
 
 /** Result of a `renderChunk` invocation. Sized ≤200 bytes per §2.4. */
 export interface RenderChunkLambdaResult {

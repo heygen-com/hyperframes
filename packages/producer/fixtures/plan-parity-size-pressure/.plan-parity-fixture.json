@@ -1,0 +1,13 @@
+{
+  "generatedAudio": {
+    "path": "assets/tone.wav",
+    "durationSeconds": 1,
+    "frequencyHz": 330,
+    "sampleRate": 48000
+  },
+  "generatedPressureFile": {
+    "path": "unused-pressure.bin",
+    "bytes": 65536,
+    "seed": 20260725
+  }
+}

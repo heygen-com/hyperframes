@@ -37,13 +37,33 @@ smoke flow; the SDK + CDK are the supported public surface for adopters.
                               │ pure functions over local paths
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ S3 bucket — plan tarball + per-chunk outputs + final mp4         │
+│ S3 bucket — v1 plan tar or v2 manifest/blobs + chunks + output  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 The handler downloads inputs from S3 into `/tmp`, calls the OSS primitive,
 uploads outputs back to S3, and returns a small JSON result that fits
 inside Step Functions' history budget (under 200 bytes per chunk).
+
+### Plan transport selection
+
+`renderToLambda` defaults to the existing monolithic v1 plan transport.
+Plan v2 is an explicit whole-render opt-in:
+
+```ts
+await renderToLambda({
+  // ...bucket, state machine, project, and config...
+  planProtocol: "v2",
+});
+```
+
+V2 never overloads `PlanS3Uri`. The planner returns
+`PlanV2ManifestS3Uri` and `PlanV2ArtifactS3Prefix`; chunk workers fetch
+only manifest-selected chunk artifacts, while the assembler fetches its
+own metadata and audio subset. Blobs are immutable SHA-256-addressed
+objects, verified on upload and download, and the manifest is published
+last. Unknown protocols and digest mismatches are terminal Step Functions
+errors. Omit the selector—or use `"v1"`—to retain the prior wire contract.
 
 ## Chrome runtime
 

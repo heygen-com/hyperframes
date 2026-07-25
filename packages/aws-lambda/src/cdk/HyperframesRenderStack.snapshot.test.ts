@@ -50,12 +50,18 @@ const EXPECTED_RESOURCE_COUNTS: Record<string, number> = {
 // `RenderChunk` task lives nested under `RenderChunks.Iterator.States`,
 // not at this level — we cover it separately in the contract test.
 const EXPECTED_STATE_NAMES = [
+  "SelectPlanProtocol",
   "Plan",
+  "PlanV2",
   "BuildChunkList",
   "AssertChunkCount",
+  "SelectWorkerProtocol",
   "RenderChunks",
+  "RenderChunksV2",
   "Assemble",
+  "AssembleV2",
   "PlanProducedZeroChunks",
+  "UnsupportedPlanProtocol",
 ];
 
 const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
@@ -64,8 +70,10 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "PLAN_TOO_LARGE",
+  "PlanTooLargeError",
   "PLAN_PROTOCOL_UNSUPPORTED",
   "PlanProtocolUnsupportedError",
+  "PLAN_ARTIFACT_DIGEST_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
   "ChromeBinaryUnavailableError",
 ]);
@@ -130,7 +138,7 @@ describe("HyperframesRenderStack — snapshot", () => {
 
   it("declares the state machine with the expected state names", () => {
     const { definition } = SYNTHED;
-    expect(definition.StartAt).toBe("Plan");
+    expect(definition.StartAt).toBe("SelectPlanProtocol");
     const actualStates = Object.keys(definition.States);
     expect(actualStates.sort()).toEqual([...EXPECTED_STATE_NAMES].sort());
   });
@@ -140,7 +148,7 @@ describe("HyperframesRenderStack — snapshot", () => {
     const collected = new Set<string>();
     // Plan + Assemble are top-level states; RenderChunk is nested inside
     // the Map's Iterator definition.
-    const topLevelStates = ["Plan", "Assemble"] as const;
+    const topLevelStates = ["Plan", "PlanV2", "Assemble", "AssembleV2"] as const;
     for (const stateName of topLevelStates) {
       collectNonRetryableErrors(definition.States[stateName], collected);
     }
@@ -152,6 +160,15 @@ describe("HyperframesRenderStack — snapshot", () => {
       | undefined;
     const innerStates = renderChunks?.Iterator?.States ?? renderChunks?.ItemProcessor?.States ?? {};
     collectNonRetryableErrors(innerStates.RenderChunk, collected);
+    const renderChunksV2 = definition.States.RenderChunksV2 as
+      | {
+          Iterator?: { States?: Record<string, unknown> };
+          ItemProcessor?: { States?: Record<string, unknown> };
+        }
+      | undefined;
+    const innerStatesV2 =
+      renderChunksV2?.Iterator?.States ?? renderChunksV2?.ItemProcessor?.States ?? {};
+    collectNonRetryableErrors(innerStatesV2.RenderChunkV2, collected);
 
     for (const expected of EXPECTED_NON_RETRYABLE_ERRORS) {
       expect({ error: expected, present: collected.has(expected) }).toEqual({
@@ -159,6 +176,25 @@ describe("HyperframesRenderStack — snapshot", () => {
         present: true,
       });
     }
+  });
+
+  it("keeps v1 and v2 locators disjoint across orchestration branches", () => {
+    const { definition } = SYNTHED;
+    const v1 = JSON.stringify({
+      plan: definition.States.Plan,
+      chunks: definition.States.RenderChunks,
+      assemble: definition.States.Assemble,
+    });
+    const v2 = JSON.stringify({
+      plan: definition.States.PlanV2,
+      chunks: definition.States.RenderChunksV2,
+      assemble: definition.States.AssembleV2,
+    });
+    expect(v1).toContain("PlanS3Uri");
+    expect(v1).not.toContain("PlanV2ManifestS3Uri");
+    expect(v2).toContain("PlanV2ManifestS3Uri");
+    expect(v2).toContain("PlanV2ArtifactS3Prefix");
+    expect(v2).not.toContain("PlanS3Uri");
   });
 });
 

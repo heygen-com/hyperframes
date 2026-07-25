@@ -201,6 +201,30 @@ describe("getRenderProgress", () => {
     expect(progress.endedAt).not.toBeNull();
   });
 
+  it("recognizes v2 chunk and assemble state names", async () => {
+    const sfn = new FakeSFN();
+    sfn.historyPages = [
+      [
+        stateEntered("PlanV2"),
+        lambdaSucceeded({ Action: "plan", TotalFrames: 30 }),
+        stateEntered("RenderChunkV2"),
+        lambdaSucceeded({ Action: "renderChunk", FramesEncoded: 30 }),
+        stateEntered("AssembleV2"),
+        lambdaSucceeded({ Action: "assemble", FramesEncoded: 30 }),
+        stateExited("AssembleV2", {
+          Output: { OutputS3Uri: "s3://b/v2.mp4", FileSize: 321 },
+        }),
+      ],
+    ];
+    const progress = await getRenderProgress({
+      executionArn: "arn",
+      sfn: sfn as unknown as SFNClient,
+    });
+    expect(progress.framesRendered).toBe(30);
+    expect(progress.overallProgress).toBe(1);
+    expect(progress.outputFile).toEqual({ s3Uri: "s3://b/v2.mp4", bytes: 321 });
+  });
+
   it("computes cost from observed billed duration", async () => {
     const sfn = new FakeSFN();
     sfn.historyPages = [[lambdaSucceeded({ Action: "plan", TotalFrames: 30, DurationMs: 6_000 })]];

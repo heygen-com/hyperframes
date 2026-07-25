@@ -47,6 +47,7 @@
     "build:hf-early-stub": "bun run scripts/build-hf-early-stub.ts",
     "typecheck": "tsc --noEmit",
     "parity:check": "tsx src/parity-harness.ts",
+    "parity:plans": "tsx src/plan-parity-harness.ts",
     "parity:fixtures": "tsx src/parity-fixtures.ts",
     "parity:fixtures:ci": "tsx src/parity-fixtures.ts",
     "parity:check:ci": "tsx src/parity-harness.ts --preview-url \"http://127.0.0.1:4173/minimal-wysiwyg.html\" --producer-url \"http://127.0.0.1:4173/minimal-wysiwyg.html?mode=producer\" --checkpoints \"0,0.5,1,1.5\" --allow-mismatch-ratio 0 --emulate-producer-swap true --artifacts-dir \".debug/parity-harness-ci\"",

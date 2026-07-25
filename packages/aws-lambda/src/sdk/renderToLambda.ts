@@ -20,7 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
 import type { S3Client } from "@aws-sdk/client-s3";
-import type { SerializableDistributedRenderConfig } from "../events.js";
+import type { LambdaPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
 import { deploySite, type SiteHandle } from "./deploySite.js";
@@ -37,6 +37,11 @@ export interface RenderToLambdaOptions {
   siteHandle?: SiteHandle;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
+  /**
+   * Distributed plan transport. Defaults to `"v1"` for backwards
+   * compatibility; v2 is always an explicit whole-render opt-in.
+   */
+  planProtocol?: LambdaPlanProtocol;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */
   bucketName: string;
   /** State machine ARN from the SAM stack output (`RenderStateMachineArn`). */
@@ -110,6 +115,7 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     PlanOutputS3Prefix: planOutputS3Prefix,
     OutputS3Uri: outputS3Uri,
     Config: opts.config,
+    PlanProtocol: opts.planProtocol ?? "v1",
   };
 
   // Reject oversize input client-side. Step Functions Standard caps the

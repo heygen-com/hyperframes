@@ -15,14 +15,17 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CURRENT_PLAN_PROTOCOL,
+  createPlanV2FromV1,
   type AssembleResult,
   type ChunkResult,
   type PlanResult,
+  type PlanV2Result,
 } from "@hyperframes/producer/distributed";
 import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
 import { handler, unwrapEvent } from "./handler.js";
@@ -42,9 +45,13 @@ class FakeS3Client {
   ops: FakeS3Op[] = [];
   // Map S3 URIs → byte buffers the fake serves.
   objects = new Map<string, Buffer>();
+  metadata = new Map<string, Record<string, string>>();
 
   // Methods called by the real S3 transport — minimal surface so the
   // handler's call sites don't need rewriting under test.
+  // This fake intentionally implements the complete S3 command matrix inline so
+  // handler tests exercise realistic state transitions without AWS.
+  // fallow-ignore-next-line complexity
   async send(command: unknown): Promise<unknown> {
     const op = command as { input: { Bucket: string; Key: string } } & {
       constructor: { name: string };
@@ -59,20 +66,38 @@ class FakeS3Client {
       const { Readable } = await import("node:stream");
       return { Body: Readable.from([bytes]) };
     }
+    if (cmdName === "HeadObjectCommand") {
+      const bytes = this.objects.get(uri);
+      if (!bytes) {
+        const error = new Error("not found") as Error & {
+          $metadata: { httpStatusCode: number };
+        };
+        error.name = "NotFound";
+        error.$metadata = { httpStatusCode: 404 };
+        throw error;
+      }
+      return {
+        ContentLength: bytes.length,
+        Metadata: this.metadata.get(uri),
+      };
+    }
     if (cmdName === "PutObjectCommand") {
       // Buffer the body so we can record how many bytes were uploaded; the
       // handler's hot path streams from disk, but tests pin the count.
       const body = (command as { input: { Body: NodeJS.ReadableStream | Buffer } }).input.Body;
-      let bytes = 0;
+      const chunks: Buffer[] = [];
       if (Buffer.isBuffer(body)) {
-        bytes = body.length;
+        chunks.push(body);
       } else if (body && typeof (body as NodeJS.ReadableStream).pipe === "function") {
         for await (const chunk of body as NodeJS.ReadableStream) {
-          bytes += (chunk as Buffer).length;
+          chunks.push(Buffer.from(chunk as Buffer));
         }
       }
-      this.ops.push({ kind: "upload", uri, bytes });
-      this.objects.set(uri, Buffer.alloc(bytes));
+      const bytes = Buffer.concat(chunks);
+      this.ops.push({ kind: "upload", uri, bytes: bytes.length });
+      this.objects.set(uri, bytes);
+      const metadata = (command as { input: { Metadata?: Record<string, string> } }).input.Metadata;
+      if (metadata) this.metadata.set(uri, metadata);
       return {};
     }
     return {};
@@ -213,6 +238,42 @@ describe("handler dispatch", () => {
     expect(
       s3.ops.some((o) => o.kind === "download" && o.uri === "s3://bucket/project.tar.gz"),
     ).toBe(true);
+  });
+
+  it("normalizes producer terminal codes to Step Functions error names", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+    s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+    const terminal = new Error("too large") as Error & { code: "PLAN_TOO_LARGE" };
+    terminal.name = "PlanTooLargeError";
+    terminal.code = "PLAN_TOO_LARGE";
+
+    await expect(
+      handler(
+        {
+          Action: "plan",
+          ProjectS3Uri: "s3://bucket/project.tar.gz",
+          PlanOutputS3Prefix: "s3://bucket/renders/terminal/",
+          Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+        },
+        {
+          s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+          primitives: {
+            plan: mock(async () => {
+              throw terminal;
+            }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
+            renderChunk: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+            assemble: mock(async () => {
+              throw new Error("unused");
+            }) as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+          },
+          tmpRoot,
+          skipChromeResolution: true,
+        },
+      ),
+    ).rejects.toMatchObject({ name: "PLAN_TOO_LARGE" });
   });
 
   it("plan honors a pre-set PRODUCER_HEADLESS_SHELL_PATH instead of re-resolving Chrome", async () => {
@@ -454,6 +515,119 @@ describe("handler dispatch", () => {
     expect(assembleMock).toHaveBeenCalledTimes(1);
   });
 
+  it("runs v2 plan → target-scoped chunk → assemble without a PlanS3Uri", async () => {
+    const tmpRoot = makeTmpRoot();
+    const s3 = new FakeS3Client();
+    s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
+
+    const planV2Mock = mock(
+      async (_projectDir: string, _config: unknown, planV2Dir: string): Promise<PlanV2Result> => {
+        const v1Dir = join(tmpRoot, `v1-${Date.now()}`);
+        makeMinimalV1PlanDir(v1Dir, true);
+        return createPlanV2FromV1(v1Dir, planV2Dir);
+      },
+    );
+    const renderChunkMock = mock(
+      async (planDir: string, _chunkIndex: number, outputPath: string): Promise<ChunkResult> => {
+        expect(existsSync(join(planDir, "audio.aac"))).toBe(false);
+        writeFileSync(outputPath, "V2-CHUNK");
+        return {
+          outputPath,
+          outputKind: "file",
+          framesEncoded: 30,
+          sha256: "b".repeat(64),
+          durationMs: 1,
+          perfPath: `${outputPath}.perf.json`,
+        };
+      },
+    );
+    const assembleMock = mock(
+      async (
+        _planDir: string,
+        _chunks: readonly string[],
+        audioPath: string | null,
+        outputPath: string,
+      ): Promise<AssembleResult> => {
+        expect(audioPath).not.toBeNull();
+        expect(readFileSync(audioPath as string, "utf-8")).toBe("AAC");
+        writeFileSync(outputPath, "V2-OUTPUT");
+        return { outputPath, durationMs: 1, framesEncoded: 30, fileSize: 9 };
+      },
+    );
+    const deps = {
+      s3: s3 as unknown as import("@aws-sdk/client-s3").S3Client,
+      primitives: {
+        plan: mock(async () => {
+          throw new Error("v1 plan should not be called");
+        }) as unknown as typeof import("@hyperframes/producer/distributed").plan,
+        planV2: planV2Mock as unknown as typeof import("@hyperframes/producer/distributed").planV2,
+        renderChunk:
+          renderChunkMock as unknown as typeof import("@hyperframes/producer/distributed").renderChunk,
+        assemble:
+          assembleMock as unknown as typeof import("@hyperframes/producer/distributed").assemble,
+      },
+      tmpRoot,
+      skipChromeResolution: true,
+    };
+
+    const planned = await handler(
+      {
+        Action: "plan",
+        PlanProtocol: "v2",
+        ProjectS3Uri: "s3://bucket/project.tar.gz",
+        PlanOutputS3Prefix: "s3://bucket/renders/v2/",
+        Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+      },
+      deps,
+    );
+    expect(planned).toMatchObject({
+      PlanProtocol: "v2",
+      PlanV2ManifestS3Uri: "s3://bucket/renders/v2/v2/manifest.json",
+      PlanV2ArtifactS3Prefix: "s3://bucket/renders/v2/v2/artifacts/sha256",
+    });
+    expect("PlanS3Uri" in planned).toBe(false);
+    if (!("PlanProtocol" in planned) || planned.PlanProtocol !== "v2") {
+      throw new Error("expected v2 plan result");
+    }
+
+    const beforeChunk = s3.ops.length;
+    const chunk = await handler(
+      {
+        Action: "renderChunk",
+        PlanProtocol: "v2",
+        PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
+        PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
+        PlanHash: planned.PlanHash,
+        ChunkIndex: 0,
+        ChunkOutputS3Prefix: "s3://bucket/renders/v2/",
+        Format: "mp4",
+      },
+      deps,
+    );
+    if (chunk.Action !== "renderChunk") throw new Error("expected chunk result");
+    const audioDigest = createHash("sha256").update("AAC").digest("hex");
+    const audioUri = `${planned.PlanV2ArtifactS3Prefix}/${audioDigest.slice(0, 2)}/${audioDigest}`;
+    expect(s3.ops.slice(beforeChunk).some((operation) => operation.uri === audioUri)).toBe(false);
+
+    await handler(
+      {
+        Action: "assemble",
+        PlanProtocol: "v2",
+        PlanV2ManifestS3Uri: planned.PlanV2ManifestS3Uri,
+        PlanV2ArtifactS3Prefix: planned.PlanV2ArtifactS3Prefix,
+        PlanHash: planned.PlanHash,
+        ChunkS3Uris: [chunk.ChunkS3Uri],
+        AudioS3Uri: null,
+        OutputS3Uri: "s3://bucket/renders/v2/output.mp4",
+        Format: "mp4",
+      },
+      deps,
+    );
+    expect(
+      s3.ops.some((operation) => operation.kind === "download" && operation.uri === audioUri),
+    ).toBe(true);
+  });
+
   it("rejects unknown actions", async () => {
     const tmpRoot = makeTmpRoot();
     await expect(
@@ -574,4 +748,25 @@ async function makeMinimalPlanTar(): Promise<Buffer> {
   const tarPath = join(dir, "out.tar.gz");
   await tar.create({ gzip: true, file: tarPath, cwd: dir }, ["plan.json", "meta"]);
   return rf(tarPath);
+}
+
+function makeMinimalV1PlanDir(dir: string, withAudio: boolean): void {
+  mkdirSync(join(dir, "meta"), { recursive: true });
+  writeFileSync(
+    join(dir, "plan.json"),
+    JSON.stringify({
+      planHash: "a".repeat(64),
+      chunkCount: 1,
+      totalFrames: 30,
+      dimensions: { fpsNum: 30, fpsDen: 1, width: 640, height: 360, format: "mp4" },
+      ffmpegVersion: "6.0",
+      producerVersion: "test",
+    }),
+  );
+  writeFileSync(
+    join(dir, "meta", "chunks.json"),
+    JSON.stringify([{ index: 0, startFrame: 0, endFrame: 30 }]),
+  );
+  writeFileSync(join(dir, "meta", "encoder.json"), "{}");
+  if (withAudio) writeFileSync(join(dir, "audio.aac"), "AAC");
 }

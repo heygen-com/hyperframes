@@ -75,6 +75,7 @@ aws stepfunctions start-execution \
   "ProjectS3Uri": "s3://${RENDER_BUCKET}/projects/my-project.tar.gz",
   "PlanOutputS3Prefix": "s3://${RENDER_BUCKET}/renders/$(date +%s)/",
   "OutputS3Uri": "s3://${RENDER_BUCKET}/output.mp4",
+  "PlanProtocol": "v1",
   "Config": {
     "fps": 30,
     "width": 1920,
@@ -91,6 +92,9 @@ EOF
 
 The Step Functions execution kicks off Plan, fans out RenderChunk via
 the Map state, and finally Assemble. Final mp4 lands at `OutputS3Uri`.
+`PlanProtocol` may be `"v1"` or `"v2"`; absent defaults to v1. V2 uses
+separate manifest and content-addressed artifact locators throughout the
+workflow and never places a v2 object in `PlanS3Uri`.
 
 ## Local invocation
 
@@ -119,13 +123,14 @@ the architecture works on a deployed Lambda — use the local smoke
 script:
 
 ```bash
-# All defaults (mp4-h264-sdr fixture, chunk counts 2/4/8, PSNR >= 40 dB).
+# Defaults use the fixture's meta.json minPsnr (30 dB for mp4-h264-sdr).
 ./scripts/smoke.sh
 
 # Customised:
 ./scripts/smoke.sh \
   --fixture mp4-h264-sdr \
   --chunk-counts 2,4,8,16 \
+  --plan-protocol both \
   --psnr-threshold 40 \
   --reserved-concurrency 8
 
@@ -141,7 +146,21 @@ per-run stack name, renders the fixture at each chunk count via the
 Step Functions state machine, PSNR-compares against the in-process
 baseline (which is git-LFS tracked under
 `packages/producer/tests/distributed/<fixture>/output/`), captures
-per-execution Step Functions history, and tears the stack down.
+per-execution Step Functions history, and tears the stack down. Use
+`--plan-protocol both` to run v1 and v2 through the same deployed Lambda
+package and baseline. Each v1/v2 pair is also gated directly on per-chunk
+hashes from Step Functions history, normalized decoded RGBA frame hashes,
+decoded 48 kHz stereo s16le PCM hashes and byte counts, normalized stream
+metadata, and duration. Encoded MP4 SHA equality is reported but is
+informational unless `--require-encoded-sha-equal` is set. The script
+assigns unique function/state-machine names, uses a
+dedicated temporary SAM artifact bucket, and removes render objects,
+retained buckets, the implicit Lambda log group, and deployment artifacts
+on teardown. Suspended-version buckets are purged in 1,000-entry batches,
+including concrete versions, null versions, and delete markers. It then
+verifies that the stack, both buckets, Lambda, state-machine, and both log
+groups are absent; an otherwise-successful run fails if cleanup cannot be
+proven.
 
 **Wall-clock methodology caveat (`eval.sh` only).** `eval.sh` reports a
 local-vs-Lambda "speedup" column. The local timing includes `bun` +
@@ -162,9 +181,11 @@ spend is roughly $0.10-$0.20 per pass before S3 transfer. Lower
 
 Outputs land under `<repo-root>/lambda-smoke-artifacts/`:
 
-- `results.json` — `chunkCount × wallClockMs × psnrAvgDb`
-- `renders/N<N>-output.mp4` — each rendered chunk count
-- `renders/N<N>-history.json` — full Step Functions execution history
+- `results.json` — `planProtocol × chunkCount × wallClockMs × psnrAvgDb`
+- `semantic-comparisons.json` — direct v1/v2 semantic gate results
+- `renders/<protocol>-N<N>-output.mp4` — each rendered variant
+- `renders/<protocol>-N<N>-history.json` — full Step Functions execution history
+- `renders/v1-v2-N<N>.*` — normalized frame hashes, ffprobe metadata, and comparison JSON
 
 Prerequisites: `aws` (v2), `sam` (≥ 1.100), `bun` (≥ 1.3), `ffmpeg`,
 `jq`, `zip`. AWS credentials come from the standard resolution chain

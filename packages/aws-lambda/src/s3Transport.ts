@@ -25,9 +25,15 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  type S3Client,
+} from "@aws-sdk/client-s3";
 import * as tar from "tar";
 
 /** Parsed `s3://bucket/key` URI. */
@@ -75,6 +81,26 @@ export async function downloadS3ObjectToFile(
   await pipeline(body, createWriteStream(destPath));
 }
 
+/** Download and verify an immutable plan-v2 artifact before materialization. */
+export async function downloadS3ObjectToFileVerified(
+  client: S3Client,
+  uri: string,
+  destPath: string,
+  expectedSha256: string,
+): Promise<void> {
+  assertSha256(expectedSha256);
+  await downloadS3ObjectToFile(client, uri, destPath);
+  const actual = await sha256File(destPath);
+  if (actual !== expectedSha256) {
+    rmSync(destPath, { force: true });
+    const error = new Error(
+      `[s3Transport] PLAN_ARTIFACT_DIGEST_MISMATCH: ${uri} expected ${expectedSha256}, got ${actual}`,
+    );
+    error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
+    throw error;
+  }
+}
+
 /**
  * Upload a local file's contents to an S3 URI using a streaming
  * `PutObjectCommand`. PutObject's 5 GB cap comfortably exceeds the
@@ -101,6 +127,94 @@ export async function uploadFileToS3(
       ContentType: contentType,
       ContentLength: size,
     }),
+  );
+}
+
+/**
+ * Upload one content-addressed plan-v2 artifact exactly once.
+ *
+ * Existing objects are reused only when their immutable digest metadata and
+ * byte length agree. A conflicting object is never overwritten: doing so
+ * could change a plan already being consumed by another chunk invocation.
+ */
+export async function uploadContentAddressedFileToS3(
+  client: S3Client,
+  localPath: string,
+  uri: string,
+  expectedSha256: string,
+  contentType?: string,
+): Promise<"uploaded" | "reused"> {
+  assertSha256(expectedSha256);
+  if (!existsSync(localPath)) {
+    throw new Error(`[s3Transport] upload source missing: ${localPath}`);
+  }
+  const actualSha256 = await sha256File(localPath);
+  if (actualSha256 !== expectedSha256) {
+    const error = new Error(
+      `[s3Transport] PLAN_ARTIFACT_DIGEST_MISMATCH: local artifact ${localPath} expected ${expectedSha256}, got ${actualSha256}`,
+    );
+    error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
+    throw error;
+  }
+
+  const { bucket, key } = parseS3Uri(uri);
+  const size = statSync(localPath).size;
+  try {
+    const existing = await client.send(
+      new HeadObjectCommand({ Bucket: bucket, Key: key, ChecksumMode: "ENABLED" }),
+    );
+    if (existing.ContentLength === size && existing.Metadata?.sha256 === expectedSha256) {
+      return "reused";
+    }
+    const error = new Error(
+      `[s3Transport] PLAN_ARTIFACT_DIGEST_MISMATCH: immutable object ${uri} already exists with different digest metadata or size`,
+    );
+    error.name = "PLAN_ARTIFACT_DIGEST_MISMATCH";
+    throw error;
+  } catch (error) {
+    if (!isS3NotFound(error)) throw error;
+  }
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: createReadStream(localPath),
+      ContentType: contentType,
+      ContentLength: size,
+      Metadata: { sha256: expectedSha256 },
+      ChecksumSHA256: Buffer.from(expectedSha256, "hex").toString("base64"),
+    }),
+  );
+  return "uploaded";
+}
+
+export async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
+}
+
+function assertSha256(value: string): void {
+  if (!/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error(
+      `[s3Transport] expected lowercase SHA-256 digest, got ${JSON.stringify(value)}`,
+    );
+  }
+}
+
+function isS3NotFound(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    name?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "NotFound" ||
+    candidate.name === "NoSuchKey" ||
+    candidate.$metadata?.httpStatusCode === 404
   );
 }
 

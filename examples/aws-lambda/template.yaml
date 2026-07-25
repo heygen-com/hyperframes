@@ -158,6 +158,7 @@ Resources:
           # Lambda's Node 22 runtime sets these by default; explicit for
           # clarity + so users can override during local SAM invoke.
           TMPDIR: /tmp
+          HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref RenderBucket
@@ -207,8 +208,27 @@ Resources:
         # compound into a multi-hour execution. The longest legitimate
         # render observed in PR 880's eval was ~3 minutes.
         TimeoutSeconds: 3600
-        StartAt: Plan
+        StartAt: SelectPlanProtocol
         States:
+          SelectPlanProtocol:
+            Type: Choice
+            Choices:
+              - Variable: $.PlanProtocol
+                StringEquals: v2
+                Next: PlanV2
+              - Variable: $.PlanProtocol
+                StringEquals: v1
+                Next: Plan
+              - Variable: $.PlanProtocol
+                IsPresent: true
+                Next: UnsupportedPlanProtocol
+            Default: Plan
+
+          UnsupportedPlanProtocol:
+            Type: Fail
+            Error: PLAN_PROTOCOL_UNSUPPORTED
+            Cause: PlanProtocol must be "v1", "v2", or absent (defaults to v1).
+
           Plan:
             Type: Task
             Resource: arn:aws:states:::lambda:invoke
@@ -220,6 +240,7 @@ Resources:
                 PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
                 Config.$: "$.Config"
             ResultSelector:
+              PlanProtocol: v1
               PlanS3Uri.$: "$.Payload.PlanS3Uri"
               PlanHash.$: "$.Payload.PlanHash"
               ChunkCount.$: "$.Payload.ChunkCount"
@@ -239,7 +260,53 @@ Resources:
                   - BROWSER_GPU_NOT_SOFTWARE
                   - FONT_FETCH_FAILED
                   - PLAN_TOO_LARGE
+                  - PlanTooLargeError
+                  - PLAN_PROTOCOL_UNSUPPORTED
+                  - PlanProtocolUnsupportedError
+                  - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                MaxAttempts: 0
+              - ErrorEquals: [States.ALL]
+                IntervalSeconds: 2
+                MaxAttempts: 4
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+            Next: BuildChunkList
+
+          PlanV2:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt RenderFunction.Arn
+              Payload:
+                Action: plan
+                PlanProtocol: v2
+                ProjectS3Uri.$: "$.ProjectS3Uri"
+                PlanOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+                Config.$: "$.Config"
+            ResultSelector:
+              PlanProtocol: v2
+              PlanV2ManifestS3Uri.$: "$.Payload.PlanV2ManifestS3Uri"
+              PlanV2ArtifactS3Prefix.$: "$.Payload.PlanV2ArtifactS3Prefix"
+              PlanHash.$: "$.Payload.PlanHash"
+              ChunkCount.$: "$.Payload.ChunkCount"
+              Format.$: "$.Payload.Format"
+              HasAudio.$: "$.Payload.HasAudio"
+            ResultPath: $.Plan
+            Retry:
+              - ErrorEquals:
+                  - FFMPEG_VERSION_MISMATCH
+                  - PLAN_HASH_MISMATCH
+                  - S3_URI_NOT_ALLOWED
+                  - BROWSER_GPU_NOT_SOFTWARE
+                  - FONT_FETCH_FAILED
+                  - PLAN_TOO_LARGE
+                  - PlanTooLargeError
+                  - PLAN_PROTOCOL_UNSUPPORTED
+                  - PlanProtocolUnsupportedError
+                  - PLAN_ARTIFACT_DIGEST_MISMATCH
+                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                  - ChromeBinaryUnavailableError
                 MaxAttempts: 0
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2
@@ -269,13 +336,21 @@ Resources:
             Choices:
               - Variable: $.Plan.ChunkCount
                 NumericGreaterThan: 0
-                Next: RenderChunks
+                Next: SelectWorkerProtocol
             Default: PlanProducedZeroChunks
 
           PlanProducedZeroChunks:
             Type: Fail
             Error: PLAN_TOO_LARGE
             Cause: Plan returned ChunkCount=0 — non-retryable producer-side invariant violation.
+
+          SelectWorkerProtocol:
+            Type: Choice
+            Choices:
+              - Variable: $.Plan.PlanProtocol
+                StringEquals: v2
+                Next: RenderChunksV2
+            Default: RenderChunks
 
           RenderChunks:
             Type: Map
@@ -320,6 +395,11 @@ Resources:
                         - FFMPEG_VERSION_MISMATCH
                         - PLAN_HASH_MISMATCH
                         - BROWSER_GPU_NOT_SOFTWARE
+                        - PLAN_TOO_LARGE
+                        - PlanTooLargeError
+                        - PLAN_PROTOCOL_UNSUPPORTED
+                        - PlanProtocolUnsupportedError
+                        - PLAN_ARTIFACT_DIGEST_MISMATCH
                       MaxAttempts: 0
                     - ErrorEquals: [States.ALL]
                       IntervalSeconds: 2
@@ -356,6 +436,107 @@ Resources:
                   - FFMPEG_VERSION_MISMATCH
                   - PLAN_HASH_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                  - PLAN_TOO_LARGE
+                  - PlanTooLargeError
+                  - PLAN_PROTOCOL_UNSUPPORTED
+                  - PlanProtocolUnsupportedError
+                  - PLAN_ARTIFACT_DIGEST_MISMATCH
+                MaxAttempts: 0
+              - ErrorEquals: [States.ALL]
+                IntervalSeconds: 2
+                MaxAttempts: 4
+                BackoffRate: 2
+                MaxDelaySeconds: 60
+            End: true
+
+          RenderChunksV2:
+            Type: Map
+            ItemsPath: $.Iterator.ChunkIndexes
+            ItemSelector:
+              ChunkIndex.$: "$$.Map.Item.Value"
+              PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
+              PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
+              PlanHash.$: "$.Plan.PlanHash"
+              ChunkOutputS3Prefix.$: "$.PlanOutputS3Prefix"
+              Format.$: "$.Plan.Format"
+            MaxConcurrencyPath: $.Plan.ChunkCount
+            ResultPath: $.Chunks
+            ItemProcessor:
+              ProcessorConfig:
+                Mode: INLINE
+              StartAt: RenderChunkV2
+              States:
+                RenderChunkV2:
+                  Type: Task
+                  Resource: arn:aws:states:::lambda:invoke
+                  Parameters:
+                    FunctionName: !GetAtt RenderFunction.Arn
+                    Payload:
+                      Action: renderChunk
+                      PlanProtocol: v2
+                      ChunkIndex.$: "$.ChunkIndex"
+                      PlanV2ManifestS3Uri.$: "$.PlanV2ManifestS3Uri"
+                      PlanV2ArtifactS3Prefix.$: "$.PlanV2ArtifactS3Prefix"
+                      PlanHash.$: "$.PlanHash"
+                      ChunkOutputS3Prefix.$: "$.ChunkOutputS3Prefix"
+                      Format.$: "$.Format"
+                  ResultSelector:
+                    ChunkS3Uri.$: "$.Payload.ChunkS3Uri"
+                    ChunkIndex.$: "$.Payload.ChunkIndex"
+                    Sha256.$: "$.Payload.Sha256"
+                  Retry:
+                    - ErrorEquals:
+                        - FFMPEG_VERSION_MISMATCH
+                        - PLAN_HASH_MISMATCH
+                        - S3_URI_NOT_ALLOWED
+                        - BROWSER_GPU_NOT_SOFTWARE
+                        - PLAN_TOO_LARGE
+                        - PlanTooLargeError
+                        - PLAN_PROTOCOL_UNSUPPORTED
+                        - PlanProtocolUnsupportedError
+                        - PLAN_ARTIFACT_DIGEST_MISMATCH
+                        - ChromeBinaryUnavailableError
+                      MaxAttempts: 0
+                    - ErrorEquals: [States.ALL]
+                      IntervalSeconds: 2
+                      MaxAttempts: 4
+                      BackoffRate: 2
+                      MaxDelaySeconds: 60
+                  End: true
+            Next: AssembleV2
+
+          AssembleV2:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt RenderFunction.Arn
+              Payload:
+                Action: assemble
+                PlanProtocol: v2
+                PlanV2ManifestS3Uri.$: "$.Plan.PlanV2ManifestS3Uri"
+                PlanV2ArtifactS3Prefix.$: "$.Plan.PlanV2ArtifactS3Prefix"
+                PlanHash.$: "$.Plan.PlanHash"
+                ChunkS3Uris.$: "$.Chunks[*].ChunkS3Uri"
+                AudioS3Uri: null
+                OutputS3Uri.$: "$.OutputS3Uri"
+                Format.$: "$.Plan.Format"
+            ResultSelector:
+              OutputS3Uri.$: "$.Payload.OutputS3Uri"
+              FramesEncoded.$: "$.Payload.FramesEncoded"
+              FileSize.$: "$.Payload.FileSize"
+            ResultPath: $.Output
+            Retry:
+              - ErrorEquals:
+                  - FFMPEG_VERSION_MISMATCH
+                  - PLAN_HASH_MISMATCH
+                  - S3_URI_NOT_ALLOWED
+                  - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
+                  - PLAN_TOO_LARGE
+                  - PlanTooLargeError
+                  - PLAN_PROTOCOL_UNSUPPORTED
+                  - PlanProtocolUnsupportedError
+                  - PLAN_ARTIFACT_DIGEST_MISMATCH
+                  - ChromeBinaryUnavailableError
                 MaxAttempts: 0
               - ErrorEquals: [States.ALL]
                 IntervalSeconds: 2

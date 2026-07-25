@@ -251,7 +251,7 @@ function summarizeHistory(events: HistoryEvent[], memoryMb: number): HistorySumm
         // ResultSelector pulls FileSize + OutputS3Uri from the Lambda
         // result, so we re-extract them here from the state exit's
         // own output rather than relying on the Lambda payload.
-        if (ev.stateExitedEventDetails?.name === "Assemble") {
+        if (isAssembleState(ev.stateExitedEventDetails?.name)) {
           assembleComplete = true;
           const exitPayload = parseJson(ev.stateExitedEventDetails?.output);
           if (exitPayload && typeof exitPayload === "object") {
@@ -350,10 +350,18 @@ function applyPayloadFrameCounts(
   currentLambdaState: string | null,
   bump: (delta: number) => void,
 ): void {
-  if (currentLambdaState !== "RenderChunk") return;
+  if (!isRenderChunkState(currentLambdaState)) return;
   if (!payload || typeof payload !== "object") return;
   const obj = payload as Record<string, unknown>;
   if (typeof obj.FramesEncoded === "number") bump(obj.FramesEncoded);
+}
+
+function isRenderChunkState(name: string | null | undefined): boolean {
+  return name === "RenderChunk" || name === "RenderChunkV2";
+}
+
+function isAssembleState(name: string | null | undefined): boolean {
+  return name === "Assemble" || name === "AssembleV2";
 }
 
 /**
