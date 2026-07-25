@@ -109,10 +109,7 @@
     return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
   }
 
-  // Truncation (content clipped away by an overflow-hidden box) has its own
-  // explicit opt-out on top of the shared allow-overflow/bleed flags, so an
-  // author can green-light an intentional ellipsis/masked reel without also
-  // silencing bbox-overflow reporting.
+  // Explicit truncation opt-out on top of allow-overflow/bleed, so an author can green-light an intentional ellipsis without silencing bbox-overflow reporting.
   function hasTruncationOptOut(element) {
     return hasTextClipOptOut(element) || !!element.closest("[data-layout-allow-truncation]");
   }
@@ -550,13 +547,7 @@
 
   const TRUNCATION_MAX_FINDINGS = 40;
 
-  // The clipping box that actually swallows `element`'s overflowing content:
-  // the element itself if it clips, otherwise the nearest clipping ancestor
-  // BELOW the composition root. Root-level clipping is canvas_overflow's job
-  // (a box extending past the canvas edge is a bbox breach, not content-box
-  // truncation), so the walk stops before the root. Returns null when nothing
-  // clips — that overflow is harmlessly visible and already covered by the
-  // bbox-based overflow checks.
+  // The clipping box that swallows element's overflow: itself if it clips, else the nearest clipping ancestor below root (root-level clipping is canvas_overflow's job); null when nothing clips.
   function truncationClipper(element, root) {
     if (clipsOverflow(getComputedStyle(element))) return element;
     for (
@@ -599,12 +590,7 @@
     };
   }
 
-  // scrollWidth/clientWidth truncation detector. getBoundingClientRect returns
-  // the already-clipped box for text cut off by an overflow:hidden ancestor, so
-  // the bbox overflow checks (text_box_overflow/container_overflow) see no
-  // spill and the lost content is invisible to them. scrollWidth > clientWidth
-  // (or scrollHeight > clientHeight) exposes it: the content box is larger than
-  // the visible box, and a clipping element hides the difference.
+  // scrollWidth/clientWidth truncation detector: getBoundingClientRect returns the already-clipped box so bbox checks miss text cut off by an overflow:hidden ancestor; scrollWidth/Height > client exposes it.
   function textTruncationIssues(root, time, tolerance) {
     const candidates = [];
     for (const element of Array.from(root.querySelectorAll("*"))) {
@@ -612,24 +598,19 @@
       if (element.closest("svg")) continue;
       if (!isVisibleElement(element, 0.05)) continue;
       if (hasTruncationOptOut(element)) continue;
-      // Must carry visible text (own or from descendants) — skip pure
-      // containers, spacers and media wrappers.
+      // Must carry visible text (own or descendants) — skip pure containers, spacers and media wrappers.
       if (!textContentFor(element, false)) continue;
       const overflowX = element.scrollWidth - element.clientWidth;
       const overflowY = element.scrollHeight - element.clientHeight;
       if (overflowX <= tolerance && overflowY <= tolerance) continue;
       const clipper = truncationClipper(element, root);
       if (!clipper) continue;
-      // An element that clips its OWN overflow and directly owns its text is
-      // already reported as `clipped_text` (error) — don't double-report it.
+      // An element that clips its own overflow and owns its text is already reported as `clipped_text` — don't double-report.
       if (clipper === element && hasOwnTextCandidate(element, true)) continue;
       candidates.push({ element, clipper, overflowX, overflowY });
     }
 
-    // Report the innermost truncated box per nesting chain: a clipping
-    // container and the text child that overflows it both trip the check, so
-    // drop any candidate that contains another candidate — the child anchors
-    // the defect tightest and avoids duplicate findings on one clip.
+    // Report the innermost truncated box per nesting chain — drop any candidate containing another so one clip yields one finding.
     const elements = candidates.map((candidate) => candidate.element);
     const innermost = candidates.filter(
       (candidate) =>

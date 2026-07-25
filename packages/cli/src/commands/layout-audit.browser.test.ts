@@ -311,9 +311,7 @@ describe("layout-audit.browser", () => {
     expect(parentOverflow).toBeUndefined();
   });
 
-  // text_truncated: content clipped away by an overflow-hidden ANCESTOR. The
-  // bbox overflow checks miss this because getBoundingClientRect returns the
-  // already-clipped box — only scrollWidth > clientWidth exposes the lost text.
+  // text_truncated: content clipped by an overflow-hidden ancestor — bbox checks miss it (clipped box shows no spill), only scrollWidth > clientWidth exposes it.
   function defineScrollMetrics(
     id: string,
     metrics: {
@@ -445,8 +443,7 @@ describe("layout-audit.browser", () => {
     });
     installAuditScript();
 
-    // #window has default overflow:visible — nothing clips, so the overflow is
-    // painted visibly and belongs to the bbox overflow checks, not truncation.
+    // #window has default overflow:visible — nothing clips, so this belongs to bbox overflow checks, not truncation.
     expect(runAudit().some((issue) => issue.code === "text_truncated")).toBe(false);
   });
 

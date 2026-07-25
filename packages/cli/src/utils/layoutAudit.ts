@@ -12,9 +12,7 @@ export type LayoutOverflow = Partial<Record<"left" | "right" | "top" | "bottom",
 export type LayoutIssueCode =
   | "text_box_overflow"
   | "clipped_text"
-  // Content clipped away by an overflow-hidden ancestor: scrollWidth/scrollHeight
-  // exceeds the visible client box even though the (already-clipped) bbox shows
-  // no spill — the gap the bbox-based overflow checks structurally miss.
+  // Content clipped by an overflow-hidden ancestor: scrollWidth/Height exceeds the visible client box though the clipped bbox shows no spill — the gap bbox checks miss.
   | "text_truncated"
   | "canvas_overflow"
   | "container_overflow"
