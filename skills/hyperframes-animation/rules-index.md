@@ -8,7 +8,7 @@ Stated once here so individual rules don't repeat it. Every recipe in `rules/`:
 
 - runs on ONE **paused** GSAP timeline registered on `window.__timelines` (never autoplay, never a second timeline);
 - is **seek-safe both directions**: `fromTo` with explicit from-states (t=0 correct under seek; `immediateRender: false` when re-owning a target), absolute values — never relative `+=` tweens; state readable as a pure function of timeline time, no mutable trackers;
-- is **deterministic**: no `Math.random()`, no `Date.now()` — index-derived pseudo-random and baked schedules only; finite repeats, never `repeat: -1`;
+- is **deterministic**: no `Math.random()`, no `Date.now()` — index-derived pseudo-random and baked schedules only; finite repeats (`repeat: -1` only under a finite root `data-duration`);
 - animates **transforms and paint-only properties** — `width`/`height`/`top`/`left` tweens are forbidden (use scale/translate proxies, masks, or `anchored-layout-expand`);
 - caps group staggers so an arrival reads as one beat (`items × stagger ≤ ~0.5s`);
 - puts **no CSS `transition`** on animated elements (they interpolate independently of seek and flicker) and hints compositors with `will-change: transform` where many tweens run at once;
