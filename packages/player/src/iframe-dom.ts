@@ -12,7 +12,7 @@ let _sharedSheet: CSSStyleSheet | null = null;
  * browser supports it, falling back to a `<style>` element injection. The sheet
  * is cached on first creation and reused across all player instances.
  */
-export function adoptShadowStyles(shadow: ShadowRoot, cssText: string): void {
+function adoptShadowStyles(shadow: ShadowRoot, cssText: string): void {
   if (typeof CSSStyleSheet !== "undefined") {
     try {
       if (!_sharedSheet) {
@@ -36,7 +36,7 @@ export function adoptShadowStyles(shadow: ShadowRoot, cssText: string): void {
  * attach them to the shadow root and track references without inlining the
  * boilerplate.
  */
-export function createCompositionIframe(): {
+function createCompositionIframe(): {
   container: HTMLDivElement;
   iframe: HTMLIFrameElement;
 } {
@@ -52,6 +52,54 @@ export function createCompositionIframe(): {
 
   container.appendChild(iframe);
   return { container, iframe };
+}
+
+export interface PlayerShadowDomSetup {
+  shadow: ShadowRoot;
+  container: HTMLDivElement;
+  iframe: HTMLIFrameElement;
+  poster: HTMLImageElement | null;
+  /** True when a server-rendered declarative shadow root was reused. */
+  adopted: boolean;
+}
+
+/**
+ * Build the player's shadow DOM — or ADOPT a server-rendered one.
+ *
+ * When the page was server-rendered with a `<template shadowrootmode="open">`
+ * (see `ssr.ts`), the browser has already attached a shadow root containing
+ * the container/iframe (likely mid-load) before this element upgrades.
+ * Rebuilding would throw that work away and reload the composition, so when
+ * the expected structure is present it is adopted as-is. A foreign or
+ * malformed declarative root is cleared and rebuilt imperatively.
+ */
+export function setupPlayerShadowDom(host: HTMLElement, cssText: string): PlayerShadowDomSetup {
+  const declarative = host.shadowRoot;
+  if (declarative) {
+    const container = declarative.querySelector<HTMLDivElement>("div.hfp-container");
+    const iframe = container?.querySelector<HTMLIFrameElement>("iframe.hfp-iframe") ?? null;
+    if (container && iframe) {
+      // The serialized <style data-hfp-ssr> already carries PLAYER_STYLES
+      // (adoptedStyleSheets cannot be serialized); only adopt the shared
+      // sheet when the SSR payload somehow lacked it.
+      if (!declarative.querySelector("style[data-hfp-ssr]")) {
+        adoptShadowStyles(declarative, cssText);
+      }
+      return {
+        shadow: declarative,
+        container,
+        iframe,
+        poster: declarative.querySelector<HTMLImageElement>("img.hfp-poster"),
+        adopted: true,
+      };
+    }
+    declarative.replaceChildren();
+  }
+  const shadow = declarative ?? host.attachShadow({ mode: "open" });
+  adoptShadowStyles(shadow, cssText);
+  const { container, iframe } = createCompositionIframe();
+  shadow.appendChild(container);
+  return { shadow, container, iframe, poster: null, adopted: false };
 }
 
 /**

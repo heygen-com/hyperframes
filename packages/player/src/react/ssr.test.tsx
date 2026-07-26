@@ -51,4 +51,31 @@ describe("HyperframesPlayer SSR", () => {
     expect(consoleError).not.toHaveBeenCalled();
     expect(consoleWarn).not.toHaveBeenCalled();
   });
+
+  it("with ssr, emits a declarative shadow DOM template around the composition iframe", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const html = renderToString(
+      <HyperframesPlayer
+        ssr
+        src="./comp/index.html"
+        poster="./poster.jpg"
+        width={1280}
+        height={720}
+        className="hero"
+      />,
+    );
+
+    expect(html).toContain('<template shadowrootmode="open">');
+    expect(html).toContain('<iframe class="hfp-iframe"');
+    expect(html).toContain('src="./comp/index.html"');
+    expect(html).toContain('<img class="hfp-poster" src="./poster.jpg">');
+    expect(html).toContain("<style data-hfp-ssr>");
+    // String attributes ride on the host tag too, for crawlers and the
+    // upgrade-time attribute replay.
+    expect(html).toMatch(/<hyperframes-player[^>]* src=".\/comp\/index\.html"/);
+    expect(html).toMatch(/<hyperframes-player[^>]* width="1280"/);
+    expect(playerModuleEvaluations.count).toBe(0);
+    expect(consoleError).not.toHaveBeenCalled();
+  });
 });

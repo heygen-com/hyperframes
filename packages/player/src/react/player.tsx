@@ -4,6 +4,7 @@ import type {
   HyperframesPlayer as HyperframesPlayerElement,
 } from "../hyperframes-player.js";
 import type { ShaderLoadingMode } from "../shader-options.js";
+import { renderPlayerShadowDomHtml } from "../ssr.js";
 import type * as React from "react";
 import {
   createElement,
@@ -78,6 +79,15 @@ export interface HyperframesPlayerProps {
    * React 18 and 19 attribute serialization identical.
    */
   elementProps?: PlayerElementProps;
+  /**
+   * Server-render the player's shadow DOM as a Declarative Shadow DOM
+   * template. The browser parses it during HTML streaming, so the composition
+   * iframe starts loading — and paints its first frame — before any client
+   * JavaScript runs; on upgrade the element adopts that DOM instead of
+   * rebuilding it. The template is emitted only during server rendering (the
+   * browser consumes it while parsing, so hydration sees no child either way).
+   */
+  ssr?: boolean;
   /** Composition loaded and duration determined. */
   onReady?: (detail: { duration: number }) => void;
   onPlay?: () => void;
@@ -345,12 +355,40 @@ export const HyperframesPlayer = forwardRef<HyperframesPlayerHandle, Hyperframes
       [],
     );
 
+    // Declarative shadow DOM template, server render only. The browser parses
+    // it into the shadow root during HTML streaming and removes it from the
+    // light DOM, so client hydration — which renders no child — still matches.
+    const serverTemplate =
+      props.ssr && typeof window === "undefined"
+        ? createElement("template", {
+            shadowrootmode: "open",
+            dangerouslySetInnerHTML: {
+              __html: renderPlayerShadowDomHtml({
+                src,
+                poster,
+                width,
+                height,
+                shaderCaptureScale,
+                shaderLoading,
+              }),
+            },
+          } as unknown as React.HTMLAttributes<HTMLTemplateElement>)
+        : null;
+
     // elementProps spreads first so the binding-owned keys below always win.
-    return createElement("hyperframes-player", {
-      ...props.elementProps,
-      ref: elementRef,
-      class: props.className,
-      style: props.style,
-    });
+    return createElement(
+      "hyperframes-player",
+      {
+        ...props.elementProps,
+        ref: elementRef,
+        class: props.className,
+        style: props.style,
+        // With ssr, string attributes go into the markup itself (identical on
+        // client renders, so hydration stays clean) — crawlers see them and
+        // the upgrade replay recognizes the declarative iframe's src.
+        ...(props.ssr ? { src, poster, width, height } : null),
+      },
+      serverTemplate,
+    );
   },
 );

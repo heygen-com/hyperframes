@@ -1,6 +1,6 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
-import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
+import { scaleIframeToFit, setupPlayerShadowDom } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
@@ -71,7 +71,6 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private shadow: ShadowRoot;
-  private container: HTMLDivElement;
   private iframe: HTMLIFrameElement;
   private posterEl: HTMLImageElement | null = null;
   private controlsApi: ReturnType<typeof setupControls> | null = null;
@@ -97,14 +96,18 @@ class HyperframesPlayer extends HTMLElement {
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
+  private _adoptedDeclarativeDom = false;
 
   constructor() {
     super();
-    this.shadow = this.attachShadow({ mode: "open" });
-
-    adoptShadowStyles(this.shadow, PLAYER_STYLES);
-    ({ container: this.container, iframe: this.iframe } = createCompositionIframe());
-    this.shadow.appendChild(this.container);
+    // Adopts a server-rendered declarative shadow root when present (see
+    // ssr.ts) instead of rebuilding — the iframe inside it may already be
+    // loading the composition.
+    const dom = setupPlayerShadowDom(this, PLAYER_STYLES);
+    this.shadow = dom.shadow;
+    this.iframe = dom.iframe;
+    this._adoptedDeclarativeDom = dom.adopted;
+    if (dom.poster) this.posterEl = dom.poster;
 
     const loaderElements = createShaderLoader();
     this.shadow.appendChild(loaderElements.root);
@@ -163,10 +166,10 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
-    if (this.hasAttribute("src"))
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src")!);
+    if (this.hasAttribute("srcdoc")) this._applySrcdoc(this.getAttribute("srcdoc")!);
+    if (this.hasAttribute("src")) this._applySrc(this.getAttribute("src")!);
+
+    this._kickAdoptedIframeIfLoaded();
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
     // desktop) drops the `audio-locked` attribute, attributeChangedCallback
@@ -198,15 +201,14 @@ class HyperframesPlayer extends HTMLElement {
   attributeChangedCallback(name: string, _old: string | null, val: string | null) {
     switch (name) {
       case "src":
-        if (val) {
-          this._ready = false;
-          this.iframe.src = prepareSrcForElement(this, val);
-        }
+        if (val) this._applySrc(val);
         break;
       case "srcdoc":
-        this._ready = false;
-        if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
-        else this.iframe.removeAttribute("srcdoc");
+        if (val !== null) this._applySrcdoc(val);
+        else {
+          this._ready = false;
+          this.iframe.removeAttribute("srcdoc");
+        }
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
@@ -757,6 +759,41 @@ class HyperframesPlayer extends HTMLElement {
         compositionHeight: this._compositionHeight,
       });
     }
+  }
+
+  /** A declaratively-rendered (SSR) iframe may have finished loading before
+   *  this element upgraded, in which case the connectedCallback "load"
+   *  listener never fires — kick the probe manually. The about:blank URL
+   *  check filters the still-loading case (the initial document also reports
+   *  "complete"); cross-origin documents fall back to the load event. */
+  private _kickAdoptedIframeIfLoaded(): void {
+    if (!this._adoptedDeclarativeDom) return;
+    let loadedDoc: Document | null = null;
+    try {
+      loadedDoc = this.iframe.contentDocument;
+    } catch {
+      /* cross-origin — fall back to the load event */
+    }
+    if (loadedDoc && loadedDoc.readyState === "complete" && loadedDoc.URL !== "about:blank") {
+      this._onIframeLoad();
+    }
+  }
+
+  /** Apply the src attribute, skipping the reload when the iframe already
+   *  carries the identical prepared URL (an adopted SSR iframe mid-load or
+   *  loaded — replaying the attribute would restart it from scratch). */
+  private _applySrc(val: string): void {
+    const prepared = prepareSrcForElement(this, val);
+    if (this.iframe.getAttribute("src") === prepared) return;
+    this._ready = false;
+    this.iframe.src = prepared;
+  }
+
+  private _applySrcdoc(val: string): void {
+    const prepared = prepareSrcdocForElement(this, val);
+    if (this.iframe.getAttribute("srcdoc") === prepared) return;
+    this._ready = false;
+    this.iframe.srcdoc = prepared;
   }
 
   private _onIframeLoad() {
