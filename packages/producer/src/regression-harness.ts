@@ -430,7 +430,7 @@ function validateMetadata(meta: unknown): TestMetadata {
   return m as TestMetadata;
 }
 
-function discoverTestSuites(
+export function discoverTestSuites(
   testsDir: string,
   filterNames: string[],
   excludeTags: string[] = [],

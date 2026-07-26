@@ -1,0 +1,119 @@
+// Guards the computed regression shard matrix.
+//
+// scripts/plan-regression-shards.mjs re-implements fixture discovery in plain
+// JS so the GitHub workflow can plan shards without building the TypeScript
+// producer package first. That duplication is the risk these tests exist to
+// contain: if the planner and the harness ever disagree about what a fixture
+// is, CI would schedule shard args the harness does not recognise, or quietly
+// stop running fixtures.
+
+import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { discoverTestSuites } from "./regression-harness.js";
+import {
+  discoverFixtures,
+  packShards,
+  planShards,
+  UNKNOWN_FIXTURE_SECONDS,
+} from "../scripts/plan-regression-shards.mjs";
+
+const TESTS_DIR = join(import.meta.dir, "..", "tests");
+
+function readSchedule(): { timings?: Record<string, number>; excluded?: Record<string, string> } {
+  return JSON.parse(readFileSync(join(TESTS_DIR, "shard-schedule.json"), "utf-8"));
+}
+
+describe("shard planner fixture discovery", () => {
+  it("sees every fixture the harness can actually run", () => {
+    // The planner matches on directory layout only; the harness additionally
+    // validates meta.json and drops invalid fixtures with a warning. So the
+    // harness set is a subset. It must never contain something the planner
+    // missed — that would be a fixture CI silently stops scheduling.
+    const harnessIds = discoverTestSuites(TESTS_DIR, []).map((suite) => suite.id);
+    const plannerIds = new Set(discoverFixtures(TESTS_DIR));
+    const invisibleToPlanner = harnessIds.filter((id) => !plannerIds.has(id));
+    expect(invisibleToPlanner).toEqual([]);
+  });
+
+  it("gives every excluded fixture a written reason", () => {
+    // Exclusions are how a fixture legitimately stays out of CI, so the bar
+    // is that someone had to type why. This is what stops the excluded list
+    // from becoming the silent dumping ground the old YAML matrix was.
+    const excluded = readSchedule().excluded ?? {};
+    for (const [fixture, reason] of Object.entries(excluded)) {
+      expect(typeof reason, `${fixture} needs a reason`).toBe("string");
+      expect((reason as string).length, `${fixture} needs a real reason`).toBeGreaterThan(20);
+    }
+  });
+
+  it("finds fixtures nested under tests/distributed/", () => {
+    const discovered = discoverFixtures(TESTS_DIR);
+    // These live at tests/distributed/<name>/ rather than tests/<name>/, and
+    // an earlier hand-written matrix scheduled them by bare name.
+    for (const nested of ["mp4-h264-sdr", "webm-vp9", "png-sequence"]) {
+      expect(discovered).toContain(nested);
+    }
+  });
+});
+
+describe("packShards()", () => {
+  it("spreads work so the heaviest shard is no worse than longest-item-plus-average", () => {
+    const timings = { a: 600, b: 300, c: 300, d: 120, e: 120, f: 60 };
+    const shards = packShards(Object.keys(timings), timings, 3);
+    const totals = shards.map((shard) =>
+      shard.fixtures.reduce((sum, name) => sum + timings[name], 0),
+    );
+    // LPT's bound: worst bin <= optimal * 4/3. Optimal here is 500s.
+    expect(Math.max(...totals)).toBeLessThanOrEqual(Math.ceil(500 * (4 / 3)));
+    expect(shards.flatMap((shard) => shard.fixtures).sort()).toEqual(Object.keys(timings).sort());
+  });
+
+  it("keeps a single indivisible fixture as the floor", () => {
+    // No amount of sharding beats the slowest single fixture. This is the
+    // reason shard count alone cannot drive wall-clock below the long pole.
+    const timings = { huge: 1500, small: 10 };
+    const shards = packShards(Object.keys(timings), timings, 8);
+    expect(Math.max(...shards.map((shard) => shard.seconds))).toBe(1500);
+  });
+
+  it("assumes untimed fixtures are expensive rather than free", () => {
+    const shards = packShards(["known", "brand-new"], { known: 10 }, 2);
+    const newShard = shards.find((shard) => shard.fixtures.includes("brand-new"));
+    expect(newShard?.seconds).toBe(UNKNOWN_FIXTURE_SECONDS);
+  });
+
+  it("emits no empty shards when fixtures are fewer than the shard count", () => {
+    const shards = packShards(["only"], { only: 5 }, 8);
+    expect(shards).toHaveLength(1);
+  });
+});
+
+describe("planShards()", () => {
+  it("schedules or explicitly excludes every fixture on disk", () => {
+    // The real schedule file must stay exhaustive; this is the check that
+    // turns "someone added a fixture and forgot the matrix" into a red build.
+    expect(() => planShards()).not.toThrow();
+  });
+
+  it("produces a matrix the workflow can consume", () => {
+    const { include } = planShards();
+    expect(include.length).toBeGreaterThan(0);
+    for (const row of include) {
+      expect(row.shard).toMatch(/^shard-\d+$/);
+      expect(row.args.length).toBeGreaterThan(0);
+    }
+    // Every scheduled fixture appears exactly once across all shards.
+    const scheduled = include.flatMap((row) => row.args.split(" "));
+    expect(new Set(scheduled).size).toBe(scheduled.length);
+  });
+
+  it("runs every fixture that is not explicitly excluded", () => {
+    const { include } = planShards();
+    const scheduled = new Set(include.flatMap((row) => row.args.split(" ")));
+    const excluded = new Set(Object.keys(readSchedule().excluded ?? {}));
+    for (const fixture of discoverFixtures(TESTS_DIR)) {
+      expect(scheduled.has(fixture) || excluded.has(fixture)).toBe(true);
+    }
+  });
+});

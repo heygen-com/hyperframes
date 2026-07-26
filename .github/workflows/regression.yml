@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -46,6 +47,14 @@ jobs:
               - "packages/producer/**"
               - "packages/engine/**"
               - "Dockerfile*"
+      # Bin-pack the shard matrix from recorded per-fixture timings rather than
+      # a hand-written list. Fails if any fixture on disk is neither scheduled
+      # nor explicitly excluded, so a new fixture cannot silently never run.
+      - name: Plan regression shards
+        id: shards
+        run: |
+          echo "matrix=$(node packages/producer/scripts/plan-regression-shards.mjs)" >> "$GITHUB_OUTPUT"
+          node packages/producer/scripts/plan-regression-shards.mjs --pretty
 
   preflight:
     name: Preflight (lint + format)
@@ -64,30 +73,10 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: true
-      matrix:
-        # Shards are bin-packed by measured per-test duration (LPT heuristic on
-        # CI run 25893372795) so each row carries ~15-16 min of work. When a
-        # new fixture lands, drop it into the currently-lightest shard or
-        # re-balance against fresh `test_suite_summary` timings. Worst-shard
-        # work time was 19.3 min under the old tag-based split (styles-e);
-        # the rebalance brings every shard within ~40s of the others.
-        include:
-          - shard: shard-1
-            args: "hdr-regression style-5-prod style-3-prod mov-prores"
-          - shard: shard-2
-            args: "style-15-prod hdr-hlg-regression style-1-prod many-cuts vfr-screen-recording render-symlinked-assets"
-          - shard: shard-3
-            args: "style-7-prod style-8-prod style-10-prod css-spinner-render-compat webm-transparency mp4-h264-sdr webm-vp9"
-          - shard: shard-4
-            args: "style-16-prod style-9-prod style-17-prod iframe-render-compat variables-prod mp4-h265-sdr"
-          - shard: shard-5
-            args: "style-4-prod style-11-prod style-2-prod animejs-adapter typegpu-adapter parallel-capture-regression"
-          - shard: shard-6
-            args: "overlay-montage-prod style-12-prod chat missing-host-comp-id png-sequence portrait-edge-bleed"
-          - shard: shard-7
-            args: "sub-composition-video style-18-prod raf-ball-render-compat font-variant-numeric sub-comp-t0 sub-comp-id-selector"
-          - shard: shard-8
-            args: "style-13-prod style-6-prod vignelli-stacking gsap-letters-render-compat audio-mux-parity"
+      # Bin-packed at run time from packages/producer/tests/shard-schedule.json.
+      # To rebalance, refresh the timings in that file — no YAML edit needed.
+      # To change shard count, set "shardCount" there.
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - name: Checkout (with LFS)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
