@@ -17,7 +17,7 @@ HyperFrames-native, so anyone can reproduce it:
 
 - **One paused GSAP timeline per composition**, registered to `window.__timelines[data-composition-id]`.
 - All timing in **seconds**; `data-start` / `data-duration` carry the scene window.
-- **Deterministic + seek-safe** only — no `Math.random()`, no `Date.now()`, no infinite repeats, no un-seekable CSS animations. Every state is reachable by seeking the timeline to a time `t`.
+- **Deterministic + seek-safe** only — no `Math.random()`, no `Date.now()`, no `repeat: -1` without a finite root `data-duration`, no un-seekable CSS animations. Every state is reachable by seeking the timeline to a time `t`.
 - GSAP transform aliases (`x`, `y`, `scale`, `rotation`); animate `opacity`, `filter`, `clipPath`, `textShadow`, `backgroundPosition`, `letterSpacing` — never layout props (width/top/left/margin).
 
 For the composition contract see `hyperframes-core`; eases + the animated-property allowlist see `hyperframes-gsap`; caption grouping/positioning/exit guarantees see `hyperframes-captions`.
@@ -218,7 +218,7 @@ The gallery used a `setInterval` loop; HyperFrames needs the same beats as **abs
 
 - Timeline **paused**; registry key = `data-composition-id`.
 - **No CSS keyframe animation** on caption elements — all motion is GSAP tweens at absolute times (seek-safe).
-- No `Math.random` / `Date.now` / infinite repeats.
+- No `Math.random` / `Date.now` / `repeat: -1` without a finite root `data-duration`.
 - `display:inline-block` on every `.w` and the climax `span`.
 - **Hard-hide** each flow group at its end time; **CLIMAX_OUT ends at `opacity:0`** (or fully-clipped) so nothing lingers.
 - Gradient / `background-clip:text` / stroke fills go on `.climax span`, not the transformed `.climax`.
