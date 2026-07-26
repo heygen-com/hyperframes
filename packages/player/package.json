@@ -25,6 +25,11 @@
       "script": "./dist/slideshow/hyperframes-slideshow.global.js",
       "import": "./dist/slideshow/hyperframes-slideshow.js",
       "require": "./dist/slideshow/hyperframes-slideshow.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
     }
   },
   "scripts": {
@@ -38,10 +43,22 @@
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "gsap": "^3.12.5",
     "puppeteer-core": "^25.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

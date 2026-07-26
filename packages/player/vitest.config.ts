@@ -11,6 +11,11 @@ export default defineConfig({
     alias: {
       "@hyperframes/core/slideshow": resolve(coreRoot, "slideshow/index.ts"),
       "@hyperframes/core/runtime/protocol": resolve(coreRoot, "runtime/protocol.ts"),
+      // Self-reference used by src/react/register.ts — point it at source so
+      // tests (which mock it) resolve without a built dist.
+      "@hyperframes/player": resolve(
+        fileURLToPath(new URL("./src/hyperframes-player.ts", import.meta.url)),
+      ),
     },
   },
   test: {

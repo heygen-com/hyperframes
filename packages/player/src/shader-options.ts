@@ -115,11 +115,29 @@ export function getShaderCaptureScaleFromElement(el: Element): number {
   return Number(normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)) ?? "1");
 }
 
-export function prepareSrcForElement(el: Element, src: string): string {
+/**
+ * Attribute-free variant of `prepareSrcForElement` for callers with no
+ * element in scope (the SSR serializer). Both paths MUST produce identical
+ * strings for identical inputs — the element skips reloading a
+ * declaratively-rendered iframe only when the prepared src matches.
+ */
+export function prepareSrc(
+  src: string,
+  captureScaleAttr: string | null,
+  loadingModeAttr: string | null,
+): string {
   return withShaderQueryParams(
     src,
-    normalizeShaderCaptureScale(el.getAttribute(SHADER_CAPTURE_SCALE_ATTR)),
-    getShaderModeFromElement(el),
+    normalizeShaderCaptureScale(captureScaleAttr),
+    normalizeShaderLoadingMode(loadingModeAttr),
+  );
+}
+
+export function prepareSrcForElement(el: Element, src: string): string {
+  return prepareSrc(
+    src,
+    el.getAttribute(SHADER_CAPTURE_SCALE_ATTR),
+    el.getAttribute(SHADER_LOADING_ATTR),
   );
 }
 
