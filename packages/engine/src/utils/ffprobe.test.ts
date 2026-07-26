@@ -68,6 +68,21 @@ describe("extractMediaMetadata", () => {
       colorSpace: "gbr",
     });
   });
+
+  it("normalizes omitted video color components to empty strings", async () => {
+    const fixturePath = resolve(
+      __dirname,
+      "../../../producer/tests/distributed/plan-v2-partial-color/src/partial-color.mp4",
+    );
+
+    const metadata = await extractMediaMetadata(fixturePath);
+
+    expect(metadata.colorSpace).toEqual({
+      colorPrimaries: "",
+      colorTransfer: "",
+      colorSpace: "bt709",
+    });
+  });
 });
 
 describe("extractPngMetadataFromBuffer", () => {

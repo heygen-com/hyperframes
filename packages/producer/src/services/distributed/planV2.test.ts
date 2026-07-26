@@ -53,8 +53,24 @@ function createV1Plan(
     video?: boolean;
     omitVideoMetadata?: boolean;
     fpsDen?: number;
+    videoColorSpace?: unknown;
+    videoCodec?: string;
+    videoId?: string;
+    videoSrcPath?: string;
+    framePattern?: string;
   },
 ): string {
+  const {
+    audio = false,
+    video = false,
+    omitVideoMetadata = false,
+    fpsDen = 1,
+    videoColorSpace = null,
+    videoCodec = "h264",
+    videoId = "hero",
+    videoSrcPath = "/fixture/hero.mp4",
+    framePattern = "frame_%05d.jpg",
+  } = options ?? {};
   const planDir = join(root, "v1");
   mkdirSync(join(planDir, "compiled"), { recursive: true });
   mkdirSync(join(planDir, "meta"), { recursive: true });
@@ -69,7 +85,7 @@ function createV1Plan(
   );
   writeFileSync(join(planDir, "meta", "encoder.json"), "{}");
   writeFileSync(join(planDir, "meta", "composition.json"), "{}");
-  if (options?.video) {
+  if (video) {
     const framesDir = join(planDir, "video-frames", "hero");
     mkdirSync(framesDir, { recursive: true });
     writeFileSync(join(framesDir, "frame_00001.jpg"), "frame zero");
@@ -80,7 +96,7 @@ function createV1Plan(
       JSON.stringify({
         videos: [
           {
-            id: "hero",
+            id: videoId,
             src: "hero.mp4",
             start: 0,
             end: 1,
@@ -91,9 +107,9 @@ function createV1Plan(
         ],
         extracted: [
           {
-            videoId: "hero",
-            srcPath: "/fixture/hero.mp4",
-            framePattern: "frame_%05d.jpg",
+            videoId,
+            srcPath: videoSrcPath,
+            framePattern,
             fps: 30,
             totalFrames: 3,
             metadata: {
@@ -102,21 +118,21 @@ function createV1Plan(
               width: 16,
               height: 16,
               fps: 30,
-              videoCodec: "h264",
+              videoCodec,
               hasAudio: false,
               isVFR: false,
               hasAlpha: false,
-              colorSpace: null,
+              colorSpace: videoColorSpace,
             },
           },
         ],
       }),
     );
-    if (options.omitVideoMetadata === true) {
+    if (omitVideoMetadata) {
       rmSync(join(planDir, "meta", "videos.json"));
     }
   }
-  if (options?.audio) writeFileSync(join(planDir, "audio.aac"), "assemble-only-audio");
+  if (audio) writeFileSync(join(planDir, "audio.aac"), "assemble-only-audio");
   writeFileSync(
     join(planDir, "plan.json"),
     JSON.stringify({
@@ -124,13 +140,13 @@ function createV1Plan(
       planHash: "1".repeat(64),
       chunkCount: 2,
       totalFrames: 2,
-      hasAudio: options?.audio === true,
+      hasAudio: audio,
       ffmpegVersion: "ffmpeg fixture",
       producerVersion: "0.0.0-test",
       fontSnapshotSha: "font-snapshot-fixture",
       dimensions: {
         fpsNum: 30,
-        fpsDen: options?.fpsDen ?? 1,
+        fpsDen,
         width: 16,
         height: 16,
         format: "mp4",
@@ -202,6 +218,43 @@ describe("Plan v2 manifest", () => {
     );
   });
 
+  it("omits the extraction-cache completion sentinel from exact frame dependencies", () => {
+    const root = tempPath("hf-plan-v2-extraction-sentinel-");
+    const v1 = createV1Plan(root, { video: true });
+    writeFileSync(join(v1, "video-frames", "hero", ".hf-complete"), "");
+    refreshV1PlanHash(v1);
+
+    const result = createPlanV2FromV1(v1, join(root, "v2"));
+    const manifest = readPlanV2Manifest(result.planDir);
+
+    expect(result.limitations.videoDependencyMode).toBe("exact-rendered-frames");
+    expect(manifest.artifacts.some((artifact) => artifact.path.endsWith("/.hf-complete"))).toBe(
+      false,
+    );
+    expect(manifest.artifacts.some((artifact) => artifact.path.endsWith("/frame_00001.jpg"))).toBe(
+      true,
+    );
+  });
+
+  for (const malformedSentinel of ["non-empty file", "directory"]) {
+    it(`rejects an extraction-cache completion sentinel that is a ${malformedSentinel}`, () => {
+      const root = tempPath(`hf-plan-v2-malformed-extraction-sentinel-${malformedSentinel}-`);
+      const v1 = createV1Plan(root, { video: true });
+      const sentinelPath = join(v1, "video-frames", "hero", ".hf-complete");
+      if (malformedSentinel === "directory") {
+        mkdirSync(sentinelPath);
+        writeFileSync(join(sentinelPath, "unexpected"), "not cache metadata");
+      } else {
+        writeFileSync(sentinelPath, "not cache metadata");
+      }
+      refreshV1PlanHash(v1);
+
+      expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
+        ".hf-complete must be a zero-byte regular file",
+      );
+    });
+  }
+
   it("selects audio only for the assembler", () => {
     const root = tempPath("hf-plan-v2-targets-");
     const result = createPlanV2FromV1(createV1Plan(root, { audio: true }), join(root, "v2"));
@@ -230,6 +283,116 @@ describe("Plan v2 manifest", () => {
       false,
     );
   });
+
+  const partialColorSpaceCases = [
+    {
+      name: "matrix-only",
+      colorSpace: { colorTransfer: "", colorPrimaries: "", colorSpace: "bt709" },
+    },
+    {
+      name: "transfer-only",
+      colorSpace: { colorTransfer: "bt709", colorPrimaries: "", colorSpace: "" },
+    },
+    {
+      name: "primaries-only",
+      colorSpace: { colorTransfer: "", colorPrimaries: "bt709", colorSpace: "" },
+    },
+  ];
+
+  for (const testCase of partialColorSpaceCases) {
+    it(`preserves ${testCase.name} video color metadata`, () => {
+      const root = tempPath(`hf-plan-v2-${testCase.name}-color-`);
+      const result = createPlanV2FromV1(
+        createV1Plan(root, { video: true, videoColorSpace: testCase.colorSpace }),
+        join(root, "v2"),
+      );
+      const materializedDir = join(root, "materialized");
+      materializePlanV2Target(result.planDir, { role: "chunk", chunkIndex: 0 }, materializedDir);
+
+      expect(
+        JSON.parse(readFileSync(join(materializedDir, "meta", "videos.json"), "utf-8")),
+      ).toEqual(
+        expect.objectContaining({
+          extracted: [
+            expect.objectContaining({
+              metadata: expect.objectContaining({ colorSpace: testCase.colorSpace }),
+            }),
+          ],
+        }),
+      );
+    });
+  }
+
+  it("preserves null video color metadata", () => {
+    const root = tempPath("hf-plan-v2-null-color-");
+    expect(() =>
+      createPlanV2FromV1(
+        createV1Plan(root, { video: true, videoColorSpace: null }),
+        join(root, "v2"),
+      ),
+    ).not.toThrow();
+  });
+
+  const colorComponents = ["colorTransfer", "colorPrimaries", "colorSpace"];
+  const invalidColorValues: Array<{ name: string; value: unknown }> = [
+    { name: "missing", value: undefined },
+    { name: "null", value: null },
+    { name: "number", value: 709 },
+    { name: "object", value: { name: "bt709" } },
+  ];
+
+  for (const component of colorComponents) {
+    for (const invalid of invalidColorValues) {
+      it(`rejects a ${invalid.name} ${component} color component`, () => {
+        const root = tempPath(`hf-plan-v2-invalid-${component}-${invalid.name}-`);
+        const colorSpace: Record<string, unknown> = {
+          colorTransfer: "bt709",
+          colorPrimaries: "bt709",
+          colorSpace: "bt709",
+        };
+        colorSpace[component] = invalid.value;
+        const v1 = createV1Plan(root, { video: true, videoColorSpace: colorSpace });
+
+        expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
+          `metadata.colorSpace.${component} must be a string`,
+        );
+      });
+    }
+  }
+
+  const unrelatedEmptyStringCases = [
+    {
+      name: "video codec",
+      options: { videoCodec: "" },
+      field: "metadata.videoCodec",
+    },
+    {
+      name: "video identifier",
+      options: { videoId: "" },
+      field: "videos[0].id",
+    },
+    {
+      name: "video source path",
+      options: { videoSrcPath: "" },
+      field: "srcPath",
+    },
+    {
+      name: "frame pattern",
+      options: { framePattern: "" },
+      field: "framePattern",
+    },
+  ];
+
+  for (const testCase of unrelatedEmptyStringCases) {
+    it(`continues to reject an empty ${testCase.name}`, () => {
+      const root = tempPath(`hf-plan-v2-empty-${testCase.name.replaceAll(" ", "-")}-`);
+      const v1 = createV1Plan(root, { video: true, ...testCase.options });
+
+      expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
+        `${testCase.field} must be a non-empty string`,
+      );
+    });
+  }
 
   it("falls back to the full source frame pack when video metadata is absent", () => {
     const root = tempPath("hf-plan-v2-video-fallback-");

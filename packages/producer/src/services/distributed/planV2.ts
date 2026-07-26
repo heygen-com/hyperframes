@@ -15,6 +15,7 @@ import {
   closeSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -53,6 +54,11 @@ import {
 } from "./shared.js";
 
 const PLAN_V2_HASH_PREFIX = "hyperframes-plan-manifest-hash-v2\x00";
+// The engine's content-addressed extraction cache keeps this ownership marker
+// beside numbered frames. Distributed plan() materializes the cache directory
+// recursively, so v2 must recognize (and omit) the marker without weakening
+// fail-closed handling for any other unexpected filename.
+const EXTRACTION_CACHE_COMPLETE_SENTINEL = ".hf-complete";
 export const PLAN_V2_MATERIALIZATION_MARKER = ".hyperframes-plan-v2.json";
 export { PLAN_V2_INTEGRITY_UNRECOVERABLE, PlanV2IntegrityError };
 
@@ -244,6 +250,15 @@ function listVideoFramePaths(planV1Dir: string, videos: PlanVideosJson): Extract
     const frameNames = readdirSync(outputDir).sort();
     const framePaths = new Map<number, string>();
     for (const frameName of frameNames) {
+      if (frameName === EXTRACTION_CACHE_COMPLETE_SENTINEL) {
+        const sentinel = lstatSync(join(outputDir, frameName));
+        if (!sentinel.isFile() || sentinel.size !== 0) {
+          throw new PlanV2IntegrityError(
+            `${EXTRACTION_CACHE_COMPLETE_SENTINEL} must be a zero-byte regular file`,
+          );
+        }
+        continue;
+      }
       // ffmpeg's image sequence starts at 1. Preserve sparse indexes so a
       // materialized chunk can carry only the frames it actually requests.
       const match = /(\d+)(?=\.[^.]+$)/.exec(frameName);
@@ -300,9 +315,15 @@ function readVideoMetadata(
       throw new PlanV2IntegrityError(`${field}.colorSpace must be an object or null`);
     }
     colorSpace = {
-      colorTransfer: readString(value.colorSpace.colorTransfer, `${field}.colorTransfer`),
-      colorPrimaries: readString(value.colorSpace.colorPrimaries, `${field}.colorPrimaries`),
-      colorSpace: readString(value.colorSpace.colorSpace, `${field}.colorSpace`),
+      colorTransfer: readColorComponent(
+        value.colorSpace.colorTransfer,
+        `${field}.colorSpace.colorTransfer`,
+      ),
+      colorPrimaries: readColorComponent(
+        value.colorSpace.colorPrimaries,
+        `${field}.colorSpace.colorPrimaries`,
+      ),
+      colorSpace: readColorComponent(value.colorSpace.colorSpace, `${field}.colorSpace.colorSpace`),
     };
   }
   return {
@@ -653,6 +674,13 @@ function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2
 function readString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new PlanV2IntegrityError(`${field} must be a non-empty string`);
+  }
+  return value;
+}
+
+function readColorComponent(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new PlanV2IntegrityError(`${field} must be a string`);
   }
   return value;
 }
