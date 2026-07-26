@@ -2,7 +2,7 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "4023b0b051ba1e75",
+      "hash": "076012e80545adc1",
       "files": 142
     },
     "faceless-explainer": {
@@ -10,7 +10,7 @@
       "files": 24
     },
     "figma": {
-      "hash": "642cce1b5e211182",
+      "hash": "c6854f1238f1282e",
       "files": 2
     },
     "general-video": {
@@ -22,7 +22,7 @@
       "files": 26
     },
     "hyperframes-animation": {
-      "hash": "3947516ec450f3aa",
+      "hash": "b4fc1ffc4480289f",
       "files": 121
     },
     "hyperframes-audio": {
@@ -34,7 +34,7 @@
       "files": 11
     },
     "hyperframes-core": {
-      "hash": "dffc4485ca8cff24",
+      "hash": "0b392efa82cc35f7",
       "files": 11
     },
     "hyperframes-creative": {
@@ -70,7 +70,7 @@
       "files": 30
     },
     "remotion-to-hyperframes": {
-      "hash": "13ade041e6416e5b",
+      "hash": "e2da80ac89a6c0e8",
       "files": 70
     },
     "slideshow": {
@@ -78,7 +78,7 @@
       "files": 2
     },
     "talking-head-recut": {
-      "hash": "7018bf017e8606d2",
+      "hash": "4688ba3ab045166f",
       "files": 28
     }
   }

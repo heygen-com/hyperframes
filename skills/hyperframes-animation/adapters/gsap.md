@@ -96,7 +96,7 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 - Use both `svgOrigin` and `transformOrigin` on the same SVG element.
 - Chain animations with `delay` when a timeline can sequence them.
 - Create tweens before the DOM exists.
-- Use infinite `repeat: -1` in HyperFrames compositions — use finite repeat counts computed from the visible duration.
+- Use infinite `repeat: -1` without a finite root `data-duration` (with one, export clips to that window); when a loop must end before the composition does, use a finite repeat count computed from the visible duration.
 
 ## Credits And References
 
