@@ -374,7 +374,7 @@ The skeleton handles most structural rules. These are the runtime rules the skel
 | `Math.random()`                   | Seeded PRNG (only if you need randomness)      |
 | `Date.now()`, `performance.now()` | Hard-coded timing or `tl.time()` in `onUpdate` |
 | `setInterval`, `setTimeout`       | Timeline tweens + `onUpdate`                   |
-| `repeat: -1`                      | `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
+| `repeat: -1` without root `data-duration` | a finite root `data-duration` (export clips to it), or `repeat: Math.max(0, Math.floor(duration / cycle) - 1)` |
 | `stagger: { from: "random" }`     | `from: "start"`, `"center"`, `"end"`           |
 | Async timeline construction       | Synchronous at page load                       |
 
@@ -415,7 +415,7 @@ Run before delivering. Check with actual code, not assumptions.
 - [ ] Shader transitions have boundary INSIDE the window: `time < boundary < time + duration`
 - [ ] No transition shorter than 0.3s
 - [ ] No exit tweens except on the final scene
-- [ ] No `Date.now()`, unseeded `Math.random()`, `repeat: -1`
+- [ ] No `Date.now()`, unseeded `Math.random()`, or `repeat: -1` without a finite root `data-duration`
 - [ ] No SVG filter data URLs as `background-image`
 - [ ] `window.__timelines["main"] = tl` matches `data-composition-id`
 

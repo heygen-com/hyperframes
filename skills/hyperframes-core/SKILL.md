@@ -64,7 +64,7 @@ Two rules that `lint` **does** catch, but only after the fact — write them rig
 
 Surfaced here; full rationale in the linked reference. Do not violate:
 
-- No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
+- No render-time clocks / unseeded `Math.random` / network / input-state; `repeat: -1` only under a finite root `data-duration` (export clips to it — otherwise use a finite count). → `determinism-rules.md`
 - Animate only the visual-property allowlist; never tween `display` or raw `visibility`. GSAP `autoAlpha` and zero-duration timeline boundary sets are the only visibility exceptions, and only on non-clip elements or wrappers inside a clip. The framework alone controls `.clip` visibility. Do not `gsap.set` later-scene clips at page load. → `determinism-rules.md`
 - No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
 - `<video>`/`<audio>` work at **any nesting depth** (including inside a sub-comp `<template>` or wrapper); the framework owns playback and seeks/decodes media wherever it lives. The one caveat is timelines, not placement: a sub-comp timeline can't animate host-root elements. → `variables-and-media.md`
