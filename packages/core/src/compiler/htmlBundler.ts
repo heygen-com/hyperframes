@@ -26,6 +26,7 @@ import { inlineSubCompositions } from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
+import { ensureSvgNamespace } from "./svgNamespace";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
 
@@ -306,7 +307,9 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   if (!mimeType) return null;
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
-  const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
+  const inlinedContent =
+    ext === ".svg" ? Buffer.from(ensureSvgNamespace(content.toString("utf8")), "utf8") : content;
+  const dataUrl = `data:${mimeType};base64,${inlinedContent.toString("base64")}`;
   return appendSuffixToUrl(dataUrl, suffix);
 }
 
