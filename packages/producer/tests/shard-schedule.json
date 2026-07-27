@@ -3,12 +3,14 @@
     "Drives the regression workflow's shard matrix via scripts/plan-regression-shards.mjs.",
     "Every fixture on disk must appear in exactly one of 'timings' or 'excluded', or CI fails.",
     "timings: per-fixture wall-clock seconds, used only for bin-packing \u2014 approximate is fine.",
-    "  Measured on CI run 30223148821 (green, post single-pass PSNR). A newly added fixture can",
-    "  carry a conservative estimate until the next refresh; over-estimating only costs balance.",
+    "  Measured on CI run 30223148821; entries in 'distributed' carry their chunked timing.",
     "  Refresh from a green main run when shards drift apart; no test asserts these values.",
+    "distributed: fixtures run with --mode=distributed-simulated, mapped to why.",
+    "  Mode is a per-invocation flag, so these get their own shards.",
     "excluded: fixtures deliberately not run, each mapped to the reason why."
   ],
   "shardCount": 8,
+  "distributedShardCount": 1,
   "timings": {
     "animejs-adapter": 17,
     "audio-mux-parity": 32,
@@ -37,7 +39,7 @@
     "style-11-prod": 324,
     "style-12-prod": 247,
     "style-13-prod": 898,
-    "style-15-prod": 1413,
+    "style-15-prod": 114,
     "style-16-prod": 401,
     "style-17-prod": 224,
     "style-18-prod": 394,
@@ -51,7 +53,7 @@
     "style-9-prod": 216,
     "sub-comp-id-selector": 10,
     "sub-comp-t0": 18,
-    "sub-composition-video": 1346,
+    "sub-composition-video": 99,
     "typegpu-adapter": 15,
     "variables-prod": 8,
     "vfr-screen-recording": 7,
@@ -89,5 +91,9 @@
     "video-hfid-no-id": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "webgl-video-texture-render-compat": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "wysiwyg-subcomp-css": "Rejected by the harness at load time (meta.json: maxAudioLagWindows must be >= 1), so it has never run despite looking scheduled-able. Fix the metadata, then schedule it."
+  },
+  "distributed": {
+    "style-15-prod": "Renders 12.4x faster chunked (1413s -> 114s at 4 CPUs) because in-process capture is pinned to one worker by the auto-worker derate. Passes the same golden at the same 30dB bar, 0/100 failed frames, psnr min 39.3 vs 40.1 in-process, so the sensitivity cost is 0.8dB.",
+    "sub-composition-video": "Renders 13.6x faster chunked (1346s -> 99s at 4 CPUs). Slow in-process for a different reason to style-15-prod (video decode rather than feTurbulence), which is why chunking helps both. Passes the same golden, 0/100 failed."
   }
 }

@@ -113,15 +113,17 @@ jobs:
           # concurrent exports cannot exhaust the Actions cache service.
           cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=regression-test-image' || '' }}
 
-      - name: "Run regression shard: ${{ matrix.shard }}"
+      - name: "Run regression shard: ${{ matrix.shard }} (${{ matrix.mode }})"
         run: |
           echo "Shard: ${{ matrix.shard }}"
-          echo "Args: ${{ matrix.args }}"
+          echo "Mode:  ${{ matrix.mode }}"
+          echo "Args:  ${{ matrix.args }}"
           docker run --rm \
             --security-opt seccomp=unconfined \
             --shm-size=4g \
             -v ${{ github.workspace }}/packages/producer/tests:/app/packages/producer/tests \
             hyperframes-producer:test \
+            --mode=${{ matrix.mode }} \
             ${{ matrix.args }}
 
       - name: Upload failure artifacts

@@ -21,7 +21,11 @@ import {
 
 const TESTS_DIR = join(import.meta.dir, "..", "tests");
 
-function readSchedule(): { timings?: Record<string, number>; excluded?: Record<string, string> } {
+function readSchedule(): {
+  timings?: Record<string, number>;
+  excluded?: Record<string, string>;
+  distributed?: Record<string, string>;
+} {
   return JSON.parse(readFileSync(join(TESTS_DIR, "shard-schedule.json"), "utf-8"));
 }
 
@@ -70,6 +74,47 @@ describe("shard planner fixture discovery", () => {
       }),
     );
     expect(() => planShards({ scheduleFile: tainted })).toThrow(/both scheduled and excluded/);
+  });
+
+  it("never mixes harness modes within a shard", () => {
+    // `--mode` is a per-invocation flag, so a shard carrying both kinds would
+    // silently run half of them in the wrong mode.
+    const { include } = planShards();
+    const distributed = new Set(Object.keys(readSchedule().distributed ?? {}));
+    for (const row of include) {
+      const fixtures = row.args.split(" ");
+      const chunked = fixtures.filter((f) => distributed.has(f));
+      expect(chunked.length === 0 || chunked.length === fixtures.length).toBe(true);
+      expect(row.mode).toBe(chunked.length > 0 ? "distributed-simulated" : "in-process");
+    }
+  });
+
+  it("gives every shard a mode the harness accepts", () => {
+    // Guards against a typo reaching the workflow, where `--mode=<bad>` throws
+    // at parse time inside the container after the image has already built.
+    for (const row of planShards().include) {
+      expect(["in-process", "distributed-simulated", "lambda-local"]).toContain(row.mode);
+    }
+  });
+
+  it("rejects a distributed fixture that is not scheduled", () => {
+    const schedule = readSchedule();
+    const tainted = join(mkdtempSync(join(tmpdir(), "hf-shard-schedule-")), "shard-schedule.json");
+    writeFileSync(
+      tainted,
+      JSON.stringify({
+        ...schedule,
+        distributed: { ...schedule.distributed, "not-a-real-fixture": "typo" },
+      }),
+    );
+    expect(() => planShards({ scheduleFile: tainted })).toThrow(/are not scheduled/);
+  });
+
+  it("gives every distributed fixture a written reason", () => {
+    for (const [fixture, reason] of Object.entries(readSchedule().distributed ?? {})) {
+      expect(typeof reason, `${fixture} needs a reason`).toBe("string");
+      expect((reason as string).length, `${fixture} needs a real reason`).toBeGreaterThan(20);
+    }
   });
 
   it("gives every excluded fixture a written reason", () => {

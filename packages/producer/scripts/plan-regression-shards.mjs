@@ -32,6 +32,13 @@ const SCHEDULE_FILE = join(TESTS_DIR, "shard-schedule.json");
 export const DEFAULT_SHARD_COUNT = 8;
 
 /**
+ * Shards for fixtures run via `--mode=distributed-simulated`. Chunked renders
+ * are fast enough that one shard absorbs all of them; raise it in the schedule
+ * if that stops being true.
+ */
+export const DEFAULT_DISTRIBUTED_SHARD_COUNT = 1;
+
+/**
  * A fixture with no recorded timing still has to land somewhere. Assume it is
  * on the expensive side so an unmeasured newcomer cannot quietly overload the
  * shard it lands in; the next timing refresh corrects it.
@@ -100,7 +107,10 @@ export function planShards({
   const schedule = JSON.parse(readFileSync(scheduleFile, "utf-8"));
   const timings = schedule.timings ?? {};
   const excluded = schedule.excluded ?? {};
+  const distributed = schedule.distributed ?? {};
   const resolvedShardCount = shardCount ?? schedule.shardCount ?? DEFAULT_SHARD_COUNT;
+  const resolvedDistributedShardCount =
+    schedule.distributedShardCount ?? DEFAULT_DISTRIBUTED_SHARD_COUNT;
 
   const onDisk = discoverFixtures(testsDir);
   const onDiskSet = new Set(onDisk);
@@ -139,17 +149,47 @@ export function planShards({
     );
   }
 
+  // A distributed fixture must also be scheduled — the mode says *how* to run
+  // it, not *whether*. Listing one that is excluded or absent is a typo, and a
+  // silent one, since the mode map is not consulted when building the shard set.
+  const misdeclared = Object.keys(distributed).filter((name) => !(name in timings));
+  if (misdeclared.length > 0) {
+    throw new Error(
+      `Fixtures marked "distributed" are not scheduled: ${misdeclared.join(", ")}.\n` +
+        `Add each to "timings" in ${scheduleFile}, or drop it from "distributed".`,
+    );
+  }
+
   const scheduled = onDisk.filter((name) => !(name in excluded));
-  const bins = packShards(scheduled, timings, resolvedShardCount);
+
+  // Harness mode is a per-invocation flag, so a shard cannot mix modes. Pack
+  // each mode into its own shards rather than trying to interleave them.
+  const inProcess = scheduled.filter((name) => !(name in distributed));
+  const chunked = scheduled.filter((name) => name in distributed);
+
+  const bins = [
+    ...packShards(inProcess, timings, resolvedShardCount).map((bin) => ({
+      ...bin,
+      mode: "in-process",
+    })),
+    ...(chunked.length > 0
+      ? packShards(chunked, timings, resolvedDistributedShardCount).map((bin) => ({
+          ...bin,
+          mode: "distributed-simulated",
+        }))
+      : []),
+  ];
 
   return {
     include: bins.map((bin, index) => ({
       shard: `shard-${index + 1}`,
       args: bin.fixtures.join(" "),
+      mode: bin.mode,
     })),
     // Diagnostics for the workflow log — not consumed by the matrix.
     plan: bins.map((bin, index) => ({
       shard: `shard-${index + 1}`,
+      mode: bin.mode,
       fixtures: bin.fixtures.length,
       estimatedMinutes: Math.round((bin.seconds / 60) * 10) / 10,
     })),
@@ -171,7 +211,7 @@ function main() {
     const worst = Math.max(...plan.map((row) => row.estimatedMinutes));
     const best = Math.min(...plan.map((row) => row.estimatedMinutes));
     for (const row of plan) {
-      console.log(`${row.shard}\t${row.fixtures} fixtures\t~${row.estimatedMinutes}m`);
+      console.log(`${row.shard}\t${row.mode}\t${row.fixtures} fixtures\t~${row.estimatedMinutes}m`);
     }
     console.log(
       `\nworst shard ~${worst}m, lightest ~${best}m, spread ~${
