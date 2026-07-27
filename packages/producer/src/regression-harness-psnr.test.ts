@@ -26,6 +26,8 @@ let referenceVideo: string;
 let degradedVideo: string;
 /** Same pixels as `degradedVideo`, but a timeline framesync cannot align. */
 let rebasedVideo: string;
+/** Half the frames of `referenceVideo`, for one-sided end-of-stream cases. */
+let halfLengthVideo: string;
 
 /**
  * The pre-existing per-checkpoint implementation, kept here as the oracle.
@@ -132,6 +134,28 @@ beforeAll(() => {
     "-y",
     rebasedVideo,
   ]);
+
+  // Exactly half the frames, same rate. Used for one-sided EOF: requesting an
+  // index this video does not have must fail rather than silently pair against
+  // its repeated last frame.
+  halfLengthVideo = join(workDir, "half.mp4");
+  ffmpeg([
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=320x240:rate=${FPS}:duration=${TOTAL_FRAMES / 2 / FPS}`,
+    "-c:v",
+    "libx264",
+    "-crf",
+    "18",
+    "-pix_fmt",
+    "yuv420p",
+    "-y",
+    halfLengthVideo,
+  ]);
 });
 
 afterAll(() => {
@@ -194,10 +218,29 @@ describe("psnrAtFrames()", () => {
     expect(legacyPsnrAtFrame(referenceVideo, referenceVideo, 10)).toBe(Number.POSITIVE_INFINITY);
   });
 
-  it("throws rather than mis-pairing when a frame is past the end of a video", () => {
+  it("throws rather than mis-pairing when a frame is past the end of both videos", () => {
     expect(() => psnrAtFrames(referenceVideo, degradedVideo, [0, TOTAL_FRAMES + 50])).toThrow(
       /differ in frame count|Expected PSNR/,
     );
+  });
+
+  it("throws when only one input runs out of frames", () => {
+    // The asymmetric case, and the one the test above cannot reach: there both
+    // inputs end together, so framesync ends too. With only one side short,
+    // framesync's repeatlast default holds that side's last selected frame and
+    // pads the pairing to full length — ffmpeg then writes one row per
+    // requested frame and the count guard sees nothing wrong, while the tail
+    // rows silently compare against a stale frame.
+    expect(() => psnrAtFrames(referenceVideo, halfLengthVideo, [0, 15, 45])).toThrow(
+      /differ in frame count|Expected PSNR/,
+    );
+  });
+
+  it("still compares every requested frame when one input is merely shorter than the last index", () => {
+    // Guard against over-correcting: truncation must fail, but a shorter input
+    // that still covers every requested index has to keep working.
+    const byFrame = psnrAtFrames(referenceVideo, halfLengthVideo, [0, 10, 29]);
+    expect([...byFrame.keys()].sort((a, b) => a - b)).toEqual([0, 10, 29]);
   });
 
   it("returns an empty map when asked for nothing", () => {

@@ -647,7 +647,16 @@ export function psnrAtFrames(
         "-i",
         snapshotVideo,
         "-filter_complex",
-        `${stream(0, "rv")};${stream(1, "gv")};[rv][gv]psnr=stats_file=${escaped}`,
+        // shortest=1:repeatlast=0 makes framesync stop at the first stream to
+        // end instead of holding its last frame. Without them, an input that
+        // runs out of selected frames has its final frame repeated to pad the
+        // pairing, so ffmpeg still writes one row per requested frame and the
+        // count check below cannot tell that the tail rows compare a stale
+        // frame. Verified: 60-frame vs 30-frame inputs asking for frames
+        // [0,15,45] emit 3 rows under the defaults (row 3 comparing frame 45
+        // against a repeated frame 15, 16.65 dB) and 2 rows with these set.
+        `${stream(0, "rv")};${stream(1, "gv")};` +
+          `[rv][gv]psnr=shortest=1:repeatlast=0:stats_file=${escaped}`,
         "-f",
         "null",
         "-",
