@@ -1294,9 +1294,12 @@
         const user = pathUserEndpoints(path);
         const rendered = pathScreenEndpoints(svg, path);
         if (!user || !rendered) continue;
-        // Closed/glyph paths collapse to one point — not a two-ended connector frame bug.
-        const userChord = Math.hypot(user.end.x - user.start.x, user.end.y - user.start.y);
-        if (userChord < threshold) continue;
+        // Closed/glyph paths collapse to one point — compare in screen px (not user units).
+        const renderedChord = Math.hypot(
+          rendered.end.x - rendered.start.x,
+          rendered.end.y - rendered.start.y,
+        );
+        if (renderedChord < threshold) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
         if (anchors.compact.length < 2) return issues;
         const attached = (point) =>

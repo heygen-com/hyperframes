@@ -931,7 +931,62 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 
-  // Closed glyph: user chord ~0 — not a two-ended frame bug even if the point sits on a node.
+  // Scaled viewBox: user chord can be <32 while screen chord is hundreds of px — must not skip.
+  it("flags foreign-frame connectors when user-space chord is short but screen chord is long", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="scaled-svg" viewBox="0 0 192 108">
+          <path id="short-user" class="connector" d="M 100 58 L 130 58" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 80, top: 40, width: 60, height: 40 }),
+        n2: rect({ left: 110, top: 40, width: 60, height: 40 }),
+        "scaled-svg": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // 10× viewBox scale: user chord 30 (<32px gate) → screen chord 300.
+    const path = document.getElementById("short-user");
+    const svg = document.getElementById("scaled-svg");
+    const matrix = { a: 10, b: 0, c: 0, d: 10, e: 0, f: 0 };
+    const prop = { configurable: true, writable: true };
+    if (path) {
+      Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 30 });
+      Object.defineProperty(path, "getPointAtLength", {
+        ...prop,
+        value: (length: number) => (length === 0 ? { x: 100, y: 58 } : { x: 130, y: 58 }),
+      });
+      Object.defineProperty(path, "getScreenCTM", { ...prop, value: () => matrix });
+    }
+    if (svg) {
+      Object.defineProperty(svg, "createSVGPoint", {
+        ...prop,
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: typeof matrix) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ selector: "#short-user" });
+  });
+
+  // Closed glyph: rendered chord ~0 — not a two-ended frame bug even if the point sits on a node.
   it("skips closed filled glyphs whose user-space endpoints collapse", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
