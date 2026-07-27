@@ -931,6 +931,36 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 
+  // One raw endpoint on a node is not the paste-into-`d` bug (decorative arrow / partial aim).
+  it("skips one-ended decorative arrows when only one user endpoint attaches", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="one-ended" d="M 980 580 L 200 100" marker-end="url(#tip)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // CTM offset moves both rendered ends off anchors; raw start sits in #n1, raw end in empty space.
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
   // Scaled viewBox: user chord can be <32 while screen chord is hundreds of px — must not skip.
   it("flags foreign-frame connectors when user-space chord is short but screen chord is long", () => {
     document.body.innerHTML = `
@@ -938,15 +968,16 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         <div id="n1"></div>
         <div id="n2"></div>
         <svg id="scaled-svg" viewBox="0 0 192 108">
-          <path id="short-user" class="connector" d="M 100 58 L 130 58" />
+          <path id="short-user" class="connector" d="M 100 58 L 140 58" />
         </svg>
       </div>
     `;
     installGeometry(
       {
         root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-        n1: rect({ left: 80, top: 40, width: 60, height: 40 }),
-        n2: rect({ left: 110, top: 40, width: 60, height: 40 }),
+        // Non-overlapping anchors so both user endpoints hit distinct keys.
+        n1: rect({ left: 70, top: 40, width: 50, height: 40 }),
+        n2: rect({ left: 125, top: 40, width: 50, height: 40 }),
         "scaled-svg": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
       },
       {
@@ -954,7 +985,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         n2: { backgroundColor: "rgb(30, 40, 50)" },
       },
     );
-    // 10× viewBox scale: user chord 30 (<32px gate) → screen chord 300.
+    // 10× viewBox scale: user chord 30 (< old 32px gate) → screen chord 300.
     const path = document.getElementById("short-user");
     const svg = document.getElementById("scaled-svg");
     const matrix = { a: 10, b: 0, c: 0, d: 10, e: 0, f: 0 };
@@ -963,7 +994,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 30 });
       Object.defineProperty(path, "getPointAtLength", {
         ...prop,
-        value: (length: number) => (length === 0 ? { x: 100, y: 58 } : { x: 130, y: 58 }),
+        value: (length: number) => (length === 0 ? { x: 100, y: 58 } : { x: 140, y: 58 }),
       });
       Object.defineProperty(path, "getScreenCTM", { ...prop, value: () => matrix });
     }

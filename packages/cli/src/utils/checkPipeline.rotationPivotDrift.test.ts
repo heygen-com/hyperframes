@@ -81,6 +81,16 @@ describe("detectRotationPivotDrift", () => {
     expect(findings[0]?.code).toBe("rotation_pivot_drift");
   });
 
+  // Two-axis scale/entrance: long side stays under 1.6× but area ends far from start (not a mid-arc AABB peak).
+  it("does not fire on two-axis scale/entrance that shrinks the long side while growing the short", () => {
+    const group = [
+      sample({ time: 0, angle: 0, w: 400, h: 100, cx: 200, cy: 50 }),
+      sample({ time: 1, angle: 45, w: 340, h: 200, cx: 170, cy: 100 }),
+      sample({ time: 2, angle: 90, w: 300, h: 300, cx: 150, cy: 150 }),
+    ];
+    expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
+  });
+
   it("does not fire when a sample has a degenerate zero dimension", () => {
     const group = driftingSpinner().map((s, i) => (i === 0 ? { ...s, w: 0 } : s));
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);

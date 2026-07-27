@@ -1233,8 +1233,7 @@
   }
 
   // Screen endpoints via getScreenCTM (viewBox, preserveAspectRatio, group transforms).
-  function pathScreenEndpoints(svg, path) {
-    const user = pathUserEndpoints(path);
+  function pathScreenEndpoints(svg, path, user) {
     if (
       !user ||
       typeof path.getScreenCTM !== "function" ||
@@ -1285,31 +1284,44 @@
   function connectorDetachmentIssues(root, rootRect, time) {
     const issues = [];
     let anchors = null;
+    // Attach near-miss tolerance (screen px). Separate from the closed-glyph chord floor.
     const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
+    const MIN_CONNECTOR_CHORD_PX = 8;
     for (const svg of Array.from(root.querySelectorAll("svg"))) {
       if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
       for (const path of Array.from(svg.querySelectorAll("path"))) {
         if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
         if (!isConnectorPath(svg, path)) continue;
         const user = pathUserEndpoints(path);
-        const rendered = pathScreenEndpoints(svg, path);
+        const rendered = pathScreenEndpoints(svg, path, user);
         if (!user || !rendered) continue;
         // Closed/glyph paths collapse to one point — compare in screen px (not user units).
         const renderedChord = Math.hypot(
           rendered.end.x - rendered.start.x,
           rendered.end.y - rendered.start.y,
         );
-        if (renderedChord < threshold) continue;
+        if (renderedChord < MIN_CONNECTOR_CHORD_PX) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
         if (anchors.compact.length < 2) return issues;
-        const attached = (point) =>
-          anchors.painted.some(
-            (anchor) => !anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0,
-          ) || anchors.compact.some((rect) => distanceToRect(point, rect) <= threshold);
+        const attachmentKey = (point) => {
+          for (let i = 0; i < anchors.painted.length; i++) {
+            const anchor = anchors.painted[i];
+            if (!anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0) {
+              return `p${i}`;
+            }
+          }
+          for (let i = 0; i < anchors.compact.length; i++) {
+            if (distanceToRect(point, anchors.compact[i]) <= threshold) return `c${i}`;
+          }
+          return null;
+        };
+        const attached = (point) => attachmentKey(point) !== null;
         // Half-attached as drawn is allowed; only full render-miss proceeds.
         if (attached(rendered.start) || attached(rendered.end)) continue;
-        // Counterfactual: screen numbers pasted into `d` would land on anchors without CTM.
-        if (!attached(user.start) && !attached(user.end)) continue;
+        // Paste-into-`d` bug: both raw endpoints land on distinct anchors as screen pixels.
+        const userStartKey = attachmentKey(user.start);
+        const userEndKey = attachmentKey(user.end);
+        if (!userStartKey || !userEndKey || userStartKey === userEndKey) continue;
         const gap = Math.round(
           Math.min(
             Math.min(...anchors.compact.map((rect) => distanceToRect(rendered.start, rect))),

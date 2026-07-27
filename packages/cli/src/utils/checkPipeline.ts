@@ -626,6 +626,21 @@ function isPrimarilyAxisScale(group: RotationSample[]): boolean {
   );
 }
 
+/**
+ * Two-axis scale/entrance: area grows past the spin ceiling and the trajectory ends far from its start.
+ * Elongated rigid spin peaks mid-arc (AABB at 45°) then returns — first≈last area — so it stays.
+ */
+function isTwoAxisScale(group: RotationSample[]): boolean {
+  const areas = group.map((s) => s.w * s.h);
+  const minArea = Math.min(...areas);
+  const maxArea = Math.max(...areas);
+  if (minArea <= 0 || maxArea / minArea <= ROTATION_MAX_SIZE_RATIO) return false;
+  const first = areas[0] ?? 0;
+  const last = areas[areas.length - 1] ?? 0;
+  if (first <= 0 || last <= 0) return false;
+  return Math.max(first, last) / Math.min(first, last) > ROTATION_MAX_SIZE_RATIO;
+}
+
 /** Rigid spin keeps the longer AABB side stable; elongated rotators may swing per-axis lengths freely. */
 function isRotationSizeStable(group: RotationSample[]): boolean {
   if (group.some((s) => s.w <= 0 || s.h <= 0)) return false;
@@ -633,7 +648,7 @@ function isRotationSizeStable(group: RotationSample[]): boolean {
   const minLong = Math.min(...longSides);
   if (minLong <= 0) return false;
   if (Math.max(...longSides) / minLong > ROTATION_MAX_SIZE_RATIO) return false;
-  return !isPrimarilyAxisScale(group);
+  return !isPrimarilyAxisScale(group) && !isTwoAxisScale(group);
 }
 
 /** Skip tiny decorative spinners; only sizable rotating figures matter. */
