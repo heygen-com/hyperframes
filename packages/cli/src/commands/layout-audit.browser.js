@@ -1198,9 +1198,8 @@
     return issues;
   }
 
-  // Strict names always count; "arrow"/marker-end only count on a stage-spanning SVG host.
-  const CONNECTOR_NAME_STRICT = /\b(conn(ector)?|edge|link|flow|wire)\b/i;
-  const CONNECTOR_NAME_ARROW = /\barrow\b/i;
+  // Soft prior only — the counterfactual attach test (below) is what makes detachment a finding.
+  const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
   const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
 
   function connectorNameFor(element) {
@@ -1209,34 +1208,16 @@
     return `${element.id || ""} ${className}`;
   }
 
-  /** True when the SVG is large enough to host inter-node connectors rather than a decorative icon. */
-  function svgLooksLikeConnectorHost(svg, rootRect) {
-    const rect = toRect(svg.getBoundingClientRect());
-    const minCanvas = Math.min(rootRect.width, rootRect.height);
-    return Math.max(rect.width, rect.height) >= Math.max(160, minCanvas * 0.12);
+  function isConnectorPath(svg, path) {
+    if (path.hasAttribute("marker-start") || path.hasAttribute("marker-end")) return true;
+    return (
+      CONNECTOR_NAME.test(connectorNameFor(svg)) || CONNECTOR_NAME.test(connectorNameFor(path))
+    );
   }
 
-  /** Paths that look like connectors: strict name, or arrow/marker on a spanning SVG host. */
-  function isConnectorPath(svg, path, rootRect) {
-    const svgName = connectorNameFor(svg);
-    const pathName = connectorNameFor(path);
-    if (CONNECTOR_NAME_STRICT.test(svgName) || CONNECTOR_NAME_STRICT.test(pathName)) return true;
-    const arrowOrMarker =
-      CONNECTOR_NAME_ARROW.test(svgName) ||
-      CONNECTOR_NAME_ARROW.test(pathName) ||
-      path.hasAttribute("marker-start") ||
-      path.hasAttribute("marker-end");
-    return arrowOrMarker && svgLooksLikeConnectorHost(svg, rootRect);
-  }
-
-  // Screen-space endpoints via the browser: getScreenCTM covers viewBox, preserveAspectRatio and group transforms.
-  function pathScreenEndpoints(svg, path) {
-    if (
-      typeof path.getTotalLength !== "function" ||
-      typeof path.getPointAtLength !== "function" ||
-      typeof path.getScreenCTM !== "function" ||
-      typeof svg.createSVGPoint !== "function"
-    ) {
+  /** Raw `d`-space endpoints (no CTM) — the mapping authors use when they paste screen coords into `d`. */
+  function pathUserEndpoints(path) {
+    if (typeof path.getTotalLength !== "function" || typeof path.getPointAtLength !== "function") {
       return null;
     }
     let total;
@@ -1246,6 +1227,21 @@
       return null;
     }
     if (!Number.isFinite(total) || total <= 0) return null;
+    const start = path.getPointAtLength(0);
+    const end = path.getPointAtLength(total);
+    return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+  }
+
+  // Screen endpoints via getScreenCTM (viewBox, preserveAspectRatio, group transforms).
+  function pathScreenEndpoints(svg, path) {
+    const user = pathUserEndpoints(path);
+    if (
+      !user ||
+      typeof path.getScreenCTM !== "function" ||
+      typeof svg.createSVGPoint !== "function"
+    ) {
+      return null;
+    }
     const matrix = path.getScreenCTM();
     if (!matrix) return null;
     const toScreen = (local) => {
@@ -1255,10 +1251,7 @@
       const mapped = point.matrixTransform(matrix);
       return { x: mapped.x, y: mapped.y };
     };
-    return {
-      start: toScreen(path.getPointAtLength(0)),
-      end: toScreen(path.getPointAtLength(total)),
-    };
+    return { start: toScreen(user.start), end: toScreen(user.end) };
   }
 
   function distanceToRect(point, rect) {
@@ -1288,7 +1281,7 @@
     return { compact, painted };
   }
 
-  // Both endpoints far from anchors ⇒ wrong SVG frame; half-attached is allowed by design.
+  // Flag only the documented bug: rendered endpoints miss, but user-space-as-screen would attach.
   function connectorDetachmentIssues(root, rootRect, time) {
     const issues = [];
     let anchors = null;
@@ -1297,20 +1290,27 @@
       if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
       for (const path of Array.from(svg.querySelectorAll("path"))) {
         if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
-        if (!isConnectorPath(svg, path, rootRect)) continue;
-        const endpoints = pathScreenEndpoints(svg, path);
-        if (!endpoints) continue;
+        if (!isConnectorPath(svg, path)) continue;
+        const user = pathUserEndpoints(path);
+        const rendered = pathScreenEndpoints(svg, path);
+        if (!user || !rendered) continue;
+        // Closed/glyph paths collapse to one point — not a two-ended connector frame bug.
+        const userChord = Math.hypot(user.end.x - user.start.x, user.end.y - user.start.y);
+        if (userChord < threshold) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
         if (anchors.compact.length < 2) return issues;
         const attached = (point) =>
           anchors.painted.some(
             (anchor) => !anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0,
           ) || anchors.compact.some((rect) => distanceToRect(point, rect) <= threshold);
-        if (attached(endpoints.start) || attached(endpoints.end)) continue;
+        // Half-attached as drawn is allowed; only full render-miss proceeds.
+        if (attached(rendered.start) || attached(rendered.end)) continue;
+        // Counterfactual: screen numbers pasted into `d` would land on anchors without CTM.
+        if (!attached(user.start) && !attached(user.end)) continue;
         const gap = Math.round(
           Math.min(
-            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.start, rect))),
-            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.end, rect))),
+            Math.min(...anchors.compact.map((rect) => distanceToRect(rendered.start, rect))),
+            Math.min(...anchors.compact.map((rect) => distanceToRect(rendered.end, rect))),
           ),
         );
         issues.push({
@@ -1319,17 +1319,17 @@
           time,
           selector: selectorFor(path),
           containerSelector: selectorFor(svg),
-          message: `Connector path endpoints are ${gap}px from the nearest anchorable element — measured coordinates were likely drawn into an SVG with a different origin.`,
+          message: `Connector path endpoints render ${gap}px from the nearest anchorable element, but the path's user-space coordinates would attach if read as screen pixels — screen/viewport numbers were likely written into SVG \`d\` without inverting the CTM.`,
           rect: toRect({
-            left: Math.min(endpoints.start.x, endpoints.end.x),
-            top: Math.min(endpoints.start.y, endpoints.end.y),
-            right: Math.max(endpoints.start.x, endpoints.end.x),
-            bottom: Math.max(endpoints.start.y, endpoints.end.y),
-            width: Math.abs(endpoints.end.x - endpoints.start.x),
-            height: Math.abs(endpoints.end.y - endpoints.start.y),
+            left: Math.min(rendered.start.x, rendered.end.x),
+            top: Math.min(rendered.start.y, rendered.end.y),
+            right: Math.max(rendered.start.x, rendered.end.x),
+            bottom: Math.max(rendered.start.y, rendered.end.y),
+            width: Math.abs(rendered.end.x - rendered.start.x),
+            height: Math.abs(rendered.end.y - rendered.start.y),
           }),
           fixHint:
-            "Subtract the SVG's own rect when converting measured coordinates, and keep the SVG a direct child of the stage.",
+            "Convert measured screen coordinates into the SVG's user space (subtract the SVG rect / invert getScreenCTM) before writing path `d`, and keep the SVG a direct child of the stage.",
         });
       }
     }

@@ -847,8 +847,8 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     // The marker tip path is skipped outright; only the detached line reports.
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ severity: "warning", selector: "#detached" });
-    expect(issues[0]?.message).toContain("drawn into an SVG with a different origin");
-    expect(issues[0]?.fixHint).toContain("Subtract the SVG's own rect");
+    expect(issues[0]?.message).toContain("user-space coordinates would attach");
+    expect(issues[0]?.fixHint).toContain("invert getScreenCTM");
   });
 
   it("skips svgs and paths without connector intent", () => {
@@ -878,16 +878,16 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 
-  // Prod FP: icon-sized arrow SVGs (class/id "arrow", optional marker-end) are glyphs, not inter-node connectors.
-  it("skips icon-sized decorative arrow paths even with marker-end", () => {
+  // Counterfactual: decorative paths miss anchors both as rendered and as user-as-screen → not the frame bug.
+  it("skips decorative arrow/flow paths whose user-space coords would not attach either", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
         <div id="n1"></div>
         <div id="n2"></div>
-        <svg id="arrow-l" class="arrow arrow-left">
-          <defs><marker id="tip"><path d="M0 0 L8 4 L0 8" /></marker></defs>
-          <path id="arrow-glyph" d="M70 20 L10 20 M25 5 L10 20 L25 35" marker-end="url(#tip)" />
+        <svg id="arrow-l" class="arrow">
+          <path id="arrow-glyph" d="M70 20 L10 20" marker-end="url(#tip)" />
         </svg>
+        <svg id="decor"><path id="flow-line" class="flow-line" d="M-100 200 L2020 880" /></svg>
       </div>
     `;
     installGeometry(
@@ -896,6 +896,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
         n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
         "arrow-l": rect({ left: 100, top: 500, width: 80, height: 40 }),
+        decor: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
       },
       {
         n1: { backgroundColor: "rgb(30, 40, 50)" },
@@ -903,6 +904,107 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       },
     );
     installConnectorGeometry({ e: 100, f: 500 });
+    // Full-bleed decor SVG uses identity translate so user-as-screen == rendered (still off-canvas).
+    for (const path of Array.from(document.querySelectorAll("#decor path"))) {
+      Object.defineProperty(path, "getScreenCTM", {
+        value: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+      });
+      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        value: (length: number) => (length === 0 ? { x: -100, y: 200 } : { x: 2020, y: 880 }),
+      });
+    }
+    const decorSvg = document.getElementById("decor");
+    if (decorSvg) {
+      Object.defineProperty(decorSvg, "createSVGPoint", {
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Closed glyph: user chord ~0 — not a two-ended frame bug even if the point sits on a node.
+  it("skips closed filled glyphs whose user-space endpoints collapse", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="main-arrow" d="M10 10 L90 10 L50 90 Z" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // Closed path: start≈end in user space (and after CTM).
+    for (const path of Array.from(document.querySelectorAll("#main-arrow"))) {
+      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        value: () => ({ x: 980, y: 580 }),
+      });
+      Object.defineProperty(path, "getScreenCTM", {
+        value: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+      });
+    }
+    const svg = document.getElementById("arrow-svg");
+    if (svg) {
+      Object.defineProperty(svg, "createSVGPoint", {
+        value: () => ({
+          x: 0,
+          y: 0,
+          matrixTransform(m: { a: number; b: number; c: number; d: number; e: number; f: number }) {
+            return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+          },
+        }),
+      });
+    }
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
+  // Correct inverse-CTM authoring: rendered attaches → never flag, even with an offset SVG.
+  it("skips connectors whose rendered endpoints already attach", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="connector-svg">
+          <path id="anchored-only" class="connector-line" d="M 900 353 L 300 53" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    installConnectorGeometry({ e: 80, f: 227 });
     installAuditScript();
 
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
@@ -1984,10 +2086,12 @@ interface CtmTranslate {
 }
 
 // happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
-function installConnectorGeometry(translate: CtmTranslate): void {
+function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
   const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
-  for (const svg of Array.from(document.querySelectorAll("svg"))) {
+  const prop = { configurable: true, writable: true };
+  for (const svg of Array.from(root.querySelectorAll("svg"))) {
     Object.defineProperty(svg, "createSVGPoint", {
+      ...prop,
       value: () => ({
         x: 0,
         y: 0,
@@ -2000,11 +2104,12 @@ function installConnectorGeometry(translate: CtmTranslate): void {
       const numbers = (path.getAttribute("d")?.match(/-?\d*\.?\d+/g) || []).map(Number);
       const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
       const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
-      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getTotalLength", { ...prop, value: () => 100 });
       Object.defineProperty(path, "getPointAtLength", {
+        ...prop,
         value: (length: number) => (length === 0 ? start : end),
       });
-      Object.defineProperty(path, "getScreenCTM", { value: () => matrix });
+      Object.defineProperty(path, "getScreenCTM", { ...prop, value: () => matrix });
     }
   }
 }
