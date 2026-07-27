@@ -1786,6 +1786,26 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("flags ~0.07 prose when proseCoverageFloor is lowered to 0.05", () => {
+    const issues = auditCoverageScene({
+      text: "This paragraph is long enough to read as ordinary prose, not a label.",
+      hitCount: 2,
+      proseCoverageFloor: 0.05,
+    });
+    const occluded = issues.find((issue) => issue.code === "text_occluded");
+    expect(occluded).toBeDefined();
+    expect(occluded?.coveredFraction).toBe(0.07);
+  });
+
+  it("still flags an atomic label at ~0.07 when proseCoverageFloor is 0.05", () => {
+    const issues = auditCoverageScene({
+      text: "SUBSCRIBE",
+      hitCount: 2,
+      proseCoverageFloor: 0.05,
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
   it("flags prose once coverage clears the 0.15 floor", () => {
     // 5/27 ≈ 0.185, comfortably over the ~0.15 prose floor.
     const issues = auditCoverageScene({
@@ -2042,6 +2062,7 @@ function occlusionProbePoints(textRect: RectInput): Array<{ x: number; y: number
 function auditCoverageScene(options: {
   text: string;
   hitCount: number;
+  proseCoverageFloor?: number;
 }): ReturnType<typeof runAudit> {
   const textRect = { left: 200, top: 500, width: 600, height: 80 };
   document.body.innerHTML = `
@@ -2065,7 +2086,11 @@ function auditCoverageScene(options: {
     return document.getElementById(isHit ? "overlay" : "headline");
   };
   installAuditScript();
-  return runAudit();
+  return runAudit(
+    options.proseCoverageFloor === undefined
+      ? undefined
+      : { proseCoverageFloor: options.proseCoverageFloor },
+  );
 }
 
 function auditOcclusionScene(options: {
@@ -2318,13 +2343,17 @@ interface AuditIssue {
   coveredFraction?: number;
 }
 
-function runAudit(): AuditIssue[] {
+function runAudit(options?: { proseCoverageFloor?: number }): AuditIssue[] {
   const audit = (
     window as unknown as {
-      __hyperframesLayoutAudit: (options: { time: number; tolerance: number }) => AuditIssue[];
+      __hyperframesLayoutAudit: (options: {
+        time: number;
+        tolerance: number;
+        proseCoverageFloor?: number;
+      }) => AuditIssue[];
     }
   ).__hyperframesLayoutAudit;
-  return audit({ time: 1, tolerance: 2 });
+  return audit({ time: 1, tolerance: 2, ...options });
 }
 
 function selectedRangeElement(selected: Node | null): Element | null {

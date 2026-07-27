@@ -1156,6 +1156,9 @@ describe("layout flag grammar", () => {
     expect(() => parseLayout("bogus=1")).toThrow("Invalid --layout");
     expect(() => parseLayout("proseCoverageFloor=-0.1")).toThrow("Invalid --layout");
     expect(() => parseLayout("proseCoverageFloor=1.1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=0.05garbage")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=0.1%")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=")).toThrow("Invalid --layout");
   });
 
   it("threads --layout into the check pipeline options", async () => {
@@ -1178,6 +1181,15 @@ describe("layout flag grammar", () => {
         layout: { proseCoverageFloor: 0.05 },
       }),
     );
+  });
+
+  it("forwards layout options into driver.collectLayout", async () => {
+    const collectLayout = vi.fn(async (_time: number, _tolerance: number, _layout?: unknown) => []);
+    await runScenario(fakeDriver({ collectLayout }), { layout: { proseCoverageFloor: 0.05 } });
+    expect(collectLayout).toHaveBeenCalled();
+    expect(collectLayout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), {
+      proseCoverageFloor: 0.05,
+    });
   });
 });
 

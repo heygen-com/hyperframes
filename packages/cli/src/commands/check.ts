@@ -252,7 +252,9 @@ function parseLayoutFields(value: string): Map<string, string> {
 
 function parseProseCoverageFloor(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
-  const floor = Number.parseFloat(raw);
+  // Number() rejects trailing garbage (`0.05abc`, `0.1%`) that parseFloat would accept.
+  if (raw === "") throw layoutError();
+  const floor = Number(raw);
   if (!Number.isFinite(floor) || floor < 0 || floor > 1) throw layoutError();
   return floor;
 }
