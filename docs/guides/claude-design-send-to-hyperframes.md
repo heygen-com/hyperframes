@@ -30,8 +30,8 @@ The single most important consequence: **there is no file tree on the other side
 
 1. **You (Claude Design)** — author a valid HyperFrames composition as a single self-contained HTML.
 2. **Send to HyperFrames** — one click. The importer fetches your HTML, validates it, and creates a hosted HeyGen project. **Import is free.**
-3. **Enhance in HyperFrames** — a motion-design agent adds what your export can't: sound effects, background music, and (later) HeyGen media. **Enhance turns are free too.**
-4. **Render** — the cloud pipeline produces the MP4. **This is the paid step** (a monthly free-render credit, then charged).
+3. **Enhance in HyperFrames** — a motion-design agent adds what your export can't: sound effects, background music, and (later) HeyGen media. **Enhance turns are free.**
+4. **Render** — the cloud pipeline produces the MP4. **Render is the paid step:** free accounts get 3 renders per month; paid plans are charged 20 credits per rendered minute.
 
 Your job is step 1: a composition that imports cleanly and is a strong on-brand starting point.
 
