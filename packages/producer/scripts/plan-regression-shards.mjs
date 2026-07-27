@@ -105,6 +105,18 @@ export function planShards({
   const onDisk = discoverFixtures(testsDir);
   const onDiskSet = new Set(onDisk);
 
+  // "Exactly one of the two maps" has to be enforced, not just "at least one".
+  // `excluded` wins when a name is in both, so a fixture listed in both would
+  // drop out of CI while every other check here still passed — the precise
+  // failure mode this file exists to prevent.
+  const inBoth = Object.keys(timings).filter((name) => name in excluded);
+  if (inBoth.length > 0) {
+    throw new Error(
+      `Fixtures are both scheduled and excluded: ${inBoth.join(", ")}.\n` +
+        `Remove each from one of "timings" or "excluded" in ${scheduleFile}.`,
+    );
+  }
+
   // A fixture that is neither timed nor excluded is the drift this script
   // exists to catch. Fail loudly rather than silently skipping it.
   const unaccounted = onDisk.filter((name) => !(name in timings) && !(name in excluded));

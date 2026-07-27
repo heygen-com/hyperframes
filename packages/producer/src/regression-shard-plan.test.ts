@@ -8,7 +8,8 @@
 // stop running fixtures.
 
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverTestSuites } from "./regression-harness.js";
 import {
@@ -34,6 +35,41 @@ describe("shard planner fixture discovery", () => {
     const plannerIds = new Set(discoverFixtures(TESTS_DIR));
     const invisibleToPlanner = harnessIds.filter((id) => !plannerIds.has(id));
     expect(invisibleToPlanner).toEqual([]);
+  });
+
+  it("schedules exactly the fixtures the harness can run, minus explicit exclusions", () => {
+    // Subset alone is not enough. The matrix is built from planner discovery,
+    // which only looks at directory layout, while the harness additionally
+    // validates meta.json and drops what fails. So a scheduled fixture whose
+    // meta.json later goes invalid would keep its slot in a shard, be skipped
+    // at run time with a console warning, and leave the shard green — the
+    // fixture stops running and nothing goes red. Pinning set equality is what
+    // makes that show up as a failing test.
+    const excluded = new Set(Object.keys(readSchedule().excluded ?? {}));
+    const harnessRunnable = discoverTestSuites(TESTS_DIR, [])
+      .map((suite) => suite.id)
+      .filter((id) => !excluded.has(id))
+      .sort();
+    const scheduled = planShards()
+      .include.flatMap((row) => row.args.split(" "))
+      .sort();
+    expect(scheduled).toEqual(harnessRunnable);
+  });
+
+  it("rejects a fixture listed in both timings and excluded", () => {
+    // `excluded` wins on conflict, so without this the fixture would quietly
+    // stop running while every other invariant still passed.
+    const schedule = readSchedule();
+    const victim = Object.keys(schedule.timings ?? {})[0] as string;
+    const tainted = join(mkdtempSync(join(tmpdir(), "hf-shard-schedule-")), "shard-schedule.json");
+    writeFileSync(
+      tainted,
+      JSON.stringify({
+        ...schedule,
+        excluded: { ...schedule.excluded, [victim]: "duplicate entry that must be rejected" },
+      }),
+    );
+    expect(() => planShards({ scheduleFile: tainted })).toThrow(/both scheduled and excluded/);
   });
 
   it("gives every excluded fixture a written reason", () => {
