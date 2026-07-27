@@ -506,10 +506,12 @@ function detectSweepStatic(
 const ROTATION_MIN_SAMPLES = 3;
 // Minimum angle spread that counts as spinning rather than a static tilt.
 const ROTATION_MIN_ANGLE_SPREAD_DEG = 20;
-// Long-axis AABB growth ceiling (square@45° ≈ 1.41×); per-axis lengths may swap on elongated rotators.
+// Long-axis AABB growth ceiling (square@45° ≈ 1.41×); rejects non-rigid blow-ups before the model fit.
 const ROTATION_MAX_SIZE_RATIO = 1.6;
-// Axis ratio at/under this is treated as "fixed" for the single-axis scale guard.
-const ROTATION_FIXED_AXIS_RATIO = 1.15;
+// Relative slack when matching observed AABB to one rigid unrotated rectangle.
+const ROTATION_RIGID_AABB_RATIO = 1.15;
+// |cos2θ| below this → 45°-class sample; skip as an unrotated-size estimator (singular).
+const ROTATION_RIGID_ESTIMATE_MIN_DET = 0.15;
 // Skip tiny decorative spinners; only sizable rotating figures matter.
 const ROTATION_MIN_MEDIAN_AREA_PX = 2500;
 const ROTATION_DRIFT_SIZE_FRACTION = 0.1;
@@ -611,67 +613,66 @@ function isActuallySpinning(group: RotationSample[]): boolean {
   return maxAngleSpread(group.map((s) => s.angle)) > ROTATION_MIN_ANGLE_SPREAD_DEG;
 }
 
-/** True when one AABB axis stays fixed while the other grows — entrance/scale, not spin wobble. */
-function isPrimarilyAxisScale(group: RotationSample[]): boolean {
-  const widths = group.map((s) => s.w);
-  const heights = group.map((s) => s.h);
-  const minWidth = Math.min(...widths);
-  const minHeight = Math.min(...heights);
-  if (minWidth <= 0 || minHeight <= 0) return false;
-  const widthRatio = Math.max(...widths) / minWidth;
-  const heightRatio = Math.max(...heights) / minHeight;
+/** AABB of an axis-aligned rectangle of size (elemW, elemH) after CSS rotation `angleDeg`. */
+function aabbForRotatedRect(
+  elemW: number,
+  elemH: number,
+  angleDeg: number,
+): { w: number; h: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cosAbs = Math.abs(Math.cos(rad));
+  const sinAbs = Math.abs(Math.sin(rad));
+  return { w: elemW * cosAbs + elemH * sinAbs, h: elemW * sinAbs + elemH * cosAbs };
+}
+
+/** Invert one sample to unrotated (elemW, elemH); null when θ is near 45° (singular). */
+function unrotatedSizeFromSample(sample: RotationSample): { w: number; h: number } | null {
+  const rad = (sample.angle * Math.PI) / 180;
+  const cosAbs = Math.abs(Math.cos(rad));
+  const sinAbs = Math.abs(Math.sin(rad));
+  const det = cosAbs * cosAbs - sinAbs * sinAbs; // cos(2θ)
+  if (Math.abs(det) < ROTATION_RIGID_ESTIMATE_MIN_DET) return null;
+  const elemW = (cosAbs * sample.w - sinAbs * sample.h) / det;
+  const elemH = (cosAbs * sample.h - sinAbs * sample.w) / det;
+  if (!(elemW > 0) || !(elemH > 0)) return null;
+  return { w: elemW, h: elemH };
+}
+
+function aabbMatchesSample(expected: { w: number; h: number }, sample: RotationSample): boolean {
+  if (expected.w <= 0 || expected.h <= 0 || sample.w <= 0 || sample.h <= 0) return false;
   return (
-    (widthRatio <= ROTATION_FIXED_AXIS_RATIO && heightRatio > ROTATION_MAX_SIZE_RATIO) ||
-    (heightRatio <= ROTATION_FIXED_AXIS_RATIO && widthRatio > ROTATION_MAX_SIZE_RATIO)
+    Math.max(expected.w, sample.w) / Math.min(expected.w, sample.w) <= ROTATION_RIGID_AABB_RATIO &&
+    Math.max(expected.h, sample.h) / Math.min(expected.h, sample.h) <= ROTATION_RIGID_AABB_RATIO
   );
 }
 
-/** Dimensions match within the fixed-axis slack (order-sensitive pairwise compare). */
-function dimsWithinFixedAxis(a: number, b: number): boolean {
-  if (a <= 0 || b <= 0) return false;
-  return Math.max(a, b) / Math.min(a, b) <= ROTATION_FIXED_AXIS_RATIO;
+/**
+ * Every sample's AABB matches one fixed unrotated rectangle spun by that sample's angle.
+ * Scale/entrance (including swap-then-scale) fails; partial-arc rigid spins pass without a 90° pair.
+ */
+function fitsOneRigidRectangle(group: RotationSample[]): boolean {
+  for (const ref of group) {
+    const size = unrotatedSizeFromSample(ref);
+    if (!size) continue;
+    if (
+      group.every((sample) =>
+        aabbMatchesSample(aabbForRotatedRect(size.w, size.h, sample.angle), sample),
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-/** True when two samples are approximate AABB axis-swaps of each other (rigid 90°-class turn). */
-function samplesAreAxisSwaps(a: RotationSample, b: RotationSample): boolean {
-  if (!dimsWithinFixedAxis(a.w, b.h) || !dimsWithinFixedAxis(a.h, b.w)) return false;
-  // Same orientation (identical box) is not a swap — scale pulses return to the start size.
-  return Math.max(a.w, a.h) / Math.min(a.w, a.h) > ROTATION_FIXED_AXIS_RATIO;
-}
-
-/** Any pair in the group looks like a rigid AABB axis-swap. */
-function groupHasAxisSwap(group: RotationSample[]): boolean {
-  return group.some((left, i) =>
-    group.slice(i + 1).some((right) => samplesAreAxisSwaps(left, right)),
-  );
-}
-
-/** Per-axis AABB growth past the spin ceiling. */
-function axisExceedsSpinCeiling(group: RotationSample[]): boolean {
-  const widths = group.map((s) => s.w);
-  const heights = group.map((s) => s.h);
-  const minWidth = Math.min(...widths);
-  const minHeight = Math.min(...heights);
-  if (minWidth <= 0 || minHeight <= 0) return false;
-  return (
-    Math.max(...widths) / minWidth > ROTATION_MAX_SIZE_RATIO ||
-    Math.max(...heights) / minHeight > ROTATION_MAX_SIZE_RATIO
-  );
-}
-
-/** Per-axis AABB excursion past the spin ceiling is scale unless a rigid axis-swap appears. */
-function hasUnjustifiedAxisExcursion(group: RotationSample[]): boolean {
-  return axisExceedsSpinCeiling(group) && !groupHasAxisSwap(group);
-}
-
-/** Rigid spin keeps the longer AABB side stable; elongated rotators may swing per-axis lengths freely. */
+/** Rigid spin: long AABB side stays bounded, and all samples fit one rotated rectangle. */
 function isRotationSizeStable(group: RotationSample[]): boolean {
   if (group.some((s) => s.w <= 0 || s.h <= 0)) return false;
   const longSides = group.map((s) => Math.max(s.w, s.h));
   const minLong = Math.min(...longSides);
   if (minLong <= 0) return false;
   if (Math.max(...longSides) / minLong > ROTATION_MAX_SIZE_RATIO) return false;
-  return !isPrimarilyAxisScale(group) && !hasUnjustifiedAxisExcursion(group);
+  return fitsOneRigidRectangle(group);
 }
 
 /** Skip tiny decorative spinners; only sizable rotating figures matter. */
