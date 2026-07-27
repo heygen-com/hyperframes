@@ -1260,6 +1260,7 @@
   }
 
   // Solid, compact elements a connector could plausibly anchor to.
+  // Both tiers keep `element` so attachment identity is stable across containment vs near-miss.
   function connectorAnchorRects(root, rootRect) {
     const compact = [];
     const painted = [];
@@ -1275,7 +1276,7 @@
       if (area < 400) continue;
       // Containment tier: large opaque targets only — a text-bearing wrapper contains its own diagram's endpoints.
       if (opaque && area <= rootArea * 0.6) painted.push({ rect, element });
-      if (area <= rootArea * 0.15) compact.push(rect);
+      if (area <= rootArea * 0.15) compact.push({ rect, element });
     }
     return { compact, painted };
   }
@@ -1303,15 +1304,15 @@
         if (renderedChord < MIN_CONNECTOR_CHORD_PX) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
         if (anchors.compact.length < 2) return issues;
+        // Stable DOM identity across painted (inside) and compact (near-miss) tiers.
         const attachmentKey = (point) => {
-          for (let i = 0; i < anchors.painted.length; i++) {
-            const anchor = anchors.painted[i];
+          for (const anchor of anchors.painted) {
             if (!anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0) {
-              return `p${i}`;
+              return anchor.element;
             }
           }
-          for (let i = 0; i < anchors.compact.length; i++) {
-            if (distanceToRect(point, anchors.compact[i]) <= threshold) return `c${i}`;
+          for (const anchor of anchors.compact) {
+            if (distanceToRect(point, anchor.rect) <= threshold) return anchor.element;
           }
           return null;
         };
@@ -1324,8 +1325,8 @@
         if (!userStartKey || !userEndKey || userStartKey === userEndKey) continue;
         const gap = Math.round(
           Math.min(
-            Math.min(...anchors.compact.map((rect) => distanceToRect(rendered.start, rect))),
-            Math.min(...anchors.compact.map((rect) => distanceToRect(rendered.end, rect))),
+            Math.min(...anchors.compact.map((a) => distanceToRect(rendered.start, a.rect))),
+            Math.min(...anchors.compact.map((a) => distanceToRect(rendered.end, a.rect))),
           ),
         );
         issues.push({

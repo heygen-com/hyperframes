@@ -931,6 +931,36 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 
+  // Same DOM node via painted-inside + compact-near-miss must share one identity (not p0 vs c0).
+  it("skips same-anchor cross-tier arrows that only graze one node", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-svg" class="arrow">
+          <path id="cross-tier" d="M 980 580 L 1080 580" marker-end="url(#tip)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    // Raw start inside #n1; raw end just outside #n1 but within attach tolerance — one element.
+    installConnectorGeometry({ e: 80, f: 227 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+
   // One raw endpoint on a node is not the paste-into-`d` bug (decorative arrow / partial aim).
   it("skips one-ended decorative arrows when only one user endpoint attaches", () => {
     document.body.innerHTML = `

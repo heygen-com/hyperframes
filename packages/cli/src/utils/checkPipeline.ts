@@ -626,19 +626,42 @@ function isPrimarilyAxisScale(group: RotationSample[]): boolean {
   );
 }
 
-/**
- * Two-axis scale/entrance: area grows past the spin ceiling and the trajectory ends far from its start.
- * Elongated rigid spin peaks mid-arc (AABB at 45°) then returns — first≈last area — so it stays.
- */
-function isTwoAxisScale(group: RotationSample[]): boolean {
-  const areas = group.map((s) => s.w * s.h);
-  const minArea = Math.min(...areas);
-  const maxArea = Math.max(...areas);
-  if (minArea <= 0 || maxArea / minArea <= ROTATION_MAX_SIZE_RATIO) return false;
-  const first = areas[0] ?? 0;
-  const last = areas[areas.length - 1] ?? 0;
-  if (first <= 0 || last <= 0) return false;
-  return Math.max(first, last) / Math.min(first, last) > ROTATION_MAX_SIZE_RATIO;
+/** Dimensions match within the fixed-axis slack (order-sensitive pairwise compare). */
+function dimsWithinFixedAxis(a: number, b: number): boolean {
+  if (a <= 0 || b <= 0) return false;
+  return Math.max(a, b) / Math.min(a, b) <= ROTATION_FIXED_AXIS_RATIO;
+}
+
+/** True when two samples are approximate AABB axis-swaps of each other (rigid 90°-class turn). */
+function samplesAreAxisSwaps(a: RotationSample, b: RotationSample): boolean {
+  if (!dimsWithinFixedAxis(a.w, b.h) || !dimsWithinFixedAxis(a.h, b.w)) return false;
+  // Same orientation (identical box) is not a swap — scale pulses return to the start size.
+  return Math.max(a.w, a.h) / Math.min(a.w, a.h) > ROTATION_FIXED_AXIS_RATIO;
+}
+
+/** Any pair in the group looks like a rigid AABB axis-swap. */
+function groupHasAxisSwap(group: RotationSample[]): boolean {
+  return group.some((left, i) =>
+    group.slice(i + 1).some((right) => samplesAreAxisSwaps(left, right)),
+  );
+}
+
+/** Per-axis AABB growth past the spin ceiling. */
+function axisExceedsSpinCeiling(group: RotationSample[]): boolean {
+  const widths = group.map((s) => s.w);
+  const heights = group.map((s) => s.h);
+  const minWidth = Math.min(...widths);
+  const minHeight = Math.min(...heights);
+  if (minWidth <= 0 || minHeight <= 0) return false;
+  return (
+    Math.max(...widths) / minWidth > ROTATION_MAX_SIZE_RATIO ||
+    Math.max(...heights) / minHeight > ROTATION_MAX_SIZE_RATIO
+  );
+}
+
+/** Per-axis AABB excursion past the spin ceiling is scale unless a rigid axis-swap appears. */
+function hasUnjustifiedAxisExcursion(group: RotationSample[]): boolean {
+  return axisExceedsSpinCeiling(group) && !groupHasAxisSwap(group);
 }
 
 /** Rigid spin keeps the longer AABB side stable; elongated rotators may swing per-axis lengths freely. */
@@ -648,7 +671,7 @@ function isRotationSizeStable(group: RotationSample[]): boolean {
   const minLong = Math.min(...longSides);
   if (minLong <= 0) return false;
   if (Math.max(...longSides) / minLong > ROTATION_MAX_SIZE_RATIO) return false;
-  return !isPrimarilyAxisScale(group) && !isTwoAxisScale(group);
+  return !isPrimarilyAxisScale(group) && !hasUnjustifiedAxisExcursion(group);
 }
 
 /** Skip tiny decorative spinners; only sizable rotating figures matter. */
