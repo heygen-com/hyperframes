@@ -16,7 +16,7 @@ import {
   type CheckReport,
   type CheckSection,
 } from "../utils/checkPipeline.js";
-import type { CaptionZoneOptions, FrameCheckOptions } from "../utils/checkTypes.js";
+import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -120,6 +120,11 @@ export function createCheckCommand(
         description:
           'Bare --frame-check uses defaults (tol=2px, severity=warning, seek=.5; breach floor=max(120px, 6% of shorter canvas edge)); or pass "severity=error;seek=.25,.75;tol=4" to tune',
       },
+      layout: {
+        type: "string",
+        description:
+          'Layout-audit knobs as "proseCoverageFloor=0.05" (0–1; default 0.15). Lowers the prose text_occluded coverage floor without changing other layout gates.',
+      },
     },
     async run({ args }) {
       const asJson = args.json === true;
@@ -168,6 +173,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     snapshots: args.snapshots === true,
     captionZone: parseCaptionZone(args["caption-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
+    layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
   };
 }
@@ -175,6 +181,8 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
 const CAPTION_ZONE_FIELDS = new Set(["x0", "y0", "x1", "y1", "severity", "seek"]);
 
 const FRAME_CHECK_FIELDS = new Set(["severity", "seek", "tol"]);
+
+const LAYOUT_FIELDS = new Set(["proseCoverageFloor"]);
 
 // Mirrors --caption-zone's spec grammar so the EF bridge's severity/seek/tol
 // options survive the migration instead of being silently dropped by a
@@ -214,6 +222,45 @@ function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
 function frameCheckError(): Error {
   return new Error(
     'Invalid --frame-check: use bare --frame-check or "severity=warning|error;seek=.25,.75;tol=4" (all fields optional)',
+  );
+}
+
+/** Parse `--layout "proseCoverageFloor=0.05"` (semicolon-separated key=value, like caption-zone). */
+export function parseLayout(value: unknown): LayoutOptions | undefined {
+  if (value === undefined || value === null || value === false) return undefined;
+  if (value === true || value === "") throw layoutError();
+  if (typeof value !== "string") throw layoutError();
+  const fields = parseLayoutFields(value);
+  const proseCoverageFloor = parseProseCoverageFloor(fields.get("proseCoverageFloor"));
+  if (proseCoverageFloor === undefined) throw layoutError();
+  return { proseCoverageFloor };
+}
+
+function parseLayoutFields(value: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  for (const part of value.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) throw layoutError();
+    const key = trimmed.slice(0, separator).trim();
+    const entry = trimmed.slice(separator + 1).trim();
+    if (!LAYOUT_FIELDS.has(key) || fields.has(key)) throw layoutError();
+    fields.set(key, entry);
+  }
+  return fields;
+}
+
+function parseProseCoverageFloor(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const floor = Number.parseFloat(raw);
+  if (!Number.isFinite(floor) || floor < 0 || floor > 1) throw layoutError();
+  return floor;
+}
+
+function layoutError(): Error {
+  return new Error(
+    'Invalid --layout: use "proseCoverageFloor=0.05" with a fraction from 0 to 1 (inclusive)',
   );
 }
 

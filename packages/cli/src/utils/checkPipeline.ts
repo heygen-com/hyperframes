@@ -380,7 +380,7 @@ async function collectGridSamples(
     // that render time — never a stale bbox from an earlier/later sample.
     const issuesAtTime: AnchoredLayoutIssue[] = [];
     if (layoutSet.has(time)) {
-      const layoutIssues = await driver.collectLayout(time, options.tolerance);
+      const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
       collected.geometrySignatures.push(await driver.collectLayoutGeometry());

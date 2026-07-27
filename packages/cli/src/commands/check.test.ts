@@ -1144,6 +1144,43 @@ describe("frame-check flag grammar", () => {
   });
 });
 
+describe("layout flag grammar", () => {
+  it("parses proseCoverageFloor and rejects malformed specs", async () => {
+    const { parseLayout } = await import("./check.js");
+    expect(parseLayout(undefined)).toBeUndefined();
+    expect(parseLayout("proseCoverageFloor=0.05")).toEqual({ proseCoverageFloor: 0.05 });
+    expect(parseLayout("proseCoverageFloor=0")).toEqual({ proseCoverageFloor: 0 });
+    expect(parseLayout("proseCoverageFloor=1")).toEqual({ proseCoverageFloor: 1 });
+    expect(() => parseLayout(true)).toThrow("Invalid --layout");
+    expect(() => parseLayout("")).toThrow("Invalid --layout");
+    expect(() => parseLayout("bogus=1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=-0.1")).toThrow("Invalid --layout");
+    expect(() => parseLayout("proseCoverageFloor=1.1")).toThrow("Invalid --layout");
+  });
+
+  it("threads --layout into the check pipeline options", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline,
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, {
+      rawArgs: ["--json", "--layout", "proseCoverageFloor=0.05"],
+    });
+
+    expect(runPipeline).toHaveBeenCalledWith(
+      PROJECT,
+      expect.objectContaining({
+        layout: { proseCoverageFloor: 0.05 },
+      }),
+    );
+  });
+});
+
 describe("contrast persistence", () => {
   it("demotes a single-sample contrast failure to warning but gates held failures", async () => {
     const driver = fakeDriver({

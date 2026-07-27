@@ -42,6 +42,7 @@ import type {
   ContrastAuditEntry,
   ContrastCapture,
   GeometryCandidateRequest,
+  LayoutOptions,
   MotionSpecResolution,
   OffPivotFrame,
   OffPivotRotationSample,
@@ -353,7 +354,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
       setTime(time);
       await seekCompositionTimeline(page, time, DENSE_GEOMETRY_SEEK_OPTIONS);
     },
-    collectLayout: (time, tolerance) => collectLayout(page, time, tolerance),
+    collectLayout: (time, tolerance, layout) => collectLayout(page, time, tolerance, layout),
     collectOverlap: (time) => collectOverlap(page, time),
     collectLayoutGeometry: () => collectLayoutGeometry(page),
     collectRotationSample: (time) => collectRotationSample(page, time),
@@ -457,15 +458,22 @@ async function collectLayout(
   page: Page,
   time: number,
   tolerance: number,
+  layout?: LayoutOptions,
 ): Promise<AnchoredLayoutIssue[]> {
   const raw = await page.evaluate(
-    (options: { time: number; tolerance: number }) => {
+    (options: { time: number; tolerance: number; proseCoverageFloor?: number }) => {
       const audit = Reflect.get(window, "__hyperframesLayoutAudit");
       if (typeof audit !== "function") return [];
       const result = Reflect.apply(audit, window, [options]);
       return Array.isArray(result) ? result : [];
     },
-    { time, tolerance },
+    {
+      time,
+      tolerance,
+      ...(typeof layout?.proseCoverageFloor === "number"
+        ? { proseCoverageFloor: layout.proseCoverageFloor }
+        : {}),
+    },
   );
   return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
 }

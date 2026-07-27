@@ -935,7 +935,8 @@
   // (the pre-#U10 behaviour). Longer prose survives a nibbled edge; only flag
   // once a real share of it is covered — see `occludedTextIssue`.
   const ATOMIC_LABEL_MAX_CHARS = 16;
-  const PROSE_COVERAGE_FLOOR = 0.15;
+  // Default prose floor — callers may lower via auditLayout({ proseCoverageFloor }).
+  const DEFAULT_PROSE_COVERAGE_FLOOR = 0.15;
 
   function isAtomicLabel(text) {
     return text.length > 0 && text.length <= ATOMIC_LABEL_MAX_CHARS && !/\s/.test(text);
@@ -998,9 +999,10 @@
   // Catches the blind spot the overflow checks miss: text that fits its box
   // perfectly but is covered by a later sibling/overlay. An atomic label
   // (short, no whitespace) flags at any coverage; ordinary prose only flags
-  // once coveredFraction clears PROSE_COVERAGE_FLOOR, since a sliver of edge
-  // cover on a paragraph is usually a styling artifact, not a reading defect.
-  function occludedTextIssue(element, time) {
+  // once coveredFraction clears the prose coverage floor (default 0.15; tunable
+  // via auditLayout options.proseCoverageFloor), since a sliver of edge cover
+  // on a paragraph is usually a styling artifact, not a reading defect.
+  function occludedTextIssue(element, time, proseCoverageFloor) {
     if (hasAllowOcclusionFlag(element)) return null;
     if (!hasVisibleTextInk(element)) return null;
     const textRect = textRectFor(element, true);
@@ -1012,7 +1014,7 @@
       textRects.length > 0 ? textRects : [textRect],
     );
     if (!occluder) return null;
-    if (!isAtomicLabel(text) && coveredFraction < PROSE_COVERAGE_FLOOR) return null;
+    if (!isAtomicLabel(text) && coveredFraction < proseCoverageFloor) return null;
     return {
       code: "text_occluded",
       severity: "error",
@@ -1420,6 +1422,10 @@
     const time = options && typeof options.time === "number" ? options.time : 0;
     const tolerance =
       options && typeof options.tolerance === "number" ? Math.max(0, options.tolerance) : 2;
+    const proseCoverageFloor =
+      options && typeof options.proseCoverageFloor === "number"
+        ? Math.min(1, Math.max(0, options.proseCoverageFloor))
+        : DEFAULT_PROSE_COVERAGE_FLOOR;
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
       document.querySelector("[data-composition-id]") ||
@@ -1437,7 +1443,7 @@
         const clipped = clippedTextIssue(element, time, tolerance);
         if (clipped) issues.push(clipped);
         issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
-        const occluded = occludedTextIssue(element, time);
+        const occluded = occludedTextIssue(element, time, proseCoverageFloor);
         if (occluded) issues.push(occluded);
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);

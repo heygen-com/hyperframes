@@ -18,6 +18,8 @@ export interface CheckOptions {
   snapshots: boolean;
   captionZone?: CaptionZoneOptions;
   frameCheck?: FrameCheckOptions;
+  /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
+  layout?: LayoutOptions;
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
 }
@@ -35,6 +37,16 @@ export interface FrameCheckOptions {
   tol?: number;
   severity?: "error" | "warning";
   seek?: number[];
+}
+
+/** Layout-audit tuning passed through to `__hyperframesLayoutAudit`. All fields optional. */
+export interface LayoutOptions {
+  /**
+   * Minimum coveredFraction of a prose text box that must sit under an opaque
+   * occluder before `text_occluded` fires. Atomic labels (short, no whitespace)
+   * still flag at any hit. Default in the browser audit is 0.15.
+   */
+  proseCoverageFloor?: number;
 }
 
 export type CheckSeverity = "error" | "warning" | "info";
@@ -175,7 +187,11 @@ export interface CheckAuditDriver {
   seek(time: number): Promise<void>;
   /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */
   seekGeometry(time: number): Promise<void>;
-  collectLayout(time: number, tolerance: number): Promise<AnchoredLayoutIssue[]>;
+  collectLayout(
+    time: number,
+    tolerance: number,
+    layout?: LayoutOptions,
+  ): Promise<AnchoredLayoutIssue[]>;
   /** content_overlap only, for the dense re-sampling grid — catches transient text collisions the sparse grid seeks past. */
   collectOverlap(time: number): Promise<AnchoredLayoutIssue[]>;
   /** Frozen-sweep guard (#U10): an opaque per-sample geometry+opacity
