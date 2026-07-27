@@ -122,8 +122,7 @@ export function createCheckCommand(
       },
       layout: {
         type: "string",
-        description:
-          'Layout-audit knobs as "proseCoverageFloor=0.05" (0–1; default 0.15). Lowers the prose text_occluded coverage floor without changing other layout gates.',
+        description: 'Layout knobs: "proseCoverageFloor=0.05" (0–1; default 0.15).',
       },
     },
     async run({ args }) {

@@ -41,11 +41,7 @@ export interface FrameCheckOptions {
 
 /** Layout-audit tuning passed through to `__hyperframesLayoutAudit`. All fields optional. */
 export interface LayoutOptions {
-  /**
-   * Minimum coveredFraction of a prose text box that must sit under an opaque
-   * occluder before `text_occluded` fires. Atomic labels (short, no whitespace)
-   * still flag at any hit. Default in the browser audit is 0.15.
-   */
+  /** Prose `text_occluded` coveredFraction floor (0–1; default 0.15); atomic labels still flag at any hit. */
   proseCoverageFloor?: number;
 }
 

@@ -996,12 +996,7 @@
     return false;
   }
 
-  // Catches the blind spot the overflow checks miss: text that fits its box
-  // perfectly but is covered by a later sibling/overlay. An atomic label
-  // (short, no whitespace) flags at any coverage; ordinary prose only flags
-  // once coveredFraction clears the prose coverage floor (default 0.15; tunable
-  // via auditLayout options.proseCoverageFloor), since a sliver of edge cover
-  // on a paragraph is usually a styling artifact, not a reading defect.
+  // text_occluded: atomic labels flag at any hit; prose needs coveredFraction >= proseCoverageFloor (default 0.15).
   function occludedTextIssue(element, time, proseCoverageFloor) {
     if (hasAllowOcclusionFlag(element)) return null;
     if (!hasVisibleTextInk(element)) return null;
