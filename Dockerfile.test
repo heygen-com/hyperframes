@@ -90,13 +90,22 @@ COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 RUN bun install --frozen-lockfile
 
-# Copy source
+# Copy source in dependency order, running each build as soon as its own
+# inputs are present.
+#
+# Every package used to be copied here before any build ran, which put the
+# `COPY packages/producer/` layer above the core build. Docker invalidates
+# every layer below a changed one, so a producer-only change rebuilt core —
+# which cannot depend on producer. On CI run 30229469233 those two layers
+# cost 86s and 63s of the ~4m image build, in all 8 shards, on every PR.
+# Locally the same producer-only rebuild goes from 18s to 1s after this split.
+#
+# Keep the ordering dependency-correct: anything the core build reads must be
+# copied above it, and packages nothing above depends on stay below.
 COPY packages/parsers/ packages/parsers/
 COPY packages/lint/ packages/lint/
 COPY packages/studio-server/ packages/studio-server/
 COPY packages/core/ packages/core/
-COPY packages/engine/ packages/engine/
-COPY packages/producer/ packages/producer/
 
 # Build workspace packages so "node" export conditions resolve to built dist
 RUN bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \
@@ -104,6 +113,10 @@ RUN bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \
 
 # Build core runtime artifacts (needed by renderer)
 RUN bun run --filter @hyperframes/core build:hyperframes-runtime:modular
+
+# Nothing above reads these, so they land after the core build to keep it cached.
+COPY packages/engine/ packages/engine/
+COPY packages/producer/ packages/producer/
 
 # Generate embedded font data (deterministicFonts.ts imports this at runtime)
 RUN cd packages/producer && bunx tsx scripts/generate-font-data.ts
