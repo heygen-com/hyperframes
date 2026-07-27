@@ -646,9 +646,33 @@ function aabbMatchesSample(expected: { w: number; h: number }, sample: RotationS
   );
 }
 
+function isSingularRotationAngle(angleDeg: number): boolean {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cosAbs = Math.abs(Math.cos(rad));
+  const sinAbs = Math.abs(Math.sin(rad));
+  return Math.abs(cosAbs * cosAbs - sinAbs * sinAbs) < ROTATION_RIGID_ESTIMATE_MIN_DET;
+}
+
+function isNearSquareAabb(sample: RotationSample): boolean {
+  if (sample.w <= 0 || sample.h <= 0) return false;
+  return Math.max(sample.w, sample.h) / Math.min(sample.w, sample.h) <= ROTATION_RIGID_AABB_RATIO;
+}
+
+/**
+ * All samples are 45°-class (no invertible estimator): a rigid rectangle projects to one
+ * near-square AABB size at every such phase, so mutual AABB agreement is the rigidity proof.
+ */
+function fitsSingularPhaseRigidProjection(group: RotationSample[]): boolean {
+  if (group.length === 0 || !group.every((s) => isSingularRotationAngle(s.angle))) return false;
+  if (!group.every(isNearSquareAabb)) return false;
+  const ref = group[0];
+  if (!ref) return false;
+  return group.every((sample) => aabbMatchesSample({ w: ref.w, h: ref.h }, sample));
+}
+
 /**
  * Every sample's AABB matches one fixed unrotated rectangle spun by that sample's angle.
- * Scale/entrance (including swap-then-scale) fails; partial-arc rigid spins pass without a 90° pair.
+ * Scale/entrance fails; partial-arc and all-singular (45°-class) rigid spins still pass.
  */
 function fitsOneRigidRectangle(group: RotationSample[]): boolean {
   for (const ref of group) {
@@ -662,7 +686,7 @@ function fitsOneRigidRectangle(group: RotationSample[]): boolean {
       return true;
     }
   }
-  return false;
+  return fitsSingularPhaseRigidProjection(group);
 }
 
 /** Rigid spin: long AABB side stays bounded, and all samples fit one rotated rectangle. */

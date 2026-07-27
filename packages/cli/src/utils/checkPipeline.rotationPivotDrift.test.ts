@@ -108,6 +108,19 @@ describe("detectRotationPivotDrift", () => {
     expect(findings[0]?.code).toBe("rotation_pivot_drift");
   });
 
+  // All samples singular (|cos2θ|<0.15): no invertible estimator — near-square AABB agreement is the fallback.
+  it("fires on a rigid elongated spin sampled only at singular 45-degree-class phases", () => {
+    const group = [
+      rigidSample(400, 80, { time: 0, angle: 45, cx: 250, cy: 250 }),
+      rigidSample(400, 80, { time: 1, angle: 135, cx: 250, cy: 310 }),
+      rigidSample(400, 80, { time: 2, angle: 225, cx: 250, cy: 370 }),
+    ];
+    const findings = detectRotationPivotDrift(group, CANVAS);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe("rotation_pivot_drift");
+    expect(findings[0]?.message).toContain("120px");
+  });
+
   // Two-axis scale/entrance: AABBs are not one rotated rectangle.
   it("does not fire on two-axis scale/entrance that shrinks the long side while growing the short", () => {
     const group = [
