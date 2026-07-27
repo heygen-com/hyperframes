@@ -11,6 +11,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { checkDistributedSupport } from "./regression-harness-distributed.js";
 import { discoverTestSuites } from "./regression-harness.js";
 import {
   discoverFixtures,
@@ -108,6 +109,44 @@ describe("shard planner fixture discovery", () => {
       }),
     );
     expect(() => planShards({ scheduleFile: tainted })).toThrow(/are not scheduled/);
+  });
+
+  it("only assigns distributed mode to fixtures the harness can actually run that way", () => {
+    // The blocking gap: `checkDistributedSupport` refuses HDR, non-integer fps,
+    // and fps outside {24,30,60}, and the harness records a refusal as
+    // `passed: true` with `skipped`. Skipping was safe while in-process also
+    // ran the fixture. It is not safe now — these fixtures run in distributed
+    // mode and nowhere else, so a later `hdr: true` or fps edit would turn
+    // their only coverage into a green no-op with every other planner
+    // invariant still passing. Membership and reason-text checks cannot see
+    // that; runtime support has to be part of the committed contract.
+    const suites = new Map(discoverTestSuites(TESTS_DIR, []).map((s) => [s.id, s]));
+    for (const fixture of Object.keys(readSchedule().distributed ?? {})) {
+      const suite = suites.get(fixture);
+      expect(
+        suite,
+        `${fixture} is marked distributed but the harness cannot load it`,
+      ).toBeDefined();
+      const support = checkDistributedSupport(
+        (suite as { meta: { renderConfig: Parameters<typeof checkDistributedSupport>[0] } }).meta
+          .renderConfig,
+      );
+      expect(
+        support.supported,
+        `${fixture} is scheduled distributed-only but distributed mode refuses it: ` +
+          `${support.supported ? "" : support.reason}`,
+      ).toBe(true);
+    }
+  });
+
+  it("would reject a distributed fixture the harness refuses to run chunked", () => {
+    // Proves the guard above has teeth rather than passing vacuously.
+    const hdr = checkDistributedSupport({ fps: { num: 30, den: 1 }, hdr: true });
+    expect(hdr.supported).toBe(false);
+    const ntsc = checkDistributedSupport({ fps: { num: 30000, den: 1001 } });
+    expect(ntsc.supported).toBe(false);
+    const odd = checkDistributedSupport({ fps: { num: 25, den: 1 } });
+    expect(odd.supported).toBe(false);
   });
 
   it("gives every distributed fixture a written reason", () => {
