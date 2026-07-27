@@ -1198,13 +1198,35 @@
     return issues;
   }
 
-  const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
+  // Strict names always count; "arrow"/marker-end only count on a stage-spanning SVG host.
+  const CONNECTOR_NAME_STRICT = /\b(conn(ector)?|edge|link|flow|wire)\b/i;
+  const CONNECTOR_NAME_ARROW = /\barrow\b/i;
   const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
 
   function connectorNameFor(element) {
     const className =
       typeof element.className === "string" ? element.className : element.className.baseVal || "";
     return `${element.id || ""} ${className}`;
+  }
+
+  /** True when the SVG is large enough to host inter-node connectors rather than a decorative icon. */
+  function svgLooksLikeConnectorHost(svg, rootRect) {
+    const rect = toRect(svg.getBoundingClientRect());
+    const minCanvas = Math.min(rootRect.width, rootRect.height);
+    return Math.max(rect.width, rect.height) >= Math.max(160, minCanvas * 0.12);
+  }
+
+  /** Paths that look like connectors: strict name, or arrow/marker on a spanning SVG host. */
+  function isConnectorPath(svg, path, rootRect) {
+    const svgName = connectorNameFor(svg);
+    const pathName = connectorNameFor(path);
+    if (CONNECTOR_NAME_STRICT.test(svgName) || CONNECTOR_NAME_STRICT.test(pathName)) return true;
+    const arrowOrMarker =
+      CONNECTOR_NAME_ARROW.test(svgName) ||
+      CONNECTOR_NAME_ARROW.test(pathName) ||
+      path.hasAttribute("marker-start") ||
+      path.hasAttribute("marker-end");
+    return arrowOrMarker && svgLooksLikeConnectorHost(svg, rootRect);
   }
 
   // Screen-space endpoints via the browser: getScreenCTM covers viewBox, preserveAspectRatio and group transforms.
@@ -1266,15 +1288,7 @@
     return { compact, painted };
   }
 
-  function isConnectorPath(svg, path) {
-    if (path.hasAttribute("marker-start") || path.hasAttribute("marker-end")) return true;
-    return (
-      CONNECTOR_NAME.test(connectorNameFor(svg)) || CONNECTOR_NAME.test(connectorNameFor(path))
-    );
-  }
-
-  // A connector whose BOTH endpoints land far from every anchorable element was drawn in the wrong frame.
-  // min over the two endpoints is intentional: a half-attached connector is a design choice, not frame drift.
+  // Both endpoints far from anchors ⇒ wrong SVG frame; half-attached is allowed by design.
   function connectorDetachmentIssues(root, rootRect, time) {
     const issues = [];
     let anchors = null;
@@ -1283,7 +1297,7 @@
       if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
       for (const path of Array.from(svg.querySelectorAll("path"))) {
         if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
-        if (!isConnectorPath(svg, path)) continue;
+        if (!isConnectorPath(svg, path, rootRect)) continue;
         const endpoints = pathScreenEndpoints(svg, path);
         if (!endpoints) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);

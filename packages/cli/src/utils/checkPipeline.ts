@@ -502,19 +502,14 @@ function detectSweepStatic(
   ];
 }
 
-// rotation_pivot_drift thresholds. A spinning element's bbox center should be
-// fixed; drift beyond this signals a wrong pivot (transformOrigin/svgOrigin).
+// rotation_pivot_drift: bbox center should stay fixed while the element spins.
 const ROTATION_MIN_SAMPLES = 3;
-// Degrees of angle spread that count as "actually spinning" (vs a static tilt).
+// Minimum angle spread that counts as spinning rather than a static tilt.
 const ROTATION_MIN_ANGLE_SPREAD_DEG = 20;
-// Max bbox-width ratio across samples — above this it is scaling/entrancing,
-// not spinning in place. A rigid anisotropic shape's axis-aligned bbox
-// oscillates under rotation on its own (a plain square already swings 1.41x
-// between flat and 45deg), so this must sit above that; 1.6 admits rotating
-// squares/mild rectangles while still excluding gross scale/entrance growth
-// and thin bars/lines whose bbox swings many-fold (e.g. a rotating reference
-// arm). The bbox-CENTER drift below is the real spin-in-place discriminator.
+// Long-axis AABB growth ceiling (square@45° ≈ 1.41×); per-axis lengths may swap on elongated rotators.
 const ROTATION_MAX_SIZE_RATIO = 1.6;
+// Axis ratio at/under this is treated as "fixed" for the single-axis scale guard.
+const ROTATION_FIXED_AXIS_RATIO = 1.15;
 // Skip tiny decorative spinners; only sizable rotating figures matter.
 const ROTATION_MIN_MEDIAN_AREA_PX = 2500;
 const ROTATION_DRIFT_SIZE_FRACTION = 0.1;
@@ -616,20 +611,29 @@ function isActuallySpinning(group: RotationSample[]): boolean {
   return maxAngleSpread(group.map((s) => s.angle)) > ROTATION_MIN_ANGLE_SPREAD_DEG;
 }
 
-/** Rigid bbox size in BOTH dimensions. A scale/entrance animation is not pivot
- * drift; in particular top-anchored height scaling (fixed width, growing height)
- * moves the AABB center on its own — the earlier width-only guard let that through
- * as a false positive. */
-function isRotationSizeStable(group: RotationSample[]): boolean {
+/** True when one AABB axis stays fixed while the other grows — entrance/scale, not spin wobble. */
+function isPrimarilyAxisScale(group: RotationSample[]): boolean {
   const widths = group.map((s) => s.w);
   const heights = group.map((s) => s.h);
   const minWidth = Math.min(...widths);
   const minHeight = Math.min(...heights);
   if (minWidth <= 0 || minHeight <= 0) return false;
+  const widthRatio = Math.max(...widths) / minWidth;
+  const heightRatio = Math.max(...heights) / minHeight;
   return (
-    Math.max(...widths) / minWidth <= ROTATION_MAX_SIZE_RATIO &&
-    Math.max(...heights) / minHeight <= ROTATION_MAX_SIZE_RATIO
+    (widthRatio <= ROTATION_FIXED_AXIS_RATIO && heightRatio > ROTATION_MAX_SIZE_RATIO) ||
+    (heightRatio <= ROTATION_FIXED_AXIS_RATIO && widthRatio > ROTATION_MAX_SIZE_RATIO)
   );
+}
+
+/** Rigid spin keeps the longer AABB side stable; elongated rotators may swing per-axis lengths freely. */
+function isRotationSizeStable(group: RotationSample[]): boolean {
+  if (group.some((s) => s.w <= 0 || s.h <= 0)) return false;
+  const longSides = group.map((s) => Math.max(s.w, s.h));
+  const minLong = Math.min(...longSides);
+  if (minLong <= 0) return false;
+  if (Math.max(...longSides) / minLong > ROTATION_MAX_SIZE_RATIO) return false;
+  return !isPrimarilyAxisScale(group);
 }
 
 /** Skip tiny decorative spinners; only sizable rotating figures matter. */
@@ -637,9 +641,7 @@ function isSizableRotation(group: RotationSample[]): boolean {
   return median(group.map((s) => s.w * s.h)) >= ROTATION_MIN_MEDIAN_AREA_PX;
 }
 
-/** The size/motion gates a selector group must clear before the (viewport-
- * dependent) center-drift test. Each is a strict FP guard, deliberately so:
- * a false positive feeds destructive downstream auto-fixes. */
+/** Size/motion FP gates before the viewport-dependent center-drift test. */
 function isRotationDriftCandidate(group: RotationSample[]): boolean {
   return (
     hasEnoughRotationSamples(group) &&
@@ -649,27 +651,7 @@ function isRotationDriftCandidate(group: RotationSample[]): boolean {
   );
 }
 
-/**
- * rotation_pivot_drift: an element that visibly SPINS (its rotation angle varies
- * across the seek grid) while its bounding-box CENTER travels is pivoting about
- * the wrong point — the classic symptom of a transformOrigin/svgOrigin authored
- * as hardcoded pixels against a coordinate space the element was later resized
- * out of (e.g. spokes set to `250px 250px` inside a 460px-rendered 500-viewBox
- * SVG). A correctly centered spinner holds its bbox center fixed.
- *
- * Cross-sample by necessity — one frame can't distinguish spin-in-place from
- * pivot drift. FP guards are deliberately strict because a false positive feeds
- * destructive downstream auto-fixes: requires real rotation, a stable bbox size
- * in both axes (excludes scale/entrance animations), a sizable element, and
- * honors `[data-layout-allow-orbit]` opt-outs (applied browser-side).
- *
- * Invariant: samples are grouped by `selector`, assumed stable across seeks.
- * An element without a stable id/class can fall back to a `nth-of-type(N)`
- * selector whose N shifts as siblings enter/exit — so in that fringe it may be
- * mis-grouped (a missed detection, or in a rare exit-then-enter aliasing case a
- * spurious one). Author-crafted rotating figures effectively always carry stable
- * anchors; a stable-anchor gate on the browser sampler is the structural fix.
- */
+/** Flags a spinning element whose bbox center drifts — wrong transformOrigin/svgOrigin (elongated rotators included). */
 export function detectRotationPivotDrift(
   samples: RotationSample[],
   canvas: Canvas,

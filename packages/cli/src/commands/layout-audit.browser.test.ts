@@ -877,6 +877,36 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     // "knowledge-overflow" contains conn-family substrings only across word boundaries — no match.
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
+
+  // Prod FP: icon-sized arrow SVGs (class/id "arrow", optional marker-end) are glyphs, not inter-node connectors.
+  it("skips icon-sized decorative arrow paths even with marker-end", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="arrow-l" class="arrow arrow-left">
+          <defs><marker id="tip"><path d="M0 0 L8 4 L0 8" /></marker></defs>
+          <path id="arrow-glyph" d="M70 20 L10 20 M25 5 L10 20 L25 35" marker-end="url(#tip)" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "arrow-l": rect({ left: 100, top: 500, width: 80, height: 40 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+    installConnectorGeometry({ e: 100, f: 500 });
+    installAuditScript();
+
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
 });
 
 describe("layout-audit.browser content overlap", () => {

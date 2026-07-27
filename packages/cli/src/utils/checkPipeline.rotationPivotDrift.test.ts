@@ -59,9 +59,7 @@ describe("detectRotationPivotDrift", () => {
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
   });
 
-  // Stage 3 — size stability, HEIGHT axis. Regression for the width-only guard:
-  // fixed width, top-anchored height growth (top=100 → cy = 100 + h/2) drifts
-  // the AABB center 50px on its own. Must NOT be reported as pivot drift.
+  // Stage 3 — single-axis scale: fixed width + growing height moves the AABB center without a bad pivot.
   it("does not fire when height scales (top-anchored) even though the AABB center moves", () => {
     const group = [
       sample({ time: 0, angle: 0, w: 100, h: 50, cx: 250, cy: 125 }),
@@ -69,6 +67,18 @@ describe("detectRotationPivotDrift", () => {
       sample({ time: 2, angle: 180, w: 100, h: 150, cx: 250, cy: 175 }),
     ];
     expect(detectRotationPivotDrift(group, CANVAS)).toHaveLength(0);
+  });
+
+  // Elongated rotators (pinwheel/blade groups): per-axis AABB swings >>1.6× while the long side stays put.
+  it("fires on an elongated spinner whose long side is stable but per-axis AABB swings", () => {
+    const group = [
+      sample({ time: 0, angle: 0, w: 400, h: 80, cx: 250, cy: 250 }),
+      sample({ time: 1, angle: 45, w: 340, h: 340, cx: 250, cy: 310 }),
+      sample({ time: 2, angle: 90, w: 80, h: 400, cx: 250, cy: 370 }),
+    ];
+    const findings = detectRotationPivotDrift(group, CANVAS);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe("rotation_pivot_drift");
   });
 
   it("does not fire when a sample has a degenerate zero dimension", () => {
