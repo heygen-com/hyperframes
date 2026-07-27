@@ -9,6 +9,28 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.74"
+  description="Released - 2026-07-27"
+  tags={["Release", "Producer", "GCP Cloud Run", "Core"]}
+>
+Distributed Plan v2 now handles extraction-cache sentinels and partial color metadata
+without corrupting chunk dependencies. Distributed cold starts also preserve live GSAP
+volume state, while GCP captures honor the effective `BeginFrame` boundary.
+
+## Fixes
+
+- **Producer:** Handle partial color metadata and extraction sentinels in Plan v2 ([58869f087](https://github.com/heygen-com/hyperframes/commit/58869f0878e304fd39d564b93cc4a8b18e885b4e), [#2814](https://github.com/heygen-com/hyperframes/pull/2814))
+- **GCP Cloud Run:** Enforce effective `BeginFrame` capture ([2a284a8e3](https://github.com/heygen-com/hyperframes/commit/2a284a8e3aca62100ec037c23c98706e7146aa14), [#2817](https://github.com/heygen-com/hyperframes/pull/2817))
+- **Core:** Avoid live volume probes during render ([477defc7e](https://github.com/heygen-com/hyperframes/commit/477defc7e7397684c2def4459b3981f62a06816d), [#2816](https://github.com/heygen-com/hyperframes/pull/2816))
+
+## Performance
+
+- **Producer:** Compute regression PSNR in one ffmpeg pass ([98a4cd70f](https://github.com/heygen-com/hyperframes/commit/98a4cd70fd2df38f300a2e19c86f75cd8dd93895), [#2813](https://github.com/heygen-com/hyperframes/pull/2813))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.73...v0.7.74).
+</Update>
+
+<Update
   label="HyperFrames v0.7.73"
   description="Released - 2026-07-26"
   tags={["Release", "Producer", "Render", "Engine"]}
