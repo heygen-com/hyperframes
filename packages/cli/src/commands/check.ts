@@ -213,8 +213,8 @@ function parseFrameCheckFields(value: string): Map<string, string> {
 
 function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
-  const tol = Number.parseFloat(raw);
-  if (!Number.isFinite(tol) || tol < 0) throw frameCheckError();
+  const tol = parseNumberStrict(raw);
+  if (tol === null || tol < 0) throw frameCheckError();
   return tol;
 }
 
@@ -252,10 +252,8 @@ function parseLayoutFields(value: string): Map<string, string> {
 
 function parseProseCoverageFloor(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
-  // Number() rejects trailing garbage (`0.05abc`, `0.1%`) that parseFloat would accept.
-  if (raw === "") throw layoutError();
-  const floor = Number(raw);
-  if (!Number.isFinite(floor) || floor < 0 || floor > 1) throw layoutError();
+  const floor = parseNumberStrict(raw);
+  if (floor === null || floor < 0 || floor > 1) throw layoutError();
   return floor;
 }
 
@@ -263,6 +261,13 @@ function layoutError(): Error {
   return new Error(
     'Invalid --layout: use "proseCoverageFloor=0.05" with a fraction from 0 to 1 (inclusive)',
   );
+}
+
+/** Reject trailing garbage that Number.parseFloat would silently accept (`4px`, `0.05abc`). */
+function parseNumberStrict(raw: string): number | null {
+  if (raw === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 function parseCaptionZone(value: unknown): CaptionZoneOptions | undefined {
@@ -327,8 +332,8 @@ function requiredCaptionFraction(fields: Map<string, string>, key: string): numb
 
 function captionFraction(value: string | undefined): number | null {
   if (value === undefined || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : null;
+  const parsed = parseNumberStrict(value);
+  return parsed !== null && parsed >= 0 && parsed <= 1 ? parsed : null;
 }
 
 function captionSeverity(value: string | undefined): "error" | "warning" | undefined {

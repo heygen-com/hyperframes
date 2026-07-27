@@ -1141,6 +1141,8 @@ describe("frame-check flag grammar", () => {
     });
     expect(() => parseFrameCheck("bogus=1")).toThrow("Invalid --frame-check");
     expect(() => parseFrameCheck("tol=-2")).toThrow("Invalid --frame-check");
+    expect(() => parseFrameCheck("tol=4px")).toThrow("Invalid --frame-check");
+    expect(() => parseFrameCheck("tol=2garbage")).toThrow("Invalid --frame-check");
   });
 });
 
