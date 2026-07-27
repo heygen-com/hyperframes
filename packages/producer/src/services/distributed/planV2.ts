@@ -215,6 +215,39 @@ function sha256File(path: string): string {
   return hash.digest("hex");
 }
 
+function assertValidExtractionCacheCompleteSentinel(path: string): void {
+  const sentinel = lstatSync(path);
+  if (!sentinel.isFile() || sentinel.size !== 0) {
+    throw new PlanV2IntegrityError(
+      `${EXTRACTION_CACHE_COMPLETE_SENTINEL} must be a zero-byte regular file`,
+    );
+  }
+}
+
+function validateExtractionCacheCompleteSentinels(planV1Dir: string): void {
+  const videoRoot = join(planV1Dir, "video-frames");
+  if (!existsSync(videoRoot)) return;
+
+  for (const videoEntry of readdirSync(videoRoot, { withFileTypes: true })) {
+    if (!videoEntry.isDirectory()) continue;
+    const videoDir = join(videoRoot, videoEntry.name);
+    if (readdirSync(videoDir).includes(EXTRACTION_CACHE_COMPLETE_SENTINEL)) {
+      const sentinelPath = join(videoDir, EXTRACTION_CACHE_COMPLETE_SENTINEL);
+      assertValidExtractionCacheCompleteSentinel(sentinelPath);
+    }
+  }
+}
+
+function isExtractionCacheCompleteSentinelPath(path: string): boolean {
+  const segments = path.split("/");
+  return (
+    segments.length === 3 &&
+    segments[0] === "video-frames" &&
+    segments[1] !== "" &&
+    segments[2] === EXTRACTION_CACHE_COMPLETE_SENTINEL
+  );
+}
+
 // This is the fail-safe policy table for every v1 artifact class. Keeping the
 // branches together makes new artifact classes visibly fall through to both roles.
 // fallow-ignore-next-line complexity
@@ -251,12 +284,7 @@ function listVideoFramePaths(planV1Dir: string, videos: PlanVideosJson): Extract
     const framePaths = new Map<number, string>();
     for (const frameName of frameNames) {
       if (frameName === EXTRACTION_CACHE_COMPLETE_SENTINEL) {
-        const sentinel = lstatSync(join(outputDir, frameName));
-        if (!sentinel.isFile() || sentinel.size !== 0) {
-          throw new PlanV2IntegrityError(
-            `${EXTRACTION_CACHE_COMPLETE_SENTINEL} must be a zero-byte regular file`,
-          );
-        }
+        assertValidExtractionCacheCompleteSentinel(join(outputDir, frameName));
         continue;
       }
       // ffmpeg's image sequence starts at 1. Preserve sparse indexes so a
@@ -502,8 +530,10 @@ function buildPlanV2Publication(planV1Dir: string): PlanV2Publication {
   if (!isRecord(dimensions)) {
     throw new PlanV2IntegrityError("v1 plan.json.dimensions must be an object");
   }
+  validateExtractionCacheCompleteSentinels(planV1Dir);
   const videoDependencyPlan = buildVideoChunkDependencies(planV1Dir, dimensions);
   for (const file of listFiles(planV1Dir)) {
+    if (isExtractionCacheCompleteSentinelPath(file.path)) continue;
     const targets = artifactTargets(file.path, videoDependencyPlan.dependencies);
     if (
       file.path.startsWith("video-frames/") &&

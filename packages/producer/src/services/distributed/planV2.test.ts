@@ -236,23 +236,67 @@ describe("Plan v2 manifest", () => {
     );
   });
 
-  for (const malformedSentinel of ["non-empty file", "directory"]) {
-    it(`rejects an extraction-cache completion sentinel that is a ${malformedSentinel}`, () => {
-      const root = tempPath(`hf-plan-v2-malformed-extraction-sentinel-${malformedSentinel}-`);
-      const v1 = createV1Plan(root, { video: true });
-      const sentinelPath = join(v1, "video-frames", "hero", ".hf-complete");
-      if (malformedSentinel === "directory") {
-        mkdirSync(sentinelPath);
-        writeFileSync(join(sentinelPath, "unexpected"), "not cache metadata");
-      } else {
-        writeFileSync(sentinelPath, "not cache metadata");
-      }
-      refreshV1PlanHash(v1);
+  it("omits the extraction-cache completion sentinel from the full-source fallback", () => {
+    const root = tempPath("hf-plan-v2-full-source-extraction-sentinel-");
+    const v1 = createV1Plan(root, { video: true, omitVideoMetadata: true });
+    writeFileSync(join(v1, "video-frames", "hero", ".hf-complete"), "");
+    refreshV1PlanHash(v1);
 
-      expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
-        ".hf-complete must be a zero-byte regular file",
-      );
-    });
+    const result = createPlanV2FromV1(v1, join(root, "v2"));
+    const manifest = readPlanV2Manifest(result.planDir);
+
+    expect(result.limitations.videoDependencyMode).toBe("full-source-pack");
+    expect(manifest.artifacts.some((artifact) => artifact.path.endsWith("/.hf-complete"))).toBe(
+      false,
+    );
+    expect(manifest.artifacts.some((artifact) => artifact.path.endsWith("/frame_00003.jpg"))).toBe(
+      true,
+    );
+  });
+
+  it("keeps non-canonical completion-marker paths over-included in full-source mode", () => {
+    const root = tempPath("hf-plan-v2-nested-extraction-sentinel-");
+    const v1 = createV1Plan(root, { video: true, omitVideoMetadata: true });
+    const nestedDir = join(v1, "video-frames", "hero", "nested");
+    mkdirSync(nestedDir);
+    writeFileSync(join(nestedDir, ".hf-complete"), "unknown future artifact");
+    refreshV1PlanHash(v1);
+
+    const result = createPlanV2FromV1(v1, join(root, "v2"));
+    const manifest = readPlanV2Manifest(result.planDir);
+    const nestedMarker = manifest.artifacts.find(
+      (artifact) => artifact.path === "video-frames/hero/nested/.hf-complete",
+    );
+
+    expect(result.limitations.videoDependencyMode).toBe("full-source-pack");
+    expect(nestedMarker).toEqual(expect.objectContaining({ chunks: "all", assembler: false }));
+  });
+
+  for (const omitVideoMetadata of [false, true]) {
+    const dependencyMode = omitVideoMetadata ? "full-source" : "exact-dependency";
+    for (const malformedSentinel of ["non-empty file", "directory", "symlink"]) {
+      it(`rejects a ${malformedSentinel} extraction sentinel in ${dependencyMode} mode`, () => {
+        if (malformedSentinel === "symlink" && process.platform === "win32") return;
+        const root = tempPath(
+          `hf-plan-v2-malformed-extraction-sentinel-${dependencyMode}-${malformedSentinel}-`,
+        );
+        const v1 = createV1Plan(root, { video: true, omitVideoMetadata });
+        const sentinelPath = join(v1, "video-frames", "hero", ".hf-complete");
+        if (malformedSentinel === "symlink") {
+          symlinkSync(join(v1, "compiled", "asset.txt"), sentinelPath);
+        } else if (malformedSentinel === "directory") {
+          mkdirSync(sentinelPath);
+          writeFileSync(join(sentinelPath, "unexpected"), "not cache metadata");
+        } else {
+          writeFileSync(sentinelPath, "not cache metadata");
+        }
+        refreshV1PlanHash(v1);
+
+        expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
+          ".hf-complete must be a zero-byte regular file",
+        );
+      });
+    }
   }
 
   it("selects audio only for the assembler", () => {
