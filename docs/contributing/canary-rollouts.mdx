@@ -181,17 +181,23 @@ SELECT count() AS installs_that_flipped FROM (
 
 **4. Cross-surface agreement — do CLI and Studio agree for the same install?**
 A CLI-launched Studio adopts the CLI's id, so the same install must report the
-same cohort on both. Disagreement means the two bindings have diverged.
+same cohort on both. Disagreement means the two bindings have diverged. Note
+this compares the *value reported per surface* — any disagreement here is also
+a check-3 flip, so this check's job is attribution: it isolates the flips that
+are binding divergence rather than within-surface instability.
 
 ```sql
-SELECT count() AS installs_disagreeing FROM (
-  SELECT distinct_id
+SELECT countIf(cli_val != studio_val) AS installs_disagreeing FROM (
+  SELECT
+    distinct_id,
+    anyIf(properties['$feature/canary-calibration-10'], NOT startsWith(event, 'studio')) AS cli_val,
+    anyIf(properties['$feature/canary-calibration-10'], startsWith(event, 'studio')) AS studio_val
   FROM events
   WHERE timestamp >= now() - INTERVAL 14 DAY
     AND JSONHas(properties, '$feature/canary-calibration-10')
   GROUP BY distinct_id
-  HAVING uniqExact(startsWith(event, 'studio')) > 1              -- seen on both surfaces
-     AND uniqExact(properties['$feature/canary-calibration-10']) > 1
+  HAVING countIf(startsWith(event, 'studio')) > 0                -- seen on both surfaces
+     AND countIf(NOT startsWith(event, 'studio')) > 0
 )
 ```
 
