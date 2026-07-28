@@ -7,7 +7,7 @@
  * point at custom registries or reshape their project layout.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
@@ -151,18 +151,39 @@ export function resolveAutoProxy(projectDir: string, flagValue: boolean | undefi
  * render's telemetry but does not rewrite the project's owner). An invalid or
  * empty slug is ignored. Best effort: a read-only or missing project directory
  * never fails the render it rode in on.
+ *
+ * This is the only writer that touches an ALREADY EXISTING `hyperframes.json`
+ * (every other `writeProjectConfig` call site is guarded to write only when the
+ * file is absent), so it must not round-trip through {@link normalizeConfig}:
+ * that rebuilds the object from a field whitelist, which would drop keys it
+ * does not know about and materialize defaults the user never wrote. The file
+ * is normally committed, so a render must not introduce a diff beyond the one
+ * key being added. Patch the parsed JSON in place instead, reusing the file's
+ * own indentation.
  */
 export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown): void {
   const skill = normalizeSkillSlug(rawSkill);
   if (!skill) return;
+  const path = projectConfigPath(projectDir);
   try {
-    const current = readProjectConfig(projectDir);
-    if (current?.authoringSkill) return;
-    writeProjectConfig(projectDir, {
-      ...(current ?? DEFAULT_PROJECT_CONFIG),
-      authoringSkill: skill,
-    });
+    if (!existsSync(path)) {
+      writeProjectConfig(projectDir, { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill });
+      return;
+    }
+    const text = readFileSync(path, "utf-8");
+    const parsed: unknown = JSON.parse(text);
+    // A non-object config is malformed; leave the user's file untouched rather
+    // than clobbering it from a render.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    const raw = parsed as Record<string, unknown>;
+    // Seed-once. Normalized so a hand-edited garbage slug neither reaches
+    // telemetry nor wedges the seed — the next `--skill` render heals it.
+    if (normalizeSkillSlug(raw.authoringSkill)) return;
+    raw.authoringSkill = skill;
+    const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
+    writeFileSync(path, JSON.stringify(raw, null, indent) + "\n", "utf-8");
   } catch {
-    // Attribution is best-effort telemetry, never a render blocker.
+    // Corrupt JSON, or a read-only project directory: attribution is
+    // best-effort telemetry, never a render blocker.
   }
 }
