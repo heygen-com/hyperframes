@@ -36,7 +36,15 @@ Cloud rendering needs a HeyGen credential. Sign in once — the CLI stores it in
     # ✓ Signed in as you@example.com.
     ```
 
-    For CI or headless machines, use a long-lived API key instead:
+    From an attended SSH/headless terminal, use the device flow. Open the
+    displayed URL on any browser and enter the one-time code:
+
+    ```bash
+    hyperframes auth login --device
+    ```
+
+    Device login is intentionally refused in CI and non-TTY sessions. For
+    unattended agents and CI, use a long-lived API key instead:
 
     ```bash
     # Interactive hidden-input prompt

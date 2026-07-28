@@ -507,7 +507,8 @@ export function trackBrowserInstall(): void {
 // dashboards — a completed sign-in, a browser flow the user abandoned, and a
 // rejected key all look identical (i.e. absent). These three events close that
 // gap so the sign-in funnel is measurable like the render funnel already is.
-// `method` is "oauth" (the default browser PKCE flow) or "api_key". No token,
+// `method` is "oauth" (the default browser PKCE flow), "device" (attended
+// RFC 8628 flow), or "api_key". No token,
 // key, identity, email, or free text is ever attached — only the method and a
 // low-cardinality outcome/reason.
 //
@@ -516,7 +517,7 @@ export function trackBrowserInstall(): void {
 // today (events attribute to the install's anonymousId), but pre-plumbing it
 // makes attributing a completed sign-in to a resolved identity later a one-line
 // change at the callsite rather than a signature sweep.
-export type AuthLoginMethod = "oauth" | "api_key";
+export type AuthLoginMethod = "oauth" | "device" | "api_key";
 export type AuthLoginFailureReason =
   | "flow_error" // OAuth authorization/exchange threw a real error
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
