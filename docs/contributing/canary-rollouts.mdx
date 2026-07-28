@@ -166,7 +166,11 @@ FROM events WHERE timestamp >= now() - INTERVAL {1,7,14,30} DAY
 **3. Stability — does any install ever change cohort?** MUST be zero. A single
 id reporting both `true` and `false` at a fixed percentage means something is
 broken: memoization, a registry edit mid-window, or two code paths
-disagreeing.
+disagreeing. One innocent explanation to rule out first on a small-nonzero
+read: events carry the assignment but not the decision *reason*, so a dev
+toggling `HF_CANARY_CALIBRATION_10=on/off` mid-window is indistinguishable
+from a real flip. Emitting a reason property is deliberately skipped — add it
+only if this check comes back dirty.
 
 ```sql
 SELECT count() AS installs_that_flipped FROM (
