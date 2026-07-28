@@ -9,7 +9,7 @@ When the composition is animation-driven, run the checks before you reach for `p
 - Run `lint` after the first HTML pass for early feedback. It is an iteration aid, not a separate final gate.
 - Run `check --snapshots` at the first full pass: the overview frames and per-finding crops show you what the auditor saw.
 - Look at the PNGs before tuning automated warnings: your eye catches what the auditor misses, and the auditor catches what your eye misses.
-- Treat layout errors as defects unless a snapshot proves the layering is intentional, in which case mark it with `data-layout-allow-overflow` / `data-layout-allow-overlap` / `data-layout-allow-occlusion`.
+- Treat layout errors as defects unless a snapshot proves the layering is intentional, in which case mark it with `data-layout-allow-overflow` / `data-layout-allow-overlap` / `data-layout-allow-occlusion` / `data-layout-allow-caption-zone` (caption band only).
 - State motion intent in a `*.motion.json` sidecar so `check` verifies it automatically (entrances firing under seek, stagger order, in-frame, liveness). This is the closest automated proxy for "watch the MP4" and catches render-vs-preview bugs the eye misses (see **Motion verification** below).
 
 ## lint
@@ -57,6 +57,7 @@ Every finding carries a selector, the element's `data-*` identity, the compositi
 - `data-layout-allow-overflow` — overflow is intentional (entrance/exit travel).
 - `data-layout-allow-overlap` — deliberate text layering (e.g. a demo cursor label over a heading).
 - `data-layout-allow-occlusion` — an element is meant to cover text.
+- `data-layout-allow-caption-zone` — intentional lower-third / caption-band copy under `--caption-zone`. Applies to the marked element and every descendant (`closest`); silences only `caption_zone_collision` (not overflow/overlap/occlusion). Prefer the narrowest wrapper that owns the intentional band copy.
 - `data-layout-ignore` — decorative element that should never be audited.
 
 **Opt-in pipeline gates** (used by orchestrators; off by default):
@@ -66,7 +67,7 @@ npx hyperframes check --caption-zone "x0=0;y0=.82;x1=1;y1=1;severity=error;seek=
 npx hyperframes check --frame-check     # media (img/svg/video/canvas) out-of-frame detection
 ```
 
-`--caption-zone` takes fractional band geometry (`x0/y0/x1/y1` required, 0-1 fractions of the composition's own canvas, portrait included) with optional `severity` and comma-separated `seek` fractions; it flags content whose center sits inside the band. `--frame-check` reports media elements breaching the canvas beyond `max(120px, 6% of the min canvas dimension)`.
+`--caption-zone` takes fractional band geometry (`x0/y0/x1/y1` required, 0-1 fractions of the composition's own canvas, portrait included) with optional `severity` and comma-separated `seek` fractions; it flags content whose center sits inside the band. Waive intentional lower-third copy with `data-layout-allow-caption-zone` on the element or its nearest wrapper (see Escape hatches). `--frame-check` reports media elements breaching the canvas beyond `max(120px, 6% of the min canvas dimension)`.
 
 **Fixing contrast errors** — thresholds are 4.5:1 for normal text, 3:1 for large text (24px+, or 19px+ bold). The finding's `suggestedColor` already picks the nearest compliant color in the right direction (brighten on dark backgrounds, darken on light); apply it or adjust within the palette family, then re-run `check`.
 
