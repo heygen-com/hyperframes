@@ -8,29 +8,47 @@ export const examples: Example[] = [
   ["Disable telemetry", "hyperframes telemetry disable"],
   ["Enable telemetry", "hyperframes telemetry enable"],
 ];
-import { readConfig, writeConfig, CONFIG_PATH } from "../telemetry/config.js";
+import { readConfigFresh, writeConfig, CONFIG_PATH } from "../telemetry/config.js";
 
-function runEnable(): void {
-  const config = readConfig();
-  config.telemetryEnabled = true;
-  writeConfig(config);
-  console.log(`\n  ${c.success("\u2713")}  Telemetry ${c.success("enabled")}\n`);
+type TelemetryStatus = {
+  enabled: boolean;
+  source: "config" | "HYPERFRAMES_NO_TELEMETRY" | "DO_NOT_TRACK";
+};
+
+function effectiveTelemetryStatus(configEnabled: boolean): TelemetryStatus {
+  if (process.env["HYPERFRAMES_NO_TELEMETRY"] === "1") {
+    return { enabled: false, source: "HYPERFRAMES_NO_TELEMETRY" };
+  }
+  if (process.env["DO_NOT_TRACK"] === "1") {
+    return { enabled: false, source: "DO_NOT_TRACK" };
+  }
+  return { enabled: configEnabled, source: "config" };
 }
 
-function runDisable(): void {
-  const config = readConfig();
-  config.telemetryEnabled = false;
-  writeConfig(config);
-  console.log(`\n  ${c.success("\u2713")}  Telemetry ${c.bold("disabled")}\n`);
+function setTelemetryEnabled(enabled: boolean): void {
+  // Bypass the module cache so this privacy preference starts from the latest
+  // on-disk state rather than a snapshot held by another config consumer.
+  const config = readConfigFresh();
+  config.telemetryEnabled = enabled;
+  if (!writeConfig(config)) {
+    console.error(
+      `\n  ${c.error("\u2717")}  Could not persist telemetry preference to ${c.accent(CONFIG_PATH)}\n`,
+    );
+    failCommand();
+  }
+  const label = enabled ? c.success("enabled") : c.bold("disabled");
+  console.log(`\n  ${c.success("\u2713")}  Telemetry ${label}\n`);
 }
 
 function runStatus(): void {
-  const config = readConfig();
-  const status = config.telemetryEnabled ? c.success("enabled") : c.dim("disabled");
+  const config = readConfigFresh();
+  const effective = effectiveTelemetryStatus(config.telemetryEnabled);
+  const status = effective.enabled ? c.success("enabled") : c.dim("disabled");
   console.log();
   console.log(`  ${c.dim("Status:")}     ${status}`);
+  console.log(`  ${c.dim("Source:")}     ${effective.source}`);
   console.log(`  ${c.dim("Config:")}     ${c.accent(CONFIG_PATH)}`);
-  console.log(`  ${c.dim("Commands:")}   ${c.bold(String(config.commandCount))}`);
+  console.log(`  ${c.dim("Tracked commands:")} ${c.bold(String(config.commandCount))}`);
   console.log();
   console.log(`  ${c.dim("Disable:")}    ${c.accent("hyperframes telemetry disable")}`);
   console.log(`  ${c.dim("Env var:")}    ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")}`);
@@ -78,9 +96,9 @@ ${c.dim("You can also set")} ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("
 
     switch (subcommand) {
       case "enable":
-        return runEnable();
+        return setTelemetryEnabled(true);
       case "disable":
-        return runDisable();
+        return setTelemetryEnabled(false);
       case "status":
         return runStatus();
       default:

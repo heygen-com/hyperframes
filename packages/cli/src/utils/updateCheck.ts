@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { compareVersions } from "compare-versions";
-import { readConfig, writeConfig } from "../telemetry/config.js";
+import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
 import { detectInstaller } from "./installerDetection.js";
@@ -88,9 +88,14 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
     }
     const latest = data.version;
 
-    config.lastUpdateCheck = new Date().toISOString();
-    config.latestVersion = latest;
-    writeConfig(config);
+    // The registry request can take seconds. Merge its two metadata fields
+    // into a fresh snapshot rather than writing the object captured before
+    // the network call: the stale object previously reverted a concurrent
+    // `telemetry disable` back to the default `true`.
+    const freshConfig = readConfigFresh();
+    freshConfig.lastUpdateCheck = new Date().toISOString();
+    freshConfig.latestVersion = latest;
+    writeConfig(freshConfig);
 
     return { current: VERSION, latest, updateAvailable: isNewerSemver(latest, VERSION) };
   } catch {

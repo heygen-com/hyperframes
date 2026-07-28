@@ -233,6 +233,8 @@ if (!isHelp && command !== "telemetry" && command !== "events" && command !== "u
 
 // `events` skips the update check too — a skill-usage beacon must not add
 // network latency or trigger a background self-upgrade on the calling skill.
+// `telemetry` skips it because update metadata must never race the command
+// that changes the user's telemetry preference.
 // `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
 // excluded from the self-update notice: a command that is itself actively
 // checking/reconciling skills (`skills check`, `skills update`) must not also
@@ -244,6 +246,7 @@ if (
   !hasJsonFlag &&
   command !== "upgrade" &&
   command !== "events" &&
+  command !== "telemetry" &&
   command !== "skills"
 ) {
   // Report any completed auto-install from the previous run first, before
