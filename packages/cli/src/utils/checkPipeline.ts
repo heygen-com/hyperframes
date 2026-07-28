@@ -261,6 +261,7 @@ function captionFinding(
 ): { key: string; issue: AnchoredLayoutIssue } | null {
   const zone = options.captionZone;
   if (!zone || candidate.kind !== "text" || !candidateIsSized(candidate, canvas)) return null;
+  // Backstop for mocks/non-browser sources; browser already strips via closest() (own attrs only here).
   if ("data-layout-allow-caption-zone" in candidate.dataAttributes) return null;
   const { inside, cy } = captionCenterInZone(candidate.rect, zone, canvas);
   if (!inside) return null;

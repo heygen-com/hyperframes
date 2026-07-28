@@ -105,6 +105,10 @@
     return !!element.closest("[data-layout-allow-overflow]");
   }
 
+  function hasAllowCaptionZoneFlag(element) {
+    return !!element.closest("[data-layout-allow-caption-zone]");
+  }
+
   function hasTextClipOptOut(element) {
     return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
   }
@@ -1396,11 +1400,7 @@
       }
       if (!isVisibleElement(element, 0.05, false)) continue;
       const elementRect = toRect(element.getBoundingClientRect());
-      if (
-        includeText &&
-        hasOwnTextCandidate(element, true) &&
-        !element.closest("[data-layout-allow-caption-zone]")
-      ) {
+      if (includeText && hasOwnTextCandidate(element, true) && !hasAllowCaptionZoneFlag(element)) {
         const rect = textRectFor(element, true);
         if (rect) {
           candidates.push(

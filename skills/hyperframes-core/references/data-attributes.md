@@ -61,7 +61,7 @@ See `sub-compositions.md` for the full wiring pattern.
   - In a multi-scene `group_wN.html` (continue runs), every scene-local element stays in the DOM during the other scenes' time windows; the layout-box union almost always overflows the canvas during morph seams. Mark the root and every scene-local primary/supporting element with this attribute **at construction**, not after `check` flags it.
   - **Blast radius — it silences more than the overflow audit.** The attribute is inherited down the subtree (the perception probe walks ancestors), so it also suppresses the rendered-perception checks `text-clipping`, `content-cramped-container`, and `foreground-over-panel` for every descendant. Putting it on a persistent panel that also hosts real foreground content disables collision checks on that content for the panel's whole lifetime. Prefer the narrowest opt-out: scope it to the smallest decorative wrapper, or use per-element `data-layout-bleed="true"` for one intentional primary-text crop. The two canvas/edge checks `primary-offscreen` and `foreground-over-panel` deliberately run **even under** allow-overflow, so it cannot hide a wordmark sliced by the frame or text bleeding onto a panel edge.
 - `data-layout-ignore` — exclude this element from layout audits entirely.
-- `data-layout-allow-caption-zone` — opt out of `--caption-zone` / `caption_zone_collision` for intentional lower-third copy (element or ancestor).
+- `data-layout-allow-caption-zone` — opt out of `--caption-zone` / `caption_zone_collision` for intentional lower-third copy (applies to the element and every descendant via `closest`; does **not** suppress overflow, overlap, occlusion, or other layout audits — pair those attrs if needed).
 
 ## Legacy / Removed Attributes
 
