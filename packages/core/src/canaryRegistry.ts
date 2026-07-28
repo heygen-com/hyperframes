@@ -2,7 +2,7 @@
  * The canary registry — every staged rollout in the product, in one file.
  *
  * Why a registry rather than a percentage inlined at each call site: the repo
- * already carries ~49 loose `HF_*` / `PRODUCER_*` toggles with no index, so
+ * already carries 57 loose `HF_*` / `PRODUCER_*` toggles with no index, so
  * nobody can answer "what is currently rolling out, to how many people, and
  * who owns it" without grepping. One table fixes that, and gives the
  * telemetry and `doctor` surfaces something to enumerate.
