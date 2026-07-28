@@ -45,6 +45,41 @@ export interface CanaryDefinition {
 }
 
 export const CANARIES: readonly CanaryDefinition[] = [
+  // ── Calibration ──────────────────────────────────────────────────────────
+  // Two INERT canaries that gate nothing. They exist to validate the rollout
+  // mechanism against real traffic before anything real depends on it, and
+  // they answer questions the synthetic tests cannot:
+  //
+  //   1. Does a requested percentage land on target in the wild? The unit
+  //      tests use generated UUIDs and weight every install equally; real
+  //      render volume is heavily skewed toward a few heavy installs, so the
+  //      render-weighted share could differ from the install-weighted one.
+  //   2. How fast does CUMULATIVE exposure drift above the target? Install
+  //      ids churn (measured: 24.7x more distinct ids over 30 days than in
+  //      any single day), so the set of installs enrolled AT SOME POINT grows
+  //      even though the instantaneous share stays flat. That drift is the
+  //      real limit on a canary's blast-radius guarantee.
+  //   3. Are two canaries actually independent on real ids, not just on
+  //      generated ones? Overlap should be ~p1*p2, not ~min(p1,p2).
+  //
+  // Two different percentages so the answer is a line, not a point.
+  // Delete both once the calibration window is read.
+  {
+    name: "calibration-10",
+    percentage: 10,
+    description: "Inert. Validates rollout accuracy and cumulative-exposure drift at 10%.",
+    owner: "vance",
+    sunsetAfter: "2026-09-15",
+  },
+  {
+    name: "calibration-50",
+    percentage: 50,
+    description:
+      "Inert. Second calibration point, and an independence check against calibration-10.",
+    owner: "vance",
+    sunsetAfter: "2026-09-15",
+  },
+  // ── Real rollouts ────────────────────────────────────────────────────────
   {
     name: "de-parallel-router",
     percentage: 0,

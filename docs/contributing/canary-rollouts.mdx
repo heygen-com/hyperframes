@@ -83,6 +83,134 @@ Two details worth knowing:
   already exists in this project, owned by the web app. The infix guarantees a
   canary can never alias a real flag and fight it for the same property.
 
+## Cumulative exposure — the number that actually bounds blast radius
+
+The instantaneous share holds at the target forever: enrolment is a pure
+function of `(feature, installId, percentage)` and fresh ids are uniformly
+random, so ~10% of active installs and ~10% of renders are enrolled on any
+given day. That part does not drift.
+
+**The cumulative set does grow.** Install ids churn — measured on the desktop
+render population, there are ~25× more distinct ids over 30 days than in any
+single day. Ten percent of a pool that keeps turning over is a steadily larger
+group of installs that have been enrolled *at some point*. If a single person
+cycles through N ids during a rollout, their chance of having been exposed is
+`1 − (1 − p)^N`, so at 10%: 19% after two ids, 41% after five.
+
+So watch the cumulative number, not just the rate:
+
+```sql
+-- blast radius: distinct installs EVER enrolled during the window
+SELECT
+  uniqExactIf(distinct_id, properties['$feature/canary-my-feature'] = 'true') AS ever_enrolled,
+  uniqExact(distinct_id) AS all_installs
+FROM events
+WHERE event = 'render_complete' AND timestamp >= now() - INTERVAL 14 DAY
+```
+
+Two practical consequences:
+
+- **Keep canaries short.** Drift compounds with time; a 5-day window at 10% is
+  far tighter than a 60-day one.
+- **The percentage is not the safety mechanism.** It bounds *initial* exposure
+  and decays from there. Per-render verification and per-install circuit
+  breakers are what actually bound harm — and note that a breaker's state
+  lives in the same config file as the id, so a wipe loses both and the
+  install can re-enrol into a path that already failed it.
+
+For *measurement* — "is this feature better?" — churn is harmless: re-bucketing
+is random, so it adds noise, not bias. It is specifically the blast-radius
+guarantee that degrades.
+
+## Calibration: validating the mechanism in the wild
+
+Two inert canaries — `calibration-10` (10%) and `calibration-50` (50%) — gate
+nothing and exist only to prove the mechanism behaves as designed on real
+traffic. Their percentages stay FIXED for the whole window, which is what
+makes check 3 below meaningful: while a percentage is constant, a cohort flip
+is a bug, whereas during a real ramp a `false → true` flip is correct and
+expected.
+
+Four checks, written down before the data arrives so the read is not post-hoc.
+
+**1. Accuracy — does 10% mean 10%?** Measure install-weighted AND
+event-weighted separately: render volume is heavily skewed toward a few heavy
+installs, so the two can differ even when bucketing is perfect.
+
+```sql
+SELECT
+  properties['$feature/canary-calibration-10'] AS cohort,
+  uniqExact(distinct_id) AS installs,
+  count() AS events
+FROM events
+WHERE timestamp >= now() - INTERVAL 14 DAY
+  AND JSONHas(properties, '$feature/canary-calibration-10')
+GROUP BY cohort
+```
+
+**2. Drift — does cumulative exposure climb?** Run over widening windows. The
+instantaneous share should stay flat at 10%; the cumulative enrolled-install
+count should grow with id churn.
+
+```sql
+SELECT
+  uniqExactIf(distinct_id, properties['$feature/canary-calibration-10'] = 'true') AS ever_enrolled,
+  uniqExact(distinct_id) AS all_installs
+FROM events WHERE timestamp >= now() - INTERVAL {1,7,14,30} DAY
+  AND JSONHas(properties, '$feature/canary-calibration-10')
+```
+
+**3. Stability — does any install ever change cohort?** MUST be zero. A single
+id reporting both `true` and `false` at a fixed percentage means something is
+broken: memoization, a registry edit mid-window, or two code paths
+disagreeing.
+
+```sql
+SELECT count() AS installs_that_flipped FROM (
+  SELECT distinct_id
+  FROM events
+  WHERE timestamp >= now() - INTERVAL 14 DAY
+    AND JSONHas(properties, '$feature/canary-calibration-10')
+  GROUP BY distinct_id
+  HAVING uniqExact(properties['$feature/canary-calibration-10']) > 1
+)
+```
+
+**4. Cross-surface agreement — do CLI and Studio agree for the same install?**
+A CLI-launched Studio adopts the CLI's id, so the same install must report the
+same cohort on both. Disagreement means the two bindings have diverged.
+
+```sql
+SELECT count() AS installs_disagreeing FROM (
+  SELECT distinct_id
+  FROM events
+  WHERE timestamp >= now() - INTERVAL 14 DAY
+    AND JSONHas(properties, '$feature/canary-calibration-10')
+  GROUP BY distinct_id
+  HAVING uniqExact(startsWith(event, 'studio')) > 1              -- seen on both surfaces
+     AND uniqExact(properties['$feature/canary-calibration-10']) > 1
+)
+```
+
+**Independence bonus:** overlap between `calibration-10` and `calibration-50`
+should be ~5% of installs (p1 x p2), not ~10% (which would mean the slices are
+correlated and every canary hits the same unlucky cohort).
+
+### What passing looks like, and what cannot be fixed
+
+Checks 1, 3 and 4 should pass outright — they are properties of the design,
+and failing any of them is a bug to fix before shipping a real rollout.
+
+Check 2 will NOT come back flat, and that is expected rather than a defect.
+Per-install cohorts never flip, but a *person* who wipes their config gets a
+new id and a fresh roll of the dice. Preventing that needs a stable identity
+across resets, and both candidates were rejected: hardware fingerprinting
+correlates the cohort with hardware (fatal for a rendering experiment, and it
+survives uninstall), and account identity covers only ~3.6% of local
+rendering installs. So the drift is a measured, accepted limit — the reason to
+run this calibration is to learn its real magnitude and pick canary window
+lengths accordingly.
+
 ## Behaviour worth knowing
 
 **Ramping is inclusive.** Widening `10 → 25` keeps everyone who was already
