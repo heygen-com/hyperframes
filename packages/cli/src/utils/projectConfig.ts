@@ -7,7 +7,7 @@
  * point at custom registries or reshape their project layout.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
@@ -140,6 +140,16 @@ export function resolveAutoProxy(projectDir: string, flagValue: boolean | undefi
   return loadProjectConfig(projectDir).media?.autoProxy ?? true;
 }
 
+/** A parsed JSON value that can carry arbitrary keys — narrowed, not asserted. */
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** True when a thrown filesystem error reports the path as absent. */
+function isFileNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
 /**
  * Persist the owning authoring-skill slug into `hyperframes.json` so every
  * later render of this project — re-render, `npm run render`, `--batch`,
@@ -165,25 +175,38 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
   const skill = normalizeSkillSlug(rawSkill);
   if (!skill) return;
   const path = projectConfigPath(projectDir);
+
+  // Read once and branch on why the read failed, rather than testing for the
+  // file first: an `existsSync`-then-write pair is a check-then-use race, and
+  // only a genuinely absent config may be created from scratch — any other
+  // read failure (permissions, I/O) must leave an existing file alone instead
+  // of overwriting it with a default.
+  let text: string;
   try {
-    if (!existsSync(path)) {
-      writeProjectConfig(projectDir, { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill });
-      return;
+    text = readFileSync(path, "utf-8");
+  } catch (error) {
+    if (isFileNotFound(error)) {
+      try {
+        writeProjectConfig(projectDir, { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill });
+      } catch {
+        // Read-only or missing project directory — best effort.
+      }
     }
-    const text = readFileSync(path, "utf-8");
+    return;
+  }
+
+  try {
     const parsed: unknown = JSON.parse(text);
-    // A non-object config is malformed; leave the user's file untouched rather
-    // than clobbering it from a render.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
-    const raw = parsed as Record<string, unknown>;
+    // A malformed config is left untouched rather than clobbered by a render.
+    if (!isJsonObject(parsed)) return;
     // Seed-once. Normalized so a hand-edited garbage slug neither reaches
     // telemetry nor wedges the seed — the next `--skill` render heals it.
-    if (normalizeSkillSlug(raw.authoringSkill)) return;
-    raw.authoringSkill = skill;
+    if (normalizeSkillSlug(parsed.authoringSkill)) return;
+    parsed.authoringSkill = skill;
     const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-    writeFileSync(path, JSON.stringify(raw, null, indent) + "\n", "utf-8");
+    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
   } catch {
-    // Corrupt JSON, or a read-only project directory: attribution is
-    // best-effort telemetry, never a render blocker.
+    // Corrupt JSON, or a read-only file: attribution is best-effort telemetry,
+    // never a render blocker.
   }
 }
