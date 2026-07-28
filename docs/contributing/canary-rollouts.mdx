@@ -132,6 +132,9 @@ is a bug, whereas during a real ramp a `false → true` flip is correct and
 expected.
 
 Four checks, written down before the data arrives so the read is not post-hoc.
+All four are live as tiles on the [Canary rollout calibration
+dashboard](https://us.posthog.com/project/356858/dashboard/1918875) — the SQL
+below is what each tile runs.
 
 **1. Accuracy — does 10% mean 10%?** Measure install-weighted AND
 event-weighted separately: render volume is heavily skewed toward a few heavy
