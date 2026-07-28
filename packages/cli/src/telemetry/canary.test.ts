@@ -12,8 +12,10 @@ vi.mock("./system.js", () => ({
 
 // The registry is data; pin a known shape so these tests don't move when a
 // real canary is added or ramped.
-vi.mock("@hyperframes/core", async () => {
-  const actual = await vi.importActual<typeof import("@hyperframes/core")>("@hyperframes/core");
+vi.mock("@hyperframes/core/canary-registry", async () => {
+  const actual = await vi.importActual<typeof import("@hyperframes/core/canary-registry")>(
+    "@hyperframes/core/canary-registry",
+  );
   return {
     ...actual,
     CANARIES: [

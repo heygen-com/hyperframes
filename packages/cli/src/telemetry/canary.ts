@@ -17,14 +17,11 @@
  * the feature's own code.
  */
 
-import {
-  CANARIES,
-  canaryEnvVar,
-  evaluateCanary,
-  findCanary,
-  parseCanaryOverride,
-  type CanaryDecision,
-} from "@hyperframes/core";
+// Leaf subpath imports, not the "@hyperframes/core" barrel: this resolves on
+// the CLI startup path, and the barrel pulls the whole core surface. Same
+// reason the producer is lazily loaded.
+import { evaluateCanary, parseCanaryOverride, type CanaryDecision } from "@hyperframes/core/canary";
+import { CANARIES, canaryEnvVar, findCanary } from "@hyperframes/core/canary-registry";
 import { readConfig } from "./config.js";
 import { getSystemMeta } from "./system.js";
 
