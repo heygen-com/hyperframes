@@ -138,7 +138,7 @@ export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<L
 
 /**
  * AWS Lambda reports `Error.name` to Step Functions, while producer errors
- * expose stable machine codes separately. Normalize the terminal codes
+ * expose stable machine codes separately. Normalize workflow-facing codes
  * whose historical class names differ from their orchestration contracts.
  */
 // The explicit error-name mapping is the public Step Functions failure contract.
@@ -149,7 +149,10 @@ function normalizeTerminalErrorName(error: unknown): void {
   if (
     candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
     candidate.code === "PLAN_TOO_LARGE" ||
-    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE"
+    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
+    candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
+    candidate.code === "VIDEO_EXTRACTION_FAILED" ||
+    candidate.code === "INVALID_VIDEO_METADATA"
   ) {
     candidate.name = candidate.code;
   }

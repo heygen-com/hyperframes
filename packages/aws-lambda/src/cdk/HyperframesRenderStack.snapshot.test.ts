@@ -76,6 +76,8 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "PLAN_PROTOCOL_UNSUPPORTED",
   "PlanProtocolUnsupportedError",
   "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+  "VIDEO_SOURCE_UNRENDERABLE",
+  "INVALID_VIDEO_METADATA",
   "PlanV2IntegrityError",
   "PLAN_ARTIFACT_DIGEST_MISMATCH",
   "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
@@ -209,6 +211,25 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("routes video failures consistently across SAM/CDK and both plan protocols", () => {
+    for (const definition of [SYNTHED.definition, readSamDefinition()]) {
+      const v1 = getV1TaskStates(definition);
+      const v2 = getV2TaskStates(definition);
+      for (const planState of [v1.Plan, v2.PlanV2]) {
+        const errors = new Set<string>();
+        collectNonRetryableErrors(planState, errors);
+        expect(errors.has("VIDEO_SOURCE_UNRENDERABLE")).toBe(true);
+        expect(errors.has("INVALID_VIDEO_METADATA")).toBe(true);
+        expect(errors.has("VIDEO_EXTRACTION_FAILED")).toBe(false);
+      }
+      for (const chunkState of [v1.RenderChunk, v2.RenderChunkV2]) {
+        const errors = new Set<string>();
+        collectNonRetryableErrors(chunkState, errors);
+        expect(errors.has("INVALID_VIDEO_METADATA")).toBe(true);
+      }
+    }
+  });
+
   it("keeps v1 and v2 locators disjoint across orchestration branches", () => {
     const { definition } = SYNTHED;
     const v1 = JSON.stringify({
@@ -268,6 +289,21 @@ function getV2TaskStates(definition: {
     PlanV2: definition.States.PlanV2,
     RenderChunkV2: innerStates.RenderChunkV2,
     AssembleV2: definition.States.AssembleV2,
+  };
+}
+
+function getV1TaskStates(definition: {
+  States: Record<string, unknown>;
+}): Record<"Plan" | "RenderChunk" | "Assemble", unknown> {
+  const renderChunks = requireRecord(definition.States.RenderChunks, "RenderChunks state");
+  const processor = isRecord(renderChunks.Iterator)
+    ? renderChunks.Iterator
+    : requireRecord(renderChunks.ItemProcessor, "RenderChunks processor");
+  const innerStates = requireRecord(processor.States, "RenderChunks processor states");
+  return {
+    Plan: definition.States.Plan,
+    RenderChunk: innerStates.RenderChunk,
+    Assemble: definition.States.Assemble,
   };
 }
 

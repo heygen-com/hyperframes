@@ -397,6 +397,83 @@ describe("plan() — golden planDir + planHash determinism", () => {
   const TIMEOUT_MS = 30_000;
 
   it(
+    "fails closed when an open-ended distributed video source cannot be extracted",
+    async () => {
+      const brokenProjectDir = join(runRoot, "broken-video-project");
+      const brokenPlanDir = join(runRoot, "broken-video-plan");
+      mkdirSync(brokenProjectDir, { recursive: true });
+      mkdirSync(brokenPlanDir, { recursive: true });
+      writeFileSync(
+        join(brokenProjectDir, "index.html"),
+        `<!doctype html>
+<div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
+  <video id="hero" src="missing.mp4" data-start="0"></video>
+</div>`,
+      );
+
+      let caught: unknown;
+      try {
+        await plan(
+          brokenProjectDir,
+          { fps: 30, width: 320, height: 240, format: "mp4", chunkSize: 240 },
+          brokenPlanDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toHaveProperty("name", "VideoExtractionStageError");
+      expect(caught).toHaveProperty("code", "VIDEO_SOURCE_UNRENDERABLE");
+      expect(caught).toHaveProperty("retryable", false);
+      expect(existsSync(join(brokenPlanDir, "meta", "videos.json"))).toBe(false);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "maps an open-ended remote video HTTP 404 to a terminal source error",
+    async () => {
+      const brokenProjectDir = join(runRoot, "remote-404-video-project");
+      const brokenPlanDir = join(runRoot, "remote-404-video-plan");
+      mkdirSync(brokenProjectDir, { recursive: true });
+      mkdirSync(brokenPlanDir, { recursive: true });
+      writeFileSync(
+        join(brokenProjectDir, "index.html"),
+        `<!doctype html>
+<div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
+  <video id="hero" src="https://cdn.example/missing.mp4" data-start="0"></video>
+</div>`,
+      );
+      const originalFetch = globalThis.fetch;
+      let fetchCalls = 0;
+      globalThis.fetch = (async () => {
+        fetchCalls += 1;
+        return new Response(null, { status: 404, statusText: "Not Found" });
+      }) as typeof fetch;
+
+      let caught: unknown;
+      try {
+        await plan(
+          brokenProjectDir,
+          { fps: 30, width: 320, height: 240, format: "mp4", chunkSize: 240 },
+          brokenPlanDir,
+        );
+      } catch (err) {
+        caught = err;
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+
+      expect(fetchCalls).toBeGreaterThan(0);
+      expect(caught).toHaveProperty("name", "VideoExtractionStageError");
+      expect(caught).toHaveProperty("code", "VIDEO_SOURCE_UNRENDERABLE");
+      expect(caught).toHaveProperty("retryable", false);
+      expect(existsSync(join(brokenPlanDir, "meta", "videos.json"))).toBe(false);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     "produces the documented planDir layout",
     async () => {
       const planDir = join(runRoot, "plan-layout");

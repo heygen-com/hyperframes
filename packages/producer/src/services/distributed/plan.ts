@@ -44,7 +44,10 @@ import {
 import { closeFileServerSafely } from "../fileServer.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
-import { runExtractVideosStage } from "../render/stages/extractVideosStage.js";
+import {
+  assertVideoExtractionSucceeded,
+  runExtractVideosStage,
+} from "../render/stages/extractVideosStage.js";
 import { runProbeStage } from "../render/stages/probeStage.js";
 import {
   type ChunkSliceJson,
@@ -65,6 +68,7 @@ import {
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
 import {
   buildSyntheticRenderJob,
+  buildPlanVideosJson,
   type DistributedFormat,
   PLAN_AUDIO_RELATIVE_PATH,
   PLAN_VIDEOS_META_RELATIVE_PATH,
@@ -1007,6 +1011,14 @@ export async function plan(
     materializeSymlinks: true,
   });
   if (extractResult.failureToEnforce) throw extractResult.failureToEnforce;
+  if (extractResult.extractionResult) {
+    // Distributed chunks cannot safely fall back to native remote decoding:
+    // the planner-local source may be unavailable on another worker, and a
+    // missing frame set otherwise renders as a silent blank video. Unlike the
+    // separately canaried in-process policy, distributed planning always
+    // requires every declared source to extract successfully.
+    assertVideoExtractionSucceeded(extractResult.extractionResult);
+  }
   // Skip `extractResult.frameLookup.cleanup()`: it would rm-rf each
   // video's outputDir, but in `plan()` those directories ARE the source
   // material the renames below move into `planDir/video-frames/`.
@@ -1049,8 +1061,9 @@ export async function plan(
   // page's native `<video>` element decodes the source mp4 ~1 frame
   // off the pre-extracted images the in-process baseline was captured
   // from.
-  const planVideosJson: PlanVideosJson = {
+  const planVideosJson: PlanVideosJson = buildPlanVideosJson({
     videos: composition.videos,
+    compositionEnd: job.duration ?? Number.NaN,
     extracted: (extractResult.extractionResult?.extracted ?? []).map((ext) => ({
       videoId: ext.videoId,
       srcPath: ext.srcPath,
@@ -1059,7 +1072,7 @@ export async function plan(
       totalFrames: ext.totalFrames,
       metadata: ext.metadata,
     })),
-  };
+  });
   mkdirSync(join(planDir, "meta"), { recursive: true });
   writeFileSync(
     join(planDir, PLAN_VIDEOS_META_RELATIVE_PATH),

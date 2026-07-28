@@ -94,6 +94,7 @@ export {
   type EffectiveChunkResult,
   // Error codes + classes
   FFMPEG_VERSION_MISMATCH,
+  INVALID_VIDEO_METADATA,
   PLAN_HASH_MISMATCH,
   RenderChunkValidationError,
 } from "./services/distributed/renderChunk.js";
@@ -142,7 +143,7 @@ export {
 // ── Format union ────────────────────────────────────────────────────────────
 // Canonical output-format type. The aws-lambda package re-exports it so
 // CLI / adopter SDKs can derive runtime allowlists from one source.
-export type { DistributedFormat } from "./services/distributed/shared.js";
+export { PlanVideosMetadataError, type DistributedFormat } from "./services/distributed/shared.js";
 
 // ── Plan-time shared types from `freezePlan` ───────────────────────────────
 // Re-exported so adopters that deserialize a planDir's `meta/encoder.json`

@@ -182,7 +182,10 @@ function normalizeTerminalErrorName(error: unknown): void {
   if (
     candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
     candidate.code === "PLAN_TOO_LARGE" ||
-    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE"
+    candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
+    candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
+    candidate.code === "VIDEO_EXTRACTION_FAILED" ||
+    candidate.code === "INVALID_VIDEO_METADATA"
   ) {
     candidate.name = candidate.code;
   }
@@ -899,6 +902,8 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   "PLAN_ARTIFACT_DIGEST_MISMATCH",
   "PLAN_PROTOCOL_UNSUPPORTED",
   "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+  "VIDEO_SOURCE_UNRENDERABLE",
+  "INVALID_VIDEO_METADATA",
   // Producer error class names (`.name`) + their string code aliases — the
   // class sets `.name` to the class name but wraps a `code`; cover both so a
   // raw-code throw is caught too. Mirrors the AWS state machine's

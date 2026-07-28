@@ -19,6 +19,9 @@ describe("extractSafeRenderErrorCode", () => {
     expect(extractSafeRenderErrorCode({ code: "VIDEO_SOURCE_UNRENDERABLE" })).toBe(
       "VIDEO_SOURCE_UNRENDERABLE",
     );
+    expect(extractSafeRenderErrorCode({ code: "INVALID_VIDEO_METADATA" })).toBe(
+      "INVALID_VIDEO_METADATA",
+    );
   });
 
   it("does not forward arbitrary codes or parse message text", () => {

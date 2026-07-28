@@ -263,6 +263,8 @@ Resources:
                   - PlanTooLargeError
                   - PLAN_PROTOCOL_UNSUPPORTED
                   - PlanProtocolUnsupportedError
+                  - VIDEO_SOURCE_UNRENDERABLE
+                  - INVALID_VIDEO_METADATA
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
                 MaxAttempts: 0
@@ -305,6 +307,8 @@ Resources:
                   - PLAN_PROTOCOL_UNSUPPORTED
                   - PlanProtocolUnsupportedError
                   - PLAN_V2_INTEGRITY_UNRECOVERABLE
+                  - VIDEO_SOURCE_UNRENDERABLE
+                  - INVALID_VIDEO_METADATA
                   - PlanV2IntegrityError
                   - PLAN_ARTIFACT_DIGEST_MISMATCH
                   - FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED
@@ -401,6 +405,7 @@ Resources:
                         - PlanTooLargeError
                         - PLAN_PROTOCOL_UNSUPPORTED
                         - PlanProtocolUnsupportedError
+                        - INVALID_VIDEO_METADATA
                         - PLAN_ARTIFACT_DIGEST_MISMATCH
                       MaxAttempts: 0
                     - ErrorEquals: [States.ALL]
@@ -497,6 +502,7 @@ Resources:
                         - PLAN_PROTOCOL_UNSUPPORTED
                         - PlanProtocolUnsupportedError
                         - PLAN_V2_INTEGRITY_UNRECOVERABLE
+                        - INVALID_VIDEO_METADATA
                         - PlanV2IntegrityError
                         - PLAN_ARTIFACT_DIGEST_MISMATCH
                         - ChromeBinaryUnavailableError

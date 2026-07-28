@@ -50,6 +50,8 @@ import {
   PLAN_AUDIO_RELATIVE_PATH,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type DistributedFormat,
+  parsePlanVideosJson as parseSharedPlanVideosJson,
+  PlanVideosMetadataError,
   type PlanVideosJson,
 } from "./shared.js";
 
@@ -325,91 +327,15 @@ function listVideoFramePaths(planV1Dir: string, videos: PlanVideosJson): Extract
   });
 }
 
-function readFiniteNumber(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new PlanV2IntegrityError(`${field} must be a finite number`);
-  }
-  return value;
-}
-
-function readBoolean(value: unknown, field: string): boolean {
-  if (typeof value !== "boolean") {
-    throw new PlanV2IntegrityError(`${field} must be boolean`);
-  }
-  return value;
-}
-
-function readVideoMetadata(
-  value: unknown,
-  field: string,
-): PlanVideosJson["extracted"][number]["metadata"] {
-  if (!isRecord(value)) {
-    throw new PlanV2IntegrityError(`${field} must be an object`);
-  }
-  let colorSpace: PlanVideosJson["extracted"][number]["metadata"]["colorSpace"] = null;
-  if (value.colorSpace !== null) {
-    if (!isRecord(value.colorSpace)) {
-      throw new PlanV2IntegrityError(`${field}.colorSpace must be an object or null`);
-    }
-    colorSpace = {
-      colorTransfer: readColorComponent(
-        value.colorSpace.colorTransfer,
-        `${field}.colorSpace.colorTransfer`,
-      ),
-      colorPrimaries: readColorComponent(
-        value.colorSpace.colorPrimaries,
-        `${field}.colorSpace.colorPrimaries`,
-      ),
-      colorSpace: readColorComponent(value.colorSpace.colorSpace, `${field}.colorSpace.colorSpace`),
-    };
-  }
-  return {
-    durationSeconds: readFiniteNumber(value.durationSeconds, `${field}.durationSeconds`),
-    videoStreamDurationSeconds: readFiniteNumber(
-      value.videoStreamDurationSeconds,
-      `${field}.videoStreamDurationSeconds`,
-    ),
-    width: readPositiveInteger(value.width, `${field}.width`),
-    height: readPositiveInteger(value.height, `${field}.height`),
-    fps: readFiniteNumber(value.fps, `${field}.fps`),
-    videoCodec: readString(value.videoCodec, `${field}.videoCodec`),
-    hasAudio: readBoolean(value.hasAudio, `${field}.hasAudio`),
-    isVFR: readBoolean(value.isVFR, `${field}.isVFR`),
-    hasAlpha: readBoolean(value.hasAlpha, `${field}.hasAlpha`),
-    colorSpace,
-  };
-}
-
 function parsePlanVideosJson(value: unknown): PlanVideosJson {
-  if (!isRecord(value) || !Array.isArray(value.videos) || !Array.isArray(value.extracted)) {
-    throw new PlanV2IntegrityError("meta/videos.json must contain videos and extracted arrays");
+  try {
+    return parseSharedPlanVideosJson(value);
+  } catch (err) {
+    if (err instanceof PlanVideosMetadataError) {
+      throw new PlanV2IntegrityError(err.message);
+    }
+    throw err;
   }
-  const videos = value.videos.map((video, index) => {
-    const field = `meta/videos.json.videos[${index}]`;
-    if (!isRecord(video)) throw new PlanV2IntegrityError(`${field} must be an object`);
-    return {
-      id: readString(video.id, `${field}.id`),
-      src: readString(video.src, `${field}.src`),
-      start: readFiniteNumber(video.start, `${field}.start`),
-      end: readFiniteNumber(video.end, `${field}.end`),
-      mediaStart: readFiniteNumber(video.mediaStart, `${field}.mediaStart`),
-      loop: readBoolean(video.loop, `${field}.loop`),
-      hasAudio: readBoolean(video.hasAudio, `${field}.hasAudio`),
-    };
-  });
-  const extracted = value.extracted.map((entry, index) => {
-    const field = `meta/videos.json.extracted[${index}]`;
-    if (!isRecord(entry)) throw new PlanV2IntegrityError(`${field} must be an object`);
-    return {
-      videoId: readString(entry.videoId, `${field}.videoId`),
-      srcPath: readString(entry.srcPath, `${field}.srcPath`),
-      framePattern: readString(entry.framePattern, `${field}.framePattern`),
-      fps: readFiniteNumber(entry.fps, `${field}.fps`),
-      totalFrames: readNonNegativeInteger(entry.totalFrames, `${field}.totalFrames`),
-      metadata: readVideoMetadata(entry.metadata, `${field}.metadata`),
-    };
-  });
-  return { videos, extracted };
 }
 
 function materializeExtractedVideoDirectories(planDir: string): void {
@@ -722,13 +648,6 @@ function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2
 function readString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new PlanV2IntegrityError(`${field} must be a non-empty string`);
-  }
-  return value;
-}
-
-function readColorComponent(value: unknown, field: string): string {
-  if (typeof value !== "string") {
-    throw new PlanV2IntegrityError(`${field} must be a string`);
   }
   return value;
 }

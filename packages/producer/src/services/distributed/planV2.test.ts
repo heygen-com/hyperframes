@@ -27,6 +27,7 @@ import {
   validatePlanV2MaterializedTarget,
 } from "./planV2.js";
 import { LocalPlanV2ArtifactPublisher, type PlanV2ArtifactPublisher } from "./planV2Publisher.js";
+import { buildPlanVideosJson, type PlanVideosJson } from "./shared.js";
 
 const tempDirs: string[] = [];
 
@@ -176,6 +177,30 @@ describe("Plan v2 manifest", () => {
     expect(first.planHash).not.toBe(first.sourcePlanV1Hash);
     expect(first.planProtocol.schemaVersion).toBe(2);
     expect(first.limitations.videoDependencyMode).toBe("exact-rendered-frames");
+  });
+
+  it("accepts and materializes the same bounded timing produced for v1", () => {
+    const root = tempPath("hf-plan-v2-open-ended-video-");
+    const v1 = createV1Plan(root, { video: true });
+    const videosPath = join(v1, "meta", "videos.json");
+    const fixture = JSON.parse(readFileSync(videosPath, "utf-8")) as PlanVideosJson;
+    const bounded = buildPlanVideosJson({
+      videos: [{ ...fixture.videos[0]!, end: Number.POSITIVE_INFINITY }],
+      extracted: fixture.extracted,
+      compositionEnd: 2,
+    });
+    writeFileSync(videosPath, JSON.stringify(bounded));
+    refreshV1PlanHash(v1);
+
+    const v2 = createPlanV2FromV1(v1, join(root, "v2"));
+    const materialized = join(root, "chunk");
+    materializePlanV2Target(v2.planDir, { role: "chunk", chunkIndex: 1 }, materialized);
+    const materializedVideos = JSON.parse(
+      readFileSync(join(materialized, "meta", "videos.json"), "utf-8"),
+    ) as PlanVideosJson;
+
+    expect(bounded.videos[0]?.end).toBe(2);
+    expect(materializedVideos.videos).toEqual(bounded.videos);
   });
 
   it("rejects a stale v1 source hash before content-addressing its bytes", () => {

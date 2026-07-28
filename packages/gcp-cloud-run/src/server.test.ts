@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import {
   CURRENT_PLAN_PROTOCOL,
   PLAN_V2_INTEGRITY_UNRECOVERABLE,
+  PlanVideosMetadataError,
   PlanV2IntegrityError,
   PlanProtocolUnsupportedError,
   type AssembleResult,
@@ -572,6 +573,66 @@ describe("createApp HTTP mapping", () => {
       const body = (await res.json()) as { error: string };
       expect(body.error).toBe(PLAN_V2_INTEGRITY_UNRECOVERABLE);
     }
+  });
+
+  it.each([
+    ["VIDEO_SOURCE_UNRENDERABLE", 400],
+    ["VIDEO_EXTRACTION_FAILED", 500],
+  ] as const)("routes producer video code %s with HTTP %s", async (code, expectedStatus) => {
+    const gcs = new FakeGcs();
+    await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
+    const app = createApp(
+      depsWith(gcs, {
+        renderChunk: async () => {
+          throw Object.assign(new Error(`test ${code}`), {
+            name: "ProducerError",
+            code,
+          });
+        },
+      }),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        Action: "renderChunk",
+        PlanGcsUri: "gs://b/renders/r1/plan.tar.gz",
+        PlanHash: PLAN_HASH,
+        ChunkIndex: 0,
+        ChunkOutputGcsPrefix: "gs://b/renders/r1/",
+        Format: "mp4",
+      }),
+    });
+
+    expect(res.status).toBe(expectedStatus);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe(code);
+  });
+
+  it("routes the real plan metadata error as non-retryable", async () => {
+    const gcs = new FakeGcs();
+    await seedProjectTar(gcs, "gs://b/sites/invalid-video-metadata/project.tar.gz");
+    const app = createApp(
+      depsWith(gcs, {
+        plan: async () => {
+          throw new PlanVideosMetadataError("test invalid plan video metadata");
+        },
+      }),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        Action: "plan",
+        ProjectGcsUri: "gs://b/sites/invalid-video-metadata/project.tar.gz",
+        PlanOutputGcsPrefix: "gs://b/renders/invalid-video-metadata/",
+        Config: { fps: 30, width: 640, height: 360, format: "mp4" },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("INVALID_VIDEO_METADATA");
   });
 
   it("returns 500 for a retryable/unknown error", async () => {

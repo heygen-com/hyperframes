@@ -80,6 +80,8 @@ import {
 } from "../fileServer.js";
 import {
   buildSyntheticRenderJob,
+  INVALID_VIDEO_METADATA,
+  parsePlanVideosJson,
   type DistributedFormat,
   PLAN_VIDEOS_META_RELATIVE_PATH,
   type PlanVideosJson,
@@ -102,6 +104,7 @@ export const PLAN_HASH_MISMATCH = "PLAN_HASH_MISMATCH";
 export const MISSING_PLAN_ARTIFACT = "MISSING_PLAN_ARTIFACT";
 export const CHUNK_INDEX_OUT_OF_RANGE = "CHUNK_INDEX_OUT_OF_RANGE";
 export const MISSING_RUNTIME_ENV_SNAPSHOT = "MISSING_RUNTIME_ENV_SNAPSHOT";
+export { INVALID_VIDEO_METADATA };
 const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
 export type RenderChunkValidationCode =
@@ -110,6 +113,7 @@ export type RenderChunkValidationCode =
   | typeof MISSING_PLAN_ARTIFACT
   | typeof CHUNK_INDEX_OUT_OF_RANGE
   | typeof MISSING_RUNTIME_ENV_SNAPSHOT
+  | typeof INVALID_VIDEO_METADATA
   | typeof BROWSER_GPU_NOT_SOFTWARE;
 
 /**
@@ -124,6 +128,18 @@ export class RenderChunkValidationError extends Error {
     super(message);
     this.name = "RenderChunkValidationError";
     this.code = code;
+  }
+}
+
+/** Validate the shared video contract before any v1 chunk can inject frames. */
+export function validatePlanVideosForChunk(value: unknown): PlanVideosJson {
+  try {
+    return parsePlanVideosJson(value);
+  } catch (err) {
+    throw new RenderChunkValidationError(
+      INVALID_VIDEO_METADATA,
+      `[renderChunk] invalid meta/videos.json: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -511,10 +527,11 @@ export async function renderChunk(
   let planVideos: PlanVideosJson | null = null;
   if (existsSync(videosJsonPath)) {
     try {
-      planVideos = JSON.parse(readFileSync(videosJsonPath, "utf-8")) as PlanVideosJson;
+      planVideos = validatePlanVideosForChunk(JSON.parse(readFileSync(videosJsonPath, "utf-8")));
     } catch (err) {
+      if (err instanceof RenderChunkValidationError) throw err;
       throw new RenderChunkValidationError(
-        MISSING_PLAN_ARTIFACT,
+        INVALID_VIDEO_METADATA,
         `[renderChunk] failed to parse ${videosJsonPath}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }

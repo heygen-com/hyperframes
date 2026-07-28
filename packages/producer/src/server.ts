@@ -119,6 +119,7 @@ interface PreparedRenderInput {
 
 const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
 const SAFE_RENDER_ERROR_CODES = new Set<string>([
+  "INVALID_VIDEO_METADATA",
   "VIDEO_SOURCE_UNRENDERABLE",
   "VIDEO_EXTRACTION_FAILED",
 ]);

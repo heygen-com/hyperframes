@@ -51,6 +51,7 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
       "FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED",
     );
     expect(distributedSubpath.FFMPEG_VERSION_MISMATCH).toBe("FFMPEG_VERSION_MISMATCH");
+    expect(distributedSubpath.INVALID_VIDEO_METADATA).toBe("INVALID_VIDEO_METADATA");
     expect(distributedSubpath.PLAN_HASH_MISMATCH).toBe("PLAN_HASH_MISMATCH");
     expect(distributedSubpath.PLAN_V2_INTEGRITY_UNRECOVERABLE).toBe(
       "PLAN_V2_INTEGRITY_UNRECOVERABLE",

@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   CURRENT_PLAN_PROTOCOL,
+  PlanVideosMetadataError,
   type AssembleResult,
   type ChunkResult,
   type PlanResult,
@@ -243,19 +244,25 @@ describe("handler dispatch", () => {
     ).toBe(true);
   });
 
-  it("normalizes producer terminal codes to Step Functions error names", async () => {
+  it("normalizes producer workflow codes to Step Functions error names", async () => {
     for (const code of [
       "PLAN_TOO_LARGE",
       "PLAN_PROTOCOL_UNSUPPORTED",
       "PLAN_V2_INTEGRITY_UNRECOVERABLE",
+      "VIDEO_SOURCE_UNRENDERABLE",
+      "VIDEO_EXTRACTION_FAILED",
+      "INVALID_VIDEO_METADATA",
     ] as const) {
       const tmpRoot = makeTmpRoot();
       const s3 = new FakeS3Client();
       s3.objects.set("s3://bucket/project.tar.gz", await makeMinimalProjectTar());
-      const terminal = Object.assign(new Error(`terminal: ${code}`), {
-        code,
-        name: "ProducerError",
-      });
+      const terminal =
+        code === "INVALID_VIDEO_METADATA"
+          ? new PlanVideosMetadataError("test invalid plan video metadata")
+          : Object.assign(new Error(`terminal: ${code}`), {
+              code,
+              name: "ProducerError",
+            });
 
       await expect(
         handler(
