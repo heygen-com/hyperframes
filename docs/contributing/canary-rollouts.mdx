@@ -57,21 +57,18 @@ panic-off.
 
 ## Measuring
 
-Every telemetry event carries the assignment as a PostHog flag property:
+Every telemetry event carries the assignment as a flag-shaped property:
 
 ```
 $feature/canary-my-feature: "true" | "false"
 ```
 
-PostHog treats `$feature/<key>` as a first-class flag, so breakdowns, funnels
-split by cohort and the experiment surfaces work on a canary with **nothing
-configured server-side** — the decision still happens locally and offline,
-which the render path requires.
-
-```sql
-SELECT properties['$feature/canary-my-feature'] AS cohort, count()
-FROM events WHERE event = 'render_complete' GROUP BY cohort
-```
+`$feature/<key>` is the de-facto flag-property convention in analytics
+tooling, so whoever operates the telemetry backend can split any metric by
+cohort with **nothing configured server-side** — while the decision itself
+still happens locally and offline, which the render path requires.
+(Assignments ride the same anonymous, opt-out telemetry pipeline as every
+other event; disabling telemetry disables the reporting, not the enrolment.)
 
 Two details worth knowing:
 
@@ -79,9 +76,10 @@ Two details worth knowing:
   missing property. Absent means *this build predates the canary*, which is a
   different fact from *this install is control* — collapsing them makes a ramp
   unreadable.
-- **Keys are namespaced with `canary-`.** A real PostHog flag namespace
-  already exists in this project, owned by the web app. The infix guarantees a
-  canary can never alias a real flag and fight it for the same property.
+- **Keys are namespaced with `canary-`.** The `$feature/` namespace is shared
+  with real product feature flags elsewhere in the analytics pipeline. The
+  infix guarantees a canary can never alias one and fight it for the same
+  property.
 
 ## Cumulative exposure — the number that actually bounds blast radius
 
@@ -97,18 +95,8 @@ group of installs that have been enrolled *at some point*. If a single person
 cycles through N ids during a rollout, their chance of having been exposed is
 `1 − (1 − p)^N`, so at 10%: 19% after two ids, 41% after five.
 
-So watch the cumulative number, not just the rate:
-
-```sql
--- blast radius: distinct installs EVER enrolled during the window
-SELECT
-  uniqExactIf(distinct_id, properties['$feature/canary-my-feature'] = 'true') AS ever_enrolled,
-  uniqExact(distinct_id) AS all_installs
-FROM events
-WHERE event = 'render_complete' AND timestamp >= now() - INTERVAL 14 DAY
-```
-
-Two practical consequences:
+So the number that bounds blast radius is *distinct installs ever enrolled
+during the window*, not the instantaneous rate. Two practical consequences:
 
 - **Keep canaries short.** Drift compounds with time; a 5-day window at 10% is
   far tighter than a 60-day one.
@@ -132,36 +120,17 @@ is a bug, whereas during a real ramp a `false → true` flip is correct and
 expected.
 
 Four checks, written down before the data arrives so the read is not post-hoc.
-All four are live as tiles on the [Canary rollout calibration
-dashboard](https://us.posthog.com/project/356858/dashboard/1918875) — the SQL
-below is what each tile runs.
+(The maintainers monitor these on an internal dashboard; the definitions live
+here so the experiment's terms are public and fixed.)
 
-**1. Accuracy — does 10% mean 10%?** Measure install-weighted AND
+**1. Accuracy — does 10% mean 10%?** Measured install-weighted AND
 event-weighted separately: render volume is heavily skewed toward a few heavy
-installs, so the two can differ even when bucketing is perfect.
+installs, so the two can differ even when bucketing is perfect. Install share
+is the one that must land on target.
 
-```sql
-SELECT
-  properties['$feature/canary-calibration-10'] AS cohort,
-  uniqExact(distinct_id) AS installs,
-  count() AS events
-FROM events
-WHERE timestamp >= now() - INTERVAL 14 DAY
-  AND JSONHas(properties, '$feature/canary-calibration-10')
-GROUP BY cohort
-```
-
-**2. Drift — does cumulative exposure climb?** Run over widening windows. The
-instantaneous share should stay flat at 10%; the cumulative enrolled-install
-count should grow with id churn.
-
-```sql
-SELECT
-  uniqExactIf(distinct_id, properties['$feature/canary-calibration-10'] = 'true') AS ever_enrolled,
-  uniqExact(distinct_id) AS all_installs
-FROM events WHERE timestamp >= now() - INTERVAL {1,7,14,30} DAY
-  AND JSONHas(properties, '$feature/canary-calibration-10')
-```
+**2. Drift — does cumulative exposure climb?** Measured over widening windows
+(1/7/14/30 days). The instantaneous share should stay flat at 10%; the
+cumulative enrolled-install count should grow with id churn.
 
 **3. Stability — does any install ever change cohort?** MUST be zero. A single
 id reporting both `true` and `false` at a fixed percentage means something is
@@ -172,38 +141,12 @@ toggling `HF_CANARY_CALIBRATION_10=on/off` mid-window is indistinguishable
 from a real flip. Emitting a reason property is deliberately skipped — add it
 only if this check comes back dirty.
 
-```sql
-SELECT count() AS installs_that_flipped FROM (
-  SELECT distinct_id
-  FROM events
-  WHERE timestamp >= now() - INTERVAL 14 DAY
-    AND JSONHas(properties, '$feature/canary-calibration-10')
-  GROUP BY distinct_id
-  HAVING uniqExact(properties['$feature/canary-calibration-10']) > 1
-)
-```
-
 **4. Cross-surface agreement — do CLI and Studio agree for the same install?**
 A CLI-launched Studio adopts the CLI's id, so the same install must report the
-same cohort on both. Disagreement means the two bindings have diverged. Note
-this compares the *value reported per surface* — any disagreement here is also
-a check-3 flip, so this check's job is attribution: it isolates the flips that
+same cohort on both. Disagreement means the two bindings have diverged. This
+compares the *value reported per surface* — any disagreement here is also a
+check-3 flip, so this check's job is attribution: it isolates the flips that
 are binding divergence rather than within-surface instability.
-
-```sql
-SELECT countIf(cli_val != studio_val) AS installs_disagreeing FROM (
-  SELECT
-    distinct_id,
-    anyIf(properties['$feature/canary-calibration-10'], NOT startsWith(event, 'studio')) AS cli_val,
-    anyIf(properties['$feature/canary-calibration-10'], startsWith(event, 'studio')) AS studio_val
-  FROM events
-  WHERE timestamp >= now() - INTERVAL 14 DAY
-    AND JSONHas(properties, '$feature/canary-calibration-10')
-  GROUP BY distinct_id
-  HAVING countIf(startsWith(event, 'studio')) > 0                -- seen on both surfaces
-     AND countIf(NOT startsWith(event, 'studio')) > 0
-)
-```
 
 **Independence bonus:** overlap between `calibration-10` and `calibration-50`
 should be ~5% of installs (p1 x p2), not ~10% (which would mean the slices are
