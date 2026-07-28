@@ -1,4 +1,0 @@
-interface:
-  display_name: "HyperFrames Keyframes"
-  short_description: "Author seek-safe video keyframes"
-  default_prompt: "Use $hyperframes-keyframes to author seek-safe 2D/3D keyframes and verify them with the CLI."

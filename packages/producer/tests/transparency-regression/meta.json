@@ -1,8 +1,0 @@
-{
-  "name": "Transparency Regression",
-  "description": "Asserts that webm + png-sequence outputs preserve a real alpha channel end-to-end. Exercised by `tsx src/transparency-test.ts`, NOT by the standard regression harness (which compares against a golden MP4).",
-  "tags": ["transparency", "alpha", "smoke"],
-  "renderConfig": {
-    "fps": 30
-  }
-}
