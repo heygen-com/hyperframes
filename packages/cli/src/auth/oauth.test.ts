@@ -29,6 +29,19 @@ vi.mock("./browser.js", () => ({
   openBrowser: vi.fn(async () => ({ opened: true })),
 }));
 
+function tokenFetch(body: Record<string, unknown>): typeof fetch {
+  return (async () =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+}
+
+async function loginWithTokens(body: Record<string, unknown>) {
+  await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
+  return (await readStore()).credentials;
+}
+
 describe("auth/oauth", () => {
   let fixture: Awaited<ReturnType<typeof setupTempAuthEnv>>;
 
@@ -167,11 +180,7 @@ describe("auth/oauth", () => {
           expires_at: "2026-01-01T00:00:00Z",
         },
       });
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
       await refreshTokens("keep_me_rt", { fetchImpl });
       const { credentials } = await readStore();
       expect(credentials.oauth?.access_token).toBe("new_at");
@@ -181,11 +190,7 @@ describe("auth/oauth", () => {
 
     it("preserves an existing api_key when persisting refreshed oauth", async () => {
       await writeStore({ api_key: "hg_keep" });
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 60 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 60 });
       await refreshTokens("old_rt", { fetchImpl });
       const { credentials } = await readStore();
       expect(credentials.api_key).toBe("hg_keep");
@@ -211,11 +216,7 @@ describe("auth/oauth", () => {
         }),
         { mode: 0o600 },
       );
-      const fetchImpl = (async () =>
-        new Response(JSON.stringify({ access_token: "new_at", expires_in: 3600 }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
+      const fetchImpl = tokenFetch({ access_token: "new_at", expires_in: 3600 });
       await refreshTokens("keep_me_rt", { fetchImpl });
 
       const onDisk = JSON.parse(await fs.readFile(path, "utf8"));
@@ -310,14 +311,6 @@ describe("auth/oauth", () => {
   });
 
   describe("startAuthorizationCodeFlow persistence", () => {
-    function tokenFetch(body: Record<string, unknown>): typeof fetch {
-      return (async () =>
-        new Response(JSON.stringify(body), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })) as unknown as typeof fetch;
-    }
-
     it("overwrites the OAuth block on fresh login (no inherited refresh_token)", async () => {
       // Pre-seed a prior session whose refresh_token must NOT leak into
       // the new login when the new response omits one.
@@ -327,13 +320,10 @@ describe("auth/oauth", () => {
           refresh_token: "OLD_rt_should_not_survive",
         },
       });
-      const fetchImpl = tokenFetch({
+      const credentials = await loginWithTokens({
         access_token: "new_at",
         expires_in: 3600,
       });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
       expect(credentials.oauth?.access_token).toBe("new_at");
       // Fresh login is a clean session — the old refresh_token is gone.
       expect(credentials.oauth?.refresh_token).toBeUndefined();
@@ -341,13 +331,10 @@ describe("auth/oauth", () => {
 
     it("preserves a co-located api_key across fresh login", async () => {
       await writeStore({ api_key: "hg_keep_me" });
-      const fetchImpl = tokenFetch({
+      const credentials = await loginWithTokens({
         access_token: "new_at",
         refresh_token: "new_rt",
       });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
       expect(credentials.api_key).toBe("hg_keep_me");
       expect(credentials.oauth?.access_token).toBe("new_at");
       expect(credentials.oauth?.refresh_token).toBe("new_rt");
@@ -367,13 +354,10 @@ describe("auth/oauth", () => {
         }),
         { mode: 0o600 },
       );
-      const fetchImpl = tokenFetch({
+      const credentials = await loginWithTokens({
         access_token: "new_at",
         expires_in: 3600,
       });
-      await startAuthorizationCodeFlow({ fetchImpl });
-
-      const { credentials } = await readStore();
       expect(credentials.oauth?.access_token).toBe("new_at");
       expect(credentials.user).toEqual({
         email: "jane@example.com",

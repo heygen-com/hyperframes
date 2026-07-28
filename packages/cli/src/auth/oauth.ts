@@ -214,80 +214,115 @@ export async function startAuthorizationCodeFlow(
 export async function startDeviceAuthorizationFlow(
   opts: DeviceAuthorizationFlowOptions = {},
 ): Promise<OAuthTokens> {
-  const clientId = resolveClientId();
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const sleepImpl =
-    opts.sleepImpl ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const now = opts.now ?? Date.now;
-  const scope = opts.scope ?? DEFAULT_SCOPES;
+  const runtime: DeviceFlowRuntime = {
+    clientId: resolveClientId(),
+    fetchImpl: opts.fetchImpl ?? fetch,
+    sleepImpl:
+      opts.sleepImpl ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))),
+    now: opts.now ?? Date.now,
+  };
+  const issuance = await requestDeviceAuthorization(runtime, opts.scope ?? DEFAULT_SCOPES);
+  await opts.onChallenge?.({
+    userCode: issuance.userCode,
+    verificationUri: issuance.verificationUri,
+  });
+  return await pollDeviceToken(runtime, issuance);
+}
 
-  let issuanceResponse: Response;
+interface DeviceFlowRuntime {
+  clientId: string;
+  fetchImpl: typeof fetch;
+  sleepImpl: (ms: number) => Promise<void>;
+  now: () => number;
+}
+
+async function requestDeviceAuthorization(
+  runtime: DeviceFlowRuntime,
+  scope: string,
+): Promise<ParsedDeviceAuthorization> {
+  let response: Response;
   try {
-    issuanceResponse = await fetchImpl(deviceAuthorizationEndpoint(), {
+    response = await runtime.fetchImpl(deviceAuthorizationEndpoint(), {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         accept: "application/json",
       },
-      body: new URLSearchParams({ client_id: clientId, scope }).toString(),
+      body: new URLSearchParams({ client_id: runtime.clientId, scope }).toString(),
     });
   } catch {
     throw ErrDeviceAuthFailed("could not reach the authorization server");
   }
-  if (!issuanceResponse.ok) {
-    throw ErrDeviceAuthFailed(`authorization server returned HTTP ${issuanceResponse.status}`);
+  if (!response.ok) {
+    throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
   }
+  return parseDeviceAuthorizationResponse(await readJsonOrDeviceError(response));
+}
 
-  const issuance = parseDeviceAuthorizationResponse(await readJsonOrDeviceError(issuanceResponse));
-  await opts.onChallenge?.({
-    userCode: issuance.userCode,
-    verificationUri: issuance.verificationUri,
-  });
-
-  const deadline = now() + Math.min(issuance.expiresIn, MAX_DEVICE_FLOW_SECONDS) * 1000;
+async function pollDeviceToken(
+  runtime: DeviceFlowRuntime,
+  issuance: ParsedDeviceAuthorization,
+): Promise<OAuthTokens> {
+  const deadline = runtime.now() + Math.min(issuance.expiresIn, MAX_DEVICE_FLOW_SECONDS) * 1000;
   let intervalSeconds = issuance.interval;
-  while (now() < deadline) {
-    const remainingMs = deadline - now();
+  while (runtime.now() < deadline) {
+    const remainingMs = deadline - runtime.now();
     if (remainingMs <= 0) break;
-    await sleepImpl(Math.min(intervalSeconds * 1000, remainingMs));
+    await runtime.sleepImpl(Math.min(intervalSeconds * 1000, remainingMs));
 
-    let pollResponse: Response;
-    try {
-      pollResponse = await fetchImpl(tokenEndpoint(), {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          accept: "application/json",
-        },
-        body: new URLSearchParams({
-          grant_type: DEVICE_CODE_GRANT_TYPE,
-          device_code: issuance.deviceCode,
-          client_id: clientId,
-        }).toString(),
-      });
-    } catch {
-      throw ErrDeviceAuthFailed("lost contact with the authorization server");
-    }
-
-    if (pollResponse.ok) {
-      return parseTokenResponse(await readJsonOrDeviceError(pollResponse));
-    }
-
-    const error = await readDeviceOAuthError(pollResponse);
-    if (error === "authorization_pending") continue;
-    if (error === "slow_down") {
+    const result = await evaluateDevicePollResponse(
+      await requestDeviceToken(runtime, issuance.deviceCode),
+    );
+    if (result.tokens) return result.tokens;
+    if (result.slowDown) {
       intervalSeconds = Math.min(intervalSeconds + 5, MAX_DEVICE_POLL_SECONDS);
-      continue;
     }
-    if (error === "access_denied") {
-      throw ErrDeviceAuthFailed("access was denied");
-    }
-    if (error === "expired_token") {
-      throw ErrDeviceAuthFailed("the code expired");
-    }
-    throw ErrDeviceAuthFailed(`authorization server returned HTTP ${pollResponse.status}`);
   }
   throw ErrDeviceAuthFailed("the code expired");
+}
+
+async function requestDeviceToken(
+  runtime: DeviceFlowRuntime,
+  deviceCode: string,
+): Promise<Response> {
+  try {
+    return await runtime.fetchImpl(tokenEndpoint(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        accept: "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: DEVICE_CODE_GRANT_TYPE,
+        device_code: deviceCode,
+        client_id: runtime.clientId,
+      }).toString(),
+    });
+  } catch {
+    throw ErrDeviceAuthFailed("lost contact with the authorization server");
+  }
+}
+
+async function evaluateDevicePollResponse(
+  response: Response,
+): Promise<{ tokens?: OAuthTokens; slowDown?: boolean }> {
+  if (response.ok) {
+    return { tokens: parseTokenResponse(await readJsonOrDeviceError(response)) };
+  }
+
+  const error = await readDeviceOAuthError(response);
+  switch (error) {
+    case "authorization_pending":
+      return {};
+    case "slow_down":
+      return { slowDown: true };
+    case "access_denied":
+      throw ErrDeviceAuthFailed("access was denied");
+    case "expired_token":
+      throw ErrDeviceAuthFailed("the code expired");
+    default:
+      throw ErrDeviceAuthFailed(`authorization server returned HTTP ${response.status}`);
+  }
 }
 
 export async function refreshTokens(
@@ -589,22 +624,22 @@ interface ParsedDeviceAuthorization {
 }
 
 function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthorization {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
-  }
-  const data = payload as Record<string, unknown>;
+  const data = requireDeviceAuthorizationRecord(payload);
   const deviceCode = stringField(data, "device_code");
   const userCode = stringField(data, "user_code");
   const verificationUri = stringField(data, "verification_uri");
   const expiresIn = strictNumericField(data, "expires_in");
   const interval = strictNumericField(data, "interval");
-  if (!deviceCode || !isHeaderSafe(deviceCode) || !userCode || !verificationUri) {
+  if (!deviceCode || !isHeaderSafe(deviceCode)) {
+    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
+  }
+  if (!userCode || !verificationUri) {
     throw ErrDeviceAuthFailed("authorization server returned an invalid response");
   }
   if (!isSafeVerificationUri(verificationUri)) {
     throw ErrDeviceAuthFailed("authorization server returned an unsafe verification URL");
   }
-  if (!expiresIn || expiresIn <= 0 || !interval || interval <= 0) {
+  if (!isPositiveNumber(expiresIn) || !isPositiveNumber(interval)) {
     throw ErrDeviceAuthFailed("authorization server returned invalid timing values");
   }
   return {
@@ -617,6 +652,17 @@ function parseDeviceAuthorizationResponse(payload: unknown): ParsedDeviceAuthori
       MAX_DEVICE_POLL_SECONDS,
     ),
   };
+}
+
+function requireDeviceAuthorizationRecord(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw ErrDeviceAuthFailed("authorization server returned an invalid response");
+  }
+  return payload as Record<string, unknown>;
+}
+
+function isPositiveNumber(value: number | undefined): value is number {
+  return value !== undefined && value > 0;
 }
 
 function isSafeVerificationUri(value: string): boolean {
