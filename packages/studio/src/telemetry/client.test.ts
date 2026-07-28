@@ -56,10 +56,19 @@ describe("studio client shouldTrack", () => {
     expect(shouldTrack()).toBe(false);
   });
 
-  it("returns false when VITE_HYPERFRAMES_NO_TELEMETRY='true'", async () => {
-    setNoTelemetry("true");
+  it.each(["true", "TRUE", " yes ", "on"])(
+    "returns false when VITE_HYPERFRAMES_NO_TELEMETRY=%j",
+    async (value) => {
+      setNoTelemetry(value);
+      const shouldTrack = await loadShouldTrack();
+      expect(shouldTrack()).toBe(false);
+    },
+  );
+
+  it("does not opt out for an explicit false value", async () => {
+    setNoTelemetry("false");
     const shouldTrack = await loadShouldTrack();
-    expect(shouldTrack()).toBe(false);
+    expect(shouldTrack()).toBe(true);
   });
 
   it("returns false in vite dev mode", async () => {

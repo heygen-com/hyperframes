@@ -34,12 +34,13 @@ function isApiKeyConfigured(): boolean {
 
 // VITE_HYPERFRAMES_NO_TELEMETRY mirrors the CLI's HYPERFRAMES_NO_TELEMETRY=1
 // opt-out so HeyGen's own dev/CI builds can suppress telemetry from the studio
-// bundle the same way. Vite injects it at build time. Accepts "1" or "true".
+// bundle the same way. Vite injects it at build time. Match the CLI's
+// affirmative privacy-control spellings.
 // `import.meta.env` may be undefined in non-Vite bundlers (Next.js Turbopack).
 function isBuildTimeOptOut(): boolean {
   try {
     const v = import.meta.env.VITE_HYPERFRAMES_NO_TELEMETRY as string | undefined;
-    return v === "1" || v === "true";
+    return v !== undefined && ["1", "true", "yes", "on"].includes(v.trim().toLowerCase());
   } catch {
     return false;
   }

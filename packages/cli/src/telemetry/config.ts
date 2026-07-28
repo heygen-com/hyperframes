@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
@@ -192,8 +193,16 @@ export function readConfig(): HyperframesConfig {
     cachedConfig = config;
     return { ...config };
   } catch {
-    // Corrupted config — reset
-    const config = { ...DEFAULT_CONFIG, anonymousId: randomUUID() };
+    // A missing file is handled above. Any failure here means an existing
+    // preference could not be read safely (corrupt JSON, permissions, I/O).
+    // Preserve the historical recovery behavior for the rest of the config,
+    // but fail closed for the privacy control: recovery must never silently
+    // turn telemetry back on.
+    const config = {
+      ...DEFAULT_CONFIG,
+      telemetryEnabled: false,
+      anonymousId: randomUUID(),
+    };
     writeConfig(config);
     return config;
   }
@@ -229,16 +238,26 @@ export function readConfigFresh(): HyperframesConfig {
  * instead of re-implementing read-back verification.
  */
 export function writeConfig(config: HyperframesConfig): boolean {
+  return writeConfigWithResult(config).ok;
+}
+
+export type ConfigWriteResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Persist config and retain the failure reason for user-facing commands that
+ * must distinguish a durable preference write from a best-effort update.
+ */
+export function writeConfigWithResult(config: HyperframesConfig): ConfigWriteResult {
   try {
     mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
     const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
     writeFileSync(tmpFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
     renameSync(tmpFile, CONFIG_FILE);
     cachedConfig = { ...config };
-    return true;
-  } catch {
+    return { ok: true };
+  } catch (error) {
     // Non-fatal — telemetry should never break the CLI
-    return false;
+    return { ok: false, error: normalizeErrorMessage(error) };
   }
 }
 

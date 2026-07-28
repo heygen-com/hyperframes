@@ -34,6 +34,7 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
   let readConfig: typeof import("./config.js").readConfig;
   let readConfigFresh: typeof import("./config.js").readConfigFresh;
   let writeConfig: typeof import("./config.js").writeConfig;
+  let writeConfigWithResult: typeof import("./config.js").writeConfigWithResult;
   let CONFIG_PATH: typeof import("./config.js").CONFIG_PATH;
 
   beforeEach(async () => {
@@ -42,7 +43,8 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
     // module-scoped, so without this, a later test would silently inherit
     // an earlier test's cached read.
     vi.resetModules();
-    ({ readConfig, readConfigFresh, writeConfig, CONFIG_PATH } = await import("./config.js"));
+    ({ readConfig, readConfigFresh, writeConfig, writeConfigWithResult, CONFIG_PATH } =
+      await import("./config.js"));
   });
 
   it("creates a default config with a fresh anonymousId when no file exists", () => {
@@ -94,11 +96,14 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
     expect(fresh.deParallelRouterTrialRenderCount).toBeUndefined();
   });
 
-  it("resets to defaults with a fresh anonymousId when the file is corrupted JSON", () => {
+  it("fails closed when the file is corrupted instead of silently re-enabling telemetry", () => {
     fsState.files.set(CONFIG_PATH, "{not valid json");
     const config = readConfig();
-    expect(config.telemetryEnabled).toBe(true);
+    expect(config.telemetryEnabled).toBe(false);
     expect(config.anonymousId).toBeTruthy();
+    expect(JSON.parse(fsState.files.get(CONFIG_PATH) ?? "{}")).toMatchObject({
+      telemetryEnabled: false,
+    });
   });
 
   it("writeConfig reports success, leaves no temp file behind, and reports failure when the fs throws", async () => {
@@ -114,5 +119,13 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
       throw new Error("EACCES: permission denied");
     });
     expect(writeConfig(config)).toBe(false);
+
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw new Error("ENOSPC: disk full");
+    });
+    expect(writeConfigWithResult(config)).toEqual({
+      ok: false,
+      error: "ENOSPC: disk full",
+    });
   });
 });

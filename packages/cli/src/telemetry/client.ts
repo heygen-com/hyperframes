@@ -2,9 +2,9 @@ import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
-import { isDevMode } from "../utils/env.js";
 import { getSystemMeta } from "./system.js";
-import { enqueue, POSTHOG_API_KEY, type EventProperties } from "./transport.js";
+import { enqueue, type EventProperties } from "./transport.js";
+import { telemetryRuntimeOverride } from "./policy.js";
 
 // ---------------------------------------------------------------------------
 // CLI-facing telemetry policy: opt-out checks, system-metadata enrichment, and
@@ -21,23 +21,13 @@ let telemetryEnabled: boolean | null = null;
 
 /**
  * Check if telemetry should be active.
- * Disabled when: dev mode, user opted out, CI environment, or HYPERFRAMES_NO_TELEMETRY set.
+ * Disabled when: a privacy env var is set, this is a development or
+ * telemetry-disabled build, or the persisted preference is off.
  */
 export function shouldTrack(): boolean {
   if (telemetryEnabled !== null) return telemetryEnabled;
 
-  if (process.env["HYPERFRAMES_NO_TELEMETRY"] === "1" || process.env["DO_NOT_TRACK"] === "1") {
-    telemetryEnabled = false;
-    return false;
-  }
-
-  if (isDevMode()) {
-    telemetryEnabled = false;
-    return false;
-  }
-
-  // Safety check: ensure the API key has been configured (phc_ prefix = valid PostHog key)
-  if (!POSTHOG_API_KEY.startsWith("phc_")) {
+  if (telemetryRuntimeOverride() !== null) {
     telemetryEnabled = false;
     return false;
   }

@@ -1,28 +1,26 @@
-import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
-import type { Example } from "./_examples.js";
+import { writeConfigWithResult, readConfigFresh, CONFIG_PATH } from "../telemetry/config.js";
+import { effectiveTelemetryStatus, type TelemetryStatusSource } from "../telemetry/policy.js";
 import { c } from "../ui/colors.js";
+import { failCommand } from "../utils/commandResult.js";
+import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
   ["Check current telemetry status", "hyperframes telemetry status"],
   ["Disable telemetry", "hyperframes telemetry disable"],
   ["Enable telemetry", "hyperframes telemetry enable"],
 ];
-import { readConfigFresh, writeConfig, CONFIG_PATH } from "../telemetry/config.js";
 
-type TelemetryStatus = {
-  enabled: boolean;
-  source: "config" | "HYPERFRAMES_NO_TELEMETRY" | "DO_NOT_TRACK";
-};
-
-function effectiveTelemetryStatus(configEnabled: boolean): TelemetryStatus {
-  if (process.env["HYPERFRAMES_NO_TELEMETRY"] === "1") {
-    return { enabled: false, source: "HYPERFRAMES_NO_TELEMETRY" };
+function describeOverride(source: Exclude<TelemetryStatusSource, "config">): string {
+  switch (source) {
+    case "HYPERFRAMES_NO_TELEMETRY":
+    case "DO_NOT_TRACK":
+      return `${source} is set`;
+    case "dev_mode":
+      return "this is a development build";
+    case "telemetry_disabled_build":
+      return "this build has no telemetry key";
   }
-  if (process.env["DO_NOT_TRACK"] === "1") {
-    return { enabled: false, source: "DO_NOT_TRACK" };
-  }
-  return { enabled: configEnabled, source: "config" };
 }
 
 function setTelemetryEnabled(enabled: boolean): void {
@@ -30,14 +28,24 @@ function setTelemetryEnabled(enabled: boolean): void {
   // on-disk state rather than a snapshot held by another config consumer.
   const config = readConfigFresh();
   config.telemetryEnabled = enabled;
-  if (!writeConfig(config)) {
+  const result = writeConfigWithResult(config);
+  if (!result.ok) {
     console.error(
-      `\n  ${c.error("\u2717")}  Could not persist telemetry preference to ${c.accent(CONFIG_PATH)}\n`,
+      `\n  ${c.error("\u2717")}  Could not persist telemetry preference to ${c.accent(CONFIG_PATH)}\n` +
+        `  ${c.dim("Reason:")} ${result.error}\n`,
     );
     failCommand();
   }
-  const label = enabled ? c.success("enabled") : c.bold("disabled");
-  console.log(`\n  ${c.success("\u2713")}  Telemetry ${label}\n`);
+  const effective = effectiveTelemetryStatus(enabled);
+  const preference = enabled ? c.success("enabled") : c.bold("disabled");
+  const noun = enabled && !effective.enabled ? "Telemetry preference" : "Telemetry";
+  console.log(`\n  ${c.success("\u2713")}  ${noun} ${preference}`);
+  if (effective.source !== "config") {
+    console.log(
+      `  ${c.dim("Note:")} Telemetry remains disabled because ${describeOverride(effective.source)}.`,
+    );
+  }
+  console.log();
 }
 
 function runStatus(): void {
@@ -51,7 +59,9 @@ function runStatus(): void {
   console.log(`  ${c.dim("Tracked commands:")} ${c.bold(String(config.commandCount))}`);
   console.log();
   console.log(`  ${c.dim("Disable:")}    ${c.accent("hyperframes telemetry disable")}`);
-  console.log(`  ${c.dim("Env var:")}    ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")}`);
+  console.log(
+    `  ${c.dim("Env var:")}    ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("or")} ${c.accent("DO_NOT_TRACK=1")}`,
+  );
   console.log();
 }
 
@@ -89,7 +99,7 @@ ${c.bold("WHAT WE DON'T COLLECT:")}
   ${c.dim("\u2022")} IP addresses (discarded by our analytics provider)
   ${c.dim("\u2022")} Any personally identifiable information
 
-${c.dim("You can also set")} ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("to disable.")}
+${c.dim("You can also set")} ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("or")} ${c.accent("DO_NOT_TRACK=1")} ${c.dim("to disable.")}
 `);
       return;
     }
