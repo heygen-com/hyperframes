@@ -179,6 +179,8 @@ export interface CheckAuditDriver {
   getDuration(): Promise<number>;
   getTransitionBoundaries(): Promise<number[]>;
   getCanvas(): Promise<Canvas>;
+  /** Whether the composition root declares it is deliberately motionless, so the frozen-sweep guard reports without gating. */
+  hasStaticOptOut(): Promise<boolean>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
   seek(time: number): Promise<void>;
   /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */

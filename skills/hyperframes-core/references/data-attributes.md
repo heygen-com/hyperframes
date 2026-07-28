@@ -55,6 +55,7 @@ See `sub-compositions.md` for the full wiring pattern.
 
 - `id="root"` — template convention used by scaffolds and the transition catalog so CSS can target the composition root with `#root` instead of `[data-composition-id="main"]`. Not required by the runtime, but consistent with the rest of the ecosystem.
 - `class="clip"` — required runtime visibility marker on visible timed elements (`<div>`, `<img>`, …). See Clip Attributes above.
+- `data-layout-allow-static` — on the composition root only: declares the piece deliberately motionless (held title card, logo lockup). `sweep_static` then reports at info instead of failing the run. Layout-audit only; no render-path effect. Remove it if the composition is meant to animate.
 - `data-layout-allow-overflow` — tells `hyperframes check` that overflow on this element (or its descendants) is intentional. Notes:
   - The `check` layout audit measures `getBoundingClientRect` at sampled timestamps, not rendered pixels. `overflow: hidden` clips the visual but does **not** suppress a layout finding. This attribute is the escape hatch; CSS overflow is not.
   - Can be set on the composition **root** as well as on any child. When the cited offender is `div.<comp>-root inside div.<comp>-root` (the root reports its own children's union as overflowing), the fix goes on the root, not on individual text descendants — shrinking font sizes will not converge.

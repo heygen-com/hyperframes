@@ -145,6 +145,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
     getDuration: vi.fn(async () => 9),
     getTransitionBoundaries: vi.fn(async () => []),
     getCanvas: vi.fn(async () => ({ width: 1920, height: 1080 })),
+    hasStaticOptOut: vi.fn(async () => false),
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
     seek: vi.fn(async (_time: number) => undefined),
     seekGeometry: vi.fn(async (_time: number) => undefined),
@@ -1093,6 +1094,36 @@ describe("check pipeline", () => {
             finding.message.includes("did not advance"),
         ),
       ).toBe(true);
+    });
+
+    it("reports at info, without gating, when the root declares data-layout-allow-static", async () => {
+      // A held title card had no passing spelling before. The claim is the author's and can be
+      // wrong, so the record survives at info rather than vanishing.
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+        hasStaticOptOut: vi.fn(async () => true),
+      });
+      const { report } = await runScenario(driver);
+
+      const sweep = report.layout.findings.find((finding) => finding.code === "sweep_static");
+      expect(sweep?.severity).toBe("info");
+      expect(sweep?.message).toContain("data-layout-allow-static");
+      expect(report.ok).toBe(true);
+    });
+
+    it("keeps the unqualified wording when the root does not declare the opt-out", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+        hasStaticOptOut: vi.fn(async () => false),
+      });
+      const { report } = await runScenario(driver);
+
+      const sweep = report.layout.findings.find((finding) => finding.code === "sweep_static");
+      expect(sweep?.severity).toBe("error");
+      expect(sweep?.message).toContain("did not advance");
+      expect(sweep?.message).not.toContain("data-layout-allow-static");
     });
 
     it("does not flag a 1.5s static title card — too short for the guard to apply", async () => {

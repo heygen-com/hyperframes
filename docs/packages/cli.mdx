@@ -547,7 +547,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate: flags content whose center sits inside the fractional band (optional `severity`, `seek`) |
     | `--frame-check` | Opt-in media out-of-frame detection (img/svg/video/canvas) |
 
-    Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static`.
+    Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static` — unless the root declares `data-layout-allow-static`, which reports it at info instead.
 
     ### `beats`
 

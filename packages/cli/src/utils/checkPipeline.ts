@@ -473,11 +473,17 @@ const ZERO_LAYOUT_RECT: LayoutRect = {
  * short (<3s) compositions, single-sample runs (nothing to compare), and
  * runs where a `motion_frozen` finding already reported the same underlying
  * symptom (no double-reporting the one thing that's wrong).
+ *
+ * A root marked `data-layout-allow-static` is a held title card or logo lockup
+ * — motionless on purpose, and previously unpassable. That claim is the
+ * author's and can be wrong, so the finding is still emitted, at `info`: it
+ * keeps the record that every other verdict came from one repeated frame.
  */
 function detectSweepStatic(
   duration: number,
   geometrySignatures: string[],
   motionIssues: AnchoredLayoutIssue[],
+  staticOptOut: boolean,
 ): AnchoredLayoutIssue[] {
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (geometrySignatures.length < 2) return [];
@@ -487,17 +493,19 @@ function detectSweepStatic(
   return [
     {
       code: "sweep_static",
-      severity: "error",
+      severity: staticOptOut ? "info" : "error",
       time: 0,
       selector: "[data-composition-id]",
       dataAttributes: {},
       sourceFile: "index.html",
       bbox: ZERO_BBOX,
       rect: ZERO_LAYOUT_RECT,
-      message:
-        "Timeline did not advance under seek; every green verdict on this run is unreliable.",
-      fixHint:
-        "Confirm the composition seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
+      message: staticOptOut
+        ? "No geometry change across the sampled grid; this composition declares data-layout-allow-static, so every other verdict reflects a single frame."
+        : "Timeline did not advance under seek; every green verdict on this run is unreliable.",
+      fixHint: staticOptOut
+        ? "Remove data-layout-allow-static if this composition is meant to animate."
+        : "Confirm the composition seeks a paused GSAP/CSS timeline under `data-*` timing attributes rather than only autoplaying.",
     },
   ];
 }
@@ -1057,6 +1065,7 @@ export async function runAuditGrid(
     grid.duration,
     collected.geometrySignatures,
     motionIssues,
+    await driver.hasStaticOptOut(),
   );
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,

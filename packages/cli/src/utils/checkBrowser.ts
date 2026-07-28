@@ -345,6 +345,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     getTransitionBoundaries: () => collectTweenBoundaries(page),
     getCanvas: () =>
       page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
+    hasStaticOptOut: () => evaluateStaticOptOut(page),
     findAmbiguousSelectors: (selectors) => findAmbiguousSelectors(page, selectors),
     seek: async (time) => {
       setTime(time);
@@ -489,6 +490,14 @@ async function collectOverlap(page: Page, time: number): Promise<AnchoredLayoutI
     { time },
   );
   return anchorLayoutIssues(page, raw.flatMap(parseLayoutIssue));
+}
+
+async function evaluateStaticOptOut(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const probe = Reflect.get(window, "__hyperframesStaticOptOut");
+    if (typeof probe !== "function") return false;
+    return Reflect.apply(probe, window, []) === true;
+  });
 }
 
 async function collectLayoutGeometry(page: Page): Promise<string> {

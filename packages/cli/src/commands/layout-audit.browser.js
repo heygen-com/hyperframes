@@ -1502,11 +1502,22 @@
     }
   }
 
-  window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
-    const root =
+  /** The composition root, resolved identically for the fingerprint and the opt-out that excuses it. */
+  function compositionRoot() {
+    return (
       document.querySelector("[data-composition-id][data-width][data-height]") ||
       document.querySelector("[data-composition-id]") ||
-      document.body;
+      document.body
+    );
+  }
+
+  /** Root-only: a held title card declares itself motionless, so the frozen-sweep guard reports without gating. */
+  window.__hyperframesStaticOptOut = function collectStaticOptOut() {
+    return compositionRoot().hasAttribute("data-layout-allow-static");
+  };
+
+  window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
+    const root = compositionRoot();
     const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
       isVisibleElement(element),
     );

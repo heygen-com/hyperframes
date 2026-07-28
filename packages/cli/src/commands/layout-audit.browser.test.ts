@@ -227,6 +227,50 @@ describe("layout-audit.browser", () => {
     expect(textOverflowCodes()).toEqual([]);
   });
 
+  // Root-only by design: a stray attribute on a child must not excuse a frozen sweep for the
+  // whole run, and the root is resolved exactly as the fingerprint resolves it.
+  describe("static opt-out", () => {
+    function optOutFor(html: string): boolean {
+      document.body.innerHTML = html;
+      installAuditScript();
+      const probe = Reflect.get(window, "__hyperframesStaticOptOut");
+      if (typeof probe !== "function") throw new Error("probe missing");
+      return Reflect.apply(probe, window, []) === true;
+    }
+
+    it("is satisfied by the attribute on the composition root", () => {
+      expect(
+        optOutFor(
+          `<div id="root" data-composition-id="main" data-width="640" data-height="360" data-layout-allow-static></div>`,
+        ),
+      ).toBe(true);
+    });
+
+    it("is NOT satisfied by the attribute on a child", () => {
+      expect(
+        optOutFor(
+          `<div id="root" data-composition-id="main" data-width="640" data-height="360"><div data-layout-allow-static></div></div>`,
+        ),
+      ).toBe(false);
+    });
+
+    it("is NOT satisfied by the attribute on a nested composition host", () => {
+      expect(
+        optOutFor(
+          `<div id="root" data-composition-id="main" data-width="640" data-height="360"><div data-composition-id="scene" data-width="640" data-height="360" data-layout-allow-static></div></div>`,
+        ),
+      ).toBe(false);
+    });
+
+    it("is absent when nothing declares it", () => {
+      expect(
+        optOutFor(
+          `<div id="root" data-composition-id="main" data-width="640" data-height="360"></div>`,
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
     // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
     // line-height box by a few px vertically — normal typography, nothing is clipped. (fontSize
