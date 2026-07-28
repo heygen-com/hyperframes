@@ -550,6 +550,8 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static`.
 
+    Escape hatches (mark intent in HTML, then re-run): `data-layout-allow-overflow` / `data-layout-allow-overlap` / `data-layout-allow-occlusion` / `data-layout-ignore` for the usual layout audits. For intentional lower-third copy under `--caption-zone`, mark `data-layout-allow-caption-zone` on the element or an ancestor (`closest`); it silences only `caption_zone_collision` (not overflow, overlap, occlusion, or contrast) — prefer the narrowest wrapper that owns the band copy.
+
     ### `beats`
 
     Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
@@ -612,7 +614,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--max-issues` | Maximum findings to print or return after static collapse (default: 80) |
     | `--strict` | Exit non-zero on warnings as well as errors |
 
-    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading). Use `data-layout-allow-occlusion` when text is intentionally layered beneath another element (for example a caption behind a foreground prop). Use `data-layout-allow-caption-zone` when main text is intentionally centered in the `--caption-zone` band.
+    Use `data-layout-allow-overflow` on an element or ancestor when overflow is intentional, such as a planned off-canvas entrance. Use `data-layout-ignore` for decorative elements that should not be audited. Use `data-layout-allow-overlap` on a text element that is intentionally stacked over another (for example a lower-third caption above a heading). Use `data-layout-allow-occlusion` when text is intentionally layered beneath another element (for example a caption behind a foreground prop). For `--caption-zone` / `data-layout-allow-caption-zone`, see [`check`](#check).
 
     `layout` remains available as a compatibility alias for the same visual inspection pass:
 
