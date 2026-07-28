@@ -1,0 +1,77 @@
+/**
+ * The canary registry — every staged rollout in the product, in one file.
+ *
+ * Why a registry rather than a percentage inlined at each call site: the repo
+ * already carries ~49 loose `HF_*` / `PRODUCER_*` toggles with no index, so
+ * nobody can answer "what is currently rolling out, to how many people, and
+ * who owns it" without grepping. One table fixes that, and gives the
+ * telemetry and `doctor` surfaces something to enumerate.
+ *
+ * ## Adding one
+ *
+ * 1. Add an entry below. Start at `percentage: 0` and merge that — a canary
+ *    at 0 is dead code you can land safely and ramp without a code review.
+ * 2. Read it at the decision point via the surface's binding (in the CLI,
+ *    `isCanaryEnabled("your-feature")`).
+ * 3. Ramp by editing `percentage` in a patch release: 0 → 5 → 25 → 100.
+ *    Widening is inclusive, so the earlier cohort stays enrolled and the
+ *    before/after comparison survives the ramp.
+ * 4. At 100 and holding, DELETE the entry and the branch it guarded. That is
+ *    the point of `sunsetAfter`.
+ *
+ * ## Overriding
+ *
+ * `HF_CANARY_<FEATURE>` with the feature name upper-snake-cased, e.g.
+ * `HF_CANARY_DE_PARALLEL_ROUTER=on` (also: off/true/false/1/0/yes/no).
+ * An override always wins over the percentage, in both directions.
+ */
+
+export interface CanaryDefinition {
+  /** Registry key. Kebab-case; also the hash input, so renaming reshuffles the cohort. */
+  name: string;
+  /** 0-100. Start at 0, ramp in patch releases. */
+  percentage: number;
+  /** What turning this on actually changes, in one line. */
+  description: string;
+  /** Who to ask. */
+  owner: string;
+  /**
+   * ISO date after which this canary is overdue for removal. A canary that
+   * outlives its rollout is a permanent fork of the product with none of the
+   * review a permanent fork would have received. `assertNoOverdueCanaries`
+   * turns the date into a failing test rather than a good intention.
+   */
+  sunsetAfter: string;
+}
+
+export const CANARIES: readonly CanaryDefinition[] = [
+  {
+    name: "de-parallel-router",
+    percentage: 0,
+    description:
+      "Route auto multi-worker renders to verified parallel drawElement streaming (HF_DE_PARALLEL_ROUTER). Ramp only alongside the per-install circuit breaker.",
+    owner: "vance",
+    sunsetAfter: "2026-10-01",
+  },
+] as const;
+
+export function findCanary(name: string): CanaryDefinition | undefined {
+  return CANARIES.find((c) => c.name === name);
+}
+
+/** Env-var name for a feature's manual override: `de-parallel-router` → `HF_CANARY_DE_PARALLEL_ROUTER`. */
+export function canaryEnvVar(name: string): string {
+  return `HF_CANARY_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+}
+
+/**
+ * Names of canaries whose sunset date has passed — either finish the rollout
+ * and delete the entry, or push the date with a reason. Exposed as a function
+ * (not a lint rule) so the check runs in the normal test suite.
+ */
+export function overdueCanaries(now: Date = new Date()): string[] {
+  return CANARIES.filter((c) => {
+    const sunset = Date.parse(`${c.sunsetAfter}T00:00:00Z`);
+    return Number.isFinite(sunset) && now.getTime() > sunset;
+  }).map((c) => c.name);
+}

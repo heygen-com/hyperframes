@@ -329,3 +329,19 @@ export {
   isBlockItem,
   isComponentItem,
 } from "./registry/index.js";
+
+export {
+  canaryBucket,
+  evaluateCanary,
+  parseCanaryOverride,
+  type CanaryDecision,
+  type CanaryInput,
+  type CanaryReason,
+} from "./canary.js";
+export {
+  CANARIES,
+  canaryEnvVar,
+  findCanary,
+  overdueCanaries,
+  type CanaryDefinition,
+} from "./canaryRegistry.js";
