@@ -61,6 +61,8 @@ describe("FONT_ALIASES cross-platform coverage", () => {
     expect(FONT_ALIASES["courier new"]).toBe("jetbrains-mono");
     expect(FONT_ALIASES["segoe ui"]).toBe("roboto");
     expect(FONT_ALIASES["futura"]).toBe("montserrat");
+    expect(FONT_ALIASES["futura std"]).toBe("montserrat");
+    expect(FONT_ALIASES["ms sans serif"]).toBe("inter");
     expect(FONT_ALIASES["bebas neue"]).toBe("league-gothic");
   });
 

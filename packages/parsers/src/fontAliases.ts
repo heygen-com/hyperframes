@@ -33,6 +33,7 @@ export const FONT_ALIAS_MAP = {
   arial: "inter",
   "helvetica bold": "inter",
   futura: "montserrat",
+  "futura std": "montserrat",
   "din alternate": "montserrat",
   "arial black": "montserrat",
   "bebas neue": "league-gothic",
@@ -62,6 +63,7 @@ export const FONT_ALIAS_MAP = {
   corbel: "inter",
   "lucida sans": "inter",
   "lucida sans unicode": "inter",
+  "ms sans serif": "inter",
 
   // ── Linux sans-serif system fonts → inter ─────────────────────────────
   "noto sans": "inter",
@@ -92,6 +94,29 @@ export const FONT_ALIAS_MAP = {
 } satisfies Readonly<Record<string, string>>;
 
 export const FONT_ALIAS_KEYS: ReadonlySet<string> = new Set(Object.keys(FONT_ALIAS_MAP));
+
+/**
+ * Authoring names that are not served by Google Fonts verbatim, but have a
+ * deterministic, script-compatible Google family. Unlike FONT_ALIAS_MAP,
+ * these preserve the authored CSS family and only change the upstream fetch
+ * name used to build its injected @font-face rules.
+ */
+export const GOOGLE_FONT_FAMILY_ALIASES: Readonly<Record<string, string>> = {
+  frederickthegreat: "Fredericka the Great",
+  pretendard: "Noto Sans KR",
+  pyidaungsu: "Noto Sans Myanmar",
+  "yantra manav": "Yantramanav",
+  "noto serif arabic": "Noto Naskh Arabic",
+  "noto serif urdu": "Noto Nastaliq Urdu",
+  "noto serif vi": "Noto Serif",
+  "noto sans greek": "Noto Sans",
+  "noto sans odia": "Noto Sans Oriya",
+  "noto sans urdu": "Noto Sans Arabic",
+};
+
+export const GOOGLE_FONT_FAMILY_ALIAS_KEYS: ReadonlySet<string> = new Set(
+  Object.keys(GOOGLE_FONT_FAMILY_ALIASES),
+);
 
 /**
  * Human-readable display names for canonical font slugs. Used by the lint

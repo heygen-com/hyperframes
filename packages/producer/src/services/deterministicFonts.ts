@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
 
-import { FONT_ALIAS_MAP } from "@hyperframes/core/fonts/aliases";
+import { FONT_ALIAS_MAP, GOOGLE_FONT_FAMILY_ALIASES } from "@hyperframes/core/fonts/aliases";
 import {
   locateSystemFontVariants,
   SYSTEM_FONT_SIZE_LIMIT,
@@ -748,7 +748,8 @@ async function fetchGoogleFont(
   // space. Resolve that URL-style spelling through the canonical Google family
   // while preserving `familyName` for the emitted @font-face alias so the
   // authored CSS still matches it.
-  const googleFamilyName = familyName.replace(/\+/g, " ");
+  const googleFamilyName =
+    GOOGLE_FONT_FAMILY_ALIASES[normalizeFamilyName(familyName)] ?? familyName.replace(/\+/g, " ");
   const encodedFamily = encodeURIComponent(googleFamilyName);
   const textParam = fontText ? `&text=${encodeURIComponent(fontText)}` : "";
   const url = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`;

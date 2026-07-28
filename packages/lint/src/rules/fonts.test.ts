@@ -211,6 +211,27 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
+    for (const family of [
+      "FredericktheGreat",
+      "Pretendard",
+      "Pyidaungsu",
+      "Yantra Manav",
+      "Noto Serif Arabic",
+      "Noto Serif Urdu",
+      "Noto Serif VI",
+      "Noto Sans Greek",
+      "Noto Sans Odia",
+      "Noto Sans Urdu",
+    ]) {
+      it(`does not flag the producer-resolved Google family alias ${family}`, async () => {
+        const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+          <style>body { font-family: '${family}', sans-serif; }</style>
+        </div>`;
+        const findings = await findByCode(html, "font_family_without_font_face");
+        expect(findings).toHaveLength(0);
+      });
+    }
+
     it("still flags Google-Fonts-only fonts not pre-bundled", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: 'Geist', sans-serif; }</style>

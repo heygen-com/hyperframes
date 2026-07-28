@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { parseHTML } from "linkedom";
 import {
   FONT_FETCH_FAILED,
   FontFetchError,
@@ -138,6 +139,41 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
       expect(familyParam?.startsWith(`${authoredFamily}:`)).toBe(false);
       expect(result).toContain(`font-family: "${authoredFamily}"`);
       expect(result).toContain("data-hyperframes-deterministic-fonts");
+    });
+  }
+
+  for (const [authoredFamily, googleFamily] of [
+    ["FredericktheGreat", "Fredericka the Great"],
+    ["Pretendard", "Noto Sans KR"],
+    ["Pyidaungsu", "Noto Sans Myanmar"],
+    ["Yantra Manav", "Yantramanav"],
+    ["Noto Serif Arabic", "Noto Naskh Arabic"],
+    ["Noto Serif Urdu", "Noto Nastaliq Urdu"],
+    ["Noto Serif VI", "Noto Serif"],
+    ["Noto Sans Greek", "Noto Sans"],
+    ["Noto Sans Odia", "Noto Sans Oriya"],
+    ["Noto Sans Urdu", "Noto Sans Arabic"],
+  ] as const) {
+    it(`resolves observed family alias ${authoredFamily} through ${googleFamily}`, async () => {
+      const cssRequests: string[] = [];
+      const html = `<!doctype html><html><head><style>
+        body { font-family: "${authoredFamily}", sans-serif; }
+      </style></head><body><p>hello</p></body></html>`;
+
+      const result = await injectDeterministicFontFaces(html, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl: makeGoogleFontFetch(cssRequests),
+      });
+
+      expect(cssRequests).toHaveLength(1);
+      const familyParam = new URL(cssRequests[0]!).searchParams.get("family");
+      expect(familyParam?.startsWith(`${googleFamily}:`)).toBe(true);
+      const { document } = parseHTML(result);
+      const injectedCss = document.querySelector(
+        'style[data-hyperframes-deterministic-fonts="true"]',
+      )?.textContent;
+      expect(injectedCss).toContain(`font-family: "${authoredFamily}"`);
     });
   }
 

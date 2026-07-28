@@ -1,4 +1,8 @@
-import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "@hyperframes/parsers/composition";
+import {
+  FONT_ALIAS_KEYS,
+  GOOGLE_FONT_FAMILY_ALIAS_KEYS,
+  resolveAliasDisplayName,
+} from "@hyperframes/parsers/composition";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { isRegistrySourceFile, isRegistryInstalledFile } from "./composition";
 
@@ -223,6 +227,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       (name) =>
         !declared.has(name) &&
         !FONT_ALIAS_KEYS.has(name) &&
+        !GOOGLE_FONT_FAMILY_ALIAS_KEYS.has(name) &&
         !googleFonts.has(name.replace(/\+/g, " ")),
     );
     if (undeclared.length === 0) return findings;
