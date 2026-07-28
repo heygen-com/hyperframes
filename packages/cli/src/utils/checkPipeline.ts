@@ -238,6 +238,21 @@ function geometryIssueAnchor(candidate: CheckGeometryCandidate, time: number) {
   };
 }
 
+function captionCenterInZone(
+  rect: CheckGeometryCandidate["rect"],
+  zone: NonNullable<CheckOptions["captionZone"]>,
+  canvas: Canvas,
+): { inside: boolean; cy: number } {
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const inside =
+    cx >= zone.x0 * canvas.width &&
+    cx <= zone.x1 * canvas.width &&
+    cy >= zone.y0 * canvas.height &&
+    cy <= zone.y1 * canvas.height;
+  return { inside, cy };
+}
+
 function captionFinding(
   candidate: CheckGeometryCandidate,
   options: CheckOptions,
@@ -246,13 +261,8 @@ function captionFinding(
 ): { key: string; issue: AnchoredLayoutIssue } | null {
   const zone = options.captionZone;
   if (!zone || candidate.kind !== "text" || !candidateIsSized(candidate, canvas)) return null;
-  const cx = candidate.rect.left + candidate.rect.width / 2;
-  const cy = candidate.rect.top + candidate.rect.height / 2;
-  const inside =
-    cx >= zone.x0 * canvas.width &&
-    cx <= zone.x1 * canvas.width &&
-    cy >= zone.y0 * canvas.height &&
-    cy <= zone.y1 * canvas.height;
+  if ("data-layout-allow-caption-zone" in candidate.dataAttributes) return null;
+  const { inside, cy } = captionCenterInZone(candidate.rect, zone, canvas);
   if (!inside) return null;
   const text = candidate.text.slice(0, 48);
   const pctFromBottom = Math.round(((canvas.height - cy) / canvas.height) * 100);
@@ -264,7 +274,8 @@ function captionFinding(
       severity: zone.severity === "error" ? "error" : "warning",
       text,
       message: `<${candidate.tag}> "${text}" is centred in the reserved caption band (~${pctFromBottom}% up from the bottom).`,
-      fixHint: "Keep main content outside the configured caption band.",
+      fixHint:
+        "Keep main content outside the configured caption band, or mark intentional lower-third copy with data-layout-allow-caption-zone.",
     },
   };
 }

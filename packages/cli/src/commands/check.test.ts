@@ -175,11 +175,13 @@ interface GeometryFixture {
   elementRect?: LayoutRect;
   time: number;
   overflow?: LayoutOverflow;
+  dataAttributes?: Record<string, string>;
 }
 
 function geometryCandidate(fixture: GeometryFixture) {
   return {
     ...anchor(fixture.selector, fixture.time),
+    ...(fixture.dataAttributes ? { dataAttributes: fixture.dataAttributes } : {}),
     kind: fixture.kind,
     tag: fixture.tag,
     text: fixture.text,
@@ -444,6 +446,26 @@ it("flags only text whose center is inside the caption band at the default end s
     }),
   ]);
   expect(report.ok).toBe(true);
+});
+
+it("skips caption_zone_collision when data-layout-allow-caption-zone is set", async () => {
+  const collectGeometryCandidates = vi.fn(async (time: number) => [
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Intentional lower third",
+      selector: "#lower-third",
+      rect: fixtureRect(860, 870, 200, 60),
+      time,
+      dataAttributes: { "data-layout-allow-caption-zone": "" },
+    }),
+  ]);
+  const { report } = await runScenario(
+    fakeDriver({ getDuration: vi.fn(async () => 10), collectGeometryCandidates }),
+    { samples: 1, contrast: false, captionZone: { x0: 0, y0: 0.8, x1: 1, y1: 0.9 } },
+  );
+
+  expect(report.layout.findings).toEqual([]);
 });
 
 it("filters caption candidates by the element box while centering the text rect", async () => {

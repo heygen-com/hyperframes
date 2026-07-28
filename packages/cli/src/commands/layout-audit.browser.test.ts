@@ -381,6 +381,27 @@ it("returns own-text rects and media overflow while excluding caption layers", (
   expect(candidates.some((candidate) => candidate.selector === "#caption")).toBe(false);
 });
 
+it("excludes text marked data-layout-allow-caption-zone from geometry candidates", () => {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <p id="copy">Main copy</p>
+        <p id="lower" data-layout-allow-caption-zone>Lower third</p>
+        <div data-layout-allow-caption-zone><span id="nested">Nested lower</span></div>
+      </div>
+    `;
+  installGeometry({
+    root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+    copy: rect({ left: 100, top: 100, width: 200, height: 40 }),
+    lower: rect({ left: 100, top: 280, width: 200, height: 40 }),
+    nested: rect({ left: 100, top: 300, width: 200, height: 40 }),
+    text: rect({ left: 100, top: 100, width: 200, height: 40 }),
+  });
+  installAuditScript();
+
+  const candidates = runGeometryCandidates({ text: true, media: false, tolerance: 2 });
+  expect(candidates.map((candidate) => candidate.selector)).toEqual(["#copy"]);
+});
+
 it("scans body-level composition siblings and includes a media boundary root", () => {
   document.body.innerHTML = `
     <canvas id="boundary" data-composition-id="background" data-width="640" data-height="360"></canvas>

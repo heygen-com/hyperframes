@@ -1396,7 +1396,11 @@
       }
       if (!isVisibleElement(element, 0.05, false)) continue;
       const elementRect = toRect(element.getBoundingClientRect());
-      if (includeText && hasOwnTextCandidate(element, true)) {
+      if (
+        includeText &&
+        hasOwnTextCandidate(element, true) &&
+        !element.closest("[data-layout-allow-caption-zone]")
+      ) {
         const rect = textRectFor(element, true);
         if (rect) {
           candidates.push(
