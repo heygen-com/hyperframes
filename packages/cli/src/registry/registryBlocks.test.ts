@@ -67,7 +67,8 @@ describe("caption component manifests", () => {
       ) as RegistryManifest;
       for (const file of manifest.files) {
         if (!file.path.endsWith(".html")) continue;
-        const html = readFileSync(join(itemDir, file.path), "utf8").replace(/<!--[\s\S]*?-->/g, "");
+        let html = readFileSync(join(itemDir, file.path), "utf8");
+        while (html.includes("<!--")) html = html.replace(/<!--[\s\S]*?-->/g, "");
         if (/<(?:video|audio)\b/i.test(html)) mediaElements.push(`${entry.name}: ${file.path}`);
       }
     }
