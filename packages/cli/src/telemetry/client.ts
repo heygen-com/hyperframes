@@ -91,6 +91,12 @@ export function trackEvent(
       // cohort. Resolved after the shouldTrack guard, so opted-out installs
       // never pay for it. See telemetry/canary.ts.
       ...canaryEventProperties(),
+      // Did this install's mint find a previous install's state marker?
+      // The fleet-wide rate of `true` IS the recoverable-churn fraction —
+      // the share of "new" ids that are really a config wipe on a machine
+      // we already knew. Absent (not false) when the config predates the
+      // marker, mirroring the canary absent-vs-control distinction.
+      install_predecessor_found: readConfig().predecessorFound,
       agent_env_hints: sys.agent_env_hints ?? undefined,
     },
     distinctId,

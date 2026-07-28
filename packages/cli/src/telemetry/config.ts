@@ -10,6 +10,124 @@ import { randomUUID } from "node:crypto";
 const CONFIG_DIR = join(homedir(), ".hyperframes");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
+// ---------------------------------------------------------------------------
+// Install-state file: ~/.local/state/hyperframes/install-state.json
+//
+// A second, deliberately separate location from CONFIG_DIR, so it survives
+// the most common identity reset — deleting or reinstalling ~/.hyperframes.
+// It exists to carry exactly two facts across that reset, and nothing else:
+//
+//   1. `markerAt` — "a hyperframes install existed on this machine". Written
+//      unconditionally, so the fraction of fresh installs that find it is a
+//      direct measurement of recoverable id churn (config wiped, machine
+//      persisted) vs unrecoverable (fresh machine/container/new user).
+//   2. `deParallelRouterTrialFired` — the DE parallel-router circuit
+//      breaker's tripped state. Without this, a config wipe re-enrols the
+//      install into an experimental path that already FAILED on this exact
+//      machine; the breaker's whole point is that a real failure turns the
+//      trial off for good.
+//
+// It intentionally holds NO identity: no anonymousId, no counters, nothing
+// that could link the old install to the new one. A user who wipes their
+// config gets a fresh id unconditionally — this file only stops the wipe
+// from also discarding a safety fact about the machine.
+// ---------------------------------------------------------------------------
+
+const STATE_DIR = join(homedir(), ".local", "state", "hyperframes");
+const STATE_FILE = join(STATE_DIR, "install-state.json");
+
+interface InstallState {
+  /** ISO timestamp of when the marker was first written. */
+  markerAt: string;
+  /** Rolled-over circuit-breaker state — see HyperframesConfig's field. */
+  deParallelRouterTrialFired?: boolean;
+}
+
+/** Read the install-state file; any parse/shape failure reads as absent. */
+function readInstallState(): InstallState | null {
+  try {
+    if (!existsSync(STATE_FILE)) return null;
+    const parsed = JSON.parse(readFileSync(STATE_FILE, "utf-8")) as Partial<InstallState>;
+    if (typeof parsed.markerAt !== "string") return null;
+    return {
+      markerAt: parsed.markerAt,
+      deParallelRouterTrialFired: parsed.deParallelRouterTrialFired === true ? true : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Sync bookkeeping, so the existsSync+read doesn't run on every writeConfig:
+// `stateMarkerSynced` = the marker is known present; `stateFiredSynced` = the
+// state file is known to already carry fired=true.
+let stateMarkerSynced = false;
+let stateFiredSynced = false;
+
+/** Test-only: reset the sync memo (module state leaks across vitest cases). */
+export function __resetInstallStateSyncForTests(): void {
+  stateMarkerSynced = false;
+  stateFiredSynced = false;
+}
+
+/**
+ * Atomic for the same reason writeConfig is: a torn read must never exist,
+ * since a corrupted state file silently reads as absent.
+ */
+function writeInstallState(next: InstallState): void {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+  const tmpFile = `${STATE_FILE}.${process.pid}.tmp`;
+  writeFileSync(tmpFile, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
+  renameSync(tmpFile, STATE_FILE);
+}
+
+/**
+ * Bring the install-state file up to date with this config write: ensure the
+ * marker exists, and mirror a tripped breaker. Called from `writeConfig` so
+ * no breaker write site can forget it. Never throws — same contract as the
+ * rest of this file, telemetry must not break the CLI.
+ */
+/** What the state file should say after this config write; null = already correct. */
+function nextInstallState(state: InstallState | null, wantFired: boolean): InstallState | null {
+  const hadFired = state?.deParallelRouterTrialFired === true;
+  if (state !== null && (hadFired || !wantFired)) return null;
+  return {
+    markerAt: state?.markerAt ?? new Date().toISOString(),
+    deParallelRouterTrialFired: wantFired || hadFired || undefined,
+  };
+}
+
+function syncInstallState(config: HyperframesConfig): void {
+  const wantFired = config.deParallelRouterTrialFired === true;
+  if (stateMarkerSynced && (stateFiredSynced || !wantFired)) return;
+  try {
+    const state = readInstallState();
+    const next = nextInstallState(state, wantFired);
+    if (next !== null) writeInstallState(next);
+    stateMarkerSynced = true;
+    stateFiredSynced = wantFired || state?.deParallelRouterTrialFired === true;
+  } catch {
+    // Leave the memo unset so a later write retries.
+  }
+}
+
+/**
+ * Build a brand-new config for an install with no (readable) config file,
+ * consulting the install-state file for what a previous install on this
+ * machine left behind.
+ */
+function mintConfig(): HyperframesConfig {
+  const state = readInstallState();
+  return {
+    ...DEFAULT_CONFIG,
+    anonymousId: randomUUID(),
+    predecessorFound: state !== null,
+    // The rollover itself: a breaker tripped by a previous install on this
+    // machine stays tripped for the new one.
+    deParallelRouterTrialFired: state?.deParallelRouterTrialFired === true ? true : undefined,
+  };
+}
+
 export interface HyperframesConfig {
   /** Whether anonymous telemetry is enabled (default: true in production) */
   telemetryEnabled: boolean;
@@ -86,6 +204,14 @@ export interface HyperframesConfig {
    */
   deParallelRouterTrialRenderCount?: number;
   /**
+   * Whether a previous install's state marker existed on this machine when
+   * this config was minted. Attached to telemetry so the fraction of fresh
+   * installs that are RECOVERABLE churn (config wiped, machine persisted) is
+   * measurable directly. `undefined` on configs minted before this field
+   * existed — a different fact from `false` (minted fresh, no predecessor).
+   */
+  predecessorFound?: boolean;
+  /**
    * Ring of the last few local renders (newest last). `hyperframes feedback`
    * attaches these ids — which are the `render_job_id` /
    * `observability_render_job_id` on this install's PostHog events — to the
@@ -139,7 +265,7 @@ export function readConfig(): HyperframesConfig {
   if (cachedConfig) return { ...cachedConfig };
 
   if (!existsSync(CONFIG_FILE)) {
-    const config = { ...DEFAULT_CONFIG, anonymousId: randomUUID() };
+    const config = mintConfig();
     writeConfig(config);
     return config;
   }
@@ -175,6 +301,8 @@ export function readConfig(): HyperframesConfig {
         typeof parsed.deParallelRouterTrialRenderCount === "number"
           ? parsed.deParallelRouterTrialRenderCount
           : undefined,
+      predecessorFound:
+        typeof parsed.predecessorFound === "boolean" ? parsed.predecessorFound : undefined,
       recentRenders: Array.isArray(parsed.recentRenders)
         ? parsed.recentRenders
             .filter(
@@ -192,8 +320,9 @@ export function readConfig(): HyperframesConfig {
     cachedConfig = config;
     return { ...config };
   } catch {
-    // Corrupted config — reset
-    const config = { ...DEFAULT_CONFIG, anonymousId: randomUUID() };
+    // Corrupted config — reset. Goes through the same mint path as a missing
+    // file, so a tripped breaker survives config corruption too.
+    const config = mintConfig();
     writeConfig(config);
     return config;
   }
@@ -235,6 +364,9 @@ export function writeConfig(config: HyperframesConfig): boolean {
     writeFileSync(tmpFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
     renameSync(tmpFile, CONFIG_FILE);
     cachedConfig = { ...config };
+    // Mirror into the install-state file (marker + tripped breaker) so no
+    // breaker write site has to remember to do it.
+    syncInstallState(config);
     return true;
   } catch {
     // Non-fatal — telemetry should never break the CLI
@@ -254,3 +386,6 @@ export function incrementCommandCount(): number {
 
 /** Expose the config directory path for the telemetry command output */
 export const CONFIG_PATH = CONFIG_FILE;
+
+/** Expose the install-state path for the telemetry command output. */
+export const STATE_PATH = STATE_FILE;

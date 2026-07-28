@@ -102,9 +102,11 @@ during the window*, not the instantaneous rate. Two practical consequences:
   far tighter than a 60-day one.
 - **The percentage is not the safety mechanism.** It bounds *initial* exposure
   and decays from there. Per-render verification and per-install circuit
-  breakers are what actually bound harm — and note that a breaker's state
-  lives in the same config file as the id, so a wipe loses both and the
-  install can re-enrol into a path that already failed it.
+  breakers are what actually bound harm. A tripped breaker survives a config
+  wipe: it is mirrored to a machine-local state file (separate from the
+  config, shown by `hyperframes telemetry`) that deliberately holds no
+  identity — the new install gets a fresh id but does not re-enrol into a
+  path that already failed on that machine.
 
 For *measurement* — "is this feature better?" — churn is harmless: re-bucketing
 is random, so it adds noise, not bias. It is specifically the blast-radius

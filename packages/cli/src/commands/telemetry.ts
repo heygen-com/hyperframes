@@ -8,7 +8,7 @@ export const examples: Example[] = [
   ["Disable telemetry", "hyperframes telemetry disable"],
   ["Enable telemetry", "hyperframes telemetry enable"],
 ];
-import { readConfig, writeConfig, CONFIG_PATH } from "../telemetry/config.js";
+import { readConfig, writeConfig, CONFIG_PATH, STATE_PATH } from "../telemetry/config.js";
 
 function runEnable(): void {
   const config = readConfig();
@@ -30,6 +30,9 @@ function runStatus(): void {
   console.log();
   console.log(`  ${c.dim("Status:")}     ${status}`);
   console.log(`  ${c.dim("Config:")}     ${c.accent(CONFIG_PATH)}`);
+  // Machine-local safety state (no identity): survives a config wipe so a
+  // tripped experiment circuit breaker stays tripped. Listed for transparency.
+  console.log(`  ${c.dim("State:")}      ${c.accent(STATE_PATH)}`);
   console.log(`  ${c.dim("Commands:")}   ${c.bold(String(config.commandCount))}`);
   console.log();
   console.log(`  ${c.dim("Disable:")}    ${c.accent("hyperframes telemetry disable")}`);
