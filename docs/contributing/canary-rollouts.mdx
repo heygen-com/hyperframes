@@ -57,13 +57,31 @@ panic-off.
 
 ## Measuring
 
-Every telemetry event carries a `canaries` property listing the cohorts the
-install is enrolled in, so any metric can be split by cohort:
+Every telemetry event carries the assignment as a PostHog flag property:
+
+```
+$feature/canary-my-feature: "true" | "false"
+```
+
+PostHog treats `$feature/<key>` as a first-class flag, so breakdowns, funnels
+split by cohort and the experiment surfaces work on a canary with **nothing
+configured server-side** — the decision still happens locally and offline,
+which the render path requires.
 
 ```sql
--- enrolled vs everyone else
-countIf(properties.canaries LIKE '%my-feature%') AS in_canary
+SELECT properties['$feature/canary-my-feature'] AS cohort, count()
+FROM events WHERE event = 'render_complete' GROUP BY cohort
 ```
+
+Two details worth knowing:
+
+- **Both arms are emitted.** A non-enrolled install reports `"false"`, not a
+  missing property. Absent means *this build predates the canary*, which is a
+  different fact from *this install is control* — collapsing them makes a ramp
+  unreadable.
+- **Keys are namespaced with `canary-`.** A real PostHog flag namespace
+  already exists in this project, owned by the web app. The infix guarantees a
+  canary can never alias a real flag and fight it for the same property.
 
 ## Behaviour worth knowing
 

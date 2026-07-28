@@ -6,7 +6,7 @@
 
 import { getAnonymousId, hasShownNotice, isOptedOut, markNoticeShown } from "./config";
 import { getBrowserSystemMeta } from "./system";
-import { activeCanaryNames } from "./canary";
+import { canaryEventProperties } from "./canary";
 
 // Write-only PostHog project key, safe to embed in client code.
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -73,10 +73,10 @@ export function trackEvent(event: string, properties: EventProperties = {}): voi
   const sys = getBrowserSystemMeta();
   eventQueue.push({
     event,
-    // `canaries` mirrors the CLI: the cohorts this install is enrolled in, on
-    // EVERY event so any metric can be split by cohort. Resolved after the
-    // shouldTrack guard, so opted-out users never pay for it.
-    properties: { ...properties, ...sys, canaries: activeCanaryNames() },
+    // Canary assignments as `$feature/canary-<name>`, mirroring the CLI so a
+    // rollout spanning both surfaces reads as one flag in PostHog. Resolved
+    // after the shouldTrack guard, so opted-out users never pay for it.
+    properties: { ...properties, ...sys, ...canaryEventProperties() },
     timestamp: new Date().toISOString(),
   });
 

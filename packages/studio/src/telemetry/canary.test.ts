@@ -32,7 +32,7 @@ vi.mock("@hyperframes/core/canary-registry", async () => {
 const {
   isCanaryEnabled,
   resolveCanary,
-  activeCanaryNames,
+  canaryEventProperties,
   canaryParamName,
   __resetStudioCanaryCacheForTests,
 } = await import("./canary");
@@ -164,11 +164,14 @@ describe("cohort identity", () => {
 });
 
 describe("telemetry", () => {
-  it("reports enrolled canaries, undefined when none", () => {
-    expect(activeCanaryNames()).toBe("on-everywhere");
+  it("emits the same PostHog flag-shaped properties as the CLI", () => {
+    expect(canaryEventProperties()).toEqual({
+      "$feature/canary-on-everywhere": "true",
+      "$feature/canary-off-everywhere": "false",
+    });
 
     __resetStudioCanaryCacheForTests();
     setSearch("?hf_canary_on_everywhere=off");
-    expect(activeCanaryNames()).toBeUndefined();
+    expect(canaryEventProperties()["$feature/canary-on-everywhere"]).toBe("false");
   });
 });

@@ -54,7 +54,7 @@ vi.mock("@hyperframes/core/canary-registry", async () => {
   };
 });
 
-const { isCanaryEnabled, resolveCanary, activeCanaryNames, __resetCanaryCacheForTests } =
+const { isCanaryEnabled, resolveCanary, canaryEventProperties, __resetCanaryCacheForTests } =
   await import("./canary.js");
 
 beforeEach(() => {
@@ -106,10 +106,14 @@ describe("CLI canary binding", () => {
     expect(isCanaryEnabled("test-beta")).toBe(true);
   });
 
-  it("reports enrolled canaries for telemetry, undefined when none", () => {
-    expect(activeCanaryNames()).toBe("test-alpha");
+  it("emits PostHog flag-shaped properties for every registered canary", () => {
+    expect(canaryEventProperties()).toEqual({
+      "$feature/canary-test-alpha": "true",
+      "$feature/canary-test-beta": "false",
+    });
+
     __resetCanaryCacheForTests();
     process.env.HF_CANARY_TEST_ALPHA = "off";
-    expect(activeCanaryNames()).toBeUndefined();
+    expect(canaryEventProperties()["$feature/canary-test-alpha"]).toBe("false");
   });
 });

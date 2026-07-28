@@ -33,7 +33,12 @@
 // browser bundle, and the barrel re-exports the whole core surface (parsers,
 // lint, studio-server); pulling that in here drags a Node-oriented dependency
 // graph into the bundle. These two modules are pure and leaf.
-import { evaluateCanary, parseCanaryOverride, type CanaryDecision } from "@hyperframes/core/canary";
+import {
+  canaryFeatureProperties,
+  evaluateCanary,
+  parseCanaryOverride,
+  type CanaryDecision,
+} from "@hyperframes/core/canary";
 import { CANARIES, findCanary } from "@hyperframes/core/canary-registry";
 import { resolveStudioDistinctId } from "./distinctId";
 import { safeSessionStorage } from "../utils/safeStorage";
@@ -142,11 +147,12 @@ export function isCanaryEnabled(name: string): boolean {
 }
 
 /**
- * Comma-joined names of the canaries this install is enrolled in, or undefined
- * when none — attached to every Studio event so any metric can be split by
- * cohort, exactly as the CLI does.
+ * Canary assignments as PostHog flag properties (`$feature/canary-<name>`),
+ * attached to every Studio event so any metric can be split by cohort —
+ * identical shape to the CLI, so a rollout spanning both reads as one flag.
  */
-export function activeCanaryNames(): string | undefined {
-  const active = CANARIES.filter((c) => resolveCanary(c.name).enabled).map((c) => c.name);
-  return active.length > 0 ? active.join(",") : undefined;
+export function canaryEventProperties(): Record<string, string> {
+  return canaryFeatureProperties(
+    CANARIES.map((c) => ({ name: c.name, enabled: resolveCanary(c.name).enabled })),
+  );
 }

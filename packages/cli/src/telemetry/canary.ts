@@ -20,7 +20,12 @@
 // Leaf subpath imports, not the "@hyperframes/core" barrel: this resolves on
 // the CLI startup path, and the barrel pulls the whole core surface. Same
 // reason the producer is lazily loaded.
-import { evaluateCanary, parseCanaryOverride, type CanaryDecision } from "@hyperframes/core/canary";
+import {
+  canaryFeatureProperties,
+  evaluateCanary,
+  parseCanaryOverride,
+  type CanaryDecision,
+} from "@hyperframes/core/canary";
 import { CANARIES, canaryEnvVar, findCanary } from "@hyperframes/core/canary-registry";
 import { readConfig } from "./config.js";
 import { getSystemMeta } from "./system.js";
@@ -74,12 +79,14 @@ export function isCanaryEnabled(name: string): boolean {
 }
 
 /**
- * Comma-joined names of the canaries this install is enrolled in, or
- * undefined when none — attach to telemetry so every event can be segmented
- * by cohort. One low-cardinality property beats a dynamic property per
- * canary, and `contains` filtering works fine in PostHog.
+ * Canary assignments as PostHog flag properties — `$feature/canary-<name>`
+ * set to `"true"` / `"false"` for every registered canary. Spread onto every
+ * event so any metric can be broken down by cohort using PostHog's native
+ * flag tooling, with nothing configured server-side. See
+ * `canaryFeatureProperties` for why non-enrolled canaries are emitted too.
  */
-export function activeCanaryNames(): string | undefined {
-  const active = CANARIES.filter((c) => resolveCanary(c.name).enabled).map((c) => c.name);
-  return active.length > 0 ? active.join(",") : undefined;
+export function canaryEventProperties(): Record<string, string> {
+  return canaryFeatureProperties(
+    CANARIES.map((c) => ({ name: c.name, enabled: resolveCanary(c.name).enabled })),
+  );
 }

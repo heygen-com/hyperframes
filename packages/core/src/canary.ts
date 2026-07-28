@@ -134,3 +134,47 @@ export function parseCanaryOverride(raw: string | undefined): boolean | undefine
   if (v === "0" || v === "false" || v === "off" || v === "no") return false;
   return undefined;
 }
+
+/**
+ * Property-name prefix for canary assignments on telemetry events.
+ *
+ * PostHog treats `$feature/<key>` as a first-class flag property: breakdowns,
+ * funnels split by cohort and the experiment surfaces all key on it. Emitting
+ * assignments in that shape means the analysis tooling works on a canary with
+ * nothing configured server-side — the decision still happens locally and
+ * offline, which the render path requires (no render-time network calls, and
+ * behaviour must not depend on analytics being reachable).
+ *
+ * The `canary-` infix is deliberate. A real PostHog flag namespace already
+ * exists in this project, owned by the web app (e.g. `enable-chat-tab`, set by
+ * posthog-js). Namespacing guarantees a canary key can never alias a real flag
+ * key and have the two fight over the same property.
+ */
+export const CANARY_FEATURE_PREFIX = "$feature/canary-";
+
+/** `de-parallel-router` → `$feature/canary-de-parallel-router`. */
+export function canaryFeatureKey(name: string): string {
+  return `${CANARY_FEATURE_PREFIX}${name}`;
+}
+
+/**
+ * Build the telemetry properties for a set of resolved canaries.
+ *
+ * Emits EVERY registered canary, not just the enrolled ones, because absent
+ * and `"false"` mean different things: absent is "this build predates the
+ * canary", `"false"` is "this build has it and this install is not enrolled".
+ * Collapsing those makes a ramp unreadable — you cannot tell a control group
+ * from an old version.
+ *
+ * Values are the strings `"true"` / `"false"` to match how PostHog records
+ * boolean flag values, so the property is directly comparable to a real flag.
+ */
+export function canaryFeatureProperties(
+  entries: ReadonlyArray<{ name: string; enabled: boolean }>,
+): Record<string, string> {
+  const props: Record<string, string> = {};
+  for (const entry of entries) {
+    props[canaryFeatureKey(entry.name)] = entry.enabled ? "true" : "false";
+  }
+  return props;
+}

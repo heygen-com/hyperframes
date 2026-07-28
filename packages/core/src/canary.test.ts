@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { canaryBucket, evaluateCanary, parseCanaryOverride, type CanaryInput } from "./canary.js";
 import { CANARIES, canaryEnvVar, findCanary, overdueCanaries } from "./canaryRegistry.js";
+import { CANARY_FEATURE_PREFIX, canaryFeatureKey, canaryFeatureProperties } from "./canary.js";
 
 const base = (over: Partial<CanaryInput> = {}): CanaryInput => ({
   feature: "test-feature",
@@ -247,5 +248,38 @@ describe("registry", () => {
     // Fails the suite when a rollout has been left half-finished. Either take
     // it to 100 and delete the entry, or move the date deliberately.
     expect(overdueCanaries()).toEqual([]);
+  });
+});
+
+describe("PostHog flag-shaped properties", () => {
+  it("namespaces keys so a canary can never alias a real PostHog flag", () => {
+    // A real flag namespace already exists in this project, owned by the web
+    // app (e.g. `enable-chat-tab`). Without the `canary-` infix a canary named
+    // after a real flag would fight it for the same property.
+    expect(canaryFeatureKey("de-parallel-router")).toBe("$feature/canary-de-parallel-router");
+    expect(CANARY_FEATURE_PREFIX.startsWith("$feature/")).toBe(true);
+  });
+
+  it("emits every canary, not just enrolled ones", () => {
+    // Absent vs "false" are different facts: absent = this build predates the
+    // canary, "false" = this build has it and this install is control.
+    // Collapsing them makes a ramp unreadable.
+    const props = canaryFeatureProperties([
+      { name: "a", enabled: true },
+      { name: "b", enabled: false },
+    ]);
+    expect(props).toEqual({
+      "$feature/canary-a": "true",
+      "$feature/canary-b": "false",
+    });
+  });
+
+  it("uses string values, matching how PostHog records boolean flags", () => {
+    const props = canaryFeatureProperties([{ name: "a", enabled: true }]);
+    expect(typeof props["$feature/canary-a"]).toBe("string");
+  });
+
+  it("is empty when nothing is registered", () => {
+    expect(canaryFeatureProperties([])).toEqual({});
   });
 });
