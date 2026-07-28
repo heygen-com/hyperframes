@@ -396,6 +396,7 @@
               "contributing/release-channels",
               "contributing/changelog-process",
               "contributing/testing-local-changes",
+              "contributing/canary-rollouts",
               "contributing/studio-manual-dom-editing"
             ]
           },

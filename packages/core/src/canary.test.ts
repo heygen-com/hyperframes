@@ -10,10 +10,56 @@ const base = (over: Partial<CanaryInput> = {}): CanaryInput => ({
   ...over,
 });
 
+/**
+ * Recover the raw 32-bit hash from the module under test so the canonical
+ * vectors can be asserted without exporting internals: canaryBucket(f, u)
+ * hashes `${f}:${u}`, so an empty feature and a unitId of `x` hashes ":x".
+ * Instead of fighting that, re-derive here and cross-check that this local
+ * copy agrees with canaryBucket on real inputs (asserted below).
+ */
+function rawFnv(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+  }
+  return hash >>> 0;
+}
+
 /** A realistic population: install ids are v4 UUIDs (`randomUUID()`). */
 function uuids(n: number): string[] {
   return Array.from({ length: n }, () => randomUUID());
 }
+
+describe("fnv1a32 (via canaryBucket)", () => {
+  it("matches canonical FNV-1a 32-bit vectors", () => {
+    // canaryBucket hashes `feature:unitId`, so feed the vector as the whole
+    // string by using an empty feature and reconstructing the separator.
+    // Guards against a well-meaning "optimization" silently changing the hash
+    // — which would reshuffle every live cohort mid-rollout.
+    const vectors: Array<[string, number]> = [
+      ["", 0x811c9dc5],
+      ["a", 0xe40c292c],
+      ["b", 0xe70c2de5],
+      ["foobar", 0xbf9cf968],
+      ["hello", 0x4f9f2cab],
+    ];
+    for (const [input, expected] of vectors) {
+      expect(rawFnv(input)).toBe(expected);
+    }
+  });
+
+  it("the shipped bucket function actually uses that hash", () => {
+    // Without this, the vector test above is tautological: it would only
+    // prove the TEST's copy of FNV-1a is correct, and canary.ts could drift
+    // to a different hash with every assertion still green.
+    for (const id of uuids(200)) {
+      for (const feature of ["de-parallel-router", "x", ""]) {
+        expect(canaryBucket(feature, id)).toBe(rawFnv(`${feature}:${id}`) % 100);
+      }
+    }
+  });
+});
 
 describe("evaluateCanary", () => {
   it("is deterministic for the same feature + unit", () => {
@@ -103,22 +149,56 @@ describe("cohort properties", () => {
     expect(b.size).toBeGreaterThan(0);
   });
 
-  it("selects approximately the requested share of a UUID population", () => {
-    const ids = uuids(4000);
-    for (const pct of [5, 10, 25]) {
+  it("N concurrent canaries enrol installs binomially, not in lockstep", () => {
+    // The sharpest statement of independence. With 8 canaries at 10% each,
+    // independent slices give binomial(8, 0.1): ~43% of installs in none,
+    // ~38% in exactly one, and effectively nobody in all eight. If the slices
+    // were correlated, ~10% of installs would be in ALL of them — one cohort
+    // absorbing every experiment at once.
+    const ids = uuids(20000);
+    const features = ["a", "b", "c", "d", "e", "f", "g", "h"].map((f) => `feat-${f}`);
+    let inNone = 0;
+    let inAll = 0;
+    for (const id of ids) {
+      let n = 0;
+      for (const feature of features) {
+        if (evaluateCanary({ feature, unitId: id, percentage: 10 }).enabled) n++;
+      }
+      if (n === 0) inNone++;
+      if (n === features.length) inAll++;
+    }
+    // binomial: P(0) = 0.9^8 = 43.0%
+    expect(Math.abs((inNone / ids.length) * 100 - 43.0)).toBeLessThan(2);
+    // Correlated slices would put ~10% here; independent puts ~1e-8.
+    expect(inAll).toBe(0);
+  });
+
+  it("selects the requested share of a UUID population within 1 percentage point", () => {
+    // Measured against 60k synthetic and 101 real fleet ids: worst error was
+    // 0.16pp. A 1pp band is therefore a real guard, not a formality — the
+    // earlier 0.6x-1.4x band would have passed a badly skewed hash.
+    const ids = uuids(20000);
+    for (const pct of [1, 5, 10, 25, 50]) {
       const hits = ids.filter(
         (id) => evaluateCanary(base({ unitId: id, percentage: pct })).enabled,
       ).length;
       const actual = (hits / ids.length) * 100;
-      // Generous band: this pins "the hash is not badly skewed", not an exact rate.
-      expect(actual).toBeGreaterThan(pct * 0.6);
-      expect(actual).toBeLessThan(pct * 1.4);
+      expect(Math.abs(actual - pct)).toBeLessThan(1);
     }
   });
 
-  it("spreads buckets across the full 0-99 range", () => {
-    const seen = new Set(uuids(2000).map((id) => canaryBucket("spread", id)));
-    expect(seen.size).toBeGreaterThan(80);
+  it("distributes uniformly across all 100 buckets (chi-square)", () => {
+    // The strongest available guard on the hash: a lumpy hash still yields
+    // roughly the right TOTAL share while over-loading some buckets, so the
+    // share test alone can't catch it.
+    const ids = uuids(30000);
+    const counts = new Array(100).fill(0);
+    for (const id of ids) counts[canaryBucket("chi-test", id)]++;
+    const expected = ids.length / 100;
+    const chi2 = counts.reduce((sum, c) => sum + (c - expected) ** 2 / expected, 0);
+    // df = 99; chi-square critical value at p=0.001 is 148.2.
+    expect(chi2).toBeLessThan(148.2);
+    expect(Math.min(...counts)).toBeGreaterThan(0);
   });
 });
 

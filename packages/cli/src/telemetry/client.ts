@@ -4,6 +4,7 @@ import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { isDevMode } from "../utils/env.js";
 import { getSystemMeta } from "./system.js";
+import { activeCanaryNames } from "./canary.js";
 import { enqueue, POSTHOG_API_KEY, type EventProperties } from "./transport.js";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,12 @@ export function trackEvent(
       // New-agent discovery signals — populated only when agent_runtime is null.
       agent_hint: sys.agent_hint ?? undefined,
       term_program: sys.term_program ?? undefined,
+      // Canary cohorts this install is enrolled in, comma-joined (absent when
+      // none). Attached to EVERY event, not just renders: a staged rollout is
+      // only as good as the ability to split any metric by cohort. Resolved
+      // after the shouldTrack guard above, so opted-out installs never pay for
+      // it. See telemetry/canary.ts.
+      canaries: activeCanaryNames(),
       agent_env_hints: sys.agent_env_hints ?? undefined,
     },
     distinctId,

@@ -17,6 +17,14 @@ vi.mock("../utils/env.js", () => ({
   isDevMode: () => false,
 }));
 
+// Canary enrolment is registry-driven and will change as rollouts ramp; stub
+// it so this asserts the WIRING (does every event carry the cohort?) rather
+// than whichever canaries happen to be live today.
+const canaryNames = vi.fn<() => string | undefined>(() => "feat-x,feat-y");
+vi.mock("./canary.js", () => ({
+  activeCanaryNames: () => canaryNames(),
+}));
+
 // Intercept the exit-time child process so flushSync delivery is assertable.
 const spawnMock = vi.fn(() => ({ unref: vi.fn() }));
 vi.mock("node:child_process", () => ({
@@ -31,6 +39,16 @@ function sentBatch(fetchMock: ReturnType<typeof vi.fn>, call = 0): Batch {
   const init = fetchMock.mock.calls[call]?.[1] as { body: string } | undefined;
   if (!init) throw new Error(`expected fetch call #${call} to have been made`);
   return JSON.parse(init.body).batch;
+}
+
+/** Properties of the first event in the first delivered batch. */
+function eventProps(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
+  const init = fetchMock.mock.calls[0]?.[1] as { body: string } | undefined;
+  if (!init) throw new Error("expected a fetch call to have been made");
+  const parsed = JSON.parse(init.body) as {
+    batch: Array<{ properties?: Record<string, unknown> }>;
+  };
+  return parsed.batch[0]?.properties ?? {};
 }
 
 describe("telemetry queue delivery", () => {
@@ -130,5 +148,31 @@ describe("telemetry queue delivery", () => {
     vi.stubGlobal("fetch", fetchMock);
     await flush();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("canary cohort on every event", () => {
+  it("attaches enrolled canaries to the event properties", async () => {
+    canaryNames.mockReturnValue("feat-x,feat-y");
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    expect(eventProps(fetchMock).canaries).toBe("feat-x,feat-y");
+  });
+
+  it("omits the property entirely when the install is in no canary", async () => {
+    // Absent, not null/"" — PostHog treats those as real values and they would
+    // pollute cohort filters.
+    canaryNames.mockReturnValue(undefined);
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    trackEvent("cli_command", { command: "render" });
+    await flush();
+
+    expect("canaries" in eventProps(fetchMock)).toBe(false);
   });
 });

@@ -1,0 +1,103 @@
+---
+title: "Canary rollouts"
+description: "Ship a change to a percentage of installs instead of all-or-nothing."
+---
+
+Most flags in this repo are binary: a feature is off (and therefore never
+exercised on real traffic) or on for everyone (and therefore a fleet-wide
+bet). A canary is the rung in between — the same change, enabled for a stable
+slice of installs, ramped as the signal holds.
+
+## Add one
+
+**1. Register it at 0%.** In `packages/core/src/canaryRegistry.ts`:
+
+```ts
+{
+  name: "my-feature",
+  percentage: 0,
+  description: "One line on what turning this on actually changes.",
+  owner: "your-handle",
+  sunsetAfter: "2026-12-01",
+}
+```
+
+At `0` it is inert, so this lands safely on its own.
+
+**2. Read it at the decision point.**
+
+```ts
+import { isCanaryEnabled } from "../telemetry/canary.js";
+
+if (isCanaryEnabled("my-feature")) {
+  // new path
+} else {
+  // existing path
+}
+```
+
+That is the whole API. The percentage lives in the registry, never at the
+call site.
+
+**3. Ramp it** by editing `percentage` in a patch release: `0 → 5 → 25 → 100`.
+
+**4. Delete it** once it is at 100 and holding — both the registry entry and
+the branch it guarded. `sunsetAfter` exists to force this: a test fails once
+the date passes.
+
+## Overriding
+
+```bash
+HF_CANARY_MY_FEATURE=on   # or off / true / false / 1 / 0 / yes / no
+```
+
+Upper-snake-case the name. An override always wins over the percentage, in
+both directions — use it for support escalations, dogfooding, bisects, or a
+panic-off.
+
+## Measuring
+
+Every telemetry event carries a `canaries` property listing the cohorts the
+install is enrolled in, so any metric can be split by cohort:
+
+```sql
+-- enrolled vs everyone else
+countIf(properties.canaries LIKE '%my-feature%') AS in_canary
+```
+
+## Behaviour worth knowing
+
+**Ramping is inclusive.** Widening `10 → 25` keeps everyone who was already
+in the 10. Cohorts never reshuffle, so a before/after comparison stays valid
+across a ramp.
+
+**Slices are independent per feature.** The bucket hashes `feature:installId`,
+not the install id alone — two canaries at 10% select two different 10%s. If
+they shared a slice, one unlucky cohort would receive every experiment at
+once and no two rollouts could be read apart.
+
+**It fails closed.** No install id, an unregistered name, or a CI machine all
+resolve to *not enrolled*. A canary exists to bound blast radius, so "we
+don't know who this is" must never mean "enrol everyone". CI is excluded
+because its config is regenerated per run, so its ids are ephemeral and would
+hop cohorts between runs — an explicit override still reaches it, which is
+how you test a canary in CI.
+
+**Decisions are stable and memoized.** The same install always resolves the
+same way, and the answer is fixed for the life of a process — a render that
+starts enrolled finishes enrolled, and its telemetry agrees with what ran.
+
+**Do not rename a live canary.** The name is part of the hash, so renaming
+reshuffles the cohort mid-rollout and invalidates the comparison.
+
+## Where it lives
+
+| File | Role |
+| --- | --- |
+| `packages/core/src/canary.ts` | Pure evaluator — no fs, no network, browser-safe |
+| `packages/core/src/canaryRegistry.ts` | Every rollout, with owner and sunset date |
+| `packages/cli/src/telemetry/canary.ts` | CLI binding: install id, env override, CI detection |
+
+The evaluator is deliberately dependency-free so studio and the embeddable
+player can use it too; those surfaces need their own thin binding to supply an
+id, since only the CLI has `anonymousId`.
