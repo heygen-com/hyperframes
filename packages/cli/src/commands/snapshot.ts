@@ -93,14 +93,13 @@ export function resolveSnapshotVideoFrameTime(input: {
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
 }
 
-/** Convert a video's scene-local authored start into root timeline time when
- * it lives inside a template-mounted composition host. Top-level videos have
- * no template host and therefore retain their authored start unchanged. */
+/** Prefer the runtime's canonical absolute media start. The authored value is
+ * only a compatibility fallback for pages built with an older runtime. */
 export function resolveSnapshotVideoClipStart(input: {
   authoredStart: number;
-  templateHostStart: number | null;
+  runtimeResolvedStart: number | null;
 }): number {
-  return input.authoredStart + (input.templateHostStart ?? 0);
+  return input.runtimeResolvedStart ?? input.authoredStart;
 }
 
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
@@ -410,15 +409,13 @@ async function captureSnapshots(
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
           const candidates = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("video[data-start]")).map((el) => {
+            const runtimeWindow = window as Window & {
+              __hfResolveMediaStartSeconds?: (element: Element) => number;
+            };
+            return Array.from(document.querySelectorAll("video")).map((el) => {
               const v = el as HTMLVideoElement;
               const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
-              const templateHost = v.closest<HTMLElement>(
-                "[data-composition-src], [data-composition-file]",
-              );
-              const templateHostStart = templateHost
-                ? parseFloat(templateHost.dataset.start ?? "0") || 0
-                : null;
+              const runtimeResolvedStart = runtimeWindow.__hfResolveMediaStartSeconds?.(v);
               const rawRate = v.defaultPlaybackRate;
               const playbackRate =
                 Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
@@ -436,7 +433,10 @@ async function captureSnapshots(
                 id: v.id,
                 src: v.currentSrc || v.src,
                 authoredStart,
-                templateHostStart,
+                runtimeResolvedStart:
+                  runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
+                    ? runtimeResolvedStart
+                    : null,
                 duration,
                 srcDuration: srcDur,
                 playbackRate,

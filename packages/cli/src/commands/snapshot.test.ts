@@ -160,16 +160,25 @@ describe("resolveSnapshotVideoClipStart", () => {
     expect(
       resolveSnapshotVideoClipStart({
         authoredStart: 0,
-        templateHostStart: 3,
+        runtimeResolvedStart: 3,
       }),
     ).toBe(3);
   });
 
-  it("keeps top-level video starts unchanged", () => {
+  it("uses the runtime's recursively resolved start for deeply nested media", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 1,
+        runtimeResolvedStart: 8,
+      }),
+    ).toBe(8);
+  });
+
+  it("keeps authored starts as a compatibility fallback", () => {
     expect(
       resolveSnapshotVideoClipStart({
         authoredStart: 3,
-        templateHostStart: null,
+        runtimeResolvedStart: null,
       }),
     ).toBe(3);
   });

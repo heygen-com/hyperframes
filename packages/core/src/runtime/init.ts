@@ -53,6 +53,7 @@ import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 import { installStudioCustomEase } from "./customEase";
+import { parseNumeric } from "./startExpression";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -606,21 +607,54 @@ export function initSandboxRuntimeModular(): void {
     return resolver.resolveDurationForElement(element);
   };
 
-  const resolveMediaStartSeconds = (element: Element, fallback = 0): number => {
-    if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
-      // `data-start` is authored relative to the media element's OWN sub-
-      // composition, not the root timeline — `fallback` carries the host
-      // composition's resolved absolute start (see syncMediaForCurrentState's
-      // inheritedStart), so it must be added, not discarded. Skipping it made
-      // a nested video play from root t=0 instead of holding until its
-      // parent scene began (issue #1838) — resolveStartForElement's own
-      // absolute-expression branch already adds this same host offset, this
-      // fast literal-value path just didn't.
-      const own = Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
-      return own + fallback;
-    }
-    return resolveStartForElement(element, fallback);
+  const resolveMediaCompositionContext = (element: Element) => {
+    const compositionRoot = element.closest("[data-composition-id]");
+    const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
+    const inheritedDuration = compositionRoot
+      ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
+      : null;
+    return { compositionRoot, inheritedStart, inheritedDuration };
   };
+
+  const resolveAbsoluteMediaStartSeconds = (element: Element): number => {
+    const context = resolveMediaCompositionContext(element);
+    const inheritedStart = context.inheritedStart ?? 0;
+    const authoredStart = parseNumeric(element.getAttribute("data-start"));
+    if (
+      element.hasAttribute("data-hf-auto-start") ||
+      authoredStart == null ||
+      inheritedStart <= 0
+    ) {
+      return resolveStartForElement(element, inheritedStart);
+    }
+
+    // Both timing conventions exist in shipped projects:
+    //   - composition-local media, e.g. host@20 + video@0 => root@20
+    //   - legacy root-global PIP media, e.g. host@45.4 + video@45.4 => root@45.4
+    // Preserve the global value when its authored window already intersects
+    // the host's absolute window. Otherwise it is unambiguously local and
+    // must inherit the recursively-resolved host start.
+    const authoredDuration = parseNumeric(element.getAttribute("data-duration"));
+    const hostDuration = context.inheritedDuration;
+    const hostEnd = hostDuration != null && hostDuration > 0 ? inheritedStart + hostDuration : null;
+    const authoredEnd =
+      authoredDuration != null && authoredDuration > 0
+        ? authoredStart + authoredDuration
+        : authoredStart;
+    const overlapsHostWindow =
+      hostEnd == null
+        ? authoredStart >= inheritedStart
+        : authoredStart < hostEnd &&
+          (authoredEnd > inheritedStart || authoredStart === inheritedStart);
+    return overlapsHostWindow ? authoredStart : inheritedStart + authoredStart;
+  };
+
+  window.__hfResolveMediaStartSeconds = resolveAbsoluteMediaStartSeconds;
+  runtimeCleanupCallbacks.push(() => {
+    if (window.__hfResolveMediaStartSeconds === resolveAbsoluteMediaStartSeconds) {
+      delete window.__hfResolveMediaStartSeconds;
+    }
+  });
 
   const isTimedElementVisibleAt = (rawNode: HTMLElement, currentTime: number): boolean => {
     const tag = rawNode.tagName.toLowerCase();
@@ -629,14 +663,8 @@ export function initSandboxRuntimeModular(): void {
     }
 
     const isMedia = tag === "video" || tag === "audio";
-    const mediaCompositionHost = isMedia
-      ? rawNode.closest("[data-composition-src], [data-composition-file]")
-      : null;
-    const mediaCompositionStart = mediaCompositionHost
-      ? resolveStartForElement(mediaCompositionHost, 0)
-      : 0;
     const start = isMedia
-      ? resolveMediaStartSeconds(rawNode, mediaCompositionStart)
+      ? resolveAbsoluteMediaStartSeconds(rawNode)
       : resolveStartForElement(rawNode, 0);
     let duration = resolveDurationForElement(rawNode);
     const compId = rawNode.getAttribute("data-composition-id");
@@ -736,7 +764,7 @@ export function initSandboxRuntimeModular(): void {
     if (mediaNodes.length === 0) return null;
     let maxWindowEndSeconds = 0;
     for (const node of mediaNodes) {
-      const start = resolveMediaStartSeconds(node, 0);
+      const start = resolveAbsoluteMediaStartSeconds(node);
       if (!Number.isFinite(start)) continue;
       const duration = resolveMediaElementDurationSeconds(node);
       if (duration == null || duration <= MIN_VALID_TIMELINE_DURATION_SECONDS) continue;
@@ -1951,30 +1979,16 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const syncMediaForCurrentState = () => {
-    const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
-      const compositionRoot = element.closest("[data-composition-id]");
-      const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
-      // Media sync follows the authored host window, matching visibility for
-      // authored composition hosts. Live child timeline duration only fills in
-      // when no authored timing exists, so seeks clamp against host clip timing.
-      const inheritedDuration = compositionRoot
-        ? resolveDurationForElement(compositionRoot, { includeAuthoredTimingAttrs: true })
-        : null;
-      return { compositionRoot, inheritedStart, inheritedDuration };
-    };
     const cache = refreshRuntimeMediaCache({
       shouldIncludeElement: (element) =>
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
       resolveStartSeconds: (element) => {
-        const context = resolveMediaCompositionContext(
-          element as HTMLVideoElement | HTMLAudioElement,
-        );
-        return resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
+        return resolveAbsoluteMediaStartSeconds(element);
       },
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
-        const start = resolveMediaStartSeconds(element, context.inheritedStart ?? 0);
+        const start = resolveAbsoluteMediaStartSeconds(element);
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
