@@ -2,6 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { win32 as pathWin32 } from "node:path";
 import {
   createStudioDevRenderBodyScripts,
   readStudioDevManualEditManifestContent,
@@ -14,20 +15,34 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 let _browser: import("puppeteer-core").Browser | null = null;
 let _browserLaunchPromise: Promise<import("puppeteer-core").Browser> | null = null;
 
-const CHROME_PATHS = [
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/usr/bin/google-chrome",
-  "/usr/bin/chromium-browser",
-];
+function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+  if (platform === "win32") {
+    const programFiles = env["PROGRAMFILES"] ?? "C:\\Program Files";
+    const programFilesX86 = env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)";
+    const localAppData = env["LOCALAPPDATA"];
+    return [
+      pathWin32.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      pathWin32.join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      ...(localAppData
+        ? [pathWin32.join(localAppData, "Google", "Chrome", "Application", "chrome.exe")]
+        : []),
+    ];
+  }
+  if (platform === "darwin") {
+    return ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
+  }
+  return ["/usr/bin/google-chrome", "/usr/bin/chromium-browser"];
+}
 
 /** Resolve the same explicit browser overrides used by the CLI before system paths. */
 export function findSystemChrome(
   env: NodeJS.ProcessEnv = process.env,
   pathExists: (path: string) => boolean = existsSync,
+  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   const override = env["HYPERFRAMES_BROWSER_PATH"] ?? env["PRODUCER_HEADLESS_SHELL_PATH"];
   if (override && pathExists(override)) return override;
-  return CHROME_PATHS.find((path) => pathExists(path));
+  return systemChromePaths(env, platform).find((path) => pathExists(path));
 }
 
 async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {

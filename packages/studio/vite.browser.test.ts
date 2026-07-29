@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const launch = vi.fn();
+const originalBrowserPath = process.env["HYPERFRAMES_BROWSER_PATH"];
 
 vi.mock("puppeteer-core", () => ({
   default: { launch },
@@ -8,8 +9,17 @@ vi.mock("puppeteer-core", () => ({
 
 describe("generateThumbnail", () => {
   beforeEach(() => {
+    process.env["HYPERFRAMES_BROWSER_PATH"] = process.execPath;
     launch.mockReset();
     launch.mockRejectedValue(new Error("browser launch failed"));
+  });
+
+  afterEach(() => {
+    if (originalBrowserPath === undefined) {
+      delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    } else {
+      process.env["HYPERFRAMES_BROWSER_PATH"] = originalBrowserPath;
+    }
   });
 
   it("contains browser launch failures and retries them on the next request", async () => {
@@ -46,5 +56,13 @@ describe("findSystemChrome", () => {
       ),
     ).toBe("/custom/browser");
     expect(pathExists).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds a standard Windows Chrome installation", async () => {
+    const { findSystemChrome } = await import("./vite.browser");
+    const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+    const pathExists = vi.fn((path: string) => path === chromePath);
+
+    expect(findSystemChrome({}, pathExists, "win32")).toBe(chromePath);
   });
 });
