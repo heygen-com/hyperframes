@@ -138,9 +138,7 @@ const CACHED_HEADLESS_SHELL_EXECUTABLES: Readonly<
 > = {
   "darwin/arm64": ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
   "darwin/x64": ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
-  "linux/arm64": ["chrome-headless-shell-linux64", "chrome-headless-shell"],
   "linux/x64": ["chrome-headless-shell-linux64", "chrome-headless-shell"],
-  "win32/arm64": ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
   "win32/ia32": ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
   "win32/x64": ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
 };
@@ -151,6 +149,10 @@ function cachedHeadlessShellExecutable(
 ): readonly [directory: string, executable: string] | undefined {
   // Chrome for Testing cache entries are host-specific. Resolve exactly one
   // platform/architecture directory so a foreign binary cannot win by probe order.
+  // Chrome for Testing does not publish Linux ARM64 binaries. Windows ARM64 can
+  // emulate x64 only on supported Windows 11 builds, which this platform/arch-only
+  // resolver cannot prove, so both hosts deliberately fall through to system
+  // browser discovery instead of attempting a potentially foreign cached binary.
   return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
 }
 

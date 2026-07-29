@@ -555,6 +555,12 @@ describe("findBrowser — cache resolution", () => {
     },
     {
       hostPlatform: "win32",
+      hostArch: "ia32",
+      expectedDirectory: "chrome-headless-shell-win32",
+      expectedExecutable: "chrome-headless-shell.exe",
+    },
+    {
+      hostPlatform: "win32",
       hostArch: "x64",
       expectedDirectory: "chrome-headless-shell-win64",
       expectedExecutable: "chrome-headless-shell.exe",
@@ -569,6 +575,7 @@ describe("findBrowser — cache resolution", () => {
         ["chrome-headless-shell-linux64", "chrome-headless-shell"],
         ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
         ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+        ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
         ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
       ] as const;
       const binaries = candidates.map(([directory, executable]) =>
@@ -585,6 +592,30 @@ describe("findBrowser — cache resolution", () => {
       const result = await findBrowser();
 
       expect(result).toEqual({ executablePath: expectedBinary, source: "cache" });
+    },
+  );
+
+  it.each([
+    { hostPlatform: "linux", hostArch: "arm64" },
+    { hostPlatform: "win32", hostArch: "arm64" },
+  ])(
+    "does not select a foreign cached shell on unsupported $hostPlatform/$hostArch",
+    async ({ hostPlatform, hostArch }) => {
+      Object.defineProperty(process, "platform", { value: hostPlatform, configurable: true });
+      Object.defineProperty(process, "arch", { value: hostArch, configurable: true });
+      const version = "host-148.0.7778.97";
+      const binaries = [
+        join(PUPPETEER_CACHE, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+        join(PUPPETEER_CACHE, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
+      ];
+      installFsMocks({
+        existing: new Set([PUPPETEER_CACHE, ...binaries]),
+        dirs: { [PUPPETEER_CACHE]: [version] },
+      });
+      installPuppeteerBrowsersMock();
+
+      const { findBrowser } = await import("./manager.js");
+      await expect(findBrowser()).resolves.toBeUndefined();
     },
   );
 
