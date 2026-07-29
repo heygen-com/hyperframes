@@ -15,7 +15,7 @@ Each step produces an artifact that feeds the next:
 |---|-------------------------|-----------------------------------------|-------------------------------------------------------------------------|
 | 1 | **Capture**             | `capture/`                              | Extract screenshots, design tokens, fonts, assets, animations from a source |
 | 2 | **Design**              | `DESIGN.md`                             | Brand reference: colors, typography, component stylings, spacing, iteration guide |
-| 3 | **Strategy & Messaging**| —                                       | Align on video type, style, the ONE message, narrative arc, and audience |
+| 3 | **Strategy & Messaging**| `BRIEF.md`                              | Lock video type, style, the ONE message, arc, audience — and the run's shape (automation or companion, storyboard or one-shot) |
 | 4 | **Storyboard + Script** | `STORYBOARD.md` + `SCRIPT.md`          | Concept-first storyboard and narration script, written together         |
 | 5 | **VO + Timing**         | `narration.wav` + `transcript.json`     | TTS audio with word-level timestamps                                    |
 | 6 | **Build**               | `compositions/*.html`                   | Animated HTML compositions, one per beat                                |
@@ -38,7 +38,8 @@ my-video/
 │   ├── AGENTS.md               # capture summary for AI agents
 │   └── CLAUDE.md
 ├── DESIGN.md                   # Step 2, brand cheat sheet
-├── SCRIPT.md                   # Step 3, narration backbone
+├── BRIEF.md                    # Step 3, confirmed intent: message, audience, run shape
+├── SCRIPT.md                   # Step 4, narration backbone
 ├── STORYBOARD.md               # Step 4, beat-by-beat creative plan
 ├── narration.wav               # Step 5, TTS audio
 ├── narration.txt               # Step 5, exact spoken text (with pronunciation subs)
@@ -92,13 +93,15 @@ A typical `DESIGN.md` has five sections:
 
 ## Step 3: Strategy & Messaging
 
-**Output:** Alignment on video type, duration, style, and — critically — the ONE message and narrative arc
+**Output:** `BRIEF.md` in the project root
 
 Before any creative decisions, align with the user on the story this video must tell. Parse the user's prompt first — they probably already gave you the video type and style. Only ask about things they didn't specify. If the prompt is detailed enough, confirm the direction in one message and move to Step 4.
 
 The questions to resolve: what type of video (social ad, product demo, brand reel, etc.), what style and energy, what's the ONE thing this video must communicate, what narrative arc serves that message, and whether narration is wanted.
 
-**Gate:** Video type, duration, format, and the message and narrative arc are locked. Without those, Step 4 can't write a concept-first storyboard.
+When the project starts from `/hyperframes`, this step is the [opening interview](/prompting/overview#the-interview-what-the-agent-asks-first) — and it runs before Step 1, since the answers decide whether there's anything to capture at all. Either way, the confirmed answers land in `BRIEF.md`: frontmatter keys for the deterministic fields (`workflow`, `flow`, `storyboard`, `message`, audience, length), prose sections for the intent and any supplied material. A later session resumes from this file instead of re-asking.
+
+**Gate:** `BRIEF.md` exists — video type, duration, format, message, and narrative arc locked. Without those, Step 4 can't write a concept-first storyboard.
 
 ## Step 4: Storyboard + Script
 
@@ -185,6 +188,7 @@ For personalized or catalog outputs, render the same validated composition with 
 
 The pipeline is built around named artifacts on disk so you can re-enter anywhere without re-running everything:
 
+- To change what the video is *for* — the message, the audience, the run's shape — edit `BRIEF.md`; it's the file the agent trusts over chat history.
 - To rework the creative plan, edit `STORYBOARD.md`: change a beat's mood, swap an asset, retime the entrance, then ask the agent to rebuild just that beat.
 - For surgical tweaks, open a composition file directly (e.g. `compositions/beat-3-proof.html`) and adjust animations, colors, or layout. `npx hyperframes preview` shows changes live.
 - To rebuild one beat from scratch, prompt the agent: _"Rebuild beat 2 with more energy. Use the product screenshot as full-bleed background."_ It reads `STORYBOARD.md`, `DESIGN.md`, and the transcript, then regenerates just that file.
