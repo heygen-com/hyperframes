@@ -101,7 +101,11 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
-import { outputNeedsAlpha, type RenderOutputFormat } from "./render/renderFormat.js";
+import {
+  outputNeedsAlpha,
+  outputSupportsPageSideShaderCompositing,
+  type RenderOutputFormat,
+} from "./render/renderFormat.js";
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
@@ -2811,19 +2815,16 @@ async function executeRenderPipeline(input: {
     // Page-side compositing opt-in: when the engine is configured to run the
     // shader blend inside Chrome via a page-side WebGL canvas, the layered
     // Node-side composite path is unnecessary for SDR shader transitions.
-    // The streaming path takes ONE opaque RGB screenshot per output frame —
-    // exactly the single capture the page-side compositor produces. HDR
-    // content still forces the layered path (HDR layers need per-layer
-    // alpha + native HDR raw frame compositing in Node; that's out of scope
-    // for this opt-in). GIF also uses this path for shader transitions
-    // because its two-pass palette encoder needs disk frames, not the
-    // layered path's streaming raw-video encoder.
+    // MP4's streaming path takes one opaque RGB screenshot per output frame.
+    // GIF takes the same page-side composite through its RGBA PNG disk-frame
+    // path so the palette encoder can preserve transparency. HDR content still
+    // forces the layered path (HDR layers need per-layer alpha + native HDR raw
+    // frame compositing in Node; that's out of scope for this opt-in).
     const usePageSideCompositingForTransitions =
       (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
-      !isPngSequence &&
-      !needsAlpha;
+      outputSupportsPageSideShaderCompositing(outputFormat);
     if (usePageSideCompositingForTransitions) {
       activeFileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
       if (
@@ -2847,7 +2848,8 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
-          "shader-blend path. Engine will capture one opaque RGB screenshot per output frame.",
+          `shader-blend path. Engine will capture one ${needsAlpha ? "RGBA PNG" : "opaque RGB"} ` +
+          "screenshot per output frame.",
       );
     }
     const useLayeredComposite =

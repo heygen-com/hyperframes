@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { outputNeedsAlpha } from "./renderFormat.js";
+import { outputNeedsAlpha, outputSupportsPageSideShaderCompositing } from "./renderFormat.js";
 
 describe("outputNeedsAlpha", () => {
   it("uses alpha-aware capture for transparent-capable formats", () => {
@@ -11,5 +11,18 @@ describe("outputNeedsAlpha", () => {
 
   it("preserves opaque capture for mp4", () => {
     expect(outputNeedsAlpha("mp4")).toBe(false);
+  });
+});
+
+describe("outputSupportsPageSideShaderCompositing", () => {
+  it("supports opaque MP4 capture and RGBA GIF disk frames", () => {
+    expect(outputSupportsPageSideShaderCompositing("mp4")).toBe(true);
+    expect(outputSupportsPageSideShaderCompositing("gif")).toBe(true);
+  });
+
+  it("keeps the alpha video and PNG sequence formats on their existing paths", () => {
+    expect(outputSupportsPageSideShaderCompositing("webm")).toBe(false);
+    expect(outputSupportsPageSideShaderCompositing("mov")).toBe(false);
+    expect(outputSupportsPageSideShaderCompositing("png-sequence")).toBe(false);
   });
 });

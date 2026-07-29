@@ -2,12 +2,15 @@
  * Transparency Regression Test
  *
  * Exercises the alpha-output pipelines (webm + gif + png-sequence) end-to-end
- * against `tests/transparency-regression/`. Asserts that:
+ * against `tests/transparency-regression/`, then renders the real page-side
+ * shader fixture to GIF. Asserts that:
  *
  *   1. Pixels that were transparent in the browser stay transparent in the
  *      output (alpha = 0).
  *   2. Pixels covered by the opaque red `.card` element stay fully opaque
  *      (alpha = 255) and keep their red color.
+ *   3. GIF's RGBA disk-frame path still captures the authored WebGL shader
+ *      transition instead of the virtual-time DOM fallback.
  *
  * This is intentionally NOT wired into `regression-harness.ts` — the harness
  * compares each fixture against a golden MP4, but transparency requires a
@@ -22,12 +25,15 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { decodePng, runFfmpeg } from "@hyperframes/engine";
+import { decodePng, psnrDb, runFfmpeg } from "@hyperframes/engine";
 import { createRenderJob, executeRenderJob } from "./services/renderOrchestrator.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(moduleDir, "../tests/transparency-regression");
 const FIXTURE_SRC = join(FIXTURE_DIR, "src");
+const SHADER_FIXTURE_DIR = resolve(moduleDir, "../tests/page-side-shader-compositor-render-compat");
+const SHADER_FIXTURE_SRC = join(SHADER_FIXTURE_DIR, "src");
+const SHADER_GOLDEN = join(SHADER_FIXTURE_DIR, "output", "output.mp4");
 
 const WIDTH = 200;
 const HEIGHT = 200;
@@ -127,6 +133,33 @@ async function extractFirstFrameFromGif(gifPath: string, outPng: string): Promis
   }
 }
 
+async function extractFrameAtIndex(
+  inputPath: string,
+  frameIndex: number,
+  outPng: string,
+): Promise<void> {
+  const result = await runFfmpeg(
+    [
+      "-y",
+      "-i",
+      inputPath,
+      "-vf",
+      `select=eq(n\\,${frameIndex})`,
+      "-frames:v",
+      "1",
+      "-update",
+      "1",
+      outPng,
+    ],
+    { timeout: 60_000 },
+  );
+  if (!result.success) {
+    throw new Error(
+      `ffmpeg failed extracting frame ${frameIndex} from ${inputPath}: ${result.stderr.slice(-400)}`,
+    );
+  }
+}
+
 async function runWebmCheck(workRoot: string): Promise<void> {
   console.log("\n[webm] rendering transparency-regression …");
   const outDir = join(workRoot, "webm");
@@ -182,6 +215,50 @@ async function runGifCheck(workRoot: string): Promise<void> {
   console.log("[gif] PASS — transparent + opaque-red pixels verified");
 }
 
+async function runGifShaderTransitionCheck(workRoot: string): Promise<void> {
+  console.log("\n[gif-shader] rendering page-side shader transition …");
+  const outDir = join(workRoot, "gif-shader");
+  mkdirSync(outDir, { recursive: true });
+  const outPath = join(outDir, "out.gif");
+
+  const job = createRenderJob({
+    fps: { num: 15, den: 1 },
+    quality: "draft",
+    format: "gif",
+    gifLoop: 0,
+    workers: 1,
+  });
+
+  await executeRenderJob(job, SHADER_FIXTURE_SRC, outPath);
+  assert.equal(job.status, "complete", `gif shader render did not complete: status=${job.status}`);
+  assert.ok(existsSync(outPath), `gif shader output not written to ${outPath}`);
+
+  const gifBefore = join(outDir, "gif-before.png");
+  const gifTransition = join(outDir, "gif-transition.png");
+  const goldenBefore = join(outDir, "golden-before.png");
+  const goldenTransition = join(outDir, "golden-transition.png");
+  await Promise.all([
+    extractFrameAtIndex(outPath, 7, gifBefore),
+    extractFrameAtIndex(outPath, 17, gifTransition),
+    extractFrameAtIndex(SHADER_GOLDEN, 14, goldenBefore),
+    extractFrameAtIndex(SHADER_GOLDEN, 34, goldenTransition),
+  ]);
+
+  const beforePsnr = await psnrDb(readFileSync(gifBefore), readFileSync(goldenBefore));
+  const transitionPsnr = await psnrDb(readFileSync(gifTransition), readFileSync(goldenTransition));
+  assert.ok(
+    beforePsnr >= 25,
+    `gif shader control frame expected >=25 dB against the golden, got ${beforePsnr.toFixed(2)} dB`,
+  );
+  assert.ok(
+    transitionPsnr >= 20,
+    `gif shader transition expected >=20 dB against the golden, got ${transitionPsnr.toFixed(2)} dB`,
+  );
+  console.log(
+    `[gif-shader] PASS — control ${beforePsnr.toFixed(2)} dB, transition ${transitionPsnr.toFixed(2)} dB`,
+  );
+}
+
 async function runPngSequenceCheck(workRoot: string): Promise<void> {
   console.log("\n[png-sequence] rendering transparency-regression …");
   const outDir = join(workRoot, "pngs");
@@ -229,6 +306,9 @@ async function main(): Promise<void> {
   if (!existsSync(FIXTURE_SRC)) {
     throw new Error(`Fixture missing: ${FIXTURE_SRC}`);
   }
+  if (!existsSync(SHADER_FIXTURE_SRC) || !existsSync(SHADER_GOLDEN)) {
+    throw new Error(`Shader fixture or golden missing: ${SHADER_FIXTURE_DIR}`);
+  }
   const workRoot = join(tmpdir(), `hf-transparency-${process.pid}-${Date.now()}`);
   mkdirSync(workRoot, { recursive: true });
   const keepWork = process.env.KEEP_TEMP === "1";
@@ -237,6 +317,7 @@ async function main(): Promise<void> {
   try {
     await runWebmCheck(workRoot);
     await runGifCheck(workRoot);
+    await runGifShaderTransitionCheck(workRoot);
     await runPngSequenceCheck(workRoot);
     console.log("\nAll transparency assertions passed.");
   } finally {
