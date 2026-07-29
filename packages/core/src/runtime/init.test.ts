@@ -915,6 +915,55 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(5);
   });
 
+  it("keeps a scene-local video visible inside a later template-mounted host", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "6");
+    root.setAttribute("data-width", "360");
+    root.setAttribute("data-height", "640");
+    document.body.appendChild(root);
+
+    const firstHost = document.createElement("div");
+    firstHost.setAttribute("data-composition-id", "first");
+    firstHost.setAttribute("data-composition-file", "compositions/first.html");
+    firstHost.setAttribute("data-start", "0");
+    firstHost.setAttribute("data-duration", "3");
+    root.appendChild(firstHost);
+
+    const firstVideo = document.createElement("video");
+    firstVideo.setAttribute("data-start", "0");
+    firstVideo.setAttribute("data-duration", "3");
+    firstHost.appendChild(firstVideo);
+
+    const secondHost = document.createElement("div");
+    secondHost.setAttribute("data-composition-id", "second");
+    secondHost.setAttribute("data-composition-file", "compositions/second.html");
+    secondHost.setAttribute("data-start", "3");
+    secondHost.setAttribute("data-duration", "3");
+    root.appendChild(secondHost);
+
+    const secondVideo = document.createElement("video");
+    secondVideo.setAttribute("data-start", "0");
+    secondVideo.setAttribute("data-duration", "3");
+    secondHost.appendChild(secondVideo);
+
+    window.__timelines = {
+      main: createMockTimeline(6),
+      first: createMockTimeline(3),
+      second: createMockTimeline(3),
+    };
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(4);
+
+    expect(firstHost.style.visibility).toBe("hidden");
+    expect(firstVideo.style.visibility).toBe("hidden");
+    expect(secondHost.style.visibility).toBe("visible");
+    expect(secondVideo.style.visibility).toBe("visible");
+  });
+
   it("updates visibility for timed elements inside nested compositions", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

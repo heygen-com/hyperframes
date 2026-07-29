@@ -628,10 +628,16 @@ export function initSandboxRuntimeModular(): void {
       return false;
     }
 
-    const start =
-      tag === "video" || tag === "audio"
-        ? resolveMediaStartSeconds(rawNode, 0)
-        : resolveStartForElement(rawNode, 0);
+    const isMedia = tag === "video" || tag === "audio";
+    const mediaCompositionHost = isMedia
+      ? rawNode.closest("[data-composition-src], [data-composition-file]")
+      : null;
+    const mediaCompositionStart = mediaCompositionHost
+      ? resolveStartForElement(mediaCompositionHost, 0)
+      : 0;
+    const start = isMedia
+      ? resolveMediaStartSeconds(rawNode, mediaCompositionStart)
+      : resolveStartForElement(rawNode, 0);
     let duration = resolveDurationForElement(rawNode);
     const compId = rawNode.getAttribute("data-composition-id");
     if (compId) {

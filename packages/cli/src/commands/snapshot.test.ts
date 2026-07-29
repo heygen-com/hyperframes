@@ -5,6 +5,7 @@ import {
   formatSnapshotTimestamp,
   parseZoomScale,
   requireSnapshotFfmpeg,
+  resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
   tailFrameTime,
 } from "./snapshot.js";
@@ -151,6 +152,26 @@ describe("resolveSnapshotVideoFrameTime", () => {
     const result = resolveSnapshotVideoFrameTime(input);
     if (expected === null) expect(result).toBeNull();
     else expect(result).toBeCloseTo(expected, 6);
+  });
+});
+
+describe("resolveSnapshotVideoClipStart", () => {
+  it("offsets a scene-local video start by its later template host", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 0,
+        templateHostStart: 3,
+      }),
+    ).toBe(3);
+  });
+
+  it("keeps top-level video starts unchanged", () => {
+    expect(
+      resolveSnapshotVideoClipStart({
+        authoredStart: 3,
+        templateHostStart: null,
+      }),
+    ).toBe(3);
   });
 });
 

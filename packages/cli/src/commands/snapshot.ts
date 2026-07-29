@@ -93,6 +93,16 @@ export function resolveSnapshotVideoFrameTime(input: {
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
 }
 
+/** Convert a video's scene-local authored start into root timeline time when
+ * it lives inside a template-mounted composition host. Top-level videos have
+ * no template host and therefore retain their authored start unchanged. */
+export function resolveSnapshotVideoClipStart(input: {
+  authoredStart: number;
+  templateHostStart: number | null;
+}): number {
+  return input.authoredStart + (input.templateHostStart ?? 0);
+}
+
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   if (ffmpegPath) return ffmpegPath;
   throw new Error(
@@ -399,10 +409,16 @@ async function captureSnapshots(
         if (cameraExpr) await page.evaluate(cameraExpr);
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          const candidates = await page.evaluate((t: number) => {
+          const candidates = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("video[data-start]")).map((el) => {
               const v = el as HTMLVideoElement;
-              const start = parseFloat(v.dataset.start ?? "0") || 0;
+              const authoredStart = parseFloat(v.dataset.start ?? "0") || 0;
+              const templateHost = v.closest<HTMLElement>(
+                "[data-composition-src], [data-composition-file]",
+              );
+              const templateHostStart = templateHost
+                ? parseFloat(templateHost.dataset.start ?? "0") || 0
+                : null;
               const rawRate = v.defaultPlaybackRate;
               const playbackRate =
                 Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
@@ -416,30 +432,40 @@ async function captureSnapshots(
                   : srcDur > 0
                     ? Math.max(0, (srcDur - mediaStart) / playbackRate)
                     : Number.POSITIVE_INFINITY;
-              let relTime = (t - start) * playbackRate + mediaStart;
-              if (v.loop && srcDur > mediaStart && relTime >= srcDur) {
-                relTime = mediaStart + ((relTime - mediaStart) % (srcDur - mediaStart));
-              }
               return {
                 id: v.id,
                 src: v.currentSrc || v.src,
-                start,
+                authoredStart,
+                templateHostStart,
                 duration,
                 srcDuration: srcDur,
-                relTime,
+                playbackRate,
+                mediaStart,
+                loop: v.loop,
               };
             });
-          }, time);
+          });
           const active = candidates.flatMap((candidate) => {
+            const start = resolveSnapshotVideoClipStart(candidate);
+            let relTime = (time - start) * candidate.playbackRate + candidate.mediaStart;
+            if (
+              candidate.loop &&
+              candidate.srcDuration > candidate.mediaStart &&
+              relTime >= candidate.srcDuration
+            ) {
+              relTime =
+                candidate.mediaStart +
+                ((relTime - candidate.mediaStart) % (candidate.srcDuration - candidate.mediaStart));
+            }
             if (!candidate.id || !candidate.src) return [];
             const frameTime = resolveSnapshotVideoFrameTime({
               globalTime: time,
-              clipStart: candidate.start,
+              clipStart: start,
               clipDuration: candidate.duration,
-              relativeTime: candidate.relTime,
+              relativeTime: relTime,
               sourceDuration: candidate.srcDuration,
             });
-            return frameTime === null ? [] : [{ ...candidate, relTime: frameTime }];
+            return frameTime === null ? [] : [{ ...candidate, start, relTime: frameTime }];
           });
 
           const updates: Array<{ videoId: string; dataUri: string }> = [];
