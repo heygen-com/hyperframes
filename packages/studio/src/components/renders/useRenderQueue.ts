@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { CanvasResolution } from "@hyperframes/parsers";
 import { trackStudioRenderStart } from "../../telemetry/events";
 import { getAnonymousId } from "../../telemetry/config";
 import { generateId } from "../../utils/generateId";
@@ -14,17 +15,10 @@ export interface RenderJob {
   durationMs?: number;
 }
 
-// Mirrors `CanvasResolution` from @hyperframes/core. Kept local because
-// studio's tsconfig doesn't include node types, and the core barrel
-// transitively pulls in modules with `node:fs` imports. Drift risk is
-// low (6 string literals kept in sync manually with CANVAS_DIMENSIONS).
-export type ResolutionPreset =
-  | "landscape"
-  | "portrait"
-  | "landscape-4k"
-  | "portrait-4k"
-  | "square"
-  | "square-4k";
+// The CLI consumes this same source through @hyperframes/core's re-export.
+// Importing from the browser-safe parsers package avoids the core barrel's
+// Node-only transitive modules without duplicating the preset union in Studio.
+export type ResolutionPreset = CanvasResolution;
 
 export interface StartRenderOptions {
   fps?: number;

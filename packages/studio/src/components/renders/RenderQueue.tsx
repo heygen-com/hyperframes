@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useId } from "react";
+import { CANVAS_DIMENSIONS } from "@hyperframes/parsers";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
@@ -51,17 +52,6 @@ const SCALE_LABEL: Record<RenderScale, string> = {
   auto: "Auto",
   "1080p": "1080p",
   "4k": "4K",
-};
-
-// Mirrors `CANVAS_DIMENSIONS` in @hyperframes/core. Studio can't import from
-// the core barrel (it transitively pulls in node:fs) and the values are stable.
-const CANVAS_DIMENSIONS: Record<ResolutionPreset, CompositionDimensions> = {
-  landscape: { width: 1920, height: 1080 },
-  portrait: { width: 1080, height: 1920 },
-  "landscape-4k": { width: 3840, height: 2160 },
-  "portrait-4k": { width: 2160, height: 3840 },
-  square: { width: 1080, height: 1080 },
-  "square-4k": { width: 2160, height: 2160 },
 };
 
 type CompAspect = "landscape" | "portrait" | "square";
@@ -254,7 +244,7 @@ function FormatExportButton({
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
   const [quality, setQuality] = useState<"draft" | "standard" | "high">(persisted.quality);
-  const [resolution, setResolution] = useState<ResolutionPreset | "auto">("auto");
+  const [resolution, setResolution] = useState<RenderScale>("auto");
   const [fps, setFps] = useState<24 | 30 | 60>(persisted.fps);
 
   // MOV (ProRes) is a fixed-quality codec — quality selector has no effect.
@@ -290,7 +280,7 @@ function FormatExportButton({
           <span className="text-[10px] text-panel-text-4">Resolution</span>
           <select
             value={resolution}
-            onChange={(e) => setResolution(e.target.value as ResolutionPreset | "auto")}
+            onChange={(e) => setResolution(e.target.value as RenderScale)}
             disabled={isRendering}
             className={selectCls}
           >
@@ -352,8 +342,9 @@ function FormatExportButton({
           // loading already disables the button; this guard also stops a
           // double-click in the same frame from enqueueing two renders.
           if (isRendering) return;
-          trackStudioEvent("render_start", { format, quality, resolution, fps });
-          void onStartRender(format, quality, resolution, fps);
+          const outputResolution = resolveResolution(resolution, compositionDimensions);
+          trackStudioEvent("render_start", { format, quality, resolution: outputResolution, fps });
+          void onStartRender(format, quality, outputResolution, fps);
         }}
         className="w-full text-[11px] font-semibold"
       >
