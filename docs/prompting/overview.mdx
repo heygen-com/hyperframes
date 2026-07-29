@@ -48,19 +48,19 @@ The installer shows a picker. Select the **core skills** below — every project
 | `/media-use`            | Media OS — TTS voiceover (`tts`), `transcribe`, `remove-background`, plus BGM / SFX / image resolution |
 | `/hyperframes-registry` | Block and component installation via `hyperframes add`                     |
 | `/hyperframes-keyframes`| Seek-safe keyframe authoring across runtimes, plus `hyperframes keyframes` diagnostics |
-| `/general-video`        | The general authoring workflow — fallback for any video that doesn't match a specific workflow below |
+| `/general-video`        | The general authoring workflow — multi-scene pieces, reels, montages, remixes, and the home of **companion mode**; the fallback when no workflow below fits |
 
 **Optional workflows — add the ones that match your inputs** (`/hyperframes` routes to whichever you've installed)
 
 | Slash command            | Input → output                                                              |
 | ------------------------ | --------------------------------------------------------------------------- |
 | `/product-launch-video`  | Any website URL / brief / script → launch or promo video, or a site tour / showcase |
-| `/faceless-explainer`    | Arbitrary text (no URL) → faceless explainer with its own TTS narration     |
+| `/faceless-explainer`    | Arbitrary text (no URL, no footage) → faceless explainer — every visual invented (typography, diagrams, data-viz) |
 | `/pr-to-video`           | A GitHub PR → code-change explainer                                         |
 | `/embedded-captions`     | An existing talking-head video → the same footage with captions / subtitles |
-| `/talking-head-recut`      | An existing talking-head video → footage packaged with designed graphic cards |
-| `/motion-graphics`       | A short, unnarrated, design-led motion graphic (logo sting, kinetic type, stat / chart) |
-| `/music-to-video`        | A music track + your images → beat-synced video (lyric / slideshow / kinetic promo) |
+| `/talking-head-recut`      | An existing talking-head video → footage packaged with transcript-synced graphic overlays (kinetic titles, lower-thirds, PiP) |
+| `/motion-graphics`       | A logo / stat / tweet / brief → a short (~10s) unnarrated motion graphic (kinetic type, count-up, logo sting) — MP4 or transparent overlay |
+| `/music-to-video`        | A music track (or a video's audio) → beat-synced video (lyric / slideshow / kinetic promo); your images optional, cut on the beat |
 | `/slideshow`             | A deck outline or slides → navigable presentation with presenter mode (not a rendered MP4) |
 | `/remotion-to-hyperframes` | Port an existing Remotion (React) composition to HyperFrames HTML         |
 | `/figma`                 | A Figma file / frame / URL → imported assets, brand tokens, and reconstructed motion |
