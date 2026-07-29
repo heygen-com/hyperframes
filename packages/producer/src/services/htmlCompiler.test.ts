@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { defaultLogger } from "../logger.js";
 import {
   collectExternalAssets,
@@ -1763,6 +1764,58 @@ h1 { font-size: 2rem; }`;
 });
 
 describe("discoverAudioVolumeAutomationFromTimeline", () => {
+  it("emits plateau boundaries around a sampled volume change", async () => {
+    class TestAudioElement {
+      id = "music";
+      dataset = { start: "0", duration: "3", volume: "0.8" };
+      volume = 0.8;
+    }
+    class TestVideoElement {}
+
+    const audio = new TestAudioElement();
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousAudioElement = globalThis.HTMLAudioElement;
+    const previousVideoElement = globalThis.HTMLVideoElement;
+
+    globalThis.window = {
+      __timelines: {
+        root: {
+          totalTime: (time: number) => {
+            audio.volume = time < 1.05 ? 0.8 : 0.2;
+          },
+        },
+      },
+    } as any;
+    globalThis.document = {
+      querySelector: (selector: string) =>
+        selector === "[data-composition-id]"
+          ? { getAttribute: (name: string) => (name === "data-composition-id" ? "root" : null) }
+          : null,
+      getElementById: (id: string) => (id === "music" ? audio : null),
+    } as any;
+    globalThis.HTMLAudioElement = TestAudioElement as any;
+    globalThis.HTMLVideoElement = TestVideoElement as any;
+
+    try {
+      const page = {
+        evaluate: async (fn: (arg: unknown) => unknown, arg: unknown) => fn(arg),
+      } as any;
+
+      const [automation] = await discoverAudioVolumeAutomationFromTimeline(page, ["music"], 3, 10);
+
+      expect(automation?.keyframes).toContainEqual({ time: 1, volume: 0.8 });
+      expect(automation?.keyframes).toContainEqual({ time: 1.1, volume: 0.2 });
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 0.5)).toBeCloseTo(0.8, 6);
+      expect(interpolateVolumeGain(automation?.keyframes ?? [], 1.5)).toBeCloseTo(0.2, 6);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+      globalThis.HTMLAudioElement = previousAudioElement;
+      globalThis.HTMLVideoElement = previousVideoElement;
+    }
+  });
+
   it("prefers runtime duration over stale data-end while sampling video-derived audio", async () => {
     class TestAudioElement {}
     class TestVideoElement {
