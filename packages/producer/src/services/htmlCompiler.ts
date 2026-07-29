@@ -10,7 +10,7 @@
  * recursively extracting nested media from sub-sub-compositions.
  */
 
-import { readFileSync, existsSync, mkdirSync, statSync } from "fs";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1661,6 +1661,21 @@ const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/g
 // serve/copy project assets at their authored relative paths.
 const MAX_LOCAL_FONT_DATA_URI_BYTES = 5 * 1024 * 1024;
 
+type LocalFontRead = { kind: "file-backed"; fileSize: number } | { kind: "inline"; buffer: Buffer };
+
+function readLocalFont(absPath: string): LocalFontRead {
+  const file = openSync(absPath, "r");
+  try {
+    const fileSize = fstatSync(file).size;
+    if (fileSize > MAX_LOCAL_FONT_DATA_URI_BYTES) {
+      return { kind: "file-backed", fileSize };
+    }
+    return { kind: "inline", buffer: readFileSync(file) };
+  } finally {
+    closeSync(file);
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("./fontCompression.js");
@@ -1684,24 +1699,22 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir)) continue;
-        if (!existsSync(absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
-          const fileSize = statSync(absPath).size;
-          if (fileSize > MAX_LOCAL_FONT_DATA_URI_BYTES) {
-            defaultLogger.info(
-              `[Compiler] Kept large local font file-backed: ${localPath} (${(fileSize / 1024 / 1024).toFixed(1)} MB)`,
-            );
-            embeddedPaths.add(localPath);
-            continue;
-          }
           let dataUri = dataUriByAbsolutePath.get(absPath);
           if (!dataUri) {
-            const buffer = readFileSync(absPath);
-            dataUri = await toDataUri(buffer, ext);
+            const font = readLocalFont(absPath);
+            if (font.kind === "file-backed") {
+              defaultLogger.info(
+                `[Compiler] Kept large local font file-backed: ${localPath} (${(font.fileSize / 1024 / 1024).toFixed(1)} MB)`,
+              );
+              embeddedPaths.add(localPath);
+              continue;
+            }
+            dataUri = await toDataUri(font.buffer, ext);
             dataUriByAbsolutePath.set(absPath, dataUri);
             defaultLogger.info(
-              `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
+              `[Compiler] Embedded local font file: ${localPath} (${(font.buffer.length / 1024).toFixed(0)} KB → data URI)`,
             );
           }
           result = result.replaceAll(localPath, dataUri);
