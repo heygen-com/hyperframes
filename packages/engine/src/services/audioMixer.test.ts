@@ -844,3 +844,15 @@ describe("parseAudioElements — relative data-start resolution", () => {
     expect(track!.start).toBe(4);
   });
 });
+
+describe("parseAudioElements — hidden tracks", () => {
+  it("excludes an audio element marked data-hidden from the render mix", () => {
+    const html =
+      `<div data-composition-id="main" data-start="0" data-duration="3">` +
+      `<audio id="master" src="master.wav" data-start="0" data-duration="3"></audio>` +
+      `<audio id="hidden" src="hidden.wav" data-start="0" data-duration="3" data-hidden></audio>` +
+      `</div>`;
+
+    expect(parseAudioElements(html).map((track) => track.id)).toEqual(["master"]);
+  });
+});

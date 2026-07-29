@@ -342,7 +342,7 @@ export function parseAudioElements(html: string): AudioElement[] {
 
   for (const el of document.querySelectorAll("audio[id][src]")) {
     const id = el.getAttribute("id");
-    if (!id || !el.getAttribute("src")) continue;
+    if (!id || !el.getAttribute("src") || el.hasAttribute("data-hidden")) continue;
     elements.push(build(el, id, "audio"));
   }
 
