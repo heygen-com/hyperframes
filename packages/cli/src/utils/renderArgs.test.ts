@@ -118,6 +118,17 @@ describe("resolveDiagnosticNavigationTimeoutMs", () => {
       resolveDiagnosticNavigationTimeoutMs({ PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "invalid" }),
     ).toBe(10_000);
   });
+
+  it("raises the diagnostic navigation budget to a larger caller-provided minimum", () => {
+    expect(resolveDiagnosticNavigationTimeoutMs({}, 30_000)).toBe(30_000);
+    expect(resolveDiagnosticNavigationTimeoutMs({}, 3_000)).toBe(10_000);
+    expect(
+      resolveDiagnosticNavigationTimeoutMs(
+        { PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS: "90000" },
+        30_000,
+      ),
+    ).toBe(90_000);
+  });
 });
 
 describe("parseCompositionEntryArg", () => {

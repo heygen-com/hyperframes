@@ -165,6 +165,7 @@ export async function runBrowserCheck(
   try {
     const launchSettleStart = Date.now();
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
       browserGpuMode: resolveCliChromeGpuMode(),
@@ -225,6 +226,7 @@ export async function captureFindingCrops(
   const written: string[] = [];
   try {
     const session = await openSettledCompositionPage(html, server.url, {
+      navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "capturing finding crops",
       browserGpuMode: resolveCliChromeGpuMode(),
