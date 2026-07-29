@@ -1,6 +1,5 @@
 import type { RightPanelTab } from "./studioHelpers";
 import { buildProjectHash, parseProjectHashRoute } from "./projectRouting";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { roundTo3 } from "./rounding";
 
 export interface StudioUrlSelectionState {
@@ -34,17 +33,9 @@ export function resolveMasterCompositionPath(fileTree: string[]): string | null 
   return fileTree.find((p) => p.endsWith(".html")) ?? null;
 }
 
-export function normalizeStudioUrlPanelTab(
-  tab: RightPanelTab | null,
-  options: {
-    inspectorPanelsEnabled?: boolean;
-  } = {},
-): RightPanelTab | null {
+export function normalizeStudioUrlPanelTab(tab: RightPanelTab | null): RightPanelTab | null {
   if (!tab) return null;
   if (!VALID_TABS.includes(tab)) return null;
-  const inspectorPanelsEnabled = options.inspectorPanelsEnabled ?? STUDIO_INSPECTOR_PANELS_ENABLED;
-
-  if (!inspectorPanelsEnabled && tab !== "renders") return "renders";
   return tab;
 }
 

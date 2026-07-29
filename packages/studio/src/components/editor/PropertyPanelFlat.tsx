@@ -16,7 +16,6 @@ import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
-import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePlayerStore } from "../../player";
 import {
@@ -224,7 +223,6 @@ export function PropertyPanelFlat({
   // Match the legacy Motion gate while preserving TypeScript narrowing.
   const showMotionTiming = Boolean(sections.timing);
   const gsapEffectHandlers =
-    STUDIO_GSAP_PANEL_ENABLED &&
     onUpdateGsapProperty &&
     onUpdateGsapMeta &&
     onDeleteGsapAnimation &&

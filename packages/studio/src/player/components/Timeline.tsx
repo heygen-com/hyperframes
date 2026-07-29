@@ -32,7 +32,6 @@ import {
   useTimelineTrackLayout,
 } from "./useTimelineTrackLayout";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
-import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { useStudioPlaybackContextOptional } from "../../contexts/StudioContext";
@@ -126,7 +125,7 @@ export const Timeline = memo(function Timeline({
       ),
     [gsapAnimations],
   );
-  const labelMode = STUDIO_KEYFRAMES_ENABLED && hasKeyframedClips;
+  const labelMode = hasKeyframedClips;
   // Without the label column the pre-t=0 breathing room is still TRACKS_LEFT_PAD
   // (dropping it would jam clip 0 against the gutter on every non-keyframed
   // composition); in label mode the 232px label column already provides it.

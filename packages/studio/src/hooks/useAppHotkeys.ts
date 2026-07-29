@@ -7,7 +7,6 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
-import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
@@ -258,7 +257,7 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
     }
   }
 
-  if (STUDIO_RAZOR_TOOL_ENABLED && key === "b" && !event.shiftKey && !event.altKey) {
+  if (key === "b" && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     const { activeTool, setActiveTool } = usePlayerStore.getState();
     setActiveTool(activeTool === "razor" ? "select" : "razor");

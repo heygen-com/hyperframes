@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import { useGsapAnimationsForElement, usePopulateKeyframeCacheForFile } from "./useGsapTweenCache";
@@ -195,7 +194,7 @@ export function useDomEditWiring({
   const gsapSourceFile = domEditSelection?.sourceFile || activeCompPath || "index.html";
 
   usePopulateKeyframeCacheForFile(
-    STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
+    projectId ?? null,
     gsapSourceFile,
     gsapCacheVersion,
     previewIframeRef,
@@ -206,7 +205,7 @@ export function useDomEditWiring({
     multipleTimelines: gsapMultipleTimelines,
     unsupportedTimelinePattern: gsapUnsupportedTimelinePattern,
   } = useGsapAnimationsForElement(
-    STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
+    projectId ?? null,
     gsapSourceFile,
     domEditSelection
       ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }

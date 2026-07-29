@@ -2,7 +2,6 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
-import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import type { DomEditSelection } from "./domEditingTypes";
@@ -69,7 +68,7 @@ function KeyframeGutter({
   | "onConvertToKeyframes"
 >) {
   const track = useTrackDesignInput();
-  if (!STUDIO_KEYFRAMES_ENABLED || !gsapAnimId) return null;
+  if (!gsapAnimId) return null;
   const hasKeyframesOnProp = Boolean(navKeyframes?.some((kf) => property in kf.properties));
   return (
     <span data-flat-kf-gutter="true" style={{ opacity: hasKeyframesOnProp ? 1 : 0.3 }}>

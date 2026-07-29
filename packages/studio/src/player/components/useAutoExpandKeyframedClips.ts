@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../store/playerStore";
-import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { animationContributesLane } from "./TimelinePropertyLanes";
 
@@ -34,7 +33,6 @@ export function useAutoExpandKeyframedClips(gsapAnimations: Map<string, GsapAnim
   const projectId = useStudioShellContextOptional()?.projectId ?? null;
   const seen = useRef({ projectId, source: gsapAnimations, clips: new Set<string>() });
   useEffect(() => {
-    if (!STUDIO_KEYFRAMES_ENABLED) return;
     if (seen.current.projectId !== projectId) {
       const sourceChanged = seen.current.source !== gsapAnimations;
       seen.current = { projectId, source: gsapAnimations, clips: new Set() };

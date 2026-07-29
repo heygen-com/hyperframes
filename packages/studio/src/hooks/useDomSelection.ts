@@ -16,7 +16,6 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -157,14 +156,6 @@ export function useDomSelection({
       },
     ) => {
       if (!selection) {
-        domEditSelectionRef.current = null;
-        domEditGroupSelectionsRef.current = [];
-        setDomEditSelection(null);
-        setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
-        return;
-      }
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
@@ -370,7 +361,6 @@ export function useDomSelection({
 
   const handleTimelineElementSelect = useCallback(
     async (element: TimelineElement | null) => {
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
       const seq = ++timelineSelectSeqRef.current;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
@@ -513,14 +503,6 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
-      // Honor the inspector-panels kill switch like applyDomSelection does.
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
-        domEditSelectionRef.current = null;
-        domEditGroupSelectionsRef.current = [];
-        setDomEditSelection(null);
-        setDomEditGroupSelections([]);
-        return;
-      }
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
@@ -556,15 +538,6 @@ export function useDomSelection({
     },
     [applyDomSelection, timelineElements, setSelectedTimelineElementId],
   );
-
-  // Disabled inspector effect
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    if (STUDIO_INSPECTOR_PANELS_ENABLED) return;
-    updateDomEditHoverSelection(null);
-    applyDomSelection(null, { revealPanel: false });
-    if (rightPanelTab !== "renders") setRightPanelTab("renders");
-  }, [applyDomSelection, rightPanelTab, updateDomEditHoverSelection, setRightPanelTab]);
 
   return {
     // State

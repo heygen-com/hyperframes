@@ -12,7 +12,6 @@ import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { BlocksTab, type BlockPreviewInfo } from "./BlocksTab";
 import { FileTree } from "../editor/FileTree";
-import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability";
 import { Tooltip } from "../ui";
 
 export type SidebarTab = "compositions" | "assets" | "code" | "blocks";
@@ -127,11 +126,7 @@ export const LeftSidebar = memo(
               <div className="flex items-center gap-2">
                 <div
                   className="grid min-w-0 flex-1 gap-0.5 rounded-[18px] bg-neutral-900 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-                  style={{
-                    gridTemplateColumns: STUDIO_BLOCKS_PANEL_ENABLED
-                      ? "1fr 1fr 1fr 1fr"
-                      : "1fr 1fr 1fr",
-                  }}
+                  style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}
                 >
                   <Tooltip label="Source code editor" side="bottom">
                     <button
@@ -172,21 +167,19 @@ export const LeftSidebar = memo(
                       Assets
                     </button>
                   </Tooltip>
-                  {STUDIO_BLOCKS_PANEL_ENABLED && (
-                    <Tooltip label="Browse blocks and components" side="bottom">
-                      <button
-                        type="button"
-                        onClick={() => selectTab("blocks")}
-                        className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
-                          tab === "blocks"
-                            ? "bg-neutral-800 text-white"
-                            : "text-neutral-500 hover:text-neutral-200"
-                        }`}
-                      >
-                        Catalog
-                      </button>
-                    </Tooltip>
-                  )}
+                  <Tooltip label="Browse blocks and components" side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => selectTab("blocks")}
+                      className={`rounded-[14px] px-1.5 py-2 text-[10px] font-semibold truncate transition-all ${
+                        tab === "blocks"
+                          ? "bg-neutral-800 text-white"
+                          : "text-neutral-500 hover:text-neutral-200"
+                      }`}
+                    >
+                      Catalog
+                    </button>
+                  </Tooltip>
                 </div>
                 {onToggleCollapse && (
                   <button
@@ -267,7 +260,7 @@ export const LeftSidebar = memo(
               </div>
             )}
 
-            {STUDIO_BLOCKS_PANEL_ENABLED && tab === "blocks" && (
+            {tab === "blocks" && (
               <BlocksTab onAddBlock={onAddBlock} onPreviewBlock={onPreviewBlock} />
             )}
 

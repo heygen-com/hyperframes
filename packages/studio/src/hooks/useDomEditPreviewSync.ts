@@ -4,7 +4,6 @@
  * Extracted from useDomEditSession to keep file sizes under the 600-line limit.
  */
 import { useEffect, useRef } from "react";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
@@ -53,7 +52,7 @@ export function useDomEditPreviewSync({
 
     // fallow-ignore-next-line complexity
     const syncSelectionFromDocument = async () => {
-      if (!STUDIO_INSPECTOR_PANELS_ENABLED || captionEditMode) return;
+      if (captionEditMode) return;
       const currentSelection = domEditSelectionRef.current;
       if (!currentSelection) return;
       let doc: Document | null = null;

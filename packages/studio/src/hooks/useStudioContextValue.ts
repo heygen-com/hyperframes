@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
@@ -85,17 +84,14 @@ export function useInspectorState(
   // fallow-ignore-next-line complexity
   return useMemo(() => {
     const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
-    const layersPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.layers;
-    const designPanelActive =
-      STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
+    const layersPanelActive = inspectorTabActive && rightInspectorPanes.layers;
+    const designPanelActive = inspectorTabActive && rightInspectorPanes.design;
     const inspectorPanelActive = layersPanelActive || designPanelActive;
     return {
       layersPanelActive,
       designPanelActive,
       inspectorPanelActive,
-      inspectorButtonActive:
-        STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
+      inspectorButtonActive: !rightCollapsed && inspectorPanelActive,
       // Deliberately wider than shouldShowSelectedDomBounds: the on-canvas path
       // handles ARE the arc-drag affordance, so gating them on an open Inspector
       // would make keyframe path editing reachable only from a side panel.

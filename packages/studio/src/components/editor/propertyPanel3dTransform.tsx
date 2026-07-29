@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { DomEditSelection } from "./domEditingTypes";
-import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { MetricField } from "./propertyPanelPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue, parsePxMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -259,7 +258,7 @@ function Transform3dField({
           }}
         />
       </div>
-      {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
+      {(gsapAnimId || onCommitAnimatedProperty) && (
         <KeyframeNavigation
           property={prop}
           keyframes={ctx.gsapKeyframes}

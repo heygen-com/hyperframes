@@ -1,9 +1,5 @@
 import { useRef, type MouseEvent } from "react";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_MANUAL_EDITING_DISABLED_TITLE,
-} from "./editor/manualEditingAvailability";
 import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -328,16 +324,10 @@ export function StudioHeader({
             <span>{capturing ? "Capturing…" : "Capture"}</span>
           </a>
         </Tooltip>
-        <Tooltip
-          label={
-            STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-          }
-          side="bottom"
-        >
+        <Tooltip label="Inspector" side="bottom">
           <button
             type="button"
             onClick={() => {
-              if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
               if (rightCollapsed || !inspectorPanelActive) {
                 trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
                 setRightPanelTab("design");
@@ -349,18 +339,13 @@ export function StudioHeader({
               // the panel shouldn't deselect the element.
               setRightCollapsed(true);
             }}
-            disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
             aria-pressed={inspectorButtonActive}
             className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors active:scale-[0.98] ${
               inspectorButtonActive
                 ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
-                : STUDIO_INSPECTOR_PANELS_ENABLED
-                  ? "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
-                  : "cursor-not-allowed border-transparent text-neutral-700"
+                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
             }`}
-            aria-label={
-              STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
-            }
+            aria-label="Inspector"
           >
             <svg
               width="12"

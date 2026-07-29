@@ -10,10 +10,7 @@ import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import {
-  STUDIO_FLAT_INSPECTOR_ENABLED,
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-} from "./editor/manualEditingAvailability";
+import { STUDIO_FLAT_INSPECTOR_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
@@ -229,8 +226,7 @@ export function StudioRightPanel({
     setRightPanelTab,
   });
   const designPaneOpen = inspectorTabActive && rightInspectorPanes.design && designPanelActive;
-  const layersPaneOpen =
-    inspectorTabActive && rightInspectorPanes.layers && STUDIO_INSPECTOR_PANELS_ENABLED;
+  const layersPaneOpen = inspectorTabActive && rightInspectorPanes.layers;
 
   const handleInspectorPaneButtonClick = (pane: "design" | "layers") => {
     if (!inspectorTabActive) {
@@ -483,22 +479,18 @@ export function StudioRightPanel({
         ) : (
           <>
             <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
-              {STUDIO_INSPECTOR_PANELS_ENABLED && (
-                <>
-                  <PanelTabButton
-                    label="Design"
-                    tooltip="Element styles and properties"
-                    active={designPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("design")}
-                  />
-                  <PanelTabButton
-                    label="Layers"
-                    tooltip="Composition layer stack"
-                    active={layersPaneOpen}
-                    onClick={() => handleInspectorPaneButtonClick("layers")}
-                  />
-                </>
-              )}
+              <PanelTabButton
+                label="Design"
+                tooltip="Element styles and properties"
+                active={designPaneOpen}
+                onClick={() => handleInspectorPaneButtonClick("design")}
+              />
+              <PanelTabButton
+                label="Layers"
+                tooltip="Composition layer stack"
+                active={layersPaneOpen}
+                onClick={() => handleInspectorPaneButtonClick("layers")}
+              />
               <PanelTabButton
                 label={renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
                 tooltip="Render queue and exports"

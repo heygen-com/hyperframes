@@ -43,7 +43,6 @@ import {
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
-import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
 import { EditorShell } from "./components/EditorShell";
@@ -263,9 +262,7 @@ export function StudioApp() {
     onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
-    onToggleRecording: STUDIO_KEYFRAMES_ENABLED
-      ? () => handleToggleRecordingRef.current()
-      : undefined,
+    onToggleRecording: () => handleToggleRecordingRef.current(),
   });
   const sidebarTabRef = useRef({
     select: (t: SidebarTab) => leftSidebarRef.current?.selectTab(t),
@@ -367,7 +364,7 @@ export function StudioApp() {
     isGestureRecordingRef,
   });
   handleToggleRecordingRef.current = handleToggleRecording;
-  const recordingToggle = STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined;
+  const recordingToggle = handleToggleRecording;
   const canvasRectRef = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {

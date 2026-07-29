@@ -34,12 +34,8 @@ describe("resolveMasterCompositionPath", () => {
 
 describe("normalizeStudioUrlPanelTab", () => {
   it("accepts slideshow and variables as valid tabs", () => {
-    expect(normalizeStudioUrlPanelTab("slideshow", { inspectorPanelsEnabled: true })).toBe(
-      "slideshow",
-    );
-    expect(normalizeStudioUrlPanelTab("variables", { inspectorPanelsEnabled: true })).toBe(
-      "variables",
-    );
+    expect(normalizeStudioUrlPanelTab("slideshow")).toBe("slideshow");
+    expect(normalizeStudioUrlPanelTab("variables")).toBe("variables");
   });
 });
 
@@ -184,9 +180,10 @@ describe("studio url state", () => {
     ).toBe("compositions/title.html");
   });
 
-  it("normalizes url tabs against feature flags", () => {
+  it("passes through every valid tab and rejects unknown ones", () => {
     expect(normalizeStudioUrlPanelTab("renders")).toBe("renders");
-    expect(normalizeStudioUrlPanelTab("layers", { inspectorPanelsEnabled: false })).toBe("renders");
+    expect(normalizeStudioUrlPanelTab("layers")).toBe("layers");
+    expect(normalizeStudioUrlPanelTab("nope" as never)).toBeNull();
   });
 
   it("hydrates seek first, preserves the initial url state, then restores selection", async () => {

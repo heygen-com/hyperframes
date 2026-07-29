@@ -17,7 +17,6 @@ import {
 } from "./timelineMultiDragPreview";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
-import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { trackStudioKeyframeLaneExpand } from "../../telemetry/events";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
@@ -134,9 +133,12 @@ export function TimelineLanes({
           // The one keyframed element this track shows lanes for (selected, else
           // most lanes). A track can hold several elements; scoping to one keeps
           // their keyframes from cramming into a single row.
-          const keyframeClip = STUDIO_KEYFRAMES_ENABLED
-            ? resolveTrackKeyframeClip(els, laneCounts, selectedElementId, selectedElementIds)
-            : null;
+          const keyframeClip = resolveTrackKeyframeClip(
+            els,
+            laneCounts,
+            selectedElementId,
+            selectedElementIds,
+          );
           const keyframeClipKey = keyframeClip?.key ?? keyframeClip?.id;
           const keyframeClipExpanded =
             keyframeClipKey != null && expandedClipIds.has(keyframeClipKey);
@@ -249,8 +251,7 @@ export function TimelineLanes({
                     // Only the track's active keyframe clip shows expanded lanes;
                     // other clips (incl. siblings on a shared track) show compact
                     // diamonds on their own bar instead.
-                    const isTrackKeyframeClip =
-                      STUDIO_KEYFRAMES_ENABLED && elementKey === keyframeClipKey;
+                    const isTrackKeyframeClip = elementKey === keyframeClipKey;
                     const showsLanes = isTrackKeyframeClip && keyframeClipExpanded;
                     const capabilities = getTimelineEditCapabilities(el);
                     const isSelected =
@@ -428,35 +429,32 @@ export function TimelineLanes({
                           renderClipContent,
                           renderClipOverlay,
                         )}
-                        {STUDIO_KEYFRAMES_ENABLED &&
-                          !showsLanes &&
-                          keyframeCache?.get(elementKey) && (
-                            <TimelineClipDiamonds
-                              keyframesData={keyframeCache.get(elementKey)!}
-                              clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                              clipHeightPx={rowHeight - 2 * CLIP_Y}
-                              beatsActive={beatStripOnTrack}
-                              accentColor={clipStyle.accent}
-                              isSelected={isSelected}
-                              currentPercentage={
-                                previewElement.duration > 0
-                                  ? ((currentTime - previewElement.start) /
-                                      previewElement.duration) *
-                                    100
-                                  : 0
-                              }
-                              elementId={elementKey}
-                              selectedKeyframes={selectedKeyframes}
-                              onClickKeyframe={(_elId, target) =>
-                                onClickKeyframe?.(previewElement, target)
-                              }
-                              onShiftClickKeyframe={onShiftClickKeyframe}
-                              onContextMenuKeyframe={onContextMenuKeyframe}
-                              onMoveKeyframe={onMoveKeyframe}
-                              onSelectSegment={onSelectSegment}
-                              suppressClickRef={suppressClickRef}
-                            />
-                          )}
+                        {!showsLanes && keyframeCache?.get(elementKey) && (
+                          <TimelineClipDiamonds
+                            keyframesData={keyframeCache.get(elementKey)!}
+                            clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                            clipHeightPx={rowHeight - 2 * CLIP_Y}
+                            beatsActive={beatStripOnTrack}
+                            accentColor={clipStyle.accent}
+                            isSelected={isSelected}
+                            currentPercentage={
+                              previewElement.duration > 0
+                                ? ((currentTime - previewElement.start) / previewElement.duration) *
+                                  100
+                                : 0
+                            }
+                            elementId={elementKey}
+                            selectedKeyframes={selectedKeyframes}
+                            onClickKeyframe={(_elId, target) =>
+                              onClickKeyframe?.(previewElement, target)
+                            }
+                            onShiftClickKeyframe={onShiftClickKeyframe}
+                            onContextMenuKeyframe={onContextMenuKeyframe}
+                            onMoveKeyframe={onMoveKeyframe}
+                            onSelectSegment={onSelectSegment}
+                            suppressClickRef={suppressClickRef}
+                          />
+                        )}
                       </TimelineClip>
                     );
                     // Mounted for the track's keyframe clip in BOTH disclosure

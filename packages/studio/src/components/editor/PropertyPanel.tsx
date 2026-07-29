@@ -26,11 +26,7 @@ import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
-import {
-  STUDIO_FLAT_INSPECTOR_ENABLED,
-  STUDIO_GSAP_PANEL_ENABLED,
-  STUDIO_KEYFRAMES_ENABLED,
-} from "./manualEditingAvailability";
+import { STUDIO_FLAT_INSPECTOR_ENABLED } from "./manualEditingAvailability";
 import { PropertyPanelFlat } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { usePlayerStore, liveTime } from "../../player";
@@ -396,7 +392,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
                     onCommit={(next) => commitManualOffset("x", next)}
                   />
                 </div>
-                {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                {gsapAnimId && (
                   <KeyframeNavigation
                     property="x"
                     keyframes={navKeyframes}
@@ -423,7 +419,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
                     onCommit={(next) => commitManualOffset("y", next)}
                   />
                 </div>
-                {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                {gsapAnimId && (
                   <KeyframeNavigation
                     property="y"
                     keyframes={navKeyframes}
@@ -450,7 +446,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
                     onCommit={(next) => commitManualSize("width", next)}
                   />
                 </div>
-                {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                {gsapAnimId && (
                   <KeyframeNavigation
                     property="width"
                     keyframes={navKeyframes}
@@ -477,7 +473,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
                     onCommit={(next) => commitManualSize("height", next)}
                   />
                 </div>
-                {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                {gsapAnimId && (
                   <KeyframeNavigation
                     property="height"
                     keyframes={navKeyframes}
@@ -503,7 +499,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
                     onCommit={(next) => commitManualRotation(next.replace("°", ""))}
                   />
                 </div>
-                {STUDIO_KEYFRAMES_ENABLED && gsapAnimId && (
+                {gsapAnimId && (
                   <KeyframeNavigation
                     property="rotation"
                     keyframes={navKeyframes}
@@ -551,8 +547,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           </Section>
         )}
 
-        {STUDIO_GSAP_PANEL_ENABLED &&
-          onUpdateGsapProperty &&
+        {onUpdateGsapProperty &&
           onUpdateGsapMeta &&
           onDeleteGsapAnimation &&
           onAddGsapProperty &&

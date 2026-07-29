@@ -447,9 +447,8 @@ describe("PropertyPanel — Motion group (Plan 3b)", () => {
   it(
     "hides the effect list (showEffects off) when the GSAP edit handlers are absent",
     async () => {
-      // STUDIO_GSAP_PANEL_ENABLED defaults on, but none of the five required
-      // edit handlers are supplied here, so the effect-list half of the
-      // double-gate stays closed — only the Timing row shows.
+      // None of the five required edit handlers are supplied here, so the
+      // effect list stays closed — only the Timing row shows.
       const { host, root } = await renderPanel(true, animatedElement());
       openFlatGroup(host, "Motion");
       const openGroup = openGroupText(host);

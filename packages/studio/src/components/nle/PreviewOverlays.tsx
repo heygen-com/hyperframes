@@ -4,12 +4,6 @@ import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
 import { SnapToolbar } from "../editor/SnapToolbar";
 import { useCompositionDimensions } from "../../hooks/useCompositionDimensions";
-import {
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-  STUDIO_KEYFRAMES_ENABLED,
-  STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
-  STUDIO_PREVIEW_SELECTION_ENABLED,
-} from "../editor/manualEditingAvailability";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import {
   useDomEditActionsContext,
@@ -203,21 +197,17 @@ export function PreviewOverlays({
     return <CaptionOverlay iframeRef={previewIframeRef} />;
   }
 
-  if (!STUDIO_INSPECTOR_PANELS_ENABLED) return null;
-
   return (
     <>
       <DomEditOverlay
         iframeRef={previewIframeRef}
         activeCompositionPath={activeCompPath}
         hoverSelection={
-          STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode && !compositionLoading && !isPlaying
-            ? domEditHoverSelection
-            : null
+          !captionEditMode && !compositionLoading && !isPlaying ? domEditHoverSelection : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
         groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
-        allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !isGestureRecording}
+        allowCanvasMovement={!isGestureRecording}
         onCanvasMouseDown={handlePreviewCanvasMouseDown}
         onCanvasPointerMove={handlePreviewCanvasPointerMove}
         onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
@@ -273,14 +263,12 @@ export function PreviewOverlays({
         onMarqueeSelect={applyMarqueeSelection}
       />
       <SnapToolbar onSnapChange={setSnapPrefs} />
-      {STUDIO_KEYFRAMES_ENABLED && (
-        <MotionPathOverlay
-          iframeRef={previewIframeRef}
-          selection={shouldShowMotionPath ? domEditSelection : null}
-          compositionSize={compositionDimensions}
-          isPlaying={isPlaying}
-        />
-      )}
+      <MotionPathOverlay
+        iframeRef={previewIframeRef}
+        selection={shouldShowMotionPath ? domEditSelection : null}
+        compositionSize={compositionDimensions}
+        isPlaying={isPlaying}
+      />
       {gestureOverlay}
     </>
   );
