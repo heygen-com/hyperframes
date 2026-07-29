@@ -10,7 +10,7 @@
  * recursively extracting nested media from sub-sub-compositions.
  */
 
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1661,19 +1661,20 @@ const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/g
 // serve/copy project assets at their authored relative paths.
 const MAX_LOCAL_FONT_DATA_URI_BYTES = 5 * 1024 * 1024;
 
-type LocalFontRead = { kind: "file-backed"; fileSize: number } | { kind: "inline"; buffer: Buffer };
+type LocalFontRead = { kind: "file-backed" } | { kind: "inline"; buffer: Buffer };
 
-function readLocalFont(absPath: string): LocalFontRead {
-  const file = openSync(absPath, "r");
-  try {
-    const fileSize = fstatSync(file).size;
-    if (fileSize > MAX_LOCAL_FONT_DATA_URI_BYTES) {
-      return { kind: "file-backed", fileSize };
+async function readLocalFont(absPath: string): Promise<LocalFontRead> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of createReadStream(absPath)) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > MAX_LOCAL_FONT_DATA_URI_BYTES) {
+      return { kind: "file-backed" };
     }
-    return { kind: "inline", buffer: readFileSync(file) };
-  } finally {
-    closeSync(file);
+    chunks.push(buffer);
   }
+  return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
 }
 
 // fallow-ignore-next-line complexity
@@ -1703,10 +1704,10 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         try {
           let dataUri = dataUriByAbsolutePath.get(absPath);
           if (!dataUri) {
-            const font = readLocalFont(absPath);
+            const font = await readLocalFont(absPath);
             if (font.kind === "file-backed") {
               defaultLogger.info(
-                `[Compiler] Kept large local font file-backed: ${localPath} (${(font.fileSize / 1024 / 1024).toFixed(1)} MB)`,
+                `[Compiler] Kept large local font file-backed: ${localPath} (> ${(MAX_LOCAL_FONT_DATA_URI_BYTES / 1024 / 1024).toFixed(1)} MB)`,
               );
               embeddedPaths.add(localPath);
               continue;
