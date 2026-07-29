@@ -120,6 +120,7 @@ describe("gif encode args", () => {
     outputPath: "/tmp/hf/demo.gif",
     fps: { num: 15, den: 1 },
     loop: 0,
+    preserveAlpha: false,
   };
 
   it("builds the palettegen pass with diff statistics", () => {
@@ -150,6 +151,21 @@ describe("gif encode args", () => {
       "3",
       "/tmp/hf/demo.gif",
     ]);
+  });
+
+  it("reserves transparency and applies the GIF alpha threshold for RGBA frames", () => {
+    const transparentInput = {
+      ...input,
+      framePattern: "frame_%06d.png",
+      preserveAlpha: true,
+    };
+
+    expect(buildGifPalettegenArgs(transparentInput)).toContain(
+      "fps=15,palettegen=stats_mode=diff:reserve_transparent=1",
+    );
+    expect(buildGifPaletteuseArgs(transparentInput)).toContain(
+      "fps=15 [x]; [x][1:v] paletteuse=dither=sierra2_4a:alpha_threshold=128",
+    );
   });
 });
 
@@ -220,5 +236,49 @@ describe("runEncodeStage config plumbing", () => {
     expect(runFfmpegMock.mock.calls[1]?.[1]?.timeout).toBe(
       resolvedEngineConfig.ffmpegEncodeTimeout,
     );
+  });
+
+  it("encodes alpha GIFs from PNG frames with explicit transparency filters", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const paths = createFramesDir("png");
+
+    await runEncodeStage(
+      makeInput({
+        framesDir: paths.framesDir,
+        outputPath: join(paths.root, "out.gif"),
+        videoOnlyPath: join(paths.root, "video-only.mp4"),
+        isGif: true,
+        needsAlpha: true,
+      }),
+    );
+
+    expect(runFfmpegMock).toHaveBeenCalledTimes(2);
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(paths.framesDir, "frame_%06d.png"));
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(
+      "fps=30,palettegen=stats_mode=diff:reserve_transparent=1",
+    );
+    expect(runFfmpegMock.mock.calls[1]?.[0]).toContain(join(paths.framesDir, "frame_%06d.png"));
+    expect(runFfmpegMock.mock.calls[1]?.[0]).toContain(
+      "fps=30 [x]; [x][1:v] paletteuse=dither=sierra2_4a:alpha_threshold=128",
+    );
+  });
+
+  it("keeps opaque GIF encoding on JPEG frames without alpha-only filters", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const paths = createFramesDir("jpg");
+
+    await runEncodeStage(
+      makeInput({
+        framesDir: paths.framesDir,
+        outputPath: join(paths.root, "out.gif"),
+        videoOnlyPath: join(paths.root, "video-only.mp4"),
+        isGif: true,
+        needsAlpha: false,
+      }),
+    );
+
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(paths.framesDir, "frame_%06d.jpg"));
+    expect(runFfmpegMock.mock.calls[0]?.[0]).not.toContain("reserve_transparent");
+    expect(runFfmpegMock.mock.calls[1]?.[0]).not.toContain("alpha_threshold");
   });
 });

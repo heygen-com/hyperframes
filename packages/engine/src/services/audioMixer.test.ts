@@ -844,3 +844,33 @@ describe("parseAudioElements — relative data-start resolution", () => {
     expect(track!.start).toBe(4);
   });
 });
+
+describe("parseAudioElements — hidden tracks", () => {
+  it("excludes directly hidden audio and audible video from the render mix", () => {
+    const html =
+      `<div data-composition-id="main" data-start="0" data-duration="3">` +
+      `<audio id="master" src="master.wav" data-start="0" data-duration="3"></audio>` +
+      `<audio id="hidden" src="hidden.wav" data-start="0" data-duration="3" data-hidden></audio>` +
+      `<video id="hidden-video" src="hidden.mp4" data-has-audio="true" data-hidden></video>` +
+      `</div>`;
+
+    expect(parseAudioElements(html).map((track) => track.id)).toEqual(["master"]);
+  });
+
+  it("excludes audio and audible video beneath a hidden ancestor", () => {
+    const html =
+      `<div data-composition-id="main" data-start="0" data-duration="3">` +
+      `<audio id="master" src="master.wav" data-start="0" data-duration="3"></audio>` +
+      `<section data-hidden>` +
+      `<audio id="nested-audio" src="nested.wav"></audio>` +
+      `<video id="nested-video" src="nested.mp4" data-has-audio="true"></video>` +
+      `</section>` +
+      `<video id="visible-video" src="visible.mp4" data-has-audio="true"></video>` +
+      `</div>`;
+
+    expect(parseAudioElements(html).map((track) => track.id)).toEqual([
+      "master",
+      "visible-video-audio",
+    ]);
+  });
+});

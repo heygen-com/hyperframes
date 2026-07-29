@@ -118,12 +118,20 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   return result.value;
 }
 
-/** Navigation budget shared by snapshot/check/inspect browser diagnostics. */
+/**
+ * Navigation budget shared by snapshot/check/inspect browser diagnostics.
+ *
+ * The environment variable remains the historical global override. Callers
+ * with their own timeout knob can supply a minimum without shortening that
+ * override or the existing 10-second default.
+ */
 export function resolveDiagnosticNavigationTimeoutMs(
   env: Record<string, string | undefined> = process.env,
+  minimumTimeoutMs = 0,
 ): number {
   const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  const configured = Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+  return Math.max(configured, minimumTimeoutMs);
 }
 
 // ── --composition ──────────────────────────────────────────────────────

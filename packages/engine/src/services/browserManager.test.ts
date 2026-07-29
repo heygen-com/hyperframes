@@ -401,6 +401,127 @@ describe("resolveHeadlessShellPath", () => {
     }
   });
 
+  it.each([
+    {
+      hostPlatform: "darwin",
+      hostArch: "arm64",
+      expectedDirectory: "chrome-headless-shell-mac-arm64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "darwin",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-mac-x64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "linux",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-linux64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "win32",
+      hostArch: "ia32",
+      expectedDirectory: "chrome-headless-shell-win32",
+      expectedExecutable: "chrome-headless-shell.exe",
+    },
+    {
+      hostPlatform: "win32",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-win64",
+      expectedExecutable: "chrome-headless-shell.exe",
+    },
+  ])(
+    "selects only the host-compatible cached shell on $hostPlatform/$hostArch when every platform is present",
+    ({ hostPlatform, hostArch, expectedDirectory, expectedExecutable }) => {
+      const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-platform-"));
+      try {
+        const cacheVersion = join(
+          home,
+          ".cache",
+          "puppeteer",
+          "chrome-headless-shell",
+          "host-152.0.7928.2",
+        );
+        const candidates = [
+          ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+          ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+          ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+          ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
+          ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
+        ] as const;
+        for (const [directory, executable] of candidates) {
+          const binary = join(cacheVersion, directory, executable);
+          mkdirSync(join(binary, ".."), { recursive: true });
+          writeFileSync(binary, "");
+        }
+        const expectedBinary = join(cacheVersion, expectedDirectory, expectedExecutable);
+
+        const env = { ...process.env, HOME: home, USERPROFILE: home };
+        delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.HYPERFRAMES_BROWSER_PATH;
+        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const stdout = execFileSync(
+          "bun",
+          [
+            "--eval",
+            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+          ],
+          { encoding: "utf8", env },
+        );
+
+        expect(stdout).toBe(expectedBinary);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    { hostPlatform: "linux", hostArch: "arm64" },
+    { hostPlatform: "win32", hostArch: "arm64" },
+  ])(
+    "does not select a foreign cached shell on unsupported $hostPlatform/$hostArch",
+    ({ hostPlatform, hostArch }) => {
+      const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-unsupported-"));
+      try {
+        const cacheVersion = join(
+          home,
+          ".cache",
+          "puppeteer",
+          "chrome-headless-shell",
+          "host-152.0.7928.2",
+        );
+        for (const [directory, executable] of [
+          ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+          ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
+        ] as const) {
+          const binary = join(cacheVersion, directory, executable);
+          mkdirSync(join(binary, ".."), { recursive: true });
+          writeFileSync(binary, "");
+        }
+
+        const env = { ...process.env, HOME: home, USERPROFILE: home };
+        delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.HYPERFRAMES_BROWSER_PATH;
+        const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+        const stdout = execFileSync(
+          "bun",
+          [
+            "--eval",
+            `Object.defineProperty(process, "platform", { value: ${JSON.stringify(hostPlatform)} }); Object.defineProperty(process, "arch", { value: ${JSON.stringify(hostArch)} }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+          ],
+          { encoding: "utf8", env },
+        );
+
+        expect(stdout).toBe("");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("reuses chrome-headless-shell from the HyperFrames-managed cache", () => {
     const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-cache-"));
     try {
@@ -429,7 +550,7 @@ describe("resolveHeadlessShellPath", () => {
         "bun",
         [
           "--eval",
-          `import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
+          `Object.defineProperty(process, "platform", { value: "linux" }); Object.defineProperty(process, "arch", { value: "x64" }); import(${JSON.stringify(moduleUrl)}).then(({ resolveHeadlessShellPath }) => process.stdout.write(resolveHeadlessShellPath({}) ?? ""))`,
         ],
         { encoding: "utf8", env },
       );

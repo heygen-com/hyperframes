@@ -130,7 +130,9 @@ function installPuppeteerBrowsersMock(
       executablePath: string;
       path?: string;
       buildId?: string;
+      platform?: string;
     }>;
+    browserPlatform?: string;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string };
     installImpl?: () => Promise<{ executablePath: string }>;
@@ -138,10 +140,15 @@ function installPuppeteerBrowsersMock(
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
     Browser: { CHROMEHEADLESSSHELL: "chrome-headless-shell" },
-    detectBrowserPlatform: () => "linux",
+    detectBrowserPlatform: () => opts.browserPlatform ?? "linux",
     getInstalledBrowsers: opts.installedInHfCacheError
       ? vi.fn().mockRejectedValue(opts.installedInHfCacheError)
-      : vi.fn().mockResolvedValue(opts.installedInHfCache ?? []),
+      : vi.fn().mockResolvedValue(
+          (opts.installedInHfCache ?? []).map((browser) => ({
+            platform: opts.browserPlatform ?? "linux",
+            ...browser,
+          })),
+        ),
     install: vi
       .fn()
       .mockImplementation(
@@ -220,6 +227,41 @@ describe("findBrowser — cache resolution", () => {
 
     expect(result?.executablePath).not.toBe(HF_BINARY);
     expect(result).toEqual({ executablePath: SYSTEM_CHROME, source: "system" });
+  });
+
+  it("ignores a current-version HyperFrames cache entry for another platform", async () => {
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    Object.defineProperty(process, "arch", { value: "arm64", configurable: true });
+    const macArm64Binary = join(
+      HF_CACHE,
+      "chrome-headless-shell",
+      "mac_arm-131.0.6778.85",
+      "chrome-headless-shell-mac-arm64",
+      "chrome-headless-shell",
+    );
+    installFsMocks({ existing: new Set([HF_CACHE, HF_BINARY, macArm64Binary]) });
+    installPuppeteerBrowsersMock({
+      browserPlatform: "mac_arm",
+      installedInHfCache: [
+        {
+          browser: "chrome-headless-shell",
+          executablePath: HF_BINARY,
+          buildId: CHROME_VERSION,
+          platform: "linux",
+        },
+        {
+          browser: "chrome-headless-shell",
+          executablePath: macArm64Binary,
+          buildId: CHROME_VERSION,
+          platform: "mac_arm",
+        },
+      ],
+    });
+
+    const { findBrowser } = await import("./manager.js");
+    const result = await findBrowser();
+
+    expect(result).toEqual({ executablePath: macArm64Binary, source: "cache" });
   });
 
   it("re-downloads when the hyperframes cache manifest points at a missing binary", async () => {
@@ -491,6 +533,91 @@ describe("findBrowser — cache resolution", () => {
 
     expect(result).toEqual({ executablePath: PUPPETEER_BINARY, source: "cache" });
   });
+
+  it.each([
+    {
+      hostPlatform: "darwin",
+      hostArch: "arm64",
+      expectedDirectory: "chrome-headless-shell-mac-arm64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "darwin",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-mac-x64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "linux",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-linux64",
+      expectedExecutable: "chrome-headless-shell",
+    },
+    {
+      hostPlatform: "win32",
+      hostArch: "ia32",
+      expectedDirectory: "chrome-headless-shell-win32",
+      expectedExecutable: "chrome-headless-shell.exe",
+    },
+    {
+      hostPlatform: "win32",
+      hostArch: "x64",
+      expectedDirectory: "chrome-headless-shell-win64",
+      expectedExecutable: "chrome-headless-shell.exe",
+    },
+  ])(
+    "selects only the host-compatible cached shell on $hostPlatform/$hostArch when every platform is present",
+    async ({ hostPlatform, hostArch, expectedDirectory, expectedExecutable }) => {
+      Object.defineProperty(process, "platform", { value: hostPlatform, configurable: true });
+      Object.defineProperty(process, "arch", { value: hostArch, configurable: true });
+      const version = "host-148.0.7778.97";
+      const candidates = [
+        ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+        ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+        ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+        ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
+        ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
+      ] as const;
+      const binaries = candidates.map(([directory, executable]) =>
+        join(PUPPETEER_CACHE, version, directory, executable),
+      );
+      const expectedBinary = join(PUPPETEER_CACHE, version, expectedDirectory, expectedExecutable);
+      installFsMocks({
+        existing: new Set([PUPPETEER_CACHE, ...binaries]),
+        dirs: { [PUPPETEER_CACHE]: [version] },
+      });
+      installPuppeteerBrowsersMock();
+
+      const { findBrowser } = await import("./manager.js");
+      const result = await findBrowser();
+
+      expect(result).toEqual({ executablePath: expectedBinary, source: "cache" });
+    },
+  );
+
+  it.each([
+    { hostPlatform: "linux", hostArch: "arm64" },
+    { hostPlatform: "win32", hostArch: "arm64" },
+  ])(
+    "does not select a foreign cached shell on unsupported $hostPlatform/$hostArch",
+    async ({ hostPlatform, hostArch }) => {
+      Object.defineProperty(process, "platform", { value: hostPlatform, configurable: true });
+      Object.defineProperty(process, "arch", { value: hostArch, configurable: true });
+      const version = "host-148.0.7778.97";
+      const binaries = [
+        join(PUPPETEER_CACHE, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+        join(PUPPETEER_CACHE, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
+      ];
+      installFsMocks({
+        existing: new Set([PUPPETEER_CACHE, ...binaries]),
+        dirs: { [PUPPETEER_CACHE]: [version] },
+      });
+      installPuppeteerBrowsersMock();
+
+      const { findBrowser } = await import("./manager.js");
+      await expect(findBrowser()).resolves.toBeUndefined();
+    },
+  );
 
   it("prefers the puppeteer cache over the hyperframes cache when BOTH are populated", async () => {
     // The HF cache is pinned to `CHROME_VERSION` (131-era) which lags upstream

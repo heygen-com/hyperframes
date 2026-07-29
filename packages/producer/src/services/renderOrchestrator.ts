@@ -101,6 +101,11 @@ import {
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import {
+  outputNeedsAlpha,
+  outputSupportsPageSideShaderCompositing,
+  type RenderOutputFormat,
+} from "./render/renderFormat.js";
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
@@ -284,10 +289,10 @@ export interface RenderConfig {
    * - `"mov"`: ProRes 4444 + `yuva444p10le` → **true alpha channel +
    *   10-bit color**. Sized for editor ingest (Premiere, Final Cut Pro,
    *   DaVinci Resolve), not direct web playback. Audio is muxed as AAC.
-   * - `"gif"`: animated GIF encoded from captured frames with a two-pass
+   * - `"gif"`: animated GIF encoded from captured RGBA frames with a two-pass
    *   FFmpeg palette (`palettegen` + `paletteuse`). Use for PRs, READMEs,
    *   and docs where inline autoplay matters more than file size. No audio
-   *   stream and no alpha channel.
+   *   stream; transparency is binary because GIF has no partial alpha.
    * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
    *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
    *   audio (an `audio.aac` sidecar is written alongside the PNGs when
@@ -296,7 +301,7 @@ export interface RenderConfig {
    *   encoding. `outputPath` is treated as a directory; it is created if
    *   it doesn't exist.
    *
-   * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`) automatically
+   * Alpha output (`"webm"`, `"mov"`, `"png-sequence"`, `"gif"`) automatically
    * forces screenshot capture (Chrome's BeginFrame compositor does not
    * preserve alpha on Linux headless-shell) and disables HDR — HDR +
    * alpha is not a supported combination, a warning is logged and HDR
@@ -305,7 +310,7 @@ export interface RenderConfig {
    * not paint a fullscreen `body` / `#root` background in their
    * compositions when targeting alpha output.
    */
-  format?: "mp4" | "webm" | "mov" | "png-sequence" | "gif";
+  format?: RenderOutputFormat;
   /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
   gifLoop?: number;
   workers?: number;
@@ -1745,8 +1750,6 @@ async function executeRenderPipeline(input: {
     renderJobId: job.id,
   });
   const outputFormat = job.config.format ?? ("mp4" as const);
-  const isWebm = outputFormat === "webm";
-  const isMov = outputFormat === "mov";
   const isPngSequence = outputFormat === "png-sequence";
   const isGif = outputFormat === "gif";
   const artifactTransaction = new ArtifactTransaction(
@@ -1754,7 +1757,7 @@ async function executeRenderPipeline(input: {
     isPngSequence ? "directory" : "file",
   );
   const stagedOutputPath = artifactTransaction.stagingPath;
-  const needsAlpha = isWebm || isMov || isPngSequence;
+  const needsAlpha = outputNeedsAlpha(outputFormat);
   // `forceScreenshot` is resolved exactly once inside `compileStage` (alpha
   // output + composition `renderModeHints` are folded together there) and
   // returned on `compileResult.forceScreenshot`. The sequencer stores it
@@ -2812,19 +2815,16 @@ async function executeRenderPipeline(input: {
     // Page-side compositing opt-in: when the engine is configured to run the
     // shader blend inside Chrome via a page-side WebGL canvas, the layered
     // Node-side composite path is unnecessary for SDR shader transitions.
-    // The streaming path takes ONE opaque RGB screenshot per output frame —
-    // exactly the single capture the page-side compositor produces. HDR
-    // content still forces the layered path (HDR layers need per-layer
-    // alpha + native HDR raw frame compositing in Node; that's out of scope
-    // for this opt-in). GIF also uses this path for shader transitions
-    // because its two-pass palette encoder needs disk frames, not the
-    // layered path's streaming raw-video encoder.
+    // MP4's streaming path takes one opaque RGB screenshot per output frame.
+    // GIF takes the same page-side composite through its RGBA PNG disk-frame
+    // path so the palette encoder can preserve transparency. HDR content still
+    // forces the layered path (HDR layers need per-layer alpha + native HDR raw
+    // frame compositing in Node; that's out of scope for this opt-in).
     const usePageSideCompositingForTransitions =
       (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
-      !isPngSequence &&
-      !needsAlpha;
+      outputSupportsPageSideShaderCompositing(outputFormat);
     if (usePageSideCompositingForTransitions) {
       activeFileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
       if (
@@ -2848,7 +2848,8 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
-          "shader-blend path. Engine will capture one opaque RGB screenshot per output frame.",
+          `shader-blend path. Engine will capture one ${needsAlpha ? "RGBA PNG" : "opaque RGB"} ` +
+          "screenshot per output frame.",
       );
     }
     const useLayeredComposite =

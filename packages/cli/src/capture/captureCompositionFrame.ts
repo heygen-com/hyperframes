@@ -61,6 +61,9 @@ export interface SettledCompositionPage {
 }
 
 export interface OpenSettledCompositionPageOptions {
+  // Separate from the post-navigation render-ready budget. Diagnostic callers
+  // without their own navigation knob keep the historical 10-second minimum.
+  navigationTimeoutMs?: number;
   renderReadyTimeoutMs: number;
   renderReadyWarningSuffix: string;
   // Screenshot paths take the engine's software-GPU default; validate/check
@@ -182,7 +185,7 @@ export async function openSettledCompositionPage(
     await options.beforeNavigate?.(page);
     await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout: resolveDiagnosticNavigationTimeoutMs(),
+      timeout: resolveDiagnosticNavigationTimeoutMs(process.env, options.navigationTimeoutMs),
     });
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };

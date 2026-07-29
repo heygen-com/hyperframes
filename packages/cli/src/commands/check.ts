@@ -86,7 +86,8 @@ export function createCheckCommand(
       },
       timeout: {
         type: "string",
-        description: "Ms to wait for scripts and media to settle initially (default: 3000)",
+        description:
+          "Initial render-ready timeout in ms; also sets the navigation minimum (10s floor, default: 3000)",
         default: "3000",
       },
       contrast: {
