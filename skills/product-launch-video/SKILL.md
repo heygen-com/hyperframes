@@ -54,6 +54,8 @@ Classify the input and choose the path. Explicit URL -> capture it and use the s
 
 Run capture with: `npx hyperframes capture "<URL>" -o ./capture`
 
+For a site tour or show-it-as-is brief, the captured page is the visual source of truth. Use the real screenshot instead of rebuilding the full website in HTML. If the shot needs internal movement, keep the screenshot as the base and overlay real captured assets at measured positions, or rebuild only the one component that moves. For a scroll shot, use a 2x full-page capture and animate the viewport over it. Recreate the whole page only when the user explicitly asks for a stylized interpretation or the capture is unusable.
+
 If `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or an OpenRouter key exists, capture auto-captions assets into `capture/extracted/asset-descriptions.md`. This is not a review gate. Without a vision key, use DOM context and continue.
 
 No-capture path: create `capture/extracted/tokens.json`, `capture/extracted/visible-text.txt`, `capture/extracted/asset-descriptions.md`, and `capture/assets/` by hand. `tokens.json` should be `{ "title": "", "description": "", "colors": [], "fonts": [] }`; fill title/description from the brief when possible. `visible-text.txt` contains the full brief or script. `asset-descriptions.md` should say no assets were captured unless the user gave asset notes.
