@@ -304,6 +304,10 @@ function ffmpegFailure(
 export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
+  interface AudioMediaElement extends RefResolverEl {
+    hasAttribute(name: string): boolean;
+    parentElement: AudioMediaElement | null;
+  }
 
   // Shared resolver state so a relative `data-start` ("start when clip X ends")
   // resolves against every clip in the composition — exactly as
@@ -320,6 +324,12 @@ export function parseAudioElements(html: string): AudioElement[] {
   const parseEnd = (raw: string | null): number => {
     const end = raw ? parseFloat(raw) : 0;
     return Number.isFinite(end) ? end : 0;
+  };
+  const isHidden = (el: AudioMediaElement): boolean => {
+    for (let current: AudioMediaElement | null = el; current; current = current.parentElement) {
+      if (current.hasAttribute("data-hidden")) return true;
+    }
+    return false;
   };
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
@@ -342,13 +352,13 @@ export function parseAudioElements(html: string): AudioElement[] {
 
   for (const el of document.querySelectorAll("audio[id][src]")) {
     const id = el.getAttribute("id");
-    if (!id || !el.getAttribute("src")) continue;
+    if (!id || !el.getAttribute("src") || isHidden(el)) continue;
     elements.push(build(el, id, "audio"));
   }
 
   for (const el of document.querySelectorAll('video[id][src][data-has-audio="true"]')) {
     const id = el.getAttribute("id");
-    if (!id || !el.getAttribute("src")) continue;
+    if (!id || !el.getAttribute("src") || isHidden(el)) continue;
     elements.push(build(el, `${id}-audio`, "video"));
   }
 

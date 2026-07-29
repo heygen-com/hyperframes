@@ -66,6 +66,7 @@ import {
   validateNoSystemFonts,
 } from "../render/planValidation.js";
 import { snapshotRuntimeEnv } from "../render/runtimeEnvSnapshot.js";
+import { outputNeedsAlpha } from "../render/renderFormat.js";
 import {
   buildSyntheticRenderJob,
   buildPlanVideosJson,
@@ -888,7 +889,7 @@ export async function plan(
   // move the contents over once the staged work completes.
   const finalCompiledDir = join(planDir, "compiled");
 
-  // webm + mov + png-sequence carry alpha — flip force-screenshot so
+  // Alpha-capable distributed formats flip force-screenshot so
   // compileStage takes the alpha-aware capture path (BeginFrame doesn't
   // preserve alpha on Linux headless-shell). Must match the in-process
   // renderer's needsAlpha logic in `renderOrchestrator.ts` so chunked
@@ -897,8 +898,7 @@ export async function plan(
   // into the planDir and every chunk worker captures opaque RGB — the
   // libvpx-vp9 alpha sub-stream then encodes either uniform alpha or
   // gets downgraded by the encoder, producing un-keyable webm output.
-  const needsAlpha =
-    config.format === "png-sequence" || config.format === "mov" || config.format === "webm";
+  const needsAlpha = outputNeedsAlpha(config.format);
 
   // ── Compile ──
   const compileResult = await runCompileStage({

@@ -10,7 +10,7 @@
  * recursively extracting nested media from sub-sub-compositions.
  */
 
-import { readFileSync, existsSync, mkdirSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1655,6 +1655,28 @@ export async function localizeRemoteFontFaces(
 }
 
 const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/gi;
+// Base64 expands bytes by ~33%, then immutable HTML replacements retain more
+// string copies while compiling. Files up to and including 5 MiB remain inline;
+// the first byte above that stays file-backed. This conservative ceiling keeps
+// verified 19 MiB+ TTC collections out of the V8 heap while both local and
+// distributed file servers continue serving project assets at authored paths.
+const MAX_LOCAL_FONT_DATA_URI_BYTES = 5 * 1024 * 1024;
+
+type LocalFontRead = { kind: "file-backed" } | { kind: "inline"; buffer: Buffer };
+
+async function readLocalFont(absPath: string): Promise<LocalFontRead> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of createReadStream(absPath)) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > MAX_LOCAL_FONT_DATA_URI_BYTES) {
+      return { kind: "file-backed" };
+    }
+    chunks.push(buffer);
+  }
+  return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
+}
 
 // fallow-ignore-next-line complexity
 async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
@@ -1664,6 +1686,7 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
   let result = html;
   const embeddedPaths = new Set<string>();
   const dataUriByAbsolutePath = new Map<string, string>();
+  const fileBackedAbsolutePaths = new Set<string>();
 
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRe.exec(html)) !== null) {
@@ -1679,16 +1702,27 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir)) continue;
-        if (!existsSync(absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
+          if (fileBackedAbsolutePaths.has(absPath)) {
+            embeddedPaths.add(localPath);
+            continue;
+          }
           let dataUri = dataUriByAbsolutePath.get(absPath);
           if (!dataUri) {
-            const buffer = readFileSync(absPath);
-            dataUri = await toDataUri(buffer, ext);
+            const font = await readLocalFont(absPath);
+            if (font.kind === "file-backed") {
+              fileBackedAbsolutePaths.add(absPath);
+              defaultLogger.info(
+                `[Compiler] Kept large local font file-backed: ${localPath} (> ${(MAX_LOCAL_FONT_DATA_URI_BYTES / 1024 / 1024).toFixed(1)} MB)`,
+              );
+              embeddedPaths.add(localPath);
+              continue;
+            }
+            dataUri = await toDataUri(font.buffer, ext);
             dataUriByAbsolutePath.set(absPath, dataUri);
             defaultLogger.info(
-              `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
+              `[Compiler] Embedded local font file: ${localPath} (${(font.buffer.length / 1024).toFixed(0)} KB → data URI)`,
             );
           }
           result = result.replaceAll(localPath, dataUri);
@@ -2150,20 +2184,33 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         }
 
         const keyframes: { time: number; volume: number }[] = [];
-        for (let t = sampleStart; t <= sampleEnd + 0.000001; t += step) {
-          const boundedTime = Math.min(sampleEnd, t);
-          seekTl(boundedTime);
+        let previousSample: { time: number; volume: number } | undefined;
+        for (let t = sampleStart; t <= sampleEnd + 0.000001; t = Math.min(sampleEnd, t + step)) {
+          seekTl(t);
           const rawVolume = Number(el.volume);
-          if (!Number.isFinite(rawVolume)) continue;
-          const volume = Math.max(0, Math.min(1, rawVolume));
-          const last = keyframes.at(-1);
-          if (!last || Math.abs(last.volume - volume) > 0.0001 || boundedTime === sampleEnd) {
-            keyframes.push({
-              time: Number(boundedTime.toFixed(6)),
-              volume: Number(volume.toFixed(6)),
-            });
+          if (!Number.isFinite(rawVolume)) {
+            if (t === sampleEnd) break;
+            continue;
           }
-          if (boundedTime === sampleEnd) break;
+          const volume = Math.max(0, Math.min(1, rawVolume));
+          const sample = {
+            time: Number(t.toFixed(6)),
+            volume: Number(volume.toFixed(6)),
+          };
+          const last = keyframes.at(-1);
+          if (!last || Math.abs(last.volume - volume) > 0.0001) {
+            // Retain the preceding real sample when compression omitted a flat
+            // run. Continuous ramps already have that sample as their last
+            // keyframe, so their interpolation remains unchanged.
+            if (last && previousSample && previousSample.time > last.time) {
+              keyframes.push(previousSample);
+            }
+            keyframes.push(sample);
+          } else if (t === sampleEnd && sample.time > last.time) {
+            keyframes.push(sample);
+          }
+          previousSample = sample;
+          if (t === sampleEnd) break;
         }
 
         const staticAttr = Number.parseFloat(el.dataset.volume ?? "");

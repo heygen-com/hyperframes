@@ -8,6 +8,7 @@ export interface GifEncodeArgsInput {
   outputPath: string;
   fps: Fps;
   loop: number;
+  preserveAlpha: boolean;
 }
 
 function fpsToFfmpegArg(fps: Fps): string {
@@ -16,6 +17,7 @@ function fpsToFfmpegArg(fps: Fps): string {
 
 export function buildGifPalettegenArgs(input: GifEncodeArgsInput): string[] {
   const fpsArg = fpsToFfmpegArg(input.fps);
+  const transparency = input.preserveAlpha ? ":reserve_transparent=1" : "";
   return [
     "-y",
     "-framerate",
@@ -23,13 +25,14 @@ export function buildGifPalettegenArgs(input: GifEncodeArgsInput): string[] {
     "-i",
     join(input.framesDir, input.framePattern),
     "-vf",
-    `fps=${fpsArg},palettegen=stats_mode=diff`,
+    `fps=${fpsArg},palettegen=stats_mode=diff${transparency}`,
     input.palettePath,
   ];
 }
 
 export function buildGifPaletteuseArgs(input: GifEncodeArgsInput): string[] {
   const fpsArg = fpsToFfmpegArg(input.fps);
+  const transparency = input.preserveAlpha ? ":alpha_threshold=128" : "";
   return [
     "-y",
     "-framerate",
@@ -39,7 +42,7 @@ export function buildGifPaletteuseArgs(input: GifEncodeArgsInput): string[] {
     "-i",
     input.palettePath,
     "-lavfi",
-    `fps=${fpsArg} [x]; [x][1:v] paletteuse=dither=sierra2_4a`,
+    `fps=${fpsArg} [x]; [x][1:v] paletteuse=dither=sierra2_4a${transparency}`,
     "-loop",
     String(input.loop),
     input.outputPath,

@@ -49,7 +49,11 @@ function isExecutablePathCandidate(candidate: string): boolean {
 
 function scanPath(name: FfBinaryName): string | undefined {
   const pathValue = process.env.PATH;
-  if (!pathValue) return undefined;
+  const searchDirs = [
+    ...(process.platform === "win32" ? [process.cwd()] : []),
+    ...(pathValue ? pathValue.split(delimiter) : []),
+  ].filter(Boolean);
+  if (searchDirs.length === 0) return undefined;
 
   const extensions =
     process.platform === "win32"
@@ -65,8 +69,7 @@ function scanPath(name: FfBinaryName): string | undefined {
         ]
       : [""];
   const candidates: string[] = [];
-  for (const dir of pathValue.split(delimiter)) {
-    if (!dir) continue;
+  for (const dir of new Set(searchDirs)) {
     for (const ext of extensions) {
       const candidate = join(dir, `${name}${ext}`);
       if (isExecutablePathCandidate(candidate)) candidates.push(candidate);
@@ -101,16 +104,24 @@ function findInProjectLocalBin(name: FfBinaryName): string | undefined {
 function lookupOnSystem(name: FfBinaryName): string | undefined {
   if (pathLookupCache.has(name)) return pathLookupCache.get(name);
   let found: string | undefined;
-  try {
-    const command = process.platform === "win32" ? "where" : "which";
-    const output = execFileSync(command, [name], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    found = chooseBestPathCandidate(name, output.split(/\r?\n/));
-  } catch {
+  if (process.platform === "win32") {
+    // `where.exe` writes bytes in the active console code page, while Node
+    // decodes its stdout using a caller-selected encoding. Enumerating the
+    // same current-directory + PATH search space from Node keeps Unicode
+    // paths as native JS strings and avoids mojibake entirely.
     found = scanPath(name);
+  } else {
+    try {
+      const output = execFileSync("which", [name], {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 5000,
+      });
+      const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
+      found = candidate && isExecutablePathCandidate(candidate) ? candidate : scanPath(name);
+    } catch {
+      found = scanPath(name);
+    }
   }
   found ??= findInProjectLocalBin(name);
   found ??= findInCommonDirs(name);
@@ -131,8 +142,9 @@ export interface FindFfBinaryOptions {
 }
 
 /**
- * Resolve an FFmpeg-family binary: env override first, then `which`/`where`,
- * then a manual PATH scan (covers Windows PATHEXT), a project-local
+ * Resolve an FFmpeg-family binary: env override first, then a native
+ * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
+ * then a project-local
  * `.hyperframes/bin`, then well-known Unix install dirs. System lookups are
  * cached per binary for the process lifetime; the env override is re-read on
  * every call.

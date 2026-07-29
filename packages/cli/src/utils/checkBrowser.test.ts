@@ -155,6 +155,28 @@ it("carries raw browser geometry through the page driver and pipeline", async ()
   expect(mocks.serverClose).toHaveBeenCalledOnce();
 });
 
+it("uses check --timeout for both navigation and render-ready settling", async () => {
+  mountCanvasFixture();
+  const page = fakePage();
+  installSessionMock(page);
+
+  await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false, timeout: 30_000 },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(openSettledCompositionPage).toHaveBeenCalledWith(
+    "<html></html>",
+    "http://127.0.0.1:3000",
+    expect.objectContaining({
+      navigationTimeoutMs: 30_000,
+      renderReadyTimeoutMs: 30_000,
+    }),
+  );
+});
+
 it("round-trips the browser script's raw contrast candidates back into finish", async () => {
   // The U2 regression class: Node parses prepare's candidates for reporting,
   // but must hand the UNTOUCHED objects back to __contrastAuditFinish — the

@@ -123,6 +123,7 @@ async function encodeGifFromDir(
     fps: Fps;
     loop: number;
     palettePath: string;
+    preserveAlpha: boolean;
     signal?: AbortSignal;
     timeout: number;
   },
@@ -148,6 +149,7 @@ async function encodeGifFromDir(
     outputPath,
     fps: input.fps,
     loop: input.loop,
+    preserveAlpha: input.preserveAlpha,
   };
   try {
     const paletteResult = await runFfmpeg(buildGifPalettegenArgs(argsInput), {
@@ -258,12 +260,14 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
     if (hasAudio) {
       log.warn("[Render] GIF output does not support audio; audio tracks will be ignored.");
     }
-    const framePattern = "frame_%06d.jpg";
+    const frameExt = needsAlpha ? "png" : "jpg";
+    const framePattern = `frame_%06d.${frameExt}`;
     const loop = resolveGifLoop(job.config.gifLoop);
     const encodeResult = await encodeGifFromDir(framesDir, framePattern, outputPath, {
       fps: job.config.fps,
       loop,
       palettePath: join(dirname(videoOnlyPath), "gif-palette.png"),
+      preserveAlpha: needsAlpha,
       signal: abortSignal,
       timeout: engineCfg.ffmpegEncodeTimeout,
     });

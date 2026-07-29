@@ -133,20 +133,38 @@ function compareBrowserVersionsDescending(left: string, right: string): number {
   return 0;
 }
 
+const CACHED_HEADLESS_SHELL_EXECUTABLES: Readonly<
+  Record<string, readonly [directory: string, executable: string]>
+> = {
+  "darwin/arm64": ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+  "darwin/x64": ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+  "linux/x64": ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+  "win32/ia32": ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
+  "win32/x64": ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
+};
+
+function cachedHeadlessShellExecutable(
+  hostPlatform = process.platform,
+  hostArch = process.arch,
+): readonly [directory: string, executable: string] | undefined {
+  // Chrome for Testing cache entries are host-specific. Resolve exactly one
+  // platform/architecture directory so a foreign binary cannot win by probe order.
+  // Chrome for Testing does not publish Linux ARM64 binaries. Windows ARM64 can
+  // emulate x64 only on supported Windows 11 builds, which this platform/arch-only
+  // resolver cannot prove, so both hosts deliberately fall through to system
+  // browser discovery instead of attempting a potentially foreign cached binary.
+  return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
+}
+
 function findCachedHeadlessShell(baseDir: string): string | undefined {
   if (!existsSync(baseDir)) return undefined;
+  const executable = cachedHeadlessShellExecutable();
+  if (!executable) return undefined;
   try {
     const versions = readdirSync(baseDir).sort(compareBrowserVersionsDescending);
     for (const version of versions) {
-      const candidates = [
-        join(baseDir, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-mac-arm64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
-        join(baseDir, version, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
-      ];
-      for (const binary of candidates) {
-        if (existsSync(binary)) return binary;
-      }
+      const binary = join(baseDir, version, ...executable);
+      if (existsSync(binary)) return binary;
     }
   } catch {
     // Ignore unreadable cache directories and continue browser discovery.

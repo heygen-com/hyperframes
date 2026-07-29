@@ -282,7 +282,7 @@ function findFromEnv(): BrowserResult | undefined {
  */
 async function findFromHyperframesCache(): Promise<CacheLookupResult> {
   if (!existsSync(CACHE_DIR)) return {};
-  const { Browser, getInstalledBrowsers } = await loadPuppeteerBrowsers();
+  const { Browser, detectBrowserPlatform, getInstalledBrowsers } = await loadPuppeteerBrowsers();
   // A corrupt cache (stub file where a browser dir is expected, malformed
   // metadata) makes getInstalledBrowsers throw. Treat that as "no cached
   // browser" so resolution falls through to system/download instead of
@@ -302,9 +302,14 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
   // an older hyperframes version (this pin has moved 131 → 151 → 152 across
   // releases) must NOT satisfy resolution, or an upgrade silently keeps
   // running whatever build happened to be cached instead of ever fetching
-  // the version this release actually needs (HF#2060 review).
+  // the version this release actually needs (HF#2060 review). Match platform
+  // as well so a shared/migrated cache cannot return a foreign executable.
+  const hostPlatform = detectBrowserPlatform();
   const match = installed.find(
-    (b) => b.browser === Browser.CHROMEHEADLESSSHELL && b.buildId === CHROME_VERSION,
+    (b) =>
+      b.browser === Browser.CHROMEHEADLESSSHELL &&
+      b.buildId === CHROME_VERSION &&
+      b.platform === hostPlatform,
   );
   if (match && existsSync(match.executablePath)) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
@@ -383,8 +388,33 @@ function compareVersionDirsDescending(a: string, b: string): number {
   return 0;
 }
 
+const CACHED_HEADLESS_SHELL_EXECUTABLES: Readonly<
+  Record<string, readonly [directory: string, executable: string]>
+> = {
+  "darwin/arm64": ["chrome-headless-shell-mac-arm64", "chrome-headless-shell"],
+  "darwin/x64": ["chrome-headless-shell-mac-x64", "chrome-headless-shell"],
+  "linux/x64": ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+  "win32/ia32": ["chrome-headless-shell-win32", "chrome-headless-shell.exe"],
+  "win32/x64": ["chrome-headless-shell-win64", "chrome-headless-shell.exe"],
+};
+
+function cachedHeadlessShellExecutable(
+  hostPlatform = process.platform,
+  hostArch = process.arch,
+): readonly [directory: string, executable: string] | undefined {
+  // Chrome for Testing cache entries are host-specific. Resolve exactly one
+  // platform/architecture directory so a foreign binary cannot win by probe order.
+  // Chrome for Testing does not publish Linux ARM64 binaries. Windows ARM64 can
+  // emulate x64 only on supported Windows 11 builds, which this platform/arch-only
+  // resolver cannot prove, so both hosts deliberately fall through to system
+  // browser discovery instead of attempting a potentially foreign cached binary.
+  return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
+}
+
 function findFromPuppeteerCache(): BrowserResult | undefined {
   if (!existsSync(PUPPETEER_CACHE_DIR)) return undefined;
+  const executable = cachedHeadlessShellExecutable();
+  if (!executable) return undefined;
   let versions: string[];
   try {
     // Numeric semver-style sort, newest first. Lexicographic `.sort().reverse()`
@@ -399,26 +429,9 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
     // Same shape as `resolveHeadlessShellPath` in engine/browserManager.ts —
     // keep them aligned. If puppeteer ever changes the on-disk layout the two
     // need to move together.
-    const candidates = [
-      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
-      join(
-        PUPPETEER_CACHE_DIR,
-        version,
-        "chrome-headless-shell-mac-arm64",
-        "chrome-headless-shell",
-      ),
-      join(PUPPETEER_CACHE_DIR, version, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
-      join(
-        PUPPETEER_CACHE_DIR,
-        version,
-        "chrome-headless-shell-win64",
-        "chrome-headless-shell.exe",
-      ),
-    ];
-    for (const binary of candidates) {
-      if (existsSync(binary)) {
-        return { executablePath: binary, source: "cache" };
-      }
+    const binary = join(PUPPETEER_CACHE_DIR, version, ...executable);
+    if (existsSync(binary)) {
+      return { executablePath: binary, source: "cache" };
     }
   }
   return undefined;
