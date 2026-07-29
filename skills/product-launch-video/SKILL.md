@@ -148,6 +148,8 @@ Wait for Step 3.1 audio to finish if audio was started. Then sync durations and 
 
 Duration sync is mechanical: real voice duration wins; silent frames keep estimates; never hand-edit synced durations.
 
+Check the music against the final cut before assembly. A library track can match the requested mood but open on a quiet build that drains the first seconds of a short launch video. Compare the opening with later five-second sections; when a later section has a stronger, musically clean start, trim from there and keep a short fade-in plus a longer fade-out. If frame or narration timing changes, redo this check against the new final duration so the music never ends early or leaves silence at the tail.
+
 Before dispatch, read `../hyperframes-core/references/subagent-dispatch.md`. Build the per-frame packets and the worker role payload:
 
 `node <SKILL_DIR>/scripts/frame-packets.mjs --project "$PROJECT_DIR" --storyboard "$PROJECT_DIR/STORYBOARD.md"`
