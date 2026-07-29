@@ -892,6 +892,33 @@ describe("local font embedding", () => {
 
     expect(embeddedMessages).toHaveLength(1);
   });
+
+  it("keeps large local font collections file-backed instead of expanding them into HTML", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-large-local-font-"));
+    const assetsDir = join(projectDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "large.ttc"), Buffer.alloc(6 * 1024 * 1024, 0x41));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face {
+    font-family: "LargeLocal";
+    src: url("assets/large.ttc") format("collection");
+  }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
+    Text
+  </div>
+</body></html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(compiled.html).toContain('url("assets/large.ttc")');
+    expect(compiled.html).not.toContain("data:font/collection;base64,");
+    expect(Buffer.byteLength(compiled.html)).toBeLessThan(1024 * 1024);
+  });
 });
 
 describe("template-wrapped sub-composition media offsets", () => {

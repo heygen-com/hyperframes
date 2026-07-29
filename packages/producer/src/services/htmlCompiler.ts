@@ -10,7 +10,7 @@
  * recursively extracting nested media from sub-sub-compositions.
  */
 
-import { readFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1655,6 +1655,11 @@ export async function localizeRemoteFontFaces(
 }
 
 const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/gi;
+// Base64 expands bytes by ~33%, then immutable HTML replacements retain more
+// string copies while compiling. Keeping large project-local fonts file-backed
+// bounds the compiler heap; both local and distributed file servers already
+// serve/copy project assets at their authored relative paths.
+const MAX_LOCAL_FONT_DATA_URI_BYTES = 5 * 1024 * 1024;
 
 // fallow-ignore-next-line complexity
 async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
@@ -1682,6 +1687,14 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         if (!existsSync(absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
+          const fileSize = statSync(absPath).size;
+          if (fileSize > MAX_LOCAL_FONT_DATA_URI_BYTES) {
+            defaultLogger.info(
+              `[Compiler] Kept large local font file-backed: ${localPath} (${(fileSize / 1024 / 1024).toFixed(1)} MB)`,
+            );
+            embeddedPaths.add(localPath);
+            continue;
+          }
           let dataUri = dataUriByAbsolutePath.get(absPath);
           if (!dataUri) {
             const buffer = readFileSync(absPath);
