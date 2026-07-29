@@ -15,3 +15,7 @@
 When a frame showcases a captured website, use the supplied screenshot as the page. Do not rebuild the full site in HTML: even a close recreation can change the real layout, spacing, or branding. If the shot needs motion inside the page, overlay the supplied real assets at measured positions or rebuild only the moving component.
 
 Brand text comes from your frame's `scene` / narrative — never from `frame.md` (a style spec, not the product's content). Place the named assets, and never invent new ones.
+
+## Cross-frame handoffs
+
+If the packet includes `handoff_in:` or `handoff_out:`, treat those values as a hard boundary contract. Start or end the named element at the exact x/y position, scale, opacity, and motion direction/speed provided. Do not restyle or reinterpret that boundary state. The neighboring frame is being built by another worker and will use the matching values.
