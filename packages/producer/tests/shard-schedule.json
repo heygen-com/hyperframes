@@ -13,6 +13,7 @@
   "distributedShardCount": 1,
   "timings": {
     "animejs-adapter": 17,
+    "nested-sequential-video-local-start": 8,
     "audio-mux-parity": 32,
     "chat": 54,
     "css-spinner-render-compat": 15,

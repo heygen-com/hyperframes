@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=160, height=90" />
+    <style>
+      html,
+      body,
+      #root {
+        width: 160px;
+        height: 90px;
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="2"
+      data-width="160"
+      data-height="90"
+      data-no-timeline
+    >
+      <div
+        id="first-host"
+        class="scene"
+        data-composition-id="first-scene"
+        data-composition-src="compositions/first.html"
+        data-start="0"
+        data-duration="1"
+        data-track-index="0"
+        data-no-timeline
+      ></div>
+      <div
+        id="later-host"
+        class="scene"
+        data-composition-id="later-scene"
+        data-composition-src="compositions/later.html"
+        data-start="1"
+        data-duration="1"
+        data-track-index="1"
+        data-no-timeline
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+    </script>
+  </body>
+</html>
