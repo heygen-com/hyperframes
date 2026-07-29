@@ -2152,16 +2152,15 @@ export async function discoverAudioVolumeAutomationFromTimeline(
         const keyframes: { time: number; volume: number }[] = [];
         let previousSample: { time: number; volume: number } | undefined;
         for (let t = sampleStart; t <= sampleEnd + 0.000001; t = Math.min(sampleEnd, t + step)) {
-          const boundedTime = Math.min(sampleEnd, t);
-          seekTl(boundedTime);
+          seekTl(t);
           const rawVolume = Number(el.volume);
           if (!Number.isFinite(rawVolume)) {
-            if (boundedTime === sampleEnd) break;
+            if (t === sampleEnd) break;
             continue;
           }
           const volume = Math.max(0, Math.min(1, rawVolume));
           const sample = {
-            time: Number(boundedTime.toFixed(6)),
+            time: Number(t.toFixed(6)),
             volume: Number(volume.toFixed(6)),
           };
           const last = keyframes.at(-1);
@@ -2173,11 +2172,11 @@ export async function discoverAudioVolumeAutomationFromTimeline(
               keyframes.push(previousSample);
             }
             keyframes.push(sample);
-          } else if (boundedTime === sampleEnd && sample.time > last.time) {
+          } else if (t === sampleEnd && sample.time > last.time) {
             keyframes.push(sample);
           }
           previousSample = sample;
-          if (boundedTime === sampleEnd) break;
+          if (t === sampleEnd) break;
         }
 
         const staticAttr = Number.parseFloat(el.dataset.volume ?? "");

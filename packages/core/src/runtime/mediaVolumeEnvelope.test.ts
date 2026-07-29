@@ -68,6 +68,27 @@ describe("probeElementVolumeKeyframes", () => {
       { time: 0.5, volume: 1 },
     ]);
   });
+
+  it("prefers data-duration when a stale data-end is also present", () => {
+    const video = document.createElement("video");
+    video.dataset.start = "0";
+    video.dataset.end = "0.25";
+    video.dataset.duration = "1";
+    video.dataset.volume = "0";
+
+    const sampledTimes: number[] = [];
+    probeElementVolumeKeyframes(
+      video,
+      (time) => {
+        sampledTimes.push(time);
+        video.volume = time;
+      },
+      1,
+      10,
+    );
+
+    expect(sampledTimes.at(-1)).toBe(1);
+  });
 });
 
 describe("probeAndCacheElementVolume", () => {

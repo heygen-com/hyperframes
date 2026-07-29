@@ -108,10 +108,10 @@ function resolveVolumeProbeWindow(
   const endAttr = parseFiniteDatasetNumber(el.dataset.end);
   const durAttr = parseFiniteDatasetNumber(el.dataset.duration);
   let end = compositionDuration;
-  if (endAttr !== undefined && endAttr > start) {
-    end = endAttr;
-  } else if (durAttr !== undefined && durAttr > 0) {
+  if (durAttr !== undefined && durAttr > 0) {
     end = start + durAttr;
+  } else if (endAttr !== undefined && endAttr > start) {
+    end = endAttr;
   }
   const staticAttr = parseFiniteDatasetNumber(el.dataset.volume) ?? 1;
   const staticVolume = Math.max(0, Math.min(1, staticAttr));
@@ -146,19 +146,18 @@ export function probeElementVolumeKeyframes(
   const keyframes: VolumeKeyframe[] = [];
   let previousSample: VolumeKeyframe | undefined;
   for (let t = sampleStart; t <= sampleEnd + 1e-6; t = Math.min(sampleEnd, t + step)) {
-    const bounded = Math.min(sampleEnd, t);
-    seekTimeline(bounded);
+    seekTimeline(t);
     const raw = Number(el.volume);
     if (Number.isFinite(raw)) {
       const volume = Math.max(0, Math.min(1, raw));
       const sample = {
-        time: Number(bounded.toFixed(6)),
+        time: Number(t.toFixed(6)),
         volume: Number(volume.toFixed(6)),
       };
-      recordVolumeSample(keyframes, previousSample, sample, bounded === sampleEnd);
+      recordVolumeSample(keyframes, previousSample, sample, t === sampleEnd);
       previousSample = sample;
     }
-    if (bounded === sampleEnd) break;
+    if (t === sampleEnd) break;
   }
 
   const hasAutomation = keyframes.some((kf) => Math.abs(kf.volume - staticVolume) > 0.0001);
