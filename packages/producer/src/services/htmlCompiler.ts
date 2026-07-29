@@ -1714,11 +1714,11 @@ export interface CompileForRenderOptions {
   log?: ProducerLogger;
   /**
    * Threaded through to {@link injectDeterministicFontFaces}. When `true`,
-   * any external font fetch failure throws `FontFetchError` instead of
-   * silently falling back to system fonts. Distributed `plan()` sets this
-   * to `true` so font availability is part of the planDir's content-addressed
-   * hash and fetch failures surface as typed non-retryable errors. Default
-   * `false` preserves the in-process behavior.
+   * deterministic font resolution and exhausted transient fetch failures
+   * surface as typed errors instead of silently falling back to system fonts.
+   * Distributed `plan()` sets this to `true` so font availability is part of
+   * the planDir's content-addressed hash. Default `false` preserves the
+   * in-process behavior.
    */
   failClosedFontFetch?: boolean;
   /**
@@ -1728,6 +1728,8 @@ export interface CompileForRenderOptions {
    * prevent host-specific font capture from leaking into the planDir.
    */
   allowSystemFontCapture?: boolean;
+  /** Caller cancellation propagated through compile-time font fetches. */
+  abortSignal?: AbortSignal;
   /**
    * Optional persistent cache directory for prep-time animated GIF → WebM
    * transcodes. When omitted, the render's downloadDir is used.
@@ -1839,6 +1841,7 @@ export async function compileForRender(
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
     failClosedFontFetch: options.failClosedFontFetch === true,
     allowSystemFontCapture: options.allowSystemFontCapture,
+    abortSignal: options.abortSignal,
   });
 
   // Download CDN scripts and inline them AFTER coalescing. This order matters:

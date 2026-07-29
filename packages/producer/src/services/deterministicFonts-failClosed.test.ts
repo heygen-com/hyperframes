@@ -17,7 +17,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   FONT_FETCH_FAILED,
+  FONT_FETCH_UNAVAILABLE,
   FontFetchError,
+  FontFetchUnavailableError,
   injectDeterministicFontFaces,
 } from "./deterministicFonts.js";
 
@@ -73,6 +75,15 @@ function makeGoogleFontFetch(cssRequests: string[]): typeof fetch {
     }
     return new Response(new Uint8Array([0, 1, 2, 3]), { status: 200 });
   }) as unknown as typeof fetch;
+}
+
+async function rejectedError(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected promise to reject");
 }
 
 describe("injectDeterministicFontFaces — failClosedFontFetch: false (default)", () => {
@@ -141,19 +152,18 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     });
   }
 
-  it("throws FontFetchError on a network failure", async () => {
-    let caught: unknown;
-    try {
-      await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+  it("throws FontFetchUnavailableError after retrying a network failure", async () => {
+    const caught = await rejectedError(
+      injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
         fetchImpl: makeFailingFetch(),
-      });
-    } catch (err) {
-      caught = err;
-    }
+        fontFetchRetryPolicy: { baseDelayMs: 0 },
+      }),
+    );
     expect(caught).toBeInstanceOf(FontFetchError);
-    expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
-    expect((caught as FontFetchError).code).toBe("FONT_FETCH_FAILED");
+    expect(caught).toBeInstanceOf(FontFetchUnavailableError);
+    expect((caught as FontFetchError).code).toBe(FONT_FETCH_UNAVAILABLE);
+    expect((caught as FontFetchError).code).toBe("FONT_FETCH_UNAVAILABLE");
     expect((caught as FontFetchError).familyName).toBe("NotARealFontFamilyForTest");
     expect((caught as Error).message).toContain("simulated network failure");
   });
@@ -164,62 +174,53 @@ describe("injectDeterministicFontFaces — failClosedFontFetch: true", () => {
     // unresolvable (no alias, no Google Fonts, no system capture) which IS
     // a fail-closed error — the render would use a fallback font, producing
     // non-deterministic output across machines.
-    let caught: unknown;
-    try {
-      await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+    const caught = await rejectedError(
+      injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
         allowSystemFontCapture: false,
         fetchImpl: makeHttp400Fetch(),
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(FontFetchError);
     expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
     expect((caught as FontFetchError).familyName).toBe("NotARealFontFamilyForTest");
   });
 
   it("throws on a 404 response when font is completely unresolvable", async () => {
-    let caught: unknown;
-    try {
-      await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+    const caught = await rejectedError(
+      injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
         allowSystemFontCapture: false,
         fetchImpl: makeHttp404Fetch(),
-      });
-    } catch (err) {
-      caught = err;
-    }
+      }),
+    );
     expect(caught).toBeInstanceOf(FontFetchError);
     expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
   });
 
-  it("throws FontFetchError on a 5xx response — non-deterministic, could differ on retry", async () => {
-    let caught: unknown;
-    try {
-      await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+  it("throws FontFetchUnavailableError on an exhausted 5xx response", async () => {
+    const caught = await rejectedError(
+      injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
         fetchImpl: makeHttp503Fetch(),
-      });
-    } catch (err) {
-      caught = err;
-    }
+        fontFetchRetryPolicy: { baseDelayMs: 0 },
+      }),
+    );
     expect(caught).toBeInstanceOf(FontFetchError);
-    expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
+    expect(caught).toBeInstanceOf(FontFetchUnavailableError);
+    expect((caught as FontFetchError).code).toBe(FONT_FETCH_UNAVAILABLE);
     expect((caught as Error).message).toContain("HTTP 503");
     expect((caught as Error).message).toContain("NotARealFontFamilyForTest");
   });
 
   it("includes the requested URL in 5xx errors", async () => {
-    let caught: unknown;
-    try {
-      await injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
+    const caught = await rejectedError(
+      injectDeterministicFontFaces(HTML_REQUESTING_UNRESOLVED_FONT, {
         failClosedFontFetch: true,
         fetchImpl: makeHttp503Fetch(),
-      });
-    } catch (err) {
-      caught = err;
-    }
+        fontFetchRetryPolicy: { baseDelayMs: 0 },
+      }),
+    );
     expect((caught as FontFetchError).url).toContain("fonts.googleapis.com");
     expect((caught as FontFetchError).url).toContain("NotARealFontFamilyForTest");
   });

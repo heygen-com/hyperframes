@@ -182,6 +182,7 @@ describe("HyperframesRenderStack — snapshot", () => {
         present: true,
       });
     }
+    expect(collected.has("FONT_FETCH_UNAVAILABLE")).toBe(false);
   });
 
   it("classifies plan v2 integrity failures as terminal in every v2 Lambda task", () => {

@@ -911,6 +911,7 @@ export async function plan(
     needsAlpha,
     log,
     assertNotAborted,
+    abortSignal,
     // Distributed renders fail closed on font-fetch errors so the planDir
     // is content-addressed against deterministic fonts only.
     failClosedFontFetch: config.failClosedFontFetch !== false,

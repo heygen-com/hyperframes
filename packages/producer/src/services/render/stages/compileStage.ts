@@ -71,12 +71,14 @@ export interface CompileStageInput {
   log: ProducerLogger;
   /** Cooperative-cancellation probe; throws `RenderCancelledError` when aborted. */
   assertNotAborted: () => void;
+  /** Caller cancellation propagated through compile-time network requests. */
+  abortSignal?: AbortSignal;
   /**
    * When `true`, `compileForRender` threads through to
-   * `injectDeterministicFontFaces` and any external font fetch failure
-   * throws `FontFetchError` instead of silently falling back to system
-   * fonts. Distributed `plan()` passes `true`; the in-process renderer
-   * leaves it `undefined` to preserve current behavior.
+   * `injectDeterministicFontFaces` so deterministic resolution and exhausted
+   * transient fetch failures surface as typed errors instead of silently
+   * falling back to system fonts. Distributed `plan()` passes `true`; the
+   * in-process renderer leaves it `undefined` to preserve current behavior.
    */
   failClosedFontFetch?: boolean;
   /**
@@ -158,6 +160,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     assertNotAborted,
     failClosedFontFetch,
     allowSystemFontCapture,
+    abortSignal,
   } = input;
 
   const compileStart = Date.now();
@@ -165,6 +168,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     log,
     failClosedFontFetch: failClosedFontFetch === true,
     allowSystemFontCapture,
+    abortSignal,
     variables: input.variables,
     animatedGifCacheDir: cfg.extractCacheDir
       ? join(cfg.extractCacheDir, "animated-gif")

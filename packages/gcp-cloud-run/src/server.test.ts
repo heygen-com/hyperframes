@@ -578,7 +578,9 @@ describe("createApp HTTP mapping", () => {
   it.each([
     ["VIDEO_SOURCE_UNRENDERABLE", 400],
     ["VIDEO_EXTRACTION_FAILED", 500],
-  ] as const)("routes producer video code %s with HTTP %s", async (code, expectedStatus) => {
+    ["FONT_FETCH_FAILED", 400],
+    ["FONT_FETCH_UNAVAILABLE", 500],
+  ] as const)("routes producer code %s with HTTP %s", async (code, expectedStatus) => {
     const gcs = new FakeGcs();
     await seedPlanTar(gcs, "gs://b/renders/r1/plan.tar.gz", PLAN_HASH);
     const app = createApp(

@@ -593,7 +593,6 @@ function resolveFontCacheRoot(): string {
       : join(homedir(), ".cache", "hyperframes", "fonts"))
   );
 }
-const GOOGLE_FONTS_CACHE_DIR = resolveFontCacheRoot();
 
 // Chrome UA triggers woff2 responses from Google Fonts CSS API
 const WOFF2_USER_AGENT =
@@ -607,7 +606,7 @@ function fontSlug(familyName: string): string {
 }
 
 function fontCacheDir(slug: string): string {
-  const dir = join(GOOGLE_FONTS_CACHE_DIR, slug);
+  const dir = join(resolveFontCacheRoot(), slug);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -637,37 +636,77 @@ type GoogleFontFace = {
 };
 
 /**
- * Typed code classifying a font-fetch failure as non-retryable for
- * distributed workflow adapters — a missing Google Fonts entry will not heal
- * on retry.
+ * Typed codes let distributed workflow adapters distinguish deterministic
+ * resolution failures from temporary upstream unavailability.
  */
 export const FONT_FETCH_FAILED = "FONT_FETCH_FAILED";
+export const FONT_FETCH_UNAVAILABLE = "FONT_FETCH_UNAVAILABLE";
+export type FontFetchErrorCode = typeof FONT_FETCH_FAILED | typeof FONT_FETCH_UNAVAILABLE;
 
 /**
  * Typed error thrown by {@link injectDeterministicFontFaces} when
- * `failClosedFontFetch === true` and an external font fetch fails. The
- * default (swallow + warn) preserves the in-process behavior.
+ * `failClosedFontFetch === true` and deterministic font resolution fails.
+ * The default (swallow + warn) preserves the in-process behavior.
  */
 export class FontFetchError extends Error {
-  readonly code: typeof FONT_FETCH_FAILED = FONT_FETCH_FAILED;
+  readonly code: FontFetchErrorCode;
   readonly familyName: string;
   readonly url: string;
   readonly cause?: unknown;
 
-  constructor(familyName: string, url: string, message: string, cause?: unknown) {
+  constructor(
+    familyName: string,
+    url: string,
+    message: string,
+    cause?: unknown,
+    code: FontFetchErrorCode = FONT_FETCH_FAILED,
+  ) {
     super(message);
     this.name = "FontFetchError";
+    this.code = code;
     this.familyName = familyName;
     this.url = url;
     this.cause = cause;
   }
 }
 
+/**
+ * Retryable font-fetch failure. Distributed adapters map this code to an
+ * unavailable response so the workflow can retry the plan activity.
+ */
+export class FontFetchUnavailableError extends FontFetchError {
+  constructor(familyName: string, url: string, message: string, cause?: unknown) {
+    super(familyName, url, message, cause, FONT_FETCH_UNAVAILABLE);
+    this.name = "FontFetchUnavailableError";
+  }
+}
+
+export interface FontFetchRetryPolicy {
+  /** Total fetch attempts for one CSS or woff2 URL. Default: 2. */
+  maxAttempts: number;
+  /** Timeout for each individual fetch attempt. Default: 8 seconds. */
+  attemptTimeoutMs: number;
+  /** Shared wall-clock budget for all Google Fonts requests in one compile. Default: 20 seconds. */
+  maxElapsedMs: number;
+  /** Initial full-jitter backoff ceiling. Default: 250 ms. */
+  baseDelayMs: number;
+}
+
+const DEFAULT_FONT_FETCH_RETRY_POLICY: FontFetchRetryPolicy = {
+  maxAttempts: 2,
+  attemptTimeoutMs: 8_000,
+  maxElapsedMs: 20_000,
+  baseDelayMs: 250,
+};
+
 /** Internal threading of the failClosed flag + fetch override through callers. */
 interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
+  abortSignal?: AbortSignal;
+  retryPolicy: FontFetchRetryPolicy;
+  retryDeadlineMs: number;
 }
 
 /**
@@ -680,16 +719,158 @@ function fontFetchError(
   url: string,
   what: "Google Fonts CSS" | `Google Fonts woff2 (${string}/${string})`,
   cause: { status: number } | { error: unknown },
+  unavailable = false,
 ): FontFetchError {
   const reason =
     "status" in cause
       ? `returned HTTP ${cause.status}`
-      : `failed: ${(cause.error as Error).message}`;
+      : `failed: ${cause.error instanceof Error ? cause.error.message : String(cause.error)}`;
   const message =
     `[deterministicFonts] ${what} fetch for ${JSON.stringify(familyName)} ${reason}. ` +
     `Distributed renders require deterministic fonts; system-font fallback would produce ` +
     `non-byte-identical output.`;
-  return new FontFetchError(familyName, url, message, "error" in cause ? cause.error : undefined);
+  const errorCause = "error" in cause ? cause.error : undefined;
+  return unavailable
+    ? new FontFetchUnavailableError(familyName, url, message, errorCause)
+    : new FontFetchError(familyName, url, message, errorCause);
+}
+
+function isRetryableFontFetchStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryAfterMs(response: Response): number | null {
+  const value = response.headers.get("retry-after");
+  if (value === null) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
+
+function callerAbortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("Font fetch cancelled", "AbortError");
+}
+
+function throwIfCallerAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw callerAbortReason(signal);
+}
+
+async function waitForFontFetchRetry(
+  delayMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  throwIfCallerAborted(signal);
+  if (delayMs <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = (): void => {
+      clearTimeout(timeout);
+      reject(signal ? callerAbortReason(signal) : new DOMException("Cancelled", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
+function retryDelayMs(
+  response: Response | undefined,
+  attempt: number,
+  baseDelayMs: number,
+): number {
+  const requestedDelay = response ? retryAfterMs(response) : null;
+  if (requestedDelay !== null) return requestedDelay;
+  const ceiling = baseDelayMs * 2 ** attempt;
+  return Math.floor(Math.random() * (ceiling + 1));
+}
+
+function cancelResponseBody(response: Response): void {
+  try {
+    void response.body?.cancel().catch(() => {
+      // Best-effort connection cleanup must not replace the original status.
+    });
+  } catch {
+    // Best-effort connection cleanup must not replace the original status.
+  }
+}
+
+type FontFetchResult<T> =
+  | { ok: true; response: Response; body: T }
+  | { ok: false; response: Response };
+
+type FontFetchAttemptResult<T> =
+  | { completed: true; result: FontFetchResult<T> }
+  | {
+      completed: false;
+      response?: Response;
+      cause: { status: number } | { error: unknown };
+    };
+
+async function runFontFetchAttempt<T>(
+  url: string,
+  init: RequestInit | undefined,
+  readBody: (response: Response) => Promise<T>,
+  options: InternalFontFetchOptions,
+  remainingMs: number,
+): Promise<FontFetchAttemptResult<T>> {
+  const timeoutSignal = AbortSignal.timeout(
+    Math.max(1, Math.min(options.retryPolicy.attemptTimeoutMs, remainingMs)),
+  );
+  const signal = options.abortSignal
+    ? AbortSignal.any([options.abortSignal, timeoutSignal])
+    : timeoutSignal;
+  let response: Response | undefined;
+  try {
+    response = await options.fetchImpl(url, { ...init, signal });
+    if (!isRetryableFontFetchStatus(response.status)) {
+      if (!response.ok) return { completed: true, result: { ok: false, response } };
+      const body = await readBody(response);
+      return { completed: true, result: { ok: true, response, body } };
+    }
+    cancelResponseBody(response);
+    return { completed: false, response, cause: { status: response.status } };
+  } catch (error) {
+    throwIfCallerAborted(options.abortSignal);
+    return { completed: false, response, cause: { error } };
+  }
+}
+
+async function fetchFontResource<T>(
+  url: string,
+  init: RequestInit | undefined,
+  readBody: (response: Response) => Promise<T>,
+  familyName: string,
+  what: "Google Fonts CSS" | `Google Fonts woff2 (${string}/${string})`,
+  options: InternalFontFetchOptions,
+): Promise<FontFetchResult<T>> {
+  if (!options.failClosedFontFetch) {
+    const response = await options.fetchImpl(url, { ...init, signal: options.abortSignal });
+    if (!response.ok) return { ok: false, response };
+    return { ok: true, response, body: await readBody(response) };
+  }
+
+  let lastCause: { status: number } | { error: unknown } = {
+    error: new DOMException("Font fetch budget exhausted", "TimeoutError"),
+  };
+  for (let attempt = 0; attempt < options.retryPolicy.maxAttempts; attempt += 1) {
+    throwIfCallerAborted(options.abortSignal);
+    const remainingMs = options.retryDeadlineMs - Date.now();
+    if (remainingMs <= 0) break;
+
+    const attemptResult = await runFontFetchAttempt(url, init, readBody, options, remainingMs);
+    if (attemptResult.completed) return attemptResult.result;
+    lastCause = attemptResult.cause;
+
+    if (attempt + 1 >= options.retryPolicy.maxAttempts) break;
+    const delayMs = retryDelayMs(attemptResult.response, attempt, options.retryPolicy.baseDelayMs);
+    if (delayMs >= options.retryDeadlineMs - Date.now()) break;
+    await waitForFontFetchRetry(delayMs, options.abortSignal);
+  }
+
+  throw fontFetchError(familyName, url, what, lastCause, true);
 }
 
 /**
@@ -714,17 +895,20 @@ async function ensureWoff2DataUri(
 
   const woff2What = `Google Fonts woff2 (${weight}/${style})` as const;
   try {
-    const fontRes = await options.fetchImpl(woff2Url);
-    if (!fontRes.ok) {
-      if (fontRes.status >= 500 && options.failClosedFontFetch) {
-        throw fontFetchError(familyName, woff2Url, woff2What, { status: fontRes.status });
-      }
-      return null;
-    }
+    const fontResult = await fetchFontResource(
+      woff2Url,
+      undefined,
+      (response) => response.arrayBuffer(),
+      familyName,
+      woff2What,
+      options,
+    );
+    if (!fontResult.ok) return null;
     // wx = O_CREAT|O_EXCL: atomic create, rejects symlinks, fails with
     // EEXIST if a concurrent call cached it between our read and write.
-    writeFileSync(cachePath, Buffer.from(await fontRes.arrayBuffer()), { flag: "wx", mode: 0o644 });
+    writeFileSync(cachePath, Buffer.from(fontResult.body), { flag: "wx", mode: 0o644 });
   } catch (err) {
+    throwIfCallerAborted(options.abortSignal);
     if (err instanceof FontFetchError) throw err;
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       // Concurrent call wrote it — read their result below.
@@ -755,10 +939,15 @@ async function fetchGoogleFont(
 
   let cssText: string;
   try {
-    const res = await options.fetchImpl(url, {
-      headers: { "User-Agent": WOFF2_USER_AGENT },
-    });
-    if (!res.ok) {
+    const cssResult = await fetchFontResource(
+      url,
+      { headers: { "User-Agent": WOFF2_USER_AGENT } },
+      (response) => response.text(),
+      familyName,
+      "Google Fonts CSS",
+      options,
+    );
+    if (!cssResult.ok) {
       // 4xx is a *deterministic* answer from Google Fonts that this
       // family is not served (e.g. HTTP 400 for "Segoe UI", "Arial",
       // "Futura" — names absent from Google's catalog) or is misnamed.
@@ -767,16 +956,14 @@ async function fetchGoogleFont(
       // transient upstream failures) could return faces on retry, which
       // would break the byte-identical-retry contract distributed
       // renders rely on — those still fail closed when requested.
-      if (res.status >= 500 && options.failClosedFontFetch) {
-        throw fontFetchError(familyName, url, "Google Fonts CSS", { status: res.status });
-      }
       return [];
     }
-    cssText = await res.text();
+    cssText = cssResult.body;
   } catch (err) {
     // Rethrow typed error untouched. Network / DNS / fetch-throws are
     // non-deterministic infrastructure failures — wrapped when failClosed
     // is on, swallowed otherwise.
+    throwIfCallerAborted(options.abortSignal);
     if (err instanceof FontFetchError) throw err;
     if (options.failClosedFontFetch) {
       throw fontFetchError(familyName, url, "Google Fonts CSS", { error: err });
@@ -829,16 +1016,16 @@ async function fetchGoogleFont(
  */
 export interface InjectDeterministicFontFacesOptions {
   /**
-   * When `true`, any external font fetch failure (Google Fonts CSS or
-   * woff2) throws {@link FontFetchError} with code `FONT_FETCH_FAILED`.
+   * When `true`, exhausted transient fetch failures throw
+   * {@link FontFetchUnavailableError} with code `FONT_FETCH_UNAVAILABLE`;
+   * deterministic resolution failures retain `FONT_FETCH_FAILED`.
    *
    * Default `false`: failed fetches are silently swallowed; the composition
    * falls back to system fonts via `warnUnresolvedFonts`. This preserves the
    * in-process behavior.
    *
    * Distributed callers pass `true` so font availability is part of the
-   * planDir's content-addressed hash and fetch failures surface as typed
-   * non-retryable errors.
+   * planDir's content-addressed hash and failures surface as typed errors.
    */
   failClosedFontFetch?: boolean;
   /**
@@ -847,6 +1034,13 @@ export interface InjectDeterministicFontFacesOptions {
    * network.
    */
   fetchImpl?: typeof fetch;
+  /** Caller cancellation propagated through fetch attempts and retry waits. */
+  abortSignal?: AbortSignal;
+  /**
+   * Optional retry tuning. Defaults are deliberately bounded for composition
+   * planning; tests may lower delays and timeouts without replacing timers.
+   */
+  fontFetchRetryPolicy?: Partial<FontFetchRetryPolicy>;
   /**
    * When `true` (default for local renders), fonts that aren't resolved by
    * the bundled alias map or Google Fonts are located on the local filesystem,
@@ -873,6 +1067,29 @@ function extractGoogleFontsText(html: string): string | undefined {
     : undefined;
 }
 
+function resolveFontFetchRetryPolicy(
+  configured: Partial<FontFetchRetryPolicy> | undefined,
+): FontFetchRetryPolicy {
+  return {
+    maxAttempts: Math.max(
+      1,
+      Math.floor(configured?.maxAttempts ?? DEFAULT_FONT_FETCH_RETRY_POLICY.maxAttempts),
+    ),
+    attemptTimeoutMs: Math.max(
+      1,
+      configured?.attemptTimeoutMs ?? DEFAULT_FONT_FETCH_RETRY_POLICY.attemptTimeoutMs,
+    ),
+    maxElapsedMs: Math.max(
+      1,
+      configured?.maxElapsedMs ?? DEFAULT_FONT_FETCH_RETRY_POLICY.maxElapsedMs,
+    ),
+    baseDelayMs: Math.max(
+      0,
+      configured?.baseDelayMs ?? DEFAULT_FONT_FETCH_RETRY_POLICY.baseDelayMs,
+    ),
+  };
+}
+
 export async function injectDeterministicFontFaces(
   html: string,
   options: InjectDeterministicFontFacesOptions = {},
@@ -880,10 +1097,14 @@ export async function injectDeterministicFontFaces(
   const failClosedFontFetch = options.failClosedFontFetch === true;
   const fetchImpl = options.fetchImpl ?? fetch;
   const allowSystemFontCapture = options.allowSystemFontCapture !== false;
+  const retryPolicy = resolveFontFetchRetryPolicy(options.fontFetchRetryPolicy);
   const fetchOptions: InternalFontFetchOptions = {
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
+    abortSignal: options.abortSignal,
+    retryPolicy,
+    retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,
   };
 
   const existingFaces = extractExistingFontFaces(html);

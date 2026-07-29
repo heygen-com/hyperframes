@@ -112,6 +112,16 @@ const IFRAME_HTML = `<!doctype html>
 </body>
 </html>`;
 
+const UNRESOLVED_FONT_HTML = `<!doctype html>
+<html>
+<head><style>body { font-family: "CompileAbortFont", sans-serif; }</style></head>
+<body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="1">
+    <p>cancelled font compile</p>
+  </div>
+</body>
+</html>`;
+
 // Portrait/square/landscape fixture template — same shape as PLAIN_HTML but
 // with caller-supplied composition dimensions. Consumed by the aspect-agnostic
 // re-map tests below (and reachable from any sibling describe block, unlike a
@@ -229,6 +239,40 @@ describe("runCompileStage — forceScreenshot snapshot", () => {
         }
       }
     }
+  });
+});
+
+describe("runCompileStage — font fetch cancellation", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  it("propagates the caller abort signal through compileForRender to font fetching", async () => {
+    fixture = setupFixture(UNRESOLVED_FONT_HTML);
+    const projectDir = join(fixture.workDir, "project");
+    const controller = new AbortController();
+    const cancellation = new Error("cancel distributed compile");
+    controller.abort(cancellation);
+
+    const result = runCompileStage({
+      projectDir,
+      workDir: fixture.workDir,
+      htmlPath: fixture.htmlPath,
+      entryFile: "index.html",
+      job: createJob(),
+      cfg: createCfg(),
+      needsAlpha: false,
+      log: noopLog,
+      assertNotAborted: () => {},
+      abortSignal: controller.signal,
+      failClosedFontFetch: true,
+      allowSystemFontCapture: false,
+    });
+
+    await expect(result).rejects.toBe(cancellation);
   });
 });
 

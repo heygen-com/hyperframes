@@ -150,6 +150,8 @@ function normalizeTerminalErrorName(error: unknown): void {
     candidate.code === "PLAN_PROTOCOL_UNSUPPORTED" ||
     candidate.code === "PLAN_TOO_LARGE" ||
     candidate.code === "PLAN_V2_INTEGRITY_UNRECOVERABLE" ||
+    candidate.code === "FONT_FETCH_FAILED" ||
+    candidate.code === "FONT_FETCH_UNAVAILABLE" ||
     candidate.code === "VIDEO_SOURCE_UNRENDERABLE" ||
     candidate.code === "VIDEO_EXTRACTION_FAILED" ||
     candidate.code === "INVALID_VIDEO_METADATA"

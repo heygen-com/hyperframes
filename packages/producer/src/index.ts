@@ -114,7 +114,13 @@ export { normalizeErrorMessage } from "./utils/errorMessage.js";
 // timing. The render pipeline runs this in its compile stage; the CLI audit
 // paths (snapshot/check) reuse it so their captures match the render.
 export {
+  FONT_FETCH_FAILED,
+  FONT_FETCH_UNAVAILABLE,
+  FontFetchError,
+  FontFetchUnavailableError,
   injectDeterministicFontFaces,
+  type FontFetchErrorCode,
+  type FontFetchRetryPolicy,
   type InjectDeterministicFontFacesOptions,
 } from "./services/deterministicFonts.js";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
