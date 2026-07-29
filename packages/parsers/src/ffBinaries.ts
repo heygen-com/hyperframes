@@ -108,7 +108,8 @@ function lookupOnSystem(name: FfBinaryName): string | undefined {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
     });
-    found = chooseBestPathCandidate(name, output.split(/\r?\n/));
+    const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
+    found = candidate && isExecutablePathCandidate(candidate) ? candidate : scanPath(name);
   } catch {
     found = scanPath(name);
   }
