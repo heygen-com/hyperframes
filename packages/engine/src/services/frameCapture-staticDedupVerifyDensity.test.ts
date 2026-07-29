@@ -23,8 +23,8 @@ vi.mock("./screenshotService.js", async (importOriginal) => {
  * static.
  *
  * A first version of this fix bounded the STRIDE by `sampleCount` directly —
- * which fixed the density but inverted the config knob's polarity: raising
- * `HF_STATIC_DEDUP_SAMPLES` widened the allowed gap instead of shrinking it.
+ * which fixed the density but inverted the parameter's polarity: raising
+ * `sampleCount` widened the allowed gap instead of shrinking it.
  * The current formula uses a fixed internal reference stride (independent of
  * sampleCount) for the length-scaling fix, and sampleCount as a pure
  * point-count floor that only ever increases density.

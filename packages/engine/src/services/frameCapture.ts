@@ -830,20 +830,17 @@ async function initDrawElementOrTransparentBackground(
       // every run. Conservative by design: comps whose risky tweens drawElement
       // would have handled also fall back, but correctness is never at risk and the
       // fast path stays open for static + plain-2D-transform comps (x/y/scale are
-      // NOT in the at-risk set). Tune the gate's frame-fraction floor with
-      // HF_FAST_CAPTURE_INTERVAL_FRACTION (default 0 = any at-risk frame gates).
+      // NOT in the at-risk set). Any at-risk frame gates the whole comp.
       // Must run BEFORE canvas injection so a whole-comp fallback doesn't leave the
-      // drawElement canvas wrapping the composition root. Disable with
-      // HF_FAST_CAPTURE_INTERVAL_SS=false.
-      if (!forceDE && process.env.HF_FAST_CAPTURE_INTERVAL_SS !== "false") {
+      // drawElement canvas wrapping the composition root.
+      if (!forceDE) {
         const fps = fpsToNumber(session.options.fps);
         const { frames: atRisk, totalFrames } = await computeTimelineAtRiskFrames(page, fps);
         const atRiskFraction = atRisk.size / totalFrames;
-        const fractionFloor = Number(process.env.HF_FAST_CAPTURE_INTERVAL_FRACTION ?? "0");
         logInitPhase(
           `timeline at-risk predictor: ${atRisk.size}/${totalFrames} frames (${Math.round(atRiskFraction * 100)}%)`,
         );
-        if (atRisk.size > 0 && atRiskFraction > fractionFloor) {
+        if (atRisk.size > 0) {
           session.deGateReason = "at_risk_timeline";
           session.deFallbackTrigger = "at_risk_timeline";
           console.log(
@@ -1172,25 +1169,13 @@ async function constructCaptureSession(
   if (useDrawElement) {
     await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
   }
-  // The opacity → autoAlpha tween rewrite was RETIRED with the requestPaint
-  // contract adoption (crbug 529829538 closed WAI): a requestPaint-driven
-  // paint refreshes nested opacity layers natively, and the rewrite itself
-  // measured ~28 dB of damage on comps whose fades it touched. Warn instead
-  // of silently ignoring the old escape hatch.
-  if (process.env.HF_FAST_CAPTURE_AUTOALPHA !== undefined) {
-    console.warn(
-      "[engine] HF_FAST_CAPTURE_AUTOALPHA is retired and ignored — the requestPaint " +
-        "paint contract captures animated opacity natively (see drawElementService.ts).",
-    );
-  }
   // Re-apply the captured root's own compositor-applied props to the 2D
   // context where the snapshot does not carry them (see the correction
   // comment in drawElementService.ts drawAndEncode: transform always —
   // never baked, verified under the requestPaint contract 2026-07-07;
   // opacity ratio only on non-requestPaint paints, where the snapshot holds
-  // the load-time value). On by default; disable with
-  // HF_FAST_CAPTURE_ROOT_PROPS=false.
-  if (useDrawElement && process.env.HF_FAST_CAPTURE_ROOT_PROPS !== "false") {
+  // the load-time value).
+  if (useDrawElement) {
     await page.evaluateOnNewDocument(() => {
       (window as unknown as { __HF_ROOT_PROPS__?: boolean }).__HF_ROOT_PROPS__ = true;
     });
@@ -2666,6 +2651,9 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 // disabled and normal capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
 
+/** Per-run verification point-count floor (see computeStaticVerificationPoints). */
+const STATIC_VERIFY_SAMPLE_FLOOR = 24;
+
 /**
  * Interior verification points for a run [a..b], plus the always-included end `b`.
  * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
@@ -2675,12 +2663,11 @@ const STATIC_VERIFY_MAX_MS = 15_000;
  * tween walk can't see) then hides between samples and the whole run gets
  * wrongly trusted as static.
  *
- * `sampleCount` (HF_STATIC_DEDUP_SAMPLES) is a per-run point-count FLOOR, not a
- * stride cap — raising it always increases density, never decreases it. (An
+ * `sampleCount` (STATIC_VERIFY_SAMPLE_FLOOR) is a per-run point-count FLOOR, not
+ * a stride cap — raising it always increases density, never decreases it. (An
  * earlier revision of this fix bounded the stride BY sampleCount directly, which
  * inverted that: raising sampleCount widened the allowed gap instead of shrinking
- * it, and the "raise HF_STATIC_DEDUP_SAMPLES to verify more" log guidance became
- * backwards for exactly the long runs it's meant to help.) The length-scaling
+ * it.) The length-scaling
  * fix itself comes from STATIC_VERIFY_REFERENCE_STRIDE, which is independent of
  * sampleCount, so density scales with run length regardless of how that knob is
  * set; sampleCount only ever raises density further above that floor.
@@ -2791,9 +2778,8 @@ export async function verifyStaticFramesSafe(
 /**
  * Arm static-frame dedup for this render (default-on; opt out with HF_STATIC_DEDUP=false).
  * Runs at init in normal DOM state so the verification screenshots are valid. Predicts
- * the static set, anchor-verifies it (skip with HF_STATIC_DEDUP_VERIFY=false — unsafe),
- * and on success stores it on the session for captureFrameCore to reuse. Sample budget
- * via HF_STATIC_DEDUP_SAMPLES (default 24).
+ * the static set, anchor-verifies it, and on success stores it on the session for
+ * captureFrameCore to reuse.
  */
 async function armStaticDedup(
   session: CaptureSession,
@@ -2855,12 +2841,13 @@ async function armStaticDedup(
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
     return;
   }
-  const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
-  const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
-  const verdict =
-    process.env.HF_STATIC_DEDUP_VERIFY === "false"
-      ? null
-      : await verifyStaticFramesSafe(session, page, stats.staticFrameSet, fps, samples);
+  const verdict = await verifyStaticFramesSafe(
+    session,
+    page,
+    stats.staticFrameSet,
+    fps,
+    STATIC_VERIFY_SAMPLE_FLOOR,
+  );
   if (verdict !== null) {
     session.staticDedupSkipReason = verdict.budgetExhausted
       ? "verification_budget"

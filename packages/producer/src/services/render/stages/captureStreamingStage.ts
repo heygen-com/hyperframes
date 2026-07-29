@@ -95,11 +95,7 @@ const DEFAULT_DE_STALL_MS = 60_000;
 const DE_STALL_POLL_MS = 5_000;
 
 function resolveDeStallTimeoutMs(): number {
-  // HF_DE_PARALLEL_STALL_MS is the pre-rename name (this config used to guard
-  // only the parallel path). Bridged for one release so an already-deployed
-  // ops surface (runbook, ConfigMap, ...) tuning the old name doesn't
-  // silently no-op; drop once nothing sets it anymore.
-  const raw = process.env.HF_DE_STALL_MS ?? process.env.HF_DE_PARALLEL_STALL_MS;
+  const raw = process.env.HF_DE_STALL_MS;
   const parsed = raw ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DE_STALL_MS;
 }

@@ -350,33 +350,6 @@ describe("runCaptureStreamingStage", () => {
     expect((caught as Error).message).toContain("stalled");
   });
 
-  it("still honors the pre-rename HF_DE_PARALLEL_STALL_MS env var for one release", async () => {
-    hangSequentialUntilStall = true;
-    const prevNew = process.env.HF_DE_STALL_MS;
-    const prevOld = process.env.HF_DE_PARALLEL_STALL_MS;
-    delete process.env.HF_DE_STALL_MS;
-    process.env.HF_DE_PARALLEL_STALL_MS = "50";
-    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
-    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
-    const input = { ...createInput(cfg), totalFrames: 10, workerCount: 1 };
-
-    let caught: unknown;
-    try {
-      await runCaptureStreamingStage(input);
-    } catch (error) {
-      caught = error;
-    } finally {
-      hangSequentialUntilStall = false;
-      if (prevNew === undefined) delete process.env.HF_DE_STALL_MS;
-      else process.env.HF_DE_STALL_MS = prevNew;
-      if (prevOld === undefined) delete process.env.HF_DE_PARALLEL_STALL_MS;
-      else process.env.HF_DE_PARALLEL_STALL_MS = prevOld;
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain("stalled");
-  });
-
   it("does not relabel a genuine parent-abort as a stall on the sequential path", async () => {
     hangSequentialUntilStall = true;
     const prev = process.env.HF_DE_STALL_MS;
