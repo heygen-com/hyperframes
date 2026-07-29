@@ -906,6 +906,14 @@ describe("local font embedding", () => {
     font-family: "LargeLocal";
     src: url("assets/large.ttc") format("collection");
   }
+  @font-face {
+    font-family: "LargeLocalAlias";
+    src: url("./assets/large.ttc") format("collection");
+  }
+  @font-face {
+    font-family: "LargeLocalNormalized";
+    src: url("assets/../assets/large.ttc") format("collection");
+  }
 </style></head><body>
   <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">
     Text
@@ -913,11 +921,27 @@ describe("local font embedding", () => {
 </body></html>`,
     );
 
-    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const originalInfo = defaultLogger.info;
+    const fileBackedMessages: string[] = [];
+    defaultLogger.info = (message) => {
+      if (message.includes("Kept large local font file-backed")) {
+        fileBackedMessages.push(message);
+      }
+    };
+
+    let compiled: Awaited<ReturnType<typeof compileForRender>>;
+    try {
+      compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } finally {
+      defaultLogger.info = originalInfo;
+    }
 
     expect(compiled.html).toContain('url("assets/large.ttc")');
+    expect(compiled.html).toContain('url("./assets/large.ttc")');
+    expect(compiled.html).toContain('url("assets/../assets/large.ttc")');
     expect(compiled.html).not.toContain("data:font/collection;base64,");
     expect(Buffer.byteLength(compiled.html)).toBeLessThan(1024 * 1024);
+    expect(fileBackedMessages).toHaveLength(1);
   });
 });
 

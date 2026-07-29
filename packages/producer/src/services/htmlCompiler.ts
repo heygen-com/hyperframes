@@ -1656,9 +1656,10 @@ export async function localizeRemoteFontFaces(
 
 const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|https?:\/\/)([^"')]+)["']?\)/gi;
 // Base64 expands bytes by ~33%, then immutable HTML replacements retain more
-// string copies while compiling. Keeping large project-local fonts file-backed
-// bounds the compiler heap; both local and distributed file servers already
-// serve/copy project assets at their authored relative paths.
+// string copies while compiling. Files up to and including 5 MiB remain inline;
+// the first byte above that stays file-backed. This conservative ceiling keeps
+// verified 19 MiB+ TTC collections out of the V8 heap while both local and
+// distributed file servers continue serving project assets at authored paths.
 const MAX_LOCAL_FONT_DATA_URI_BYTES = 5 * 1024 * 1024;
 
 type LocalFontRead = { kind: "file-backed" } | { kind: "inline"; buffer: Buffer };
@@ -1685,6 +1686,7 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
   let result = html;
   const embeddedPaths = new Set<string>();
   const dataUriByAbsolutePath = new Map<string, string>();
+  const fileBackedAbsolutePaths = new Set<string>();
 
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRe.exec(html)) !== null) {
@@ -1702,10 +1704,15 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         if (!isPathInside(absPath, projectDir)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
+          if (fileBackedAbsolutePaths.has(absPath)) {
+            embeddedPaths.add(localPath);
+            continue;
+          }
           let dataUri = dataUriByAbsolutePath.get(absPath);
           if (!dataUri) {
             const font = await readLocalFont(absPath);
             if (font.kind === "file-backed") {
+              fileBackedAbsolutePaths.add(absPath);
               defaultLogger.info(
                 `[Compiler] Kept large local font file-backed: ${localPath} (> ${(MAX_LOCAL_FONT_DATA_URI_BYTES / 1024 / 1024).toFixed(1)} MB)`,
               );
