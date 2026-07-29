@@ -1,7 +1,7 @@
 /**
  * Transparency Regression Test
  *
- * Exercises the alpha-output pipelines (webm + png-sequence) end-to-end
+ * Exercises the alpha-output pipelines (webm + gif + png-sequence) end-to-end
  * against `tests/transparency-regression/`. Asserts that:
  *
  *   1. Pixels that were transparent in the browser stay transparent in the
@@ -32,6 +32,7 @@ const FIXTURE_SRC = join(FIXTURE_DIR, "src");
 const WIDTH = 200;
 const HEIGHT = 200;
 const FPS: import("@hyperframes/core").Fps = { num: 30, den: 1 };
+const PNG_SEQUENCE_FRAME_COUNT = FPS.num / FPS.den;
 const TRANSPARENT_X = 10; // expected fully transparent
 const TRANSPARENT_Y = 10;
 const OPAQUE_X = 100; // inside the 50–150 red card
@@ -114,6 +115,18 @@ async function extractFirstFrameFromWebm(webmPath: string, outPng: string): Prom
   }
 }
 
+async function extractFirstFrameFromGif(gifPath: string, outPng: string): Promise<void> {
+  const result = await runFfmpeg(
+    ["-y", "-i", gifPath, "-frames:v", "1", "-pix_fmt", "rgba", "-update", "1", outPng],
+    { timeout: 60_000 },
+  );
+  if (!result.success) {
+    throw new Error(
+      `ffmpeg failed extracting frame 0 from ${gifPath}: ${result.stderr.slice(-400)}`,
+    );
+  }
+}
+
 async function runWebmCheck(workRoot: string): Promise<void> {
   console.log("\n[webm] rendering transparency-regression …");
   const outDir = join(workRoot, "webm");
@@ -141,6 +154,34 @@ async function runWebmCheck(workRoot: string): Promise<void> {
   console.log("[webm] PASS — transparent + opaque-red pixels verified");
 }
 
+async function runGifCheck(workRoot: string): Promise<void> {
+  console.log("\n[gif] rendering transparency-regression …");
+  const outDir = join(workRoot, "gif");
+  mkdirSync(outDir, { recursive: true });
+  const outPath = join(outDir, "out.gif");
+
+  const job = createRenderJob({
+    fps: { num: 15, den: 1 },
+    quality: "draft",
+    format: "gif",
+    gifLoop: 0,
+  });
+
+  await executeRenderJob(job, FIXTURE_SRC, outPath);
+  assert.equal(job.status, "complete", `gif render did not complete: status=${job.status}`);
+  assert.ok(existsSync(outPath), `gif output not written to ${outPath}`);
+  const size = (await import("node:fs")).statSync(outPath).size;
+  assert.ok(size > 0, `gif output ${outPath} is empty`);
+  console.log(`[gif] rendered ${outPath} (${size} bytes)`);
+
+  const framePng = join(outDir, "frame-0.png");
+  await extractFirstFrameFromGif(outPath, framePng);
+  const decoded = decodePng(readFileSync(framePng));
+  assertAlphaPixel(decoded, TRANSPARENT_X, TRANSPARENT_Y, "transparent", "gif");
+  assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "gif");
+  console.log("[gif] PASS — transparent + opaque-red pixels verified");
+}
+
 async function runPngSequenceCheck(workRoot: string): Promise<void> {
   console.log("\n[png-sequence] rendering transparency-regression …");
   const outDir = join(workRoot, "pngs");
@@ -165,14 +206,14 @@ async function runPngSequenceCheck(workRoot: string): Promise<void> {
     .sort();
   assert.equal(
     frames.length,
-    FPS, // 1 second at 30fps = 30 frames
-    `png-sequence expected ${FPS} frames, got ${frames.length}: ${frames.join(",")}`,
+    PNG_SEQUENCE_FRAME_COUNT, // 1 second at 30fps = 30 frames
+    `png-sequence expected ${PNG_SEQUENCE_FRAME_COUNT} frames, got ${frames.length}: ${frames.join(",")}`,
   );
   assert.equal(frames[0], "frame_000001.png", "first frame should be frame_000001.png");
   assert.equal(
     frames[frames.length - 1],
-    `frame_${String(FPS).padStart(6, "0")}.png`,
-    `last frame should be frame_${String(FPS).padStart(6, "0")}.png`,
+    `frame_${String(PNG_SEQUENCE_FRAME_COUNT).padStart(6, "0")}.png`,
+    `last frame should be frame_${String(PNG_SEQUENCE_FRAME_COUNT).padStart(6, "0")}.png`,
   );
   console.log(`[png-sequence] wrote ${frames.length} frames to ${outDir}`);
 
@@ -195,6 +236,7 @@ async function main(): Promise<void> {
 
   try {
     await runWebmCheck(workRoot);
+    await runGifCheck(workRoot);
     await runPngSequenceCheck(workRoot);
     console.log("\nAll transparency assertions passed.");
   } finally {
