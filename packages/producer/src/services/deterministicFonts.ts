@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultLogger } from "../logger.js";
@@ -581,17 +581,21 @@ function warnUnresolvedFonts(unresolved: string[]): void {
 // Google Fonts on-demand fetch + local cache
 // ---------------------------------------------------------------------------
 
-// On AWS Lambda `$HOME` resolves to a `/home/sbx_*` tree that's
-// read-only; only `/tmp` is writable. Route the cache there when
-// running inside Lambda, and honor `HYPERFRAMES_FONT_CACHE_DIR` as
-// an explicit override for any environment.
+let lambdaFontCacheRoot: string | undefined;
+
+// On AWS Lambda `$HOME` resolves to a `/home/sbx_*` tree that's read-only;
+// only `/tmp` is writable. Create one private, unguessable cache directory per
+// warm process and reuse it across invocations. Honor HYPERFRAMES_FONT_CACHE_DIR
+// as an explicit override for any environment.
 function resolveFontCacheRoot(): string {
-  return (
-    process.env.HYPERFRAMES_FONT_CACHE_DIR ??
-    (process.env.AWS_LAMBDA_FUNCTION_NAME
-      ? join(tmpdir(), "hyperframes", "fonts")
-      : join(homedir(), ".cache", "hyperframes", "fonts"))
-  );
+  if (process.env.HYPERFRAMES_FONT_CACHE_DIR) {
+    return process.env.HYPERFRAMES_FONT_CACHE_DIR;
+  }
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    lambdaFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
+    return lambdaFontCacheRoot;
+  }
+  return join(homedir(), ".cache", "hyperframes", "fonts");
 }
 
 // Chrome UA triggers woff2 responses from Google Fonts CSS API
