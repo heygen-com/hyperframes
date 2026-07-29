@@ -17,6 +17,7 @@ describe("findFfBinary", () => {
   const originalPlatform = process.platform;
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.resetModules();
     vi.doUnmock("node:child_process");
     vi.doUnmock("node:fs");
@@ -44,17 +45,14 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe(resolve(join(tmpdir(), "definitely-missing-ffmpeg")));
   });
 
-  it("prefers the real Windows exe when where lists a cmd shim first", async () => {
+  it("prefers the real Windows exe over a cmd shim in PATH", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    process.env.PATH = "/tools";
     vi.resetModules();
-    vi.doMock("node:child_process", () => {
-      const mocked = { execFileSync: () => "C:\\tools\\ffmpeg.cmd\r\nC:\\tools\\ffmpeg.exe\r\n" };
-      return { ...mocked, default: mocked };
-    });
     vi.doMock("node:fs", () => {
       const mocked = {
-        existsSync: (candidate: unknown) => candidate === "C:\\tools\\ffmpeg.exe",
+        existsSync: (candidate: unknown) => candidate === "/tools/ffmpeg.exe",
         accessSync: () => {},
         constants: { X_OK: 1 },
       };
@@ -62,14 +60,17 @@ describe("findFfBinary", () => {
     });
     const { findFfBinary } = await importFresh();
 
-    expect(findFfBinary("ffmpeg")).toBe(resolve("C:\\tools\\ffmpeg.exe"));
+    expect(findFfBinary("ffmpeg")).toBe("/tools/ffmpeg.exe");
   });
 
-  it("falls back to PATH when Windows where output decodes to a missing path", async () => {
+  it("discovers a Windows binary in a Unicode current directory without decoding console output", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    process.env.PATH = "/valid-tools";
-    const execFileSync = vi.fn(() => "C:\\Users\\��\\ffmpeg.exe\r\n");
+    process.env.PATH = "";
+    const unicodeDirectory = "/用户/工具";
+    const ffmpegPath = join(unicodeDirectory, "ffmpeg.exe");
+    vi.spyOn(process, "cwd").mockReturnValue(unicodeDirectory);
+    const execFileSync = vi.fn();
     vi.resetModules();
     vi.doMock("node:child_process", () => ({
       execFileSync,
@@ -77,7 +78,7 @@ describe("findFfBinary", () => {
     }));
     vi.doMock("node:fs", () => {
       const mocked = {
-        existsSync: (candidate: unknown) => candidate === "/valid-tools/ffmpeg.exe",
+        existsSync: (candidate: unknown) => candidate === ffmpegPath,
         accessSync: () => {},
         constants: { X_OK: 1 },
       };
@@ -85,12 +86,8 @@ describe("findFfBinary", () => {
     });
     const { findFfBinary } = await importFresh();
 
-    expect(findFfBinary("ffmpeg")).toBe("/valid-tools/ffmpeg.exe");
-    expect(execFileSync).toHaveBeenCalledWith(
-      "where",
-      ["ffmpeg"],
-      expect.objectContaining({ encoding: "utf-8" }),
-    );
+    expect(findFfBinary("ffmpeg")).toBe(ffmpegPath);
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it("falls back to scanning PATH when which/where fails", async () => {
