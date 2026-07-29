@@ -7,6 +7,10 @@ description: "For multi-scene work, don't prompt the scenes one by one — promp
 
 This narrative vocabulary is a writing discipline, not additional `STORYBOARD.md` schema: the workflow translates the plan into the smaller machine-readable shape the build consumes.
 
+<Note>
+"Storyboard" is also a question the agent asks in the [opening interview](/prompting/overview#the-interview-what-the-agent-asks-first) — answering yes there means the plan, the sketches, and the build get reviewed with you pass by pass on a live board. That answer changes the review process, not the route, and either way the plan this page teaches is what the build works from.
+</Note>
+
 ## Prompt the plan, not the scenes
 
 A storyboard is a short, structured document that sits above the individual frames: one arc, one direction block that every frame inherits, and a light per-frame spec (not a full description) for each key moment. The workflow reads the plan and builds each frame's HTML sub-composition against it — so a plan that's precise about the *shape* of the film produces frames that already agree with each other on pacing, palette, and payoff, without you re-stating any of that per frame.
@@ -97,7 +101,7 @@ Without stating the return explicitly, a rebuild is free to treat the early moti
     The two-color discipline and brand tokens a storyboard's direction block draws from.
   </Card>
   <Card title="The HyperFrames pipeline" icon="route" href="/guides/pipeline">
-    `STORYBOARD.md` as a production artifact — the file format this chapter's prompts turn into.
+    `STORYBOARD.md` as a production artifact — where this chapter's plans land, downstream of `BRIEF.md`.
   </Card>
 </CardGroup>
 

@@ -108,6 +108,25 @@ Warm-start prompts produce richer, more grounded videos because the agent is wri
 
 The four prompts above illustrate shape, not results — every prompt in this guide that ships with an embedded render was run exactly as written, and the gallery of those lives in [Verified examples](/prompting/examples).
 
+## The interview: what the agent asks first
+
+Either shape starts a short interview before anything is built. This isn't the agent stalling — it's the intent layer turning "make me a video" into a confirmed brief, so the build never has to guess the things you'd have corrected afterward. The agent confirms the route, then asks that workflow's must-have questions (recommended answer first, so most are one-word confirmations). When the selected workflow supports both run shapes, it then closes with two questions that shape the run itself:
+
+| Question | Your options |
+| --- | --- |
+| **Storyboard?** | `yes` — review the plan, wireframe sketches, and the build pass by pass on a live board (recommended past a couple of scenes) · `no` — one finished video from the confirmed brief |
+| **Automation or companion?** | `automation` — the matched workflow's pipeline executes the brief end to end · `companion` — build it together in `/general-video` with every HyperFrames capability on the table |
+
+The two are independent — all four combinations are valid, and a companion run reviews on the live board too when you said yes to the storyboard. Four routes skip both questions because neither has anything to add: `/motion-graphics` (the piece is seconds long), `/slideshow` (the deliverable is a navigable deck, not a rendered video), and `/embedded-captions` and `/talking-head-recut` (the footage is untouched, so there's no storyboard to review).
+
+In a hurry, skip the whole conversation by saying so:
+
+> Just build it — don't ask me anything.
+
+That locks `automation` with no storyboard wherever those apply, and every question the agent would have asked becomes a stated default in its heads-up instead.
+
+Everything the interview settles is written to **`BRIEF.md`** in the project root — the brief is the artifact, not the chat. A later session (or a different agent) resumes from that file and asks nothing again; to change an answer, edit `BRIEF.md` rather than re-explaining yourself in the prompt.
+
 ## Recommended workflow
 
 1. `npx hyperframes init my-video` — scaffold a project (skills install automatically)
