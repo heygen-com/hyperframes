@@ -38,6 +38,7 @@ import {
   checkSubCompositionUsability,
   type ParsableDocumentLike,
 } from "@hyperframes/parsers/sub-composition-validity";
+import { isUnresolvedAssetPlaceholder } from "@hyperframes/parsers/asset-resolution";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -168,7 +169,7 @@ function assertSubCompositionsUsable(
   for (const el of hosts) {
     const srcPath = el.getAttribute("data-composition-src");
     if (!srcPath) continue;
-    if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder, not a real reference — matches lint's skip
+    if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
     const filePath = resolve(projectDir, srcPath);
     // Circular reference guard. parseSubCompositions (below) silently

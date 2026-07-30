@@ -6,8 +6,8 @@ import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-compositi
 import { parseHTML } from "linkedom";
 import {
   cleanAssetUrl,
-  hasUnresolvedTemplatingToken,
   isRemoteOrInlineUrl,
+  isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
   maskNonScannableRanges,
   resolveExistingLocalAsset,
@@ -283,8 +283,7 @@ function lintAudioSrcNotFound(
     while ((match = audioSrcRe.exec(html)) !== null) {
       const src = match[1]!;
       if (/^(https?:|data:|blob:)/i.test(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue;
-      if (hasUnresolvedTemplatingToken(src)) continue;
+      if (isUnresolvedAssetPlaceholder(src)) continue;
       const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       if (!resolveLocalAssetCandidates(projectDir, rootRelative).some(existsSync)) {
         missingSrcs.push(src);
@@ -326,12 +325,11 @@ function lintMissingLocalAsset(
     while ((match = re.exec(scannable)) !== null) {
       const tagName = (match[1] ?? "").toLowerCase();
       const rawSrc = match[2] ?? "";
-      // Check the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
-      if (hasUnresolvedTemplatingToken(rawSrc)) continue;
+      // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+      if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue;
       const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
@@ -379,11 +377,10 @@ function lintTextureMaskAssetNotFound(
       const pattern = new RegExp(MASK_IMAGE_URL_RE.source, MASK_IMAGE_URL_RE.flags);
       while ((match = pattern.exec(cssSource.content)) !== null) {
         const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
-        // Check the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
-        if (hasUnresolvedTemplatingToken(rawUrl)) continue;
+        // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+        if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
         const url = cleanAssetUrl(rawUrl);
         if (!url || isRemoteOrInlineUrl(url)) continue;
-        if (/^__[A-Z_]+__$/.test(url)) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,
@@ -531,8 +528,7 @@ function lintMissingOrEmptySubComposition(
     while ((match = compositionSrcRe.exec(scannable)) !== null) {
       const srcPath = (match[1] ?? "").trim();
       if (!srcPath) continue;
-      if (/^__[A-Z_]+__$/.test(srcPath)) continue; // template placeholder
-      if (hasUnresolvedTemplatingToken(srcPath)) continue; // late-bound templating token
+      if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or late-bound templating token
 
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses

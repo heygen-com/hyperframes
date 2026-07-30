@@ -4,6 +4,7 @@ import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
+  isUnresolvedAssetPlaceholder,
   maskNonScannableRanges,
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
@@ -228,9 +229,11 @@ function collectLocalVideoAssets(
     const re = new RegExp(VIDEO_SRC_RE.source, VIDEO_SRC_RE.flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
-      const src = cleanAssetUrl(match[1] ?? "");
+      const rawSrc = match[1] ?? "";
+      // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+      if (isUnresolvedAssetPlaceholder(rawSrc)) continue;
+      const src = cleanAssetUrl(rawSrc);
       if (!src || isRemoteOrInlineUrl(src)) continue;
-      if (/^__[A-Z_]+__$/.test(src)) continue;
       const rootRelativeSrc = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       const resolved = resolveExistingLocalAsset(projectDir, rootRelativeSrc);
       if (!resolved) continue;
