@@ -1,7 +1,28 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
-import { summarizeTimelinePerformance } from "./useTimelinePerformanceTelemetry";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const trackStudioTimelinePerformance = vi.hoisted(() => vi.fn());
+
+vi.mock("../../telemetry/events", () => ({
+  trackStudioTimelinePerformance,
+}));
+
+import {
+  summarizeTimelinePerformance,
+  useTimelinePerformanceTelemetry,
+} from "./useTimelinePerformanceTelemetry";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
+afterEach(() => {
+  trackStudioTimelinePerformance.mockReset();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("summarizeTimelinePerformance", () => {
   it("reports raw mounted work and p95 scroll timings", () => {
@@ -50,5 +71,50 @@ describe("summarizeTimelinePerformance", () => {
         [],
       ),
     ).toBeNull();
+  });
+});
+
+describe("useTimelinePerformanceTelemetry", () => {
+  it("measures callback delivery when the animation-frame timestamp predates the scroll", () => {
+    vi.useFakeTimers();
+    let frameCallback: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frameCallback = callback;
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    let recordTimelineScroll: ((scroll: HTMLDivElement) => void) | undefined;
+    function Probe() {
+      recordTimelineScroll = useTimelinePerformanceTelemetry({
+        totalClipCount: 1,
+        totalRowCount: 1,
+        zoomMode: "manual",
+      }).recordTimelineScroll;
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(Probe)));
+
+    try {
+      vi.spyOn(performance, "now")
+        .mockReturnValueOnce(100)
+        .mockReturnValueOnce(108)
+        .mockReturnValueOnce(500);
+
+      recordTimelineScroll?.(document.createElement("div"));
+      frameCallback?.(99);
+      vi.advanceTimersByTime(400);
+
+      expect(trackStudioTimelinePerformance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scroll_frame_latency_p95_ms: 8,
+          scroll_frame_latency_max_ms: 8,
+        }),
+      );
+    } finally {
+      act(() => root.unmount());
+    }
   });
 });

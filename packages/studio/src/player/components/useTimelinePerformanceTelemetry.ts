@@ -87,7 +87,7 @@ export function useTimelinePerformanceTelemetry(context: TimelinePerformanceCont
       state.pendingScrollStartedAt = now;
       state.frameRequest = requestAnimationFrame((frameAt) => {
         state.frameRequest = 0;
-        state.frameLatencies.push(frameAt - state.pendingScrollStartedAt);
+        state.frameLatencies.push(performance.now() - state.pendingScrollStartedAt);
         if (state.previousFrameAt !== null) {
           state.frameIntervals.push(frameAt - state.previousFrameAt);
         }
