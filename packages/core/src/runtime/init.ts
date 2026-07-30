@@ -174,6 +174,9 @@ export function initSandboxRuntimeModular(): void {
   let webAudioReady = false;
   void webAudio.init().then((ok) => {
     webAudioReady = ok;
+    // Warm the decoded-buffer cache as soon as the transport exists (decode
+    // works on a suspended AudioContext, so no user gesture is needed).
+    if (ok) predecodeAudioClipBuffers();
   });
   // `_auto` is a Studio-internal keyframe marker (an auto-tracked endpoint the
   // parser reads back), NOT an animatable property. Register it as a no-op GSAP
@@ -1808,12 +1811,49 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  // Boundary-readiness telemetry: surface playback stalls (`waiting`/`stalled`
+  // on a timed media element while the transport plays) so cut-boundary tuning
+  // can target the right layer. Bounded per document to avoid diagnostic spam.
+  let mediaStallDiagnosticsPosted = 0;
+  const MAX_MEDIA_STALL_DIAGNOSTICS = 20;
+  const onMediaStallEvent = (event: Event) => {
+    const el = event.currentTarget;
+    if (!(el instanceof HTMLMediaElement)) return;
+    if (!state.isPlaying || state.tornDown) return;
+    if (mediaStallDiagnosticsPosted >= MAX_MEDIA_STALL_DIAGNOSTICS) return;
+    mediaStallDiagnosticsPosted += 1;
+    let bufferedEnd: number | null = null;
+    try {
+      bufferedEnd = el.buffered.length > 0 ? el.buffered.end(el.buffered.length - 1) : null;
+    } catch {
+      // buffered ranges unavailable
+    }
+    postRuntimeMessage({
+      source: "hf-preview",
+      type: "diagnostic",
+      code: "runtime_media_stall",
+      details: {
+        event: event.type,
+        tagName: el.tagName.toLowerCase(),
+        currentSrc: el.currentSrc || null,
+        readyState: el.readyState,
+        networkState: el.networkState,
+        mediaTime: el.currentTime,
+        bufferedEnd,
+        compositionTime: state.currentTime,
+        clipStart: Number.parseFloat(el.dataset.start ?? "") || null,
+      },
+    });
+  };
+
   const unbindMediaMetadataListeners = () => {
     for (const mediaEl of metadataBoundMedia) {
       mediaEl.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
       mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.removeEventListener("error", onMediaErrorForProxy);
+      mediaEl.removeEventListener("waiting", onMediaStallEvent);
+      mediaEl.removeEventListener("stalled", onMediaStallEvent);
     }
     metadataBoundMedia.clear();
   };
@@ -1821,6 +1861,19 @@ export function initSandboxRuntimeModular(): void {
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
+    // Segment-heavy compositions (editors emit one media element per cut) must
+    // not full-preload EVERYTHING at mount: dozens of parallel fetches contend
+    // for the connection pool and the EARLY segments buffer late. Above the
+    // threshold, far-future timed segments start metadata-only; the sync layer
+    // upgrades them to full preload as the playhead approaches (media.ts
+    // readiness stages set preload="auto" ~3s ahead).
+    const EAGER_PRELOAD_MAX_TIMED_MEDIA = 6;
+    const STAGED_PRELOAD_HORIZON_SECONDS = 10;
+    const timedMediaCount = mediaEls.reduce(
+      (count, el) => count + (el.hasAttribute("data-start") ? 1 : 0),
+      0,
+    );
+    const stagePreload = timedMediaCount > EAGER_PRELOAD_MAX_TIMED_MEDIA;
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
@@ -1835,6 +1888,8 @@ export function initSandboxRuntimeModular(): void {
       // for <audio> — all guarded inside mediaProxy.ts itself.
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.addEventListener("error", onMediaErrorForProxy);
+      mediaEl.addEventListener("waiting", onMediaStallEvent);
+      mediaEl.addEventListener("stalled", onMediaStallEvent);
 
       // Proactive proxy-fallback trigger: consult the codec map and swap
       // BEFORE the eager load() below, so a known-hostile asset never even
@@ -1845,8 +1900,12 @@ export function initSandboxRuntimeModular(): void {
       // Eagerly preload media data so audio/video is buffered before the user
       // clicks play. Without this, the first play() call fires on un-fetched
       // media, producing silence or choppy audio until the browser caches it.
-      if (mediaEl.preload !== "auto") {
-        mediaEl.preload = "auto";
+      // Exception: staged preload for far-future segments (see above).
+      const startAttr = Number.parseFloat(mediaEl.dataset.start ?? "");
+      const farFuture = Number.isFinite(startAttr) && startAttr > STAGED_PRELOAD_HORIZON_SECONDS;
+      const targetPreload = stagePreload && farFuture ? "metadata" : "auto";
+      if (mediaEl.preload !== targetPreload) {
+        mediaEl.preload = targetPreload;
       }
       if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
         mediaEl.load();
@@ -1858,6 +1917,29 @@ export function initSandboxRuntimeModular(): void {
       // the timeline is ready are re-probed the first time bindMediaMetadataListeners
       // fires after the timeline has been captured (every 30 transport ticks).
       probeAndCacheVolumeKeyframes(mediaEl);
+    }
+  };
+
+  // Decode-only warm pass over every timed audio source so WebAudio buffers are
+  // ready BEFORE the first play() instead of being decoded lazily inside it.
+  // The lazy path costs a full-file fetch+decodeAudioData per source at the
+  // moment the user hits play — on a freshly (re)loaded document (every editor
+  // edit reloads the preview iframe) that gap plays through the HTMLMedia
+  // fallback, heard as an audio dropout. Pre-decoding overlaps that work with
+  // document load. `decodeAudioElement` dedupes via its buffer cache and
+  // failure blacklist, so repeated calls per element are cheap map hits.
+  // Skipped during render capture: the producer mixes audio with ffmpeg from
+  // source files and never plays through WebAudio.
+  const predecodeAudioClipBuffers = () => {
+    if (state.tornDown || !webAudioReady) return;
+    if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
+    if ((window as Window & { __HF_RENDER_CAPTURE_MODE?: boolean }).__HF_RENDER_CAPTURE_MODE) {
+      return;
+    }
+    const audioEls = document.querySelectorAll("audio[data-start]");
+    for (const el of audioEls) {
+      if (!(el instanceof HTMLMediaElement) || !el.isConnected) continue;
+      void webAudio.decodeAudioElement(el);
     }
   };
 
@@ -2882,6 +2964,9 @@ export function initSandboxRuntimeModular(): void {
       }
       if (transportTickCount % 30 === 0) {
         bindMediaMetadataListeners();
+        // Also warm decode for audio elements discovered after mount (loaded
+        // sub-compositions) or bound before the async WebAudio init resolved.
+        predecodeAudioClipBuffers();
       }
 
       // Sync clock duration with the resolved timeline each tick (catches async
@@ -2927,6 +3012,31 @@ export function initSandboxRuntimeModular(): void {
               } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
                 // instead of falling through to monotonic (which runs ahead).
+                clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
+                foundActive = true;
+              }
+              break;
+            }
+          }
+          if (!foundActive) {
+            // No audio is mastering the clock (video-only composition, or the
+            // audio hasn't reached its window). A buffering ACTIVE video should
+            // freeze time the same way buffering audio does above — otherwise
+            // the monotonic clock runs ahead while frames are stuck, and the
+            // drift correction later hard-seeks (decoder reset) to catch up.
+            const videoEls = document.querySelectorAll("video[data-start]");
+            for (const rawEl of videoEls) {
+              if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
+              const start = Number.parseFloat(rawEl.dataset.start ?? "");
+              if (!Number.isFinite(start)) continue;
+              const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
+              const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+              if (state.currentTime < start || state.currentTime >= end) continue;
+              if (
+                !rawEl.paused &&
+                !rawEl.error &&
+                rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+              ) {
                 clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
                 foundActive = true;
               }

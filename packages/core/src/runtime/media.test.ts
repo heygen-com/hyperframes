@@ -1045,4 +1045,74 @@ describe("syncRuntimeMedia", () => {
     });
     expect(clip.el.muted).toBe(true);
   });
+
+  describe("upcoming-clip readiness (boundary smoothness)", () => {
+    function readyClip(overrides?: Partial<RuntimeMediaClip>): RuntimeMediaClip {
+      const clip = createMockClip(overrides);
+      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      return clip;
+    }
+
+    function syncAt(
+      clip: RuntimeMediaClip,
+      timeSeconds: number,
+      extra?: { playing?: boolean; outputMuted?: boolean },
+    ): void {
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: extra?.playing ?? true,
+        playbackRate: 1,
+        outputMuted: extra?.outputMuted,
+      });
+    }
+
+    it("pre-seeks an upcoming clip to its media offset within the lookahead window", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      clip.el.preload = "metadata";
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(30);
+      expect(clip.el.preload).toBe("auto");
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("leaves clips beyond the lookahead window untouched", () => {
+      const clip = readyClip({ start: 20, end: 30, mediaStart: 30 });
+      clip.el.currentTime = 3;
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(3);
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("pre-rolls a mutable upcoming video just before its boundary — playing, muted, not paused", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 30 });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).toHaveBeenCalled();
+      expect(clip.el.muted).toBe(true);
+      // Rolls in from mediaStart - lead so playback crosses the boundary at
+      // exactly mediaStart — activation then sees ~zero drift (no cold seek).
+      expect(clip.el.currentTime).toBeCloseTo(29.8, 5);
+      expect(clip.el.pause).not.toHaveBeenCalled();
+    });
+
+    it("never pre-rolls a video that would be audible — falls back to pre-seek", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 30 });
+      syncAt(clip, 5);
+      expect(clip.el.play).not.toHaveBeenCalled();
+      expect(clip.el.currentTime).toBe(30);
+    });
+
+    it("skips the pre-roll when the roll-in would cross media time 0", () => {
+      const clip = readyClip({ start: 5.2, end: 12, mediaStart: 0.05 });
+      syncAt(clip, 5, { outputMuted: true });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("paused transport leaves upcoming clips untouched", () => {
+      const clip = readyClip({ start: 6, end: 12, mediaStart: 30 });
+      syncAt(clip, 5, { playing: false });
+      expect(clip.el.currentTime).toBe(0);
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+  });
 });
