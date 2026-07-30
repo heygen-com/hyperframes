@@ -19,9 +19,9 @@ export function isRemoteOrInlineUrl(url: string): boolean {
  * substitutes before render. The static linter runs before that substitution,
  * so it cannot resolve such a value to a file on disk and must not report it as
  * a missing asset. Check the RAW url, before any `cleanAssetUrl()` step: that
- * splits on `?`/`#`, which also chops inside a `${...}` expression. (The older
- * `__UPPER__` placeholder shape predates this and keeps its own inline check at
- * each call site.)
+ * splits on `?`/`#`, which also chops inside a `${...}` expression. (The `__UPPER__`
+ * placeholder shape is combined with this in `isUnresolvedAssetPlaceholder` below, the
+ * shared predicate asset-src sites skip on.)
  */
 export function hasUnresolvedTemplatingToken(url: string): boolean {
   return /<<[^<>]+>>|\{\{[^{}]+\}\}|\$\{[^{}]+\}/.test(url);
