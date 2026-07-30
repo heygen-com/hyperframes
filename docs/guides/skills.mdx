@@ -89,7 +89,7 @@ One workflow per input shape. The router (`/hyperframes`) picks one of these for
 | `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched) — verbatim rail, embedded climax behind the subject, or pure-cinematic embed.                     |
 | `/talking-head-recut`      | Packaging an existing talking-head / interview / podcast video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes, side panels, PiP.          |
 | `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** (~under 10s) — kinetic type, stat / chart hit, logo sting, lower-third, animated tweet / headline. MP4 or transparent overlay.       |
-| `/music-to-video`          | A **music track** (audio file, or video to pull audio from) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                        |
+| `/music-to-video`          | A **music track** (audio file, video to pull audio from, or one generated from a mood brief) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                        |
 | `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video. |
 | `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback, and the home of companion mode (co-create with the full toolbox).                              |
 | `/remotion-to-hyperframes` | **Porting an existing Remotion** (React) composition's source to HyperFrames HTML. One-way migration, not creation.                                                                     |
@@ -111,7 +111,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 
 ## Source of truth
 
-The one-line "use when" for each skill comes from its own `SKILL.md` frontmatter `description:` field in the [hyperframes repo](https://github.com/heygen-com/hyperframes/tree/main/skills). The same catalog lives in the [README's `## Skills` section](https://github.com/heygen-com/hyperframes#skills) and the repo `CLAUDE.md`; all three surfaces are kept in sync when a skill is added or renamed.
+The one-line "use when" for each skill comes from its own `SKILL.md` frontmatter `description:` field in the [hyperframes repo](https://github.com/heygen-com/hyperframes/tree/main/skills). The same catalog lives in the [README's `## Skills` section](https://github.com/heygen-com/hyperframes#skills) and the repo `CLAUDE.md`. Two more surfaces compress the same descriptions and drift the same way, so they belong to the same sync set: the setup tables in the [prompting guide](/prompting/overview#one-time-setup) and the [quickstart](/quickstart). All of them are kept in sync when a skill is added, renamed, or has its contract changed.
 
 ## Next steps
 

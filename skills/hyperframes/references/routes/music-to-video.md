@@ -1,6 +1,6 @@
 # Route: music-to-video
 
-- **Input:** A music track, or a video whose audio becomes the track, with no narration or website capture. User images or videos are optional.
+- **Input:** A music track, a video whose audio becomes the track, or a track generated from a mood brief — with no narration or website capture. User images or videos are optional, so a complete video needs zero supplied assets.
 - **Output:** A beat-synced MP4 driven by a deterministic beat/energy map (`audiomap.json`). It may become a lyric video, slideshow, visualizer, or kinetic promo without changing pipelines.
 - **Triggers:** "make a video for this song", "beat-synced video", "lyric video", "music visualizer", "kinetic promo to this beat".
 
