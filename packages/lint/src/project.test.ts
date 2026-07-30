@@ -453,3 +453,58 @@ describe("audio_src_not_found with templating tokens", () => {
     expect(await hasAudioSrcNotFound(audioProject("audio/missing.mp3"))).toBe(true);
   });
 });
+
+describe("templating tokens are checked on the raw src, before cleanAssetUrl", () => {
+  // cleanAssetUrl splits on ?/#, which also chops inside a ${...} expression
+  // (e.g. `${asset?.url}` -> `${asset`). The token skip must run on the RAW value or
+  // these still false-positive at the video/img/source and CSS-url() sites.
+  function projectWith(bodyInner: string): string {
+    return makeProject(`<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  ${bodyInner}
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+  }
+  async function codes(project: string): Promise<Set<string>> {
+    const { results } = await lintProject(project);
+    return new Set(results.flatMap((entry) => entry.result.findings).map((f) => f.code));
+  }
+
+  // The blocker: ?/# lives inside the templating expression, so cleanAssetUrl truncates it.
+  const TRICKY = ["${asset?.url}", "${a ?? b}", "${u}?v=1", "<<video_x>>", "{{ videoUrl }}"];
+
+  it("does not flag missing_local_asset for <video> token srcs (incl. ?/# inside ${...})", async () => {
+    for (const src of TRICKY) {
+      const c = await codes(
+        projectWith(
+          `<video id="v1" class="clip" src="${src}" muted data-start="0" data-duration="3"></video>`,
+        ),
+      );
+      expect(c.has("missing_local_asset")).toBe(false);
+    }
+  });
+
+  it("does not flag missing_local_asset for <img> token srcs (incl. ?/# inside ${...})", async () => {
+    for (const src of TRICKY) {
+      const c = await codes(projectWith(`<img src="${src}" />`));
+      expect(c.has("missing_local_asset")).toBe(false);
+    }
+  });
+
+  it("does not flag texture_mask_asset_not_found for CSS url() token values (incl. ?/# inside ${...})", async () => {
+    for (const url of ["${asset?.url}", "${a ?? b}"]) {
+      const c = await codes(projectWith(`<div style="mask-image: url(${url})"></div>`));
+      expect(c.has("texture_mask_asset_not_found")).toBe(false);
+    }
+  });
+
+  it("still flags a genuinely missing local video file", async () => {
+    const c = await codes(
+      projectWith(
+        `<video id="v1" class="clip" src="assets/missing.mp4" muted data-start="0" data-duration="3"></video>`,
+      ),
+    );
+    expect(c.has("missing_local_asset")).toBe(true);
+  });
+});

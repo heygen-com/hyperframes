@@ -326,11 +326,12 @@ function lintMissingLocalAsset(
     while ((match = re.exec(scannable)) !== null) {
       const tagName = (match[1] ?? "").toLowerCase();
       const rawSrc = match[2] ?? "";
+      // Check the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+      if (hasUnresolvedTemplatingToken(rawSrc)) continue;
       const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue;
-      if (hasUnresolvedTemplatingToken(src)) continue;
       const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
       if (resolvedAsset) continue;
@@ -378,10 +379,11 @@ function lintTextureMaskAssetNotFound(
       const pattern = new RegExp(MASK_IMAGE_URL_RE.source, MASK_IMAGE_URL_RE.flags);
       while ((match = pattern.exec(cssSource.content)) !== null) {
         const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
+        // Check the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+        if (hasUnresolvedTemplatingToken(rawUrl)) continue;
         const url = cleanAssetUrl(rawUrl);
         if (!url || isRemoteOrInlineUrl(url)) continue;
         if (/^__[A-Z_]+__$/.test(url)) continue;
-        if (hasUnresolvedTemplatingToken(url)) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,

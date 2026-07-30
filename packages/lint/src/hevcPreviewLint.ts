@@ -3,6 +3,7 @@ import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import {
   cleanAssetUrl,
+  hasUnresolvedTemplatingToken,
   isRemoteOrInlineUrl,
   maskNonScannableRanges,
   resolveExistingLocalAsset,
@@ -85,7 +86,10 @@ export function collectLocalVideoCandidates(
     const re = new RegExp(videoSrcRe.source, videoSrcRe.flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(scannable)) !== null) {
-      const src = cleanAssetUrl(match[1] ?? "");
+      const rawSrc = match[1] ?? "";
+      // Check the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+      if (hasUnresolvedTemplatingToken(rawSrc)) continue;
+      const src = cleanAssetUrl(rawSrc);
       if (!src) continue;
       if (isRemoteOrInlineUrl(src)) continue;
       if (/^__[A-Z_]+__$/.test(src)) continue;
