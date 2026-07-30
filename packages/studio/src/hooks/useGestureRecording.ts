@@ -42,7 +42,12 @@ interface GsapRuntime {
 // Extracted helpers — pure functions, no refs, no React.
 // ---------------------------------------------------------------------------
 
-function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): BasePosition {
+function finiteNumberOr(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): BasePosition {
   let baseOpacity = 1;
   let baseScale = 1;
   let baseX = 0;
@@ -55,10 +60,10 @@ function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): Ba
       }
     ).gsap;
     if (gsap?.getProperty) {
-      baseOpacity = Number(gsap.getProperty(element, "opacity")) || 1;
-      baseScale = Number(gsap.getProperty(element, "scaleX")) || 1;
-      baseX = Number(gsap.getProperty(element, "x")) || 0;
-      baseY = Number(gsap.getProperty(element, "y")) || 0;
+      baseOpacity = finiteNumberOr(gsap.getProperty(element, "opacity"), 1);
+      baseScale = finiteNumberOr(gsap.getProperty(element, "scaleX"), 1);
+      baseX = finiteNumberOr(gsap.getProperty(element, "x"), 0);
+      baseY = finiteNumberOr(gsap.getProperty(element, "y"), 0);
     }
   } catch {
     /* cross-origin guard */
