@@ -49,6 +49,22 @@ npx hyperframes render -o output.mp4
 npx hyperframes render -c ./my-composition.html -o output.mp4
 ```
 
+### `publish`
+
+Upload a project and create a stable public URL:
+
+```bash
+npx hyperframes publish
+npx hyperframes publish ./my-video
+npx hyperframes publish --public
+npx hyperframes publish --update <url-or-id>
+npx hyperframes publish --space <space-id>
+npx hyperframes publish --yes
+```
+
+Use `--public` to make a claimed project available to anyone, rather than only
+to the user who claimed it.
+
 ### `lint`
 
 Validate your Hyperframes HTML:
