@@ -17,7 +17,13 @@ function createMockAudioContext(currentTime = 100) {
     _fireEnded: () => endedListeners.forEach((cb) => cb()),
   };
   const gainNode = {
-    gain: { value: 1 },
+    gain: {
+      value: 1,
+      setValueAtTime: vi.fn(),
+      linearRampToValueAtTime: vi.fn(),
+      cancelScheduledValues: vi.fn(),
+      setTargetAtTime: vi.fn(),
+    },
     connect: vi.fn(),
     disconnect: vi.fn(),
   };
@@ -463,6 +469,114 @@ describe("WebAudioTransport", () => {
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
       vi.unstubAllGlobals();
+    });
+
+    it("first fetch per src uses the HTTP cache; only a RETRY bypasses it with no-store", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // transient — not blacklisted
+        .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await transport.decodeAudioElement(el("tts.wav"));
+      // Media URLs are stable (edited assets ship under new URLs), so the first
+      // request must be allowed to hit the HTTP cache.
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "tts.wav", undefined);
+
+      await transport.decodeAudioElement(el("tts.wav"));
+      // A retry after a failure must actually re-request — not replay a cached
+      // 404 from the attempt we chose not to blacklist.
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "tts.wav", { cache: "no-store" });
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe("edge gain ramps (cut-boundary pop suppression)", () => {
+    async function rampsFor(args: {
+      compositionStart: number;
+      compositionTime: number;
+      volume: number;
+      clipDuration?: number;
+    }) {
+      const { transport, mock, gen } = setupTransport(100);
+      await transport.schedulePlayback(
+        mockEl,
+        mockBuffer,
+        args.compositionStart,
+        0,
+        args.compositionTime,
+        args.volume,
+        gen,
+        1,
+        args.clipDuration,
+      );
+      return mock.gainNode.gain;
+    }
+
+    function expectRamps(
+      g: Awaited<ReturnType<typeof rampsFor>>,
+      volume: number,
+      startAt: number,
+      endAt: number,
+    ) {
+      expect(g.setValueAtTime).toHaveBeenNthCalledWith(1, 0, startAt);
+      expect(g.linearRampToValueAtTime).toHaveBeenNthCalledWith(1, volume, startAt + 0.008);
+      expect(g.setValueAtTime).toHaveBeenNthCalledWith(2, volume, endAt - 0.008);
+      expect(g.linearRampToValueAtTime).toHaveBeenNthCalledWith(2, 0, endAt);
+    }
+
+    it("ramps gain in at the source's effective start and out before a bounded end", async () => {
+      // elapsed = 8-5 = 3 into a 10s clip → starts now (100), ends at 107.
+      const g = await rampsFor({
+        compositionStart: 5,
+        compositionTime: 8,
+        volume: 0.7,
+        clipDuration: 10,
+      });
+      expectRamps(g, 0.7, 100, 107);
+    });
+
+    it("a future-scheduled bounded clip ramps at its delayed start/end", async () => {
+      // compositionStart 10 at compositionTime 8 → starts at ctx time 102, ends 112.
+      const g = await rampsFor({
+        compositionStart: 10,
+        compositionTime: 8,
+        volume: 1,
+        clipDuration: 10,
+      });
+      expectRamps(g, 1, 102, 112);
+    });
+
+    it("unbounded sources get only the ramp-in", async () => {
+      const g = await rampsFor({ compositionStart: 0, compositionTime: 0, volume: 1 });
+      expect(g.setValueAtTime).toHaveBeenCalledTimes(1);
+      expect(g.linearRampToValueAtTime).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("stopAll fade-out (pause/seek pop suppression)", () => {
+    it("fades gain and defers the stop instead of hard-cutting mid-waveform", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = { muted: false } as HTMLMediaElement;
+
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      expect(el.muted).toBe(true);
+
+      transport.stopAll();
+
+      const g = mock.gainNode.gain;
+      expect(g.cancelScheduledValues).toHaveBeenCalledWith(100);
+      expect(g.setTargetAtTime).toHaveBeenCalledWith(0, 100, expect.any(Number));
+      expect(mock.sourceNode.stop).toHaveBeenCalledWith(expect.closeTo(100.02, 5));
+      // State restores immediately; node teardown happens on `ended`.
+      expect(el.muted).toBe(false);
+      expect(transport.isActive()).toBe(false);
+      expect(mock.gainNode.disconnect).not.toHaveBeenCalled();
+
+      mock.sourceNode._fireEnded();
+      expect(mock.sourceNode.disconnect).toHaveBeenCalled();
+      expect(mock.gainNode.disconnect).toHaveBeenCalled();
     });
   });
 });

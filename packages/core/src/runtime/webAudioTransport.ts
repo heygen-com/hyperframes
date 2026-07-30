@@ -70,10 +70,58 @@ export type ScheduledSource = {
   bounded: boolean;
 };
 
+/** Seconds of linear gain ramp applied at a scheduled source's start (and, for
+ *  bounded clips, before its end). Short enough to be inaudible as a fade, long
+ *  enough to remove the waveform-discontinuity click a hard cut produces. */
+const EDGE_RAMP_SECONDS = 0.008;
+
+/** Time constant for the stop-side fade in stopAll(); sources are stopped a few
+ *  time constants later so pause/seek never end mid-waveform with a pop. */
+const STOP_FADE_TIME_CONSTANT = 0.004;
+const STOP_FADE_TAIL_SECONDS = 0.02;
+
+/**
+ * Anti-pop gain automation: a hard cut starts/stops mid-waveform, which is an
+ * audible click. Ramp gain over EDGE_RAMP_SECONDS at the source's effective
+ * start and (for bounded clips) into its scheduled end, so adjacent trimmed
+ * clips hand off with a ~8ms micro-crossfade instead of a pop. Best-effort: a
+ * missing/throwing AudioParam API must never break playback.
+ */
+function applyEdgeGainRamps(
+  gain: GainNode["gain"],
+  opts: {
+    volume: number;
+    elapsed: number;
+    scheduledAt: number;
+    safeRate: number;
+    clipDuration: number;
+  },
+): void {
+  try {
+    const { volume, elapsed, scheduledAt, safeRate, clipDuration } = opts;
+    const startAt = elapsed >= 0 ? scheduledAt : scheduledAt + -elapsed / safeRate;
+    gain.setValueAtTime(0, startAt);
+    gain.linearRampToValueAtTime(volume, startAt + EDGE_RAMP_SECONDS);
+    const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
+    if (!hasBound) return;
+    const clipSourceLen = clipDuration * safeRate;
+    const endAt =
+      elapsed >= 0
+        ? scheduledAt + (clipSourceLen - elapsed) / safeRate
+        : startAt + clipSourceLen / safeRate;
+    if (endAt - startAt <= EDGE_RAMP_SECONDS * 4) return;
+    gain.setValueAtTime(volume, endAt - EDGE_RAMP_SECONDS);
+    gain.linearRampToValueAtTime(0, endAt);
+  } catch (err) {
+    swallow("webAudioTransport.edgeRamp", err);
+  }
+}
+
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _failedSrcs = new Set<string>();
+  private _fetchAttemptedSrcs = new Set<string>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
@@ -112,26 +160,8 @@ export class WebAudioTransport {
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
 
-    // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
-    // asset that simply has not been uploaded yet) is TRANSIENT — return null
-    // WITHOUT blacklisting, so the next play/seek generation retries once the
-    // asset becomes available. (Previously these were added to `_failedSrcs`,
-    // which is never cleared, permanently silencing a merely-late track.)
-    let arrayBuffer: ArrayBuffer;
-    try {
-      // `no-store`: a retry must actually re-request the asset — not replay a
-      // cached 404/stale response from the failed attempt that we chose not to
-      // blacklist.
-      const response = await fetch(src, { cache: "no-store" });
-      if (!response.ok) {
-        swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
-        return null;
-      }
-      arrayBuffer = await response.arrayBuffer();
-    } catch (err) {
-      swallow("webAudioTransport.fetch", err);
-      return null;
-    }
+    const arrayBuffer = await this._fetchAudioBytes(src);
+    if (!arrayBuffer) return null;
 
     // A decode failure means the bytes themselves are unusable (corrupt or an
     // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
@@ -143,6 +173,35 @@ export class WebAudioTransport {
     } catch (err) {
       this._failedSrcs.add(src);
       swallow("webAudioTransport.decode", err);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch the bytes for a source. A network error or non-OK status (e.g. a 404
+   * for an asset that simply has not been uploaded yet) is TRANSIENT — return
+   * null WITHOUT blacklisting, so the next play/seek generation retries once
+   * the asset becomes available. (Previously these were added to `_failedSrcs`,
+   * which is never cleared, permanently silencing a merely-late track.)
+   *
+   * The first attempt per src uses the normal HTTP cache — media sources are
+   * stable URLs (an edited asset ships under a new URL), so bypassing the cache
+   * here just re-downloads identical bytes on every fresh document. `no-store`
+   * only on a RETRY: a retry must actually re-request the asset — not replay a
+   * cached 404/stale response from the failed attempt we chose not to blacklist.
+   */
+  private async _fetchAudioBytes(src: string): Promise<ArrayBuffer | null> {
+    try {
+      const isRetry = this._fetchAttemptedSrcs.has(src);
+      this._fetchAttemptedSrcs.add(src);
+      const response = await fetch(src, isRetry ? { cache: "no-store" } : undefined);
+      if (!response.ok) {
+        swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
+        return null;
+      }
+      return await response.arrayBuffer();
+    } catch (err) {
+      swallow("webAudioTransport.fetch", err);
       return null;
     }
   }
@@ -208,6 +267,8 @@ export class WebAudioTransport {
         return null;
       }
 
+      applyEdgeGainRamps(gainNode.gain, { volume, elapsed, scheduledAt, safeRate, clipDuration });
+
       const priorMuted = el.muted;
       el.muted = true;
       logFallbackHandoff(el, priorMuted);
@@ -226,6 +287,14 @@ export class WebAudioTransport {
       this._paused = false;
 
       sourceNode.addEventListener("ended", () => {
+        // Sources are one-shot; release the graph nodes whether the source
+        // ended naturally or via stopAll()'s deferred fade-out stop.
+        try {
+          sourceNode.disconnect();
+          gainNode.disconnect();
+        } catch {
+          // already disconnected
+        }
         const idx = this._activeSources.indexOf(scheduled);
         if (idx !== -1) {
           this._activeSources.splice(idx, 1);
@@ -273,11 +342,24 @@ export class WebAudioTransport {
   }
 
   stopAll(): void {
+    const ctx = this._ctx;
     for (const source of this._activeSources) {
       try {
-        source.sourceNode.stop();
-        source.sourceNode.disconnect();
-        source.gainNode.disconnect();
+        if (ctx) {
+          // Fade instead of a hard cut so pause/seek never stop mid-waveform
+          // with an audible pop. The source rings for ~STOP_FADE_TAIL_SECONDS
+          // at rapidly-decaying gain, then stops; its `ended` listener
+          // disconnects the nodes. (A seek's freshly-scheduled sources overlap
+          // this brief tail — a micro-crossfade, which is the point.)
+          const now = ctx.currentTime;
+          source.gainNode.gain.cancelScheduledValues(now);
+          source.gainNode.gain.setTargetAtTime(0, now, STOP_FADE_TIME_CONSTANT);
+          source.sourceNode.stop(now + STOP_FADE_TAIL_SECONDS);
+        } else {
+          source.sourceNode.stop();
+          source.sourceNode.disconnect();
+          source.gainNode.disconnect();
+        }
       } catch {
         // already stopped
       }
