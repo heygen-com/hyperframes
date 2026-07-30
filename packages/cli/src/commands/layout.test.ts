@@ -18,7 +18,7 @@ import {
 vi.mock("../utils/project.js", () => resolveProjectMock());
 vi.mock("@hyperframes/core/compiler", () => bundleToSingleHtmlFailureMock());
 
-import { createInspectCommand } from "./layout.js";
+import { createInspectCommand, parseLayoutTolerance } from "./layout.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -47,5 +47,16 @@ describe("layout command deprecation (U5)", () => {
     const jsonCall = await runAndFindJsonLogCall(createInspectCommand("inspect"));
     const parsed = JSON.parse(String(jsonCall?.[0]));
     expect(parsed._meta.deprecated).toBe(true);
+  });
+});
+
+describe("parseLayoutTolerance", () => {
+  it("preserves an explicit zero tolerance", () => {
+    expect(parseLayoutTolerance("0")).toBe(0);
+  });
+
+  it("clamps negative tolerance and defaults invalid input", () => {
+    expect(parseLayoutTolerance("-1")).toBe(0);
+    expect(parseLayoutTolerance("invalid")).toBe(2);
   });
 });
