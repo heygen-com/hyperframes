@@ -1920,25 +1920,49 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  // Decode-only warm pass over every timed audio source so WebAudio buffers are
-  // ready BEFORE the first play() instead of being decoded lazily inside it.
-  // The lazy path costs a full-file fetch+decodeAudioData per source at the
-  // moment the user hits play — on a freshly (re)loaded document (every editor
-  // edit reloads the preview iframe) that gap plays through the HTMLMedia
-  // fallback, heard as an audio dropout. Pre-decoding overlaps that work with
-  // document load. `decodeAudioElement` dedupes via its buffer cache and
-  // failure blacklist, so repeated calls per element are cheap map hits.
-  // Skipped during render capture: the producer mixes audio with ffmpeg from
-  // source files and never plays through WebAudio.
+  // Decode-only warm pass over timed audio sources NEAR THE PLAYHEAD so
+  // WebAudio buffers are ready BEFORE the first play() instead of being decoded
+  // lazily inside it. The lazy path costs a full-file fetch+decodeAudioData per
+  // source at the moment the user hits play — on a freshly (re)loaded document
+  // (every editor edit reloads the preview iframe) that gap plays through the
+  // HTMLMedia fallback, heard as an audio dropout. Pre-decoding overlaps that
+  // work with document load.
+  //
+  // BOUNDED, not exhaustive: a source's fetch pulls the WHOLE file into memory
+  // and the decoded PCM is ~23MB per stereo minute — warming EVERY clip of a
+  // long multi-clip composition on EVERY document load multiplies to gigabytes
+  // (an editor with a standby iframe doubles it again). So each pass only warms
+  // clips whose window is near the current time; the periodic re-run (every 30
+  // transport ticks) slides the window as the playhead moves, and play() still
+  // decodes whatever it needs exactly as before. `decodeAudioElement` dedupes
+  // via its buffer cache and failure blacklist, so repeated calls per element
+  // are cheap map hits.
+  //
+  // Skipped during render capture (the producer mixes audio with ffmpeg) and
+  // when the embedder set `__HF_AUDIO_PREDECODE_DISABLED` — the opt-out for
+  // documents that exist but are never played (e.g. a double-buffered editor
+  // preview's hidden standby iframe).
+  const PREDECODE_BEHIND_SECONDS = 10;
+  const PREDECODE_AHEAD_SECONDS = 45;
   const predecodeAudioClipBuffers = () => {
     if (state.tornDown || !webAudioReady) return;
     if (state.nativeMediaSyncDisabled || state.webAudioMediaDisabled) return;
-    if ((window as Window & { __HF_RENDER_CAPTURE_MODE?: boolean }).__HF_RENDER_CAPTURE_MODE) {
-      return;
-    }
+    const w = window as Window & {
+      __HF_RENDER_CAPTURE_MODE?: boolean;
+      __HF_AUDIO_PREDECODE_DISABLED?: boolean;
+    };
+    if (w.__HF_RENDER_CAPTURE_MODE || w.__HF_AUDIO_PREDECODE_DISABLED) return;
+    const now = Math.max(0, state.currentTime || 0);
+    const windowStart = now - PREDECODE_BEHIND_SECONDS;
+    const windowEnd = now + PREDECODE_AHEAD_SECONDS;
     const audioEls = document.querySelectorAll("audio[data-start]");
     for (const el of audioEls) {
       if (!(el instanceof HTMLMediaElement) || !el.isConnected) continue;
+      const start = Number.parseFloat(el.dataset.start ?? "");
+      if (!Number.isFinite(start)) continue;
+      const durAttr = Number.parseFloat(el.dataset.duration ?? "");
+      const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
+      if (end < windowStart || start > windowEnd) continue;
       void webAudio.decodeAudioElement(el);
     }
   };
@@ -3357,6 +3381,7 @@ export function initSandboxRuntimeModular(): void {
       window.removeEventListener("beforeunload", state.beforeUnloadHandler);
       state.beforeUnloadHandler = null;
     }
+    window.removeEventListener("pagehide", teardown);
     picker.disablePickMode();
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
@@ -3411,4 +3436,12 @@ export function initSandboxRuntimeModular(): void {
   window.__hfRuntimeTeardown = teardown;
   state.beforeUnloadHandler = teardown;
   window.addEventListener("beforeunload", state.beforeUnloadHandler);
+  // `pagehide` too: in an iframe whose document is replaced (an editor writing
+  // a new `srcdoc` on every edit), pagehide is the dependable unload signal.
+  // Without a teardown there, each discarded document keeps a live
+  // AudioContext + decoded-buffer cache until GC gets around to it — under
+  // rapid edits that transiently stacks hundreds of MB of PCM per reload.
+  // teardown() is idempotent (state.tornDown), so double-firing with
+  // beforeunload is harmless.
+  window.addEventListener("pagehide", teardown);
 }

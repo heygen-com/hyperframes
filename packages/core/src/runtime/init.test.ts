@@ -2739,5 +2739,72 @@ describe("initSandboxRuntimeModular", () => {
         vi.unstubAllGlobals();
       }
     });
+
+    it("only warms clips near the playhead, and honors the embedder opt-out", async () => {
+      const decodeAudioData = vi.fn(async () => ({}) as AudioBuffer);
+      class MockAudioContext {
+        currentTime = 0;
+        state = "running";
+        destination = {};
+        decodeAudioData = decodeAudioData;
+        createGain() {
+          return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+        }
+        resume = vi.fn();
+        close = vi.fn();
+      }
+      vi.stubGlobal("AudioContext", MockAudioContext);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        const root = document.createElement("div");
+        root.setAttribute("data-composition-id", "main");
+        root.setAttribute("data-root", "true");
+        root.setAttribute("data-start", "0");
+        root.setAttribute("data-duration", "600");
+        root.setAttribute("data-width", "1920");
+        root.setAttribute("data-height", "1080");
+        const near = document.createElement("audio");
+        near.setAttribute("data-start", "0");
+        near.setAttribute("data-duration", "5");
+        near.setAttribute("src", "https://media.example/near.mp3");
+        const far = document.createElement("audio");
+        far.setAttribute("data-start", "300");
+        far.setAttribute("data-duration", "5");
+        far.setAttribute("src", "https://media.example/far.mp3");
+        root.append(near, far);
+        document.body.appendChild(root);
+        window.__timelines = { main: createMockTimeline(600) };
+
+        initSandboxRuntimeModular();
+
+        // Warming a whole long composition costs a full-file fetch + ~23MB of
+        // PCM per stereo minute PER SOURCE — only playhead-proximate clips may
+        // pre-decode; the rest stay lazy until the playhead approaches.
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+        expect(String(fetchMock.mock.calls[0]?.[0])).toContain("near.mp3");
+
+        window.__hfRuntimeTeardown?.();
+        fetchMock.mockClear();
+        (
+          window as Window & { __HF_AUDIO_PREDECODE_DISABLED?: boolean }
+        ).__HF_AUDIO_PREDECODE_DISABLED = true;
+        initSandboxRuntimeModular();
+        // A document that exists but is never played (e.g. a double-buffered
+        // preview's standby iframe) must not warm anything.
+        await new Promise((r) => setTimeout(r, 20));
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        delete (window as Window & { __HF_AUDIO_PREDECODE_DISABLED?: boolean })
+          .__HF_AUDIO_PREDECODE_DISABLED;
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });
