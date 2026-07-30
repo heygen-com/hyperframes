@@ -1,7 +1,9 @@
-import { memo, useState, useRef, useEffect, useId } from "react";
+import { memo, useState, useRef, useEffect, useLayoutEffect, useId } from "react";
+import { createPortal } from "react-dom";
 import { CANVAS_DIMENSIONS } from "@hyperframes/parsers";
 import { RenderQueueItem } from "./RenderQueueItem";
 import { Button } from "../ui/Button";
+import { resolveFloatingPanelPosition, type FloatingPosition } from "../editor/floatingPanel";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -132,12 +134,20 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
   },
 };
 
+// Estimated, like COLOR_PICKER_SIZE in propertyPanelColor: only the flip
+// decision uses the height, and the clamp keeps the panel on screen either way.
+const FORMAT_PANEL_SIZE = { width: 208, height: 150 };
+
 // Rich format guidance in a keyboard-reachable disclosure: the trigger is a
 // real button (focusable, labelled), the panel is tied to it via
 // aria-describedby, and Escape dismisses (WCAG 1.4.13). Content is too rich
 // for the one-line ui/Tooltip primitive, so this stays a local popover.
+// It renders in a portal because the right panel is overflow-hidden: an
+// in-flow absolute panel gets clipped at the panel edge.
 function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<FloatingPosition | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panelId = useId();
 
@@ -151,6 +161,22 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
 
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
+  // Positioned once on open, so it does not follow panel scroll. The popover
+  // is hover-lived; add a scroll listener only if that ever shows up.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = triggerRef.current;
+    if (!el) return;
+    setPosition(
+      resolveFloatingPanelPosition(
+        el.getBoundingClientRect(),
+        { width: window.innerWidth, height: window.innerHeight },
+        FORMAT_PANEL_SIZE,
+        { offset: 6 },
+      ),
+    );
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -163,7 +189,7 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   const info = FORMAT_INFO[format];
 
   return (
-    <div className="relative" onPointerEnter={show} onPointerLeave={hide}>
+    <div ref={triggerRef} className="relative" onPointerEnter={show} onPointerLeave={hide}>
       <button
         type="button"
         aria-label="About video formats"
@@ -190,27 +216,32 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
           <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
       </button>
-      {open && (
-        <div
-          id={panelId}
-          role="tooltip"
-          className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50"
-        >
-          <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
-          <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
-          <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
-            {(["mp4", "mov", "webm"] as const)
-              .filter((f) => f !== format)
-              .map((f) => (
-                <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
-                  <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
-                  {" — "}
-                  {FORMAT_INFO[f].desc}
-                </p>
-              ))}
-          </div>
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            id={panelId}
+            role="tooltip"
+            onPointerEnter={show}
+            onPointerLeave={hide}
+            className="fixed w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-[200]"
+            style={{ left: position?.left ?? -9999, top: position?.top ?? -9999 }}
+          >
+            <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
+            <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
+            <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
+              {(["mp4", "mov", "webm"] as const)
+                .filter((f) => f !== format)
+                .map((f) => (
+                  <p key={f} className="text-[9px] text-panel-text-4 leading-relaxed">
+                    <span className="text-panel-text-3 font-medium">{FORMAT_INFO[f].label}</span>
+                    {" — "}
+                    {FORMAT_INFO[f].desc}
+                  </p>
+                ))}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
