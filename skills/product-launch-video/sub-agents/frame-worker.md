@@ -18,4 +18,4 @@ Brand text comes from your frame's `scene` / narrative — never from `frame.md`
 
 ## Cross-frame handoffs
 
-If the packet includes `handoff_in:` or `handoff_out:`, treat those values as a hard boundary contract. Start or end the named element at the exact x/y position, scale, opacity, and motion direction/speed provided. Do not restyle or reinterpret that boundary state. The neighboring frame is being built by another worker and will use the matching values.
+If the packet includes `handoff_in:` or `handoff_out:`, treat those values as a hard boundary contract. Start or end the named element at the exact x/y position, scale, opacity, and motion direction/speed provided; a field the packet states as unchanged is still binding, not optional. Do not restyle or reinterpret that boundary state. The neighboring frame is being built by another worker and will use the matching values.

@@ -54,7 +54,7 @@ Classify the input and choose the path. Explicit URL -> capture it and use the s
 
 Run capture with: `npx hyperframes capture "<URL>" -o ./capture`
 
-For a site tour or show-it-as-is brief, the captured page is the visual source of truth. Use the real screenshot instead of rebuilding the full website in HTML. If the shot needs internal movement, keep the screenshot as the base and overlay real captured assets at measured positions, or rebuild only the one component that moves. For a scroll shot, use a 2x full-page capture and animate the viewport over it. Recreate the whole page only when the user explicitly asks for a stylized interpretation or the capture is unusable.
+For a site tour or show-it-as-is brief, the captured page is the visual source of truth. Use the real screenshot instead of rebuilding the full website in HTML. If the shot needs internal movement, keep the screenshot as the base and overlay real captured assets at measured positions, or rebuild only the one component that moves. For a scroll shot, animate the viewport over `capture/screenshots/full-page.png` — the 1x plate of the whole document, pixel-exact for a 1920-wide viewport travelling down it. It is absent when the page was too tall to capture in one piece; fall back to the overlapping scroll-position shots in the same directory. Pushing in past 1:1 wants its own 2x capture of that region instead, since the plate has no headroom above 1x. Recreate the whole page only when the user explicitly asks for a stylized interpretation or the capture is unusable.
 
 If `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or an OpenRouter key exists, capture auto-captions assets into `capture/extracted/asset-descriptions.md`. This is not a review gate. Without a vision key, use DOM context and continue.
 
@@ -128,7 +128,7 @@ Read `references/visual-design.md`, `../hyperframes-animation/blueprints-index.m
 
 For every visual frame, write a **time-coded shot sequence** into `STORYBOARD.md` per `visual-design.md`'s method: pick the frame's blueprint (or compose), instantiate it with THIS product's content, and pace each Scene's reveal to the voiceover so the frame develops across its full duration instead of front-loading then freezing. State layout and motion **inline** per Scene (vocabularies in `visual-design.md` and `motion-language.md`). Add one video-wide `## Video direction` block.
 
-When an element visibly continues across a frame boundary, give both workers the same numerical handoff in `STORYBOARD.md`: add `handoff_out:` to the outgoing frame and a matching `handoff_in:` to the incoming frame. Name the element and its exact x/y position, scale, opacity, and motion direction/speed at the cut. Omit these fields for a deliberate clean cut. The goal is simple: parallel workers must not invent two different versions of the same seam.
+When an element visibly continues across a frame boundary, give both workers the same numerical handoff in `STORYBOARD.md`: add `handoff_out:` to the outgoing frame and a matching `handoff_in:` to the incoming frame. Name the element and its exact x/y position, scale, opacity, and motion direction/speed at the cut — state every field even when it does not change, because a constant is `opacity: 1`, not an omission. Omit the whole block only for a deliberate clean cut. The goal is simple: parallel workers must not invent two different versions of the same seam.
 
 Do not change story, script, asset choices, `asset_candidates`, `transition_in`, or captured source material. Do not write HTML in this step.
 
