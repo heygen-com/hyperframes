@@ -10,8 +10,10 @@ Go from zero to a rendered MP4 — either by prompting your AI agent or by start
 Install the HyperFrames skills, then describe the video you want:
 
 ```bash
-npx skills add heygen-com/hyperframes
+npx skills add heygen-com/hyperframes --full-depth
 ```
+
+Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours — you'd get stale skills.
 
 The installer shows a picker. Select the **core set** every project needs — these register as slash commands in Claude Code (Cursor, Gemini CLI, Codex, [Google Antigravity](/guides/antigravity), and [GitHub Copilot CLI](/guides/copilot-cli) load them too):
 
@@ -21,15 +23,16 @@ The installer shows a picker. Select the **core set** every project needs — th
 | `/hyperframes-core` | Composition contract — HTML structure, `data-*` attributes, clips, tracks |
 | `/hyperframes-animation` | All animation + the GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU runtime adapters |
 | `/hyperframes-creative` | Design direction — palettes, typography, narration, beat planning |
-| `/hyperframes-cli` | Dev-loop CLI — init, lint, preview, render, doctor |
+| `/hyperframes-cli` | Dev-loop CLI — init, lint, check, preview, render, doctor |
 | `/media-use` | Asset preprocessing — TTS, transcription, background removal |
 | `/hyperframes-registry` | Install catalog blocks and components |
+| `/hyperframes-keyframes` | Seek-safe keyframe authoring across runtimes, plus `hyperframes keyframes` diagnostics |
 | `/general-video` | The general authoring workflow — multi-scene pieces, reels, montages, remixes, and the home of companion mode; the fallback when no specific workflow fits |
 
-The **workflow skills** are optional — add the ones that match your inputs, and `/hyperframes` routes to whichever you've installed: `/product-launch-video`, `/faceless-explainer`, `/pr-to-video`, `/embedded-captions`, `/talking-head-recut`, `/motion-graphics`, `/music-to-video`, `/slideshow`, `/general-video`, `/remotion-to-hyperframes`. See the [skills catalog](/guides/skills) for the full list with one-line "use when" descriptions.
+The **workflow skills** are optional — add the ones that match your inputs, and `/hyperframes` routes to whichever you've installed: `/product-launch-video`, `/faceless-explainer`, `/pr-to-video`, `/embedded-captions`, `/talking-head-recut`, `/motion-graphics`, `/music-to-video`, `/slideshow`, `/general-video`, `/remotion-to-hyperframes`, `/figma`. See the [skills catalog](/guides/skills) for the full list with one-line "use when" descriptions.
 
 <Tip>
-  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all`.
+  To skip the picker and install everything (core + every workflow) in one shot, run `npx skills add heygen-com/hyperframes --all --full-depth`.
 </Tip>
 
 These skills teach your agent how to write correct compositions, GSAP and runtime-adapter animations, Tailwind v4 browser-runtime styles, captions, and voiceovers. Invoking a slash command loads its context explicitly, which produces correct output the first time — and **starting at `/hyperframes` lets it route your request to the right workflow.**
@@ -217,6 +220,15 @@ The agent handles scaffolding, animation, and rendering. See the [prompting guid
     - **Root element** must have `data-composition-id`, `data-width`, and `data-height`
     - **Timed elements** need `data-start`, `data-duration`, `data-track-index`, and `class="clip"`
     - **GSAP timeline** must be created with `{ paused: true }` and registered on `window.__timelines`
+  </Step>
+
+  <Step title="Validate before rendering">
+    ```bash
+    npx hyperframes lint
+    npx hyperframes check
+    ```
+
+    `lint` checks the HTML structure statically; `check` runs the composition in a headless browser and reports what a still frame can't — an element overflowing its region, colliding text, a runtime error that only fires mid-timeline, contrast below WCAG AA. Both must pass before you render: a render that took ten minutes will happily contain a defect `check` names in seconds.
   </Step>
 
   <Step title="Render to MP4">
