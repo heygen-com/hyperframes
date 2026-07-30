@@ -63,6 +63,9 @@ const flag = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
 };
+// Deliberate escape from the bgm_pending refusal below — for previewing while a detached
+// generate is still running. Off by default so a silent film can't ship by accident.
+const allowPendingBgm = argv.includes("--allow-pending-bgm");
 function die(msg) {
   console.error(`✗ assemble-index.mjs: ${msg}`);
   process.exit(1);
@@ -586,12 +589,19 @@ if (audio.bgm?.path) {
     anomalies.push(`bgm ${audio.bgm.path} not on disk — skipped`);
   }
 } else if (audio.bgm_pending) {
-  // The distinction the flag exists to make: this film is not silent by design, its bed just
-  // has not finished generating. Assembling now ships a silent cut against a storyboard that
-  // promises music, so say it here rather than let the build read as complete.
+  // The distinction the flag exists to make. A warning is not enough here: assemble is re-run
+  // on Step 6 rework, long after the audio step's own warning scrolled past, and it would
+  // happily build a silent film from a snapshot whose JSON says the bed is still generating.
+  // Refuse by default; --allow-pending-bgm is the deliberate escape for previewing mid-generate.
+  if (!allowPendingBgm) {
+    die(
+      "audio_meta.json says bgm_pending — the music bed is still generating and is NOT in this " +
+        "assembly. Wait for the track, re-run the audio step, then assemble again. To assemble a " +
+        "deliberately silent preview anyway, pass --allow-pending-bgm.",
+    );
+  }
   anomalies.push(
-    "bgm is still generating (bgm_pending) — this assembly has NO music bed. Re-run the audio " +
-      "step and assemble again once the track lands, or the film ships silent.",
+    "bgm still generating (bgm_pending) — assembled without a bed per --allow-pending-bgm",
   );
 }
 

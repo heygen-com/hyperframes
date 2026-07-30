@@ -72,13 +72,13 @@ describe("captureFullPagePlate — the scroll shot's plate", () => {
     await captureFullPagePlate(page, dir);
 
     const scripts = evaluate.mock.calls.map((c) => String(c[0]));
-    // height probe, neutralise, restore
+    // neutralise, height probe, restore — the probe sits after neutralisation because
+    // forcing fixed/sticky to `static` puts those elements back in flow and grows the page.
     expect(scripts).toHaveLength(3);
-    expect(scripts[0]).toContain("scrollHeight");
-    // Neutralise before the shot — a fixed header would otherwise bake in mid-plate.
-    expect(scripts[1]).toContain("'fixed'");
-    expect(scripts[1]).toContain("'sticky'");
-    expect(scripts[1]).toContain("data-hf-plate-position");
+    expect(scripts[0]).toContain("'fixed'");
+    expect(scripts[0]).toContain("'sticky'");
+    expect(scripts[0]).toContain("data-hf-plate-position");
+    expect(scripts[1]).toContain("scrollHeight");
     // Then hand the page back unchanged: the caller keeps reading the DOM after this.
     expect(scripts[2]).toContain("removeAttribute");
     expect(scripts[2]).toContain("data-hf-plate-position");
@@ -153,5 +153,32 @@ describe("pngHeight", () => {
   it("returns null for anything that is not a PNG", () => {
     expect(pngHeight(Buffer.from("not a png at all, definitely not"))).toBeNull();
     expect(pngHeight(Buffer.alloc(4))).toBeNull();
+  });
+});
+
+describe("captureFullPagePlate — the guard sees the post-neutralisation page (Magi's case)", () => {
+  it("skips when the initial height is under the cap but the final height is over it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-plate-"));
+    // Pre-traversal the page measured 9000. Lazy content and un-fixing the sticky header push
+    // it over the cap by the time the plate would be shot. Probing before either step would
+    // have passed the guard and emitted a clipped plate.
+    let neutralised = false;
+    const evaluate = vi.fn(async (script?: unknown) => {
+      const src = String(script);
+      if (src.includes("'sticky'")) {
+        neutralised = true;
+        return undefined;
+      }
+      if (src.includes("scrollHeight")) return neutralised ? 20000 : 9000;
+      return undefined;
+    });
+    const screenshot = vi.fn(async (_opts?: unknown) => pngBuffer(20000));
+    const page = { evaluate, screenshot } as unknown as Page;
+
+    expect(await captureFullPagePlate(page, dir)).toBeNull();
+    expect(screenshot).not.toHaveBeenCalled();
+    expect(existsSync(join(dir, "full-page.png"))).toBe(false);
+    // Bailing out early must still hand the page back unmodified.
+    expect(String(evaluate.mock.calls.at(-1)?.[0])).toContain("removeAttribute");
   });
 });

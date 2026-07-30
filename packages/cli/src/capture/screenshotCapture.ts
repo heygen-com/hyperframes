@@ -60,15 +60,6 @@ export async function captureFullPagePlate(
   page: Page,
   screenshotsDir: string,
 ): Promise<string | null> {
-  // Measured here rather than taken from the caller: the plate is deliberately shot AFTER the
-  // scroll traversal, and lazy content grows the document as it loads — a height measured
-  // before scrolling reads low on exactly the long pages this guard exists for, which would
-  // let the check pass and a clipped plate through.
-  const docHeight = (await page.evaluate(
-    `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
-  )) as number;
-  if (docHeight > MAX_PLATE_HEIGHT_PX) return null;
-
   // Record the inline value before overwriting so the page is handed back unchanged — the
   // caller keeps using it (asset extraction, DOM reads) after this returns.
   await page.evaluate(
@@ -81,6 +72,16 @@ export async function captureFullPagePlate(
     })`,
   );
   try {
+    // Measured here — after the caller's scroll traversal AND after neutralisation — never
+    // taken from the caller. Both steps grow the document: lazy content loads as the page is
+    // scrolled, and forcing fixed/sticky elements to `static` drops them back into flow. A
+    // height read before either one is low on exactly the long pages this guard exists for,
+    // which would pass the check and let a clipped plate through.
+    const docHeight = (await page.evaluate(
+      `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
+    )) as number;
+    if (docHeight > MAX_PLATE_HEIGHT_PX) return null;
+
     const buffer = await page.screenshot({ type: "png", fullPage: true });
     // Confirm what Chrome produced instead of trusting the measurement: the capture itself can
     // trigger another round of lazy loading. A clipped plate is undetectable downstream — the
