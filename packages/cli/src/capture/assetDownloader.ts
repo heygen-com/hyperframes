@@ -17,6 +17,32 @@ function svgContentHashSlug(svgSource: string | Buffer, isLogo: boolean): string
   return isLogo ? `logo-${hash}` : `svg-${hash}`;
 }
 
+/**
+ * Make a scraped inline `<svg>` usable as a standalone `.svg` file.
+ *
+ * An inline SVG in an HTML document inherits the SVG namespace from the parser, so the DOM's
+ * `outerHTML` does not serialize `xmlns`. That string is fine pasted back into HTML but is NOT
+ * a valid standalone document: `<img src="logo-abc123.svg">` renders a broken-image icon, which
+ * is how these assets are actually consumed downstream. Declare the namespaces on the way to disk.
+ *
+ * `xlink:href` is deprecated but still emitted by plenty of sites; an undeclared `xlink:` prefix
+ * is a parse error in a standalone document, so declare that too — but only when it is used.
+ */
+export function toStandaloneSvg(outerHTML: string): string {
+  const open = outerHTML.match(/<svg\b[^>]*>/i);
+  if (!open) return outerHTML;
+  const original = open[0];
+  let tag = original;
+  const add: string[] = [];
+  if (!/\sxmlns\s*=/i.test(tag)) add.push('xmlns="http://www.w3.org/2000/svg"');
+  if (/\sxlink:[a-z-]+\s*=/i.test(outerHTML) && !/\sxmlns:xlink\s*=/i.test(tag)) {
+    add.push('xmlns:xlink="http://www.w3.org/1999/xlink"');
+  }
+  if (!add.length) return outerHTML;
+  tag = tag.replace(/^<svg\b/i, `<svg ${add.join(" ")}`);
+  return outerHTML.replace(original, tag);
+}
+
 export async function downloadAssets(
   tokens: DesignTokens,
   outputDir: string,
@@ -34,7 +60,9 @@ export async function downloadAssets(
   for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
     const svg = tokens.svgs[i]!;
     if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
-    const slug = svgContentHashSlug(svg.outerHTML, !!svg.isLogo);
+    // Hash the bytes that actually land on disk, so the filename still can't drift from content.
+    const svgFile = toStandaloneSvg(svg.outerHTML);
+    const slug = svgContentHashSlug(svgFile, !!svg.isLogo);
     let finalSlug = slug;
     let suffix = 2;
     while (usedSvgNames.has(finalSlug)) {
@@ -45,7 +73,7 @@ export async function downloadAssets(
     const name = `${finalSlug}.svg`;
     const localPath = `assets/svgs/${name}`;
     try {
-      writeFileSync(join(outputDir, localPath), svg.outerHTML, "utf-8");
+      writeFileSync(join(outputDir, localPath), svgFile, "utf-8");
       assets.push({ url: "", localPath, type: "svg" });
     } catch {
       /* skip */
