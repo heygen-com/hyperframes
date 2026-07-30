@@ -15,6 +15,7 @@ const {
   trackStudioKeyframeLaneExpand,
   trackStudioSegmentEaseEdit,
   trackStudioFeedback,
+  trackStudioTimelinePerformance,
 } = await import("./events");
 
 describe("studio telemetry events", () => {
@@ -61,6 +62,26 @@ describe("studio telemetry events", () => {
       resolution: undefined,
       composition: undefined,
     });
+  });
+
+  it("trackStudioTimelinePerformance emits raw timeline measurements", () => {
+    const sample = {
+      total_clip_count: 3_000,
+      mounted_clip_count: 160,
+      total_row_count: 24,
+      timeline_dom_node_count: 957,
+      viewport_width: 1_200,
+      viewport_height: 360,
+      zoom_mode: "fit",
+      scroll_sample_count: 20,
+      scroll_frame_latency_p95_ms: 24.5,
+      scroll_frame_latency_max_ms: 31.2,
+      frame_interval_p95_ms: 42.3,
+    };
+
+    trackStudioTimelinePerformance(sample);
+
+    expect(trackEvent).toHaveBeenCalledWith("studio_timeline_performance", sample);
   });
 
   it("trackStudioRazorSplit emits 'studio_razor_split' with mode and count", () => {

@@ -36,6 +36,7 @@ import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { useStudioPlaybackContextOptional } from "../../contexts/StudioContext";
 import { TimelineRazorGuide, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
+import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -276,6 +277,11 @@ export const Timeline = memo(function Timeline({
     });
 
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowHeights);
+  const { recordTimelineScroll } = useTimelinePerformanceTelemetry({
+    totalClipCount: expandedElements.length,
+    totalRowCount: displayLayout.displayTrackOrder.length,
+    zoomMode,
+  });
   const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
     timelineReady,
     expandedElements.length,
@@ -469,6 +475,7 @@ export const Timeline = memo(function Timeline({
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
+          recordTimelineScroll(e.currentTarget);
         }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
