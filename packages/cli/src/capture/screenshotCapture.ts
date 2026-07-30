@@ -21,6 +21,62 @@ import { join } from "node:path";
  * elements — screenshots show the page in its natural browsing state with
  * scroll-triggered animations fired.
  */
+/**
+ * Chrome caps a screenshot at 16384px per side (Skia's max texture dimension); past that the
+ * capture comes back clipped or fails outright. Long marketing pages do reach this.
+ */
+export const MAX_PLATE_HEIGHT_PX = 16384;
+
+/**
+ * One tall image of the whole document — the plate a scroll shot slides its viewport over.
+ *
+ * This is deliberately 1x. A 2x plate is what you'd want for pushing in without softening
+ * text, but doubling a long marketing page blows past `MAX_PLATE_HEIGHT_PX` exactly on the
+ * pages that most want a scroll shot; a frame that needs 2x should capture its own region
+ * instead. At 1x a 1920-wide plate is pixel-exact for a 1920x1080 viewport travelling down it.
+ *
+ * Two things have to be true for the plate to be usable, and both are why the earlier
+ * `full-page.png` was worth removing rather than keeping as-is:
+ *  · It must be taken AFTER the scroll traversal, so lazy images have loaded and
+ *    scroll-triggered reveals have fired. A plate shot on arrival is full of blank bands.
+ *  · Sticky/fixed chrome has to be neutralised first. `fullPage` bakes a fixed header in at
+ *    one position, so a nav ends up frozen across the middle of the plate. The viewport
+ *    shots keep sticky on purpose (natural browsing state); the plate cannot.
+ *
+ * Returns the relative path, or null when the page is too tall to capture in one piece.
+ */
+export async function captureFullPagePlate(
+  page: Page,
+  screenshotsDir: string,
+  scrollHeight: number,
+): Promise<string | null> {
+  if (scrollHeight > MAX_PLATE_HEIGHT_PX) return null;
+
+  // Record the inline value before overwriting so the page is handed back unchanged — the
+  // caller keeps using it (asset extraction, DOM reads) after this returns.
+  await page.evaluate(
+    `document.querySelectorAll('*').forEach((el) => {
+      const p = getComputedStyle(el).position;
+      if (p === 'fixed' || p === 'sticky') {
+        el.setAttribute('data-hf-plate-position', el.style.position || '');
+        el.style.position = 'static';
+      }
+    })`,
+  );
+  try {
+    const buffer = await page.screenshot({ type: "png", fullPage: true });
+    writeFileSync(join(screenshotsDir, "full-page.png"), buffer);
+    return "screenshots/full-page.png";
+  } finally {
+    await page.evaluate(
+      `document.querySelectorAll('[data-hf-plate-position]').forEach((el) => {
+        el.style.position = el.getAttribute('data-hf-plate-position');
+        el.removeAttribute('data-hf-plate-position');
+      })`,
+    );
+  }
+}
+
 export async function captureScrollScreenshots(page: Page, outputDir: string): Promise<string[]> {
   const screenshotsDir = join(outputDir, "screenshots");
   mkdirSync(screenshotsDir, { recursive: true });
@@ -151,7 +207,13 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
     await page.evaluate(`window.scrollTo(0, 0)`);
     await new Promise((r) => setTimeout(r, 200));
 
-    // full-page.png removed — 1/8 agents read it, contact sheet covers the same content
+    // The scroll plate, last: everything above has loaded the page and fired its reveals, which
+    // is the only state a full-page shot is worth taking in. (An earlier full-page.png was
+    // dropped because 1/8 agents read it and the contact sheet covered the same ground — that
+    // was about it as a *comprehension* artifact. The scroll shot is a different consumer: it
+    // needs one continuous plate, which no set of viewport tiles can substitute for.)
+    const plate = await captureFullPagePlate(page, screenshotsDir, scrollHeight);
+    if (plate) filePaths.push(plate);
   } catch {
     /* scroll screenshots are non-critical */
   }
