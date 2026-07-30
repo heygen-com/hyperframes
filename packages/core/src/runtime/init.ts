@@ -3042,31 +3042,15 @@ export function initSandboxRuntimeModular(): void {
               break;
             }
           }
-          if (!foundActive) {
-            // No audio is mastering the clock (video-only composition, or the
-            // audio hasn't reached its window). A buffering ACTIVE video should
-            // freeze time the same way buffering audio does above — otherwise
-            // the monotonic clock runs ahead while frames are stuck, and the
-            // drift correction later hard-seeks (decoder reset) to catch up.
-            const videoEls = document.querySelectorAll("video[data-start]");
-            for (const rawEl of videoEls) {
-              if (!(rawEl instanceof HTMLMediaElement) || !rawEl.isConnected) continue;
-              const start = Number.parseFloat(rawEl.dataset.start ?? "");
-              if (!Number.isFinite(start)) continue;
-              const durAttr = Number.parseFloat(rawEl.dataset.duration ?? "");
-              const end = Number.isFinite(durAttr) && durAttr > 0 ? start + durAttr : Infinity;
-              if (state.currentTime < start || state.currentTime >= end) continue;
-              if (
-                !rawEl.paused &&
-                !rawEl.error &&
-                rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
-              ) {
-                clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
-                foundActive = true;
-              }
-              break;
-            }
-          }
+          // NOTE: an earlier revision also froze the clock here while an ACTIVE
+          // video was buffering (mirroring the audio-buffering freeze above).
+          // That proved hazardous: when the browser silently EVICTS a media
+          // element's resource under memory pressure (readyState collapses to
+          // HAVE_NOTHING with no error and, without recovery, never rises
+          // again), the frozen clock never released — a permanent playback
+          // hang, worse than the transient video lag it was smoothing. Video
+          // stalls now surface via the runtime_media_stall diagnostics and the
+          // eviction-recovery reload in syncRuntimeMedia instead.
           if (!foundActive && clock.hasAudioSource()) {
             clock.detachAudioSource();
           }

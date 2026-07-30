@@ -1046,6 +1046,43 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.muted).toBe(true);
   });
 
+  describe("silent-eviction recovery", () => {
+    function evictedClip(networkState: number): RuntimeMediaClip {
+      const clip = createMockClip({ start: 0, end: 10, mediaStart: 2 });
+      clip.el.load = vi.fn();
+      // Browser-evicted shape: resource present, readyState collapsed to
+      // HAVE_NOTHING, not currently fetching, no error.
+      Object.defineProperty(clip.el, "currentSrc", { value: "blob:clip", configurable: true });
+      Object.defineProperty(clip.el, "readyState", { value: 0, writable: true });
+      Object.defineProperty(clip.el, "networkState", {
+        value: networkState,
+        writable: true,
+        configurable: true,
+      });
+      return clip;
+    }
+
+    it("reloads and reseeks an active element whose resource was evicted", () => {
+      const clip = evictedClip(1 /* NETWORK_IDLE */);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.load).toHaveBeenCalledTimes(1);
+      expect(clip.el.currentTime).toBe(7); // (5 - start) * rate + mediaStart
+    });
+
+    it("does not reload an element that is still fetching", () => {
+      const clip = evictedClip(2 /* NETWORK_LOADING */);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      expect(clip.el.load).not.toHaveBeenCalled();
+    });
+
+    it("rate-limits reloads so a broken source cannot reload-loop", () => {
+      const clip = evictedClip(1);
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5.05, playing: true, playbackRate: 1 });
+      expect(clip.el.load).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("upcoming-clip readiness (boundary smoothness)", () => {
     function readyClip(overrides?: Partial<RuntimeMediaClip>): RuntimeMediaClip {
       const clip = createMockClip(overrides);

@@ -183,6 +183,36 @@ const PREROLL_WINDOW_SECONDS = 0.35;
 const upcomingPreseeked = new WeakSet<HTMLMediaElement>();
 const prerolling = new WeakSet<HTMLMediaElement>();
 
+// ── Silent-eviction recovery ────────────────────────────────────────────────
+// Under memory pressure the browser can EVICT a media element's resource with
+// no error and no event: readyState collapses to HAVE_NOTHING, videoWidth
+// drops to 0, and the element never recovers on its own — an active clip goes
+// (and stays) blank. The only way back is an explicit load() + reseek. Guarded
+// to elements that are NOT currently fetching (a load() would abort an
+// in-flight fetch and restart it from zero — the exact bug the play() path
+// comment below describes) and rate-limited per element so a genuinely broken
+// source doesn't reload-loop.
+const EVICTION_RELOAD_MIN_INTERVAL_MS = 4000;
+const lastEvictionReloadAt = new WeakMap<HTMLMediaElement, number>();
+
+function recoverEvictedElement(el: HTMLMediaElement, relTime: number): void {
+  if (el.readyState !== HTMLMediaElement.HAVE_NOTHING) return;
+  if (!el.currentSrc || isUnplayable(el)) return;
+  const NETWORK_LOADING = 2;
+  if (el.networkState === NETWORK_LOADING) return; // still fetching — not evicted
+  const now = Date.now();
+  if (now - (lastEvictionReloadAt.get(el) ?? 0) < EVICTION_RELOAD_MIN_INTERVAL_MS) return;
+  lastEvictionReloadAt.set(el, now);
+  el.load();
+  try {
+    el.currentTime = relTime;
+  } catch (err) {
+    swallow("runtime.media.evictionReload", err);
+  }
+  // Let the normal play-path re-issue play() for the fresh resource.
+  playRequested.delete(el);
+}
+
 function clampVolume(volume: number): number {
   if (!Number.isFinite(volume)) return 1;
   return Math.max(0, Math.min(1, volume));
@@ -327,6 +357,9 @@ export function syncRuntimeMedia(params: {
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
+      // Bring a silently-evicted resource back before any drift math runs on
+      // a dead element (see recoverEvictedElement).
+      recoverEvictedElement(el, relTime);
       try {
         // Per-element rate × global transport rate
         el.playbackRate = clip.playbackRate * params.playbackRate;
