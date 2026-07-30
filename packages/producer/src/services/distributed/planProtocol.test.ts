@@ -13,6 +13,7 @@ import {
   getDistributedRenderCapabilities,
   PLAN_ARTIFACT_LAYOUT,
   PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_V1,
   PLAN_PROTOCOL_V2,
   PLAN_PROTOCOL_UNSUPPORTED,
   PLAN_SCHEMA_VERSION,
@@ -95,6 +96,13 @@ function createReaderPlan(options: {
 }
 
 describe("readPlanProtocol()", () => {
+  it("keeps the v1 descriptor byte-for-byte and identity-compatible", () => {
+    expect(PLAN_PROTOCOL_V1).toBe(CURRENT_PLAN_PROTOCOL);
+    expect(JSON.stringify(PLAN_PROTOCOL_V1)).toBe(
+      '{"schemaVersion":1,"artifactLayout":"plan-dir-v1","hashSchema":"hyperframes-plan-hash-v1"}',
+    );
+  });
+
   it("treats an absent descriptor as legacy v1", () => {
     expect(readPlanProtocol({ planHash: "legacy" })).toBe(CURRENT_PLAN_PROTOCOL);
   });

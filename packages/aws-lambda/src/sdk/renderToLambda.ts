@@ -39,7 +39,7 @@ export interface RenderToLambdaOptions {
   config: SerializableDistributedRenderConfig;
   /**
    * Distributed plan transport. Defaults to `"v1"` for backwards
-   * compatibility; v2 is always an explicit whole-render opt-in.
+   * compatibility. New integrations should explicitly select `"v2"`.
    */
   planProtocol?: LambdaPlanProtocol;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */

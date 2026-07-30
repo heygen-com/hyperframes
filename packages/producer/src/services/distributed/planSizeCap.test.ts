@@ -25,7 +25,7 @@ import {
   PlanTooLargeError,
   plan,
 } from "./plan.js";
-import { planV2, readPlanV2Manifest } from "./planV2.js";
+import { getPlanV2ExecutionPlanHash, planV2, readPlanV2Manifest } from "./planV2.js";
 import { measurePlanSizeBreakdown } from "./planSize.js";
 import { DISTRIBUTED_DURATION_OUT_OF_RANGE } from "../render/planValidation.js";
 
@@ -262,7 +262,8 @@ describe("plan() under size cap", () => {
       const manifest = readPlanV2Manifest(v2.planDir);
       expect(v2.planProtocol.schemaVersion).toBe(2);
       expect(v2.planHash).toBe(manifest.planHash);
-      expect(v2.sourcePlanV1Hash).toBe(manifest.sourcePlanV1Hash);
+      expect(getPlanV2ExecutionPlanHash(v2)).toBe(manifest.sourcePlanV1Hash);
+      expect(Object.hasOwn(v2, "executionPlanHash")).toBe(false);
       expect(manifest.artifacts.length).toBeGreaterThan(0);
     },
     TIMEOUT_MS,

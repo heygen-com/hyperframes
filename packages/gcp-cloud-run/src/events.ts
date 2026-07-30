@@ -60,7 +60,11 @@ interface PlanEventBase {
   Config: SerializableDistributedRenderConfig;
 }
 
-/** Legacy/default plan transport. Absence is deliberately interpreted as v1. */
+/**
+ * Legacy/default plan transport. Absence is deliberately interpreted as v1.
+ *
+ * @deprecated Use {@link PlanV2Event} for new integrations.
+ */
 export interface PlanV1Event extends PlanEventBase {
   PlanProtocol?: "v1";
 }
@@ -91,7 +95,11 @@ interface RenderChunkEventBase {
   Format: DistributedFormat;
 }
 
-/** Legacy/default chunk event. */
+/**
+ * Legacy/default chunk event.
+ *
+ * @deprecated Use {@link RenderChunkV2Event} for new integrations.
+ */
 export interface RenderChunkV1Event extends RenderChunkEventBase {
   PlanProtocol?: "v1";
   /** GCS URI of the v1 plan tar produced by a PlanEvent invocation. */
@@ -134,7 +142,11 @@ interface AssembleEventBase {
   Cfr?: boolean;
 }
 
-/** Legacy/default assemble event. */
+/**
+ * Legacy/default assemble event.
+ *
+ * @deprecated Use {@link AssembleV2Event} for new integrations.
+ */
 export interface AssembleV1Event extends AssembleEventBase {
   PlanProtocol?: "v1";
   /** GCS URI of the v1 plan tar produced by a PlanEvent invocation. */
@@ -177,7 +189,11 @@ interface PlanResultBodyBase {
   DurationMs: number;
 }
 
-/** Existing v1 result. Kept unchanged for wire compatibility. */
+/**
+ * Existing v1 result. Kept unchanged for wire compatibility.
+ *
+ * @deprecated New integrations should consume {@link PlanV2ResultBody}.
+ */
 export interface PlanV1ResultBody extends PlanResultBodyBase {
   PlanGcsUri: string;
   PlanProtocol?: never;

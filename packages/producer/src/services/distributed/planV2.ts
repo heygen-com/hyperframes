@@ -4,7 +4,7 @@
  * V2 deliberately separates transport from execution. The transport root is
  * a small immutable `plan.json` manifest plus sha256-addressed blobs. Workers
  * select and materialize only the dependencies for their role, then invoke
- * the existing v1 execution functions on the verified local layout.
+ * the shared execution functions on the verified local layout.
  *
  * Video-frame dependencies are derived by evaluating the engine's own
  * FrameLookupTable at every captured global frame. If legacy video metadata
@@ -33,7 +33,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createFrameLookupTable, type ExtractedFrames } from "@hyperframes/engine";
 import { recomputePlanHashFromPlanDir, type ChunkSliceJson } from "../render/stages/freezePlan.js";
 import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
-import { type DistributedRenderConfig, plan } from "./plan.js";
+import { buildLocalExecutionPlan, type DistributedRenderConfig } from "./plan.js";
 import {
   PLAN_PROTOCOL_V2,
   readPlanProtocolV1,
@@ -69,7 +69,7 @@ export type PlanV2MaterializationTarget =
   | Readonly<{ role: "assembler" }>;
 
 export interface PlanV2Artifact {
-  /** POSIX path in the materialized v1 execution directory. */
+  /** POSIX path in the materialized local execution directory. */
   readonly path: string;
   readonly sha256: string;
   readonly sizeBytes: number;
@@ -80,9 +80,14 @@ export interface PlanV2Artifact {
 
 export interface PlanV2Manifest {
   readonly protocol: Readonly<PlanProtocolV2Descriptor>;
-  /** V2 manifest digest; intentionally distinct from the v1 execution hash. */
+  /** V2 manifest digest; intentionally distinct from the local execution-plan hash. */
   readonly planHash: string;
-  /** Original execution-plan hash retained for output/replay correlation. */
+  /**
+   * Local execution-plan hash retained for output/replay correlation.
+   *
+   * @deprecated This is the compatibility wire name. Use
+   * {@link getPlanV2ExecutionPlanHash} in new code.
+   */
   readonly sourcePlanV1Hash: string;
   readonly chunkCount: number;
   readonly totalFrames: number;
@@ -105,6 +110,12 @@ export interface PlanV2Result {
   readonly manifestPath: string;
   readonly planProtocol: Readonly<PlanProtocolV2Descriptor>;
   readonly planHash: string;
+  /**
+   * Hash of the shared local execution representation.
+   *
+   * @deprecated This is the compatibility wire name. Use
+   * {@link getPlanV2ExecutionPlanHash} in new code.
+   */
   readonly sourcePlanV1Hash: string;
   readonly chunkCount: number;
   readonly totalFrames: number;
@@ -119,7 +130,7 @@ export interface PlanV2Result {
 
 export interface PlanV2WithPublisherOptions {
   /**
-   * Parent for the planner-private v1 staging directory. Remote adapters
+   * Parent for the planner-private local execution directory. Remote adapters
    * normally leave this unset and use the OS temp directory. The local
    * compatibility wrapper keeps staging beside its destination so hard links
    * can avoid a second set of data blocks.
@@ -131,6 +142,12 @@ export interface PlanV2MaterializationResult {
   readonly planDir: string;
   readonly target: PlanV2MaterializationTarget;
   readonly planHash: string;
+  /**
+   * Hash of the shared local execution representation.
+   *
+   * @deprecated This is the compatibility wire name. Use
+   * {@link getPlanV2ExecutionPlanHash} in new code.
+   */
   readonly sourcePlanV1Hash: string;
   readonly artifactCount: number;
   readonly sizeBytes: number;
@@ -198,7 +215,7 @@ function listFiles(root: string): Array<{ path: string; absolutePath: string }> 
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Hash large plan artifacts with bounded memory (important above the v1 2 GiB cap). */
+/** Hash large plan artifacts with bounded memory (important above the legacy 2 GiB cap). */
 function sha256File(path: string): string {
   const hash = createHash("sha256");
   const buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -226,8 +243,8 @@ function assertValidExtractionCacheCompleteSentinel(path: string): void {
   }
 }
 
-function validateExtractionCacheCompleteSentinels(planV1Dir: string): void {
-  const videoRoot = join(planV1Dir, "video-frames");
+function validateExtractionCacheCompleteSentinels(executionPlanDir: string): void {
+  const videoRoot = join(executionPlanDir, "video-frames");
   if (!existsSync(videoRoot)) return;
 
   for (const videoEntry of readdirSync(videoRoot, { withFileTypes: true })) {
@@ -259,7 +276,7 @@ function resolveExtractedVideoOutputDir(planDir: string, videoId: string): strin
   return outputDir;
 }
 
-// This is the fail-safe policy table for every v1 artifact class. Keeping the
+// This is the fail-safe policy table for every local execution artifact class. Keeping the
 // branches together makes new artifact classes visibly fall through to both roles.
 // fallow-ignore-next-line complexity
 function artifactTargets(
@@ -283,14 +300,14 @@ function artifactTargets(
       assembler: false,
     };
   }
-  // Unknown future v1 files go to both roles. Over-including is safe;
+  // Unknown future execution files go to both roles. Over-including is safe;
   // silently omitting a new execution dependency is not.
   return { chunks: "all", assembler: true };
 }
 
-function listVideoFramePaths(planV1Dir: string, videos: PlanVideosJson): ExtractedFrames[] {
+function listVideoFramePaths(executionPlanDir: string, videos: PlanVideosJson): ExtractedFrames[] {
   return videos.extracted.map((video) => {
-    const outputDir = resolveExtractedVideoOutputDir(planV1Dir, video.videoId);
+    const outputDir = resolveExtractedVideoOutputDir(executionPlanDir, video.videoId);
     const frameNames = readdirSync(outputDir).sort();
     const framePaths = new Map<number, string>();
     for (const frameName of frameNames) {
@@ -370,26 +387,26 @@ function parseChunkSlices(value: unknown): ChunkSliceJson[] {
 }
 
 function buildVideoChunkDependencies(
-  planV1Dir: string,
+  executionPlanDir: string,
   dimensions: Record<string, unknown>,
 ): {
   mode: "exact-rendered-frames" | "full-source-pack";
   dependencies: ReadonlyMap<string, readonly number[]> | null;
 } {
-  const videoRoot = join(planV1Dir, "video-frames");
+  const videoRoot = join(executionPlanDir, "video-frames");
   const hasExtractedFrames = existsSync(videoRoot) && listFiles(videoRoot).length > 0;
-  const videosPath = join(planV1Dir, PLAN_VIDEOS_META_RELATIVE_PATH);
+  const videosPath = join(executionPlanDir, PLAN_VIDEOS_META_RELATIVE_PATH);
   if (!existsSync(videosPath)) {
     return hasExtractedFrames
       ? { mode: "full-source-pack", dependencies: null }
       : { mode: "exact-rendered-frames", dependencies: new Map() };
   }
-  const chunksPath = join(planV1Dir, "meta", "chunks.json");
+  const chunksPath = join(executionPlanDir, "meta", "chunks.json");
   const videos = readJsonFile(videosPath, PLAN_VIDEOS_META_RELATIVE_PATH);
   const chunks = readJsonFile(chunksPath, "meta/chunks.json");
   const parsedVideos = parsePlanVideosJson(videos);
   const parsedChunks = parseChunkSlices(chunks);
-  const extracted = listVideoFramePaths(planV1Dir, parsedVideos);
+  const extracted = listVideoFramePaths(executionPlanDir, parsedVideos);
   const table = createFrameLookupTable(parsedVideos.videos, extracted);
   const fpsNum = readPositiveInteger(dimensions.fpsNum, "dimensions.fpsNum");
   const fpsDen = readPositiveInteger(dimensions.fpsDen, "dimensions.fpsDen");
@@ -399,7 +416,7 @@ function buildVideoChunkDependencies(
     for (let frame = chunk.startFrame; frame < chunk.endFrame; frame++) {
       const globalTime = (frame * fpsDen) / fpsNum;
       for (const payload of table.getActiveFramePayloads(globalTime).values()) {
-        const path = relative(resolve(planV1Dir), payload.framePath).split(sep).join("/");
+        const path = relative(resolve(executionPlanDir), payload.framePath).split(sep).join("/");
         assertSafeRelativePath(path);
         const indexes = mutable.get(path) ?? new Set<number>();
         indexes.add(chunk.index);
@@ -445,38 +462,40 @@ interface PlanV2Publication {
 
 // Artifact classification intentionally keeps every fail-safe branch together.
 // fallow-ignore-next-line complexity
-function buildPlanV2Publication(planV1Dir: string): PlanV2Publication {
-  const v1PlanPath = join(planV1Dir, "plan.json");
-  if (!existsSync(v1PlanPath)) {
-    throw new PlanV2IntegrityError(`v1 plan is missing plan.json: ${v1PlanPath}`);
+function buildPlanV2Publication(executionPlanDir: string): PlanV2Publication {
+  const executionPlanPath = join(executionPlanDir, "plan.json");
+  if (!existsSync(executionPlanPath)) {
+    throw new PlanV2IntegrityError(`execution plan is missing plan.json: ${executionPlanPath}`);
   }
-  const v1PlanValue = readJsonFile(v1PlanPath, "v1 plan.json");
-  if (!isRecord(v1PlanValue)) {
-    throw new PlanV2IntegrityError("v1 plan.json must be an object");
+  const executionPlanValue = readJsonFile(executionPlanPath, "execution plan.json");
+  if (!isRecord(executionPlanValue)) {
+    throw new PlanV2IntegrityError("execution plan.json must be an object");
   }
-  const v1Plan = v1PlanValue;
-  readPlanProtocolV1(v1Plan);
-  const sourcePlanV1Hash = v1Plan.planHash;
-  if (!isSha256(sourcePlanV1Hash)) {
-    throw new PlanV2IntegrityError("v1 plan.json.planHash must be a sha256 digest");
+  const executionPlan = executionPlanValue;
+  // The shared local representation intentionally retains the v1-compatible
+  // descriptor while both legacy readers and v2 materialization are supported.
+  readPlanProtocolV1(executionPlan);
+  const executionPlanHash = executionPlan.planHash;
+  if (!isSha256(executionPlanHash)) {
+    throw new PlanV2IntegrityError("execution plan.json.planHash must be a sha256 digest");
   }
-  const recomputedSourcePlanV1Hash = recomputePlanHashFromPlanDir(planV1Dir);
-  if (recomputedSourcePlanV1Hash !== sourcePlanV1Hash) {
+  const recomputedExecutionPlanHash = recomputePlanHashFromPlanDir(executionPlanDir);
+  if (recomputedExecutionPlanHash !== executionPlanHash) {
     throw new PlanV2IntegrityError(
-      `v1 plan content fingerprint does not match plan.json.planHash: ` +
-        `expected ${sourcePlanV1Hash}, recomputed ${recomputedSourcePlanV1Hash}`,
+      `execution plan content fingerprint does not match plan.json.planHash: ` +
+        `expected ${executionPlanHash}, recomputed ${recomputedExecutionPlanHash}`,
     );
   }
 
   const artifacts: PlanV2Artifact[] = [];
   const blobs = new Map<string, PlanV2PublishBlob>();
-  const dimensions = v1Plan.dimensions;
+  const dimensions = executionPlan.dimensions;
   if (!isRecord(dimensions)) {
-    throw new PlanV2IntegrityError("v1 plan.json.dimensions must be an object");
+    throw new PlanV2IntegrityError("execution plan.json.dimensions must be an object");
   }
-  validateExtractionCacheCompleteSentinels(planV1Dir);
-  const videoDependencyPlan = buildVideoChunkDependencies(planV1Dir, dimensions);
-  for (const file of listFiles(planV1Dir)) {
+  validateExtractionCacheCompleteSentinels(executionPlanDir);
+  const videoDependencyPlan = buildVideoChunkDependencies(executionPlanDir, dimensions);
+  for (const file of listFiles(executionPlanDir)) {
     if (isExtractionCacheCompleteSentinelPath(file.path)) continue;
     const targets = artifactTargets(file.path, videoDependencyPlan.dependencies);
     if (
@@ -502,15 +521,17 @@ function buildPlanV2Publication(planV1Dir: string): PlanV2Publication {
 
   const base: Omit<PlanV2Manifest, "planHash"> = {
     protocol: PLAN_PROTOCOL_V2,
-    sourcePlanV1Hash,
-    chunkCount: readPositiveInteger(v1Plan.chunkCount, "chunkCount"),
-    totalFrames: readPositiveInteger(v1Plan.totalFrames, "totalFrames"),
-    fps: readV1PlanFps(dimensions),
+    // Retain the established manifest key byte-for-byte. It now acts as the
+    // wire alias for the neutral local execution-plan hash.
+    sourcePlanV1Hash: executionPlanHash,
+    chunkCount: readPositiveInteger(executionPlan.chunkCount, "chunkCount"),
+    totalFrames: readPositiveInteger(executionPlan.totalFrames, "totalFrames"),
+    fps: readExecutionPlanFps(dimensions),
     width: readPositiveInteger(dimensions.width, "dimensions.width"),
     height: readPositiveInteger(dimensions.height, "dimensions.height"),
     format: readDistributedFormat(dimensions.format),
-    ffmpegVersion: readString(v1Plan.ffmpegVersion, "ffmpegVersion"),
-    producerVersion: readString(v1Plan.producerVersion, "producerVersion"),
+    ffmpegVersion: readString(executionPlan.ffmpegVersion, "ffmpegVersion"),
+    producerVersion: readString(executionPlan.producerVersion, "producerVersion"),
     limitations: { videoDependencyMode: videoDependencyPlan.mode },
     artifacts,
   };
@@ -523,12 +544,15 @@ function buildPlanV2Publication(planV1Dir: string): PlanV2Publication {
   };
 }
 
-/** Convert a frozen v1 execution directory into the immutable v2 transport. */
-export function createPlanV2FromV1(planV1Dir: string, planV2Dir: string): PlanV2Result {
+/** Publish a frozen local execution directory into an immutable local v2 transport. */
+export function createPlanV2FromExecutionPlan(
+  executionPlanDir: string,
+  planV2Dir: string,
+): PlanV2Result {
   if (existsSync(planV2Dir)) {
     throw new PlanV2IntegrityError(`output directory already exists: ${planV2Dir}`);
   }
-  const publication = buildPlanV2Publication(planV1Dir);
+  const publication = buildPlanV2Publication(executionPlanDir);
   mkdirSync(dirname(planV2Dir), { recursive: true });
   const tempDir = mkdtempSync(join(dirname(planV2Dir), ".plan-v2-build-"));
   try {
@@ -548,12 +572,22 @@ export function createPlanV2FromV1(planV1Dir: string, planV2Dir: string): PlanV2
   }
 }
 
-export async function publishPlanV2FromV1(
-  planV1Dir: string,
+/**
+ * Compatibility alias for {@link createPlanV2FromExecutionPlan}.
+ *
+ * @deprecated Use `createPlanV2FromExecutionPlan`.
+ */
+export function createPlanV2FromV1(executionPlanDir: string, planV2Dir: string): PlanV2Result {
+  return createPlanV2FromExecutionPlan(executionPlanDir, planV2Dir);
+}
+
+/** Publish a frozen local execution directory through a storage-neutral v2 publisher. */
+export async function publishPlanV2FromExecutionPlan(
+  executionPlanDir: string,
   publisher: PlanV2ArtifactPublisher,
 ): Promise<PlanV2Manifest> {
   try {
-    const publication = buildPlanV2Publication(planV1Dir);
+    const publication = buildPlanV2Publication(executionPlanDir);
     const concurrency = 16;
     for (let offset = 0; offset < publication.blobs.length; offset += concurrency) {
       const batch = publication.blobs.slice(offset, offset + concurrency);
@@ -575,6 +609,18 @@ export async function publishPlanV2FromV1(
 }
 
 /**
+ * Compatibility alias for {@link publishPlanV2FromExecutionPlan}.
+ *
+ * @deprecated Use `publishPlanV2FromExecutionPlan`.
+ */
+export async function publishPlanV2FromV1(
+  executionPlanDir: string,
+  publisher: PlanV2ArtifactPublisher,
+): Promise<PlanV2Manifest> {
+  return publishPlanV2FromExecutionPlan(executionPlanDir, publisher);
+}
+
+/**
  * Plan into a storage-neutral publisher. Implementations may write to a local
  * directory, S3, GCS, or another durable CAS. Only the planner's private
  * staging directory is local; distributed workers receive adapter-owned
@@ -586,14 +632,12 @@ export async function planV2WithPublisher(
   publisher: PlanV2ArtifactPublisher,
   options: Readonly<PlanV2WithPublisherOptions> = {},
 ): Promise<PlanV2Manifest> {
-  const stagingRoot = mkdtempSync(join(options.stagingParentDir ?? tmpdir(), ".plan-v2-source-"));
+  const stagingRoot = mkdtempSync(join(options.stagingParentDir ?? tmpdir(), ".execution-plan-"));
   try {
-    await plan(
-      projectDir,
-      { ...config, planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER },
-      stagingRoot,
-    );
-    return await publishPlanV2FromV1(stagingRoot, publisher);
+    await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
+      executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
+    });
+    return await publishPlanV2FromExecutionPlan(stagingRoot, publisher);
   } catch (error) {
     try {
       await publisher.abort();
@@ -607,9 +651,9 @@ export async function planV2WithPublisher(
 }
 
 /**
- * Plan directly into v2. The large v1 directory exists only as local staging;
- * its historical 2 GiB transport cap is disabled because no monolithic
- * archive is emitted.
+ * Plan directly into v2. The shared local execution representation exists
+ * only as planner-private staging; the legacy 2 GiB transport cap is disabled
+ * because no monolithic archive is emitted.
  */
 export async function planV2(
   projectDir: string,
@@ -632,7 +676,7 @@ function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2
     manifestPath: join(planV2Dir, "plan.json"),
     planProtocol: PLAN_PROTOCOL_V2,
     planHash: manifest.planHash,
-    sourcePlanV1Hash: manifest.sourcePlanV1Hash,
+    sourcePlanV1Hash: getPlanV2ExecutionPlanHash(manifest),
     chunkCount: manifest.chunkCount,
     totalFrames: manifest.totalFrames,
     fps: manifest.fps,
@@ -643,6 +687,16 @@ function resultFromManifest(planV2Dir: string, manifest: PlanV2Manifest): PlanV2
     producerVersion: manifest.producerVersion,
     limitations: manifest.limitations,
   };
+}
+
+/**
+ * Return the shared local execution-plan hash from a v2 manifest while
+ * preserving the established `sourcePlanV1Hash` wire key.
+ */
+export function getPlanV2ExecutionPlanHash(
+  plan: Readonly<Pick<PlanV2Manifest, "sourcePlanV1Hash">>,
+): string {
+  return plan.sourcePlanV1Hash;
 }
 
 function readString(value: unknown, field: string): string {
@@ -673,7 +727,7 @@ function readSupportedFps(value: unknown): 24 | 30 | 60 {
   return value;
 }
 
-function readV1PlanFps(dimensions: Record<string, unknown>): 24 | 30 | 60 {
+function readExecutionPlanFps(dimensions: Record<string, unknown>): 24 | 30 | 60 {
   const fpsDen = readPositiveInteger(dimensions.fpsDen, "dimensions.fpsDen");
   if (fpsDen !== 1) {
     throw new PlanV2IntegrityError("dimensions.fpsDen must be 1 for plan v2");
@@ -744,7 +798,7 @@ function parsePlanV2Manifest(value: unknown): Readonly<PlanV2Manifest> {
     paths.add(artifact.path);
   }
   if (!paths.has("plan.json"))
-    throw new PlanV2IntegrityError("manifest must include the v1 plan.json artifact");
+    throw new PlanV2IntegrityError("manifest must include the local execution plan.json artifact");
   if (
     !isRecord(value.limitations) ||
     (value.limitations.videoDependencyMode !== "exact-rendered-frames" &&
@@ -830,7 +884,7 @@ function verifyBlob(planV2Dir: string, artifact: Readonly<PlanV2Artifact>): stri
 }
 
 /**
- * Verify every selected blob first, then atomically publish a v1-compatible
+ * Verify every selected blob first, then atomically publish the shared local
  * execution directory. The marker lets execution functions revalidate the
  * selected subset without requiring assembler-only audio in chunk workers.
  */
@@ -858,7 +912,7 @@ export function materializePlanV2Target(
     }
     // Plan v2 transports only files, so a chunk where a video is inactive has
     // no selected frame artifact from which to create its per-video directory.
-    // renderChunk consumes a v1-compatible layout and intentionally validates
+    // renderChunk consumes the shared local layout and intentionally validates
     // every extracted-video directory from meta/videos.json. Recreate those
     // zero-byte structural directories without downloading unused frame data.
     if (target.role === "chunk") materializeExtractedVideoDirectories(tempDir);
@@ -876,7 +930,7 @@ export function materializePlanV2Target(
     planDir: destinationDir,
     target,
     planHash: manifest.planHash,
-    sourcePlanV1Hash: manifest.sourcePlanV1Hash,
+    sourcePlanV1Hash: getPlanV2ExecutionPlanHash(manifest),
     artifactCount: artifacts.length,
     sizeBytes: artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0),
     audioPath:

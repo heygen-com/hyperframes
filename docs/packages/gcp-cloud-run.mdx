@@ -79,6 +79,7 @@ import { getRenderProgress, renderToCloudRun } from "@hyperframes/gcp-cloud-run/
 
 const handle = await renderToCloudRun({
   projectDir: "./my-composition",
+  planProtocol: "v2",
   config: { fps: 30, width: 1920, height: 1080, format: "mp4" },
   bucketName: "hyperframes-render-my-project",
   projectId: "my-project",
@@ -95,6 +96,11 @@ while (progress.status === "running") {
 
 console.log(progress.status, progress.outputFile, progress.costs.displayCost);
 ```
+
+Plan v2 is recommended for new integrations because workers fetch
+manifest-selected content-addressed artifacts. For backwards compatibility,
+omitting `planProtocol` still selects v1; existing callers do not change
+behavior until they opt in.
 
 Pass `projectDir` for one-shot uploads, or call `deploySite()` separately and reuse the returned site handle across many renders.
 

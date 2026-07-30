@@ -18,11 +18,14 @@ import { CURRENT_PLAN_PROTOCOL } from "./planProtocol.js";
 import { FFMPEG_VERSION_MISMATCH, renderChunk, RenderChunkValidationError } from "./renderChunk.js";
 import {
   createPlanV2FromV1,
+  createPlanV2FromExecutionPlan,
+  getPlanV2ExecutionPlanHash,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   PLAN_V2_INTEGRITY_UNRECOVERABLE,
   PlanV2IntegrityError,
   publishPlanV2FromV1,
+  publishPlanV2FromExecutionPlan,
   readPlanV2Manifest,
   validatePlanV2MaterializedTarget,
 } from "./planV2.js";
@@ -164,19 +167,67 @@ function createV1Plan(
 }
 
 describe("Plan v2 manifest", () => {
-  it("is deterministic and keeps the v1 transport opt-in", () => {
+  it("is deterministic without changing the manifest or result wire shapes", () => {
     const root = tempPath("hf-plan-v2-determinism-");
     const v1 = createV1Plan(root, { audio: true });
-    const first = createPlanV2FromV1(v1, join(root, "v2-a"));
-    const second = createPlanV2FromV1(v1, join(root, "v2-b"));
+    const first = createPlanV2FromExecutionPlan(v1, join(root, "v2-a"));
+    const second = createPlanV2FromExecutionPlan(v1, join(root, "v2-b"));
+    const serializedManifest = readFileSync(first.manifestPath, "utf-8");
+    const manifest = JSON.parse(serializedManifest) as Record<string, unknown>;
 
     expect(first.planHash).toBe(second.planHash);
-    expect(readFileSync(first.manifestPath, "utf-8")).toBe(
-      readFileSync(second.manifestPath, "utf-8"),
-    );
+    expect(serializedManifest).toBe(readFileSync(second.manifestPath, "utf-8"));
     expect(first.planHash).not.toBe(first.sourcePlanV1Hash);
+    expect(getPlanV2ExecutionPlanHash(first)).toBe(first.sourcePlanV1Hash);
     expect(first.planProtocol.schemaVersion).toBe(2);
     expect(first.limitations.videoDependencyMode).toBe("exact-rendered-frames");
+    expect(Object.keys(first)).toEqual([
+      "planDir",
+      "manifestPath",
+      "planProtocol",
+      "planHash",
+      "sourcePlanV1Hash",
+      "chunkCount",
+      "totalFrames",
+      "fps",
+      "width",
+      "height",
+      "format",
+      "ffmpegVersion",
+      "producerVersion",
+      "limitations",
+    ]);
+    expect(Object.keys(manifest)).toEqual([
+      "artifacts",
+      "chunkCount",
+      "ffmpegVersion",
+      "format",
+      "fps",
+      "height",
+      "limitations",
+      "planHash",
+      "producerVersion",
+      "protocol",
+      "sourcePlanV1Hash",
+      "totalFrames",
+      "width",
+    ]);
+    expect(Object.hasOwn(first, "executionPlanHash")).toBe(false);
+    expect(Object.hasOwn(manifest, "executionPlanHash")).toBe(false);
+  });
+
+  it("keeps legacy conversion names as byte-identical compatibility aliases", async () => {
+    const root = tempPath("hf-plan-v2-compat-aliases-");
+    const executionPlanDir = createV1Plan(root, { audio: true });
+    const canonical = createPlanV2FromExecutionPlan(executionPlanDir, join(root, "canonical"));
+    const compatibility = createPlanV2FromV1(executionPlanDir, join(root, "compatibility"));
+    const publisher = new LocalPlanV2ArtifactPublisher(join(root, "published"));
+    const published = await publishPlanV2FromExecutionPlan(executionPlanDir, publisher);
+
+    expect(readFileSync(canonical.manifestPath)).toEqual(readFileSync(compatibility.manifestPath));
+    expect(getPlanV2ExecutionPlanHash(published)).toBe(getPlanV2ExecutionPlanHash(canonical));
+    expect(published.sourcePlanV1Hash).toBe(canonical.sourcePlanV1Hash);
+    expect(Object.hasOwn(published, "executionPlanHash")).toBe(false);
   });
 
   it("accepts and materializes the same bounded timing produced for v1", () => {
@@ -220,7 +271,7 @@ describe("Plan v2 manifest", () => {
     expect(caught).toHaveProperty("code", PLAN_V2_INTEGRITY_UNRECOVERABLE);
     expect(caught).toHaveProperty(
       "message",
-      expect.stringMatching(/v1 plan content fingerprint does not match/),
+      expect.stringMatching(/execution plan content fingerprint does not match/),
     );
     expect(existsSync(destination)).toBe(false);
   });
@@ -584,6 +635,16 @@ describe("Plan v2 manifest", () => {
       result.planHash,
     );
     expect(chunk.sourcePlanV1Hash).toBe(result.sourcePlanV1Hash);
+    expect(Object.keys(chunk)).toEqual([
+      "planDir",
+      "target",
+      "planHash",
+      "sourcePlanV1Hash",
+      "artifactCount",
+      "sizeBytes",
+      "audioPath",
+    ]);
+    expect(Object.hasOwn(chunk, "executionPlanHash")).toBe(false);
   });
 
   it("uses v2 subset integrity instead of the whole-v1 plan hash", async () => {
@@ -689,7 +750,7 @@ describe("Plan v2 artifact publisher", () => {
     const v1 = createV1Plan(root, { audio: true });
     const destination = join(root, "v2");
     const publisher = new LocalPlanV2ArtifactPublisher(destination);
-    const manifest = await publishPlanV2FromV1(v1, publisher);
+    const manifest = await publishPlanV2FromExecutionPlan(v1, publisher);
     const artifact = manifest.artifacts.find(
       (candidate) => candidate.path === "compiled/asset.txt",
     );

@@ -25,6 +25,7 @@ import { RenderQualityError } from "../renderOrchestrator.js";
 import { CURRENT_PLAN_PROTOCOL } from "./planProtocol.js";
 import {
   applyDistributedAudioWarningPolicy,
+  buildLocalExecutionPlan,
   buildChunkSlices,
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_PARALLEL_CHUNKS,
@@ -569,7 +570,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
   );
 
   it(
-    "produces a byte-identical planHash on a second invocation",
+    "shares one byte-identical execution plan between the builder and legacy v1 wrapper",
     async () => {
       const planDirA = join(runRoot, "plan-determinism-a");
       const planDirB = join(runRoot, "plan-determinism-b");
@@ -577,12 +578,26 @@ describe("plan() — golden planDir + planHash determinism", () => {
       mkdirSync(planDirB, { recursive: true });
 
       const config = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
-      const a = await plan(projectDir, config, planDirA);
+      const a = await buildLocalExecutionPlan(projectDir, config, planDirA);
       const b = await plan(projectDir, config, planDirB);
 
-      expect(a.planHash).toBe(b.planHash);
+      expect(a.executionPlanDir).toBe(planDirA);
+      expect(a.executionPlanHash).toBe(b.planHash);
       expect(a.chunkCount).toBe(b.chunkCount);
       expect(a.totalFrames).toBe(b.totalFrames);
+      expect(Object.keys(b)).toEqual([
+        "planDir",
+        "planProtocol",
+        "planHash",
+        "chunkCount",
+        "totalFrames",
+        "fps",
+        "width",
+        "height",
+        "format",
+        "ffmpegVersion",
+        "producerVersion",
+      ]);
 
       // Encoder JSON must be byte-identical — its bytes feed planHash, so any
       // drift here would silently change the hash framing.

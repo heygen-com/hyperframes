@@ -70,6 +70,7 @@ const site = await deploySite({
 
 const handle = await renderToLambda({
   siteHandle: site,
+  planProtocol: "v2",
   bucketName: site.bucketName,
   stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hyperframes-render",
   config: {
@@ -86,6 +87,11 @@ const handle = await renderToLambda({
 const progress = await getRenderProgress({ executionArn: handle.executionArn });
 console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
 ```
+
+Plan v2 is recommended for new integrations because workers fetch
+manifest-selected content-addressed artifacts. For backwards compatibility,
+omitting `planProtocol` still selects v1; existing callers do not change
+behavior until they opt in.
 
 `renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.
 

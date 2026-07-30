@@ -83,6 +83,7 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
       artifactLayout: "plan-dir-v1",
       hashSchema: "hyperframes-plan-hash-v1",
     });
+    expect(distributedSubpath.PLAN_PROTOCOL_V1).toBe(distributedSubpath.CURRENT_PLAN_PROTOCOL);
     expect(distributedSubpath.DISTRIBUTED_RENDER_CAPABILITIES.roles).toEqual({
       planner: {
         produces: [distributedSubpath.CURRENT_PLAN_PROTOCOL, distributedSubpath.PLAN_PROTOCOL_V2],
@@ -100,6 +101,11 @@ describe("@hyperframes/producer/distributed (subpath)", () => {
     expect(typeof distributedSubpath.readPlanProtocol).toBe("function");
     expect(typeof distributedSubpath.planV2).toBe("function");
     expect(typeof distributedSubpath.planV2WithPublisher).toBe("function");
+    expect(typeof distributedSubpath.createPlanV2FromExecutionPlan).toBe("function");
+    expect(typeof distributedSubpath.publishPlanV2FromExecutionPlan).toBe("function");
+    expect(typeof distributedSubpath.getPlanV2ExecutionPlanHash).toBe("function");
+    // Deprecated compatibility aliases remain available.
+    expect(typeof distributedSubpath.createPlanV2FromV1).toBe("function");
     expect(typeof distributedSubpath.publishPlanV2FromV1).toBe("function");
     expect(typeof distributedSubpath.LocalPlanV2ArtifactPublisher).toBe("function");
     expect(typeof distributedSubpath.renderChunkV2).toBe("function");
@@ -119,6 +125,7 @@ describe("@hyperframes/producer (main entry)", () => {
 
   it("re-exports the plan protocol contract", () => {
     expect(producerIndex.CURRENT_PLAN_PROTOCOL).toBe(distributedSubpath.CURRENT_PLAN_PROTOCOL);
+    expect(producerIndex.PLAN_PROTOCOL_V1).toBe(distributedSubpath.PLAN_PROTOCOL_V1);
     expect(producerIndex.DISTRIBUTED_RENDER_CAPABILITIES).toBe(
       distributedSubpath.DISTRIBUTED_RENDER_CAPABILITIES,
     );
@@ -127,6 +134,11 @@ describe("@hyperframes/producer (main entry)", () => {
     expect(producerIndex.PLAN_V2_INTEGRITY_UNRECOVERABLE).toBe("PLAN_V2_INTEGRITY_UNRECOVERABLE");
     expect(typeof producerIndex.readPlanProtocol).toBe("function");
     expect(typeof producerIndex.planV2WithPublisher).toBe("function");
+    expect(typeof producerIndex.createPlanV2FromExecutionPlan).toBe("function");
+    expect(typeof producerIndex.publishPlanV2FromExecutionPlan).toBe("function");
+    expect(typeof producerIndex.getPlanV2ExecutionPlanHash).toBe("function");
+    // Deprecated compatibility aliases remain available.
+    expect(typeof producerIndex.createPlanV2FromV1).toBe("function");
     expect(typeof producerIndex.publishPlanV2FromV1).toBe("function");
     expect(typeof producerIndex.PlanV2IntegrityError).toBe("function");
     expect(typeof producerIndex.PlanProtocolUnsupportedError).toBe("function");

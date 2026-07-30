@@ -47,8 +47,9 @@ inside Step Functions' history budget (under 200 bytes per chunk).
 
 ### Plan transport selection
 
-`renderToLambda` defaults to the existing monolithic v1 plan transport.
-Plan v2 is an explicit whole-render opt-in:
+Plan v2 is recommended for new integrations. `renderToLambda` still defaults
+an omitted `planProtocol` to the existing monolithic v1 transport for
+backwards compatibility, so select v2 explicitly:
 
 ```ts
 await renderToLambda({

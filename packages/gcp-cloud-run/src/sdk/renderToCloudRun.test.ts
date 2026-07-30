@@ -66,19 +66,30 @@ describe("renderToCloudRun", () => {
     );
     expect(handle.outputGcsUri).toBe("gs://b/renders/hf-render-fixed/output.mp4");
     expect(handle.projectGcsUri).toBe("gs://b/sites/abc/project.tar.gz");
+    expect(Object.keys(handle)).toEqual([
+      "renderId",
+      "executionName",
+      "bucketName",
+      "workflowId",
+      "outputGcsUri",
+      "projectGcsUri",
+      "startedAt",
+    ]);
   });
 
   it("builds the workflow argument the YAML expects", async () => {
     const fake = new FakeExecutions();
     await renderToCloudRun(opts(fake));
     const arg = JSON.parse(fake.lastArgument ?? "{}");
-    expect(arg.RenderId).toBe("hf-render-fixed");
-    expect(arg.ProjectGcsUri).toBe("gs://b/sites/abc/project.tar.gz");
-    expect(arg.PlanOutputGcsPrefix).toBe("gs://b/renders/hf-render-fixed/");
-    expect(arg.OutputGcsUri).toBe("gs://b/renders/hf-render-fixed/output.mp4");
-    expect(arg.ServiceUrl).toBe("https://render-abc.run.app");
-    expect(arg.Config.format).toBe("mp4");
-    expect(arg.PlanProtocol).toBe("v1");
+    expect(arg).toEqual({
+      RenderId: "hf-render-fixed",
+      ProjectGcsUri: "gs://b/sites/abc/project.tar.gz",
+      PlanOutputGcsPrefix: "gs://b/renders/hf-render-fixed/",
+      OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
+      ServiceUrl: "https://render-abc.run.app",
+      Config: config,
+      PlanProtocol: "v1",
+    });
     expect(fake.lastParent).toBe(
       "projects/proj/locations/us-central1/workflows/hyperframes-render",
     );
@@ -88,7 +99,15 @@ describe("renderToCloudRun", () => {
     const fake = new FakeExecutions();
     await renderToCloudRun({ ...opts(fake), planProtocol: "v2" });
     const arg = JSON.parse(fake.lastArgument ?? "{}");
-    expect(arg.PlanProtocol).toBe("v2");
+    expect(arg).toEqual({
+      RenderId: "hf-render-fixed",
+      ProjectGcsUri: "gs://b/sites/abc/project.tar.gz",
+      PlanOutputGcsPrefix: "gs://b/renders/hf-render-fixed/",
+      OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
+      ServiceUrl: "https://render-abc.run.app",
+      Config: config,
+      PlanProtocol: "v2",
+    });
   });
 
   it("derives the output extension from the format", async () => {

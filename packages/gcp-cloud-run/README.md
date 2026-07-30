@@ -30,8 +30,8 @@ GCS bucket  ←→  Cloud Run service (plan / renderChunk / assemble)
                 Cloud Workflows  (Plan → parallel RenderChunk → Assemble)
 ```
 
-- **Plan** downloads the project tarball, runs `plan()`, uploads the planDir
-  tarball (+ audio) to GCS, and returns the chunk count.
+- **Plan** downloads the project tarball and publishes either a legacy v1
+  planDir tarball or a v2 manifest plus content-addressed artifacts.
 - **RenderChunk** runs in a parallel `for` loop in the workflow, fanned out
   up to the plan's chunk count. Each invocation renders one chunk and uploads
   it.
@@ -42,6 +42,23 @@ Every step is a `POST` to the same Cloud Run URL with a different `Action`.
 The workflow accumulates each step's small result body and returns
 `{ Plan, Chunks, Assemble }` so `getRenderProgress` can read frame totals and
 per-step durations on success.
+
+### Plan transport selection
+
+Plan v2 is recommended for new integrations. `renderToCloudRun` still
+interprets an omitted `planProtocol` as `"v1"` for backwards compatibility,
+so new callers should select v2 explicitly:
+
+```ts
+await renderToCloudRun({
+  // ...project, bucket, workflow, service, and config...
+  planProtocol: "v2",
+});
+```
+
+V2 uses separate manifest and content-addressed artifact locators throughout
+the workflow. Unknown protocols and integrity failures fail closed; a render
+never mixes v1 and v2 artifacts.
 
 ## Chrome runtime
 

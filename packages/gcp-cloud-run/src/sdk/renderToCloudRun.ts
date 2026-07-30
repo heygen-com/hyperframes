@@ -54,7 +54,7 @@ export interface RenderToCloudRunOptions {
   config: SerializableDistributedRenderConfig;
   /**
    * Distributed plan transport. Defaults to `"v1"` for backwards
-   * compatibility; v2 is always an explicit whole-render opt-in.
+   * compatibility. New integrations should explicitly select `"v2"`.
    */
   planProtocol?: CloudRunPlanProtocol;
   /** GCS bucket from the Terraform output (`render_bucket_name`). */

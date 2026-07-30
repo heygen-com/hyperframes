@@ -1,29 +1,29 @@
 /**
  * `@hyperframes/producer/distributed` — the distributed render primitives.
  *
- * The three activities (`plan` → `renderChunk` × N → `assemble`) are pure
- * functions over local file paths; networking + orchestration live in
- * adapters.
+ * The distributed activities are pure functions over local file paths;
+ * networking + orchestration live in adapters. New integrations should use
+ * Plan v2; the v1 functions remain available for compatibility.
  *
  * Adopters (AWS Lambda, Cloud Run Jobs, Temporal, K8s Jobs, plain SSH):
  *
  * ```ts
  * import {
- *   plan,
- *   renderChunk,
- *   assemble,
+ *   planV2,
+ *   renderChunkV2,
+ *   assembleV2,
  * } from "@hyperframes/producer/distributed";
  *
- * // Controller-side: produce a self-contained planDir + content-addressed planHash.
- * const planResult = await plan(projectDir, config, planDir);
+ * // Controller-side: publish a content-addressed Plan v2 manifest + CAS.
+ * const planResult = await planV2(projectDir, config, planV2Dir);
  *
  * // Worker-side: render one chunk. Byte-identical retries on the same
- * // (planDir, chunkIndex) — Temporal / Step Functions retry policies are
+ * // (planV2Dir, chunkIndex) — Temporal / Step Functions retry policies are
  * // safe to point at this.
- * const chunk = await renderChunk(planDir, chunkIndex, outputChunkPath);
+ * const chunk = await renderChunkV2(planV2Dir, chunkIndex, outputChunkPath);
  *
  * // Controller-side: stitch chunks into the final deliverable.
- * await assemble(planDir, chunkPaths, audioPath, outputPath);
+ * await assembleV2(planV2Dir, chunkPaths, outputPath);
  * ```
  *
  * No networking, no AWS SDK, no Temporal SDK — those live in adapter
@@ -56,11 +56,14 @@ export {
 
 // ── Plan v2 content-addressed transport ────────────────────────────────────
 export {
+  createPlanV2FromExecutionPlan,
   createPlanV2FromV1,
+  getPlanV2ExecutionPlanHash,
   listPlanV2ArtifactsForTarget,
   materializePlanV2Target,
   planV2,
   planV2WithPublisher,
+  publishPlanV2FromExecutionPlan,
   publishPlanV2FromV1,
   readPlanV2Manifest,
   validatePlanV2MaterializedTarget,
@@ -123,6 +126,7 @@ export {
   getDistributedRenderCapabilities,
   PLAN_ARTIFACT_LAYOUT,
   PLAN_HASH_SCHEMA,
+  PLAN_PROTOCOL_V1,
   PLAN_PROTOCOL_V2,
   PLAN_PROTOCOL_UNSUPPORTED,
   PLAN_SCHEMA_VERSION,

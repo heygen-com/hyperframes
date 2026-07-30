@@ -36,12 +36,20 @@ export interface PlanProtocolV2Descriptor extends PlanProtocolDescriptor {
 
 export type SupportedPlanProtocolDescriptor = PlanProtocolV1Descriptor | PlanProtocolV2Descriptor;
 
-/** Descriptor written by the current producer and accepted by v1 workers. */
-export const CURRENT_PLAN_PROTOCOL: Readonly<PlanProtocolV1Descriptor> = Object.freeze({
+/** Descriptor for the legacy v1 execution-directory transport. */
+export const PLAN_PROTOCOL_V1: Readonly<PlanProtocolV1Descriptor> = Object.freeze({
   schemaVersion: PLAN_SCHEMA_VERSION,
   artifactLayout: PLAN_ARTIFACT_LAYOUT,
   hashSchema: PLAN_HASH_SCHEMA,
 });
+
+/**
+ * Descriptor written by the legacy v1 planner and accepted by v1 workers.
+ *
+ * @deprecated Use {@link PLAN_PROTOCOL_V1}. Kept as an identity-preserving
+ * alias for existing integrations.
+ */
+export const CURRENT_PLAN_PROTOCOL: Readonly<PlanProtocolV1Descriptor> = PLAN_PROTOCOL_V1;
 
 /** Explicit opt-in descriptor for the content-addressed v2 transport layout. */
 export const PLAN_PROTOCOL_V2: Readonly<PlanProtocolV2Descriptor> = Object.freeze({
@@ -70,14 +78,14 @@ export const DISTRIBUTED_RENDER_CAPABILITIES: Readonly<DistributedRenderCapabili
   Object.freeze({
     roles: Object.freeze({
       planner: Object.freeze({
-        produces: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
+        produces: Object.freeze([PLAN_PROTOCOL_V1, PLAN_PROTOCOL_V2]),
       }),
       chunk: Object.freeze({
-        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
+        accepts: Object.freeze([PLAN_PROTOCOL_V1, PLAN_PROTOCOL_V2]),
         acceptsLegacyV1WithoutDescriptor: true,
       }),
       assembler: Object.freeze({
-        accepts: Object.freeze([CURRENT_PLAN_PROTOCOL, PLAN_PROTOCOL_V2]),
+        accepts: Object.freeze([PLAN_PROTOCOL_V1, PLAN_PROTOCOL_V2]),
         acceptsLegacyV1WithoutDescriptor: true,
       }),
     }),
@@ -143,13 +151,13 @@ export function readPlanProtocol(
   if (!Object.prototype.hasOwnProperty.call(planJson, "protocol")) {
     if (
       !capabilities.acceptsLegacyV1WithoutDescriptor ||
-      !capabilitiesAccept(capabilities, CURRENT_PLAN_PROTOCOL)
+      !capabilitiesAccept(capabilities, PLAN_PROTOCOL_V1)
     ) {
       throw new PlanProtocolUnsupportedError(
         "legacy v1 plan without a protocol descriptor is not accepted by this worker",
       );
     }
-    return CURRENT_PLAN_PROTOCOL;
+    return PLAN_PROTOCOL_V1;
   }
 
   const descriptor = planJson.protocol;
@@ -163,8 +171,8 @@ export function readPlanProtocol(
     }
   }
 
-  const protocol = protocolMatches(descriptor, CURRENT_PLAN_PROTOCOL)
-    ? CURRENT_PLAN_PROTOCOL
+  const protocol = protocolMatches(descriptor, PLAN_PROTOCOL_V1)
+    ? PLAN_PROTOCOL_V1
     : protocolMatches(descriptor, PLAN_PROTOCOL_V2)
       ? PLAN_PROTOCOL_V2
       : null;
@@ -185,10 +193,10 @@ export function readPlanProtocolV1(
     .chunk,
 ): Readonly<PlanProtocolV1Descriptor> {
   const protocol = readPlanProtocol(planJson, capabilities);
-  if (protocol !== CURRENT_PLAN_PROTOCOL) {
+  if (protocol !== PLAN_PROTOCOL_V1) {
     throw new PlanProtocolUnsupportedError(
       "content-addressed v2 plan must be materialized before v1 layout access",
     );
   }
-  return CURRENT_PLAN_PROTOCOL;
+  return PLAN_PROTOCOL_V1;
 }

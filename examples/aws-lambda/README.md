@@ -75,7 +75,7 @@ aws stepfunctions start-execution \
   "ProjectS3Uri": "s3://${RENDER_BUCKET}/projects/my-project.tar.gz",
   "PlanOutputS3Prefix": "s3://${RENDER_BUCKET}/renders/$(date +%s)/",
   "OutputS3Uri": "s3://${RENDER_BUCKET}/output.mp4",
-  "PlanProtocol": "v1",
+  "PlanProtocol": "v2",
   "Config": {
     "fps": 30,
     "width": 1920,
@@ -92,7 +92,8 @@ EOF
 
 The Step Functions execution kicks off Plan, fans out RenderChunk via
 the Map state, and finally Assemble. Final mp4 lands at `OutputS3Uri`.
-`PlanProtocol` may be `"v1"` or `"v2"`; absent defaults to v1. V2 uses
+Plan v2 is recommended for new integrations. `PlanProtocol` may be `"v1"` or
+`"v2"`; absent still defaults to v1 for backwards compatibility. V2 uses
 separate manifest and content-addressed artifact locators throughout the
 workflow and never places a v2 object in `PlanS3Uri`.
 

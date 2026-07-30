@@ -28,7 +28,7 @@ import {
   type PlanResult,
   type PlanV2ArtifactPublisher,
   type PlanV2Manifest,
-  publishPlanV2FromV1,
+  publishPlanV2FromExecutionPlan,
 } from "@hyperframes/producer/distributed";
 import { recomputePlanHashFromPlanDir } from "../../producer/src/services/render/stages/freezePlan.js";
 import type { AssembleEvent, LambdaEvent, PlanEvent, RenderChunkEvent } from "./events.js";
@@ -555,7 +555,7 @@ describe("handler dispatch", () => {
       ): Promise<PlanV2Manifest> => {
         const v1Dir = join(tmpRoot, `v1-${Date.now()}`);
         makeMinimalV1PlanDir(v1Dir, true);
-        const manifest = await publishPlanV2FromV1(v1Dir, publisher);
+        const manifest = await publishPlanV2FromExecutionPlan(v1Dir, publisher);
         expect(options.stagingParentDir).toBe(dirname(projectDir));
         expect(existsSync(join(dirname(projectDir), "plan-v2"))).toBe(false);
         return manifest;
