@@ -64,6 +64,9 @@ const flag = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && i + 1 < argv.length ? argv[i + 1] : def;
 };
+// Deliberate escape from the bgm_pending refusal below — for previewing while a detached
+// generate is still running. Off by default so a silent film can't ship by accident.
+const allowPendingBgm = argv.includes("--allow-pending-bgm");
 function die(msg) {
   console.error(`✗ assemble-index.mjs: ${msg}`);
   process.exit(1);
@@ -355,7 +358,14 @@ let audio = { bgm: null, voices: [], sfx: [] };
 if (existsSync(audioMetaPath)) {
   try {
     const parsed = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-    audio = { bgm: parsed.bgm ?? null, voices: parsed.voices ?? [], sfx: parsed.sfx ?? [] };
+    // bgm_pending rides along: without it this step cannot tell a detached generate that has
+    // not landed yet from a film that is silent by design, and it would build the silent one.
+    audio = {
+      bgm: parsed.bgm ?? null,
+      bgm_pending: !!parsed.bgm_pending,
+      voices: parsed.voices ?? [],
+      sfx: parsed.sfx ?? [],
+    };
   } catch (e) {
     die(`audio_meta.json parse: ${e.message}`);
   }
@@ -437,6 +447,20 @@ if (audio.bgm?.path) {
   } else {
     anomalies.push(`bgm ${audio.bgm.path} not on disk — skipped`);
   }
+} else if (audio.bgm_pending) {
+  // The distinction the flag exists to make. A warning is not enough: assemble is re-run on
+  // rework long after the audio step's own warning scrolled past, and it would happily build a
+  // silent film from a snapshot whose JSON says the bed is still generating.
+  if (!allowPendingBgm) {
+    die(
+      "audio_meta.json says bgm_pending — the music bed is still generating and is NOT in this " +
+        "assembly. Wait for the track, re-run the audio step, then assemble again. To assemble a " +
+        "deliberately silent preview anyway, pass --allow-pending-bgm.",
+    );
+  }
+  anomalies.push(
+    "bgm still generating (bgm_pending) — assembled without a bed per --allow-pending-bgm",
+  );
 }
 
 // (track 2) captions — captions.mjs writes this or legally skips; key off existence.
