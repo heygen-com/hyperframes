@@ -81,6 +81,41 @@ const STOP_FADE_TIME_CONSTANT = 0.004;
 const STOP_FADE_TAIL_SECONDS = 0.02;
 
 /**
+ * Decoding a source through WebAudio requires fetching the ENTIRE file into an
+ * ArrayBuffer first — for audio that rides inside a large camera/screen-capture
+ * video container, that is hundreds of MB per source and can OOM the tab
+ * before a single decoded sample exists. Sources whose bytes exceed this cap
+ * are permanently skipped for the session (they keep playing through the
+ * streamed HTMLMediaElement path instead of the sample-accurate transport).
+ */
+const MAX_DECODE_SOURCE_BYTES = 96 * 1024 * 1024;
+
+/** Read a response body while enforcing MAX_DECODE_SOURCE_BYTES; null = over cap. */
+async function readBodyCapped(body: ReadableStream<Uint8Array>): Promise<ArrayBuffer | null> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > MAX_DECODE_SOURCE_BYTES) {
+      void reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
+}
+
+/**
  * Anti-pop gain automation: a hard cut starts/stops mid-waveform, which is an
  * audible click. Ramp gain over EDGE_RAMP_SECONDS at the source's effective
  * start and (for bounded clips) into its scheduled end, so adjacent trimmed
@@ -122,6 +157,13 @@ export class WebAudioTransport {
   private _bufferCache = new Map<string, AudioBuffer>();
   private _failedSrcs = new Set<string>();
   private _fetchAttemptedSrcs = new Set<string>();
+  // In-flight decode per src. Decoding a long source takes SECONDS (full-file
+  // fetch + decodeAudioData) while callers — the periodic warm pass, play(),
+  // rate changes — may re-request the same src many times a second. Without
+  // this map each re-request launched ANOTHER whole-file fetch: dozens of
+  // concurrent copies of the same source stacked up in memory and could OOM
+  // the tab before the first decode ever landed in `_bufferCache`.
+  private _pendingDecodes = new Map<string, Promise<AudioBuffer | null>>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
@@ -160,8 +202,21 @@ export class WebAudioTransport {
     if (this._failedSrcs.has(src)) return null;
     if (!this._ctx) return null;
 
+    // Coalesce concurrent requests for the same src onto one fetch+decode.
+    const pending = this._pendingDecodes.get(src);
+    if (pending) return pending;
+    const task = this._decodeSrc(src);
+    this._pendingDecodes.set(src, task);
+    try {
+      return await task;
+    } finally {
+      this._pendingDecodes.delete(src);
+    }
+  }
+
+  private async _decodeSrc(src: string): Promise<AudioBuffer | null> {
     const arrayBuffer = await this._fetchAudioBytes(src);
-    if (!arrayBuffer) return null;
+    if (!arrayBuffer || !this._ctx) return null;
 
     // A decode failure means the bytes themselves are unusable (corrupt or an
     // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
@@ -199,11 +254,42 @@ export class WebAudioTransport {
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
         return null;
       }
-      return await response.arrayBuffer();
+      return await this._readResponseCapped(response, src);
     } catch (err) {
       swallow("webAudioTransport.fetch", err);
       return null;
     }
+  }
+
+  /** Permanent per-session skip for a source too large to decode; the element
+   *  keeps playing through the streamed HTMLMediaElement path. */
+  private _markOversized(src: string, size: string): null {
+    this._failedSrcs.add(src);
+    swallow("webAudioTransport.oversize", new Error(`${size} ${src}`));
+    return null;
+  }
+
+  /**
+   * Enforce MAX_DECODE_SOURCE_BYTES while reading a response. Declared length
+   * short-circuits before any bytes buffer; otherwise the capped stream read
+   * bounds the damage. Optional-chained so environments whose fetch shim lacks
+   * headers/body (tests, exotic embedders) use the plain arrayBuffer path.
+   */
+  private async _readResponseCapped(response: Response, src: string): Promise<ArrayBuffer | null> {
+    const declared = Number(response.headers?.get?.("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > MAX_DECODE_SOURCE_BYTES) {
+      void response.body?.cancel?.().catch(() => undefined);
+      return this._markOversized(src, `${declared}B`);
+    }
+    if (response.body?.getReader) {
+      const capped = await readBodyCapped(response.body);
+      return capped ?? this._markOversized(src, `>${MAX_DECODE_SOURCE_BYTES}B`);
+    }
+    const buf = await response.arrayBuffer();
+    if (buf.byteLength > MAX_DECODE_SOURCE_BYTES) {
+      return this._markOversized(src, `${buf.byteLength}B`);
+    }
+    return buf;
   }
 
   startGeneration(): number {
@@ -407,6 +493,7 @@ export class WebAudioTransport {
     this.stopAll();
     this._bufferCache.clear();
     this._failedSrcs.clear();
+    this._pendingDecodes.clear();
     if (this._ctx) {
       try {
         void this._ctx.close();

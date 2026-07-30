@@ -471,6 +471,73 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    it("coalesces concurrent decodes of the same src onto ONE fetch", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      let release: (() => void) | null = null;
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const fetchMock = vi.fn(async () => {
+        await gate;
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      // The periodic warm pass / play / rate changes can all request the same
+      // src while a long fetch+decode is still in flight — without coalescing,
+      // each launched ANOTHER whole-file fetch (the OOM amplifier).
+      const first = transport.decodeAudioElement(el("long.mp4"));
+      const second = transport.decodeAudioElement(el("long.mp4"));
+      release!();
+      const [a, b] = await Promise.all([first, second]);
+      expect(a).not.toBeNull();
+      expect(b).toBe(a);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("skips oversized sources via content-length and never re-fetches them", async () => {
+      const decode = vi.fn(async () => ({}) as AudioBuffer);
+      const transport = transportWithDecode(decode);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        headers: { get: () => String(200 * 1024 * 1024) },
+        body: { cancel: async () => undefined },
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await transport.decodeAudioElement(el("huge-camera.mp4"))).toBeNull();
+      expect(decode).not.toHaveBeenCalled();
+      // Permanent per-session skip — the element keeps its streamed fallback.
+      expect(await transport.decodeAudioElement(el("huge-camera.mp4"))).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it("caps an unbounded streamed body instead of buffering it all", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      // Chunks report huge byteLengths without allocating them — the cap logic
+      // only inspects sizes until it aborts.
+      const chunk = { byteLength: 60 * 1024 * 1024 } as Uint8Array;
+      let reads = 0;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            read: async () => (reads++ < 3 ? { done: false, value: chunk } : { done: true }),
+            cancel: async () => undefined,
+          }),
+        },
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      expect(await transport.decodeAudioElement(el("no-length.mp4"))).toBeNull();
+      expect(reads).toBeLessThanOrEqual(2); // aborted once past the cap
+      vi.unstubAllGlobals();
+    });
+
     it("first fetch per src uses the HTTP cache; only a RETRY bypasses it with no-store", async () => {
       const transport = transportWithDecode(async () => ({}) as AudioBuffer);
       const fetchMock = vi
