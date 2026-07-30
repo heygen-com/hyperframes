@@ -11,6 +11,16 @@ export interface WordBox {
   height: number;
 }
 
+export function readGsapNumber(
+  getProperty: (el: HTMLElement, prop: string) => unknown,
+  el: HTMLElement,
+  property: string,
+  fallback: number,
+): number {
+  const value = Number(getProperty(el, property));
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export function readWordBoxes(
   iframe: HTMLIFrameElement,
   model: {
@@ -144,12 +154,13 @@ export function readGsapTransform(
   const gsap = (
     iframeWin as unknown as { gsap?: { getProperty?: (el: HTMLElement, prop: string) => number } }
   ).gsap;
-  if (gsap && gsap.getProperty) {
+  const getProperty = gsap?.getProperty;
+  if (getProperty) {
     return {
-      x: gsap.getProperty(el, "x") || 0,
-      y: gsap.getProperty(el, "y") || 0,
-      scale: gsap.getProperty(el, "scale") || 1,
-      rotation: gsap.getProperty(el, "rotation") || 0,
+      x: readGsapNumber(getProperty, el, "x", 0),
+      y: readGsapNumber(getProperty, el, "y", 0),
+      scale: readGsapNumber(getProperty, el, "scale", 1),
+      rotation: readGsapNumber(getProperty, el, "rotation", 0),
     };
   }
   const t = el.style.transform || "";
