@@ -105,6 +105,11 @@ function toProductLaunchMeta(neutral) {
         duration_s: neutral.bgm.duration_s ?? null,
       }
     : null;
+  // bgm_pending must survive the neutral → skill translation. A detached generate
+  // (Lyria/MusicGen) leaves `bgm: null, bgm_pending: true` until the track lands; dropping the
+  // flag makes "not ready yet" indistinguishable from "silent by design", so a later
+  // `fetch-sfx` snapshot turns a still-generating bed into no music at all with no signal.
+  const bgmPending = !!neutral.bgm_pending;
   const sfx = (neutral.sfx ?? []).map((s) => ({
     frame: Number(s.id),
     file: s.file,
@@ -112,7 +117,7 @@ function toProductLaunchMeta(neutral) {
     duration_s: s.duration_s ?? 1,
     volume: s.volume ?? 0.35,
   }));
-  return { bgm, voices, sfx };
+  return { bgm, bgm_pending: bgmPending, voices, sfx };
 }
 
 // ── generate (TTS + BGM) ────────────────────────────────────────────────────
@@ -193,12 +198,16 @@ function runFetchSfx(argv) {
   const manifest = parseStoryboard(readFileSync(storyboardPath, "utf8"));
 
   // Per-frame `sfx:` cues (comma-separated) → engine lines carrying only sfx.
+  // `filter(Boolean)` alone is not enough: a storyboard that spells "no SFX here" as
+  // `sfx: none` reaches the engine as a cue literally NAMED "none", which then fails to
+  // resolve. The absence sentinels are part of the storyboard vocabulary, so drop them.
+  const SFX_NONE = new Set(["none", "no", "n/a", "na", "skip", "-", "—", "–"]);
   const lines = [];
   for (const f of manifest.frames) {
     const names = (f.extra?.sfx ?? "")
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter((s) => s && !SFX_NONE.has(s.toLowerCase()));
     if (names.length && f.number != null) lines.push({ id: pad2(f.number), sfx: names });
   }
 
@@ -212,6 +221,15 @@ function runFetchSfx(argv) {
   const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(`✓ audio fetch-sfx: ${meta.sfx.length} SFX cue(s) → ${outPath}`);
+  // This pass rewrites audio_meta.json from the neutral sidecar. If a detached BGM generate is
+  // still running, the bed it eventually writes is NOT folded back in — the snapshot we just
+  // took has no music. Say so instead of leaving a silent film behind.
+  if (meta.bgm_pending && !meta.bgm) {
+    console.warn(
+      "⚠ audio fetch-sfx: a detached BGM generate is still pending, so this snapshot has no bed. " +
+        "Re-run `fetch-sfx` (or re-point audio_meta.json at the track) once it lands, before assembling.",
+    );
+  }
 }
 
 // ── sync-durations (local; rewrites STORYBOARD.md) ────────────────────────────

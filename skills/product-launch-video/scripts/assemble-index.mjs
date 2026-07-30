@@ -476,7 +476,14 @@ let audio = { bgm: null, voices: [], sfx: [] };
 if (existsSync(audioMetaPath)) {
   try {
     const parsed = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-    audio = { bgm: parsed.bgm ?? null, voices: parsed.voices ?? [], sfx: parsed.sfx ?? [] };
+    // bgm_pending rides along: without it this step cannot tell a detached generate that has
+    // not landed yet from a film that is silent by design, and it would build the silent one.
+    audio = {
+      bgm: parsed.bgm ?? null,
+      bgm_pending: !!parsed.bgm_pending,
+      voices: parsed.voices ?? [],
+      sfx: parsed.sfx ?? [],
+    };
   } catch (e) {
     die(`audio_meta.json parse: ${e.message}`);
   }
@@ -578,6 +585,14 @@ if (audio.bgm?.path) {
   } else {
     anomalies.push(`bgm ${audio.bgm.path} not on disk — skipped`);
   }
+} else if (audio.bgm_pending) {
+  // The distinction the flag exists to make: this film is not silent by design, its bed just
+  // has not finished generating. Assembling now ships a silent cut against a storyboard that
+  // promises music, so say it here rather than let the build read as complete.
+  anomalies.push(
+    "bgm is still generating (bgm_pending) — this assembly has NO music bed. Re-run the audio " +
+      "step and assemble again once the track lands, or the film ships silent.",
+  );
 }
 
 // (track 2) captions — captions.mjs writes this or legally skips; key off existence.

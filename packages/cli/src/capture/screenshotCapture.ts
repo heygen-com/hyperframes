@@ -28,6 +28,17 @@ import { join } from "node:path";
 export const MAX_PLATE_HEIGHT_PX = 16384;
 
 /**
+ * Pixel height Chrome actually produced, read from the PNG's IHDR chunk: 8-byte signature,
+ * then 4 length + 4 type + 4 width + 4 height. Null when the buffer isn't a PNG.
+ */
+export function pngHeight(buf: Uint8Array): number | null {
+  // Byte math rather than Buffer helpers: page.screenshot() resolves to a Uint8Array.
+  if (buf.length < 24) return null;
+  if (buf[12] !== 0x49 || buf[13] !== 0x48 || buf[14] !== 0x44 || buf[15] !== 0x52) return null; // "IHDR"
+  return ((buf[20]! << 24) | (buf[21]! << 16) | (buf[22]! << 8) | buf[23]!) >>> 0;
+}
+
+/**
  * One tall image of the whole document — the plate a scroll shot slides its viewport over.
  *
  * This is deliberately 1x. A 2x plate is what you'd want for pushing in without softening
@@ -48,9 +59,15 @@ export const MAX_PLATE_HEIGHT_PX = 16384;
 export async function captureFullPagePlate(
   page: Page,
   screenshotsDir: string,
-  scrollHeight: number,
 ): Promise<string | null> {
-  if (scrollHeight > MAX_PLATE_HEIGHT_PX) return null;
+  // Measured here rather than taken from the caller: the plate is deliberately shot AFTER the
+  // scroll traversal, and lazy content grows the document as it loads — a height measured
+  // before scrolling reads low on exactly the long pages this guard exists for, which would
+  // let the check pass and a clipped plate through.
+  const docHeight = (await page.evaluate(
+    `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
+  )) as number;
+  if (docHeight > MAX_PLATE_HEIGHT_PX) return null;
 
   // Record the inline value before overwriting so the page is handed back unchanged — the
   // caller keeps using it (asset extraction, DOM reads) after this returns.
@@ -65,15 +82,27 @@ export async function captureFullPagePlate(
   );
   try {
     const buffer = await page.screenshot({ type: "png", fullPage: true });
+    // Confirm what Chrome produced instead of trusting the measurement: the capture itself can
+    // trigger another round of lazy loading. A clipped plate is undetectable downstream — the
+    // skill only teaches the tile fallback when the file is *absent* — so emit nothing rather
+    // than something silently wrong.
+    const produced = pngHeight(buffer);
+    if (produced != null && produced > MAX_PLATE_HEIGHT_PX) return null;
     writeFileSync(join(screenshotsDir, "full-page.png"), buffer);
     return "screenshots/full-page.png";
   } finally {
-    await page.evaluate(
-      `document.querySelectorAll('[data-hf-plate-position]').forEach((el) => {
-        el.style.position = el.getAttribute('data-hf-plate-position');
-        el.removeAttribute('data-hf-plate-position');
-      })`,
-    );
+    // A page that broke mid-capture will fail this too; letting that escape would replace the
+    // real error with a cleanup one. Nothing to restore if the page is already gone.
+    try {
+      await page.evaluate(
+        `document.querySelectorAll('[data-hf-plate-position]').forEach((el) => {
+          el.style.position = el.getAttribute('data-hf-plate-position');
+          el.removeAttribute('data-hf-plate-position');
+        })`,
+      );
+    } catch {
+      /* page unusable — the restore is moot */
+    }
   }
 }
 
@@ -212,7 +241,7 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
     // dropped because 1/8 agents read it and the contact sheet covered the same ground — that
     // was about it as a *comprehension* artifact. The scroll shot is a different consumer: it
     // needs one continuous plate, which no set of viewport tiles can substitute for.)
-    const plate = await captureFullPagePlate(page, screenshotsDir, scrollHeight);
+    const plate = await captureFullPagePlate(page, screenshotsDir);
     if (plate) filePaths.push(plate);
   } catch {
     /* scroll screenshots are non-critical */
