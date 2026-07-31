@@ -46,12 +46,10 @@ function dispatch(time: number): void {
   } finally {
     accepting = false;
   }
-  _pendingCompletions.push(
-    Promise.all(pending).then<SeekCompletionResult>(
-      () => ({ status: "fulfilled" }),
-      (reason: unknown) => ({ status: "rejected", reason }),
-    ),
-  );
+  const completion = Promise.all(pending)
+    .then<SeekCompletionResult>(() => ({ status: "fulfilled" }))
+    .catch<SeekCompletionResult>((reason: unknown) => ({ status: "rejected", reason }));
+  _pendingCompletions.push(completion);
 }
 
 export function dispatchSeekEvent(time: number): void {
