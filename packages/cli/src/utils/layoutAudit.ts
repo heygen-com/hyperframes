@@ -158,6 +158,7 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
   return issue.fixHint ? `${line}\n    Fix: ${issue.fixHint}` : line;
 }
 
+// Keeps raw `text` where `staticIssueKey` drops it: this key pins an exact time, so text still separates concurrent findings rather than spanning samples.
 export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {
   const seen = new Set<string>();
   const result: LayoutIssue[] = [];
@@ -202,6 +203,15 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "escaped_container",
   "panel_out_of_canvas",
   "connector_detached",
+]);
+
+// Codes whose collapse key is the selector pair alone. Both builders uniquely
+// select their two ends, so the pair IS the identity — and keeping per-sample
+// text would split one held finding into transient groups whenever the subject's
+// text animates (count-up, typewriter, rotating word).
+const TEXT_AGNOSTIC_KEY_CODES: ReadonlySet<LayoutIssueCode> = new Set([
+  "content_overlap",
+  "text_occluded",
 ]);
 
 export function collapseStaticLayoutIssues(
@@ -342,7 +352,7 @@ function staticIssueKey(issue: LayoutIssue): string {
     issue.severity,
     issue.selector,
     issue.containerSelector ?? "",
-    issue.text ?? "",
+    TEXT_AGNOSTIC_KEY_CODES.has(issue.code) ? "" : (issue.text ?? ""),
     issue.overflow ? formatOverflow(issue.overflow) : "",
     framePositionKey(issue),
   ].join("|");
