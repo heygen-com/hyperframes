@@ -4,7 +4,7 @@ Reference for generating and editing HyperFrames HTML compositions. This is your
 
 **New to HyperFrames?** Start with the [quickstart template](./quickstart-template.html) — a copy-paste composition with inline comments explaining every required piece. See [common mistakes](./common-mistakes.md) for pitfalls that break compositions.
 
-For Frame adapters and deterministic frame rendering direction, see [`../../FRAME.md`](../../FRAME.md) and [`../adapters/README.md`](../adapters/README.md).
+For frame adapters and deterministic frame rendering direction, see the [frame adapters](../../../docs/concepts/frame-adapters.mdx) and [determinism](../../../docs/concepts/determinism.mdx) concept docs.
 
 Producer-canonical parity note:
 
