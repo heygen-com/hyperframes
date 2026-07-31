@@ -25,7 +25,9 @@ describe("local browser GPU policy", () => {
 
   it("rejects an auto software fallback for required WebGPU compositions", () => {
     const html = '<div data-composition-id="gpu" data-requires-webgpu></div>';
-    expect(() => assertWebGpuRequirement(html, "auto", "software")).toThrow("data-requires-webgpu");
+    expect(() => assertWebGpuRequirement(html, "auto", "software")).toThrow(
+      "PRODUCER_BROWSER_GPU_MODE=hardware",
+    );
     expect(() => assertWebGpuRequirement(html, "hardware", "hardware")).not.toThrow();
     expect(() => assertWebGpuRequirement(html, "software", "software")).not.toThrow();
   });

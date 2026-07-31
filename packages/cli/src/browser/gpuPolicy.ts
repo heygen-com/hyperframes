@@ -36,7 +36,8 @@ export function assertWebGpuRequirement(
   }
   throw new Error(
     "This composition declares data-requires-webgpu, but browser GPU auto-detection found no hardware GPU. " +
-      "Run on a WebGPU-capable host or pass --browser-gpu to require hardware explicitly; " +
+      "Run on a WebGPU-capable host or set PRODUCER_BROWSER_GPU_MODE=hardware " +
+      "(or pass --browser-gpu on commands that support it) to require hardware explicitly; " +
       "use --no-browser-gpu only when intentionally testing the composition's software fallback.",
   );
 }

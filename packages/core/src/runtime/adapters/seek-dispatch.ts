@@ -19,7 +19,8 @@ import { swallow } from "../diagnostics";
  */
 
 let _lastDispatchedTime = -1;
-let _pendingCompletion: Promise<void> = Promise.resolve();
+type SeekCompletionResult = { status: "fulfilled" } | { status: "rejected"; reason: unknown };
+let _pendingCompletions: Array<Promise<SeekCompletionResult>> = [];
 
 export interface HfSeekEventDetail {
   time: number;
@@ -45,7 +46,12 @@ function dispatch(time: number): void {
   } finally {
     accepting = false;
   }
-  _pendingCompletion = Promise.all(pending).then(() => undefined);
+  _pendingCompletions.push(
+    Promise.all(pending).then<SeekCompletionResult>(
+      () => ({ status: "fulfilled" }),
+      (reason: unknown) => ({ status: "rejected", reason }),
+    ),
+  );
 }
 
 export function dispatchSeekEvent(time: number): void {
@@ -69,12 +75,19 @@ export function forceDispatchSeekEvent(time: number): void {
   dispatch(time);
 }
 
-export function waitForSeekCompletion(): Promise<void> {
-  return _pendingCompletion;
+export async function waitForSeekCompletion(): Promise<void> {
+  const observed = _pendingCompletions;
+  _pendingCompletions = [];
+  const results = await Promise.all(observed);
+  const failed = results.find(
+    (result): result is Extract<SeekCompletionResult, { status: "rejected" }> =>
+      result.status === "rejected",
+  );
+  if (failed) throw failed.reason;
 }
 
 /** Reset internal state — used in tests to prevent cross-test contamination. */
 export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;
-  _pendingCompletion = Promise.resolve();
+  _pendingCompletions = [];
 }

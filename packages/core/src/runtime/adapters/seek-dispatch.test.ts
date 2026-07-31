@@ -71,4 +71,48 @@ describe("seek-dispatch", () => {
     await pending;
     expect(settled).toBe(true);
   });
+
+  it("retains overlapping seek generations until a capture observes them", async () => {
+    let finishFirst: (() => void) | undefined;
+    let finishSecond: (() => void) | undefined;
+    const firstGpuWork = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const secondGpuWork = new Promise<void>((resolve) => {
+      finishSecond = resolve;
+    });
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<HfSeekEventDetail>).detail;
+      detail.waitUntil(detail.time === 10 ? firstGpuWork : secondGpuWork);
+    };
+    window.addEventListener("hf-seek", handler);
+    dispatchSeekEvent(10);
+    dispatchSeekEvent(11);
+    window.removeEventListener("hf-seek", handler);
+
+    let settled = false;
+    const pending = waitForSeekCompletion().then(() => {
+      settled = true;
+    });
+    finishSecond?.();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finishFirst?.();
+    await pending;
+    expect(settled).toBe(true);
+  });
+
+  it("reports a rejected generation once, then consumes it", async () => {
+    const failure = new Error("GPU queue failed");
+    const handler = (event: Event) => {
+      (event as CustomEvent<HfSeekEventDetail>).detail.waitUntil(Promise.reject(failure));
+    };
+    window.addEventListener("hf-seek", handler);
+    dispatchSeekEvent(12);
+    window.removeEventListener("hf-seek", handler);
+
+    await expect(waitForSeekCompletion()).rejects.toBe(failure);
+    await expect(waitForSeekCompletion()).resolves.toBeUndefined();
+  });
 });

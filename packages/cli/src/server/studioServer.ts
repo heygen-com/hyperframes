@@ -235,7 +235,8 @@ async function getThumbnailBrowser(
       _thumbnailBrowserLease = acquired;
       _thumbnailBrowserModes = { requested: requestedGpuMode, resolved: resolvedGpuMode };
       acquired.browser.on("disconnected", () => {
-        if (_thumbnailBrowserLease === acquired) _thumbnailBrowserLease = null;
+        if (_thumbnailBrowserLease !== acquired) return;
+        _thumbnailBrowserLease = null;
         _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
