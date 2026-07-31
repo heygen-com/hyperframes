@@ -2412,6 +2412,7 @@ export function initSandboxRuntimeModular(): void {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
       });
+      runAdapters("pause");
       syncMediaForCurrentState();
       colorGrading.redraw();
       postState(true);

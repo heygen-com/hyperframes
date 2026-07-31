@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import type { RuntimeTimelineLike } from "./types";
 
 function createMockTimeline(duration: number): RuntimeTimelineLike {
@@ -122,6 +123,7 @@ describe("initSandboxRuntimeModular", () => {
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
     delete window.gsap;
     vi.restoreAllMocks();
+    vi.useRealTimers();
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
   });
@@ -368,6 +370,31 @@ describe("initSandboxRuntimeModular", () => {
     player?.renderSeek(9);
 
     expect(child.style.visibility).toBe("visible");
+  });
+
+  it("keeps WebGPU presentation active after renderSeek pauses the frame", async () => {
+    vi.useFakeTimers();
+
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-requires-webgpu", "");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    window.__timelines = { main: createMockTimeline(10) };
+
+    const times: number[] = [];
+    const onSeek = (event: Event) => {
+      times.push((event as CustomEvent<{ time: number }>).detail.time);
+    };
+    window.addEventListener("hf-seek", onSeek);
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(4);
+    await vi.advanceTimersByTimeAsync(TYPEGPU_PRESENT_HEARTBEAT_MS);
+
+    window.removeEventListener("hf-seek", onSeek);
+    expect(times).toEqual([0, 4, 4]);
   });
 
   it("uses export render fps when quantizing renderSeek", () => {
