@@ -264,9 +264,11 @@ export {
   extractVideoMetadata,
   extractFinalVideoFrameTimestamp,
   extractAudioMetadata,
+  probeMediaProfile,
   analyzeKeyframeIntervals,
   type VideoMetadata,
   type AudioMetadata,
+  type MediaProbeProfile,
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 

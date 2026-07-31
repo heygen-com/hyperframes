@@ -48,6 +48,7 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
+import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
 
 export interface CompileStageInput {
   projectDir: string;
@@ -312,6 +313,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
+  await preflightCompositionAssetMediaTypes({
+    projectDir,
+    compiledDir: join(workDir, "compiled"),
+    composition,
+    signal: abortSignal,
+  });
+  assertNotAborted();
   const { width, height } = composition;
   const effectiveResolution = adaptAspectAgnosticResolution(
     job.config.outputResolution,

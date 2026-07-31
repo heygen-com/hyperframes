@@ -11,6 +11,7 @@ import {
 // in beginframe mode even when lowMemoryMode demanded screenshot capture).
 const capturedCfgs: unknown[] = [];
 const capturedOptions: unknown[] = [];
+let mediaPreflightCallCount = 0;
 
 type MockSession = {
   id: number;
@@ -55,7 +56,14 @@ function resetRetryMocks() {
   createdSessions.length = 0;
   closedSessions.length = 0;
   durationProbeSessions.length = 0;
+  mediaPreflightCallCount = 0;
 }
+
+mock.module("../../assetMediaType.js", () => ({
+  preflightCompositionAssetMediaTypes: async () => {
+    mediaPreflightCallCount += 1;
+  },
+}));
 
 mock.module("@hyperframes/engine", () => ({
   createCaptureSession: async (
@@ -309,6 +317,18 @@ describe("hasVariableBoundMedia", () => {
 });
 
 describe("runProbeStage — forceScreenshot threading", () => {
+  it("runs media-type preflight after the browser-reconciliation phase", async () => {
+    mediaPreflightCallCount = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = "<div>static</div>";
+
+    await runProbeStage(input);
+
+    expect(mediaPreflightCallCount).toBe(1);
+  });
+
   it("launches a probe when a static-duration composition inserts video at runtime", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");
@@ -480,6 +500,40 @@ describe("runProbeStage — decimal duration frame count", () => {
 });
 
 describe("runProbeStage — transient browser error retry (#1687)", () => {
+  async function runWithTransientInitializeError(message: string) {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error(message);
+    initializeSessionFailUntilAttempt = 1;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+    const result = await runProbeStage(input);
+
+    expect(initializeSessionCallCount).toBe(2);
+    expect(closeCaptureSessionCallCount).toBe(1);
+    expect(result.duration).toBe(5);
+    expect(result.probeSession).not.toBeNull();
+  }
+
+  async function expectInitializeFailure(input: {
+    message: string;
+    expectedMessage: string;
+    expectedAttempts: number;
+  }) {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    initializeSessionError = new Error(input.message);
+    initializeSessionFailUntilAttempt = 999;
+
+    const { runProbeStage } = await import("./probeStage.js");
+    const probeInput = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
+
+    await expect(runProbeStage(probeInput)).rejects.toThrow(input.expectedMessage);
+    expect(initializeSessionCallCount).toBe(input.expectedAttempts);
+    expect(closeCaptureSessionCallCount).toBe(input.expectedAttempts);
+  }
+
   it("uses the replacement session after a BeginFrame liveness fallback", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
@@ -499,124 +553,42 @@ describe("runProbeStage — transient browser error retry (#1687)", () => {
   });
 
   it("retries once on a transient 'Navigating frame was detached' error and succeeds", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error("Navigating frame was detached");
-    initializeSessionFailUntilAttempt = 1;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    const result = await runProbeStage(input);
-
-    expect(initializeSessionCallCount).toBe(2);
-    expect(closeCaptureSessionCallCount).toBe(1);
-    expect(result.duration).toBe(5);
-    expect(result.probeSession).not.toBeNull();
+    await runWithTransientInitializeError("Navigating frame was detached");
   });
 
   it("retries once on a browser-probe navigation timeout and succeeds", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error("Navigation timeout of 60000 ms exceeded");
-    initializeSessionFailUntilAttempt = 1;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    const result = await runProbeStage(input);
-
-    expect(initializeSessionCallCount).toBe(2);
-    expect(closeCaptureSessionCallCount).toBe(1);
-    expect(result.duration).toBe(5);
-    expect(result.probeSession).not.toBeNull();
+    await runWithTransientInitializeError("Navigation timeout of 60000 ms exceeded");
   });
 
   it("throws immediately on a non-transient error without retrying", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error("FONT_FETCH_FAILED: Inter");
-    initializeSessionFailUntilAttempt = 999;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    let caught: unknown;
-    try {
-      await runProbeStage(input);
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain("FONT_FETCH_FAILED");
-    expect(initializeSessionCallCount).toBe(1);
-    expect(closeCaptureSessionCallCount).toBe(1);
+    await expectInitializeFailure({
+      message: "FONT_FETCH_FAILED: Inter",
+      expectedMessage: "FONT_FETCH_FAILED",
+      expectedAttempts: 1,
+    });
   });
 
   it("throws after exhausting retry attempts on persistent transient errors", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error("Target closed");
-    initializeSessionFailUntilAttempt = 999;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    let caught: unknown;
-    try {
-      await runProbeStage(input);
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain("Target closed");
-    expect(initializeSessionCallCount).toBe(2);
-    expect(closeCaptureSessionCallCount).toBe(2);
+    await expectInitializeFailure({
+      message: "Target closed",
+      expectedMessage: "Target closed",
+      expectedAttempts: 2,
+    });
   });
 
   it("retries once on a pollHfReady zero-duration timeout (renderReady: false) and succeeds", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error(
+    await runWithTransientInitializeError(
       "[FrameCapture] Composition has zero duration.\n  Runtime ready: false, __player: true, __hf.seek: true, GSAP timeline: true, data-duration: 53.3s",
     );
-    initializeSessionFailUntilAttempt = 1;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    const result = await runProbeStage(input);
-
-    expect(initializeSessionCallCount).toBe(2);
-    expect(closeCaptureSessionCallCount).toBe(1);
-    expect(result.duration).toBe(5);
-    expect(result.probeSession).not.toBeNull();
   });
 
   it("throws immediately on a permanent zero-duration error (renderReady: true — genuine authoring bug)", async () => {
-    resetRetryMocks();
-    capturedCfgs.length = 0;
-    initializeSessionError = new Error(
-      "[FrameCapture] Composition has zero duration.\n  Runtime ready: true, __player: true, __hf.seek: true, GSAP timeline: false, data-duration: not set",
-    );
-    initializeSessionFailUntilAttempt = 999;
-
-    const { runProbeStage } = await import("./probeStage.js");
-    const input = makeProbeInput({ cfgForceScreenshot: false, stageForceScreenshot: false });
-
-    let caught: unknown;
-    try {
-      await runProbeStage(input);
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain("Runtime ready: true");
-    expect(initializeSessionCallCount).toBe(1);
-    expect(closeCaptureSessionCallCount).toBe(1);
+    await expectInitializeFailure({
+      message:
+        "[FrameCapture] Composition has zero duration.\n  Runtime ready: true, __player: true, __hf.seek: true, GSAP timeline: false, data-duration: not set",
+      expectedMessage: "Runtime ready: true",
+      expectedAttempts: 1,
+    });
   });
 
   it("retries on a transient browser LAUNCH failure (createCaptureSession throws)", async () => {

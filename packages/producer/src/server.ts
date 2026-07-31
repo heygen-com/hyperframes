@@ -120,6 +120,7 @@ interface PreparedRenderInput {
 
 const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
 const SAFE_RENDER_ERROR_CODES = new Set<string>([
+  "ASSET_MEDIA_TYPE_MISMATCH",
   "INVALID_VIDEO_METADATA",
   "VIDEO_SOURCE_UNRENDERABLE",
   "VIDEO_EXTRACTION_FAILED",
@@ -133,6 +134,27 @@ export function extractSafeRenderErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   const code = error.code;
   return typeof code === "string" && SAFE_RENDER_ERROR_CODES.has(code) ? code : undefined;
+}
+
+export interface SafeRenderErrorMetadata {
+  errorCode: string;
+  errorOwner?: "system" | "user";
+  retryable?: boolean;
+}
+
+/** Additive bounded metadata for typed producer failures. */
+export function extractSafeRenderErrorMetadata(
+  error: unknown,
+): SafeRenderErrorMetadata | undefined {
+  const errorCode = extractSafeRenderErrorCode(error);
+  if (!errorCode || typeof error !== "object" || error === null) return undefined;
+  const owner = "owner" in error ? error.owner : undefined;
+  const retryable = "retryable" in error ? error.retryable : undefined;
+  return {
+    errorCode,
+    errorOwner: owner === "user" || owner === "system" ? owner : undefined,
+    retryable: typeof retryable === "boolean" ? retryable : undefined,
+  };
 }
 
 function parseServerFps(value: unknown): RenderInput["fps"] {
@@ -585,7 +607,7 @@ async function writeRenderStreamFailure(input: {
     return;
   }
   const errorMsg = error instanceof Error ? error.message : String(error);
-  const errorCode = extractSafeRenderErrorCode(error);
+  const safeError = extractSafeRenderErrorMetadata(error);
   const elapsedMs = Date.now() - startedAtMs;
   log.error("render-stream failed", {
     requestId,
@@ -598,7 +620,9 @@ async function writeRenderStreamFailure(input: {
       type: "error",
       requestId,
       error: errorMsg,
-      errorCode,
+      errorCode: safeError?.errorCode,
+      errorOwner: safeError?.errorOwner,
+      retryable: safeError?.retryable,
       stage: job.currentStage,
       elapsedMs,
       errorDetails: job.errorDetails ?? null,
@@ -747,7 +771,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     } catch (error) {
       const durationMs = Date.now() - t0;
       const errorMsg = error instanceof Error ? error.message : String(error);
-      const errorCode = extractSafeRenderErrorCode(error);
+      const safeError = extractSafeRenderErrorMetadata(error);
       log.error("render failed", {
         requestId,
         durationMs,
@@ -759,7 +783,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
           success: false,
           requestId,
           error: errorMsg,
-          errorCode,
+          errorCode: safeError?.errorCode,
+          errorOwner: safeError?.errorOwner,
+          retryable: safeError?.retryable,
           stage: job.currentStage,
           durationMs,
           errorDetails: job.errorDetails ?? null,

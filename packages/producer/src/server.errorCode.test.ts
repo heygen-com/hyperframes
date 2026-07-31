@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { extractSafeRenderErrorCode } from "./server.js";
+import { extractSafeRenderErrorCode, extractSafeRenderErrorMetadata } from "./server.js";
 import { VideoExtractionStageError } from "./services/render/stages/extractVideosStage.js";
+import { AssetMediaTypeMismatchError } from "./services/assetMediaType.js";
 
 describe("extractSafeRenderErrorCode", () => {
   it("preserves allowlisted typed extraction codes", () => {
@@ -22,6 +23,21 @@ describe("extractSafeRenderErrorCode", () => {
     expect(extractSafeRenderErrorCode({ code: "INVALID_VIDEO_METADATA" })).toBe(
       "INVALID_VIDEO_METADATA",
     );
+  });
+
+  it("transports stable ownership and retry policy for media-type mismatches", () => {
+    const error = new AssetMediaTypeMismatchError([
+      { expected: "video", detected: "image", elementFingerprint: "0123456789abcdef" },
+    ]);
+    expect(error.code).toBe("ASSET_MEDIA_TYPE_MISMATCH");
+    expect(error.owner).toBe("user");
+    expect(error.retryable).toBe(false);
+    expect(extractSafeRenderErrorCode(error)).toBe("ASSET_MEDIA_TYPE_MISMATCH");
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "ASSET_MEDIA_TYPE_MISMATCH",
+      errorOwner: "user",
+      retryable: false,
+    });
   });
 
   it("does not forward arbitrary codes or parse message text", () => {

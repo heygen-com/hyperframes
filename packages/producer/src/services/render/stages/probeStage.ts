@@ -61,6 +61,7 @@ import {
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
+import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -628,6 +629,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
   }
+
+  await preflightCompositionAssetMediaTypes({
+    projectDir,
+    compiledDir: join(workDir, "compiled"),
+    composition,
+  });
+  assertNotAborted();
   const browserProbeMs = Date.now() - probeStart;
 
   const duration = composition.duration;

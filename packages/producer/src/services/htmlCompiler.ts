@@ -49,7 +49,9 @@ import {
   parseAudioElements,
   type AudioElement,
   type AudioVolumeKeyframe,
+  type MediaProbeProfile,
   analyzeKeyframeIntervals,
+  probeMediaProfile,
 } from "@hyperframes/engine";
 import { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
 import type { Page } from "puppeteer-core";
@@ -61,6 +63,7 @@ import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
 
 export interface CompiledComposition {
   html: string;
@@ -427,6 +430,18 @@ async function resolveMediaDuration(
   if (!existsSync(filePath)) {
     return { duration: 0, resolvedPath: filePath };
   }
+
+  let profile: MediaProbeProfile;
+  try {
+    profile = await probeMediaProfile(filePath);
+  } catch (error) {
+    // Preserve the historical split: invalid video sources surface their
+    // probe failure, while invalid/unreadable audio sources resolve to zero
+    // duration and are excluded by the compiler.
+    if (tagName !== "video") return { duration: 0, resolvedPath: filePath };
+    throw error;
+  }
+  assertAssetMediaTypeProfile(tagName === "video" ? "video" : "audio", profile, tagName);
 
   let metadata: { durationSeconds: number };
   if (tagName === "video") {

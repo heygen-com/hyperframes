@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { EngineConfig } from "@hyperframes/engine";
 import type { CanvasResolution } from "@hyperframes/core";
+import { spawnSync } from "node:child_process";
 import {
   runCompileStage,
   type CompileStageInput,
@@ -36,6 +37,9 @@ const noopLog = {
   info: () => {},
   debug: () => {},
 };
+
+const HAS_MEDIA_TOOLS =
+  spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
 
 function createCfg(overrides: Partial<EngineConfig> = {}): EngineConfig {
   return {
@@ -239,6 +243,47 @@ describe("runCompileStage — forceScreenshot snapshot", () => {
         }
       }
     }
+  });
+});
+
+describe.skipIf(!HAS_MEDIA_TOOLS)("runCompileStage — asset media-type preflight", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  it("rejects the zero-video audio-under-image shape before extraction", async () => {
+    fixture = setupFixture(`<!doctype html><html><body>
+      <div data-composition-id="root" data-width="320" data-height="180" data-duration="1">
+        <img id="hero" src="voice.asset" data-start="0" data-end="1" />
+      </div>
+    </body></html>`);
+    const projectDir = join(fixture.workDir, "project");
+    const audioPath = join(projectDir, "voice.asset");
+    const synth = spawnSync("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      "-c:a",
+      "pcm_s16le",
+      "-f",
+      "wav",
+      audioPath,
+    ]);
+    expect(synth.status).toBe(0);
+
+    await expect(runWith(fixture, createCfg(), false)).rejects.toMatchObject({
+      code: "ASSET_MEDIA_TYPE_MISMATCH",
+      owner: "user",
+      retryable: false,
+    });
   });
 });
 
