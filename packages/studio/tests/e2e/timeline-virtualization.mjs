@@ -13,6 +13,8 @@
  * shared runner: no emulation, but the constrained budgets, because a hosted
  * runner is already slower and noisier than the machine the strict numbers were
  * recorded on. Throttling it further would measure the throttle, not the build.
+ * CI also requires production React and reports the observed runtime so Vite's
+ * development-only checks can never contaminate the shipped-code measurement.
  *
  * TIMELINE_ROW_VIRTUALIZATION selects which build is under test and defaults to
  * "on", the product default. The script asserts the configuration it observes
@@ -284,6 +286,14 @@ try {
   );
   await waitForStudioTestHookSettle(page);
 
+  const runtimeMode = await page.evaluate(() => window.__studioTest.runtimeMode);
+  if (TIER === "ci" && runtimeMode !== "production") {
+    throw new Error(
+      `Timeline CI must measure the production React runtime, received ${runtimeMode}. ` +
+        "Start the Studio development server with NODE_ENV=production.",
+    );
+  }
+
   await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
   const baselineHeapBytes = await collectHeapBytes(client);
@@ -374,6 +384,7 @@ try {
       deviceScaleFactor: TIER === "high-dpr" ? 2 : 1,
       cpuThrottleRate: TIER === "low-resource" ? 4 : 1,
       tier: TIER,
+      runtimeMode,
       longTaskObserverProbe,
       rowVirtualization: ROW_VIRTUALIZATION,
       observedClipRootsAtLoad: observedClipRoots,

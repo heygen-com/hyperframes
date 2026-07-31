@@ -553,8 +553,11 @@ jobs:
           trap stop_server EXIT
 
           # Run one server at a time so the measured browser never competes with
-          # a second Vite module graph on the shared runner.
-          bun run --cwd packages/studio dev -- --port 5313 --strictPort &
+          # a second Vite module graph on the shared runner. The development
+          # server supplies the fixture API; production React matches shipped
+          # rendering behavior, and the gate asserts that runtime before timing.
+          NODE_ENV=production \
+            bun run --cwd packages/studio dev -- --port 5313 --strictPort &
           SERVER_PID=$!
           DEFAULT_STATUS=0
           if wait_for_server 5313; then
@@ -570,7 +573,8 @@ jobs:
           fi
           stop_server
 
-          VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=0 \
+          NODE_ENV=production \
+            VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=0 \
             bun run --cwd packages/studio dev -- --port 5314 --strictPort &
           SERVER_PID=$!
           DISABLED_STATUS=0

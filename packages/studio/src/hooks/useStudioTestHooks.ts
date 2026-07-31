@@ -12,6 +12,7 @@ import {
   type TimelinePerformanceFixtureSummary,
 } from "../player/lib/timelinePerformanceFixture";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../player/lib/timelineViewportBudgets";
+import { STUDIO_RUNTIME_MODE, STUDIO_TEST_HOOKS_ENABLED } from "./studioTestMode";
 
 interface StudioTestHookDeps {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
@@ -23,6 +24,7 @@ interface StudioTestHookDeps {
 }
 
 interface StudioTestApi {
+  runtimeMode: typeof STUDIO_RUNTIME_MODE;
   selectByDomId: (id: string) => Promise<boolean>;
   loadTimelinePerformanceFixture: (
     spec: TimelinePerformanceFixtureSpec,
@@ -54,14 +56,9 @@ export function useStudioTestHooks({
 }: StudioTestHookDeps): void {
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    let isDev = false;
-    try {
-      isDev = import.meta.env.DEV === true;
-    } catch {
-      isDev = false;
-    }
-    if (!isDev || typeof window === "undefined") return;
+    if (!STUDIO_TEST_HOOKS_ENABLED || typeof window === "undefined") return;
     const api: StudioTestApi = {
+      runtimeMode: STUDIO_RUNTIME_MODE,
       selectByDomId: async (id: string): Promise<boolean> => {
         const element = previewIframeRef.current?.contentDocument?.getElementById(id) ?? null;
         if (!element) return false;

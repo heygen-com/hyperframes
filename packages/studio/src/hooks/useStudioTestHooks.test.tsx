@@ -85,6 +85,7 @@ describe("timeline performance fixture", () => {
     const api = window.__studioTest;
     expect(api).toBeDefined();
     if (!api) throw new Error("Expected dev Studio test API");
+    expect(api.runtimeMode).toBe("development");
     let notifications = 0;
     usePlayerStore.setState({
       isPlaying: true,
