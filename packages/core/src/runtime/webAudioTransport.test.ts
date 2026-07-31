@@ -230,11 +230,22 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).not.toHaveBeenCalled();
     });
 
-    it("scales the bound by playback rate (buffer seconds)", async () => {
+    it("bounds by clip content seconds, NOT scaled by playback rate", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      // rate=2, clipDuration=10 → clipSourceLen=20; elapsed=3 → 17 buffer seconds left
+      // clipDuration (10) is composition seconds; media advances 1:1 with
+      // composition, so the buffer content to play is 10 regardless of rate —
+      // playbackRate alone stretches it to the right wall time. elapsed=3 → 7.
       await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
-      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 17);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
+    });
+
+    it("plays the full clip at half speed (regression: audio cut out partway)", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      // rate=0.5, clipDuration=10, play from start → full 10 content-seconds,
+      // which playbackRate stretches to 20s wallclock. The old `* rate` bound
+      // played only 5 content-seconds, so audio stopped at the clip's midpoint.
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 5, 1, gen, 0.5, 10);
+      expect(mock.startFn).toHaveBeenCalledWith(0, 0, 10);
     });
 
     it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
