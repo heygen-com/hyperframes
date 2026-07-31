@@ -24,3 +24,4 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [OptinMonster](https://optinmonster.com) | Angie Meeker                                     | Exploring HyperFrames for marketing and product video content.                                                |
 | [reap](https://reap.video)               | [@usamaabid](https://github.com/usamaabid)       | Powers agent-first AI video clipping, editing, and rendering across reap.video's creator and agent workflows. |
 | [Typeframe](https://typeframe.app)       | [@kiyeonjeon21](https://github.com/kiyeonjeon21) | Renders speech videos into shareable MP4 exports with word-timed typing captions and styled caption layouts.  |
+| [PandaStudio](https://www.writepanda.ai) | [@kamskans](https://github.com/kamskans)        | Renders motion-graphics templates, animated captions, and overlays into deterministic MP4 exports in PandaStudio's local-first desktop video editor. |
