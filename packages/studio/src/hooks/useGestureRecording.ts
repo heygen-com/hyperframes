@@ -28,8 +28,8 @@ interface BasePosition {
 }
 
 interface GsapRuntime {
-  seek: (t: number) => void;
-  set: (target: string, vars: Record<string, number | string>) => void;
+  timeline: { seek: (t: number) => void };
+  gsap: { set: (target: string, vars: Record<string, number | string>) => void };
   selector: string;
   element: HTMLElement;
   startTime: number;
@@ -100,8 +100,8 @@ function connectGsapRuntime(
     if (win?.gsap?.set && tl?.seek && selector) {
       const tlDuration = tl.duration();
       return {
-        seek: tl.seek.bind(tl),
-        set: win.gsap.set.bind(win.gsap),
+        timeline: tl,
+        gsap: win.gsap,
         selector,
         element,
         startTime: win.__player?.getTime() ?? 0,
@@ -123,9 +123,9 @@ function applyRuntimePreview(
   properties: Record<string, number>,
 ): void {
   const seekTime = Math.min(runtime.startTime + time, runtime.maxSeekTime);
-  runtime.seek(seekTime);
+  runtime.timeline.seek(seekTime);
   runtime.element.style.setProperty("translate", "none");
-  runtime.set(runtime.selector, { ...properties });
+  runtime.gsap.set(runtime.selector, { ...properties });
   runtime.element.style.visibility = "visible";
   liveTime.notify(seekTime);
   usePlayerStore.getState().setCurrentTime(seekTime);
@@ -237,6 +237,26 @@ function createRecordingRefs(): RecordingRefs {
   };
 }
 
+function releaseRuntimePreview(r: RecordingRefs): void {
+  const runtime = r.runtime;
+  if (!runtime) return;
+  const { element, savedVisibility, savedTranslate } = runtime;
+  element.style.visibility = savedVisibility;
+  element.style.setProperty("translate", savedTranslate || "");
+  try {
+    runtime.gsap.set(runtime.selector, {
+      clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
+    });
+  } catch {
+    /* runtime gone */
+  }
+  if (r.cssVarOffset.x || r.cssVarOffset.y) {
+    element.style.setProperty("--hf-studio-offset-x", `${r.cssVarOffset.x}px`);
+    element.style.setProperty("--hf-studio-offset-y", `${r.cssVarOffset.y}px`);
+  }
+  r.runtime = null;
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -259,9 +279,10 @@ export function useGestureRecording() {
   useEffect(() => {
     const r = refs.current;
     return () => {
+      isRecordingRef.current = false;
+      releaseRuntimePreview(r);
       r.cleanup?.();
       r.cleanup = null;
-      isRecordingRef.current = false;
     };
   }, []);
 
@@ -290,15 +311,15 @@ export function useGestureRecording() {
       // this scale to convert them to the iframe's composition pixels.
       r.scale = computeIframeScale(iframeEl);
 
-      // Now clear the optimistic path offset (already folded into baseX/baseY).
-      if (base.cssOffX || base.cssOffY) {
-        element.style.setProperty("--hf-studio-offset-x", "0px");
-        element.style.setProperty("--hf-studio-offset-y", "0px");
-      }
-
       // --- Phase 3: Connect to the iframe GSAP runtime ---
       const selector = element.id ? `#${element.id}` : null;
       r.runtime = connectGsapRuntime(element, iframeEl, selector, elementEndTime);
+      // Clear the optimistic path offset only while a live runtime owns the
+      // preview. releaseRuntimePreview restores it on every exit path.
+      if (r.runtime && (base.cssOffX || base.cssOffY)) {
+        element.style.setProperty("--hf-studio-offset-x", "0px");
+        element.style.setProperty("--hf-studio-offset-y", "0px");
+      }
 
       // --- Phase 5: Attach event listeners ---
       const handlePointerMove = (e: PointerEvent) => {
@@ -378,7 +399,7 @@ export function useGestureRecording() {
           } catch {
             // Preview failed — disable it for the rest of the gesture (recording
             // continues). `r.runtime` is nulled so we don't retry on every frame.
-            r.runtime = null;
+            releaseRuntimePreview(r);
           }
         }
 
@@ -407,31 +428,7 @@ export function useGestureRecording() {
     if (!isRecordingRef.current) return [];
     isRecordingRef.current = false;
     const r = refs.current;
-    if (r.runtime) {
-      const { element: el, savedVisibility, savedTranslate } = r.runtime;
-      el.style.visibility = savedVisibility;
-      el.style.setProperty("translate", savedTranslate || "");
-      // Drop the gesture's inline gsap transform before re-applying the path
-      // offset below, so the two don't briefly stack (the recorded keyframes
-      // already encode the full position, offset included). On commit the
-      // re-seek lands on the gesture's first keyframe; on cancel this leaves the
-      // element at its pre-recording position.
-      try {
-        r.runtime.set(r.runtime.selector, {
-          clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
-        });
-      } catch {
-        /* runtime gone */
-      }
-    }
-    if (r.cssVarOffset.x || r.cssVarOffset.y) {
-      const el = r.runtime?.element;
-      if (el) {
-        el.style.setProperty("--hf-studio-offset-x", `${r.cssVarOffset.x}px`);
-        el.style.setProperty("--hf-studio-offset-y", `${r.cssVarOffset.y}px`);
-      }
-    }
-    r.runtime = null;
+    releaseRuntimePreview(r);
     r.cleanup?.();
     r.cleanup = null;
     const frozen = r.samples.slice();

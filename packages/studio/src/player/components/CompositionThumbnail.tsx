@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, useRef } from "react";
+import { memo, useCallback, useEffect, useState, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 
 interface CompositionThumbnailProps {
@@ -88,26 +88,39 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selectorIndex,
     origin: window.location.origin,
   });
+
+  // Probe outside React's DOM and explicitly abort on URL changes/unmount. A
+  // hidden React <img> keeps its Fiber reachable from Blink's pending-activity
+  // queue while a request is unresolved.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    const probe = new Image();
+    probe.onload = () => {
+      if (cancelled) return;
+      if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+        setAspect(probe.naturalWidth / probe.naturalHeight);
+      }
+      setLoaded(true);
+    };
+    probe.onerror = () => {
+      if (!cancelled) setLoaded(false);
+    };
+    probe.src = url;
+    return () => {
+      cancelled = true;
+      probe.onload = null;
+      probe.onerror = null;
+      probe.src = "";
+    };
+  }, [url]);
+
   const frameW = Math.max(48, Math.round(CLIP_HEIGHT * aspect));
   const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      <img
-        src={url}
-        alt=""
-        draggable={false}
-        loading="eager"
-        onLoad={(e) => {
-          const img = e.currentTarget;
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            setAspect(img.naturalWidth / img.naturalHeight);
-          }
-          setLoaded(true);
-        }}
-        className="hidden"
-      />
-
       {loaded && (
         <div
           className="absolute inset-0 flex"

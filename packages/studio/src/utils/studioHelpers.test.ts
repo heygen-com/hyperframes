@@ -1,12 +1,19 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveDroppedAssetDimensions,
   resolveTimelineIdForSelection,
   resolveTimelineSelectionSeekTime,
 } from "./studioHelpers";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("resolveTimelineSelectionSeekTime", () => {
   it("keeps the current time when it is already inside the clip range", () => {
@@ -146,5 +153,45 @@ describe("resolveTimelineIdForSelection", () => {
       "comps/panel.html#card",
     );
     expect(resolveTimelineIdForSelection(selection, els, null)).toBe(null);
+  });
+});
+
+describe("resolveDroppedAssetDimensions", () => {
+  it("aborts an image probe when metadata times out", async () => {
+    vi.useFakeTimers();
+    const probe = {
+      addEventListener: vi.fn(),
+      naturalHeight: 0,
+      naturalWidth: 0,
+      src: "",
+    };
+    vi.stubGlobal(
+      "Image",
+      vi.fn(() => probe),
+    );
+
+    const result = resolveDroppedAssetDimensions("demo", "assets/hung.png", "image");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(result).resolves.toBeNull();
+    expect(probe.src).toBe("");
+  });
+
+  it("aborts a video probe when metadata times out", async () => {
+    vi.useFakeTimers();
+    const video = document.createElement("video");
+    const load = vi.fn();
+    Object.defineProperty(video, "load", { configurable: true, value: load });
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tagName, options) =>
+      tagName === "video" ? video : createElement(tagName, options),
+    );
+
+    const result = resolveDroppedAssetDimensions("demo", "assets/hung.mp4", "video");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(result).resolves.toBeNull();
+    expect(video.getAttribute("src")).toBe("");
+    expect(load).toHaveBeenCalledOnce();
   });
 });
