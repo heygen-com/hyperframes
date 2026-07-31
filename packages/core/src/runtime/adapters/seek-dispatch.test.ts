@@ -103,6 +103,78 @@ describe("seek-dispatch", () => {
     expect(settled).toBe(true);
   });
 
+  it("drains success and failure generations registered after the capture wait starts", async () => {
+    let finishFirst: (() => void) | undefined;
+    let finishSecond: (() => void) | undefined;
+    let failThird: ((reason: unknown) => void) | undefined;
+    const firstGpuWork = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const secondGpuWork = new Promise<void>((resolve) => {
+      finishSecond = resolve;
+    });
+    const thirdGpuWork = new Promise<void>((_resolve, reject) => {
+      failThird = reject;
+    });
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<HfSeekEventDetail>).detail;
+      const gpuWork =
+        detail.time === 13 ? firstGpuWork : detail.time === 14 ? secondGpuWork : thirdGpuWork;
+      detail.waitUntil(gpuWork);
+    };
+    window.addEventListener("hf-seek", handler);
+    dispatchSeekEvent(13);
+
+    let settled = false;
+    const failure = new Error("later GPU queue failed");
+    const pending = waitForSeekCompletion()
+      .then(() => {
+        settled = true;
+      })
+      .catch((reason: unknown) => {
+        settled = true;
+        throw reason;
+      });
+    await Promise.resolve();
+
+    forceDispatchSeekEvent(14);
+    forceDispatchSeekEvent(15);
+    finishFirst?.();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finishSecond?.();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    failThird?.(failure);
+    await expect(pending).rejects.toBe(failure);
+    window.removeEventListener("hf-seek", handler);
+    await expect(waitForSeekCompletion()).resolves.toBeUndefined();
+  });
+
+  it("does not retain empty or fulfilled heartbeat generations between captures", async () => {
+    for (let i = 0; i < 20; i += 1) {
+      forceDispatchSeekEvent(20);
+    }
+
+    const handler = (event: Event) => {
+      (event as CustomEvent<HfSeekEventDetail>).detail.waitUntil(Promise.resolve());
+    };
+    window.addEventListener("hf-seek", handler);
+    for (let i = 0; i < 20; i += 1) {
+      forceDispatchSeekEvent(21);
+    }
+    window.removeEventListener("hf-seek", handler);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    const promiseAll = vi.spyOn(Promise, "all");
+    await waitForSeekCompletion();
+    expect(promiseAll).not.toHaveBeenCalled();
+  });
+
   it("reports a rejected generation once, then consumes it", async () => {
     const failure = new Error("GPU queue failed");
     const handler = (event: Event) => {

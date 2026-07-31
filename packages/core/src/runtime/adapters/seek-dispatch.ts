@@ -20,7 +20,8 @@ import { swallow } from "../diagnostics";
 
 let _lastDispatchedTime = -1;
 type SeekCompletionResult = { status: "fulfilled" } | { status: "rejected"; reason: unknown };
-let _pendingCompletions: Array<Promise<SeekCompletionResult>> = [];
+let _pendingCompletions = new Set<Promise<SeekCompletionResult>>();
+let _pendingFailure: { reason: unknown } | undefined;
 
 export interface HfSeekEventDetail {
   time: number;
@@ -46,10 +47,17 @@ function dispatch(time: number): void {
   } finally {
     accepting = false;
   }
+  if (pending.length === 0) return;
   const completion = Promise.all(pending)
     .then<SeekCompletionResult>(() => ({ status: "fulfilled" }))
     .catch<SeekCompletionResult>((reason: unknown) => ({ status: "rejected", reason }));
-  _pendingCompletions.push(completion);
+  _pendingCompletions.add(completion);
+  void completion.then((result) => {
+    if (!_pendingCompletions.delete(completion)) return;
+    if (result.status === "rejected" && _pendingFailure === undefined) {
+      _pendingFailure = { reason: result.reason };
+    }
+  });
 }
 
 export function dispatchSeekEvent(time: number): void {
@@ -74,18 +82,17 @@ export function forceDispatchSeekEvent(time: number): void {
 }
 
 export async function waitForSeekCompletion(): Promise<void> {
-  const observed = _pendingCompletions;
-  _pendingCompletions = [];
-  const results = await Promise.all(observed);
-  const failed = results.find(
-    (result): result is Extract<SeekCompletionResult, { status: "rejected" }> =>
-      result.status === "rejected",
-  );
+  while (_pendingCompletions.size > 0) {
+    await Promise.all([..._pendingCompletions]);
+  }
+  const failed = _pendingFailure;
+  _pendingFailure = undefined;
   if (failed) throw failed.reason;
 }
 
 /** Reset internal state — used in tests to prevent cross-test contamination. */
 export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;
-  _pendingCompletions = [];
+  _pendingCompletions = new Set();
+  _pendingFailure = undefined;
 }

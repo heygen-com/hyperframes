@@ -85,4 +85,37 @@ describe("motion-shot adapter seeking", () => {
     window.removeEventListener("hf-seek", handler);
     expect(settled).toBe(true);
   });
+
+  it("falls back to a completion-aware hf-seek when the runtime seek hook throws", async () => {
+    let finishGpuWork!: () => void;
+    const gpuWork = new Promise<void>((resolve) => {
+      finishGpuWork = resolve;
+    });
+    const handler = vi.fn((event: Event) => {
+      (
+        event as CustomEvent<{
+          waitUntil(promise: PromiseLike<unknown>): void;
+        }>
+      ).detail.waitUntil(gpuWork);
+    });
+    window.addEventListener("hf-seek", handler);
+    motionWindow.__player = {
+      renderSeek() {
+        throw new Error("runtime seek failed");
+      },
+    };
+
+    let settled = false;
+    const seeking = seekAllAdaptersInBrowser(2.5).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(handler).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+
+    finishGpuWork();
+    await seeking;
+    window.removeEventListener("hf-seek", handler);
+    expect(settled).toBe(true);
+  });
 });

@@ -171,11 +171,12 @@ function compositeGhostFrames(
 // callback; it can only be reused by installing its source as a real page
 // global once, up front).
 export async function seekAllAdaptersInBrowser(tt: number): Promise<void> {
-  const tryCall = (fn: () => void): void => {
+  const tryCall = (fn: () => void): boolean => {
     try {
       fn();
+      return true;
     } catch {
-      /* best-effort */
+      return false;
     }
   };
   const w = window as unknown as {
@@ -199,18 +200,13 @@ export async function seekAllAdaptersInBrowser(tt: number): Promise<void> {
   let runtimeSeeked = false;
   const pendingGpuWork: PromiseLike<unknown>[] = [];
 
-  tryCall(() => {
-    if (typeof w.__player?.renderSeek === "function") {
-      runtimeSeeked = true;
-      w.__player.renderSeek(tt);
-    } else if (typeof w.__player?.seek === "function") {
-      runtimeSeeked = true;
-      w.__player.seek(tt);
-    } else if (typeof w.__hfReseekGpu === "function") {
-      runtimeSeeked = true;
-      w.__hfReseekGpu(tt);
-    }
-  });
+  if (typeof w.__player?.renderSeek === "function") {
+    runtimeSeeked = tryCall(() => w.__player?.renderSeek?.(tt));
+  } else if (typeof w.__player?.seek === "function") {
+    runtimeSeeked = tryCall(() => w.__player?.seek?.(tt));
+  } else if (typeof w.__hfReseekGpu === "function") {
+    runtimeSeeked = tryCall(() => w.__hfReseekGpu?.(tt));
+  }
 
   Object.values(w.__timelines ?? {}).forEach((tl) => {
     tryCall(() => {
