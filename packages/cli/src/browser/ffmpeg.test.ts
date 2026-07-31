@@ -47,11 +47,12 @@ describe("resolveH264EncoderMode", () => {
   });
 
   it("does not treat a compiled Linux hardware encoder as usable", async () => {
-    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const { H264EncoderUnavailableError, resolveH264EncoderMode } = await import("./ffmpeg.js");
     const encoders = `
  V....D h264_vaapi    H.264/AVC (VAAPI)
 `;
 
+    expect(() => resolveH264EncoderMode(encoders, false)).toThrow(H264EncoderUnavailableError);
     expect(() => resolveH264EncoderMode(encoders, false)).toThrow(
       "neither libx264 nor VideoToolbox",
     );
