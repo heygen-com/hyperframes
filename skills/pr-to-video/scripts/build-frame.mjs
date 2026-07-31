@@ -6,7 +6,13 @@
 // a script, not LLM hand-editing (which mis-copies hex / breaks keys).
 //
 //   node build-frame.mjs --preset capsule --hyperframes .
-//     [--tokens capture/extracted/tokens.json]  [--preset-dir <abs path to frame-presets>]
+//     [--tokens capture/extracted/tokens.json] [--preset-dir <abs path to frame-presets>]
+//
+//   node build-frame.mjs --preset-dir /abs/path/to/custom-preset --hyperframes .
+//     [--tokens capture/extracted/tokens.json] [--brand-kit <abs path>]
+//
+// `--preset-dir` accepts either a preset collection root (with `--preset <name>`)
+// or a direct custom preset directory containing FRAME.md.
 //
 // Remix rule — ONLY `colors:` values and `typography:` fontFamily change; keys,
 // structure, geometry, and components are untouched:
@@ -25,9 +31,10 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   brandRolesFromStats,
@@ -52,24 +59,49 @@ const die = (m) => {
   process.exit(1);
 };
 
-const presetName = flag("preset", null);
 const hyperframesDir = resolve(flag("hyperframes", "."));
-const presetDir = resolve(
-  flag("preset-dir", join(__dirname, "../../hyperframes-creative/frame-presets")),
-);
+const presetNameArg = flag("preset", null);
+const presetDirArg = flag("preset-dir", null);
 const tokensPath = resolve(flag("tokens", join(hyperframesDir, "capture/extracted/tokens.json")));
+const brandKitArg = flag("brand-kit", null);
+const brandKitDir = brandKitArg ? resolve(brandKitArg) : null;
 
-if (!presetName) die("--preset <name> is required");
-const presetFrame = join(presetDir, presetName, "FRAME.md");
+const defaultPresetDir = resolve(join(__dirname, "../../hyperframes-creative/frame-presets"));
+const requestedPresetDir = presetDirArg ? resolve(presetDirArg) : defaultPresetDir;
+const directPreset = Boolean(presetDirArg && existsSync(join(requestedPresetDir, "FRAME.md")));
+const presetName = presetNameArg ?? (directPreset ? basename(requestedPresetDir) : null);
+const presetRoot = directPreset
+  ? requestedPresetDir
+  : presetName
+    ? join(requestedPresetDir, presetName)
+    : null;
+
+if (!presetName) {
+  die("--preset <name> is required unless --preset-dir points directly to a preset FRAME.md");
+}
+const presetFrame = join(presetRoot, "FRAME.md");
 if (!existsSync(presetFrame)) {
-  const avail = existsSync(presetDir)
-    ? readdirSync(presetDir, { withFileTypes: true })
+  const avail = existsSync(requestedPresetDir)
+    ? readdirSync(requestedPresetDir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name)
     : [];
   die(
-    `no FRAME.md for preset "${presetName}" under ${presetDir}\n  available: ${avail.join(", ")}`,
+    `no FRAME.md for preset "${presetName}" under ${requestedPresetDir}\n  available: ${avail.join(", ")}`,
   );
+}
+
+if (brandKitDir && (!existsSync(brandKitDir) || !statSync(brandKitDir).isDirectory())) {
+  die(`brand kit directory is missing: ${brandKitDir}`);
+}
+const brandAssets = brandKitDir
+  ? readdirSync(brandKitDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.(?:avif|jpe?g|png|svg|webp)$/i.test(entry.name))
+      .map((entry) => ({ name: entry.name, source: join(brandKitDir, entry.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  : [];
+if (brandKitDir && !brandAssets.length) {
+  die(`brand kit has no supported image assets: ${brandKitDir}`);
 }
 
 // ── HSL helpers (recolor = brand hue+sat, original lightness) ──────────────────
@@ -362,35 +394,67 @@ if (brandFonts.length) {
 // PR ingestion has no captured brand fonts. Presets that own a type system must
 // therefore carry their own licensed files instead of depending on a first-run
 // Google Fonts fetch or a renderer-only embedding path that Studio workers cannot see.
-const presetFontsDir = join(presetDir, presetName, "fonts");
+const presetFontsDir = join(presetRoot, "fonts");
 if (existsSync(presetFontsDir)) {
-  const fontSpecs = [
-    ["EB Garamond", "EBGaramond", 400],
-    ["EB Garamond", "EBGaramond", 700],
-    ["Inter", "Inter", 400],
-    ["Inter", "Inter", 700],
-    ["JetBrains Mono", "JetBrainsMono", 400],
-    ["JetBrains Mono", "JetBrainsMono", 700],
-  ];
-  const outDir = join(hyperframesDir, "assets/fonts");
-  const faces = [];
-  for (const [family, stem, weight] of fontSpecs) {
-    const file = `${stem}-${weight}.woff2`;
-    const source = join(presetFontsDir, file);
-    if (!existsSync(source)) die(`preset font is missing: ${source}`);
+  if (directPreset) {
+    const fontFiles = readdirSync(presetFontsDir)
+      .filter((file) => /\.(?:woff2?|ttf|otf)$/i.test(file))
+      .sort();
+    if (!fontFiles.length) {
+      die(`direct preset fonts directory has no font files: ${presetFontsDir}`);
+    }
+    const outDir = join(hyperframesDir, "assets/fonts");
     mkdirSync(outDir, { recursive: true });
-    copyFileSync(source, join(outDir, file));
-    faces.push(
-      `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url("assets/fonts/${file}") format("woff2");}`,
+    for (const file of fontFiles) {
+      if (!md.includes(`assets/fonts/${file}`)) {
+        die(`direct preset font lacks an assets/fonts @font-face reference: ${file}`);
+      }
+      copyFileSync(join(presetFontsDir, file), join(outDir, file));
+    }
+    summary.push(
+      `fonts: staged ${fontFiles.length} direct-preset face(s) for offline preview/render`,
     );
+  } else {
+    // Preserve the existing named-preset behavior for bundled presets.
+    const fontSpecs = [
+      ["EB Garamond", "EBGaramond", 400],
+      ["EB Garamond", "EBGaramond", 700],
+      ["Inter", "Inter", 400],
+      ["Inter", "Inter", 700],
+      ["JetBrains Mono", "JetBrainsMono", 400],
+      ["JetBrains Mono", "JetBrainsMono", 700],
+    ];
+    const outDir = join(hyperframesDir, "assets/fonts");
+    const faces = [];
+    for (const [family, stem, weight] of fontSpecs) {
+      const file = `${stem}-${weight}.woff2`;
+      const source = join(presetFontsDir, file);
+      if (!existsSync(source)) die(`preset font is missing: ${source}`);
+      mkdirSync(outDir, { recursive: true });
+      copyFileSync(source, join(outDir, file));
+      faces.push(
+        `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url("assets/fonts/${file}") format("woff2");}`,
+      );
+    }
+    md +=
+      `\n\n## Font loading (preset-owned, offline)\n\n` +
+      `These licensed faces are staged in \`assets/fonts/\`. Paste this block inside every frame template; do not link Google Fonts:\n\n` +
+      "```html\n<style>\n" +
+      faces.join("\n") +
+      "\n</style>\n```\n";
+    summary.push(`fonts: staged ${fontSpecs.length} preset face(s) for offline preview/render`);
   }
-  md +=
-    `\n\n## Font loading (preset-owned, offline)\n\n` +
-    `These licensed faces are staged in \`assets/fonts/\`. Paste this block inside every frame template; do not link Google Fonts:\n\n` +
-    "```html\n<style>\n" +
-    faces.join("\n") +
-    "\n</style>\n```\n";
-  summary.push(`fonts: staged ${fontSpecs.length} preset face(s) for offline preview/render`);
+}
+
+// ── stage explicitly supplied brand images ──────────────────────────────────
+// No --brand-kit means no asset mutation: existing named-preset behavior is unchanged.
+if (brandAssets.length) {
+  const assetsDir = join(hyperframesDir, "assets");
+  mkdirSync(assetsDir, { recursive: true });
+  for (const asset of brandAssets) copyFileSync(asset.source, join(assetsDir, asset.name));
+  summary.push(
+    `brand kit: staged ${brandAssets.map((asset) => `assets/${asset.name}`).join(", ")}`,
+  );
 }
 
 // ── cap type weights to the brand font's available faces ──────────────────────
@@ -533,7 +597,7 @@ const framePath = join(hyperframesDir, "frame.md");
 writeFileSync(framePath, md);
 
 // ── copy caption-skin.html ────────────────────────────────────────────────────
-const presetSkin = join(presetDir, presetName, "caption-skin.html");
+const presetSkin = join(presetRoot, "caption-skin.html");
 let skinCopied = false;
 if (existsSync(presetSkin)) {
   const skinDir = join(hyperframesDir, ".hyperframes");
