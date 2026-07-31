@@ -444,6 +444,19 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/motion-blur.png"
     },
     {
+        "name": "imessage-chat",
+        "type": "block",
+        "title": "iMessage Chat",
+        "description": "Animated iMessage-style conversation with typing indicators, bubble pops, and auto-scroll for story-style social videos",
+        "tags": [
+            "social",
+            "overlay",
+            "chat"
+        ],
+        "href": "/catalog/blocks/imessage-chat",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/imessage-chat.png"
+    },
+    {
         "name": "instagram-follow",
         "type": "block",
         "title": "Instagram Follow",

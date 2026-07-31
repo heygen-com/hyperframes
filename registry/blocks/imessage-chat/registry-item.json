@@ -1,0 +1,20 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "imessage-chat",
+  "type": "hyperframes:block",
+  "title": "iMessage Chat",
+  "description": "Animated iMessage-style conversation with typing indicators, bubble pops, and auto-scroll for story-style social videos",
+  "tags": ["social", "overlay", "chat"],
+  "dimensions": {
+    "width": 1080,
+    "height": 1920
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "imessage-chat.html",
+      "target": "compositions/imessage-chat.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

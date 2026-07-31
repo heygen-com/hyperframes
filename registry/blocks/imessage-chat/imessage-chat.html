@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=block"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        width: 1080px;
+        height: 1920px;
+        font-family: "Inter", sans-serif;
+      }
+
+      #root .im-header {
+        position: absolute;
+        top: 120px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        opacity: 0;
+        background: rgba(22, 22, 24, 0.88);
+        border-radius: 36px;
+        padding: 32px 64px 28px 64px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      #root .im-avatar {
+        width: 132px;
+        height: 132px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #9a9fa8 0%, #7d828b 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 52px;
+        font-weight: 600;
+        color: #ffffff;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      }
+
+      #root .im-contact-name {
+        font-size: 34px;
+        font-weight: 600;
+        color: #ffffff;
+      }
+
+      #root .im-contact-sub {
+        font-size: 24px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.55);
+      }
+
+      #root .im-window {
+        position: absolute;
+        top: 420px;
+        bottom: 300px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 920px;
+        overflow: hidden;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
+        mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
+      }
+
+      #root .im-thread {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        padding: 40px 10px 0 10px;
+      }
+
+      #root .im-row {
+        position: relative;
+        display: flex;
+        width: 100%;
+      }
+
+      #root .im-row-in {
+        justify-content: flex-start;
+      }
+
+      #root .im-row-out {
+        justify-content: flex-end;
+      }
+
+      #root .im-bubble {
+        max-width: 680px;
+        padding: 26px 34px;
+        font-size: 38px;
+        font-weight: 400;
+        line-height: 1.35;
+        letter-spacing: -0.01em;
+        border-radius: 40px;
+        opacity: 0;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      }
+
+      #root .im-bubble-in {
+        background: #26252a;
+        color: #ffffff;
+        border-bottom-left-radius: 10px;
+        transform-origin: bottom left;
+      }
+
+      #root .im-bubble-out {
+        background: linear-gradient(180deg, #2a9df4 0%, #0a84ff 100%);
+        color: #ffffff;
+        border-bottom-right-radius: 10px;
+        transform-origin: bottom right;
+      }
+
+      #root .im-typing {
+        position: absolute;
+        left: 10px;
+        bottom: 0;
+        background: #26252a;
+        border-radius: 40px;
+        border-bottom-left-radius: 10px;
+        padding: 30px 36px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        opacity: 0;
+        transform-origin: bottom left;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      }
+
+      #root .im-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #8e8e93;
+      }
+
+      #root .im-delivered {
+        position: absolute;
+        right: 14px;
+        bottom: -38px;
+        font-size: 24px;
+        font-weight: 500;
+        color: #8e8e93;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="imessage-chat"
+      data-width="1080"
+      data-height="1920"
+      data-start="0"
+      data-duration="10"
+    >
+      <div
+        id="im-stage"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        style="position: absolute; inset: 0"
+      >
+        <div class="im-header" id="im-header">
+          <div class="im-avatar">AK</div>
+          <div class="im-contact-name">Alex Kim</div>
+          <div class="im-contact-sub">iMessage</div>
+        </div>
+        <div class="im-window">
+          <div class="im-thread" id="im-thread"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // Prompt to replace this conversation. `in` = gray incoming bubble
+        // (shows a typing indicator first), `out` = blue outgoing bubble.
+        // `start` is when the bubble pops in (seconds).
+        var MESSAGES = [
+          { from: "in", text: "Did you see the new HyperFrames catalog?", start: 1.4 },
+          { from: "out", text: "Just installed the iMessage block 👀", start: 2.6 },
+          { from: "in", text: "Wait… this conversation IS the block", start: 4.6 },
+          { from: "out", text: "Prompt it to say anything you want", start: 6.0 },
+          { from: "in", text: "Okay that’s actually cool 🔥", start: 8.2 },
+        ];
+        var TYPING_LEAD = 1.1; // typing indicator shows this long before an incoming bubble
+        var LAST_OUT = 3; // index of the last outgoing message (gets "Delivered")
+
+        var thread = document.getElementById("im-thread");
+
+        MESSAGES.forEach(function (m, i) {
+          var row = document.createElement("div");
+          row.id = "im-row-" + i;
+          row.className = "im-row " + (m.from === "in" ? "im-row-in" : "im-row-out");
+
+          var bubble = document.createElement("div");
+          bubble.id = "im-bubble-" + i;
+          bubble.className = "im-bubble " + (m.from === "in" ? "im-bubble-in" : "im-bubble-out");
+          bubble.textContent = m.text;
+          row.appendChild(bubble);
+
+          if (m.from === "in") {
+            var typing = document.createElement("div");
+            typing.id = "im-typing-" + i;
+            typing.className = "im-typing";
+            for (var d = 0; d < 3; d++) {
+              var dot = document.createElement("div");
+              dot.id = "im-dot-" + i + "-" + d;
+              dot.className = "im-dot";
+              typing.appendChild(dot);
+            }
+            row.appendChild(typing);
+          }
+
+          if (i === LAST_OUT) {
+            var delivered = document.createElement("div");
+            delivered.id = "im-delivered";
+            delivered.className = "im-delivered";
+            delivered.textContent = "Delivered";
+            row.appendChild(delivered);
+          }
+
+          thread.appendChild(row);
+        });
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Header fades in first.
+        tl.fromTo(
+          "#im-header",
+          { opacity: 0, y: -30 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        // The thread is bottom-anchored; hidden rows already occupy space, so
+        // shift the whole thread down by the unrevealed height and walk it up
+        // as each row appears (measured after layout — deterministic in the
+        // fixed render viewport).
+        var rows = MESSAGES.map(function (_, i) {
+          return document.getElementById("im-row-" + i);
+        });
+        var threadHeight = thread.offsetHeight;
+        var revealBottoms = rows.map(function (row) {
+          return row.offsetTop + row.offsetHeight;
+        });
+        var PAD = 46; // keeps room for the "Delivered" label under the last row
+        gsap.set(thread, { y: threadHeight - revealBottoms[0] - PAD });
+
+        MESSAGES.forEach(function (m, i) {
+          var bubble = document.getElementById("im-bubble-" + i);
+          var revealAt = m.from === "in" ? m.start - TYPING_LEAD : m.start - 0.15;
+
+          // Scroll the thread so this row is visible.
+          tl.to(
+            thread,
+            {
+              y: threadHeight - revealBottoms[i] - PAD,
+              duration: 0.45,
+              ease: "power3.out",
+            },
+            revealAt,
+          );
+
+          if (m.from === "in") {
+            var typing = document.getElementById("im-typing-" + i);
+            tl.to(typing, { opacity: 1, duration: 0.001 }, m.start - TYPING_LEAD);
+            tl.from(
+              typing,
+              { scale: 0.5, duration: 0.3, ease: "back.out(2.5)" },
+              m.start - TYPING_LEAD,
+            );
+
+            // Finite, seek-safe dot pulses (no infinite repeats in the timeline).
+            var cycles = 2;
+            var cycleDur = (TYPING_LEAD - 0.2) / cycles;
+            for (var c = 0; c < cycles; c++) {
+              for (var d = 0; d < 3; d++) {
+                var dotAt = m.start - TYPING_LEAD + 0.1 + c * cycleDur + d * 0.12;
+                tl.to(
+                  "#im-dot-" + i + "-" + d,
+                  { opacity: 0.35, scale: 0.8, duration: cycleDur / 2, ease: "sine.inOut" },
+                  dotAt,
+                );
+                tl.to(
+                  "#im-dot-" + i + "-" + d,
+                  { opacity: 1, scale: 1, duration: cycleDur / 2, ease: "sine.inOut" },
+                  dotAt + cycleDur / 2,
+                );
+              }
+            }
+
+            tl.set(typing, { opacity: 0, visibility: "hidden" }, m.start);
+          }
+
+          // Bubble pop.
+          tl.to(bubble, { opacity: 1, duration: 0.001 }, m.start);
+          tl.from(bubble, { scale: 0.55, y: 26, duration: 0.4, ease: "back.out(1.8)" }, m.start);
+
+          if (i === LAST_OUT) {
+            tl.to("#im-delivered", { opacity: 1, duration: 0.3 }, m.start + 0.5);
+          }
+        });
+
+        window.__timelines["imessage-chat"] = tl;
+      })();
+    </script>
+  </body>
+</html>
