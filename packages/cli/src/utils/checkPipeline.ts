@@ -1121,15 +1121,20 @@ export async function runCheckPipeline(
   }
 
   const motion = dependencies.resolveMotionSpec(project.dir);
-  if (motion.kind === "invalid") {
-    const finding = findingAtRoot(
-      "motion_spec_invalid",
-      "error",
-      motion.message,
-      relative(project.dir, motion.path) || "index.motion.json",
-    );
-    return buildReport(options, lint, emptyBrowserResult(), motion, [finding], []);
-  }
+  // An unreadable sidecar only invalidates the motion stage: layout, runtime and contrast never read
+  // it. `planMotionSampling` declines to sample anything but a valid spec, so the audit runs as usual
+  // and the parse error rides along as a motion finding.
+  const specFindings =
+    motion.kind === "invalid"
+      ? [
+          findingAtRoot(
+            "motion_spec_invalid",
+            "error",
+            motion.message,
+            relative(project.dir, motion.path) || "index.motion.json",
+          ),
+        ]
+      : [];
 
   let browser: CheckBrowserResult;
   try {
@@ -1142,7 +1147,7 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, [], snapshotFiles);
+  const report = buildReport(options, lint, browser, motion, specFindings, snapshotFiles);
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;

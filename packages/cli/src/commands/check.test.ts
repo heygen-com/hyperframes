@@ -956,6 +956,48 @@ describe("check pipeline", () => {
     expect(browser).toHaveBeenCalledTimes(1);
   });
 
+  // An unreadable sidecar used to return before the browser opened, so Layout/Runtime/Contrast
+  // printed "0 errors" without having looked — an all-clear the same composition contradicts.
+  it("still audits layout when the motion sidecar is invalid", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: 'assertions[0] (staysInFrame): "selector" must be a non-empty string',
+    };
+    const driver = fakeDriver({
+      collectLayout: vi.fn(async (time: number) => [layoutIssue("error", { time })]),
+    });
+    const { report, browser } = await runScenario(driver, {}, { motion });
+
+    expect(browser).toHaveBeenCalledTimes(1);
+    expect(report.layout.findings.length).toBeGreaterThan(0);
+    expect(report.motion.findings).toEqual([
+      expect.objectContaining({ code: "motion_spec_invalid", severity: "error" }),
+    ]);
+    // A JSON consumer sees the spec was found but produced nothing sampleable.
+    expect(report.motion).toMatchObject({
+      enabled: true,
+      specPath: "/project/index.motion.json",
+      samples: 0,
+    });
+    expect(report.ok).toBe(false);
+  });
+
+  // Guards the new path rather than the old bug: now that the browser opens for an invalid sidecar,
+  // deleting `planMotionSampling`'s `kind !== "valid"` guard would crash on `motion.spec`.
+  it("does not sample motion for an invalid sidecar", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: "version 2 is not supported",
+    };
+    const driver = fakeDriver();
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBe(0);
+    expect(driver.collectMotionFrame).not.toHaveBeenCalled();
+  });
+
   it("reports a failing appearsBy sidecar as motion_appears_late", async () => {
     const motion: MotionSpecResolution = {
       kind: "valid",
