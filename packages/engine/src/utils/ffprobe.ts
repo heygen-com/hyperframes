@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { spawn } from "child_process";
-import { closeSync, openSync, readFileSync, readSync } from "fs";
+import { createReadStream, readFileSync } from "fs";
 import * as zlib from "node:zlib";
 import { StringDecoder } from "node:string_decoder";
 import { basename } from "path";
@@ -260,17 +260,13 @@ const STILL_IMAGE_DEMUXERS = new Set([
   "webp_pipe",
 ]);
 
-function hasAvifFileBrand(filePath: string): boolean {
-  let fd: number | undefined;
+async function hasAvifFileBrand(filePath: string): Promise<boolean> {
   try {
-    // CodeQL models any open of a temp-root-derived path as file creation. This
-    // is an O_RDONLY probe of an existing localized asset; it cannot create or
-    // truncate the path.
-    // lgtm[js/insecure-temporary-file]
-    fd = openSync(filePath, "r");
-    const prefix = Buffer.alloc(4096);
-    const bytesRead = readSync(fd, prefix, 0, prefix.length, 0);
-    const bytes = prefix.subarray(0, bytesRead);
+    const chunks: Buffer[] = [];
+    for await (const chunk of createReadStream(filePath, { start: 0, end: 4095 })) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const bytes = Buffer.concat(chunks);
     if (bytes.length < 16 || bytes.toString("ascii", 4, 8) !== "ftyp") return false;
     const boxSize = bytes.readUInt32BE(0);
     if (boxSize < 16 || boxSize > bytes.length) return false;
@@ -282,17 +278,17 @@ function hasAvifFileBrand(filePath: string): boolean {
     return false;
   } catch {
     return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
   }
 }
 
-function isStillImageVisual(output: FFProbeOutput, filePath: string): boolean {
+async function isStillImageVisual(output: FFProbeOutput, filePath: string): Promise<boolean> {
   const formatNames = (output.format.format_name ?? "")
     .split(",")
     .map((name) => name.trim().toLowerCase())
     .filter(Boolean);
-  return formatNames.some((name) => STILL_IMAGE_DEMUXERS.has(name)) || hasAvifFileBrand(filePath);
+  return (
+    formatNames.some((name) => STILL_IMAGE_DEMUXERS.has(name)) || (await hasAvifFileBrand(filePath))
+  );
 }
 
 function isPngImageProbe(output: FFProbeOutput): boolean {
@@ -349,7 +345,7 @@ export async function probeMediaProfile(
     const hasMovingVideoStream = videoStreams.some(
       (stream) => stream.disposition?.attached_pic !== 1,
     );
-    const isStillImage = videoStreams.length > 0 && isStillImageVisual(output, filePath);
+    const isStillImage = videoStreams.length > 0 && (await isStillImageVisual(output, filePath));
     if (isStillImage && isPngImageProbe(output) && !extractStillImageMetadata(filePath)) {
       throw new Error("[FFmpeg] PNG input is structurally incomplete");
     }
