@@ -52,6 +52,7 @@ describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     runFfmpegMock.mockClear();
     extractAudioMetadataMock.mockReset();
     extractAudioMetadataMock.mockResolvedValue({
@@ -64,6 +65,44 @@ describe("processCompositionAudio", () => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("classifies an HTML-as-200 audio source as deterministic user input", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("<!doctype html><html><body>denied</body></html>"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "remote-voice",
+          src: "https://cdn.example/voice",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        stage: "download",
+        owner: "user",
+        retryable: false,
+      }),
+    ]);
   });
 
   it.each([

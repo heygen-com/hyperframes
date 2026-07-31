@@ -394,7 +394,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         await import("../../../producer/src/services/deterministicFonts.js");
       const { prepareAnimatedGifInputs } =
         await import("../../../producer/src/services/animatedGifPrep.js");
-      const { downloadToTemp } = await import("../../../producer/src/utils/urlDownloader.js");
+      const { downloadToTemp, writeUrlDownloadTelemetry } =
+        await import("../../../producer/src/utils/urlDownloader.js");
       const gifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "gif");
       const gifDownloadDir = join(project.dir, ".hyperframes", "prepared-assets", "downloads");
       const prepared = await prepareAnimatedGifInputs(html, {
@@ -403,7 +404,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         outputDir: gifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/gif",
         cacheDir: gifOutputDir,
-        sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, downloadToTemp),
+        sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, (url, destDir) =>
+          downloadToTemp(url, destDir, undefined, undefined, undefined, {
+            onTelemetry: writeUrlDownloadTelemetry,
+          }),
+        ),
       });
       return injectDeterministicFontFaces(prepared.html);
     },

@@ -9,7 +9,12 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeF
 import { join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
-import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
+import {
+  downloadToTemp,
+  isHttpUrl,
+  UrlDownloadError,
+  writeUrlDownloadTelemetry,
+} from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { formatFfmpegError, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
@@ -241,16 +246,23 @@ function probeFailure(message: string, elementId: string): AudioProcessingFailur
   };
 }
 
-function downloadFailure(message: string, elementId: string): AudioProcessingFailure {
+function downloadFailure(error: unknown, elementId: string): AudioProcessingFailure {
+  const message = error instanceof Error ? error.message : String(error);
   const invalidSource =
-    /(?:invalid URL|only HTTPS|private\/reserved|HTTP (?:400|401|403|404|405|410|422)\b)/i.test(
-      message,
-    );
+    error instanceof UrlDownloadError
+      ? error.kind === "http_not_found" ||
+        error.kind === "http_rejected" ||
+        error.kind === "invalid_payload" ||
+        error.kind === "cancelled"
+      : /(?:invalid URL|only HTTPS|private\/reserved|HTTP (?:400|401|403|404|405|410|422)\b)/i.test(
+          message,
+        );
+  const retryable = error instanceof UrlDownloadError ? error.retryable : !invalidSource;
   return {
     stage: "download",
     reason: "download_failed",
     owner: invalidSource ? "user" : "system",
-    retryable: !invalidSource,
+    retryable,
     elementId,
     detail: boundedDetail(`Download failed for audio element ${elementId}: ${message}`),
   };
@@ -712,11 +724,11 @@ export async function processCompositionAudio(
 
         if (isHttpUrl(srcPath)) {
           try {
-            srcPath = await downloadToTemp(srcPath, workDir);
+            srcPath = await downloadToTemp(srcPath, workDir, undefined, signal, undefined, {
+              onTelemetry: writeUrlDownloadTelemetry,
+            });
           } catch (err: unknown) {
-            failures.push(
-              downloadFailure(err instanceof Error ? err.message : String(err), element.id),
-            );
+            failures.push(downloadFailure(err, element.id));
             return;
           }
         }
