@@ -90,21 +90,42 @@ async function mountHarness(rowVirtualizationEnabled: boolean): Promise<Harness>
   return { hook: () => current, element, values, unmount: () => act(() => root.unmount()) };
 }
 
+function attachScrollElement({ hook, element }: Harness): void {
+  act(() => hook()?.setScrollRef(element));
+}
+
+function publishResize(harness: Harness, width: number): void {
+  harness.values.width = width;
+  act(() => resizeCallback?.([], {} as ResizeObserver));
+}
+
+function publishScroll(
+  harness: Harness,
+  { left, top }: { left: number; top: number },
+  isScrolling = true,
+): void {
+  harness.values.left = left;
+  harness.values.top = top;
+  act(() => harness.hook()?.syncScrollViewport(harness.element, isScrolling));
+  act(() => vi.advanceTimersByTime(16));
+}
+
+function expectResizePublication(harness: Harness): void {
+  attachScrollElement(harness);
+  expect(harness.hook()?.viewport.clientWidth).toBe(640);
+
+  publishResize(harness, 800);
+  expect(harness.hook()?.viewport.clientWidth).toBe(800);
+}
+
 describe("useTimelineScrollViewport with row virtualization on", () => {
   it("publishes resize, scroll, and settled snapshots", async () => {
-    const { hook, element, values, unmount } = await mountHarness(true);
+    const harness = await mountHarness(true);
+    const { hook, unmount } = harness;
 
-    act(() => hook()?.setScrollRef(element));
-    expect(hook()?.viewport.clientWidth).toBe(640);
+    expectResizePublication(harness);
 
-    values.width = 800;
-    act(() => resizeCallback?.([], {} as ResizeObserver));
-    expect(hook()?.viewport.clientWidth).toBe(800);
-
-    values.left = 120;
-    values.top = 48;
-    act(() => hook()?.syncScrollViewport(element, true));
-    act(() => vi.advanceTimersByTime(16));
+    publishScroll(harness, { left: 120, top: 48 });
     expect(hook()?.viewport).toMatchObject({ scrollLeft: 120, scrollTop: 48, isScrolling: true });
 
     act(() => vi.advanceTimersByTime(100));
@@ -115,15 +136,13 @@ describe("useTimelineScrollViewport with row virtualization on", () => {
 
 describe("useTimelineScrollViewport with row virtualization off", () => {
   it("publishes nothing while scrolling", async () => {
-    const { hook, element, values, unmount } = await mountHarness(false);
+    const harness = await mountHarness(false);
+    const { hook, unmount } = harness;
 
-    act(() => hook()?.setScrollRef(element));
+    attachScrollElement(harness);
     const before = hook()?.viewport;
 
-    values.left = 120;
-    values.top = 48;
-    act(() => hook()?.syncScrollViewport(element, true));
-    act(() => vi.advanceTimersByTime(16));
+    publishScroll(harness, { left: 120, top: 48 });
 
     expect(hook()?.viewport).toBe(before);
     expect(hook()?.viewport.scrollLeft).toBe(0);
@@ -131,10 +150,11 @@ describe("useTimelineScrollViewport with row virtualization off", () => {
   });
 
   it("never reports isScrolling, so the settle timer has nothing to undo", async () => {
-    const { hook, element, unmount } = await mountHarness(false);
+    const harness = await mountHarness(false);
+    const { hook, unmount } = harness;
 
-    act(() => hook()?.setScrollRef(element));
-    act(() => hook()?.syncScrollViewport(element, true));
+    attachScrollElement(harness);
+    publishScroll(harness, { left: 0, top: 0 });
     act(() => vi.advanceTimersByTime(500));
 
     expect(hook()?.viewport.isScrolling).toBe(false);
@@ -142,8 +162,9 @@ describe("useTimelineScrollViewport with row virtualization off", () => {
   });
 
   it("schedules no frame or timer for a scroll sync", async () => {
-    const { hook, element, unmount } = await mountHarness(false);
-    act(() => hook()?.setScrollRef(element));
+    const harness = await mountHarness(false);
+    const { hook, element, unmount } = harness;
+    attachScrollElement(harness);
 
     const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame");
     const timerSpy = vi.spyOn(globalThis, "setTimeout");
@@ -157,25 +178,19 @@ describe("useTimelineScrollViewport with row virtualization off", () => {
   });
 
   it("still publishes resize-driven snapshots", async () => {
-    const { hook, element, values, unmount } = await mountHarness(false);
+    const harness = await mountHarness(false);
+    const { unmount } = harness;
 
-    act(() => hook()?.setScrollRef(element));
-    expect(hook()?.viewport.clientWidth).toBe(640);
-
-    values.width = 800;
-    act(() => resizeCallback?.([], {} as ResizeObserver));
-
-    expect(hook()?.viewport.clientWidth).toBe(800);
+    expectResizePublication(harness);
     unmount();
   });
 
   it("still publishes programmatic non-scrolling syncs", async () => {
-    const { hook, element, values, unmount } = await mountHarness(false);
+    const harness = await mountHarness(false);
+    const { hook, unmount } = harness;
 
-    act(() => hook()?.setScrollRef(element));
-    values.left = 240;
-    values.top = 96;
-    act(() => hook()?.syncScrollViewport(element));
+    attachScrollElement(harness);
+    publishScroll(harness, { left: 240, top: 96 }, false);
 
     expect(hook()?.viewport).toMatchObject({
       scrollLeft: 240,

@@ -631,6 +631,11 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // useGestureRecording.ts: readBasePosition/connectGsapRuntime/tick are
+      // inherited gesture-runtime control flow. This stack only changes
+      // recordSample to coalesce display-rate events onto authored frames;
+      // the import and helper insertion shift the untouched functions' lines.
+      "packages/studio/src/hooks/useGestureRecording.ts",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited

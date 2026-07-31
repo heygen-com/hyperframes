@@ -46,6 +46,25 @@ afterEach(() => {
   resetPlayerStore();
 });
 
+function attachIframeWindow(
+  api: ReturnType<typeof useTimelinePlayer>,
+  iframeWindow: Record<string, unknown>,
+): void {
+  const iframe = document.createElement("iframe");
+  Object.defineProperty(iframe, "contentWindow", {
+    value: iframeWindow,
+    configurable: true,
+  });
+  Object.defineProperty(iframe, "contentDocument", {
+    value: document.implementation.createHTMLDocument("preview"),
+    configurable: true,
+  });
+  act(() => {
+    api.iframeRef.current = iframe;
+    api.onIframeLoad();
+  });
+}
+
 function attachIframeAdapter(
   api: ReturnType<typeof useTimelinePlayer>,
   options: {
@@ -54,7 +73,6 @@ function attachIframeAdapter(
     duration?: number;
   } = {},
 ) {
-  const iframe = document.createElement("iframe");
   let currentTime = 0;
   let playing = false;
   const adapter = {
@@ -71,26 +89,13 @@ function attachIframeAdapter(
     getDuration: () => options.duration ?? 30,
     isPlaying: () => playing,
   };
-  Object.defineProperty(iframe, "contentWindow", {
-    value: {
-      __player: adapter,
-      __timelines: options.timelines,
-      // Shared iframe contract is repeated here to keep this helper's adapter state local.
-      // fallow-ignore-next-line code-duplication
-      postMessage: options.postMessage ?? (() => {}),
-      scrollTo: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    },
-    configurable: true,
-  });
-  Object.defineProperty(iframe, "contentDocument", {
-    value: document.implementation.createHTMLDocument("preview"),
-    configurable: true,
-  });
-  act(() => {
-    api.iframeRef.current = iframe;
-    api.onIframeLoad();
+  attachIframeWindow(api, {
+    __player: adapter,
+    __timelines: options.timelines,
+    postMessage: options.postMessage ?? (() => {}),
+    scrollTo: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
   return adapter;
 }
@@ -215,26 +220,13 @@ describe("useTimelinePlayer seek hydration", () => {
 
   it("does not settle from an unsupported runtime protocol message", () => {
     const { api, root } = renderTimelinePlayerHarness();
-    const iframe = document.createElement("iframe");
     const iframeWindow = {
       postMessage: vi.fn(),
       scrollTo: vi.fn(),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } as Record<string, unknown>;
-    Object.defineProperty(iframe, "contentWindow", {
-      value: iframeWindow,
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentDocument", {
-      value: document.implementation.createHTMLDocument("preview"),
-      configurable: true,
-    });
-
-    act(() => {
-      api.iframeRef.current = iframe;
-      api.onIframeLoad();
-    });
+    attachIframeWindow(api, iframeWindow);
     expect(usePlayerStore.getState().timelineReady).toBe(false);
 
     iframeWindow.__player = {
@@ -398,7 +390,6 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
   type SeekCall = { time: number; options?: { keepPlaying?: boolean } };
 
   function attachInstrumentedAdapter(api: ReturnType<typeof useTimelinePlayer>, duration = 30) {
-    const iframe = document.createElement("iframe");
     let currentTime = 0;
     let playing = false;
     const seekCalls: SeekCall[] = [];
@@ -420,25 +411,12 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
         currentTime = t;
       },
     };
-    Object.defineProperty(iframe, "contentWindow", {
-      value: {
-        __player: adapter,
-        // This playback-specific adapter intentionally repeats the shared iframe contract.
-        // fallow-ignore-next-line code-duplication
-        postMessage: () => {},
-        scrollTo: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      },
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentDocument", {
-      value: document.implementation.createHTMLDocument("preview"),
-      configurable: true,
-    });
-    act(() => {
-      api.iframeRef.current = iframe;
-      api.onIframeLoad();
+    attachIframeWindow(api, {
+      __player: adapter,
+      postMessage: () => {},
+      scrollTo: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
     });
     return { adapter, seekCalls };
   }

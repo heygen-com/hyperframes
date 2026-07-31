@@ -444,18 +444,23 @@ async function loadFixtureAndWait(page, elementCount, profile) {
 }
 
 async function waitForStudioTestHookSettle(page) {
-  await page.evaluate(async () => {
-    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    for (;;) {
-      const candidate = window.__studioTest;
-      await nextFrame();
-      await nextFrame();
-      if (
-        candidate === window.__studioTest &&
-        typeof candidate?.loadTimelinePerformanceFixture === "function"
-      ) {
-        return;
+  await page.evaluate(
+    // The callback must poll the window-scoped hook across two animation frames:
+    // both identity stability and function readiness are part of the browser contract.
+    // fallow-ignore-next-line complexity
+    async () => {
+      const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      for (;;) {
+        const candidate = window.__studioTest;
+        await nextFrame();
+        await nextFrame();
+        if (
+          candidate === window.__studioTest &&
+          typeof candidate?.loadTimelinePerformanceFixture === "function"
+        ) {
+          return;
+        }
       }
-    }
-  });
+    },
+  );
 }

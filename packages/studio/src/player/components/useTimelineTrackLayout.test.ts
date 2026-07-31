@@ -15,6 +15,28 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
+function renderTrackLayout(
+  elements: TimelineElement[],
+  animations: Map<string, GsapAnimation[]>,
+): {
+  layout: ReturnType<typeof useTimelineTrackLayout>;
+  unmount: () => void;
+} {
+  usePlayerStore.setState({ expandedClipIds: new Set(["clip-1"]) });
+
+  let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
+  function Probe() {
+    layout = useTimelineTrackLayout(elements, animations, null, new Set());
+    return null;
+  }
+
+  const root = createRoot(document.createElement("div"));
+  act(() => root.render(React.createElement(Probe)));
+  if (!layout) throw new Error("Timeline track layout did not render");
+
+  return { layout, unmount: () => act(() => root.unmount()) };
+}
+
 describe("useTimelineTrackLayout", () => {
   it("counts a flat tween lane and reserves its expanded row height", () => {
     const elements: TimelineElement[] = [
@@ -36,22 +58,13 @@ describe("useTimelineTrackLayout", () => {
         ],
       ],
     ]);
-    usePlayerStore.setState({ expandedClipIds: new Set(["clip-1"]) });
+    const { layout, unmount } = renderTrackLayout(elements, animations);
 
-    let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
-    function Probe() {
-      layout = useTimelineTrackLayout(elements, animations, null, new Set());
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div"));
-    act(() => root.render(React.createElement(Probe)));
-
-    expect(layout?.laneCounts.get("clip-1")).toBe(1);
-    expect(layout?.rowHeights).toEqual([TRACK_H + LANE_H]);
-    expect(layout?.rowGeometry.rowKeys).toEqual([0]);
-    expect(layout?.rowGeometry.canvasHeight).toBeGreaterThan(TRACK_H + LANE_H);
-    act(() => root.unmount());
+    expect(layout.laneCounts.get("clip-1")).toBe(1);
+    expect(layout.rowHeights).toEqual([TRACK_H + LANE_H]);
+    expect(layout.rowGeometry.rowKeys).toEqual([0]);
+    expect(layout.rowGeometry.canvasHeight).toBeGreaterThan(TRACK_H + LANE_H);
+    unmount();
   });
 
   // The row height reserved here and the lanes actually rendered are two
@@ -71,20 +84,11 @@ describe("useTimelineTrackLayout", () => {
       properties: { x: 420, opacity: 1 },
     };
     const animations = new Map<string, GsapAnimation[]>([["clip-1", [mixed]]]);
-    usePlayerStore.setState({ expandedClipIds: new Set(["clip-1"]) });
-
-    let layout: ReturnType<typeof useTimelineTrackLayout> | undefined;
-    function Probe() {
-      layout = useTimelineTrackLayout(elements, animations, null, new Set());
-      return null;
-    }
-
-    const root = createRoot(document.createElement("div"));
-    act(() => root.render(React.createElement(Probe)));
+    const { layout, unmount } = renderTrackLayout(elements, animations);
 
     expect(getTimelinePropertyLanes([mixed], 0, 1)).toHaveLength(2);
-    expect(layout?.laneCounts.get("clip-1")).toBe(2);
-    expect(layout?.rowHeights).toEqual([TRACK_H + 2 * LANE_H]);
-    act(() => root.unmount());
+    expect(layout.laneCounts.get("clip-1")).toBe(2);
+    expect(layout.rowHeights).toEqual([TRACK_H + 2 * LANE_H]);
+    unmount();
   });
 });

@@ -126,6 +126,19 @@ const POSITION_SEGMENT_ANIMATION = animation("position-tween", "position", [
   { percentage: 50, properties: { x: 50 } },
 ]);
 
+function boundaryKeyframeAnimations(): GsapAnimation[] {
+  return [
+    animation("position-tween", "position", [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 100 } },
+    ]),
+    animation("visual-tween", "visual", [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ]),
+  ];
+}
+
 /** A tween the parser leaves unclassified because it spans several groups. */
 function ungroupedAnimation(
   id: string,
@@ -306,16 +319,7 @@ describe("TimelinePropertyLanes", () => {
   });
 
   it("keeps both groups' diamonds when their source keyframes share 0% and 100%", () => {
-    const animations = [
-      animation("position-tween", "position", [
-        { percentage: 0, properties: { x: 0 } },
-        { percentage: 100, properties: { x: 100 } },
-      ]),
-      animation("visual-tween", "visual", [
-        { percentage: 0, properties: { opacity: 0 } },
-        { percentage: 100, properties: { opacity: 1 } },
-      ]),
-    ];
+    const animations = boundaryKeyframeAnimations();
 
     const { host, root } = renderPropertyLanes({ animations });
 
@@ -512,16 +516,7 @@ describe("TimelinePropertyLanes", () => {
   // COLUMN whose children are all absolutely positioned: it computed to 0x0 and
   // held no diamonds. The real lanes had no wrapper at all to point at.
   it("wraps the lanes in the identified element so aria-controls resolves to the diamonds", () => {
-    const animations = [
-      animation("position-tween", "position", [
-        { percentage: 0, properties: { x: 0 } },
-        { percentage: 100, properties: { x: 100 } },
-      ]),
-      animation("visual-tween", "visual", [
-        { percentage: 0, properties: { opacity: 0 } },
-        { percentage: 100, properties: { opacity: 1 } },
-      ]),
-    ];
+    const animations = boundaryKeyframeAnimations();
     const { host, root } = renderPropertyLanes({ id: "timeline-lanes-track-0", animations });
     const wrapper = host.querySelector("#timeline-lanes-track-0");
 
