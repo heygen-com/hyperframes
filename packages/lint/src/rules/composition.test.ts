@@ -430,6 +430,59 @@ describe("composition rules", () => {
     expect(findings[0]?.fixHint).toContain('[data-composition-id="scene"][data-start="0"]');
   });
 
+  it("does not report a template-literal selector that only appears in a comment or a string", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><code id="snippet"></code></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    // Hardcoded on purpose — do NOT use document.querySelector(\`#\${id}\`) here.
+    const SAMPLE = 'document.querySelector(\`[data-composition-id="\${compId}"]\`)';
+    document.getElementById("snippet").textContent = SAMPLE;
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "template_literal_selector")).toBeUndefined();
+  });
+
+  it("reports a template-literal selector in code position and quotes the real source", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const compId = "main";
+    const el = document.querySelector(\`[data-composition-id="\${compId}"]\`);
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "template_literal_selector");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.snippet).toContain("data-composition-id");
+  });
+
+  it("does not report a split data-attribute selector written inside a CSS comment", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <style>
+    /* never write [data-composition-id="main" data-start="0"] — split the brackets */
+    #root { background: #111; }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    // and not [data-composition-id="main" data-start="0"] in a JS comment either
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.filter((f) => f.code === "split_data_attribute_selector")).toHaveLength(
+      0,
+    );
+  });
+
   describe("timed_element_missing_clip_class", () => {
     it("flags element with data-start but no class='clip'", async () => {
       const html = `
@@ -767,6 +820,41 @@ describe("composition rules", () => {
         (f) => f.code === "requestanimationframe_in_composition",
       );
       expect(finding).toBeUndefined();
+    });
+
+    it("does not flag a call the composition only renders as on-screen text", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><code id="snippet"></code></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const fn = "step";
+    document.getElementById("snippet").textContent = "requestAnimationFrame(step);";
+    document.getElementById("snippet").title = \`requestAnimationFrame(\${fn});\`;
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "requestanimationframe_in_composition"),
+      ).toBeUndefined();
+    });
+
+    it("still flags a call inside a template interpolation, which is code", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><code id="snippet"></code></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const label = \`frame \${requestAnimationFrame(() => {})}\`;
+    document.getElementById("snippet").textContent = label;
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(
+        result.findings.find((f) => f.code === "requestanimationframe_in_composition")?.severity,
+      ).toBe("error");
     });
   });
 

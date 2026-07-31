@@ -337,6 +337,240 @@ export function stripJsComments(source: string): string {
   return out;
 }
 
+// A `/` after any of these starts a regex literal, not a division.
+const REGEX_ALLOWED_BEFORE = new Set("=(,:[!&|?{};+-*%^~<>");
+const REGEX_ALLOWED_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+
+const WORD_CHAR = /[A-Za-z0-9_$]/;
+
+/**
+ * Tracks just enough emitted context to tell a regex literal from a division: the last
+ * two significant characters and the trailing identifier. Carried incrementally because
+ * re-scanning the accumulated output per candidate slash is quadratic — a composition
+ * with one inlined vendor bundle took 58x longer to lint.
+ */
+class CodeContext {
+  private last = "";
+  private prev = "";
+  private word = "";
+  // Whitespace ends the identifier without clearing it — clearing would break the
+  // keyword path (`return /re/`), while fusing it across a newline read `flag` +
+  // `return` as one word and mis-classified the regex as a division.
+  private wordEnded = false;
+  // `clip.in / clip.out` is a division: a reserved word used as a property name is
+  // not a keyword, and `{ in, out }` is the usual clip in/out convention here.
+  private wordAfterDot = false;
+
+  push(ch: string): void {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      this.wordEnded = true;
+      return;
+    }
+    if (WORD_CHAR.test(ch)) {
+      if (this.wordEnded || this.word === "") this.wordAfterDot = this.last === ".";
+      this.word = this.wordEnded ? ch : this.word + ch;
+    } else {
+      this.word = "";
+      this.wordAfterDot = false;
+    }
+    this.wordEnded = false;
+    this.prev = this.last;
+    this.last = ch;
+  }
+
+  /** A regex literal's own quotes must not open a phantom string — `/[^a-z']/g` ships
+   * in this repo, and treating its `'` as a string start blanked the whole script tail. */
+  startsRegexLiteral(): boolean {
+    if (this.last === "") return true;
+    if (WORD_CHAR.test(this.last))
+      return !this.wordAfterDot && REGEX_ALLOWED_KEYWORDS.has(this.word);
+    // `i++ / total` and `--i / n` are divisions, though `+` and `-` alone are not.
+    if ((this.last === "+" || this.last === "-") && this.prev === this.last) return false;
+    return REGEX_ALLOWED_BEFORE.has(this.last);
+  }
+}
+
+/**
+ * Blanks string, template-literal and regex-literal *contents* (delimiters, length
+ * and newline positions kept) so a rule scanning for an API call does not match one
+ * a composition merely renders as on-screen text. Template `${…}` expressions stay —
+ * they are code. Returns the source untouched if the scan ends mid-literal, so a
+ * parse this scanner cannot model degrades to the caller's pre-existing behaviour
+ * rather than silently blanking real code on an `error`-severity gate.
+ */
+// A character-level scanner over four literal modes; splitting it pushes the state into
+// per-character objects without making it clearer, same as `stripJsComments` above.
+// fallow-ignore-next-line complexity
+export function stripJsStringLiterals(source: string): string {
+  let out = "";
+  let i = 0;
+  // Each open template literal pushes a frame; `${` inside one returns to code mode.
+  const templateBraces: number[] = [];
+  const ctx = new CodeContext();
+  let quote: "'" | '"' | "`" | null = null;
+  let escaped = false;
+  let inRegex = false;
+  let inRegexClass = false;
+
+  const blank = (ch: string) => (ch === "\n" || ch === "\r" ? ch : " ");
+  const emit = (text: string) => {
+    out += text;
+    for (const ch of text) ctx.push(ch);
+  };
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    const next = source[i + 1] ?? "";
+
+    if (inRegex) {
+      if (escaped) {
+        escaped = false;
+        emit(blank(ch));
+      } else if (ch === "\\") {
+        escaped = true;
+        emit(" ");
+      } else if (ch === "[") {
+        inRegexClass = true;
+        emit(" ");
+      } else if (ch === "]") {
+        inRegexClass = false;
+        emit(" ");
+      } else if (ch === "/" && !inRegexClass) {
+        inRegex = false;
+        emit(ch);
+      } else if (ch === "\n" || ch === "\r") {
+        // An unterminated regex cannot span a line; treat it as division after all.
+        inRegex = false;
+        inRegexClass = false;
+        emit(ch);
+      } else {
+        emit(" ");
+      }
+      i += 1;
+      continue;
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        emit(blank(ch));
+      } else if (ch === "\\") {
+        escaped = true;
+        emit(" ");
+      } else if (ch === quote) {
+        quote = null;
+        emit(ch);
+      } else if (ch === "`" || quote !== "`" || ch !== "$" || next !== "{") {
+        emit(blank(ch));
+      } else {
+        templateBraces.push(0);
+        quote = null;
+        emit("${");
+        i += 2;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      emit(ch);
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next !== "/" && next !== "*" && ctx.startsRegexLiteral()) {
+      inRegex = true;
+      emit(ch);
+      i += 1;
+      continue;
+    }
+
+    if (templateBraces.length > 0) {
+      const depth = templateBraces[templateBraces.length - 1] ?? 0;
+      if (ch === "{") templateBraces[templateBraces.length - 1] = depth + 1;
+      else if (ch === "}") {
+        if (depth === 0) {
+          templateBraces.pop();
+          quote = "`";
+          emit(ch);
+          i += 1;
+          continue;
+        }
+        templateBraces[templateBraces.length - 1] = depth - 1;
+      }
+    }
+
+    emit(ch);
+    i += 1;
+  }
+
+  if (quote !== null || templateBraces.length > 0) return source;
+  return out;
+}
+
+/**
+ * Drops CSS comments without following a `/*` that only appears inside a string —
+ * a slide printing comment markers as content otherwise pairs two of them and
+ * deletes the real rules in between.
+ */
+// fallow-ignore-next-line complexity
+export function stripCssComments(source: string): string {
+  let out = "";
+  let i = 0;
+  let quote: "'" | '"' | null = null;
+
+  while (i < source.length) {
+    const ch = source[i] ?? "";
+    if (quote) {
+      out += ch;
+      if (ch === "\\") {
+        out += source[i + 1] ?? "";
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      for (let j = i; j < stop; j += 1) {
+        const c = source[j] ?? "";
+        out += c === "\n" || c === "\r" ? c : " ";
+      }
+      i = stop;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+
+  return out;
+}
+
 // One linear pass that drops every `<!-- … -->` region. Uses indexOf, not a
 // `/<!--[\s\S]*?-->/` regex: that pattern backtracks O(n²) on inputs with many
 // unterminated "<!--" (CodeQL js/polynomial-redos). An unterminated "<!--" with
