@@ -118,8 +118,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   // the selection changes, not only on the next playhead tick.
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const elements = usePlayerStore((s) => s.elements);
+  const timelineFitPps = usePlayerStore((s) => s.timelineFitPps);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
-  const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
+  const displayedTimelineZoomPercent = getTimelineZoomPercent(
+    zoomMode,
+    manualZoomPercent,
+    timelineFitPps,
+  );
   const {
     state: keyframeState,
     isMotionPath: keyframeIsMotionPath,
@@ -418,7 +423,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(
-                  getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent),
+                  getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent, timelineFitPps),
                 );
               }}
               className={flatIdle}
@@ -430,12 +435,14 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             type="range"
             min="0"
             max="100"
-            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent)}
+            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent, timelineFitPps)}
             title={`${displayedTimelineZoomPercent}%`}
             aria-label="Timeline zoom"
             onChange={(e) => {
               setZoomMode("manual");
-              setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
+              setManualZoomPercent(
+                timelineSliderToZoomPercent(Number(e.target.value), timelineFitPps),
+              );
             }}
             // h-6 on the input is the 24x24 WCAG 2.2 (2.5.8) target: the visible
             // track stays 2px and the thumb 10px, only the pointer box grows.
@@ -447,7 +454,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               aria-label="Zoom in"
               onClick={() => {
                 setZoomMode("manual");
-                setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+                setManualZoomPercent(
+                  getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent, timelineFitPps),
+                );
               }}
               className={flatIdle}
             >

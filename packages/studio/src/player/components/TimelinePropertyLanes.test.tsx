@@ -594,6 +594,7 @@ describe("TimelinePropertyLanes", () => {
           }}
           clipWidthPx={200}
           clipHeightPx={48}
+          clipDuration={10}
           accentColor="#4ba3d2"
           isSelected
           currentPercentage={-10}

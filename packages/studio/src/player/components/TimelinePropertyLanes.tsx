@@ -240,6 +240,7 @@ export function TimelinePropertyLanes({
             keyframesData={keyframesData}
             clipWidthPx={clipWidthPx}
             clipHeightPx={LANE_H}
+            clipDuration={clipDuration}
             accentColor={accentColor}
             isSelected={isSelected}
             currentPercentage={currentPercentage}

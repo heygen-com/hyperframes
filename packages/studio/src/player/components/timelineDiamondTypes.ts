@@ -29,6 +29,8 @@ export interface TimelineClipDiamondsProps {
   keyframesData: KeyframeCacheEntry;
   clipWidthPx: number;
   clipHeightPx: number;
+  /** Needed to compare the playhead to keyframes in output-frame time. */
+  clipDuration: number;
   /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
    *  the bottom half so they clear the strip at the top. */
   beatsActive?: boolean;
@@ -70,7 +72,10 @@ export interface TimelineDiamondLaneProps extends Omit<
   | "onContextMenuKeyframe"
   | "onMoveKeyframe"
   | "onSelectSegment"
+  | "clipDuration"
 > {
+  /** Isolated lanes may omit timing; without it no playhead diamond is marked. */
+  clipDuration?: number;
   groupAware?: boolean;
   globalEase?: string;
   onSelectSegment?: (target: TimelineKeyframeTarget) => void;

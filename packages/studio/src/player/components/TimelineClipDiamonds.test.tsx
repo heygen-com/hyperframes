@@ -33,6 +33,7 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
         }}
         clipWidthPx={200}
         clipHeightPx={48}
+        clipDuration={10}
         accentColor="#4ba3d2"
         isSelected
         currentPercentage={0}
@@ -46,10 +47,85 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
 }
 
 describe("TimelineClipDiamonds", () => {
-  // Dense rows narrow the DIAMOND so neighbours stay individually readable, but
-  // the hit box floors at KF_MIN_HIT_W — a gap-sized target gets unusable
-  // (~7px) at the zoom floor.
-  it("narrows dense keyframe visuals while flooring their hit regions", () => {
+  it("marks only the nearest keyframe in a dense lane as under the playhead", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [34.6, 34.8, 35, 35.2, 35.4].map((percentage) => ({
+              percentage,
+              propertyGroup: "position",
+              properties: { x: percentage },
+            })),
+          }}
+          clipWidthPx={4000}
+          clipHeightPx={48}
+          clipDuration={12}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={35.05}
+          elementId="clip-1"
+          selectedKeyframes={new Set()}
+          groupAware
+        />,
+      );
+    });
+
+    expect(host.querySelectorAll('[data-keyframe-at-playhead="true"]')).toHaveLength(1);
+    expect(host.querySelector<HTMLButtonElement>('[data-keyframe-at-playhead="true"]')?.title).toBe(
+      "35%",
+    );
+    act(() => root.unmount());
+  });
+
+  it("distinguishes a playhead match from an explicitly selected keyframe", () => {
+    const selectedKey = timelineKeyframeSelectionKey("clip-1", {
+      percentage: 60,
+      propertyGroup: "position",
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <TimelineDiamondLane
+          keyframesData={{
+            format: "percentage",
+            keyframes: [
+              { percentage: 40, propertyGroup: "position", properties: { x: 40 } },
+              { percentage: 60, propertyGroup: "position", properties: { x: 60 } },
+            ],
+          }}
+          clipWidthPx={1200}
+          clipHeightPx={48}
+          clipDuration={10}
+          accentColor="#4ba3d2"
+          isSelected
+          currentPercentage={40}
+          elementId="clip-1"
+          selectedKeyframes={new Set([selectedKey])}
+          groupAware
+        />,
+      );
+    });
+
+    const playheadDiamond = host.querySelector<HTMLButtonElement>('button[title="40%"]');
+    const selectedDiamond = host.querySelector<HTMLButtonElement>('button[title="60%"]');
+    expect(playheadDiamond?.dataset.keyframeAtPlayhead).toBe("true");
+    expect(playheadDiamond?.dataset.keyframeSelected).toBe("false");
+    expect(playheadDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(playheadDiamond?.querySelector('path[stroke="#4ba3d2"]')).not.toBeNull();
+    expect(selectedDiamond?.dataset.keyframeAtPlayhead).toBe("false");
+    expect(selectedDiamond?.dataset.keyframeSelected).toBe("true");
+    expect(selectedDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe("#4ba3d2");
+    act(() => root.unmount());
+  });
+
+  it("keeps dense keyframe visuals full-size while bounding their hit regions", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -80,7 +156,7 @@ describe("TimelineClipDiamonds", () => {
     expect(diamonds).toHaveLength(3);
     for (const diamond of diamonds) {
       expect(Number.parseFloat(diamond.style.width)).toBeCloseTo(12);
-      expect(Number(diamond.querySelector("svg")?.getAttribute("width"))).toBeCloseTo(8.8);
+      expect(Number(diamond.querySelector("svg")?.getAttribute("width"))).toBe(22);
     }
     act(() => root.unmount());
   });
@@ -123,6 +199,7 @@ describe("TimelineClipDiamonds", () => {
           keyframesData={{ format: "percentage", keyframes: [groupedKeyframe] }}
           clipWidthPx={200}
           clipHeightPx={48}
+          clipDuration={10}
           accentColor="#4ba3d2"
           isSelected
           currentPercentage={-10}
@@ -271,6 +348,7 @@ describe("TimelineClipDiamonds", () => {
           }}
           clipWidthPx={200}
           clipHeightPx={48}
+          clipDuration={10}
           accentColor="#4ba3d2"
           isSelected
           currentPercentage={0}
@@ -356,6 +434,7 @@ describe("TimelineClipDiamonds", () => {
           }}
           clipWidthPx={200}
           clipHeightPx={48}
+          clipDuration={10}
           accentColor="#4ba3d2"
           isSelected
           currentPercentage={0}
@@ -620,6 +699,7 @@ describe("TimelineClipDiamonds", () => {
           }}
           clipWidthPx={200}
           clipHeightPx={48}
+          clipDuration={10}
           accentColor="#4ba3d2"
           isSelected
           currentPercentage={0}

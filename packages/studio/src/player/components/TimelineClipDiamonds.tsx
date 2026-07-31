@@ -8,6 +8,7 @@ import {
 import { TimelineDiamondConnectors } from "./TimelineDiamondConnectors";
 import { clipToTweenPercentage } from "../../components/editor/KeyframeNavigation";
 import { LANE_H } from "./timelineLayout";
+import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { timelineKeyframeSelectionKey } from "./timelineKeyframeIdentity";
 import {
   DIAMOND_RATIO,
@@ -22,11 +23,10 @@ import {
 
 export type { TimelineDiamondKeyframe } from "./timelineDiamondTypes";
 
-// Floor for a diamond's clickable width. The visual size still narrows to the
-// neighbour gap so packed diamonds stay individually readable, but the hit box
-// stops there: at the zoom floor the gap alone left a ~7px target, which is
-// neither hittable nor selectable with any accuracy. Boxes may overlap slightly
-// below this width; each diamond still owns the half-gap around its own centre.
+// Floor for a diamond's clickable width. The visible diamond stays full-size
+// even when neighbours overlap; shrinking recorded-gesture keyframes into dots
+// makes the timeline unreadable. The hit box still follows the neighbour gap
+// and stops at this floor so nearby timestamps remain separately targetable.
 //
 // Deliberately below the 24px WCAG 2.2 (2.5.8) minimum, under that criterion's
 // own spacing exception: at normal keyframe density the neighbour gap is under
@@ -40,10 +40,36 @@ function roundPct(percentage: number): number {
   return Math.round(percentage * 1000) / 1000;
 }
 
+/** Find the closest authored keyframe without scanning the full lane on every playhead tick. */
+function nearestKeyframeWithin(
+  sorted: TimelineDiamondKeyframe[],
+  percentage: number,
+  tolerance: number,
+): TimelineDiamondKeyframe | null {
+  if (!Number.isFinite(percentage) || tolerance <= 0 || sorted.length === 0) return null;
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (sorted[mid]!.percentage < percentage) low = mid + 1;
+    else high = mid;
+  }
+  const before = sorted[low - 1];
+  const after = sorted[low];
+  const nearest =
+    before && after
+      ? percentage - before.percentage <= after.percentage - percentage
+        ? before
+        : after
+      : (before ?? after);
+  return nearest && Math.abs(nearest.percentage - percentage) <= tolerance ? nearest : null;
+}
+
 export const TimelineDiamondLane = memo(function TimelineDiamondLane({
   keyframesData,
   clipWidthPx,
   clipHeightPx,
+  clipDuration,
   beatsActive,
   accentColor,
   isSelected,
@@ -197,14 +223,24 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
     const previousGap = previous ? centerX - centerXOf(previous.percentage) : Infinity;
     const nextGap = next ? centerXOf(next.percentage) - centerX : Infinity;
     const nearestGap = Math.max(1, Math.min(previousGap, nextGap));
-    const gapWidth = Math.min(diamondSize, nearestGap);
+    const hitWidth = Math.min(diamondSize, nearestGap);
     return {
       keyframe,
       centerX,
-      hitWidth: Math.max(KF_MIN_HIT_W, gapWidth),
-      visualSize: gapWidth === diamondSize ? diamondSize : Math.max(2, gapWidth - 2),
+      hitWidth: Math.max(KF_MIN_HIT_W, hitWidth),
+      visualSize: diamondSize,
     };
   });
+  // The playhead is a cursor, not a selection. Resolve one nearest keyframe per
+  // rendered property lane and only while it is within half an output frame.
+  // A fixed clip-% tolerance grows with duration and lit whole clusters of
+  // gesture-recorded keyframes at once on long clips.
+  const halfFramePct =
+    clipDuration && clipDuration > 0 ? 50 / STUDIO_PREVIEW_FPS / clipDuration : 0;
+  const playheadKeyframe =
+    isSelected && halfFramePct > 0
+      ? nearestKeyframeWithin(sorted, currentPercentage, halfFramePct)
+      : null;
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
   const canDrag = isSelected && !!onMoveKeyframe;
@@ -251,9 +287,9 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
         // fully visible instead of being clipped by the sticky label column.
         const leftPx = (renderPct / 100) * clipWidthPx - marker.hitWidth / 2;
         const isKfSelected = selectedKeyframes.has(kfKey);
-        const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
+        const atPlayhead = kf === playheadKeyframe;
         const isHighlighted = isKfSelected || atPlayhead;
-        const color = isHighlighted ? accentColor : "#a3a3a3";
+        const color = isKfSelected ? accentColor : "#a3a3a3";
 
         const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
           if (e.button !== 0) return;
@@ -417,6 +453,10 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
             data-keyframe-percentage={
               groupAware ? (kf.tweenPercentage ?? kf.percentage) : undefined
             }
+            data-keyframe-at-playhead={String(atPlayhead)}
+            data-keyframe-selected={String(isKfSelected)}
+            aria-current={atPlayhead ? "time" : undefined}
+            aria-pressed={isKfSelected}
             style={{
               left: leftPx,
               top: centerY,
@@ -461,19 +501,19 @@ export const TimelineDiamondLane = memo(function TimelineDiamondLane({
               viewBox="0 0 10 10"
               style={{ flexShrink: 0, pointerEvents: "none" }}
             >
-              {isKfSelected && (
+              {(isKfSelected || atPlayhead) && (
                 <path
                   d="M5 0L10 5L5 10L0 5Z"
                   fill="none"
                   stroke={accentColor}
                   strokeWidth="0.8"
-                  opacity={0.5}
+                  opacity={isKfSelected ? 0.5 : 1}
                 />
               )}
               <path
                 d="M5 1L9 5L5 9L1 5Z"
                 fill={color}
-                opacity={isKfSelected || atPlayhead ? 1 : 0.55}
+                opacity={isKfSelected ? 1 : atPlayhead ? 0.9 : 0.55}
               />
             </svg>
           </button>

@@ -477,6 +477,7 @@ export function TimelineLanes({
                             keyframesData={keyframeCache.get(elementKey)!}
                             clipWidthPx={Math.max(previewElement.duration * pps, 4)}
                             clipHeightPx={rowHeight - 2 * CLIP_Y}
+                            clipDuration={previewElement.duration}
                             beatsActive={beatStripOnTrack}
                             accentColor={clipStyle.accent}
                             isSelected={isSelected}

@@ -408,9 +408,11 @@ describe("usePlayerStore", () => {
       expect(usePlayerStore.getState().manualZoomPercent).toBe(10);
     });
 
-    it("clamps to the maximum supported zoom percent", () => {
-      usePlayerStore.getState().setManualZoomPercent(5000);
-      expect(usePlayerStore.getState().manualZoomPercent).toBe(2000);
+    it("clamps to the frame-level zoom for the current fit scale", () => {
+      usePlayerStore.getState().setTimelineScale(12, 12);
+      usePlayerStore.getState().setManualZoomPercent(100_000);
+      expect(usePlayerStore.getState().manualZoomPercent).toBe(12_000);
+      usePlayerStore.getState().setTimelineScale(100, 100);
     });
   });
 

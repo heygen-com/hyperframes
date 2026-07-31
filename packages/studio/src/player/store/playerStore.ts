@@ -8,7 +8,7 @@ import {
   writeStudioUiPreferences,
   type TimelineTimeDisplayMode,
 } from "../../utils/studioUiPreferences";
-import { computePinnedZoomPercent } from "../components/timelineZoom";
+import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
 import { createKeyframeSlice, type KeyframeCacheEntry, type KeyframeSlice } from "./keyframeSlice";
 
 export type { KeyframeCacheEntry } from "./keyframeSlice";
@@ -172,10 +172,7 @@ interface PlayerState extends KeyframeSlice {
    * rescaling every clip. No-op once already pinned (mode is "manual").
    */
   pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
-  /**
-   * The timeline's live pixels-per-second + fit basis, published by <Timeline> on
-   * every render. Non-reactive scratch state (never read as a render input).
-   */
+  /** The timeline's live pixels-per-second + fit basis, published by <Timeline>. */
   timelinePps: number;
   timelineFitPps: number;
   setTimelineScale: (pps: number, fitPps: number) => void;
@@ -486,12 +483,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return { zoomMode: "manual", manualZoomPercent: percent };
     }),
   setTimelineScale: (pps, fitPps) => {
-    // Non-reactive publish: mutate in place + reuse the same object identity so no
-    // subscriber re-renders (these fields are never a render input, only read
-    // imperatively before pinning).
     const state = get();
-    state.timelinePps = pps;
-    state.timelineFitPps = fitPps;
+    if (state.timelinePps === pps && state.timelineFitPps === fitPps) return;
+    set({ timelinePps: pps, timelineFitPps: fitPps });
   },
   setInPoint: (time) =>
     set((state) => {
@@ -515,7 +509,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       };
     }),
   setManualZoomPercent: (percent) =>
-    set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
+    set((state) => ({
+      manualZoomPercent: clampTimelineZoomPercent(percent, state.timelineFitPps),
+    })),
   bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),

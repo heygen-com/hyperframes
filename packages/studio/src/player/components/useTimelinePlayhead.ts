@@ -202,6 +202,7 @@ export function useTimelinePlayhead({
         e.deltaY,
         zoomModeRef.current,
         manualZoomPercentRef.current,
+        fitPpsRef.current,
       );
       if (nextZoomPercent === manualZoomPercentRef.current && zoomModeRef.current === "manual")
         return;

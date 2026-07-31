@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore, liveTime } from "../player/store/playerStore";
+import { frameToSeconds, secondsToFrame } from "../player/lib/time";
 
 export interface GestureSample {
   time: number;
@@ -139,7 +140,18 @@ function recordSample(r: RecordingRefs, time: number, properties: Record<string,
   // stripStudioEditsFromTarget in studio-api), so the keyframes must already
   // include it. Subtracting it made the committed gesture play shoved off by the
   // offset (the offset was removed twice).
-  r.samples.push({ time, properties: { ...properties } });
+  const frame = secondsToFrame(time);
+  const sample = { time: frameToSeconds(frame), properties: { ...properties } };
+  const lastIndex = r.samples.length - 1;
+  const lastSample = r.samples[lastIndex];
+  // Gesture events follow the display refresh rate (often 60/120Hz), but the
+  // Studio preview is authored at 30fps. Keep the latest pointer state for each
+  // output frame so recording cannot create visually indistinguishable piles.
+  if (lastSample?.time === sample.time) {
+    r.samples[lastIndex] = sample;
+  } else {
+    r.samples.push(sample);
+  }
   r.trail.push({ x: r.pointer.x, y: r.pointer.y });
 }
 

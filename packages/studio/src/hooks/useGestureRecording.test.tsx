@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "./domSelectionTestHarness";
-import { useGestureRecording } from "./useGestureRecording";
+import { useGestureRecording, type GestureSample } from "./useGestureRecording";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -13,6 +13,58 @@ afterEach(() => {
 });
 
 describe("useGestureRecording", () => {
+  it("keeps only the latest gesture sample in each output frame", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let nowMs = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const element = iframe.contentDocument!.createElement("div");
+    element.id = "card";
+    iframe.contentDocument!.body.append(element);
+
+    let recording: ReturnType<typeof useGestureRecording> | null = null;
+    function Harness() {
+      recording = useGestureRecording();
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    act(() => recording?.startRecording(element, iframe));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10 }));
+    nowMs = 1;
+    act(() => animationFrames.shift()?.(1));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 20 }));
+    nowMs = 10;
+    act(() => animationFrames.shift()?.(10));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40 }));
+    nowMs = 20;
+    act(() => animationFrames.shift()?.(20));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 50 }));
+    nowMs = 30;
+    act(() => animationFrames.shift()?.(30));
+
+    let samples: GestureSample[] = [];
+    act(() => {
+      samples = recording?.stopRecording() ?? [];
+    });
+
+    expect(samples).toEqual([
+      { time: 0, properties: { x: 10, y: 0 } },
+      { time: 1 / 30, properties: { x: 40, y: 0 } },
+    ]);
+    act(() => root.unmount());
+  });
+
   it("releases the preview runtime when unmounted during a recording", () => {
     const cancelAnimationFrame = vi.fn();
     vi.stubGlobal(

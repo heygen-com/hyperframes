@@ -2,34 +2,45 @@ import { describe, expect, it } from "vitest";
 import {
   clampTimelineZoomPercent,
   computePinnedZoomPercent,
+  getMaxTimelineZoomPercent,
   getNextTimelineZoomPercent,
   getPinchTimelineZoomPercent,
   getTimelinePixelsPerSecond,
   getTimelineZoomPercent,
-  MAX_TIMELINE_ZOOM_PERCENT,
   MIN_TIMELINE_ZOOM_PERCENT,
   timelineZoomPercentToSlider,
   timelineSliderToZoomPercent,
 } from "./timelineZoom";
 
+const FIT_PPS = 12;
+const MAX_ZOOM_PERCENT = 12_000;
+
 describe("clampTimelineZoomPercent", () => {
   it("defaults invalid values to 100", () => {
-    expect(clampTimelineZoomPercent(Number.NaN)).toBe(100);
+    expect(clampTimelineZoomPercent(Number.NaN, FIT_PPS)).toBe(100);
   });
 
   it("clamps to the supported percent bounds", () => {
-    expect(clampTimelineZoomPercent(1)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
-    expect(clampTimelineZoomPercent(5000)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+    expect(clampTimelineZoomPercent(1, FIT_PPS)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
+    expect(clampTimelineZoomPercent(100_000, FIT_PPS)).toBe(MAX_ZOOM_PERCENT);
+  });
+
+  it("zooms to a readable width for each 30fps frame instead of stopping at 2000%", () => {
+    const fitPixelsPerSecond = 12;
+    const percent = clampTimelineZoomPercent(100_000, fitPixelsPerSecond);
+
+    expect(percent).toBe(12_000);
+    expect(getTimelinePixelsPerSecond(fitPixelsPerSecond, "manual", percent)).toBe(1_440);
   });
 });
 
 describe("getTimelineZoomPercent", () => {
   it("treats fit mode as 100 percent", () => {
-    expect(getTimelineZoomPercent("fit", 375)).toBe(100);
+    expect(getTimelineZoomPercent("fit", 375, FIT_PPS)).toBe(100);
   });
 
   it("returns the clamped manual zoom percent", () => {
-    expect(getTimelineZoomPercent("manual", 125.2)).toBe(125);
+    expect(getTimelineZoomPercent("manual", 125.2, FIT_PPS)).toBe(125);
   });
 });
 
@@ -45,68 +56,71 @@ describe("getTimelinePixelsPerSecond", () => {
 
 describe("getNextTimelineZoomPercent", () => {
   it("zooms out from fit relative to 100 percent", () => {
-    expect(getNextTimelineZoomPercent("out", "fit", 375)).toBe(50);
+    expect(getNextTimelineZoomPercent("out", "fit", 375, FIT_PPS)).toBe(50);
   });
 
   it("zooms in from fit relative to 100 percent", () => {
-    expect(getNextTimelineZoomPercent("in", "fit", 375)).toBe(200);
+    expect(getNextTimelineZoomPercent("in", "fit", 375, FIT_PPS)).toBe(200);
   });
 
   it("clamps the lower bound", () => {
-    expect(getNextTimelineZoomPercent("out", "manual", MIN_TIMELINE_ZOOM_PERCENT)).toBe(
+    expect(getNextTimelineZoomPercent("out", "manual", MIN_TIMELINE_ZOOM_PERCENT, FIT_PPS)).toBe(
       MIN_TIMELINE_ZOOM_PERCENT,
     );
   });
 
   it("clamps the upper bound", () => {
-    expect(getNextTimelineZoomPercent("in", "manual", MAX_TIMELINE_ZOOM_PERCENT)).toBe(
-      MAX_TIMELINE_ZOOM_PERCENT,
+    expect(getNextTimelineZoomPercent("in", "manual", MAX_ZOOM_PERCENT, FIT_PPS)).toBe(
+      MAX_ZOOM_PERCENT,
     );
   });
 });
 
 describe("getPinchTimelineZoomPercent", () => {
   it("zooms in for upward pinch wheel deltas", () => {
-    expect(getPinchTimelineZoomPercent(-80, "fit", 100)).toBeGreaterThan(100);
+    expect(getPinchTimelineZoomPercent(-80, "fit", 100, FIT_PPS)).toBeGreaterThan(100);
   });
 
   it("zooms out for downward pinch wheel deltas", () => {
-    expect(getPinchTimelineZoomPercent(80, "manual", 200)).toBeLessThan(200);
+    expect(getPinchTimelineZoomPercent(80, "manual", 200, FIT_PPS)).toBeLessThan(200);
   });
 
   it("keeps the current zoom for zero or invalid deltas", () => {
-    expect(getPinchTimelineZoomPercent(0, "manual", 180)).toBe(180);
-    expect(getPinchTimelineZoomPercent(Number.NaN, "manual", 180)).toBe(180);
+    expect(getPinchTimelineZoomPercent(0, "manual", 180, FIT_PPS)).toBe(180);
+    expect(getPinchTimelineZoomPercent(Number.NaN, "manual", 180, FIT_PPS)).toBe(180);
   });
 
   it("clamps pinch zoom to the supported range", () => {
-    expect(getPinchTimelineZoomPercent(10000, "manual", 100)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
-    expect(getPinchTimelineZoomPercent(-10000, "manual", 100)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+    expect(getPinchTimelineZoomPercent(10000, "manual", 100, FIT_PPS)).toBe(
+      MIN_TIMELINE_ZOOM_PERCENT,
+    );
+    expect(getPinchTimelineZoomPercent(-10000, "manual", 100, FIT_PPS)).toBe(MAX_ZOOM_PERCENT);
   });
 });
 
 describe("timelineZoomPercentToSlider", () => {
   it("maps min zoom to slider position 0", () => {
-    expect(timelineZoomPercentToSlider(MIN_TIMELINE_ZOOM_PERCENT)).toBeCloseTo(0, 5);
+    expect(timelineZoomPercentToSlider(MIN_TIMELINE_ZOOM_PERCENT, FIT_PPS)).toBeCloseTo(0, 5);
   });
 
   it("maps max zoom to slider position 100", () => {
-    expect(timelineZoomPercentToSlider(MAX_TIMELINE_ZOOM_PERCENT)).toBeCloseTo(100, 5);
+    expect(timelineZoomPercentToSlider(MAX_ZOOM_PERCENT, FIT_PPS)).toBeCloseTo(100, 5);
   });
 
-  it("maps 100% to the log midpoint between 10 and 2000", () => {
-    const expected = ((Math.log(100) - Math.log(10)) / (Math.log(2000) - Math.log(10))) * 100;
-    expect(timelineZoomPercentToSlider(100)).toBeCloseTo(expected, 3);
+  it("maps 100% onto the dynamic log range", () => {
+    const expected =
+      ((Math.log(100) - Math.log(10)) / (Math.log(MAX_ZOOM_PERCENT) - Math.log(10))) * 100;
+    expect(timelineZoomPercentToSlider(100, FIT_PPS)).toBeCloseTo(expected, 3);
   });
 });
 
 describe("timelineSliderToZoomPercent", () => {
   it("maps slider 0 to min zoom", () => {
-    expect(timelineSliderToZoomPercent(0)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
+    expect(timelineSliderToZoomPercent(0, FIT_PPS)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
   });
 
   it("maps slider 100 to max zoom", () => {
-    expect(timelineSliderToZoomPercent(100)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+    expect(timelineSliderToZoomPercent(100, FIT_PPS)).toBe(MAX_ZOOM_PERCENT);
   });
 });
 
@@ -126,7 +140,7 @@ describe("computePinnedZoomPercent", () => {
 
   it("clamps a pin that would exceed the manual-zoom bounds", () => {
     // currentPps 10000 / fitPps 1 = 1_000_000% → clamped to MAX.
-    expect(computePinnedZoomPercent(10000, 1)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+    expect(computePinnedZoomPercent(10000, 1)).toBe(getMaxTimelineZoomPercent(1));
     // Tiny ratio → clamped up to MIN.
     expect(computePinnedZoomPercent(0.001, 1000)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
   });
@@ -140,10 +154,10 @@ describe("computePinnedZoomPercent", () => {
 });
 
 describe("timelineZoomPercentToSlider / timelineSliderToZoomPercent round-trip", () => {
-  for (const percent of [10, 100, 500, 2000]) {
+  for (const percent of [10, 100, 500, 2000, MAX_ZOOM_PERCENT]) {
     it(`round-trips ${percent}% within ±1%`, () => {
-      const slider = timelineZoomPercentToSlider(percent);
-      const back = timelineSliderToZoomPercent(slider);
+      const slider = timelineZoomPercentToSlider(percent, FIT_PPS);
+      const back = timelineSliderToZoomPercent(slider, FIT_PPS);
       expect(Math.abs(back - percent) / percent).toBeLessThan(0.01);
     });
   }
