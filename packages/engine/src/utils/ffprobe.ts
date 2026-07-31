@@ -263,6 +263,10 @@ const STILL_IMAGE_DEMUXERS = new Set([
 function hasAvifFileBrand(filePath: string): boolean {
   let fd: number | undefined;
   try {
+    // CodeQL models any open of a temp-root-derived path as file creation. This
+    // is an O_RDONLY probe of an existing localized asset; it cannot create or
+    // truncate the path.
+    // lgtm[js/insecure-temporary-file]
     fd = openSync(filePath, "r");
     const prefix = Buffer.alloc(4096);
     const bytesRead = readSync(fd, prefix, 0, prefix.length, 0);
