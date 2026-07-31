@@ -23,6 +23,7 @@ describe("timeline viewport budgets", () => {
       constrainedLongTaskLimitMs: 300,
       posterCoverageRatio: 0.9,
       supportedFixtureFallbackRatio: 0.02,
+      scrollSamplesPerRun: 21,
       warmupRuns: 3,
       measuredRuns: 5,
       requiredPassingRuns: 4,
@@ -51,6 +52,7 @@ describe("timeline viewport budgets", () => {
     [{ requiredPassingRuns: 0 }, "requiredPassingRuns"],
     [{ measuredRuns: 1.5, requiredPassingRuns: 1 }, "measuredRuns"],
     [{ measuredRuns: 4, requiredPassingRuns: 5 }, "requiredPassingRuns"],
+    [{ scrollSamplesPerRun: 19 }, "scrollSamplesPerRun"],
     [{ posterCoverageRatio: 1.1 }, "posterCoverageRatio"],
   ] as const)("rejects an invalid override %#", (overrides, message) => {
     expect(() => resolveTimelineViewportBudgets(overrides)).toThrow(message);

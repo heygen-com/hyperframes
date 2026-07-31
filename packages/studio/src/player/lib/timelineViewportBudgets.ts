@@ -40,6 +40,7 @@ export interface TimelineViewportBudgets {
   richPreviewP95Ms: number;
   constrainedRichPreviewP95Ms: number;
   supportedFixtureFallbackRatio: number;
+  scrollSamplesPerRun: number;
   warmupRuns: number;
   measuredRuns: number;
   requiredPassingRuns: number;
@@ -95,6 +96,7 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   richPreviewP95Ms: 750,
   constrainedRichPreviewP95Ms: 1_200,
   supportedFixtureFallbackRatio: 0.02,
+  scrollSamplesPerRun: 21,
   warmupRuns: 3,
   measuredRuns: 5,
   requiredPassingRuns: 4,
@@ -113,10 +115,20 @@ export function resolveTimelineViewportBudgets(
     assertValidBudget(name as keyof TimelineViewportBudgets, value);
   }
   const resolved = { ...TIMELINE_VIEWPORT_BUDGETS, ...overrides };
-  for (const name of ["warmupRuns", "measuredRuns", "requiredPassingRuns"] as const) {
+  for (const name of [
+    "scrollSamplesPerRun",
+    "warmupRuns",
+    "measuredRuns",
+    "requiredPassingRuns",
+  ] as const) {
     if (!Number.isInteger(resolved[name])) {
       throw new RangeError(`Timeline viewport budget ${name} must be an integer`);
     }
+  }
+  if (resolved.scrollSamplesPerRun < 20) {
+    throw new RangeError(
+      "Timeline viewport budget scrollSamplesPerRun must be at least 20 for p95",
+    );
   }
   if (resolved.measuredRuns === 0 || resolved.requiredPassingRuns === 0) {
     throw new RangeError(

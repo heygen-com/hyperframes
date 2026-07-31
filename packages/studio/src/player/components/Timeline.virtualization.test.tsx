@@ -307,9 +307,9 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
 });
 
 /**
- * The flag-off build is the one users get today. It mounts every clip, so the
- * scroll-time concessions windowing makes are pure cost there: this block pins
- * the timeline to doing no per-frame work at all while a gesture runs.
+ * The rollback build mounts every clip, so the scroll-time concessions
+ * windowing makes are pure cost there. This block pins that explicit fallback
+ * to doing no per-frame work while a gesture runs.
  */
 describe("Timeline without row virtualization", { timeout: 30_000 }, () => {
   async function renderUnvirtualizedTimeline() {

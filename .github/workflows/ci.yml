@@ -533,55 +533,68 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Two servers, because row virtualization is read from import.meta.env
-          # at module load: one process cannot serve both builds.
+          SERVER_PID=""
+          stop_server() {
+            if [[ -n "$SERVER_PID" ]]; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+              SERVER_PID=""
+            fi
+          }
+          wait_for_server() {
+            local port="$1"
+            for i in $(seq 1 60); do
+              if curl -sf "http://localhost:${port}/" >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            echo "FAIL: studio dev server did not start on port ${port}"
+            return 1
+          }
+          trap stop_server EXIT
+
+          # Run one server at a time so the measured browser never competes with
+          # a second Vite module graph on the shared runner.
           bun run --cwd packages/studio dev -- --port 5313 --strictPort &
-          DEFAULT_PID=$!
-          VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=1 \
-            bun run --cwd packages/studio dev -- --port 5314 --strictPort &
-          VIRTUALIZED_PID=$!
-          trap 'kill $DEFAULT_PID $VIRTUALIZED_PID 2>/dev/null || true' EXIT
-
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:5313/ >/dev/null 2>&1 \
-              && curl -sf http://localhost:5314/ >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          if ! curl -sf http://localhost:5313/ >/dev/null 2>&1 \
-            || ! curl -sf http://localhost:5314/ >/dev/null 2>&1; then
-            echo "FAIL: studio dev servers did not start"
-            exit 1
-          fi
-
-          # The default build first. It is the one users get, and the arm that
-          # caught the regression this gate exists for.
-          # Capture both statuses so either failure still leaves two evidence files.
+          SERVER_PID=$!
           DEFAULT_STATUS=0
-          STUDIO_URL="http://localhost:5313/#project/timeline-virtualization" \
-            TIMELINE_ROW_VIRTUALIZATION=off \
-            TIMELINE_ELEMENT_COUNT=1000 \
-            TIMELINE_TIER=ci \
-            node packages/studio/tests/e2e/timeline-virtualization.mjs \
-            | tee /tmp/timeline-gate-default.json \
-            || DEFAULT_STATUS=$?
+          if wait_for_server 5313; then
+            STUDIO_URL="http://localhost:5313/#project/timeline-virtualization" \
+              TIMELINE_ROW_VIRTUALIZATION=on \
+              TIMELINE_ELEMENT_COUNT=50000 \
+              TIMELINE_TIER=ci \
+              node packages/studio/tests/e2e/timeline-virtualization.mjs \
+              | tee /tmp/timeline-gate-default.json \
+              || DEFAULT_STATUS=$?
+          else
+            DEFAULT_STATUS=1
+          fi
+          stop_server
 
-          VIRTUALIZED_STATUS=0
-          STUDIO_URL="http://localhost:5314/#project/timeline-virtualization" \
-            TIMELINE_ROW_VIRTUALIZATION=on \
-            TIMELINE_ELEMENT_COUNT=50000 \
-            TIMELINE_TIER=ci \
-            node packages/studio/tests/e2e/timeline-virtualization.mjs \
-            | tee /tmp/timeline-gate-virtualized.json \
-            || VIRTUALIZED_STATUS=$?
+          VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED=0 \
+            bun run --cwd packages/studio dev -- --port 5314 --strictPort &
+          SERVER_PID=$!
+          DISABLED_STATUS=0
+          if wait_for_server 5314; then
+            STUDIO_URL="http://localhost:5314/#project/timeline-virtualization" \
+              TIMELINE_ROW_VIRTUALIZATION=off \
+              TIMELINE_ELEMENT_COUNT=1000 \
+              TIMELINE_TIER=ci \
+              node packages/studio/tests/e2e/timeline-virtualization.mjs \
+              | tee /tmp/timeline-gate-disabled.json \
+              || DISABLED_STATUS=$?
+          else
+            DISABLED_STATUS=1
+          fi
+          stop_server
 
           {
             echo "### Timeline viewport gate"
             echo "- Default arm exit: ${DEFAULT_STATUS}"
-            echo "- Virtualized arm exit: ${VIRTUALIZED_STATUS}"
+            echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if (( DEFAULT_STATUS != 0 || VIRTUALIZED_STATUS != 0 )); then
-            echo "FAIL: default=${DEFAULT_STATUS}, virtualized=${VIRTUALIZED_STATUS}"
+          if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 )); then
+            echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
             exit 1
           fi
       - name: Upload gate evidence

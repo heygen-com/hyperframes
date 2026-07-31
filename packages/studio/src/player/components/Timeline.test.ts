@@ -41,6 +41,10 @@ import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
+vi.mock("./timelineRowVirtualizationFlag", () => ({
+  STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED: false,
+}));
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {

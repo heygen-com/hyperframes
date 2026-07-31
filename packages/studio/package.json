@@ -52,7 +52,7 @@
     "test:timeline-virtualization": "TIMELINE_ROW_VIRTUALIZATION=on TIMELINE_ELEMENT_COUNT=50000 node tests/e2e/timeline-virtualization.mjs",
     "test:watch": "vitest",
     "report:sdk-cutover": "bun src/utils/sdkCutoverPolicy.report.ts",
-    "test:timeline-default": "TIMELINE_ROW_VIRTUALIZATION=off TIMELINE_ELEMENT_COUNT=1000 node tests/e2e/timeline-virtualization.mjs"
+    "test:timeline-default": "bun run test:timeline-virtualization"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
