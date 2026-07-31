@@ -262,11 +262,7 @@ export async function seekAllAdaptersInBrowser(tt: number): Promise<void> {
   tryCall(() => w.__hfThreeRender?.());
   tryCall(() => w.gsap?.ticker?.tick?.());
 
-  if (runtimeSeeked) {
-    await w.__hfWaitForSeekCompletion?.();
-  } else {
-    await Promise.all(pendingGpuWork);
-  }
+  await Promise.all([Promise.all(pendingGpuWork), w.__hfWaitForSeekCompletion?.()]);
 }
 
 // Installs seekAllAdaptersInBrowser as a real `window` global, once per page

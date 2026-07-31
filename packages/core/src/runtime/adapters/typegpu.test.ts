@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTypegpuAdapter, TYPEGPU_PRESENT_HEARTBEAT_MS } from "./typegpu";
-import { resetSeekDispatchState } from "./seek-dispatch";
+import {
+  resetSeekDispatchState,
+  waitForSeekCompletion,
+  type HfSeekEventDetail,
+} from "./seek-dispatch";
 
 const gpuWindow = window as Window & { __hfTypegpuTime?: number };
 
@@ -124,5 +128,41 @@ describe("typegpu adapter", () => {
     window.removeEventListener("hf-seek", handler);
 
     expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("pauses presentation heartbeats while a capture barrier drains slow GPU work", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML =
+      '<div data-composition-id="gpu" data-requires-webgpu data-duration="2"></div>';
+    const adapter = createTypegpuAdapter();
+    const times: number[] = [];
+    const completionLatency = TYPEGPU_PRESENT_HEARTBEAT_MS * 2 + 1;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<HfSeekEventDetail>).detail;
+      times.push(detail.time);
+      detail.waitUntil(
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, completionLatency);
+        }),
+      );
+    };
+    window.addEventListener("hf-seek", handler);
+
+    adapter.seek({ time: 1.25 });
+    adapter.pause();
+    let settled = false;
+    const capture = waitForSeekCompletion().then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(TYPEGPU_PRESENT_HEARTBEAT_MS * 2);
+    expect(settled).toBe(false);
+    expect(times).toEqual([1.25]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await capture;
+    adapter.play?.();
+    window.removeEventListener("hf-seek", handler);
+    expect(settled).toBe(true);
+    expect(times).toEqual([1.25]);
   });
 });

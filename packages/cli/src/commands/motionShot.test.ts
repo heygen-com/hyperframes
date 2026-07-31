@@ -118,4 +118,60 @@ describe("motion-shot adapter seeking", () => {
     window.removeEventListener("hf-seek", handler);
     expect(settled).toBe(true);
   });
+
+  it("drains runtime work when a runtime seek hook dispatches and then throws", async () => {
+    let finishRuntimeGpuWork!: () => void;
+    let finishFallbackGpuWork!: () => void;
+    const runtimeGpuWork = new Promise<void>((resolve) => {
+      finishRuntimeGpuWork = resolve;
+    });
+    const fallbackGpuWork = new Promise<void>((resolve) => {
+      finishFallbackGpuWork = resolve;
+    });
+    let runtimeCompletion: Promise<void> | undefined;
+    let dispatchCount = 0;
+    const handler = (event: Event) => {
+      dispatchCount += 1;
+      (
+        event as CustomEvent<{
+          waitUntil(promise: PromiseLike<unknown>): void;
+        }>
+      ).detail.waitUntil(dispatchCount === 1 ? runtimeGpuWork : fallbackGpuWork);
+    };
+    window.addEventListener("hf-seek", handler);
+    motionWindow.__player = {
+      renderSeek(time) {
+        const pending: PromiseLike<unknown>[] = [];
+        window.dispatchEvent(
+          new CustomEvent("hf-seek", {
+            detail: {
+              time,
+              waitUntil(promise: PromiseLike<unknown>) {
+                pending.push(promise);
+              },
+            },
+          }),
+        );
+        runtimeCompletion = Promise.all(pending).then(() => undefined);
+        throw new Error("runtime seek failed after dispatch");
+      },
+    };
+    motionWindow.__hfWaitForSeekCompletion = () => runtimeCompletion ?? Promise.resolve();
+
+    let settled = false;
+    const seeking = seekAllAdaptersInBrowser(3).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(dispatchCount).toBe(2);
+
+    finishFallbackGpuWork();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finishRuntimeGpuWork();
+    await seeking;
+    window.removeEventListener("hf-seek", handler);
+    expect(settled).toBe(true);
+  });
 });

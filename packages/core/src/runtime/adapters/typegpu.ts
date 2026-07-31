@@ -1,5 +1,9 @@
 import type { RuntimeDeterministicAdapter } from "../types";
-import { dispatchSeekEvent, forceDispatchSeekEvent } from "./seek-dispatch";
+import {
+  dispatchSeekEvent,
+  forceDispatchSeekEvent,
+  isSeekCompletionBarrierActive,
+} from "./seek-dispatch";
 
 export const TYPEGPU_PRESENT_HEARTBEAT_MS = 250;
 
@@ -82,6 +86,7 @@ export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
     if (!document.querySelector("[data-composition-id][data-requires-webgpu]")) return;
     presentHeartbeat = window.setInterval(() => {
       if (forcedTime === null) return;
+      if (isSeekCompletionBarrierActive()) return;
       window.__hfTypegpuTime = forcedTime;
       forceDispatchSeekEvent(forcedTime);
     }, TYPEGPU_PRESENT_HEARTBEAT_MS);

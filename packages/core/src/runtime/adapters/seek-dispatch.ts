@@ -22,6 +22,7 @@ let _lastDispatchedTime = -1;
 type SeekCompletionResult = { status: "fulfilled" } | { status: "rejected"; reason: unknown };
 let _pendingCompletions = new Set<Promise<SeekCompletionResult>>();
 let _pendingFailure: { reason: unknown } | undefined;
+let _activeCompletionBarriers = 0;
 
 export interface HfSeekEventDetail {
   time: number;
@@ -81,13 +82,35 @@ export function forceDispatchSeekEvent(time: number): void {
   dispatch(time);
 }
 
+export function isSeekCompletionBarrierActive(): boolean {
+  return _activeCompletionBarriers > 0;
+}
+
 export async function waitForSeekCompletion(): Promise<void> {
-  while (_pendingCompletions.size > 0) {
-    await Promise.all([..._pendingCompletions]);
+  _activeCompletionBarriers += 1;
+  let failed = _pendingFailure;
+  try {
+    // Let concurrently started barriers snapshot the same retained failure
+    // before either one consumes it.
+    await Promise.resolve();
+    while (_pendingCompletions.size > 0) {
+      const results = await Promise.all([..._pendingCompletions]);
+      const rejected = results.find((result) => result.status === "rejected");
+      if (failed === undefined && rejected?.status === "rejected") {
+        failed = { reason: rejected.reason };
+      }
+    }
+    const retainedFailure = _pendingFailure;
+    if (failed === undefined) {
+      failed = retainedFailure;
+    }
+    if (_pendingFailure === retainedFailure) {
+      _pendingFailure = undefined;
+    }
+    if (failed) throw failed.reason;
+  } finally {
+    _activeCompletionBarriers -= 1;
   }
-  const failed = _pendingFailure;
-  _pendingFailure = undefined;
-  if (failed) throw failed.reason;
 }
 
 /** Reset internal state — used in tests to prevent cross-test contamination. */
@@ -95,4 +118,5 @@ export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;
   _pendingCompletions = new Set();
   _pendingFailure = undefined;
+  _activeCompletionBarriers = 0;
 }

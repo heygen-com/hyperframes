@@ -187,4 +187,28 @@ describe("seek-dispatch", () => {
     await expect(waitForSeekCompletion()).rejects.toBe(failure);
     await expect(waitForSeekCompletion()).resolves.toBeUndefined();
   });
+
+  it("reports one rejected generation to concurrent capture barriers", async () => {
+    let failGpuWork: ((reason: unknown) => void) | undefined;
+    const gpuWork = new Promise<void>((_resolve, reject) => {
+      failGpuWork = reject;
+    });
+    const failure = new Error("GPU queue failed");
+    const handler = (event: Event) => {
+      (event as CustomEvent<HfSeekEventDetail>).detail.waitUntil(gpuWork);
+    };
+    window.addEventListener("hf-seek", handler);
+    dispatchSeekEvent(22);
+    window.removeEventListener("hf-seek", handler);
+
+    const firstCapture = waitForSeekCompletion();
+    const secondCapture = waitForSeekCompletion();
+    failGpuWork?.(failure);
+
+    await expect(Promise.allSettled([firstCapture, secondCapture])).resolves.toEqual([
+      { status: "rejected", reason: failure },
+      { status: "rejected", reason: failure },
+    ]);
+    await expect(waitForSeekCompletion()).resolves.toBeUndefined();
+  });
 });
