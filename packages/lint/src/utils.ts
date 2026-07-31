@@ -162,15 +162,15 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
   return null;
 }
 
+/**
+ * Read an HTML attribute the way the runtime does. Parser-backed rather than a
+ * regex over the tag text: a regex cannot see unquoted values (valid HTML5, and
+ * the runtime honours them), so it both invents "missing attribute" errors and
+ * hides real violations — and widening it to accept unquoted values makes it
+ * capture `name=value` pairs out of other attributes' quoted values instead.
+ */
 export function readAttr(tagSource: string, attr: string): string | null {
-  if (!tagSource) return null;
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // `(?<![\w-])` not `\b`: a plain `\b` boundary treats the hyphen in a longer
-  // attribute as a word break, so reading "id" would wrongly match the trailing
-  // `id="…"` inside `data-hf-id="…"` (and "width" inside `data-width`, etc.).
-  // The lookbehind requires the match to start a fresh attribute name.
-  const match = tagSource.match(new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*["']([^"']+)["']`, "i"));
-  return match?.[1] || null;
+  return readDecodedAttr(tagSource, attr) || null;
 }
 
 /** Read an HTML attribute using browser-equivalent character-reference decoding. */
