@@ -19,6 +19,7 @@ import {
   parseImageElements,
   extractAllVideoFrames,
   extractVideoFramesRange,
+  extractionFrameCountForDuration,
   createFrameLookupTable,
   resolveProjectRelativeSrc,
   resolveFrameFormat,
@@ -304,6 +305,22 @@ describe("resolveVideoExtractionDuration", () => {
 
   it("retains legacy behavior when no timeline end is supplied", () => {
     expect(resolveVideoExtractionDuration(video(), metadata(60))).toBe(60);
+  });
+});
+
+describe("extractionFrameCountForDuration", () => {
+  it("uses the same VFR ceil and CFR nearest-boundary rules as FFmpeg", () => {
+    expect(extractionFrameCountForDuration(0.466666, 30, true)).toBe(14);
+    expect(extractionFrameCountForDuration(0.466666, 30, false)).toBe(14);
+    expect(extractionFrameCountForDuration(0.616666, 30, true)).toBe(19);
+    expect(extractionFrameCountForDuration(0.616666, 30, false)).toBe(18);
+  });
+
+  it("fails closed for invalid durations and emits one frame for positive sub-frame work", () => {
+    expect(extractionFrameCountForDuration(Number.NaN, 30, true)).toBe(0);
+    expect(extractionFrameCountForDuration(1, 0, true)).toBe(0);
+    expect(extractionFrameCountForDuration(0, 30, true)).toBe(0);
+    expect(extractionFrameCountForDuration(0.001, 30, false)).toBe(1);
   });
 });
 
@@ -2099,6 +2116,29 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result.errors).toEqual([]);
     expect(statSync(framePath(result, "trim-a", 0)).ino).not.toBe(
       statSync(framePath(result, "trim-b", 0)).ino,
+    );
+    expect(supersetDirNames(outputDir)).toEqual([]);
+  }, 60_000);
+
+  it("uses VFR ceil frame counts when slicing overlapping short trims from a superset", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-vfr-superset-short");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [
+        cfrClipElement("vfr-short-a", VFR_FIXTURE, 0.616666, 0),
+        cfrClipElement("vfr-short-b", VFR_FIXTURE, 0.616666, 0.1),
+      ],
+      FIXTURE_DIR,
+      { fps: 30, outputDir },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(extractedFor(result, "vfr-short-a").metadata.isVFR).toBe(true);
+    expect(extractedFor(result, "vfr-short-a").totalFrames).toBe(19);
+    expect(extractedFor(result, "vfr-short-b").totalFrames).toBe(19);
+    expect(statSync(framePath(result, "vfr-short-a", 3)).ino).toBe(
+      statSync(framePath(result, "vfr-short-b", 0)).ino,
     );
     expect(supersetDirNames(outputDir)).toEqual([]);
   }, 60_000);

@@ -81,6 +81,26 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
   return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
 }
 
+/**
+ * Resolve the frame count produced for a requested extraction duration.
+ *
+ * CFR extraction uses FFmpeg's fps filter, whose end boundary rounds to the
+ * nearest frame. The VFR path normalizes with `-fps_mode cfr -r`, whose end
+ * boundary rounds up. Keep this calculation shared by superset slicing and
+ * producer coverage accounting so a complete VFR extraction cannot be
+ * rejected because the two paths disagree by one frame.
+ */
+export function extractionFrameCountForDuration(
+  durationSeconds: number,
+  fps: number,
+  isVFR: boolean,
+): number {
+  if (!Number.isFinite(durationSeconds) || !Number.isFinite(fps)) return 0;
+  if (durationSeconds <= 0 || fps <= 0) return 0;
+  const frames = isVFR ? Math.ceil(durationSeconds * fps) : Math.round(durationSeconds * fps);
+  return Math.max(1, frames);
+}
+
 export interface ExtractionOptions {
   fps: number;
   outputDir: string;
@@ -1190,7 +1210,11 @@ function sliceSupersetMember(
   // offset_i + k, so its source time is
   // baseStart + (offset_i + k) / fps = mediaStart_i + k / fps.
   // The frame-alignment precondition is what makes offset_i integral.
-  const requestedFrames = Math.round(work.videoDuration * fps);
+  const requestedFrames = extractionFrameCountForDuration(
+    work.videoDuration,
+    fps,
+    work.metadata.isVFR,
+  );
   const availableFrames = Math.max(0, superset.totalFrames - member.offsetFrames);
   const frameCount = Math.min(requestedFrames, availableFrames);
   for (let i = 0; i < frameCount; i += 1) {

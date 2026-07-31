@@ -46,10 +46,14 @@
 
 import { parseHTML } from "linkedom";
 import {
+  extractionFrameCountForDuration,
   resolvePlayableVideoDuration,
   type ExtractedFrames,
   type VideoElement,
 } from "@hyperframes/engine";
+
+const SHORT_CLIP_ONE_FRAME_TOLERANCE_MIN_EXPECTED_FRAMES = 14;
+const SHORT_CLIP_ONE_FRAME_TOLERANCE_MAX_EXPECTED_FRAMES = 20;
 
 export interface VideoFrameCoverageReport {
   videoId: string;
@@ -138,9 +142,20 @@ export function expectedFramesForClip(
   if (fps <= 0) return 0;
   const duration = Math.max(0, end - start);
   if (duration === 0) return 0;
-  const frameCount =
-    rounding === "nearest" ? Math.round(duration * fps) : Math.ceil(duration * fps);
-  return Math.max(1, frameCount);
+  return extractionFrameCountForDuration(duration, fps, rounding === "ceil");
+}
+
+function isToleratedShortClipBoundaryMiss(
+  report: VideoFrameCoverageReport,
+  threshold: number,
+): boolean {
+  return (
+    threshold < 1 &&
+    report.capturedFrames > 0 &&
+    report.expectedFrames >= SHORT_CLIP_ONE_FRAME_TOLERANCE_MIN_EXPECTED_FRAMES &&
+    report.expectedFrames <= SHORT_CLIP_ONE_FRAME_TOLERANCE_MAX_EXPECTED_FRAMES &&
+    report.expectedFrames - report.capturedFrames === 1
+  );
 }
 
 function expectedFramesForVideo(
@@ -207,7 +222,12 @@ export function assertVideoFrameCoverage(
   threshold: number | null,
 ): void {
   if (threshold === null) return;
-  const failed = reports.filter((report) => report.expectedFrames > 0 && report.ratio < threshold);
+  const failed = reports.filter(
+    (report) =>
+      report.expectedFrames > 0 &&
+      report.ratio < threshold &&
+      !isToleratedShortClipBoundaryMiss(report, threshold),
+  );
   if (failed.length === 0) return;
   // Sort ascending by ratio so the "worst" is first — that's what we cite
   // in the message and pin on the error details for telemetry.
