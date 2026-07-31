@@ -1,0 +1,104 @@
+<template>
+  <div
+    id="beat-flat"
+    data-composition-id="flat"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-flat {
+        background: #f5f1e8;
+        overflow: hidden;
+      }
+      #beat-flat .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #1b1a17;
+      }
+      #beat-flat .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #906342;
+        margin-bottom: 14px;
+      }
+      #beat-flat .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-flat .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #6b6459;
+        margin-top: 12px;
+      }
+      #beat-flat .fl-stage {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+
+    <div class="fl-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <rect id="fl-r1" x="300" y="220" width="300" height="300" fill="#e2564a" />
+        <circle id="fl-c1" cx="900" cy="370" r="150" fill="#2f6f8f" />
+        <rect id="fl-r2" x="1180" y="220" width="300" height="300" fill="#efb937" />
+        <path id="fl-t1" d="M300 820 L450 580 L600 820 Z" fill="#2f6f8f" />
+        <rect id="fl-r3" x="760" y="580" width="280" height="240" fill="#1b1a17" />
+        <circle id="fl-c2" cx="1330" cy="700" r="120" fill="#e2564a" />
+        <rect id="fl-bar" x="300" y="880" width="0" height="14" fill="#1b1a17" />
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">08 / DIGITAL</div>
+      <div class="beat-name">Flat / minimalist</div>
+      <div class="beat-tech">Geometric primitives, flat fills, zero gradients</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Flat design is about timing discipline, not texture: everything moves
+        // on the same grid, with one shared ease and an index-derived offset.
+        var shapes = ["#fl-r1", "#fl-c1", "#fl-r2", "#fl-t1", "#fl-r3", "#fl-c2"];
+        shapes.forEach(function (sel, i) {
+          tl.from(
+            sel,
+            {
+              scale: 0,
+              transformOrigin: "50% 50%",
+              duration: 0.55,
+              ease: "back.out(1.7)",
+            },
+            0.15 + i * 0.11,
+          );
+        });
+        tl.to("#fl-bar", { attr: { width: 1320 }, duration: 1.1, ease: "power3.inOut" }, 1.0);
+        tl.to(
+          "#fl-r1",
+          { rotation: 45, transformOrigin: "50% 50%", duration: 0.9, ease: "power2.inOut" },
+          1.7,
+        );
+        tl.to(
+          "#fl-r2",
+          { rotation: -45, transformOrigin: "50% 50%", duration: 0.9, ease: "power2.inOut" },
+          1.85,
+        );
+
+        tl.from(
+          "#beat-flat .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["flat"] = tl;
+      })();
+    </script>
+  </div>
+</template>

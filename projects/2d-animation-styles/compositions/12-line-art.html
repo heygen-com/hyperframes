@@ -1,0 +1,101 @@
+<template>
+  <div
+    id="beat-lineart"
+    data-composition-id="lineart"
+    data-width="1920"
+    data-height="1080"
+    data-duration="3.5"
+    style="position: absolute; inset: 0"
+  >
+    <style>
+      #beat-lineart {
+        background: #faf7f0;
+        overflow: hidden;
+      }
+      #beat-lineart .beat-label {
+        position: absolute;
+        left: 96px;
+        bottom: 88px;
+        color: #17150f;
+      }
+      #beat-lineart .beat-num {
+        font-size: 22px;
+        letter-spacing: 0.34em;
+        color: #906342;
+        margin-bottom: 14px;
+      }
+      #beat-lineart .beat-name {
+        font-size: 62px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      #beat-lineart .beat-tech {
+        font-size: 26px;
+        font-weight: 300;
+        color: #6b6459;
+        margin-top: 12px;
+      }
+      #beat-lineart .la-stage {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+
+    <div class="la-stage">
+      <svg width="1920" height="1080" viewBox="0 0 1920 1080">
+        <!-- fill:none is load-bearing. Any fill would appear instantly and
+             destroy the reveal, because dash offset only gates the stroke. -->
+        <g
+          class="la-path"
+          fill="none"
+          stroke="#17150f"
+          stroke-width="5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            class="la-draw"
+            d="M560 780 C 560 560, 700 420, 960 420 C 1220 420, 1360 560, 1360 780"
+          />
+          <path class="la-draw" d="M560 780 L1360 780" />
+          <path class="la-draw" d="M700 780 L700 600 L860 600 L860 780" />
+          <path class="la-draw" d="M1060 620 L1260 620 L1260 740 L1060 740 Z" />
+          <path class="la-draw" d="M1160 620 L1160 740" />
+          <path class="la-draw" d="M960 300 L960 420" />
+          <circle class="la-draw" cx="960" cy="264" r="36" />
+          <path class="la-draw" d="M420 820 L1500 820" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="beat-label">
+      <div class="beat-num">12 / DIGITAL</div>
+      <div class="beat-name">Line art</div>
+      <div class="beat-tech">stroke-dasharray draw-on, fill:none throughout</div>
+    </div>
+
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        // Constant pen speed: ease "none" per path, ordered by drawing logic
+        // rather than position, so it reads like someone sketching.
+        var paths = document.querySelectorAll("#beat-lineart .la-draw");
+        Array.prototype.forEach.call(paths, function (p, i) {
+          var len = p.getTotalLength();
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+          tl.to(p, { strokeDashoffset: 0, duration: 0.55, ease: "none" }, 0.15 + i * 0.28);
+        });
+
+        tl.from(
+          "#beat-lineart .beat-label",
+          { opacity: 0, x: -26, duration: 0.5, ease: "power2.out" },
+          0.2,
+        );
+
+        window.__timelines["lineart"] = tl;
+      })();
+    </script>
+  </div>
+</template>
