@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createTypegpuAdapter } from "./typegpu";
+import { createTypegpuAdapter, TYPEGPU_PRESENT_HEARTBEAT_MS } from "./typegpu";
 import { resetSeekDispatchState } from "./seek-dispatch";
 
 const gpuWindow = window as Window & { __hfTypegpuTime?: number };
 
 describe("typegpu adapter", () => {
   beforeEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
     delete gpuWindow.__hfTypegpuTime;
     // Reset shared dedup state so each test starts with a clean dispatch history
     resetSeekDispatchState();
@@ -85,5 +87,27 @@ describe("typegpu adapter", () => {
   it("discover is a no-op and does not throw", () => {
     const adapter = createTypegpuAdapter();
     expect(() => adapter.discover()).not.toThrow();
+  });
+
+  it("re-presents the paused WebGPU frame without advancing seek time", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML =
+      '<div data-composition-id="gpu" data-requires-webgpu data-duration="2"></div>';
+    const adapter = createTypegpuAdapter();
+    const times: number[] = [];
+    const handler = (event: Event) => {
+      times.push((event as CustomEvent<{ time: number }>).detail.time);
+    };
+    window.addEventListener("hf-seek", handler);
+
+    adapter.seek({ time: 1.25 });
+    adapter.pause();
+    await vi.advanceTimersByTimeAsync(TYPEGPU_PRESENT_HEARTBEAT_MS);
+    adapter.play?.();
+    await vi.advanceTimersByTimeAsync(TYPEGPU_PRESENT_HEARTBEAT_MS * 2);
+    window.removeEventListener("hf-seek", handler);
+
+    expect(times).toEqual([1.25, 1.25]);
+    expect(gpuWindow.__hfTypegpuTime).toBe(1.25);
   });
 });

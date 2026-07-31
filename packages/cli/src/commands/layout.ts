@@ -203,6 +203,8 @@ async function runLayoutAudit(
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
+  const { assertWebGpuRequirement, resolveCaptureBrowserGpuMode, resolveLocalBrowserGpuMode } =
+    await import("../browser/gpuPolicy.js");
   const html = await bundleProjectHtml(projectDir);
   const server = await serveStaticProjectHtml(
     projectDir,
@@ -213,10 +215,19 @@ async function runLayoutAudit(
 
   try {
     const browser = await ensureBrowser();
+    const requestedGpuMode = resolveLocalBrowserGpuMode();
+    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
+      requestedGpuMode,
+      browser.executablePath,
+    );
+    assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
     chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
+      args: buildChromeArgs(
+        { width: 1920, height: 1080, captureMode: "screenshot" },
+        { browserGpuMode: resolvedGpuMode },
+      ),
     });
 
     const page = await chromeBrowser.newPage();

@@ -19,15 +19,39 @@ import { swallow } from "../diagnostics";
  */
 
 let _lastDispatchedTime = -1;
+let _pendingCompletion: Promise<void> = Promise.resolve();
+
+export interface HfSeekEventDetail {
+  time: number;
+  waitUntil: (promise: PromiseLike<unknown>) => void;
+}
+
+function dispatch(time: number): void {
+  const pending: PromiseLike<unknown>[] = [];
+  let accepting = true;
+  const detail: HfSeekEventDetail = {
+    time,
+    waitUntil: (promise) => {
+      if (!accepting) {
+        throw new Error("hf-seek waitUntil() must be called synchronously from the event listener");
+      }
+      pending.push(promise);
+    },
+  };
+  try {
+    window.dispatchEvent(new CustomEvent<HfSeekEventDetail>("hf-seek", { detail }));
+  } catch (err) {
+    swallow("runtime.adapters.seek-dispatch.site1", err);
+  } finally {
+    accepting = false;
+  }
+  _pendingCompletion = Promise.all(pending).then(() => undefined);
+}
 
 export function dispatchSeekEvent(time: number): void {
   if (time === _lastDispatchedTime) return;
   _lastDispatchedTime = time;
-  try {
-    window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time } }));
-  } catch (err) {
-    swallow("runtime.adapters.seek-dispatch.site1", err);
-  }
+  dispatch(time);
 }
 
 /**
@@ -42,14 +66,15 @@ export function dispatchSeekEvent(time: number): void {
  */
 export function forceDispatchSeekEvent(time: number): void {
   _lastDispatchedTime = time;
-  try {
-    window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time } }));
-  } catch (err) {
-    swallow("runtime.adapters.seek-dispatch.force", err);
-  }
+  dispatch(time);
+}
+
+export function waitForSeekCompletion(): Promise<void> {
+  return _pendingCompletion;
 }
 
 /** Reset internal state — used in tests to prevent cross-test contamination. */
 export function resetSeekDispatchState(): void {
   _lastDispatchedTime = -1;
+  _pendingCompletion = Promise.resolve();
 }

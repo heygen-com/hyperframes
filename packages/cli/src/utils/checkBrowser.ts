@@ -58,6 +58,7 @@ interface RuntimeDraft {
   time: number;
   url?: string;
   line?: number;
+  count?: number;
 }
 
 interface AnchorRequest {
@@ -168,7 +169,7 @@ export async function runBrowserCheck(
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "checking the current page state",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       beforeNavigate: (page) => wireRuntimeListeners(page, drafts, () => currentTime),
     });
     chromeBrowser = session.browser;
@@ -229,7 +230,7 @@ export async function captureFindingCrops(
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
       renderReadyWarningSuffix: "capturing finding crops",
-      browserGpuMode: resolveCliChromeGpuMode(),
+      browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     });
     chromeBrowser = session.browser;
     const page = session.page;
@@ -263,6 +264,31 @@ export async function captureFindingCrops(
 // `console.info` from a composition author's own script must not.
 const MEDIA_PROXY_MARKER_PREFIX = "[hyperframes] runtime_media_proxy_";
 const MEDIA_PROXY_UNAVAILABLE_MARKER = "[hyperframes] runtime_media_proxy_unavailable";
+const WEBGPU_RUNTIME_FAILURE =
+  /\b(?:GPUValidationError|GPUOutOfMemoryError|GPUInternalError)\b|WebGPU uncaptured error|(?:destroyed\b.*\b(?:GPU )?(?:resource|buffer|texture)\b.*\bsubmit)|(?:(?:GPU )?(?:resource|buffer|texture)\b.*\bdestroyed\b.*\bsubmit)/i;
+
+function isWebGpuRuntimeFailure(text: string): boolean {
+  return WEBGPU_RUNTIME_FAILURE.test(text);
+}
+
+function pushRuntimeDraft(drafts: RuntimeDraft[], draft: RuntimeDraft): void {
+  if (draft.code !== "webgpu_runtime_error") {
+    drafts.push(draft);
+    return;
+  }
+  const duplicate = drafts.find(
+    (entry) =>
+      entry.code === draft.code &&
+      entry.message === draft.message &&
+      entry.url === draft.url &&
+      entry.line === draft.line,
+  );
+  if (duplicate) {
+    duplicate.count = (duplicate.count ?? 1) + 1;
+    return;
+  }
+  drafts.push({ ...draft, count: 1 });
+}
 
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
   page.on("console", (message) => {
@@ -270,7 +296,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     const text = message.text();
     if (type === "error" && !text.startsWith("Failed to load resource")) {
       const location = message.location();
-      drafts.push({
+      pushRuntimeDraft(drafts, {
         code: "console_error",
         severity: "error",
         message: text,
@@ -280,9 +306,10 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       });
     } else if (type === "warn") {
       const location = message.location();
-      drafts.push({
-        code: "console_warning",
-        severity: "warning",
+      const webGpuFailure = isWebGpuRuntimeFailure(text);
+      pushRuntimeDraft(drafts, {
+        code: webGpuFailure ? "webgpu_runtime_error" : "console_warning",
+        severity: webGpuFailure ? "error" : "warning",
         message: text,
         time: currentTime(),
         url: location.url,
@@ -290,7 +317,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
       });
     } else if (type === "info" && text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) {
       const location = message.location();
-      drafts.push({
+      pushRuntimeDraft(drafts, {
         code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
           ? "media_proxy_unavailable"
           : "media_proxy_fallback",
@@ -307,7 +334,12 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (message.includes("Unexpected token '<'") || message.includes("Unexpected token '&lt;'")) {
       return;
     }
-    drafts.push({ code: "page_error", severity: "error", message, time: currentTime() });
+    pushRuntimeDraft(drafts, {
+      code: "page_error",
+      severity: "error",
+      message,
+      time: currentTime(),
+    });
   });
   wireNetworkListeners(page, drafts, currentTime);
 }
@@ -1088,7 +1120,8 @@ function runtimeFinding(draft: RuntimeDraft, root: CheckAnchor): CheckFinding {
   return {
     code: draft.code,
     severity: draft.severity,
-    message: draft.message,
+    message:
+      (draft.count ?? 1) > 1 ? `${draft.message} (repeated ${draft.count} times)` : draft.message,
     selector: root.selector,
     dataAttributes: root.dataAttributes,
     sourceFile: root.sourceFile,

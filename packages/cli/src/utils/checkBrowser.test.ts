@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -431,6 +432,49 @@ it("surfaces the runtime's media-proxy-unavailable console.info line as its own 
       code: "media_proxy_unavailable",
       severity: "info",
       message: unavailableMessage.text(),
+    }),
+  );
+});
+
+it("elevates and deduplicates WebGPU validation warnings while preserving ordinary warnings", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const validationFailure = fakeConsoleMessage(
+    "warn",
+    "WebGPU uncaptured error: GPUValidationError: Destroyed texture used in a submit",
+  );
+  const ordinaryWarning = fakeConsoleMessage("warn", "Optional caption font was not loaded");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(validationFailure);
+        handler(validationFailure);
+        handler(ordinaryWarning);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "webgpu_runtime_error",
+      severity: "error",
+      message: `${validationFailure.text()} (repeated 2 times)`,
+    }),
+  );
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "console_warning",
+      severity: "warning",
+      message: ordinaryWarning.text(),
     }),
   );
 });

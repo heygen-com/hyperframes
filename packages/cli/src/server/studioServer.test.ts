@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
@@ -9,6 +9,16 @@ import { createStudioServer, type StudioServer } from "./studioServer.js";
 describe("loadRuntimeSource", () => {
   it("loads runtime source from the published core entrypoint", async () => {
     await expect(loadRuntimeSource()).resolves.toBe(loadHyperframeRuntimeSource());
+  });
+});
+
+describe("Studio thumbnail GPU capture plumbing", () => {
+  it("uses the shared auto probe, resolved launch mode, requirement guard, and completion-aware seek", () => {
+    const source = readFileSync(new URL("./studioServer.ts", import.meta.url), "utf8");
+    expect(source).toContain("resolveCaptureBrowserGpuMode");
+    expect(source).toContain("{ browserGpuMode: resolvedGpuMode }");
+    expect(source).toContain("assertWebGpuRequirement");
+    expect(source).toContain("await seekCompositionTimeline(page, opts.seekTime");
   });
 });
 

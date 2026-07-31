@@ -3,6 +3,7 @@ import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
 import type { ProjectDir } from "./project.js";
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 export interface CheckOptions {
   samples: number;
@@ -22,6 +23,7 @@ export interface CheckOptions {
   layout?: LayoutOptions;
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 export interface CaptionZoneOptions {

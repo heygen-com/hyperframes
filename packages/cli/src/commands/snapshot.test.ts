@@ -53,6 +53,13 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain("autoProxy: args.proxy as boolean | undefined");
     expect(source).toContain("opts.autoProxy");
   });
+
+  it("resolves and forwards the shared local browser GPU policy", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("resolveLocalBrowserGpuMode");
+    expect(source).toContain("browserGpuMode: opts.browserGpuMode");
+    expect(source).toContain('"browser-gpu": {');
+  });
 });
 
 describe("resolveSnapshotVideoFrameTime", () => {

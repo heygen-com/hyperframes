@@ -21,6 +21,7 @@ import { c } from "../ui/colors.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
+import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
@@ -244,6 +245,7 @@ async function captureSnapshots(
     zoom?: ZoomTarget;
     zoomScale?: number;
     autoProxy?: boolean;
+    browserGpuMode?: BrowserGpuMode;
   },
 ): Promise<string[]> {
   const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
@@ -261,6 +263,7 @@ async function captureSnapshots(
     const { browser: chromeBrowser, page } = await openSettledCompositionPage(html, server.url, {
       renderReadyTimeoutMs: opts.timeout ?? 5000,
       renderReadyWarningSuffix: "snapshots may be inaccurate",
+      browserGpuMode: opts.browserGpuMode,
     });
 
     try {
@@ -638,6 +641,12 @@ export default defineCommand({
         "Auto-transcode browser-hostile video codecs for snapshots (default: on; overrides hyperframes.json media.autoProxy)",
       default: undefined,
     },
+    "browser-gpu": {
+      type: "boolean",
+      description:
+        "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
+      default: undefined,
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -687,6 +696,7 @@ export default defineCommand({
         zoom: zoomTarget,
         zoomScale,
         autoProxy: args.proxy as boolean | undefined,
+        browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
       });
 
       if (paths.length === 0) {

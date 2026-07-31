@@ -2366,6 +2366,15 @@ async function captureFrameErrorDiagnostics(
  * Shared by captureFrame (disk) and captureFrameToBuffer (buffer).
  * Returns timing breakdown for perf tracking.
  */
+export async function waitForPendingSeekCompletion(page: Pick<Page, "evaluate">): Promise<void> {
+  await page.evaluate(async () => {
+    const waitForCompletion = (
+      window as Window & { __hfWaitForSeekCompletion?: () => Promise<void> }
+    ).__hfWaitForSeekCompletion;
+    await waitForCompletion?.();
+  });
+}
+
 async function prepareFrameForCapture(
   session: CaptureSession,
   frameIndex: number,
@@ -2406,6 +2415,7 @@ async function prepareFrameForCapture(
   if (session.onBeforeCapture) {
     await session.onBeforeCapture(page, quantizedTime);
   }
+  await waitForPendingSeekCompletion(page);
   await page.evaluate(async () => {
     const runtime = (
       window as Window & {

@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
+import {
+  assertWebGpuRequirement,
+  resolveCaptureBrowserGpuMode,
+  resolveLocalBrowserGpuMode,
+  type BrowserGpuMode,
+} from "../browser/gpuPolicy.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 
@@ -66,9 +72,7 @@ export interface OpenSettledCompositionPageOptions {
   navigationTimeoutMs?: number;
   renderReadyTimeoutMs: number;
   renderReadyWarningSuffix: string;
-  // Screenshot paths take the engine's software-GPU default; validate/check
-  // thread the PRODUCER_BROWSER_GPU_MODE opt-in through here.
-  browserGpuMode?: "software" | "hardware";
+  browserGpuMode?: BrowserGpuMode;
   // Runs after the page exists but before page.goto, so console/pageerror/
   // request listeners can attach without missing load-time events.
   beforeNavigate?: (page: Page) => void | Promise<void>;
@@ -82,8 +86,8 @@ export interface FfmpegRunResult {
 
 export function resolveCliChromeGpuMode(
   envMode = process.env.PRODUCER_BROWSER_GPU_MODE,
-): "software" | "hardware" {
-  return envMode === "software" ? "software" : "hardware";
+): BrowserGpuMode {
+  return resolveLocalBrowserGpuMode(undefined, envMode);
 }
 
 function compositionRuntimeReadyInBrowser(): boolean {
@@ -167,6 +171,12 @@ export async function openSettledCompositionPage(
   const browser = await ensureBrowser();
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
+  const requestedGpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
+  const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
+    requestedGpuMode,
+    browser.executablePath,
+  );
+  assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
 
   let chromeBrowser: Browser | undefined;
   try {
@@ -175,7 +185,7 @@ export async function openSettledCompositionPage(
       executablePath: browser.executablePath,
       args: buildChromeArgs(
         { ...viewport, captureMode: "screenshot" },
-        { browserGpuMode: options.browserGpuMode },
+        { browserGpuMode: resolvedGpuMode },
       ),
     });
 
@@ -255,6 +265,13 @@ export async function seekCompositionTimeline(
     timeSeconds,
     options.fallbackToBridgeAndTimelines === true,
   );
+
+  await page.evaluate(async () => {
+    const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
+    if (typeof waitForCompletion === "function") {
+      await Reflect.apply(waitForCompletion, window, []);
+    }
+  });
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";
   if (animationFrameSettle === "race") {

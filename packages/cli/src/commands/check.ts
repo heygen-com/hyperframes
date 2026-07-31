@@ -17,6 +17,7 @@ import {
   type CheckSection,
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
+import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -106,6 +107,12 @@ export function createCheckCommand(
           "Auto-transcode browser-hostile video codecs (default: hyperframes.json media.autoProxy, which defaults on)",
         default: undefined,
       },
+      "browser-gpu": {
+        type: "boolean",
+        description:
+          "Use hardware browser GPU capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect, PRODUCER_BROWSER_GPU_MODE overrides)",
+        default: undefined,
+      },
       snapshots: {
         type: "boolean",
         description: "Save the five contrast-pass PNGs under snapshots/",
@@ -175,6 +182,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     frameCheck: parseFrameCheck(args["frame-check"]),
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
+    browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
   };
 }
 

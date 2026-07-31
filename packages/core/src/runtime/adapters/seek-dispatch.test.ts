@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { dispatchSeekEvent, forceDispatchSeekEvent, resetSeekDispatchState } from "./seek-dispatch";
+import {
+  dispatchSeekEvent,
+  forceDispatchSeekEvent,
+  resetSeekDispatchState,
+  waitForSeekCompletion,
+  type HfSeekEventDetail,
+} from "./seek-dispatch";
 
 describe("seek-dispatch", () => {
   beforeEach(() => {
@@ -41,5 +47,28 @@ describe("seek-dispatch", () => {
     dispatchSeekEvent(8); // deduped — force already recorded t=8
     window.removeEventListener("hf-seek", handler);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for all GPU work registered synchronously by listeners", async () => {
+    let finish: (() => void) | undefined;
+    const gpuWork = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const handler = (event: Event) => {
+      (event as CustomEvent<HfSeekEventDetail>).detail.waitUntil(gpuWork);
+    };
+    window.addEventListener("hf-seek", handler);
+    dispatchSeekEvent(9);
+    window.removeEventListener("hf-seek", handler);
+
+    let settled = false;
+    const pending = waitForSeekCompletion().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish?.();
+    await pending;
+    expect(settled).toBe(true);
   });
 });

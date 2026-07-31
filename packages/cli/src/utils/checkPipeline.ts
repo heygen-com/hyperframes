@@ -85,6 +85,7 @@ export const DEFAULT_CHECK_OPTIONS: CheckOptions = {
   contrast: true,
   strict: false,
   snapshots: false,
+  browserGpuMode: "auto",
 };
 
 /** Pick at most five evenly-strided points from the already-merged layout grid. */

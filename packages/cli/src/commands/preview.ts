@@ -1,4 +1,5 @@
 import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
@@ -190,6 +191,12 @@ export default defineCommand({
       description:
         "Launch the opened browser with --disable-gpu (requires --browser-path). For hosts where hardware acceleration crashes the graphics driver (e.g. NVIDIA Xid resets); with the system default browser use --no-open instead.",
     },
+    "browser-gpu": {
+      type: "boolean",
+      description:
+        "Use hardware GPU for Studio thumbnails and frame capture; pass --no-browser-gpu for deterministic SwiftShader (default: auto-detect)",
+      default: undefined,
+    },
     proxy: {
       type: "boolean",
       description:
@@ -198,6 +205,8 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
+    if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
     const startPort = parseInt(args.port ?? "3002", 10);
     const preferredContextPort = hasExplicitPreviewPort(process.argv) ? startPort : undefined;
 

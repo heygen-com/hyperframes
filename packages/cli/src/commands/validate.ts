@@ -418,12 +418,20 @@ async function validateInBrowser(
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
+    const requestedGpuMode = resolveCliChromeGpuMode();
+    const { assertWebGpuRequirement, resolveCaptureBrowserGpuMode } =
+      await import("../browser/gpuPolicy.js");
+    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
+      requestedGpuMode,
+      browser.executablePath,
+    );
+    assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
         { ...viewport, captureMode: "screenshot" },
-        { browserGpuMode: resolveCliChromeGpuMode() },
+        { browserGpuMode: resolvedGpuMode },
       ),
     });
 

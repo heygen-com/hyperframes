@@ -17,7 +17,7 @@ import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
 } from "./adapters/video-texture-compat";
-import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
+import { forceDispatchSeekEvent, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
   readElementPlaybackRate,
@@ -2514,6 +2514,12 @@ export function initSandboxRuntimeModular(): void {
     window.__hfTypegpuTime = t;
     forceDispatchSeekEvent(t);
   };
+  window.__hfWaitForSeekCompletion = waitForSeekCompletion;
+  runtimeCleanupCallbacks.push(() => {
+    if (window.__hfWaitForSeekCompletion === waitForSeekCompletion) {
+      delete window.__hfWaitForSeekCompletion;
+    }
+  });
   installRuntimeErrorDiagnostics();
   bindMediaMetadataListeners();
   runAdapters("discover");

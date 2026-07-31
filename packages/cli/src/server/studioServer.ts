@@ -35,6 +35,14 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
+import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
+import {
+  assertWebGpuRequirement,
+  resolveCaptureBrowserGpuMode,
+  resolveLocalBrowserGpuMode,
+  type BrowserGpuMode,
+  type ResolvedBrowserGpuMode,
+} from "../browser/gpuPolicy.js";
 
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const REMOTE_GIF_IMG_SRC_RE =
@@ -169,23 +177,37 @@ async function downloadRemoteGifImageSources(
 // share a single Chrome process instead of running two independent ones.
 
 let _thumbnailBrowserLease: import("@hyperframes/engine").BrowserLease | null = null;
-let _thumbnailBrowserInitializing: Promise<
-  import("@hyperframes/engine").BrowserLease | null
-> | null = null;
+let _thumbnailBrowserInitializing: Promise<ThumbnailBrowserSession | null> | null = null;
+let _thumbnailBrowserModes: {
+  requested: BrowserGpuMode;
+  resolved: ResolvedBrowserGpuMode;
+} | null = null;
 
-async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
-  if (_thumbnailBrowserLease?.browser.connected) return _thumbnailBrowserLease.browser;
-  if (_thumbnailBrowserInitializing) {
-    return (await _thumbnailBrowserInitializing)?.browser ?? null;
+interface ThumbnailBrowserSession {
+  browser: import("puppeteer-core").Browser;
+  requestedGpuMode: BrowserGpuMode;
+  resolvedGpuMode: ResolvedBrowserGpuMode;
+}
+
+async function getThumbnailBrowser(): Promise<ThumbnailBrowserSession | null> {
+  if (_thumbnailBrowserLease?.browser.connected && _thumbnailBrowserModes) {
+    return {
+      browser: _thumbnailBrowserLease.browser,
+      requestedGpuMode: _thumbnailBrowserModes.requested,
+      resolvedGpuMode: _thumbnailBrowserModes.resolved,
+    };
   }
+  if (_thumbnailBrowserInitializing) return _thumbnailBrowserInitializing;
 
   _thumbnailBrowserInitializing = (async () => {
     try {
       const { ensureBrowser } = await import("../browser/manager.js");
       const { acquireBrowser, buildChromeArgs } = await import("@hyperframes/engine");
+      let executablePath: string | undefined;
 
       try {
         const b = await ensureBrowser({ preferManagedChrome: true });
+        executablePath = b.executablePath;
         if (b.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
           process.env.PRODUCER_HEADLESS_SHELL_PATH = b.executablePath;
         }
@@ -193,16 +215,23 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         /* continue — acquireBrowser will try its own resolution */
       }
 
+      const requestedGpuMode = resolveLocalBrowserGpuMode();
+      const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
       const acquired = await acquireBrowser(
-        buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
+        buildChromeArgs(
+          { width: 1920, height: 1080, captureMode: "screenshot" },
+          { browserGpuMode: resolvedGpuMode },
+        ),
         { forceScreenshot: true },
       );
       _thumbnailBrowserLease = acquired;
+      _thumbnailBrowserModes = { requested: requestedGpuMode, resolved: resolvedGpuMode };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease === acquired) _thumbnailBrowserLease = null;
+        _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
-      return acquired;
+      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode };
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -213,13 +242,14 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
     }
   })();
 
-  return (await _thumbnailBrowserInitializing)?.browser ?? null;
+  return _thumbnailBrowserInitializing;
 }
 
 export async function closeThumbnailBrowser(): Promise<void> {
   if (!_thumbnailBrowserLease) return;
   const lease = _thumbnailBrowserLease;
   _thumbnailBrowserLease = null;
+  _thumbnailBrowserModes = null;
   _thumbnailBrowserInitializing = null;
   await lease.release().catch(() => {});
 }
@@ -494,14 +524,22 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const browser = await getThumbnailBrowser();
-      if (!browser) {
+      const session = await getThumbnailBrowser();
+      if (!session) {
         console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
         return null;
       }
+      const sourcePath = join(opts.project.dir, opts.compPath);
+      if (existsSync(sourcePath)) {
+        assertWebGpuRequirement(
+          readFileSync(sourcePath, "utf-8"),
+          session.requestedGpuMode,
+          session.resolvedGpuMode,
+        );
+      }
       let page: import("puppeteer-core").Page | null = null;
       try {
-        page = await browser.newPage();
+        page = await session.browser.newPage();
         await page.setViewport({ width: opts.width || 1920, height: opts.height || 1080 });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
         await page
@@ -515,22 +553,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             { timeout: 5000 },
           )
           .catch(() => {});
-        // fallow-ignore-next-line code-duplication
-        await page.evaluate((t: number) => {
-          const w = window as Window & {
-            __player?: { seek?: (time: number) => void };
-            __timelines?: Record<string, { pause?: (time?: number) => void }>;
-            gsap?: { ticker?: { tick?: () => void } };
-          };
-          if (typeof w.__player?.seek === "function") {
-            w.__player.seek(t);
-          } else if (w.__timelines) {
-            for (const tl of Object.values(w.__timelines)) {
-              tl?.pause?.(t);
-            }
-            w.gsap?.ticker?.tick?.();
-          }
-        }, opts.seekTime);
+        await seekCompositionTimeline(page, opts.seekTime, {
+          fallbackToBridgeAndTimelines: true,
+          waitForPreferredSeekTargetMs: 500,
+          animationFrameSettle: "double",
+          waitForFontsMs: 500,
+        });
         const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
         await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
         await page.evaluate(() => {
