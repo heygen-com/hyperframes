@@ -66,4 +66,14 @@ describe("createStudioServer autoProxy plumbing", () => {
 
     expect(server.adapter.autoProxy).toBe(true);
   });
+
+  it("advertises the GPU policy used for thumbnail capture", async () => {
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir, browserGpuMode: "software" });
+
+    const response = await server.app.request("/__hyperframes_config");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ browserGpuMode: "software" });
+  });
 });

@@ -193,4 +193,48 @@ describe("detectHyperframesServer", () => {
 
     expect(result).toEqual({ type: "match" });
   });
+
+  it("treats same-project servers with a different browser GPU policy as mismatch", async () => {
+    const projectDir = "/tmp/demo-project";
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir,
+      serverBuildSignature: "same-build",
+      browserGpuMode: "hardware",
+      version: "0.6.42",
+    });
+
+    const normalizedProjectDir = resolve(projectDir).replace(/\\/g, "/").toLowerCase();
+    const result = await detectHyperframesServer(
+      port,
+      normalizedProjectDir,
+      "same-build",
+      "software",
+    );
+
+    expect(result).toEqual({ type: "mismatch", projectName: "demo-project" });
+  });
+
+  it("matches same-project servers with the requested browser GPU policy", async () => {
+    const projectDir = "/tmp/demo-project";
+    const port = await startConfigProbeServer({
+      isHyperframes: true,
+      projectName: "demo-project",
+      projectDir,
+      serverBuildSignature: "same-build",
+      browserGpuMode: "software",
+      version: "0.6.42",
+    });
+
+    const normalizedProjectDir = resolve(projectDir).replace(/\\/g, "/").toLowerCase();
+    const result = await detectHyperframesServer(
+      port,
+      normalizedProjectDir,
+      "same-build",
+      "software",
+    );
+
+    expect(result).toEqual({ type: "match" });
+  });
 });

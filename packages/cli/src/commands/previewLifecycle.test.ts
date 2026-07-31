@@ -94,6 +94,32 @@ describe("background preview lifecycle", () => {
     expect(spawn).toHaveBeenCalledOnce();
   });
 
+  it("starts a replacement when the existing server uses a different GPU policy", async () => {
+    const hardwareServer = { ...server, browserGpuMode: "hardware" as const };
+    const softwareServer = {
+      ...server,
+      port: 3211,
+      pid: "5432",
+      browserGpuMode: "software" as const,
+    };
+    let scans = 0;
+    const scan = vi.fn(async () =>
+      ++scans < 2 ? [hardwareServer] : [hardwareServer, softwareServer],
+    );
+    const spawn = vi.fn(() => ({ pid: 5432, unref: vi.fn() }));
+
+    const result = await startBackgroundPreview(projectDir, 3002, {
+      browserGpuMode: "software",
+      scan,
+      spawn,
+      sleep: async () => {},
+      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+    });
+
+    expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
+    expect(spawn).toHaveBeenCalledOnce();
+  });
+
   it("returns after a detached child becomes reachable and records its session", async () => {
     let scans = 0;
     const scan = vi.fn(async () => (++scans < 2 ? [] : [server]));

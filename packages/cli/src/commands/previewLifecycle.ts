@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { killProcessTree } from "../utils/orphanCleanup.js";
 
 export interface PreviewSession {
@@ -41,6 +42,7 @@ interface LifecycleDependencies {
   kill?: (pid: number) => void;
   stateHome?: string;
   forceNew?: boolean;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 function defaultStateHome(): string {
@@ -97,8 +99,18 @@ function removePreviewSession(projectDir: string, stateHome = defaultStateHome()
   rmSync(previewSessionPath(projectDir, stateHome), { force: true });
 }
 
-function matchingServer(servers: ActiveServer[], projectDir: string): ActiveServer | null {
-  return servers.find((server) => normalized(server.projectDir) === normalized(projectDir)) ?? null;
+function matchingServer(
+  servers: ActiveServer[],
+  projectDir: string,
+  browserGpuMode?: BrowserGpuMode,
+): ActiveServer | null {
+  return (
+    servers.find(
+      (server) =>
+        normalized(server.projectDir) === normalized(projectDir) &&
+        (browserGpuMode === undefined || server.browserGpuMode === browserGpuMode),
+    ) ?? null
+  );
 }
 
 function stopProcess(pid: number): void {
@@ -147,10 +159,11 @@ function startedServer(
   projectDir: string,
   existing: ActiveServer | null,
   forceNew: boolean,
+  browserGpuMode?: BrowserGpuMode,
 ): ActiveServer | null {
   const candidates =
     forceNew && existing ? servers.filter((server) => server.port !== existing.port) : servers;
-  return matchingServer(candidates, projectDir);
+  return matchingServer(candidates, projectDir, browserGpuMode);
 }
 
 export function buildBackgroundPreviewArgs(argv: string[]): string[] {
@@ -198,7 +211,7 @@ export async function startBackgroundPreview(
   | { type: "started"; port: number; pid: number; logPath: string }
 > {
   const scan = dependencies.scan ?? scanActiveServers;
-  const existing = matchingServer(await scan(startPort), projectDir);
+  const existing = matchingServer(await scan(startPort), projectDir, dependencies.browserGpuMode);
   if (existing && !dependencies.forceNew) {
     return {
       type: "reused",
@@ -218,6 +231,7 @@ export async function startBackgroundPreview(
       projectDir,
       existing,
       dependencies.forceNew === true,
+      dependencies.browserGpuMode,
     );
     if (server) {
       const session = {

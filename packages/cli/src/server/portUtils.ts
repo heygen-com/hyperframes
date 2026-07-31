@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { c } from "../ui/colors.js";
+import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -101,6 +102,7 @@ interface HyperframesConfigResponse {
   projectName: string;
   projectDir: string;
   serverBuildSignature?: string | null;
+  browserGpuMode?: BrowserGpuMode;
   version: string;
 }
 
@@ -117,6 +119,7 @@ export function detectHyperframesServer(
   port: number,
   normalizedProjectDir: string,
   expectedServerBuildSignature: string | null = null,
+  expectedBrowserGpuMode?: BrowserGpuMode,
 ): Promise<DetectionResult> {
   return new Promise<DetectionResult>((resolveResult) => {
     const req = http.get(
@@ -158,6 +161,12 @@ export function detectHyperframesServer(
               if (
                 expectedServerBuildSignature !== null &&
                 json.serverBuildSignature !== expectedServerBuildSignature
+              ) {
+                return resolveResult({ type: "mismatch", projectName: json.projectName });
+              }
+              if (
+                expectedBrowserGpuMode !== undefined &&
+                json.browserGpuMode !== expectedBrowserGpuMode
               ) {
                 return resolveResult({ type: "mismatch", projectName: json.projectName });
               }
@@ -217,6 +226,7 @@ export interface ActiveServer {
   projectDir: string;
   version: string;
   pid: string | null;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 /**
@@ -289,6 +299,7 @@ export async function scanActiveServers(startPort = 3002): Promise<ActiveServer[
           projectDir: config.projectDir,
           version: config.version,
           pid,
+          browserGpuMode: config.browserGpuMode,
         };
       }),
     );
@@ -348,6 +359,7 @@ export async function findPortAndServe(
   forceNew: boolean,
   expectedServerBuildSignature: string | null = null,
   bindHost?: string,
+  expectedBrowserGpuMode?: BrowserGpuMode,
 ): Promise<FindPortResult> {
   const { createAdaptorServer } = await import("@hono/node-server");
   // SECURITY (F-001): bind to loopback by default. The studio API exposes
@@ -398,6 +410,7 @@ export async function findPortAndServe(
         port,
         normalizedDir,
         expectedServerBuildSignature,
+        expectedBrowserGpuMode,
       );
       if (detection.type === "match") {
         return { type: "already-running", port };

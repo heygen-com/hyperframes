@@ -13,6 +13,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
+import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import {
+  assertWebGpuRequirement,
+  resolveCaptureBrowserGpuMode,
+  resolveLocalBrowserGpuMode,
+} from "../browser/gpuPolicy.js";
 import {
   buildOnionSvg,
   ghostAlphas,
@@ -156,14 +162,15 @@ function compositeGhostFrames(
 // Runs IN THE BROWSER. Self-contained (only `tt` + window/document — never a
 // Node-side closure variable), pauses/seeks every adapter to time `tt`: GSAP
 // `__timelines`, the Web Animations API, `__hfAnime` instances, then dispatches
-// `hf-seek` and nudges the three/GSAP render hooks. This one routine backs BOTH
+// `hf-seek` and nudges the three/GSAP render hooks. GPU work registered through
+// `waitUntil()` is awaited before returning. This one routine backs BOTH
 // the ghost-frame capture and the marker sampler below — see installSeekHelper
 // for why it's installed as a page global instead of being duplicated inline
 // (Puppeteer's page.evaluate only serializes the single function passed to it,
 // so a Node-side function can't be *called* from inside another evaluate
 // callback; it can only be reused by installing its source as a real page
 // global once, up front).
-function seekAllAdaptersInBrowser(tt: number): void {
+export async function seekAllAdaptersInBrowser(tt: number): Promise<void> {
   const tryCall = (fn: () => void): void => {
     try {
       fn();
@@ -173,6 +180,8 @@ function seekAllAdaptersInBrowser(tt: number): void {
   };
   const w = window as unknown as {
     __player?: { renderSeek?: (t: number) => void; seek?: (t: number) => void };
+    __hfReseekGpu?: (t: number) => void;
+    __hfWaitForSeekCompletion?: () => Promise<void>;
     __hfThreeTime?: number;
     __hfThreeRender?: () => void;
     __hfAnime?: Array<{ pause?: () => void; seek?: (timeMs: number) => void }>;
@@ -187,10 +196,20 @@ function seekAllAdaptersInBrowser(tt: number): void {
     >;
   };
   const timeMs = Math.max(0, tt * 1000);
+  let runtimeSeeked = false;
+  const pendingGpuWork: PromiseLike<unknown>[] = [];
 
   tryCall(() => {
-    if (typeof w.__player?.renderSeek === "function") w.__player.renderSeek(tt);
-    else if (typeof w.__player?.seek === "function") w.__player.seek(tt);
+    if (typeof w.__player?.renderSeek === "function") {
+      runtimeSeeked = true;
+      w.__player.renderSeek(tt);
+    } else if (typeof w.__player?.seek === "function") {
+      runtimeSeeked = true;
+      w.__player.seek(tt);
+    } else if (typeof w.__hfReseekGpu === "function") {
+      runtimeSeeked = true;
+      w.__hfReseekGpu(tt);
+    }
   });
 
   Object.values(w.__timelines ?? {}).forEach((tl) => {
@@ -223,12 +242,35 @@ function seekAllAdaptersInBrowser(tt: number): void {
     });
   }
 
-  tryCall(() => {
-    w.__hfThreeTime = tt;
-    window.dispatchEvent(new CustomEvent("hf-seek", { detail: { time: tt } }));
-    w.__hfThreeRender?.();
-    w.gsap?.ticker?.tick?.();
-  });
+  w.__hfThreeTime = tt;
+  if (!runtimeSeeked) {
+    let acceptingGpuWork = true;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("hf-seek", {
+          detail: {
+            time: tt,
+            waitUntil(promise: PromiseLike<unknown>) {
+              if (!acceptingGpuWork) {
+                throw new Error("hf-seek waitUntil() must be called synchronously");
+              }
+              pendingGpuWork.push(promise);
+            },
+          },
+        }),
+      );
+    } finally {
+      acceptingGpuWork = false;
+    }
+  }
+  tryCall(() => w.__hfThreeRender?.());
+  tryCall(() => w.gsap?.ticker?.tick?.());
+
+  if (runtimeSeeked) {
+    await w.__hfWaitForSeekCompletion?.();
+  } else {
+    await Promise.all(pendingGpuWork);
+  }
 }
 
 // Installs seekAllAdaptersInBrowser as a real `window` global, once per page
@@ -243,6 +285,7 @@ async function installSeekHelper(page: import("puppeteer-core").Page): Promise<v
 // Launch headless Chrome, load the composition sized to its canvas, wait for the
 // timelines + fonts to be ready. Returns the browser (caller closes it), page, size.
 async function openCompositionPage(
+  html: string,
   url: string,
   executablePath: string,
 ): Promise<{
@@ -251,30 +294,21 @@ async function openCompositionPage(
   size: FrameSize;
 }> {
   const puppeteer = await import("puppeteer-core");
+  const { buildChromeArgs } = await import("@hyperframes/engine");
+  const size = resolveCompositionViewportFromHtml(html);
+  const requestedGpuMode = resolveLocalBrowserGpuMode();
+  const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
+  assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
   const browser = await puppeteer.default.launch({
     headless: true,
     executablePath,
-    args: [
-      "--no-sandbox",
-      "--disable-gpu",
-      "--disable-dev-shm-usage",
-      "--enable-webgl",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-    ],
+    args: buildChromeArgs(
+      { ...size, captureMode: "screenshot" },
+      { browserGpuMode: resolvedGpuMode },
+    ),
   });
   const page = await browser.newPage();
   const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
-  const size = await page.evaluate(() => {
-    const root = document.querySelector("[data-composition-id][data-width][data-height]");
-    const w = root ? parseInt(root.getAttribute("data-width") ?? "", 10) : 0;
-    const h = root ? parseInt(root.getAttribute("data-height") ?? "", 10) : 0;
-    return {
-      width: Number.isFinite(w) && w > 0 ? Math.min(w, 4096) : 1920,
-      height: Number.isFinite(h) && h > 0 ? Math.min(h, 4096) : 1080,
-    };
-  });
   await page.setViewport(size);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   await page
@@ -436,10 +470,10 @@ async function resolveScopedRequests(
 // SAME tick — before the browser clears the GL drawing buffer (works without
 // preserveDrawingBuffer; page.screenshot can't see the GL buffer here).
 function captureGhostFrame(page: import("puppeteer-core").Page, t: number): Promise<string> {
-  return page.evaluate((tt: number) => {
-    (window as unknown as { __hfSeekAllAdapters?: (time: number) => void }).__hfSeekAllAdapters?.(
-      tt,
-    );
+  return page.evaluate(async (tt: number) => {
+    await (
+      window as unknown as { __hfSeekAllAdapters?: (time: number) => Promise<void> }
+    ).__hfSeekAllAdapters?.(tt);
     const root = (document.querySelector("[data-composition-id]") ?? document.body) as HTMLElement;
     const rb = root.getBoundingClientRect();
     const off = document.createElement("canvas");
@@ -537,8 +571,8 @@ async function captureMarkerOnionSkin(
   await applyOrbitCameraIfAngled(page, requests, camera);
 
   const elements = (await page.evaluate(
-    (selectors: string[], ts: number[]) => {
-      const seek = (window as unknown as { __hfSeekAllAdapters?: (t: number) => void })
+    async (selectors: string[], ts: number[]) => {
+      const seek = (window as unknown as { __hfSeekAllAdapters?: (t: number) => Promise<void> })
         .__hfSeekAllAdapters;
 
       const rigs = selectors.map((sel) => {
@@ -563,7 +597,7 @@ async function captureMarkerOnionSkin(
       });
       const out = selectors.map((selector) => ({ selector, samples: [] as PageSample[] }));
       for (const t of ts) {
-        seek?.(t);
+        await seek?.(t);
         rigs.forEach((rig, i) => {
           if (!rig) return;
           const pts = rig.markers.map((m) => {
@@ -638,7 +672,7 @@ export async function captureMotionPathShot(
   let browserInstance: import("puppeteer-core").Browser | undefined;
   try {
     const browser = await ensureBrowser();
-    const opened = await openCompositionPage(server.url, browser.executablePath);
+    const opened = await openCompositionPage(html, server.url, browser.executablePath);
     browserInstance = opened.browser;
     const { page, size } = opened;
 

@@ -110,4 +110,19 @@ describe("typegpu adapter", () => {
     expect(times).toEqual([1.25, 1.25]);
     expect(gpuWindow.__hfTypegpuTime).toBe(1.25);
   });
+
+  it("does not start a present heartbeat without the WebGPU capability marker", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<div data-composition-id="dom" data-duration="2"></div>';
+    const adapter = createTypegpuAdapter();
+    const handler = vi.fn();
+    window.addEventListener("hf-seek", handler);
+
+    adapter.seek({ time: 1.25 });
+    adapter.pause();
+    await vi.advanceTimersByTimeAsync(TYPEGPU_PRESENT_HEARTBEAT_MS * 2);
+    window.removeEventListener("hf-seek", handler);
+
+    expect(handler).toHaveBeenCalledOnce();
+  });
 });

@@ -189,15 +189,24 @@ interface ThumbnailBrowserSession {
   resolvedGpuMode: ResolvedBrowserGpuMode;
 }
 
-async function getThumbnailBrowser(): Promise<ThumbnailBrowserSession | null> {
-  if (_thumbnailBrowserLease?.browser.connected && _thumbnailBrowserModes) {
+async function getThumbnailBrowser(
+  requestedGpuMode: BrowserGpuMode,
+): Promise<ThumbnailBrowserSession | null> {
+  if (
+    _thumbnailBrowserLease?.browser.connected &&
+    _thumbnailBrowserModes?.requested === requestedGpuMode
+  ) {
     return {
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
     };
   }
-  if (_thumbnailBrowserInitializing) return _thumbnailBrowserInitializing;
+  if (_thumbnailBrowserInitializing) {
+    const session = await _thumbnailBrowserInitializing;
+    if (session?.requestedGpuMode === requestedGpuMode) return session;
+  }
+  if (_thumbnailBrowserLease) await closeThumbnailBrowser();
 
   _thumbnailBrowserInitializing = (async () => {
     try {
@@ -215,7 +224,6 @@ async function getThumbnailBrowser(): Promise<ThumbnailBrowserSession | null> {
         /* continue — acquireBrowser will try its own resolution */
       }
 
-      const requestedGpuMode = resolveLocalBrowserGpuMode();
       const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
       const acquired = await acquireBrowser(
         buildChromeArgs(
@@ -267,6 +275,8 @@ export interface StudioServerOptions {
    * config (default true) applies.
    */
   autoProxy?: boolean | undefined;
+  /** GPU policy used by Studio thumbnails and frame capture. */
+  browserGpuMode?: BrowserGpuMode;
 }
 
 export interface StudioServer {
@@ -332,6 +342,7 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
 export function createStudioServer(options: StudioServerOptions): StudioServer {
   const { projectDir, projectName } = options;
   const projectId = projectName || basename(projectDir);
+  const browserGpuMode = options.browserGpuMode ?? resolveLocalBrowserGpuMode();
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
@@ -524,7 +535,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser();
+      const session = await getThumbnailBrowser(browserGpuMode);
       if (!session) {
         console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
         return null;
@@ -653,6 +664,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         projectName: projectId,
         projectDir: projectDir,
         serverBuildSignature,
+        browserGpuMode,
         version,
       });
     };

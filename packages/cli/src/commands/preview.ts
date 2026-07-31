@@ -69,6 +69,7 @@ import {
   startBackgroundPreview,
   stopBackgroundPreview,
 } from "./previewLifecycle.js";
+import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -81,6 +82,7 @@ interface BrowserLaunchOptions {
 interface StudioLaunchOptions extends BrowserLaunchOptions {
   projectName?: string;
   autoProxy?: boolean;
+  browserGpuMode?: BrowserGpuMode;
 }
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
@@ -205,6 +207,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const browserGpuMode = resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined);
     if (args["browser-gpu"] === true) process.env.PRODUCER_BROWSER_GPU_MODE = "hardware";
     if (args["browser-gpu"] === false) process.env.PRODUCER_BROWSER_GPU_MODE = "software";
     const startPort = parseInt(args.port ?? "3002", 10);
@@ -389,6 +392,7 @@ export default defineCommand({
       try {
         background = await startBackgroundPreview(dir, startPort, {
           forceNew: Boolean(args["force-new"]),
+          browserGpuMode,
         });
       } catch (error) {
         clack.log.error(errorMessage(error));
@@ -426,6 +430,7 @@ export default defineCommand({
       userDataDir,
       remoteDebuggingPort,
       browserNoGpu,
+      browserGpuMode,
     });
   },
 });
@@ -1055,6 +1060,7 @@ async function runEmbeddedMode(
     projectDir: dir,
     projectName: pName,
     autoProxy: options?.autoProxy,
+    browserGpuMode: options?.browserGpuMode,
   });
   const serverBuildSignature = await loadPreviewServerBuildSignature();
 
@@ -1066,6 +1072,8 @@ async function runEmbeddedMode(
       dir,
       !!options?.forceNew,
       serverBuildSignature,
+      undefined,
+      options?.browserGpuMode,
     );
   } catch (err: unknown) {
     s.stop(c.error("Failed to start studio"));
