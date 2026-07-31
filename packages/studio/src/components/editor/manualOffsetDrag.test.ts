@@ -2,6 +2,7 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import {
   applyManualOffsetDragCommit,
+  resumeGsapTimelines,
   applyManualOffsetDragDraft,
   applyManualOffsetDragMatrix,
   createManualOffsetDragMember,
@@ -358,5 +359,53 @@ describe("GSAP-element drag — dot-a flies regressions", () => {
     expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(false);
     // ...and the position survives in the GSAP transform (no stale var to compose).
     expect(element.style.getPropertyValue("transform")).toMatch(/translate\(/);
+  });
+});
+
+describe("resumeGsapTimelines", () => {
+  it("unpauses exactly the timelines the drag start paused, then re-seeks the player", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    element.setAttribute("data-hf-drag-paused-timelines", "figma-demo-unlock,figma-demo-stagger");
+    window.document.body.append(element);
+
+    const pausedState: Record<string, boolean> = {
+      "figma-demo-unlock": true,
+      "figma-demo-stagger": true,
+      main: true,
+    };
+    const makeTl = (id: string) => ({
+      paused: (value?: boolean) => {
+        if (value !== undefined) pausedState[id] = value;
+        return pausedState[id]!;
+      },
+    });
+    const seeks: number[] = [];
+    const win = element.ownerDocument.defaultView as unknown as {
+      __timelines?: Record<string, unknown>;
+      __player?: { seek: (t: number) => void; getTime: () => number };
+    };
+    win.__timelines = {
+      "figma-demo-unlock": makeTl("figma-demo-unlock"),
+      "figma-demo-stagger": makeTl("figma-demo-stagger"),
+      main: makeTl("main"),
+    };
+    win.__player = { seek: (t: number) => seeks.push(t), getTime: () => 3.5 };
+
+    resumeGsapTimelines(element);
+
+    expect(pausedState["figma-demo-unlock"]).toBe(false);
+    expect(pausedState["figma-demo-stagger"]).toBe(false);
+    // main was NOT paused by the drag — leave its state alone
+    expect(pausedState["main"]).toBe(true);
+    expect(seeks).toEqual([3.5]);
+    expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
+  });
+
+  it("is a no-op without the paused-timelines attribute", () => {
+    const window = new Window();
+    const element = window.document.createElement("div");
+    window.document.body.append(element);
+    expect(() => resumeGsapTimelines(element)).not.toThrow();
   });
 });
