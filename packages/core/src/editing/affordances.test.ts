@@ -198,3 +198,14 @@ describe("resolveEditingSections (sections-only export)", () => {
     expect(s).toMatchObject({ timing: true, animation: true });
   });
 });
+
+describe("audioFx section", () => {
+  it("applies to an audio element", () => {
+    expect(resolveEditingSections(baseFacts({ tag: "audio" })).audioFx).toBe(true);
+  });
+
+  it("does not apply to video, whose sound lives on a separate audio element", () => {
+    expect(resolveEditingSections(baseFacts({ tag: "video" })).audioFx).toBe(false);
+    expect(resolveEditingSections(baseFacts({ tag: "div" })).audioFx).toBe(false);
+  });
+});
