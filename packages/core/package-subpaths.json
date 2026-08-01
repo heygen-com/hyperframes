@@ -92,6 +92,12 @@
       "types": "./dist/audioFx.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-fx-runtime": {
+      "source": "./src/generated/audio-fx-runtime-inline.ts",
+      "runtime": "./dist/generated/audio-fx-runtime-inline.js",
+      "types": "./dist/generated/audio-fx-runtime-inline.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",

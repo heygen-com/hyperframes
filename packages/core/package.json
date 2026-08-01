@@ -106,6 +106,12 @@
       "import": "./src/audioFx.ts",
       "types": "./src/audioFx.ts"
     },
+    "./audio-fx-runtime": {
+      "bun": "./src/generated/audio-fx-runtime-inline.ts",
+      "node": "./dist/generated/audio-fx-runtime-inline.js",
+      "import": "./src/generated/audio-fx-runtime-inline.ts",
+      "types": "./src/generated/audio-fx-runtime-inline.ts"
+    },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
       "node": "./dist/colorGrading.js",
@@ -368,6 +374,10 @@
         "import": "./dist/audioFx.js",
         "types": "./dist/audioFx.d.ts"
       },
+      "./audio-fx-runtime": {
+        "import": "./dist/generated/audio-fx-runtime-inline.js",
+        "types": "./dist/generated/audio-fx-runtime-inline.d.ts"
+      },
       "./color-grading": {
         "import": "./dist/colorGrading.js",
         "types": "./dist/colorGrading.d.ts"
@@ -508,7 +518,7 @@
     "types": "./dist/index.d.ts"
   },
   "scripts": {
-    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && tsc && tsx scripts/rewrite-esm-extensions.ts",
+    "build": "bun run build:hyperframes-runtime && bun run build:position-edits-render && bun run build:audio-fx-runtime && tsc && tsx scripts/rewrite-esm-extensions.ts",
     "test": "bun run check:position-edits-render && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -516,6 +526,7 @@
     "typecheck": "tsc --noEmit && bun run typecheck:runtime",
     "typecheck:runtime": "tsc --noEmit -p tsconfig.runtime.json",
     "lint:runtime-preview-guards": "bun scripts/lint-runtime-preview-guards.ts",
+    "build:audio-fx-runtime": "tsx scripts/build-audio-fx-runtime.ts",
     "build:hyperframes-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:position-edits-render": "tsx scripts/build-position-edits-render.ts",
     "check:position-edits-render": "bun run build:position-edits-render && git diff --exit-code -- src/generated/position-edits-render-inline.ts",
