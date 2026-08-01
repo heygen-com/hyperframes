@@ -652,6 +652,52 @@ describe("initSandboxRuntimeModular", () => {
     expect(injectedLink?.isConnected).toBe(false);
   });
 
+  describe("pagehide teardown", () => {
+    async function initMinimalRuntime(): Promise<void> {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(3) };
+      initSandboxRuntimeModular();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+
+    function firePageHide(persisted: boolean): void {
+      const event = new Event("pagehide");
+      Object.defineProperty(event, "persisted", { value: persisted });
+      window.dispatchEvent(event);
+    }
+
+    it("tears down on a real page hide", async () => {
+      await initMinimalRuntime();
+      expect(window.__hfRuntimeTeardown).toBeTypeOf("function");
+
+      firePageHide(false);
+
+      expect(window.__hfRuntimeTeardown).toBeNull();
+    });
+
+    it("survives a bfcache page hide so a pageshow restore stays playable", async () => {
+      await initMinimalRuntime();
+
+      // persisted === true means the document is frozen into the back-forward
+      // cache, not destroyed — `pageshow` restores it WITHOUT re-running init,
+      // so a teardown here would leave the player permanently inert.
+      firePageHide(true);
+
+      expect(window.__hfRuntimeTeardown).toBeTypeOf("function");
+
+      // ...and the listener is still armed, so the eventual real hide still
+      // reclaims the AudioContext and decoded buffers.
+      firePageHide(false);
+      expect(window.__hfRuntimeTeardown).toBeNull();
+    });
+  });
+
   it("keeps compiled external composition hosts visible through their authored duration", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

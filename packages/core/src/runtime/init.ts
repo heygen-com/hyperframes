@@ -3365,7 +3365,7 @@ export function initSandboxRuntimeModular(): void {
       window.removeEventListener("beforeunload", state.beforeUnloadHandler);
       state.beforeUnloadHandler = null;
     }
-    window.removeEventListener("pagehide", teardown);
+    window.removeEventListener("pagehide", handlePageHide);
     picker.disablePickMode();
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
@@ -3417,9 +3417,6 @@ export function initSandboxRuntimeModular(): void {
       window.__hfRuntimeTeardown = null;
     }
   };
-  window.__hfRuntimeTeardown = teardown;
-  state.beforeUnloadHandler = teardown;
-  window.addEventListener("beforeunload", state.beforeUnloadHandler);
   // `pagehide` too: in an iframe whose document is replaced (an editor writing
   // a new `srcdoc` on every edit), pagehide is the dependable unload signal.
   // Without a teardown there, each discarded document keeps a live
@@ -3427,5 +3424,20 @@ export function initSandboxRuntimeModular(): void {
   // rapid edits that transiently stacks hundreds of MB of PCM per reload.
   // teardown() is idempotent (state.tornDown), so double-firing with
   // beforeunload is harmless.
-  window.addEventListener("pagehide", teardown);
+  //
+  // But `pagehide` ALSO fires with `persisted: true` when the document enters
+  // the back-forward cache, and that is not a death — the very same document is
+  // restored by `pageshow` with no re-initialization. Tearing down there would
+  // leave the restored player permanently inert (tornDown latched, listeners and
+  // injected styles gone, AudioContext closed) with nothing to bring it back. A
+  // BFCached document is frozen by the browser, which suspends its AudioContext
+  // and media for us, so skipping teardown costs nothing while it sits there.
+  const handlePageHide = (event: PageTransitionEvent) => {
+    if (event.persisted) return;
+    teardown();
+  };
+  window.__hfRuntimeTeardown = teardown;
+  state.beforeUnloadHandler = teardown;
+  window.addEventListener("beforeunload", state.beforeUnloadHandler);
+  window.addEventListener("pagehide", handlePageHide);
 }
