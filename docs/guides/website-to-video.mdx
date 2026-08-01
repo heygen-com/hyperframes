@@ -20,7 +20,8 @@ Give your AI agent a URL and a creative direction. It captures the site, extract
     npx skills add heygen-com/hyperframes
     ```
 
-    Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex CLI](https://github.com/openai/codex).
+    Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex CLI](https://github.com/openai/codex).
+
   </Step>
   <Step title="Prompt your agent">
     Open your agent in any directory and describe the video you want:
@@ -34,6 +35,7 @@ Give your AI agent a URL and a creative direction. It captures the site, extract
     <Note>
       Agents also trigger this skill automatically when they see a URL and a video request.
     </Note>
+
   </Step>
   <Step title="Preview">
     ```bash
@@ -41,6 +43,7 @@ Give your AI agent a URL and a creative direction. It captures the site, extract
     ```
 
     Opens the video in your browser. Edits reload automatically.
+
   </Step>
   <Step title="Render to MP4">
     ```bash
@@ -51,26 +54,29 @@ Give your AI agent a URL and a creative direction. It captures the site, extract
     ✓ Captured 750 frames in 12.4s
     ✓ Encoded to my-video.mp4 (25.0s, 1920×1080, 6.8MB)
     ```
+
   </Step>
 </Steps>
 
 <Note>
-  You don't need to run `npx hyperframes capture` manually — the skill instructs the agent to capture as the first step. The capture command is documented [below](#capture-command) for advanced use.
+  You don't need to run `npx hyperframes capture` manually — the skill instructs the agent to
+  capture as the first step. The capture command is documented [below](#capture-command) for
+  advanced use.
 </Note>
 
 ## How the Pipeline Works
 
 The skill follows the [Hyperframes pipeline](/guides/pipeline): seven steps, each producing a named artifact that feeds the next.
 
-| Step | Output | What happens |
-|------|--------|-------------|
-| **Capture** | `capture/` | Extract screenshots, design tokens, fonts, assets, animations |
-| **Design** | `DESIGN.md` | Brand reference — colors, typography, component stylings, spacing, iteration guide |
-| **Strategy & Messaging** | — | Align on video type, style, the ONE message, and narrative arc |
-| **Storyboard + Script** | `STORYBOARD.md` + `SCRIPT.md` | Concept-first storyboard and narration script, written together |
-| **VO + Timing** | `narration.wav` + `transcript.json` | TTS audio with word-level timestamps |
-| **Build** | `compositions/*.html` | Animated HTML compositions, one per beat |
-| **Validate** | Snapshot PNGs + lint/validate pass | Visual verification and runtime checks before delivery |
+| Step                     | Output                              | What happens                                                                       |
+| ------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------- |
+| **Capture**              | `capture/`                          | Extract screenshots, design tokens, fonts, assets, animations                      |
+| **Design**               | `DESIGN.md`                         | Brand reference — colors, typography, component stylings, spacing, iteration guide |
+| **Strategy & Messaging** | —                                   | Align on video type, style, the ONE message, and narrative arc                     |
+| **Storyboard + Script**  | `STORYBOARD.md` + `SCRIPT.md`       | Concept-first storyboard and narration script, written together                    |
+| **VO + Timing**          | `narration.wav` + `transcript.json` | TTS audio with word-level timestamps                                               |
+| **Build**                | `compositions/*.html`               | Animated HTML compositions, one per beat                                           |
+| **Validate**             | Snapshot PNGs + lint/validate pass  | Visual verification and runtime checks before delivery                             |
 
 See [the pipeline guide](/guides/pipeline) for a detailed walkthrough of each step, the contents of every generated file, and how to iterate without re-running the whole pipeline. The structure is useful for any Hyperframes project, not just website captures.
 
@@ -78,16 +84,18 @@ See [the pipeline guide](/guides/pipeline) for a detailed walkthrough of each st
 
 The prompt determines the format. Include a duration and creative direction:
 
-| Type | Duration | Example |
-|------|----------|---------|
-| Social ad | 10–15s | _"15-second Instagram reel. Energetic, fast cuts."_ |
-| Product demo | 30–60s | _"45-second demo showing the top 3 features."_ |
-| Feature announcement | 15–30s | _"Feature announcement highlighting the new AI agents."_ |
-| Brand reel | 20–45s | _"30-second brand video. Celebrate the design."_ |
-| Launch teaser | 10–20s | _"12-second teaser. Super minimal. Just the hook."_ |
+| Type                 | Duration | Example                                                  |
+| -------------------- | -------- | -------------------------------------------------------- |
+| Social ad            | 10–15s   | _"15-second Instagram reel. Energetic, fast cuts."_      |
+| Product demo         | 30–60s   | _"45-second demo showing the top 3 features."_           |
+| Feature announcement | 15–30s   | _"Feature announcement highlighting the new AI agents."_ |
+| Brand reel           | 20–45s   | _"30-second brand video. Celebrate the design."_         |
+| Launch teaser        | 10–20s   | _"12-second teaser. Super minimal. Just the hook."_      |
 
 <Tip>
-  Creative direction matters more than format. _"Playful, hand-crafted feel"_ or _"dark, developer-focused, show code"_ shapes the storyboard and drives every visual decision the agent makes.
+  Creative direction matters more than format. _"Playful, hand-crafted feel"_ or _"dark,
+  developer-focused, show code"_ shapes the storyboard and drives every visual decision the agent
+  makes.
 </Tip>
 
 ## Enriching Captures with Gemini Vision
@@ -110,24 +118,20 @@ OpenRouter is used when its key is present (it takes priority if both are set). 
 
 <Tabs>
   <Tab title="Without Gemini">
-    ```
-    - hero-bg.png — 582KB, section: "Hero", above fold
-    ```
-    The agent knows the file exists and where it was on the page, but not what it looks like.
+    ``` - hero-bg.png — 582KB, section: "Hero", above fold ``` The agent knows the file exists and
+    where it was on the page, but not what it looks like.
   </Tab>
   <Tab title="With Gemini">
-    ```
-    - hero-bg.png — 582KB, A gradient wave in purple and blue sweeps
-      across a dark background, creating an aurora-like effect.
-    ```
-    The agent knows what the image actually shows, enabling better creative decisions in the storyboard.
+    ``` - hero-bg.png — 582KB, A gradient wave in purple and blue sweeps across a dark background,
+    creating an aurora-like effect. ``` The agent knows what the image actually shows, enabling
+    better creative decisions in the storyboard.
   </Tab>
 </Tabs>
 
 | Tier | Rate limit | Cost per image |
-|------|-----------|----------------|
-| Free | 5 RPM | Free |
-| Paid | 2,000 RPM | ~$0.001 |
+| ---- | ---------- | -------------- |
+| Free | 5 RPM      | Free           |
+| Paid | 2,000 RPM  | ~$0.001        |
 
 A typical capture with 40 images costs about **$0.04** on the paid tier.
 
@@ -148,26 +152,26 @@ npx hyperframes capture https://stripe.com
   Fonts: sohne-var
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-o, --output` | `./capture` | Output directory (auto-suffixes to `./capture-2/`, `./capture-3/`, … if `./capture/` is taken) |
-| `--timeout` | `120000` | Page load timeout in ms |
-| `--skip-assets` | `false` | Skip downloading images and fonts |
-| `--max-screenshots` | `24` | Maximum screenshot count |
-| `--json` | `false` | Output structured JSON for programmatic use |
+| Flag                | Default     | Description                                                                                    |
+| ------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| `-o, --output`      | `./capture` | Output directory (auto-suffixes to `./capture-2/`, `./capture-3/`, … if `./capture/` is taken) |
+| `--timeout`         | `120000`    | Page load timeout in ms                                                                        |
+| `--skip-assets`     | `false`     | Skip downloading images and fonts                                                              |
+| `--max-screenshots` | `24`        | Maximum screenshot count                                                                       |
+| `--json`            | `false`     | Output structured JSON for programmatic use                                                    |
 
 ### What Gets Captured
 
-| Data | Description |
-|------|-------------|
-| **Screenshots** | Viewport captures at every scroll depth — dynamic count based on page height |
-| **Colors** | Pixel-sampled dominant colors + computed styles, including oklch/lab conversion |
-| **Fonts** | CSS font families + downloaded woff2 files |
-| **Assets** | Images, SVGs with semantic names, Lottie animations, video previews |
-| **Text** | All visible text in DOM order |
-| **Animations** | Web Animations API, scroll-triggered animations, WebGL shaders |
-| **Sections** | Page structure with headings, types, background colors |
-| **CTAs** | Buttons and links detected by class names and text patterns |
+| Data            | Description                                                                     |
+| --------------- | ------------------------------------------------------------------------------- |
+| **Screenshots** | Viewport captures at every scroll depth — dynamic count based on page height    |
+| **Colors**      | Pixel-sampled dominant colors + computed styles, including oklch/lab conversion |
+| **Fonts**       | CSS font families + downloaded woff2 files                                      |
+| **Assets**      | Images, SVGs with semantic names, Lottie animations, video previews             |
+| **Text**        | All visible text in DOM order                                                   |
+| **Animations**  | Web Animations API, scroll-triggered animations, WebGL shaders                  |
+| **Sections**    | Page structure with headings, types, background colors                          |
+| **CTAs**        | Buttons and links detected by class names and text patterns                     |
 
 ## Snapshot Command
 
@@ -177,11 +181,11 @@ Capture key frames from a built video as PNGs — verify compositions without a 
 npx hyperframes snapshot my-project --at 2.9,10.4,18.7
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--frames` | `5` | Number of evenly-spaced frames |
-| `--at` | — | Comma-separated timestamps in seconds |
-| `--timeout` | `5000` | Ms to wait for runtime to initialize |
+| Flag        | Default | Description                           |
+| ----------- | ------- | ------------------------------------- |
+| `--frames`  | `5`     | Number of evenly-spaced frames        |
+| `--at`      | —       | Comma-separated timestamps in seconds |
+| `--timeout` | `5000`  | Ms to wait for runtime to initialize  |
 
 ## Iterating
 
@@ -202,6 +206,7 @@ See the [pipeline guide](/guides/pipeline#iterating) for more re-entry patterns.
     ```bash
     npx hyperframes capture https://example.com --timeout 180000
     ```
+
   </Accordion>
   <Accordion title="Few assets captured">
     Sites using frameworks like Framer lazy-load images via IntersectionObserver. The capture scrolls through the page to trigger loading, but very long pages may miss images near the bottom. Adding a Gemini key improves descriptions of captured assets, but doesn't increase the count.
@@ -217,6 +222,7 @@ See the [pipeline guide](/guides/pipeline#iterating) for more re-entry patterns.
     ```
 
     Lead your prompt with _"Use the /product-launch-video skill"_ for the most reliable results — site tours route there too. Agents also discover it automatically when they see a URL and a video request.
+
   </Accordion>
 </AccordionGroup>
 
