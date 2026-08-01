@@ -92,6 +92,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "count-up",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "shimmer-sweep",
       "type": "hyperframes:component"
     },

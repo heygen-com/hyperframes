@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Count Up — Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="count-up-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <div class="demo-canvas">
+        <!-- Example 1: large statistic from zero -->
+        <div class="demo-stat" style="opacity: 0" id="cu-stat-a">
+          <div class="cu-wrap">
+            <span
+              class="cu-num"
+              id="cu-notes"
+              style="font-size: 160px; font-weight: 800; color: #ffffff"
+              >0</span
+            >
+          </div>
+          <div class="demo-label">notes across the archive</div>
+        </div>
+
+        <!-- Example 2: live number with a non-zero start and suffix -->
+        <div class="demo-stat" style="opacity: 0" id="cu-stat-b">
+          <div class="cu-wrap">
+            <span
+              class="cu-num"
+              id="cu-loops"
+              style="font-size: 88px; font-weight: 800; color: #6ee7b7"
+              >500</span
+            >
+            <span class="cu-suffix" style="font-size: 40px; color: #888888">loops live now</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Count Up component -->
+      <style>
+        .demo-canvas {
+          width: 1920px;
+          height: 1080px;
+          background: #0a0a0f;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          gap: 80px;
+          font-family: "Inter", sans-serif;
+        }
+
+        .demo-label {
+          margin-top: 18px;
+          font-size: 32px;
+          font-weight: 700;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #888888;
+          text-align: center;
+        }
+
+        .cu-wrap {
+          display: flex;
+          align-items: baseline;
+          gap: 0.35em;
+        }
+
+        .cu-num {
+          font-variant-numeric: tabular-nums;
+          display: inline-block;
+          transform-origin: 0% 50%;
+        }
+
+        .cu-suffix {
+          display: inline-block;
+        }
+      </style>
+
+      <script>
+        (function () {
+          // Deterministic thousands grouping — toLocaleString depends on render locale.
+          function cuGroup(n) {
+            return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+          }
+
+          function cuCountUp(tl, el, opts) {
+            const at = opts.at === undefined ? 0 : opts.at;
+            const from = opts.from === undefined ? 0 : opts.from;
+            const duration = opts.duration === undefined ? 1.5 : opts.duration;
+            const ease = opts.ease === undefined ? "power3.out" : opts.ease;
+            const startScale = opts.startScale === undefined ? 0.55 : opts.startScale;
+            const proxy = { v: from };
+            tl.to(
+              proxy,
+              {
+                v: opts.to,
+                duration,
+                ease,
+                onUpdate: () => {
+                  el.textContent = cuGroup(proxy.v);
+                },
+              },
+              at,
+            );
+            tl.fromTo(el, { scale: startScale }, { scale: 1, duration, ease }, at);
+          }
+
+          const tl = gsap.timeline({ paused: true });
+
+          tl.to("#cu-stat-a", { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.2);
+          cuCountUp(tl, document.getElementById("cu-notes"), {
+            at: 0.4,
+            to: 857531,
+            duration: 2.1,
+          });
+
+          tl.to("#cu-stat-b", { opacity: 1, duration: 0.4, ease: "power2.out" }, 1.0);
+          cuCountUp(tl, document.getElementById("cu-loops"), {
+            at: 1.2,
+            from: 500,
+            to: 551,
+            duration: 1.7,
+          });
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["count-up-demo"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>

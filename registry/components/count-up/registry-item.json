@@ -1,0 +1,15 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "count-up",
+  "type": "hyperframes:component",
+  "title": "Count Up",
+  "description": "Deterministic count-up number — proxy-driven counter with explicit thousands grouping (locale-independent), tabular-nums, optional non-zero start so the number reads as live, and a synchronized scale grow",
+  "tags": ["counter", "count-up", "number", "statistic"],
+  "files": [
+    {
+      "path": "count-up.html",
+      "target": "compositions/components/count-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ]
+}
