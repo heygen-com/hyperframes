@@ -1084,9 +1084,13 @@ describe("syncRuntimeMedia", () => {
   });
 
   describe("upcoming-clip readiness (boundary smoothness)", () => {
+    function setReadyState(el: HTMLMediaElement, value: number): void {
+      Object.defineProperty(el, "readyState", { value, writable: true, configurable: true });
+    }
+
     function readyClip(overrides?: Partial<RuntimeMediaClip>): RuntimeMediaClip {
       const clip = createMockClip(overrides);
-      Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+      setReadyState(clip.el, 4);
       return clip;
     }
 
@@ -1143,6 +1147,32 @@ describe("syncRuntimeMedia", () => {
       const clip = readyClip({ start: 5.2, end: 12, mediaStart: 0.05 });
       syncAt(clip, 5, { outputMuted: true });
       expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("retries the pre-seek on a later tick when the first tick is below HAVE_METADATA", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      setReadyState(clip.el, 0 /* HAVE_NOTHING */);
+
+      // Too early to seek: the browser drops a currentTime assignment with no
+      // metadata. The element must NOT be latched as pre-seeked here.
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(0);
+
+      setReadyState(clip.el, 1 /* HAVE_METADATA */);
+      syncAt(clip, 5.1);
+      expect(clip.el.currentTime).toBe(30);
+    });
+
+    it("pre-seeks an upcoming clip only once while it stays parked", () => {
+      const clip = readyClip({ start: 7, end: 12, mediaStart: 30 });
+      syncAt(clip, 5);
+      expect(clip.el.currentTime).toBe(30);
+
+      // A user scrub of the underlying element must not be re-corrected every
+      // tick — the latch closed on the first successful seek.
+      clip.el.currentTime = 12;
+      syncAt(clip, 5.1);
+      expect(clip.el.currentTime).toBe(12);
     });
 
     it("paused transport leaves upcoming clips untouched", () => {

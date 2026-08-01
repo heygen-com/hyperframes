@@ -183,6 +183,30 @@ const PREROLL_WINDOW_SECONDS = 0.35;
 const upcomingPreseeked = new WeakSet<HTMLMediaElement>();
 const prerolling = new WeakSet<HTMLMediaElement>();
 
+// Park an upcoming element at its media offset so the browser buffers the right
+// region of the source. Latched per element to keep repeated readiness ticks
+// from re-issuing the same seek — but the latch closes ONLY once the element is
+// verifiably parked. Below HAVE_METADATA a `currentTime` assignment is dropped
+// by the browser (and can throw), so latching there would burn the element's one
+// chance: every later tick would short-circuit on set membership and the clip
+// would still reach its boundary at the wrong offset, paying the cold seek this
+// whole path exists to avoid. Instead we leave it unlatched and retry on the
+// next tick, once metadata has arrived.
+function preseekUpcoming(el: HTMLMediaElement, mediaStart: number): void {
+  if (upcomingPreseeked.has(el)) return;
+  if (el.readyState < HTMLMediaElement.HAVE_METADATA) return;
+  if (Math.abs(el.currentTime - mediaStart) <= 0.25) {
+    upcomingPreseeked.add(el); // already parked — nothing to seek
+    return;
+  }
+  try {
+    el.currentTime = mediaStart;
+    upcomingPreseeked.add(el);
+  } catch (err) {
+    swallow("runtime.media.preseek", err);
+  }
+}
+
 // ── Silent-eviction recovery ────────────────────────────────────────────────
 // Under memory pressure the browser can EVICT a media element's resource with
 // no error and no event: readyState collapses to HAVE_NOTHING, videoWidth
@@ -541,19 +565,7 @@ export function syncRuntimeMedia(params: {
         continue; // never pause a pre-rolling element
       }
       prerolling.delete(el);
-      if (!upcomingPreseeked.has(el)) {
-        upcomingPreseeked.add(el);
-        if (
-          el.readyState >= HTMLMediaElement.HAVE_METADATA &&
-          Math.abs(el.currentTime - clip.mediaStart) > 0.25
-        ) {
-          try {
-            el.currentTime = clip.mediaStart;
-          } catch (err) {
-            swallow("runtime.media.preseek", err);
-          }
-        }
-      }
+      preseekUpcoming(el, clip.mediaStart);
       if (!el.paused) el.pause();
       continue;
     }
