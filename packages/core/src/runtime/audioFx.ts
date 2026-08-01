@@ -73,5 +73,29 @@ export function attachElementFxChain(
     // nodes pass silence, which is a brief dropout rather than a broken track.
     void ensureAudioFxWorklets(ctx).catch(() => undefined);
   }
-  return { dispose: () => handle.dispose() };
+
+  // Follow the attribute while the source plays, so dragging a knob is heard
+  // without rescheduling the track. Values-only changes re-parameterise the
+  // running graph and land on the next 128-sample quantum; a shape change
+  // (effect added, bypassed, pole count) cannot be patched in place and waits
+  // for the next schedule rather than cutting the audio mid-play.
+  let observer: MutationObserver | null = null;
+  const target = el as unknown as Node;
+  if (
+    typeof MutationObserver !== "undefined" &&
+    typeof (target as Element)?.nodeType === "number"
+  ) {
+    observer = new MutationObserver(() => {
+      const next = readChain(el);
+      if (next.chain.nodes.length > 0) handle.update(next.chain);
+    });
+    observer.observe(target, { attributes: true, attributeFilter: [HF_AUDIO_FX_ATTR] });
+  }
+
+  return {
+    dispose: () => {
+      observer?.disconnect();
+      handle.dispose();
+    },
+  };
 }

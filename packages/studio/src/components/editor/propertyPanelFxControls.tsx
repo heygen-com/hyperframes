@@ -7,7 +7,7 @@
  * panel cannot offer a value the renderer would reject.
  */
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   HfAudioFxDef,
   HfAudioFxNumberParam,
@@ -41,18 +41,39 @@ function display(p: HfAudioFxNumberParam, value: number): string {
 interface ParamRowProps {
   param: HfAudioFxParam;
   value: number | string;
+  /** Fires continuously while dragging — cheap, not persisted. */
   onChange(key: string, value: number | string): void;
+  /** Fires once when the gesture ends — this is the write that persists. */
+  onCommit?(key: string, value: number | string): void;
   disabled?: boolean;
 }
 
-export function FxParamRow({ param, value, onChange, disabled }: ParamRowProps) {
+export function FxParamRow({ param, value, onChange, onCommit, disabled }: ParamRowProps) {
+  // While dragging, the slider is driven locally. Waiting for the value to come
+  // back through the element attribute makes the control feel laggy and fights
+  // the pointer.
+  const [dragging, setDragging] = useState(false);
+  const [local, setLocal] = useState(value);
+  const latest = useRef(value);
+  useEffect(() => {
+    if (!dragging) setLocal(value);
+  }, [value, dragging]);
+
   const handleNumber = useCallback(
     (raw: number) => {
       const p = param as HfAudioFxNumberParam;
-      onChange(param.key, Math.min(p.max, Math.max(p.min, raw)));
+      const next = Math.min(p.max, Math.max(p.min, raw));
+      latest.current = next;
+      setLocal(next);
+      onChange(param.key, next);
     },
     [param, onChange],
   );
+
+  const commit = useCallback(() => {
+    setDragging(false);
+    onCommit?.(param.key, latest.current);
+  }, [onCommit, param.key]);
 
   if (param.kind === "enum") {
     return (
@@ -64,7 +85,11 @@ export function FxParamRow({ param, value, onChange, disabled }: ParamRowProps) 
           className="hf-fx-select min-w-0 flex-1 rounded-[3px] bg-panel-surface px-1 py-0.5 font-mono text-[10px] text-panel-text-0"
           value={String(value)}
           disabled={disabled}
-          onChange={(e) => onChange(param.key, e.target.value)}
+          onChange={(e) => {
+            // A select has no drag; the change is already the commit.
+            onChange(param.key, e.target.value);
+            onCommit?.(param.key, e.target.value);
+          }}
         >
           {param.options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -76,7 +101,8 @@ export function FxParamRow({ param, value, onChange, disabled }: ParamRowProps) 
     );
   }
 
-  const numeric = typeof value === "number" ? value : Number(value);
+  const shown = dragging ? local : value;
+  const numeric = typeof shown === "number" ? shown : Number(shown);
   const current = Number.isFinite(numeric) ? numeric : param.default;
 
   return (
@@ -93,7 +119,11 @@ export function FxParamRow({ param, value, onChange, disabled }: ParamRowProps) 
         value={toSlider(param, current)}
         disabled={disabled}
         aria-label={param.label}
+        onPointerDown={() => setDragging(true)}
         onChange={(e) => handleNumber(fromSlider(param, Number(e.target.value)))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
       />
       <input
         className="hf-fx-number w-[54px] flex-shrink-0 rounded-[3px] bg-panel-surface px-1 py-0.5 text-right font-mono text-[10px] text-panel-text-0"
@@ -106,6 +136,10 @@ export function FxParamRow({ param, value, onChange, disabled }: ParamRowProps) 
         onChange={(e) => {
           const next = Number(e.target.value);
           if (Number.isFinite(next)) handleNumber(next);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
         }}
       />
       {param.unit ? (
@@ -121,14 +155,19 @@ interface FxParamsProps {
   def: HfAudioFxDef;
   params: HfAudioFxParamValues;
   onChange(params: HfAudioFxParamValues): void;
+  onCommit?(params: HfAudioFxParamValues): void;
   disabled?: boolean;
 }
 
 /** Every knob the effect declares, in registry order. */
-export function FxParams({ def, params, onChange, disabled }: FxParamsProps) {
+export function FxParams({ def, params, onChange, onCommit, disabled }: FxParamsProps) {
   const set = useCallback(
     (key: string, value: number | string) => onChange({ ...params, [key]: value }),
     [params, onChange],
+  );
+  const commit = useCallback(
+    (key: string, value: number | string) => onCommit?.({ ...params, [key]: value }),
+    [params, onCommit],
   );
   return (
     <div className="hf-fx-params space-y-0.5 border-t border-panel-border-input px-1.5 py-1.5">
@@ -138,6 +177,7 @@ export function FxParams({ def, params, onChange, disabled }: FxParamsProps) {
           param={p}
           value={params[p.key] ?? p.default}
           onChange={set}
+          onCommit={commit}
           disabled={disabled}
         />
       ))}

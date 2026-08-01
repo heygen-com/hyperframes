@@ -36,7 +36,10 @@ export interface AudioTrackOption {
 
 export interface FxSectionProps {
   chain: HfAudioFxChain;
+  /** Structural edits and gesture-end writes; this is the one that persists. */
   onChainChange(chain: HfAudioFxChain): void;
+  /** Continuous updates while a control is being dragged. */
+  onChainPreview?(chain: HfAudioFxChain): void;
   carve: HfCarveSettings | null;
   onCarveChange(carve: HfCarveSettings | null): void;
   /** Other audio elements that could act as the carve source. */
@@ -50,6 +53,7 @@ export interface FxSectionProps {
 export function FxSection({
   chain,
   onChainChange,
+  onChainPreview,
   carve,
   onCarveChange,
   sourceOptions,
@@ -68,6 +72,16 @@ export function FxSection({
   const mutate = useCallback(
     (nodes: HfAudioFxNode[]) => onChainChange({ ...chain, nodes }),
     [chain, onChainChange],
+  );
+
+  // Dragging a knob previews without persisting; releasing it commits once.
+  const previewNode = useCallback(
+    (index: number, params: HfAudioFxParamValues) =>
+      onChainPreview?.({
+        ...chain,
+        nodes: chain.nodes.map((n, i) => (i === index ? { ...n, params } : n)),
+      }),
+    [chain, onChainPreview],
   );
 
   const addEffect = useCallback(
@@ -177,7 +191,8 @@ export function FxSection({
                     def={def}
                     params={node.params ?? defaultAudioFxParams(node.type)}
                     disabled={disabled || bypassed}
-                    onChange={(params: HfAudioFxParamValues) => updateNode(i, { params })}
+                    onChange={(params: HfAudioFxParamValues) => previewNode(i, params)}
+                    onCommit={(params: HfAudioFxParamValues) => updateNode(i, { params })}
                   />
                 ) : null}
               </div>
