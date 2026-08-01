@@ -20,6 +20,8 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import {
+  analyseCarveBands,
+  carveBandsToChain,
   HF_AUDIO_CARVE_ATTR,
   normalizeCarveSettings,
   type HfCarveSettings,
@@ -596,6 +598,49 @@ function AudioFxGroup({
       .map((a) => ({ id: a.id, label: a.id }));
   })();
 
+  const [analysing, setAnalysing] = useState(false);
+
+  /**
+   * Decodes the chosen voice track and turns its spectrum into peaking filters
+   * on this one. The bands replace any previous carve output but leave
+   * hand-added effects alone, so re-analysing does not discard other work.
+   */
+  const analyse = async (): Promise<void> => {
+    if (!carve?.source) return;
+    const doc = element.element?.ownerDocument;
+    const voice = doc?.getElementById(carve.source) as HTMLAudioElement | null;
+    const src = voice?.getAttribute("src");
+    if (!src) return;
+    setAnalysing(true);
+    try {
+      const res = await fetch(new URL(src, doc!.baseURI).href);
+      const bytes = await res.arrayBuffer();
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      const ctx = new Ctor();
+      try {
+        const buffer = await ctx.decodeAudioData(bytes);
+        const bands = analyseCarveBands(buffer.getChannelData(0), buffer.sampleRate, carve);
+        const carved = carveBandsToChain(bands);
+        // Carve output is tagged so a re-run replaces it instead of stacking.
+        const kept = chain.nodes.filter((n) => !n.fromCarve);
+        const next = {
+          version: 1,
+          nodes: [...carved.nodes.map((n) => ({ ...n, fromCarve: true })), ...kept],
+        };
+        onSetAttribute(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
+      } finally {
+        void ctx.close().catch(() => undefined);
+      }
+    } catch {
+      // Leave the chain as it was; the button simply re-enables.
+    } finally {
+      setAnalysing(false);
+    }
+  };
+
   return (
     <FxSection
       chain={chain}
@@ -607,6 +652,8 @@ function AudioFxGroup({
         onSetAttribute(HF_AUDIO_CARVE_ATTR, next ? JSON.stringify(next) : "")
       }
       sourceOptions={sourceOptions}
+      onAnalyseCarve={() => void analyse()}
+      analysing={analysing}
     />
   );
 }
