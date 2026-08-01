@@ -1,16 +1,15 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import type { DomEditSelection } from "./domEditing";
 import { usePlayerStore } from "../../player";
+import { renderInto, setupReactActEnvironment } from "./testRenderUtils";
 
-(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+setupReactActEnvironment();
 
 afterEach(() => {
-  document.body.innerHTML = "";
   // The store is module-global, so a test that parks a focused ease segment
   // would otherwise leak it into every test that runs after it.
   usePlayerStore.getState().reset();
@@ -45,16 +44,6 @@ function baseElement(overrides: Partial<DomEditSelection> = {}): DomEditSelectio
     },
     ...overrides,
   } as DomEditSelection;
-}
-
-function renderInto(node: React.ReactElement) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(node);
-  });
-  return { host, root };
 }
 
 describe("FlatTimingRow", () => {
