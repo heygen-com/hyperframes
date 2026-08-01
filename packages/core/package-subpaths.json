@@ -98,6 +98,12 @@
       "types": "./dist/generated/audio-fx-runtime-inline.d.ts",
       "environments": ["bun", "node"]
     },
+    "./audio-carve": {
+      "source": "./src/audioCarve.ts",
+      "runtime": "./dist/audioCarve.js",
+      "types": "./dist/audioCarve.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
       "runtime": "./dist/colorGrading.js",

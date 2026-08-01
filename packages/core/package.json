@@ -112,6 +112,12 @@
       "import": "./src/generated/audio-fx-runtime-inline.ts",
       "types": "./src/generated/audio-fx-runtime-inline.ts"
     },
+    "./audio-carve": {
+      "bun": "./src/audioCarve.ts",
+      "node": "./dist/audioCarve.js",
+      "import": "./src/audioCarve.ts",
+      "types": "./src/audioCarve.ts"
+    },
     "./color-grading": {
       "bun": "./src/colorGrading.ts",
       "node": "./dist/colorGrading.js",
@@ -377,6 +383,10 @@
       "./audio-fx-runtime": {
         "import": "./dist/generated/audio-fx-runtime-inline.js",
         "types": "./dist/generated/audio-fx-runtime-inline.d.ts"
+      },
+      "./audio-carve": {
+        "import": "./dist/audioCarve.js",
+        "types": "./dist/audioCarve.d.ts"
       },
       "./color-grading": {
         "import": "./dist/colorGrading.js",
