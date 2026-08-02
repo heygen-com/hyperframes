@@ -31,13 +31,15 @@ import { join } from "node:path";
 import {
   type CaptureSession,
   decodePngToRgb48le,
+  extractMediaMetadata,
   getCgroupMemoryLimitMb,
   normalizeObjectFit,
   queryElementStacking,
   resampleRgb48leObjectFit,
-  resolveTimelineExtractionWindow,
+  resolveVideoExtractionWindow,
   runFfmpeg,
   type TimelineExtractionWindow,
+  type VideoMetadata,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
@@ -265,21 +267,22 @@ export function getHdrExtractionReservedBytes(): number {
 export type HdrExtractionWindow = TimelineExtractionWindow;
 
 export function resolveHdrExtractionWindow(
-  video: { id: string; start: number; end: number; mediaStart: number },
+  video: {
+    id: string;
+    start: number;
+    end: number;
+    mediaStart: number;
+    loop: boolean;
+  },
   compositionDuration: number,
+  metadata: VideoMetadata,
 ): HdrExtractionWindow | null {
   if (!Number.isFinite(compositionDuration) || compositionDuration <= 0) {
     throw new Error(
       `Cannot extract HDR video "${video.id}" with invalid composition duration ${String(compositionDuration)}`,
     );
   }
-  const requestedEnd =
-    Number.isFinite(video.end) && video.end > video.start ? video.end : compositionDuration;
-  const window = resolveTimelineExtractionWindow(
-    video,
-    requestedEnd - video.start,
-    compositionDuration,
-  );
+  const window = resolveVideoExtractionWindow(video, metadata, compositionDuration);
   if (!Number.isFinite(window.durationSeconds)) {
     throw new Error(
       `HDR video "${video.id}" has no finite interval inside the ${compositionDuration}s composition`,
@@ -400,19 +403,22 @@ export async function extractHdrVideoFrames(args: {
   abortSignal: AbortSignal | undefined;
   hdrDiagnostics: HdrDiagnostics;
   runFfmpegImpl?: typeof runFfmpeg;
+  extractMediaMetadataImpl?: typeof extractMediaMetadata;
 }): Promise<HdrVideoExtractionResult> {
   const { job, log, framesDir, composition, prep, width, height, abortSignal, hdrDiagnostics } =
     args;
   const runFfmpegImpl = args.runFfmpegImpl ?? runFfmpeg;
+  const extractMediaMetadataImpl = args.extractMediaMetadataImpl ?? extractMediaMetadata;
   const out = new Map<string, HdrVideoFrameSource>();
   mkdirSync(framesDir, { recursive: true });
   const plannedVideos: Array<{ durationSeconds: number; width: number; height: number }> = [];
   const extractionWindows = new Map<string, HdrExtractionWindow>();
-  for (const [videoId] of prep.hdrVideoSrcPaths) {
+  for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
     const video = composition.videos.find((v) => v.id === videoId);
     if (!video) continue;
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
-    const window = resolveHdrExtractionWindow(video, composition.duration);
+    const metadata = await extractMediaMetadataImpl(srcPath);
+    const window = resolveHdrExtractionWindow(video, composition.duration, metadata);
     if (!window) continue;
     extractionWindows.set(videoId, window);
     prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
@@ -492,6 +498,7 @@ export async function extractHdrVideoFrames(args: {
           frameSize,
           frameCount,
           scratch: Buffer.allocUnsafe(frameSize),
+          loop: video.loop,
         });
         handedOff = true;
       } finally {

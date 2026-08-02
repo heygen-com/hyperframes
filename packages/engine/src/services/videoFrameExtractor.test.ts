@@ -101,6 +101,46 @@ describe("resolveVideoExtractionDuration", () => {
     );
   });
 
+  it("preserves a short source cycle when negative preroll crosses a loop boundary", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -5, end: 10, mediaStart: 0, loop: true }),
+        metadata(3),
+        2,
+      ),
+    ).toEqual({
+      compositionStart: -5,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
+  it("preserves source frames needed to hold a non-loop final frame", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -5, end: 10, mediaStart: 0, loop: false }),
+        metadata(3),
+        2,
+      ),
+    ).toEqual({
+      compositionStart: -5,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
+  it("rebases a loop phase when the visible window stays within one cycle", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -5, end: 10, mediaStart: 0, loop: true }),
+        metadata(3),
+        0.5,
+      ),
+    ).toEqual({ compositionStart: 0, mediaStart: 2, durationSeconds: 0.5 });
+  });
+
   it("retains legacy behavior when no timeline end is supplied", () => {
     expect(resolveVideoExtractionDuration(video(), metadata(60))).toBe(60);
   });
@@ -1099,6 +1139,64 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
 
     expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
   });
+
+  it("preserves loop phase when negative preroll crosses the source boundary", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-negative-loop");
+    mkdirSync(outputDir, { recursive: true });
+    const video: VideoElement = {
+      id: "negative-loop",
+      src: VFR_FIXTURE,
+      start: -19,
+      end: 5,
+      mediaStart: 0,
+      loop: true,
+      hasAudio: false,
+    };
+
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 1,
+      outputDir,
+      timelineEnd: 2,
+    });
+
+    expect(result.errors).toEqual([]);
+    const extracted = result.extracted[0];
+    if (!extracted) throw new Error("expected loop source frames");
+    const lookup = createFrameLookupTable([video], result.extracted);
+    expect(video).toMatchObject({ start: -19, mediaStart: 0, loop: true });
+    expect(lookup.getFrame("negative-loop", 0)).toBe(
+      extracted.framePaths.get(extracted.totalFrames - 1),
+    );
+  }, 30_000);
+
+  it("preserves the held final frame after negative preroll exhausts a source", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-negative-held-tail");
+    mkdirSync(outputDir, { recursive: true });
+    const video: VideoElement = {
+      id: "negative-held-tail",
+      src: VFR_FIXTURE,
+      start: -15,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 1,
+      outputDir,
+      timelineEnd: 2,
+    });
+
+    expect(result.errors).toEqual([]);
+    const extracted = result.extracted[0];
+    if (!extracted) throw new Error("expected held-tail source frames");
+    const lookup = createFrameLookupTable([video], result.extracted);
+    expect(video).toMatchObject({ start: -15, mediaStart: 0, loop: false });
+    expect(lookup.getFrame("negative-held-tail", 0)).toBe(
+      extracted.framePaths.get(extracted.totalFrames - 1),
+    );
+  }, 30_000);
 
   it("detects the synthesized fixture as VFR", async () => {
     const md = await extractVideoMetadata(VFR_FIXTURE);

@@ -139,6 +139,8 @@ export interface HdrVideoFrameSource {
   frameSize: number;
   frameCount: number;
   scratch: Buffer;
+  /** The raw file contains one playable source cycle and must wrap at EOF. */
+  loop?: boolean;
 }
 
 export function closeHdrVideoFrameSource(source: HdrVideoFrameSource, log?: ProducerLogger): void {
@@ -150,6 +152,18 @@ export function closeHdrVideoFrameSource(source: HdrVideoFrameSource, log?: Prod
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+export function resolveHdrVideoFrameIndex(
+  time: number,
+  startTime: number,
+  fps: number,
+  frameCount: number,
+  loop = false,
+): number | null {
+  const frameIndex = Math.round((time - startTime) * fps);
+  if (frameIndex < 0 || frameCount < 1) return null;
+  return loop ? frameIndex % frameCount : Math.min(frameIndex, frameCount - 1);
 }
 
 // fallow-ignore-next-line complexity
@@ -173,14 +187,18 @@ export function blitHdrVideoLayer(
     return;
   }
 
-  // Frame index within the video. Clamp to the extracted raw frame count so
-  // a composition that outlives the source clip freezes on the last frame,
-  // matching Chrome's <video> behavior.
-  const videoFrameIndex = Math.round((time - startTime) * fps) + 1;
-  if (videoFrameIndex < 1) return;
-  const effectiveIndex = Math.min(videoFrameIndex, frameSource.frameCount);
-  if (effectiveIndex < 1) return;
-  const frameOffset = (effectiveIndex - 1) * frameSource.frameSize;
+  // Frame index within the extracted playable source range. Loops wrap one
+  // extracted cycle; non-loops clamp to its final frame, matching Chrome's
+  // held-tail behavior for authored slots that outlive the source.
+  const effectiveIndex = resolveHdrVideoFrameIndex(
+    time,
+    startTime,
+    fps,
+    frameSource.frameCount,
+    frameSource.loop,
+  );
+  if (effectiveIndex === null) return;
+  const frameOffset = effectiveIndex * frameSource.frameSize;
 
   try {
     if (hdrPerf) hdrPerf.hdrVideoLayerBlits += 1;

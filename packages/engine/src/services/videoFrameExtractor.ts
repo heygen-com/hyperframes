@@ -738,13 +738,24 @@ export interface TimelineExtractionWindow {
   compositionStart: number;
   mediaStart: number;
   durationSeconds: number;
+  /**
+   * Preserve the authored timeline origin and mediaStart for lookup. This is
+   * required when a negative preroll crosses a source boundary: looped media
+   * still needs its modulo phase, while a non-looping authored slot still
+   * needs the extracted final frame for held-tail playback.
+   */
+  preserveTimelinePhase?: boolean;
 }
+
+type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
+  Partial<Pick<VideoElement, "loop">>;
 
 /** Intersect a resolved source interval with the render timeline. */
 export function resolveTimelineExtractionWindow(
-  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  video: TimelineWindowVideo,
   resolvedDuration: number,
   timelineEnd?: number,
+  sourceDuration?: number,
 ): TimelineExtractionWindow {
   if (timelineEnd === undefined) {
     return {
@@ -762,16 +773,41 @@ export function resolveTimelineExtractionWindow(
     0,
     Math.min(resolvedDuration - trimmedPreroll, timelineEnd - compositionStart),
   );
+  let mediaStart = video.mediaStart + trimmedPreroll;
+  if (durationSeconds > 0 && sourceDuration !== undefined) {
+    const sourceRemaining = Math.max(0, sourceDuration - video.mediaStart);
+    const prerollCrossesSourceEnd = trimmedPreroll >= sourceRemaining;
+    if (sourceRemaining > 0 && video.loop && trimmedPreroll > 0) {
+      const phaseOffset = trimmedPreroll % sourceRemaining;
+      const phaseRemaining = sourceRemaining - phaseOffset;
+      if (durationSeconds > phaseRemaining) {
+        return {
+          compositionStart: video.start,
+          mediaStart: video.mediaStart,
+          durationSeconds: sourceRemaining,
+          preserveTimelinePhase: true,
+        };
+      }
+      mediaStart = video.mediaStart + phaseOffset;
+    } else if (sourceRemaining > 0 && prerollCrossesSourceEnd) {
+      return {
+        compositionStart: video.start,
+        mediaStart: video.mediaStart,
+        durationSeconds: sourceRemaining,
+        preserveTimelinePhase: true,
+      };
+    }
+  }
   return {
     compositionStart,
-    mediaStart: video.mediaStart + trimmedPreroll,
+    mediaStart,
     durationSeconds,
   };
 }
 
 /** Resolve source duration first, then intersect it with the render timeline. */
 export function resolveVideoExtractionWindow(
-  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  video: TimelineWindowVideo,
   metadata: VideoMetadata,
   timelineEnd?: number,
 ): TimelineExtractionWindow {
@@ -780,11 +816,16 @@ export function resolveVideoExtractionWindow(
     video.mediaStart,
     metadata,
   );
-  return resolveTimelineExtractionWindow(video, resolvedDuration, timelineEnd);
+  return resolveTimelineExtractionWindow(
+    video,
+    resolvedDuration,
+    timelineEnd,
+    metadata.durationSeconds,
+  );
 }
 
 export function resolveVideoExtractionDuration(
-  video: Pick<VideoElement, "start" | "end" | "mediaStart">,
+  video: TimelineWindowVideo,
   metadata: VideoMetadata,
   timelineEnd?: number,
 ): number {
@@ -1590,9 +1631,11 @@ export async function extractAllVideoFrames(
         if (videoDuration <= 0) {
           return { skipped: true };
         }
-        video.start = window.compositionStart;
-        video.end = window.compositionStart + videoDuration;
-        video.mediaStart = window.mediaStart;
+        if (!window.preserveTimelinePhase) {
+          video.start = window.compositionStart;
+          video.end = window.compositionStart + videoDuration;
+          video.mediaStart = window.mediaStart;
+        }
         const keyInput = cacheKeyInputs[index];
         if (keyInput) keyInput.mediaStart = window.mediaStart;
 
