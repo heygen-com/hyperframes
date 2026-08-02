@@ -7,8 +7,8 @@
  * ends share a single implementation rather than two that have to be kept in
  * agreement.
  *
- * Exposes `window.__HF_AUDIO_FX.render(pcm, sampleRate, chain)`, which returns
- * the processed samples.
+ * Exposes `window.__HF_AUDIO_FX.render(pcm, sampleRate, chain, automation)`,
+ * which returns the processed samples.
  */
 
 import {
@@ -16,6 +16,8 @@ import {
   chainNeedsWorklets,
   ensureAudioFxWorklets,
 } from "../src/audio/audioFxGraph.js";
+import { scheduleChainAutomation } from "../src/audio/audioFxAutomation.js";
+import { parseAutomation, resolveAutomation } from "../src/audioAutomation.js";
 import { parseAudioFxChain, type HfAudioFxChain } from "../src/audioFx.js";
 
 declare global {
@@ -25,6 +27,7 @@ declare global {
         planes: Float32Array[],
         sampleRate: number,
         chainJson: string,
+        automationJson?: string,
       ): Promise<Float32Array[]>;
     };
   }
@@ -42,6 +45,7 @@ declare global {
  * mix, so how far a tail may run past a clip's end is a product decision rather
  * than something to pick here.
  */
+
 /** The clip's audio as an AudioBuffer, a plane per channel. */
 function toBuffer(
   ctx: OfflineAudioContext,
@@ -71,6 +75,7 @@ async function render(
   planes: Float32Array[],
   sampleRate: number,
   chainJson: string,
+  automationJson?: string,
 ): Promise<Float32Array[]> {
   const chain: HfAudioFxChain = parseAudioFxChain(chainJson);
   const channels = Math.max(1, planes.length);
@@ -83,6 +88,19 @@ async function render(
   source.buffer = toBuffer(ctx, planes, channels, frames, sampleRate);
 
   const fx = buildFxChain(ctx, chain);
+
+  // The input WAV is the clip's own audio from its first sample, so clip-local
+  // time is offline time — the envelope needs no offset here. Same scheduler as
+  // preview, which is what makes the two agree.
+  if (automationJson) {
+    const automation = resolveAutomation(parseAutomation(automationJson), chain);
+    scheduleChainAutomation(automation, chain, fx.nodes, {
+      scheduledAt: 0,
+      elapsed: 0,
+      rate: 1,
+    });
+  }
+
   source.connect(fx.input);
   fx.output.connect(ctx.destination);
   source.start();

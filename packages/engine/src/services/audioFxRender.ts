@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getAudioFxRuntimeScript } from "@hyperframes/core/audio-fx-runtime";
 import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { acquireBrowser } from "./browserManager.js";
 
 export class AudioFxRenderError extends Error {
@@ -184,7 +185,7 @@ export async function applyAudioFxChain(
   inputWav: string,
   chain: HfAudioFxChain,
   outputWav: string,
-  options: { trackId: string; signal?: AbortSignal },
+  options: { trackId: string; signal?: AbortSignal; automation?: HfAutomation },
 ): Promise<string> {
   if (enabledAudioFxNodes(chain).length === 0) return inputWav;
   if (!existsSync(inputWav)) {
@@ -216,7 +217,12 @@ export async function applyAudioFxChain(
       await page.addScriptTag({ content: getAudioFxRuntimeScript() });
 
       const rendered = (await page.evaluate(
-        async ([channelB64, rate, chainJson]: [string[], number, string]) => {
+        async ([channelB64, rate, chainJson, automationJson]: [
+          string[],
+          number,
+          string,
+          string,
+        ]) => {
           const decode = (b64: string): Float32Array => {
             const bin = atob(b64);
             const bytes = new Uint8Array(bin.length);
@@ -226,12 +232,22 @@ export async function applyAudioFxChain(
           const api = (
             window as unknown as {
               __HF_AUDIO_FX?: {
-                render(p: Float32Array[], r: number, c: string): Promise<Float32Array[]>;
+                render(
+                  p: Float32Array[],
+                  r: number,
+                  c: string,
+                  a?: string,
+                ): Promise<Float32Array[]>;
               };
             }
           ).__HF_AUDIO_FX;
           if (!api) throw new Error("audio FX runtime failed to load");
-          const out = await api.render(channelB64.map(decode), rate, chainJson);
+          const out = await api.render(
+            channelB64.map(decode),
+            rate,
+            chainJson,
+            automationJson || undefined,
+          );
           const encode = (plane: Float32Array): string => {
             const u8 = new Uint8Array(plane.buffer, plane.byteOffset, plane.length * 4);
             let s = "";
@@ -249,7 +265,8 @@ export async function applyAudioFxChain(
           ),
           sampleRate,
           JSON.stringify(chain),
-        ] as [string[], number, string],
+          options.automation ? serializeAutomation(options.automation) : "",
+        ] as [string[], number, string, string],
       )) as string[];
 
       // byteOffset and byteLength matter: Node pools small allocations, so a
@@ -278,4 +295,4 @@ export async function applyAudioFxChain(
   }
 }
 
-export type { HfAudioFxChain };
+export type { HfAudioFxChain, HfAutomation };
