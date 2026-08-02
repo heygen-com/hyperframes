@@ -428,3 +428,42 @@ describe("media_variable_src_no_fallback", () => {
     expect(result.findings.some((f) => f.code === "media_missing_src")).toBe(true);
   });
 });
+
+describe("audio_volume_double_automation", () => {
+  const withScript = (audioAttrs: string, script: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <audio id="bgm" src="a.wav" data-start="0" data-duration="10" ${audioAttrs}></audio>
+    </div>
+    <script>${script}</script>
+  </body></html>`;
+
+  const LANE = `data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1}]}]}'`;
+
+  it("warns when a lane and a GSAP volume tween both shape the same track", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(LANE, `tl.to("#bgm", { volume: 0, duration: 1 });`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_volume_double_automation");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bgm");
+  });
+
+  it("stays quiet for a lane alone, a tween alone, or a tween on another track", async () => {
+    const laneOnly = await lintHyperframeHtml(withScript(LANE, `tl.to("#bgm", { x: 10 });`));
+    const tweenOnly = await lintHyperframeHtml(withScript("", `tl.to("#bgm", { volume: 0 });`));
+    const otherTrack = await lintHyperframeHtml(withScript(LANE, `tl.to("#vo", { volume: 0 });`));
+    for (const res of [laneOnly, tweenOnly, otherTrack]) {
+      expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
+    }
+  });
+
+  it("ignores a lane that automates something other than volume", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(
+        `data-automation='{"version":1,"lanes":[{"target":"fx.n1.frequency","points":[{"t":0,"v":200}]}]}'`,
+        `tl.to("#bgm", { volume: 0 });`,
+      ),
+    );
+    expect(res.findings.some((f) => f.code === "audio_volume_double_automation")).toBe(false);
+  });
+});

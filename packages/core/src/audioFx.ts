@@ -735,6 +735,14 @@ export function normalizeAudioFxParams(
 export interface HfAudioFxNode {
   /** Effect id from HF_AUDIO_FX. */
   type: string;
+  /**
+   * Stable handle for this node within its chain, minted when the node is
+   * added. Automation lanes address nodes by id (`fx.<id>.<param>`) so that
+   * reordering the chain never re-points a lane at a different effect. Older
+   * chains have no ids; they load fine and simply cannot be automated until
+   * the panel touches them.
+   */
+  id?: string;
   /** Set on nodes the carve analysis generated, so re-running replaces them
    *  instead of stacking another set on top of hand-added effects. */
   fromCarve?: boolean;
@@ -781,12 +789,19 @@ export function parseAudioFxChain(json: string): HfAudioFxChain {
     if (typeof n !== "object" || n === null) {
       throw new AudioFxChainError(`Node ${i} is not an object.`);
     }
-    const node = n as { type?: unknown; enabled?: unknown; params?: unknown; fromCarve?: unknown };
+    const node = n as {
+      type?: unknown;
+      id?: unknown;
+      enabled?: unknown;
+      params?: unknown;
+      fromCarve?: unknown;
+    };
     if (typeof node.type !== "string" || !BY_ID.has(node.type)) {
       throw new AudioFxChainError(`Node ${i} has unknown effect type: ${String(node.type)}`);
     }
     return {
       type: node.type,
+      ...(typeof node.id === "string" && node.id ? { id: node.id } : {}),
       ...(node.fromCarve === true ? { fromCarve: true as const } : {}),
       enabled: node.enabled !== false,
       params: normalizeAudioFxParams(
@@ -809,9 +824,23 @@ export function serializeAudioFxChain(chain: HfAudioFxChain): string {
     version: HF_AUDIO_FX_CHAIN_VERSION,
     nodes: chain.nodes.map((node) => ({
       type: node.type,
+      ...(node.id ? { id: node.id } : {}),
       ...(node.fromCarve === true ? { fromCarve: true } : {}),
       ...(node.enabled === false ? { enabled: false } : {}),
       params: normalizeAudioFxParams(node.type, node.params),
     })),
   });
+}
+
+/**
+ * Next free node id for a chain, as `n1`, `n2`, … — counted rather than random
+ * so that adding an effect produces the same document on every machine, which
+ * compositions require.
+ */
+export function mintAudioFxNodeId(chain: HfAudioFxChain): string {
+  const taken = new Set(chain.nodes.map((n) => n.id).filter(Boolean));
+  for (let i = 1; ; i += 1) {
+    const id = `n${i}`;
+    if (!taken.has(id)) return id;
+  }
 }
