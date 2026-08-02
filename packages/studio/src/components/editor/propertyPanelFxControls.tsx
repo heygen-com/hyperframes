@@ -184,5 +184,3 @@ export function FxParams({ def, params, onChange, onCommit, disabled }: FxParams
     </div>
   );
 }
-
-export const __testables = { toSlider, fromSlider, display };

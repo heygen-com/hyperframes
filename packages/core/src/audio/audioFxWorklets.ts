@@ -9,7 +9,7 @@
  * Kept as a source string so it can be registered from a Blob URL without a
  * separate bundled asset, which keeps the studio's build unchanged.
  */
-export const AUDIO_FX_WORKLET_SOURCE = `
+const AUDIO_FX_WORKLET_SOURCE = `
 const dbToLin = (db) => Math.pow(10, db / 20);
 
 /**
