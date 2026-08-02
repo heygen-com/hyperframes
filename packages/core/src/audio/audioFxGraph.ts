@@ -431,6 +431,8 @@ export function buildFxNode(
 export interface FxChainHandle {
   input: AudioNode;
   output: AudioNode;
+  /** Built effects in chain order, carrying the node ids lanes address. */
+  nodes: { id?: string; type: string; handle: FxNodeHandle }[];
   /** Re-parameterise in place when the shape is unchanged; false if a rebuild is needed. */
   update(chain: HfAudioFxChain): boolean;
   dispose(): void;
@@ -465,7 +467,7 @@ function shapeOf(chain: HfAudioFxChain): string {
 export function buildFxChain(ctx: BaseAudioContext, chain: HfAudioFxChain): FxChainHandle {
   const input = ctx.createGain();
   const output = ctx.createGain();
-  const handles: { type: string; handle: FxNodeHandle }[] = [];
+  const handles: { id?: string; type: string; handle: FxNodeHandle }[] = [];
 
   let tail: AudioNode = input;
   for (const node of chain.nodes) {
@@ -473,7 +475,7 @@ export function buildFxChain(ctx: BaseAudioContext, chain: HfAudioFxChain): FxCh
     const handle = buildFxNode(ctx, node.type, node.params ?? {});
     tail.connect(handle.input);
     tail = handle.output;
-    handles.push({ type: node.type, handle });
+    handles.push({ ...(node.id ? { id: node.id } : {}), type: node.type, handle });
   }
   tail.connect(output);
 
@@ -482,6 +484,7 @@ export function buildFxChain(ctx: BaseAudioContext, chain: HfAudioFxChain): FxCh
   return {
     input,
     output,
+    nodes: handles,
     update(next) {
       if (shapeOf(next) !== shape) return false;
       const active = next.nodes.filter((node) => node.enabled !== false);
