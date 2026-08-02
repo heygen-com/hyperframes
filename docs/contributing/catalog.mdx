@@ -3,12 +3,12 @@ title: Contributing to the Catalog
 description: How to add blocks and components to the HyperFrames registry.
 ---
 
-Your agent already knows how to build video components. It writes HTML. HyperFrames renders it. The registry is the collection of everything that's been built — 52 blocks and counting.
+Your agent already knows how to build video components. It writes HTML. HyperFrames renders it. The registry is the collection of everything that's been built — 113 blocks and 25 components.
 
 This guide shows you how to add to it.
 
 <Info>
-**Quick version** — Fork the repo. Write one HTML file with a paused GSAP timeline. Add `registry-item.json`. Run `hyperframes lint` + `validate`. Publish with `npx hyperframes publish`. Open a PR.
+**Quick version** — Fork the repo. Write one HTML file with a paused GSAP timeline. Add `registry-item.json`. Run `hyperframes lint` + `hyperframes check`. Publish with `npx hyperframes publish`. Open a PR.
 </Info>
 
 ## Why Contribute?
@@ -53,11 +53,22 @@ The `/hyperframes-registry` skill scaffolds the structure, validates, renders a 
 
 ### Structure
 
+A block is two files. A component is three, because it also ships the demo the catalog renders it inside.
+
 ```
 registry/blocks/my-block/
   my-block.html           ← the composition
   registry-item.json      ← metadata
+
+registry/components/my-effect/
+  my-effect.html          ← the snippet
+  demo.html               ← the composition the catalog previews it in
+  registry-item.json      ← metadata
 ```
+
+<Warning>
+`demo.html` is required for components. Preview generation skips any component without one, which fails the catalog CI job for your item.
+</Warning>
 
 ### registry-item.json
 
@@ -71,6 +82,9 @@ registry/blocks/my-block/
   "tags": ["category", "subcategory"],
   "dimensions": { "width": 1920, "height": 1080 },
   "duration": 5,
+  "params": [
+    { "key": "--accent", "label": "Accent", "type": "color", "default": "#ff4d4d" }
+  ],
   "files": [
     {
       "path": "my-block.html",
@@ -80,6 +94,36 @@ registry/blocks/my-block/
   ]
 }
 ```
+
+#### Expose your block's knobs with `params`
+
+Declare `params` and Studio opens a live customization panel the moment someone adds your block. Each entry maps a label to a CSS variable your composition reads, so a user can restyle it without editing HTML.
+
+```json
+"params": [
+  { "key": "--bg-color", "label": "Background", "type": "color", "default": "#faf9f6" },
+  { "key": "--headline", "label": "Headline", "type": "text", "default": "Ship it" },
+  { "key": "--speed", "label": "Speed", "type": "number", "default": "1", "min": 0.5, "max": 2, "step": 0.1 }
+]
+```
+
+Types are `color`, `text`, `number`, and `select` (which takes an `options` array).
+
+<Tip>
+If your block has any brand surface — a color, a headline, a logo slot — expose it as a param. A block nobody can restyle gets forked instead of reused.
+</Tip>
+
+#### Other optional fields
+
+| Field | What it does |
+|-------|--------------|
+| `author` / `authorUrl` | Credits you on the catalog page |
+| `relatedSkill` | Links the catalog page to the skill that authors this kind of block |
+| `registryDependencies` | Other registry items installed alongside yours |
+| `license` | SPDX identifier, if yours differs from the repo's |
+| `sourcePrompt` | The prompt that produced the block, for people remixing it |
+| `minCliVersion` | Guards against installing into a CLI too old to run it |
+| `deprecated` | Marks the item superseded, with the migration note as the value |
 
 ## The Rules
 
@@ -107,16 +151,30 @@ Five things that must be true for every registry item:
 Break any of these and renders won't be reproducible. The renderer captures every frame by seeking the timeline — if your animation depends on real time or random state, it breaks.
 </Warning>
 
+Prefix every element ID with a 2-3 letter abbreviation of your item's name (`hz-cg-0`, `vc-canvas`). Unprefixed IDs collide when your block is used as a sub-composition.
+
 ## Quality Bar
 
 Not everything belongs in the registry. The bar is production quality.
 
 | Type | Minimum standard |
 |------|-----------------|
-| Captions | 96px+ font, text-stroke/shadow, overflow prevention |
+| Captions | 96px+ font (64-72px for monospace), text-stroke or shadow, `window.__hyperframes.fitTextFontSize()` on every group |
 | VFX | Solves a problem that takes 4+ hours from scratch |
 | Transitions | Smoother than CSS — if opacity 0→1 works, it's not a transition |
 | Blocks | Would a professional use this in a client project? |
+
+### Motion review
+
+Passing `check` isn't the same as the motion being good. Watch your rendered preview once at full speed and answer these:
+
+| Rule | Ask yourself |
+|------|-------------|
+| Key information holds still before the block ends | Does the headline or number sit motionless for at least a second after it lands, or is it still drifting at the cut? |
+| Speed comes from acceleration, not constant velocity | Is anything moving at a constant rate? Linear motion reads as a slide deck. |
+| Default one notch slower than feels right | Was there anything you couldn't read on the first watch? |
+| One hero per block | Count what's animating in the first second. More than one and the eye has nowhere to land. |
+| Light effects aren't sprayed | Count the glints and sweeps. More than one, or any that spills past a rounded corner, is a cut. |
 
 ### Common rejection reasons
 
@@ -125,6 +183,7 @@ Not everything belongs in the registry. The bar is production quality.
 3. **"Non-deterministic"** — `Math.random()` or `Date.now()`
 4. **"Timeline not found"** — ID mismatch between HTML and JS
 5. **"Breaks as sub-composition"** — element IDs collide (prefix everything)
+6. **"Nothing to tune"** — a branded block with no `params`
 
 ## Workflow
 
@@ -136,13 +195,13 @@ Not everything belongs in the registry. The bar is production quality.
     ```
   </Step>
   <Step title="Write your block">
-    Create the HTML composition and `registry-item.json`. Use the templates above.
+    Create the HTML composition and `registry-item.json`. Use the templates above. For a component, add `demo.html` too.
   </Step>
   <Step title="Validate">
     ```bash
     hyperframes lint
     hyperframes check
-    npx oxfmt your-block.html
+    npx oxfmt registry/blocks/your-block/*.html
     ```
   </Step>
   <Step title="Update registry">
@@ -161,26 +220,42 @@ Not everything belongs in the registry. The bar is production quality.
     ```bash
     npx hyperframes publish
     ```
-    Open a PR with your [hyperframes.dev](https://hyperframes.dev) preview link.
+    Open a PR with your [hyperframes.dev](https://hyperframes.dev) preview link. Commit your item directory, `registry/registry.json`, and the generated `docs/catalog/` page.
   </Step>
 </Steps>
 
-**External contributors:** attach the preview MP4 to your PR. A maintainer handles the catalog image.
+CI renders the catalog PNG and MP4 for every block or component your PR touches, so there's nothing to attach by hand. A maintainer publishes the final catalog image before merge.
+
+### What to write in the PR body
+
+The one-line `description` tells a reader what your block looks like. It doesn't tell them when to reach for it, which is what decides whether it gets used. Three lines in the PR body:
+
+- **When to use it** — name the moment, e.g. "second beat of a product promo, right after the hero card lands"
+- **Duration range** — your block has a fixed `duration`; say what range still reads correctly
+- **Known pitfalls** — a font that must be loaded, a background it needs contrast against, a length past which it stops working
 
 **HeyGen internal:** run `scripts/upload-docs-images.sh` to push catalog PNGs.
 
 ## What's Needed Right Now
 
-These are gaps in the registry. If you're looking for something to build, start here.
+The catalog is lopsided. It has 29 transitions and 33 code blocks, and almost nothing for the moments that carry a video's shape. These gaps are sorted by the job the shot does, not by the technique it uses.
+
+| Job in the video | Blocks today | Gap |
+|------------------|--------------|-----|
+| Opening / hero reveal | 2 | The most-used moment in any promo has two options |
+| Outro / end card | 1 | Every video needs one |
+| Beat-driven cuts | 0 | Speed ramps, freeze frames, cut-on-the-beat — nothing, despite a whole music-to-video workflow |
+| Interaction demo | 0 | Command palette summon, type-and-filter, cursor performance, theme switch — nothing, despite HyperFrames capturing real product pages |
+| Data readout | 1 generic | Odometer digit roll, gauge sweep, before-and-after slider scrub |
+| Captions | 0 blocks | 15 caption components exist, but no ready-to-drop caption block |
+
+Four specific holes that survived the last round:
 
 | Category | Gap | Difficulty |
 |----------|-----|-----------|
-| Captions | Karaoke with clip-path sweep (CapCut style) | Medium |
 | Captions | RTL language layouts (Arabic, Hebrew) | Medium |
-| Lower thirds | 10 variations for podcasts/interviews | Easy |
-| Lower thirds | News ticker / scrolling text bar | Easy |
-| Maps | Animated route maps, region highlights, location pins | Medium |
-| VFX | Product turntable with HDRI | Hard |
-| VFX | Particle system with physics (collisions, gravity) | Hard |
-| Transitions | Morphing shape transitions | Hard |
 | Data viz | Sankey / flow diagrams | Medium |
+| VFX | Particle system with physics (collisions, gravity) | Hard |
+| VFX | Product turntable with HDRI | Hard |
+
+Pick one, and your first contribution fills a hole instead of being the 30th transition.
