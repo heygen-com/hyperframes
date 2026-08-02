@@ -124,24 +124,27 @@ describe("resolveVideoExtractionDuration", () => {
         2,
       ),
     ).toEqual({
-      compositionStart: -5,
-      mediaStart: 0,
-      durationSeconds: 3,
-      preserveTimelinePhase: true,
+      compositionStart: -3,
+      mediaStart: 2,
+      durationSeconds: 1,
+      preserveTimelineEnd: true,
     });
   });
 
   it.each([
-    { loop: true, label: "loop" },
-    { loop: false, label: "held tail" },
-  ])("caps a finite long slot to one short source range for $label playback", ({ loop }) => {
-    expect(resolveVideoExtractionWindow(video({ end: 60, loop }), metadata(3), 60)).toEqual({
-      compositionStart: 0,
-      mediaStart: 0,
-      durationSeconds: 3,
-      preserveTimelinePhase: true,
-    });
-  });
+    { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
+    { loop: false, preservation: { preserveTimelineEnd: true }, label: "held tail" },
+  ])(
+    "caps a finite long slot to one short source range for $label playback",
+    ({ loop, preservation }) => {
+      expect(resolveVideoExtractionWindow(video({ end: 60, loop }), metadata(3), 60)).toEqual({
+        compositionStart: 0,
+        mediaStart: 0,
+        durationSeconds: 3,
+        ...preservation,
+      });
+    },
+  );
 
   it("preserves authored timing when the visible interval partially crosses a held tail", () => {
     expect(
@@ -151,7 +154,37 @@ describe("resolveVideoExtractionDuration", () => {
         2,
       ),
     ).toEqual({
-      compositionStart: -2,
+      compositionStart: 0,
+      mediaStart: 2,
+      durationSeconds: 1,
+      preserveTimelineEnd: true,
+    });
+  });
+
+  it("bounds an entirely held long source to its final-frame sample", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -600, end: 10, mediaStart: 0, loop: false }),
+        metadata(120),
+        2,
+      ),
+    ).toEqual({
+      compositionStart: -481,
+      mediaStart: 119,
+      durationSeconds: 1,
+      preserveTimelineEnd: true,
+    });
+  });
+
+  it("preserves a complete loop cycle when visibility ends exactly on a wrap boundary", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -1, end: 10, mediaStart: 0, loop: true }),
+        metadata(3),
+        2,
+      ),
+    ).toEqual({
+      compositionStart: -1,
       mediaStart: 0,
       durationSeconds: 3,
       preserveTimelinePhase: true,
@@ -165,6 +198,30 @@ describe("resolveVideoExtractionDuration", () => {
       durationSeconds: 3,
       preserveTimelinePhase: true,
     });
+  });
+
+  it("never plans more extraction than the playable source range", () => {
+    for (const loop of [false, true]) {
+      for (const sourceDuration of [0.5, 3, 120]) {
+        for (const mediaStart of [0, sourceDuration / 3]) {
+          for (const start of [-600, -5, -1, 0, 2]) {
+            const window = resolveVideoExtractionWindow(
+              video({ start, end: start + 60, mediaStart, loop }),
+              metadata(sourceDuration),
+              10,
+            );
+            expect(window.durationSeconds).toBeLessThanOrEqual(sourceDuration - mediaStart);
+            expect(window.durationSeconds).toBeGreaterThanOrEqual(0);
+          }
+        }
+      }
+    }
+  });
+
+  it("rejects a media start at source EOF before planning extraction", () => {
+    expect(() =>
+      resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(3), 10),
+    ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
   });
 
   it("rebases a loop phase when the visible window stays within one cycle", () => {
@@ -1228,7 +1285,10 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const extracted = result.extracted[0];
     if (!extracted) throw new Error("expected held-tail source frames");
     const lookup = createFrameLookupTable([video], result.extracted);
-    expect(video).toMatchObject({ start: -15, mediaStart: 0, loop: false });
+    // The authored slot remains active through end=5, but extraction is
+    // rebased to the source's final one-second sample instead of materializing
+    // the full ten-second source just to hold its last frame.
+    expect(video).toMatchObject({ start: -6, end: 5, mediaStart: 9, loop: false });
     expect(lookup.getFrame("negative-held-tail", 0)).toBe(
       extracted.framePaths.get(extracted.totalFrames - 1),
     );
@@ -1451,6 +1511,52 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(hit.extracted[0]!.totalFrames).toBe(miss.extracted[0]!.totalFrames);
 
     rmSync(CACHE_DIR, { recursive: true, force: true });
+  }, 60_000);
+
+  it("reuses one-cycle loop extraction across different authored starts", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-loop-phase-cache-test-"));
+    const src = await synthCfrClip("cache-loop-phase-src.mp4", 3);
+    try {
+      const firstOutputDir = join(FIXTURE_DIR, "out-cache-loop-phase-first");
+      const secondOutputDir = join(FIXTURE_DIR, "out-cache-loop-phase-second");
+      mkdirSync(firstOutputDir, { recursive: true });
+      mkdirSync(secondOutputDir, { recursive: true });
+
+      const first = await extractAllVideoFrames(
+        [
+          {
+            ...cfrClipElement("loop-cache-first", src, 60),
+            loop: true,
+          },
+        ],
+        FIXTURE_DIR,
+        { fps: 30, outputDir: firstOutputDir, timelineEnd: 60 },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(first.errors).toEqual([]);
+      expect(first.phaseBreakdown.cacheMisses).toBe(1);
+
+      const second = await extractAllVideoFrames(
+        [
+          {
+            ...cfrClipElement("loop-cache-second", src, 66),
+            start: -6,
+            loop: true,
+          },
+        ],
+        FIXTURE_DIR,
+        { fps: 30, outputDir: secondOutputDir, timelineEnd: 60 },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(second.errors).toEqual([]);
+      expect(second.phaseBreakdown.cacheHits).toBe(1);
+      expect(second.phaseBreakdown.cacheMisses).toBe(0);
+      expect(second.extracted[0]?.totalFrames).toBe(first.extracted[0]?.totalFrames);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("updates the cache sentinel mtime on a hit", async () => {

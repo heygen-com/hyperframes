@@ -740,15 +740,26 @@ export interface TimelineExtractionWindow {
   durationSeconds: number;
   /**
    * Preserve the authored timeline origin and mediaStart for lookup. This is
-   * required when a negative preroll crosses a source boundary: looped media
-   * still needs its modulo phase, while a non-looping authored slot still
-   * needs the extracted final frame for held-tail playback.
+   * required when a looped visible interval crosses a source boundary and
+   * still needs modulo phase against the complete extracted source cycle.
    */
   preserveTimelinePhase?: boolean;
+  /**
+   * Keep the authored end while rebasing start/mediaStart to the extracted
+   * source suffix. Non-looping lookup then holds the suffix's final frame
+   * through the remainder of the authored slot.
+   */
+  preserveTimelineEnd?: boolean;
 }
 
 type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
   Partial<Pick<VideoElement, "loop">>;
+
+// A clip whose visible interval begins after source EOF only needs a reliable
+// final-frame sample, not its entire source history. One second is long enough
+// to tolerate ordinary CFR/VFR timestamp rounding while keeping raw HDR
+// scratch bounded independently of source length.
+const HELD_TAIL_EXTRACTION_MAX_SECONDS = 1;
 
 /**
  * Intersect an authored slot with the render timeline, then select the
@@ -793,7 +804,10 @@ export function resolveTimelineExtractionWindow(
     if (sourceRemaining > 0 && video.loop) {
       const phaseOffset = trimmedPreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
-      if (visibleDuration > phaseRemaining) {
+      // The element visibility contract includes its end boundary. Preserve a
+      // complete cycle on equality as well, otherwise a rebased suffix would
+      // wrap to its own first frame instead of the source cycle's first frame.
+      if (visibleDuration >= phaseRemaining) {
         return {
           compositionStart: video.start,
           mediaStart: video.mediaStart,
@@ -802,15 +816,31 @@ export function resolveTimelineExtractionWindow(
         };
       }
       mediaStart = video.mediaStart + phaseOffset;
-    } else if (
-      sourceRemaining > 0 &&
-      visibleDuration > Math.max(0, sourceRemaining - trimmedPreroll)
-    ) {
+    } else if (sourceRemaining > 0) {
+      const sourceVisibleAfterPreroll = Math.max(0, sourceRemaining - trimmedPreroll);
+      if (visibleDuration <= sourceVisibleAfterPreroll) {
+        return {
+          compositionStart,
+          mediaStart,
+          durationSeconds: visibleDuration,
+        };
+      }
+
+      // The visible interval enters (or is entirely inside) the held tail.
+      // Extract only the visible source suffix, plus a bounded final-frame
+      // sample when preroll is already at/past EOF. Rebase lookup to the
+      // source time represented by frame zero, but retain the authored end so
+      // non-loop lookup can clamp to the extracted final frame.
+      const extractionDuration = Math.min(
+        sourceRemaining,
+        Math.max(sourceVisibleAfterPreroll, HELD_TAIL_EXTRACTION_MAX_SECONDS),
+      );
+      const extractionOffset = sourceRemaining - extractionDuration;
       return {
-        compositionStart: video.start,
-        mediaStart: video.mediaStart,
-        durationSeconds: sourceRemaining,
-        preserveTimelinePhase: true,
+        compositionStart: video.start + extractionOffset,
+        mediaStart: video.mediaStart + extractionOffset,
+        durationSeconds: extractionDuration,
+        preserveTimelineEnd: true,
       };
     }
   }
@@ -827,6 +857,22 @@ export function resolveVideoExtractionWindow(
   metadata: VideoMetadata,
   timelineEnd?: number,
 ): TimelineExtractionWindow {
+  if (!(metadata.durationSeconds > 0)) {
+    throw new VideoSourceExtractionError(
+      "invalid_media",
+      false,
+      "Video source has no positive duration",
+      `Video source duration is ${metadata.durationSeconds}s`,
+    );
+  }
+  if (video.mediaStart >= metadata.durationSeconds) {
+    throw new VideoSourceExtractionError(
+      "media_start_out_of_range",
+      false,
+      "Video media start is outside the source duration",
+      `Video media start ${video.mediaStart}s is outside source duration ${metadata.durationSeconds}s`,
+    );
+  }
   const resolvedDuration = resolveSegmentDuration(
     video.end - video.start,
     video.mediaStart,
@@ -1649,7 +1695,9 @@ export async function extractAllVideoFrames(
         }
         if (!window.preserveTimelinePhase) {
           video.start = window.compositionStart;
-          video.end = window.compositionStart + videoDuration;
+          if (!window.preserveTimelineEnd) {
+            video.end = window.compositionStart + videoDuration;
+          }
           video.mediaStart = window.mediaStart;
         }
         const keyInput = cacheKeyInputs[index];
