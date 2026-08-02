@@ -1,0 +1,84 @@
+<!--
+  Count Up — deterministic proxy-driven counter with a synchronized scale grow.
+
+  Usage: wrap your number in the markup below, paste this snippet into your
+  composition, then call cuCountUp() from your timeline script. The number is
+  written through an explicit thousands grouper (never toLocaleString), so a
+  render is byte-identical regardless of the machine's locale
+  (857,531 en-US / 857.531 de-DE / 8,57,531 hi-IN with toLocaleString).
+
+  Markup (hand-authored in your composition):
+
+    <div class="cu-wrap">
+      <span class="cu-num" id="cu-revenue">500</span>
+      <span class="cu-suffix">loops</span>
+    </div>
+
+  Customize:
+  - Final type size is static CSS on .cu-num — the helper animates scale only,
+    never fontSize (counting-dynamic-scale).
+  - Pass a non-zero `from` so the number reads as live, not booting from zero.
+  - tabular-nums keeps digit columns stable while the value changes.
+-->
+
+<style>
+  .cu-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35em;
+  }
+
+  .cu-num {
+    font-variant-numeric: tabular-nums;
+    display: inline-block;
+    transform-origin: 0% 50%;
+  }
+
+  .cu-suffix {
+    display: inline-block;
+  }
+</style>
+
+<script>
+  // Deterministic thousands grouping — toLocaleString depends on render locale.
+  function cuGroup(n) {
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // Drives el.textContent from a proxy object (seek-safe: pure timeline
+  // tweens, no wall-clock state), with a separate scale fromTo sharing the
+  // same ease and duration. Never creates DOM.
+  function cuCountUp(tl, el, opts) {
+    const at = opts.at === undefined ? 0 : opts.at;
+    const from = opts.from === undefined ? 0 : opts.from;
+    const duration = opts.duration === undefined ? 1.5 : opts.duration;
+    const ease = opts.ease === undefined ? "power3.out" : opts.ease;
+    const startScale = opts.startScale === undefined ? 0.55 : opts.startScale;
+    const proxy = { v: from };
+    tl.to(
+      proxy,
+      {
+        v: opts.to,
+        duration,
+        ease,
+        onUpdate: () => {
+          el.textContent = cuGroup(proxy.v);
+        },
+      },
+      at,
+    );
+    tl.fromTo(el, { scale: startScale }, { scale: 1, duration, ease }, at);
+  }
+</script>
+
+<!--
+  Timeline integration example (add to your composition's GSAP timeline):
+
+  // Counts 500 -> 551 over 1.7s — non-zero start reads as a live number
+  cuCountUp(tl, document.getElementById("cu-revenue"), {
+    at: 0.4,
+    from: 500,
+    to: 551,
+    duration: 1.7,
+  });
+-->

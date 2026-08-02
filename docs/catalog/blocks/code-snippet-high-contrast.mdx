@@ -1,9 +1,9 @@
 ---
-title: "High Contrast"
-description: "Maximum contrast dark theme for accessibility."
+title: "Code Snippet - High Contrast"
+description: "VS Code workbench with per-character typing animation in the High Contrast theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar."
 ---
 
-# High Contrast
+# Code Snippet - High Contrast
 
 VS Code workbench with per-character typing animation in the High Contrast theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.
 
@@ -20,12 +20,6 @@ npx hyperframes add code-snippet-high-contrast
 ```
 
 </CodeGroup>
-
-Install all code snippet themes at once:
-
-```bash Terminal
-npx hyperframes add code
-```
 
 ## Details
 
@@ -47,21 +41,5 @@ npx hyperframes add code
 After installing, add the block to your host composition:
 
 ```html
-<div
-  data-composition-id="code-snippet-high-contrast"
-  data-composition-src="compositions/code-snippet-high-contrast.html"
-  data-start="0"
-  data-duration="11"
-  data-track-index="1"
-  data-width="1920"
-  data-height="1080"
-></div>
+<div data-composition-id="code-snippet-high-contrast" data-composition-src="compositions/code-snippet-high-contrast.html" data-start="0" data-duration="11" data-track-index="1" data-width="1920" data-height="1080"></div>
 ```
-
-## Features
-
-- Full VS Code workbench recreation — activity bar, sidebar, explorer tree, editor tabs, breadcrumbs, terminal panel, status bar
-- Per-character typing animation with cursor tracking and active line highlight
-- Colors sourced from official `microsoft/vscode` built-in theme JSON
-- 3D perspective tilt at the end of the typing sequence
-- Terminal panel with mock test output
