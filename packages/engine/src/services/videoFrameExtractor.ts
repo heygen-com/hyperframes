@@ -750,7 +750,16 @@ export interface TimelineExtractionWindow {
 type TimelineWindowVideo = Pick<VideoElement, "start" | "end" | "mediaStart"> &
   Partial<Pick<VideoElement, "loop">>;
 
-/** Intersect a resolved source interval with the render timeline. */
+/**
+ * Intersect an authored slot with the render timeline, then select the
+ * smallest playable source range that preserves timeline lookup semantics.
+ *
+ * A finite authored slot can outlive the source. In that case FFmpeg should
+ * still extract at most one source range: lookup either wraps that range for
+ * loops or holds its final frame for non-looping video. Keeping the authored
+ * timeline origin separate from the extracted range is what makes both
+ * behaviours survive the source-duration cap.
+ */
 export function resolveTimelineExtractionWindow(
   video: TimelineWindowVideo,
   resolvedDuration: number,
@@ -769,18 +778,22 @@ export function resolveTimelineExtractionWindow(
   }
   const compositionStart = Math.max(0, video.start);
   const trimmedPreroll = compositionStart - video.start;
-  const durationSeconds = Math.max(
-    0,
-    Math.min(resolvedDuration - trimmedPreroll, timelineEnd - compositionStart),
-  );
+  const timelineDuration = Math.max(0, timelineEnd - compositionStart);
+  // An open-ended loop remains active through the render timeline; one source
+  // cycle is enough to service it. Non-looping open-ended media retains the
+  // natural-duration fallback supplied by resolveSegmentDuration.
+  const resolvedVisibleDuration =
+    video.loop && !Number.isFinite(video.end)
+      ? timelineDuration
+      : resolvedDuration - trimmedPreroll;
+  const visibleDuration = Math.max(0, Math.min(resolvedVisibleDuration, timelineDuration));
   let mediaStart = video.mediaStart + trimmedPreroll;
-  if (durationSeconds > 0 && sourceDuration !== undefined) {
+  if (visibleDuration > 0 && sourceDuration !== undefined) {
     const sourceRemaining = Math.max(0, sourceDuration - video.mediaStart);
-    const prerollCrossesSourceEnd = trimmedPreroll >= sourceRemaining;
-    if (sourceRemaining > 0 && video.loop && trimmedPreroll > 0) {
+    if (sourceRemaining > 0 && video.loop) {
       const phaseOffset = trimmedPreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
-      if (durationSeconds > phaseRemaining) {
+      if (visibleDuration > phaseRemaining) {
         return {
           compositionStart: video.start,
           mediaStart: video.mediaStart,
@@ -789,7 +802,10 @@ export function resolveTimelineExtractionWindow(
         };
       }
       mediaStart = video.mediaStart + phaseOffset;
-    } else if (sourceRemaining > 0 && prerollCrossesSourceEnd) {
+    } else if (
+      sourceRemaining > 0 &&
+      visibleDuration > Math.max(0, sourceRemaining - trimmedPreroll)
+    ) {
       return {
         compositionStart: video.start,
         mediaStart: video.mediaStart,
@@ -801,7 +817,7 @@ export function resolveTimelineExtractionWindow(
   return {
     compositionStart,
     mediaStart,
-    durationSeconds,
+    durationSeconds: visibleDuration,
   };
 }
 

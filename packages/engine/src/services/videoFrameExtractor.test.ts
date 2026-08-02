@@ -131,6 +131,42 @@ describe("resolveVideoExtractionDuration", () => {
     });
   });
 
+  it.each([
+    { loop: true, label: "loop" },
+    { loop: false, label: "held tail" },
+  ])("caps a finite long slot to one short source range for $label playback", ({ loop }) => {
+    expect(resolveVideoExtractionWindow(video({ end: 60, loop }), metadata(3), 60)).toEqual({
+      compositionStart: 0,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
+  it("preserves authored timing when the visible interval partially crosses a held tail", () => {
+    expect(
+      resolveVideoExtractionWindow(
+        video({ start: -2, end: 10, mediaStart: 0, loop: false }),
+        metadata(3),
+        2,
+      ),
+    ).toEqual({
+      compositionStart: -2,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
+  it("extracts one cycle for an open-ended loop that spans the composition", () => {
+    expect(resolveVideoExtractionWindow(video({ loop: true }), metadata(3), 10)).toEqual({
+      compositionStart: 0,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
   it("rebases a loop phase when the visible window stays within one cycle", () => {
     expect(
       resolveVideoExtractionWindow(

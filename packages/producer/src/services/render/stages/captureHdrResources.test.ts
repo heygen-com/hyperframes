@@ -178,6 +178,20 @@ describe("resolveHdrExtractionWindow", () => {
     });
   });
 
+  it.each([
+    { loop: true, label: "loop" },
+    { loop: false, label: "held tail" },
+  ])("caps a finite 60-second $label slot to one 3-second source range", ({ loop }) => {
+    expect(
+      resolveHdrExtractionWindow(hdrVideo("short", { end: 60, loop }), 60, videoMetadata(3)),
+    ).toEqual({
+      compositionStart: 0,
+      mediaStart: 0,
+      durationSeconds: 3,
+      preserveTimelinePhase: true,
+    });
+  });
+
   it("skips HDR media with no interval inside the composition", () => {
     expect(
       resolveHdrExtractionWindow(hdrVideo("hdr", { start: 3 }), 2, videoMetadata(60)),
@@ -312,6 +326,52 @@ describe("extractHdrVideoFrames", () => {
       rmSync(framesDir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { loop: true, expectedFrameIndex: 4, label: "loop" },
+    { loop: false, expectedFrameIndex: 5, label: "held tail" },
+  ])(
+    "reserves one short source range for a finite 60-second $label slot",
+    async ({ loop, expectedFrameIndex }) => {
+      const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-finite-short-source-"));
+      const video = hdrVideo(`finite-${String(loop)}`, { end: 60, loop });
+      const fixture = hdrExtractionFixture([video], framesDir);
+      fixture.composition.duration = 60;
+      const calls: string[][] = [];
+
+      try {
+        const extracted = await extractHdrVideoFrames({
+          ...fixture,
+          extractMediaMetadataImpl: async () => videoMetadata(3),
+          runFfmpegImpl: async (args) => {
+            calls.push(args);
+            const rawPath = args.at(-1);
+            if (!rawPath) throw new Error("mock FFmpeg output path missing");
+            writeFileSync(rawPath, Buffer.alloc(6 * 6));
+            return ffmpegResult(true);
+          },
+        });
+        try {
+          const args = calls[0] ?? [];
+          expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "0"]);
+          expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "3"]);
+          expect(extracted.estimatedBytes).toBe(36);
+          expect(getHdrExtractionReservedBytes()).toBe(36);
+          expect(fixture.prep.hdrVideoStartTimes.get(video.id)).toBe(0);
+          const source = extracted.sources.get(video.id);
+          expect(source?.loop).toBe(loop);
+          expect(resolveHdrVideoFrameIndex(59, 0, 2, source?.frameCount ?? 0, source?.loop)).toBe(
+            expectedFrameIndex,
+          );
+        } finally {
+          for (const source of extracted.sources.values()) cleanupHdrVideoFrameSource(source);
+          extracted.releaseReservation();
+        }
+      } finally {
+        rmSync(framesDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("closes/removes completed and partial sources and releases reservation on failure", async () => {
     const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-partial-"));
