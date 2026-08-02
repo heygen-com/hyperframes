@@ -33,6 +33,15 @@ export interface HfAudioFxNumberParam {
   default: number;
   /** Frequency-style controls need a log knob to be usable. */
   scale?: "linear" | "log";
+  /**
+   * The knob is backed by an AudioParam, so an automation lane can drive it.
+   *
+   * Not every knob can be: a WaveShaper curve, a convolution impulse and a
+   * worklet's `processorOptions` are all set wholesale rather than scheduled.
+   * A graph builder must expose an AudioParam for every parameter flagged here
+   * — `audioFxGraph.test.ts` builds each effect and checks it.
+   */
+  automatable?: boolean;
   /** One line explaining what turning this does, shown on the control. */
   hint?: string;
 }
@@ -81,6 +90,7 @@ const freq = (
   step: 1,
   default: def,
   scale: "log",
+  automatable: true,
 });
 
 const qParam = (def = 0.707, hint = "Bandwidth — higher is narrower."): HfAudioFxNumberParam => ({
@@ -93,6 +103,7 @@ const qParam = (def = 0.707, hint = "Bandwidth — higher is narrower."): HfAudi
   step: 0.01,
   default: def,
   scale: "log",
+  automatable: true,
   hint,
 });
 
@@ -105,6 +116,7 @@ const gainDb = (min = -40, max = 40, def = 0): HfAudioFxNumberParam => ({
   max,
   step: 0.1,
   default: def,
+  automatable: true,
 });
 
 const poles: HfAudioFxEnumParam = {
@@ -408,6 +420,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "output",
+        automatable: true,
         label: "Output",
         unit: "dB",
         min: -24,
@@ -489,6 +502,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "time",
+        automatable: true,
         label: "Time",
         unit: "ms",
         min: 1,
@@ -502,6 +516,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "feedback",
+        automatable: true,
         label: "Feedback",
         unit: "",
         min: 0.01,
@@ -512,6 +527,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "mix",
+        automatable: true,
         label: "Mix",
         unit: "",
         min: 0,
@@ -531,6 +547,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "delay",
+        automatable: true,
         label: "Delay",
         unit: "ms",
         min: 1,
@@ -541,6 +558,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "depth",
+        automatable: true,
         label: "Depth",
         unit: "ms",
         min: 0,
@@ -551,6 +569,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "speed",
+        automatable: true,
         label: "Rate",
         unit: "Hz",
         min: 0.01,
@@ -571,6 +590,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "mix",
+        automatable: true,
         label: "Mix",
         unit: "",
         min: 0,
@@ -590,6 +610,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "in_gain",
+        automatable: true,
         label: "Input",
         unit: "",
         min: 0,
@@ -600,6 +621,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "out_gain",
+        automatable: true,
         label: "Output",
         unit: "",
         min: 0,
@@ -632,6 +654,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "speed",
+        automatable: true,
         label: "Rate",
         unit: "Hz",
         min: 0.1,
@@ -683,6 +706,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "wet",
+        automatable: true,
         label: "Wet",
         unit: "",
         min: 0,
@@ -693,6 +717,7 @@ export const HF_AUDIO_FX: readonly HfAudioFxDef[] = [
       {
         kind: "number",
         key: "dry",
+        automatable: true,
         label: "Dry",
         unit: "",
         min: 0,
