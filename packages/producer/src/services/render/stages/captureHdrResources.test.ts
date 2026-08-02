@@ -112,10 +112,12 @@ describe("estimateHdrExtractionBytes", () => {
 
 describe("resolveHdrExtractionWindow", () => {
   it("bounds a two-second composition backed by an unbounded HDR source to 60 raw frames", () => {
-    const { durationSeconds } = resolveHdrExtractionWindow(
+    const window = resolveHdrExtractionWindow(
       { id: "long-hdr", start: 0, end: Number.POSITIVE_INFINITY, mediaStart: 0 },
       2,
     );
+    if (!window) throw new Error("expected a visible HDR extraction window");
+    const { durationSeconds } = window;
     expect(durationSeconds).toBe(2);
     expect(estimateHdrExtractionBytes([{ durationSeconds, width: 3840, height: 2160 }], 30)).toBe(
       60 * 3840 * 2160 * 6,
@@ -136,10 +138,10 @@ describe("resolveHdrExtractionWindow", () => {
     ).toEqual({ compositionStart: 0, mediaStart: 60, durationSeconds: 2 });
   });
 
-  it("rejects HDR media with no interval inside the composition", () => {
-    expect(() =>
+  it("skips HDR media with no interval inside the composition", () => {
+    expect(
       resolveHdrExtractionWindow({ id: "hdr", start: 3, end: Infinity, mediaStart: 0 }, 2),
-    ).toThrow('HDR video "hdr" has no finite interval inside the 2s composition');
+    ).toBeNull();
   });
 });
 

@@ -1360,7 +1360,10 @@ export async function extractAllVideoFrames(
     };
   }
 
-  type PreparedExtractionResult = { work: PreparedExtraction } | { error: VideoExtractionFailure };
+  type PreparedExtractionResult =
+    | { work: PreparedExtraction }
+    | { error: VideoExtractionFailure }
+    | { skipped: true };
 
   type ExtractionOutcome = { result: ExtractedFrames } | { error: VideoExtractionFailure };
 
@@ -1585,7 +1588,7 @@ export async function extractAllVideoFrames(
         const window = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const videoDuration = window.durationSeconds;
         if (videoDuration <= 0) {
-          throw new Error(`Video "${video.id}" has no interval inside the render timeline`);
+          return { skipped: true };
         }
         video.start = window.compositionStart;
         video.end = window.compositionStart + videoDuration;
@@ -1649,11 +1652,20 @@ export async function extractAllVideoFrames(
     for (const [key, outcome] of groupOutcomes) uniqueOutcomes.set(key, outcome);
   }
 
-  const results: ExtractionOutcome[] = preparedExtractions.map((prepared) => {
-    if ("error" in prepared) return prepared;
+  const results: ExtractionOutcome[] = [];
+  for (const prepared of preparedExtractions) {
+    if ("skipped" in prepared) continue;
+    if ("error" in prepared) {
+      results.push(prepared);
+      continue;
+    }
     const outcome = uniqueOutcomes.get(prepared.work.dedupeKey);
-    if (!outcome)
-      return { error: extractionError(prepared.work.video.id, "missing extraction result") };
+    if (!outcome) {
+      results.push({
+        error: extractionError(prepared.work.video.id, "missing extraction result"),
+      });
+      continue;
+    }
     if ("error" in outcome) {
       // A shared (deduped/superset) failure fans out to every element with the
       // same key; annotate followers with the leader's videoId so N copies of
@@ -1662,17 +1674,18 @@ export async function extractAllVideoFrames(
       const message = isFollower
         ? `[shared extraction, leader ${outcome.error.videoId}] ${outcome.error.error}`
         : outcome.error.error;
-      return {
+      results.push({
         error: {
           videoId: prepared.work.video.id,
           kind: outcome.error.kind,
           retryable: outcome.error.retryable,
           error: message,
         },
-      };
+      });
+      continue;
     }
-    return { result: { ...outcome.result, videoId: prepared.work.video.id } };
-  });
+    results.push({ result: { ...outcome.result, videoId: prepared.work.video.id } });
+  }
 
   breakdown.extractMs = Date.now() - phase3Start;
 

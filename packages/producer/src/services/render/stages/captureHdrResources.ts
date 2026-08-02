@@ -267,7 +267,7 @@ export type HdrExtractionWindow = TimelineExtractionWindow;
 export function resolveHdrExtractionWindow(
   video: { id: string; start: number; end: number; mediaStart: number },
   compositionDuration: number,
-): HdrExtractionWindow {
+): HdrExtractionWindow | null {
   if (!Number.isFinite(compositionDuration) || compositionDuration <= 0) {
     throw new Error(
       `Cannot extract HDR video "${video.id}" with invalid composition duration ${String(compositionDuration)}`,
@@ -280,15 +280,14 @@ export function resolveHdrExtractionWindow(
     requestedEnd - video.start,
     compositionDuration,
   );
-  if (
-    !Number.isFinite(window.durationSeconds) ||
-    window.durationSeconds <= 0 ||
-    !Number.isFinite(window.mediaStart) ||
-    window.mediaStart < 0
-  ) {
+  if (!Number.isFinite(window.durationSeconds)) {
     throw new Error(
       `HDR video "${video.id}" has no finite interval inside the ${compositionDuration}s composition`,
     );
+  }
+  if (window.durationSeconds <= 0) return null;
+  if (!Number.isFinite(window.mediaStart) || window.mediaStart < 0) {
+    throw new Error(`HDR video "${video.id}" has invalid mediaStart ${String(window.mediaStart)}`);
   }
   return window;
 }
@@ -414,6 +413,7 @@ export async function extractHdrVideoFrames(args: {
     if (!video) continue;
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
     const window = resolveHdrExtractionWindow(video, composition.duration);
+    if (!window) continue;
     extractionWindows.set(videoId, window);
     prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     plannedVideos.push({

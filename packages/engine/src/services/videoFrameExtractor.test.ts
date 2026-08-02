@@ -95,6 +95,12 @@ describe("resolveVideoExtractionDuration", () => {
     expect(resolveVideoExtractionDuration(preroll, metadata(120), 2)).toBe(2);
   });
 
+  it("returns an empty window for a clip entirely before composition time zero", () => {
+    expect(resolveVideoExtractionWindow(video({ start: -60, end: -10 }), metadata(120), 2)).toEqual(
+      { compositionStart: 0, mediaStart: 60, durationSeconds: 0 },
+    );
+  });
+
   it("retains legacy behavior when no timeline end is supplied", () => {
     expect(resolveVideoExtractionDuration(video(), metadata(60))).toBe(60);
   });
@@ -1070,6 +1076,28 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
 
   afterAll(() => {
     if (existsSync(FIXTURE_DIR)) rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
+
+  it("skips a clip entirely before time zero without reporting an extraction error", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-before-timeline");
+    mkdirSync(outputDir, { recursive: true });
+    const video: VideoElement = {
+      id: "before-timeline",
+      src: VFR_FIXTURE,
+      start: -2,
+      end: -1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    };
+
+    const result = await extractAllVideoFrames([video], FIXTURE_DIR, {
+      fps: 1,
+      outputDir,
+      timelineEnd: 2,
+    });
+
+    expect(result).toMatchObject({ success: true, extracted: [], errors: [] });
   });
 
   it("detects the synthesized fixture as VFR", async () => {
