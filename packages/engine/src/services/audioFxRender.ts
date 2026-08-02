@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getAudioFxRuntimeScript } from "@hyperframes/core/audio-fx-runtime";
 import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
+import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { acquireBrowser } from "./browserManager.js";
 
 export class AudioFxRenderError extends Error {
@@ -128,7 +129,7 @@ export async function applyAudioFxChain(
   inputWav: string,
   chain: HfAudioFxChain,
   outputWav: string,
-  options: { trackId: string; signal?: AbortSignal },
+  options: { trackId: string; signal?: AbortSignal; automation?: HfAutomation },
 ): Promise<string> {
   if (enabledAudioFxNodes(chain).length === 0) return inputWav;
   if (!existsSync(inputWav)) {
@@ -160,7 +161,7 @@ export async function applyAudioFxChain(
       await page.addScriptTag({ content: getAudioFxRuntimeScript() });
 
       const rendered = (await page.evaluate(
-        async ([b64, rate, chainJson]: [string, number, string]) => {
+        async ([b64, rate, chainJson, automationJson]: [string, number, string, string]) => {
           const bin = atob(b64);
           const bytes = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -168,12 +169,12 @@ export async function applyAudioFxChain(
           const api = (
             window as unknown as {
               __HF_AUDIO_FX?: {
-                render(p: Float32Array, r: number, c: string): Promise<Float32Array>;
+                render(p: Float32Array, r: number, c: string, a?: string): Promise<Float32Array>;
               };
             }
           ).__HF_AUDIO_FX;
           if (!api) throw new Error("audio FX runtime failed to load");
-          const out = await api.render(pcm, rate, chainJson);
+          const out = await api.render(pcm, rate, chainJson, automationJson || undefined);
           const u8 = new Uint8Array(out.buffer, out.byteOffset, out.length * 4);
           let s = "";
           const CHUNK = 0x8000;
@@ -186,7 +187,8 @@ export async function applyAudioFxChain(
           Buffer.from(mono.buffer, mono.byteOffset, mono.length * 4).toString("base64"),
           sampleRate,
           JSON.stringify(chain),
-        ] as [string, number, string],
+          options.automation ? serializeAutomation(options.automation) : "",
+        ] as [string, number, string, string],
       )) as string;
 
       const out = new Float32Array(Buffer.from(rendered, "base64").buffer);
@@ -209,4 +211,4 @@ export async function applyAudioFxChain(
   }
 }
 
-export type { HfAudioFxChain };
+export type { HfAudioFxChain, HfAutomation };

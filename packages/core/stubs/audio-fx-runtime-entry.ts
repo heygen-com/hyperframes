@@ -7,8 +7,8 @@
  * ends share a single implementation rather than two that have to be kept in
  * agreement.
  *
- * Exposes `window.__HF_AUDIO_FX.render(pcm, sampleRate, chain)`, which returns
- * the processed samples.
+ * Exposes `window.__HF_AUDIO_FX.render(pcm, sampleRate, chain, automation)`,
+ * which returns the processed samples.
  */
 
 import {
@@ -16,12 +16,19 @@ import {
   chainNeedsWorklets,
   ensureAudioFxWorklets,
 } from "../src/audio/audioFxGraph.js";
+import { scheduleChainAutomation } from "../src/audio/audioFxAutomation.js";
+import { parseAutomation, resolveAutomation } from "../src/audioAutomation.js";
 import { parseAudioFxChain, type HfAudioFxChain } from "../src/audioFx.js";
 
 declare global {
   interface Window {
     __HF_AUDIO_FX?: {
-      render(pcm: Float32Array, sampleRate: number, chainJson: string): Promise<Float32Array>;
+      render(
+        pcm: Float32Array,
+        sampleRate: number,
+        chainJson: string,
+        automationJson?: string,
+      ): Promise<Float32Array>;
     };
   }
 }
@@ -30,6 +37,7 @@ async function render(
   pcm: Float32Array,
   sampleRate: number,
   chainJson: string,
+  automationJson?: string,
 ): Promise<Float32Array> {
   const chain: HfAudioFxChain = parseAudioFxChain(chainJson);
 
@@ -46,6 +54,19 @@ async function render(
   source.buffer = buffer;
 
   const fx = buildFxChain(ctx, chain);
+
+  // The input WAV is the clip's own audio from its first sample, so clip-local
+  // time is offline time — the envelope needs no offset here. Same scheduler as
+  // preview, which is what makes the two agree.
+  if (automationJson) {
+    const automation = resolveAutomation(parseAutomation(automationJson), chain);
+    scheduleChainAutomation(automation, chain, fx.nodes, {
+      scheduledAt: 0,
+      elapsed: 0,
+      rate: 1,
+    });
+  }
+
   source.connect(fx.input);
   fx.output.connect(ctx.destination);
   source.start();
