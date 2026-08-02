@@ -551,20 +551,21 @@ export async function extractVideoFramesRange(
   } catch (error) {
     throw classifyVideoExtractionError(error);
   }
-  if (!(metadata.durationSeconds > 0)) {
+  const playableDuration = resolvePlayableVideoDuration(metadata);
+  if (!(playableDuration > 0)) {
     throw new VideoSourceExtractionError(
       "invalid_media",
       false,
       "Video source has no positive duration",
-      `Video source duration is ${metadata.durationSeconds}s`,
+      `Playable video stream duration is ${playableDuration}s`,
     );
   }
-  if (startTime >= metadata.durationSeconds) {
+  if (startTime >= playableDuration) {
     throw new VideoSourceExtractionError(
       "media_start_out_of_range",
       false,
       "Video media start is outside the source duration",
-      `Video media start ${startTime}s is outside source duration ${metadata.durationSeconds}s`,
+      `Video media start ${startTime}s is outside playable video duration ${playableDuration}s`,
     );
   }
   const format = resolveFrameFormat(metadata, options.format);
@@ -727,11 +728,27 @@ export function classifyFfmpegSpawnError(error: unknown, stderr = ""): VideoSour
 function resolveSegmentDuration(
   requested: number,
   mediaStart: number,
-  metadata: VideoMetadata,
+  sourceDuration: number,
 ): number {
   if (Number.isFinite(requested) && requested > 0) return requested;
-  const sourceRemaining = metadata.durationSeconds - mediaStart;
-  return sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
+  const sourceRemaining = sourceDuration - mediaStart;
+  return sourceRemaining > 0 ? sourceRemaining : sourceDuration;
+}
+
+/**
+ * Return the range that can actually produce video frames.
+ *
+ * Container duration may include a longer audio stream or mux padding. Using
+ * it for video extraction planning can reserve raw-frame scratch for seconds
+ * where no video frames exist. `extractMediaMetadata` already falls back to
+ * the container duration when ffprobe omits the stream duration; keep the
+ * explicit fallback here for callers supplying older/manual metadata.
+ */
+export function resolvePlayableVideoDuration(metadata: VideoMetadata): number {
+  return Number.isFinite(metadata.videoStreamDurationSeconds) &&
+    metadata.videoStreamDurationSeconds > 0
+    ? metadata.videoStreamDurationSeconds
+    : metadata.durationSeconds;
 }
 
 export interface TimelineExtractionWindow {
@@ -857,33 +874,29 @@ export function resolveVideoExtractionWindow(
   metadata: VideoMetadata,
   timelineEnd?: number,
 ): TimelineExtractionWindow {
-  if (!(metadata.durationSeconds > 0)) {
+  const playableDuration = resolvePlayableVideoDuration(metadata);
+  if (!(playableDuration > 0)) {
     throw new VideoSourceExtractionError(
       "invalid_media",
       false,
       "Video source has no positive duration",
-      `Video source duration is ${metadata.durationSeconds}s`,
+      `Playable video stream duration is ${playableDuration}s`,
     );
   }
-  if (video.mediaStart >= metadata.durationSeconds) {
+  if (video.mediaStart >= playableDuration) {
     throw new VideoSourceExtractionError(
       "media_start_out_of_range",
       false,
       "Video media start is outside the source duration",
-      `Video media start ${video.mediaStart}s is outside source duration ${metadata.durationSeconds}s`,
+      `Video media start ${video.mediaStart}s is outside playable video duration ${playableDuration}s`,
     );
   }
   const resolvedDuration = resolveSegmentDuration(
     video.end - video.start,
     video.mediaStart,
-    metadata,
+    playableDuration,
   );
-  return resolveTimelineExtractionWindow(
-    video,
-    resolvedDuration,
-    timelineEnd,
-    metadata.durationSeconds,
-  );
+  return resolveTimelineExtractionWindow(video, resolvedDuration, timelineEnd, playableDuration);
 }
 
 export function resolveVideoExtractionDuration(
@@ -1391,12 +1404,13 @@ export async function extractAllVideoFrames(
         // Guard against mediaStart past EOF — FFmpeg's `-ss` silently produces
         // a 0-byte file when seeking beyond the source duration, and the
         // downstream extractor then points at a broken input.
-        if (entry.video.mediaStart >= metadata.durationSeconds) {
+        const playableDuration = resolvePlayableVideoDuration(metadata);
+        if (entry.video.mediaStart >= playableDuration) {
           errors.push({
             videoId: entry.video.id,
             kind: "media_start_out_of_range",
             retryable: false,
-            error: `SDR→HDR conversion skipped: mediaStart (${entry.video.mediaStart}s) ≥ source duration (${metadata.durationSeconds}s)`,
+            error: `SDR→HDR conversion skipped: mediaStart (${entry.video.mediaStart}s) ≥ playable video duration (${playableDuration}s)`,
           });
           hdrSkippedIndices.add(i);
           continue;
@@ -1841,7 +1855,7 @@ function getFrameIndexAtTime(
 ): number | null {
   let localTime = globalTime - videoStart;
   if (localTime < 0) return null;
-  const loopDuration = Math.max(0, extracted.metadata.durationSeconds - mediaStart);
+  const loopDuration = Math.max(0, resolvePlayableVideoDuration(extracted.metadata) - mediaStart);
   if (loop && loopDuration > 0 && localTime >= loopDuration) {
     localTime %= loopDuration;
   }

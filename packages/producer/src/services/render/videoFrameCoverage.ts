@@ -45,7 +45,11 @@
  */
 
 import { parseHTML } from "linkedom";
-import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
+import {
+  resolvePlayableVideoDuration,
+  type ExtractedFrames,
+  type VideoElement,
+} from "@hyperframes/engine";
 
 export interface VideoFrameCoverageReport {
   videoId: string;
@@ -155,7 +159,7 @@ function expectedFramesForVideo(
   // full source *has* been delivered — the same 90 unique source frames
   // cover the 300-frame slot — so coverage must measure source-source, not
   // slot-source.
-  const sourceDuration = entry.metadata.durationSeconds - video.mediaStart;
+  const sourceDuration = resolvePlayableVideoDuration(entry.metadata) - video.mediaStart;
   if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return slotFrames;
 
   const sourceFrames = expectedFramesForClip(0, sourceDuration, fps, rounding);

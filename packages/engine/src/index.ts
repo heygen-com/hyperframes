@@ -183,6 +183,7 @@ export {
   resolveTimelineExtractionWindow,
   resolveVideoExtractionWindow,
   resolveVideoExtractionDuration,
+  resolvePlayableVideoDuration,
   resolveProjectRelativeSrc,
   getFrameAtTime,
   createFrameLookupTable,

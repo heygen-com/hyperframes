@@ -48,9 +48,12 @@ import { COMPLETE_SENTINEL, GC_MARKER, SCHEMA_PREFIX } from "./extractionCache.j
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
 describe("resolveVideoExtractionDuration", () => {
-  const metadata = (durationSeconds: number): VideoMetadata => ({
+  const metadata = (
+    durationSeconds: number,
+    videoStreamDurationSeconds = durationSeconds,
+  ): VideoMetadata => ({
     durationSeconds,
-    videoStreamDurationSeconds: durationSeconds,
+    videoStreamDurationSeconds,
     width: 1920,
     height: 1080,
     fps: 30,
@@ -77,6 +80,10 @@ describe("resolveVideoExtractionDuration", () => {
 
   it("keeps a shorter natural source duration inside a longer composition", () => {
     expect(resolveVideoExtractionDuration(video(), metadata(2), 10)).toBe(2);
+  });
+
+  it("falls back to container duration when stream duration is unavailable", () => {
+    expect(resolveVideoExtractionDuration(video(), metadata(2, 0), 10)).toBe(2);
   });
 
   it("preserves explicit bounds and loop flags while applying the timeline ceiling", () => {
@@ -138,6 +145,21 @@ describe("resolveVideoExtractionDuration", () => {
     "caps a finite long slot to one short source range for $label playback",
     ({ loop, preservation }) => {
       expect(resolveVideoExtractionWindow(video({ end: 60, loop }), metadata(3), 60)).toEqual({
+        compositionStart: 0,
+        mediaStart: 0,
+        durationSeconds: 3,
+        ...preservation,
+      });
+    },
+  );
+
+  it.each([
+    { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
+    { loop: false, preservation: { preserveTimelineEnd: true }, label: "held tail" },
+  ])(
+    "uses the playable video-stream duration for a long-audio mux in $label playback",
+    ({ loop, preservation }) => {
+      expect(resolveVideoExtractionWindow(video({ end: 60, loop }), metadata(60, 3), 60)).toEqual({
         compositionStart: 0,
         mediaStart: 0,
         durationSeconds: 3,
@@ -221,6 +243,12 @@ describe("resolveVideoExtractionDuration", () => {
   it("rejects a media start at source EOF before planning extraction", () => {
     expect(() =>
       resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(3), 10),
+    ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
+  });
+
+  it("rejects a media start at video-stream EOF even when the container continues", () => {
+    expect(() =>
+      resolveVideoExtractionWindow(video({ mediaStart: 3 }), metadata(60, 3), 10),
     ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
   });
 
@@ -699,6 +727,28 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(0.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(15);
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
+  });
+
+  it("wraps at video-stream EOF when a mux container has longer audio", () => {
+    const extracted = fakeExtracted(6, 2);
+    extracted.metadata.durationSeconds = 60;
+    extracted.metadata.videoStreamDurationSeconds = 3;
+    const table = createFrameLookupTable(
+      [
+        {
+          id: "hero",
+          src: "clip.webm",
+          start: 0,
+          end: 60,
+          mediaStart: 0,
+          loop: true,
+          hasAudio: false,
+        },
+      ],
+      [extracted],
+    );
+
+    expect(table.getActiveFramePayloads(4).get("hero")?.frameIndex).toBe(2);
   });
 
   it("holds the last frame for a non-looping clip until its authored slot ends", () => {

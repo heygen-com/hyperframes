@@ -37,14 +37,24 @@ function makeVideo(overrides: Partial<VideoElement> & { id: string }): VideoElem
 function makeExtracted(
   videoId: string,
   delivered: number,
-  options: { fps?: number; durationSeconds?: number; isVFR?: boolean } = {},
+  options: {
+    fps?: number;
+    durationSeconds?: number;
+    videoStreamDurationSeconds?: number;
+    isVFR?: boolean;
+  } = {},
 ): ExtractedFrames {
-  const { fps = 30, durationSeconds = Number.POSITIVE_INFINITY, isVFR = false } = options;
+  const {
+    fps = 30,
+    durationSeconds = Number.POSITIVE_INFINITY,
+    videoStreamDurationSeconds = durationSeconds,
+    isVFR = false,
+  } = options;
   const framePaths = new Map<number, string>();
   for (let i = 0; i < delivered; i += 1) framePaths.set(i, `/tmp/${videoId}/${i}.jpg`);
   const metadata: VideoMetadata = {
     durationSeconds,
-    videoStreamDurationSeconds: durationSeconds,
+    videoStreamDurationSeconds,
     width: 1280,
     height: 720,
     fps,
@@ -218,6 +228,28 @@ describe("computeVideoFrameCoverage", () => {
     const reports = computeVideoFrameCoverage(videos, extracted, 30);
     expect(reports[0]).toMatchObject({ expectedFrames: 90, capturedFrames: 90, ratio: 1 });
   });
+
+  it.each([
+    { loop: false, label: "held tail" },
+    { loop: true, label: "loop" },
+  ])(
+    "credits the playable video stream instead of longer container audio for a $label",
+    ({ loop }) => {
+      const videos = [makeVideo({ id: "long-audio-mux", start: 0, end: 60, loop })];
+      const extracted = [
+        makeExtracted("long-audio-mux", 90, {
+          durationSeconds: 60,
+          videoStreamDurationSeconds: 3,
+        }),
+      ];
+
+      expect(computeVideoFrameCoverage(videos, extracted, 30)[0]).toMatchObject({
+        expectedFrames: 90,
+        capturedFrames: 90,
+        ratio: 1,
+      });
+    },
+  );
 
   it("still fails when a looping clip's source extraction is truncated", () => {
     // Fail-loud preserved for a genuinely-broken loop: only 60/90 source

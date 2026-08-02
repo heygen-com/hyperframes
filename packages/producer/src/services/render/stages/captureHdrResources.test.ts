@@ -52,10 +52,13 @@ function hdrVideo(id: string, overrides: Partial<VideoElement> = {}): VideoEleme
   };
 }
 
-function videoMetadata(durationSeconds: number): VideoMetadata {
+function videoMetadata(
+  durationSeconds: number,
+  videoStreamDurationSeconds = durationSeconds,
+): VideoMetadata {
   return {
     durationSeconds,
-    videoStreamDurationSeconds: durationSeconds,
+    videoStreamDurationSeconds,
     width: 1,
     height: 1,
     fps: 2,
@@ -385,7 +388,7 @@ describe("extractHdrVideoFrames", () => {
     { loop: true, expectedFrameIndex: 4, label: "loop" },
     { loop: false, expectedFrameIndex: 5, label: "held tail" },
   ])(
-    "reserves one short source range for a finite 60-second $label slot",
+    "reserves one playable video-stream range for a finite 60-second $label slot with longer audio",
     async ({ loop, expectedFrameIndex }) => {
       const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-finite-short-source-"));
       const video = hdrVideo(`finite-${String(loop)}`, { end: 60, loop });
@@ -396,7 +399,9 @@ describe("extractHdrVideoFrames", () => {
       try {
         const extracted = await extractHdrVideoFrames({
           ...fixture,
-          extractMediaMetadataImpl: async () => videoMetadata(3),
+          // A valid mux can have a short video stream and a much longer audio
+          // stream/container. Scratch planning must follow video EOF.
+          extractMediaMetadataImpl: async () => videoMetadata(60, 3),
           runFfmpegImpl: async (args) => {
             calls.push(args);
             const rawPath = args.at(-1);
