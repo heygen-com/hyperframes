@@ -14,7 +14,7 @@ import {
   type HfAudioFxChain,
   type HfAudioFxParamValues,
 } from "../audioFx.js";
-import { ensureAudioFxWorklets } from "./audioFxWorklets.js";
+import { audioFxWorkletsReady, ensureAudioFxWorklets } from "./audioFxWorklets.js";
 
 /**
  * Deterministic reverb impulse, shared by both engines so the browser and the
@@ -432,4 +432,4 @@ export function buildFxChain(ctx: BaseAudioContext, chain: HfAudioFxChain): FxCh
   };
 }
 
-export { ensureAudioFxWorklets };
+export { audioFxWorkletsReady, ensureAudioFxWorklets };
